@@ -12,6 +12,7 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import (
+    checker_path,
     connect,
     create_table,
     run_sql,
@@ -19,7 +20,6 @@ from sverify.engine import (
     substrait_json,
     to_sql,
 )
-from sverify.incremental import checker_path
 from sverify.testing import canonical, inline_tables, lean_rows
 
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})

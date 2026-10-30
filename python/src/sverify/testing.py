@@ -11,7 +11,7 @@ import re
 import subprocess
 from collections.abc import Iterable, Mapping
 
-from sverify.incremental import checker_path
+from sverify.engine import checker_path
 
 
 def literal(v: int | float | str | None) -> dict:
