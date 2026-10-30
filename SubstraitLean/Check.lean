@@ -34,6 +34,10 @@ def Rel.checkWF (cat : Catalog) : Rel → Bool
   | .window r part sort fns =>
       r.checkWF cat && part.all (· < r.arity cat) && sort.all (·.col < r.arity cat) &&
         fns.all (·.refsLt (r.arity cat))
+  | .semi a b _ on =>
+      a.checkWF cat && b.checkWF cat && on.refsLtb (a.arity cat + b.arity cat)
+  | .orderBy r keys => r.checkWF cat && keys.all (·.col < r.arity cat)
+  | .distinct r => r.checkWF cat
 
 theorem Rel.checkWF_iff {cat : Catalog} {r : Rel} : r.checkWF cat = true ↔ r.WF cat := by
   induction r <;> simp_all [checkWF, WF, Expr.refsLtb_iff, and_assoc]

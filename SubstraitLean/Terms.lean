@@ -17,6 +17,7 @@ def Rel.terms : Rel → List Rel
   | .filter r c => r.terms.map (.filter · c)
   | .project r es => r.terms.map (.project · es)
   | .emit r m => r.terms.map (.emit · m)
+  | .orderBy r keys => r.terms.map (.orderBy · keys)
   | .cross a b => a.terms.flatMap fun x => b.terms.map fun y => .cross x y
   | .join a b ty on => a.terms.flatMap fun x => b.terms.map fun y => .join x y ty on
   | r => [r]
@@ -24,8 +25,9 @@ def Rel.terms : Rel → List Rel
 def Rel.hasUnion : Rel → Bool
   | .unionAll _ _ => true
   | .read _ | .values _ _ => false
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ => r.hasUnion
-  | .cross a b | .join a b _ _ => a.hasUnion || b.hasUnion
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r => r.hasUnion
+  | .cross a b | .join a b _ _ | .semi a b _ _ => a.hasUnion || b.hasUnion
 
 theorem perm_flatMap_congr {α β : Type} {L : List α} {f g : α → List β}
     (h : ∀ x ∈ L, (f x).Perm (g x)) : (L.flatMap f).Perm (L.flatMap g) := by
@@ -85,7 +87,12 @@ theorem Rel.zeval_terms {Z : ZCatalog} :
         (ZSet.cross_flatMap _ _ _)).filter _).trans ?_
       simp only [ZSet.filter, List.filter_flatMap]
       exact List.Perm.refl _
+  -- Each term is sorted on its own: the sum is the same bag.
+  | .orderBy r _, h => by
+      simp only [zeval, terms, List.flatMap_map]
+      exact (List.mergeSort_perm _ _).trans ((zeval_terms (r := r) h).trans
+        (perm_flatMap_congr fun _ _ => (List.mergeSort_perm _ _).symm))
   | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h | .window _ _ _ _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h => h.elim
 
 end Substrait

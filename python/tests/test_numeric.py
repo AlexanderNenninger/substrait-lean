@@ -21,7 +21,7 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import decode_double
 from sverify.engine import connect, create_table, put_table, run_sql, substrait_json, to_sql
-from sverify.testing import canonical, inline_tables
+from sverify.testing import canonical, inline_tables, lean_values
 
 R = ibis.schema({"a": "int64", "b": "int64"})
 MIN = -(2**63)
@@ -47,35 +47,8 @@ def test_integer_semantics_match_datafusion(sql, rows):
     create_table(con, "r", R, rows)
     expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
-    out = lean_rows_any(json.dumps(plan))
+    out = lean_values(json.dumps(plan))
     assert canonical(out) == canonical(expected)
-
-
-def lean_rows_any(plan_json: str) -> list[tuple]:
-    """Like `lean_rows`, but keeps string values (rendered in quotes)."""
-    import subprocess
-
-    from sverify.incremental import checker_path
-
-    out = subprocess.run(
-        [str(checker_path()), "/dev/stdin"],
-        input=plan_json,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    rows = out.split("rows (")[1].splitlines()[1:]
-
-    def value(x: str):
-        if x == "NULL":
-            return None
-        if x.startswith('"'):
-            return json.loads(x)
-        if x.endswith("d"):  # a double, printed with six decimals
-            return float(x[:-1])
-        return int(x)
-
-    return [tuple(value(x) for x in line.strip()[1:-1].split(", ")) for line in rows]
 
 
 #: Finite doubles where rounding could go wrong: halves, results of -0.0
@@ -98,7 +71,7 @@ def test_rounding_semantics_match_datafusion(sql):
     create_table(con, "r", F, rows)
     expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
-    got = lean_rows_any(json.dumps(plan))
+    got = lean_values(json.dumps(plan))
     # Doubles come back printed, or as codes when tiny (±0.0); `CAST(... AS
     # BIGINT)` as integers.
     decoded = [
