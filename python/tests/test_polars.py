@@ -46,6 +46,7 @@ from test_rewrites import R, S
 from test_windows import QUERIES as WINDOW_QUERIES
 from test_windows import SCHEMA as WINDOW_SCHEMA
 
+#: The repository's golden fixtures; absent when the tests run against a wheel.
 FIXTURES = sorted((Path(__file__).parents[2] / "tests" / "fixtures").glob("*.json"))
 SETTINGS = settings(
     max_examples=25,
@@ -470,7 +471,9 @@ def test_string_order_is_refused():
 
 
 def test_unknown_function_is_refused():
-    plan = json.loads(written_plan((FIXTURES[0].parent / "filter_project.json").read_text()))
+    con = connect()
+    create_tables(con)
+    plan = json.loads(written_plan(substrait_json(con, "SELECT id FROM orders WHERE amount > 10")))
     plan["extensions"][0]["extensionFunction"]["name"] = "sqrt"
     filt = plan["relations"][0]["root"]["input"]["project"]["input"]["filter"]
     filt["condition"] = {
@@ -480,7 +483,7 @@ def test_unknown_function_is_refused():
         }
     }
     with pytest.raises(polars_engine.Unsupported, match="sqrt"):
-        polars_engine.to_lazy(plan, {"orders": pa.table({"a": [1], "b": ["x"], "c": [1]})})
+        polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
 
 
 def test_aggregates_are_refused():
@@ -492,7 +495,9 @@ def test_aggregates_are_refused():
 
 def test_checker_writes_what_polars_reads():
     """`--write` output is a fixed point of the round trip the translator relies on."""
-    once = written_plan((FIXTURES[0].parent / "df_window.json").read_text())
+    con = connect()
+    create_table(con, "r", WINDOW_SCHEMA, [])
+    once = written_plan(substrait_json(con, WINDOW_QUERIES[-1]))
     proc = subprocess.run(
         [str(checker_path()), "--write", "/dev/stdin"],
         input=once,
