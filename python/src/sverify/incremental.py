@@ -297,7 +297,7 @@ class Pipeline:
                     if dup := sum(n - 1 for n in index.values() if n > 1):
                         raise PreconditionError(f"{dup} row(s) of {t} violate {label(c)}")
                     self._keys[(t, c.cols)] = index
-                elif n := violations(self.con.table(t), c):
+                elif n := violations(self.con.table(t), c, self.engine):
                     raise PreconditionError(f"{n} row(s) of {t} violate {label(c)}")
                 self.requires.setdefault(t, []).append(c)
 
@@ -316,7 +316,7 @@ class Pipeline:
                 put_table(self.con, name, to_arrow(ch.inserts, self.con.con.table(t).schema()))
                 try:
                     for c in rowwise:
-                        if n := violations(self.con.table(name), c):
+                        if n := violations(self.con.table(name), c, self.engine):
                             raise PreconditionError(
                                 f"{n} inserted row(s) of {t} violate {label(c)}"
                             )
