@@ -1,0 +1,3 @@
+# marimo cells end with a bare `return`, and show their last expression.
+[lint]
+ignore = ["PLR1711", "B018"]

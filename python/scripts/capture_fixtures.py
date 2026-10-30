@@ -1,30 +1,33 @@
 """Capture real Substrait plans from DuckDB into tests/fixtures/duckdb_*.json.
 
+The pipelines are the Ibis expressions in `sverify.examples`, compiled to SQL by
+Ibis and to Substrait by DuckDB, the same route `IncrementalView.from_ibis` takes.
+
 Run from python/:  uv run python scripts/capture_fixtures.py
 """
 
 import json
 from pathlib import Path
 
+import ibis
+
 from sverify.duck import connect, substrait_json
+from sverify.examples import PIPELINES, UNSUPPORTED, create_tables
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
-QUERIES = {
-    "filter_project": "select id, amount * 2 as doubled from orders where amount > 10",
-    "inner_join": "select o.id, c.city from orders o join customers c on o.customer = c.name",
-    "union_all": "select id from orders union all select id from orders where amount < 3",
+CAPTURED = {
+    **{k: PIPELINES[k] for k in ["filter_project", "inner_join", "union_all", "self_join"]},
     # Not in the modelled fragment: recorded to pin down the rejection.
-    "aggregate": "select customer, sum(amount) as s from orders group by customer",
+    "aggregate": UNSUPPORTED["aggregate"],
 }
 
 
 def main() -> None:
     con = connect()
-    con.sql("create table orders(id bigint, customer varchar, amount bigint)")
-    con.sql("create table customers(name varchar, city varchar)")
-    for name, sql in QUERIES.items():
-        plan = json.loads(substrait_json(con, sql))
+    create_tables(con)
+    for name, expr in CAPTURED.items():
+        plan = json.loads(substrait_json(con, ibis.to_sql(expr, dialect="duckdb")))
         path = FIXTURES / f"duckdb_{name}.json"
         path.write_text(json.dumps(plan, indent=2) + "\n")
         print(f"wrote {path.relative_to(FIXTURES.parents[1])}")

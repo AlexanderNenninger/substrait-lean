@@ -181,7 +181,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='nWHF-0' random-id='197bef58-32c0-37e8-2965-93839ef862e3'><marimo-slider data-initial-value='0.0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003echance a value is NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='0.5' data-step='0.01' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='nWHF-1' random-id='fe01c0e0-c96f-0c08-40f6-db3a77c7254c'><marimo-slider data-initial-value='20' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003enumber of random test tables&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='200' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='nWHF-0' random-id='8f94e3c7-e84a-a453-ba7e-74017d784748'><marimo-slider data-initial-value='0.0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003echance a value is NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='0.5' data-step='0.01' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='nWHF-1' random-id='f0ba7d5d-3a23-3fe4-f665-d3f7e690413b'><marimo-slider data-initial-value='20' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003enumber of random test tables&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='200' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element></div>"
           }
         }
       ],
@@ -189,12 +189,12 @@
     },
     {
       "id": "iLit",
-      "code_hash": "a7b21dadd520e182ad719d01c2afcd10",
+      "code_hash": "cb91b683216e36cb2b28d2fe6ce6c0f8",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eThe bug was caught by &#92;u003cstrong&#92;u003e0 of 11&#92;u003c/strong&#92;u003e random tests.&#92;u003cbr /&#92;u003e&#92;nWith no NULLs in the data, every test passes, and the bug ships.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eThe bug was caught by &#92;u003cstrong&#92;u003e0 of 20&#92;u003c/strong&#92;u003e random tests.&#92;u003cbr /&#92;u003e&#92;nWith no NULLs in the data, every test passes, and the bug ships.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
           }
         }
       ],
@@ -215,12 +215,12 @@
     },
     {
       "id": "ROlb",
-      "code_hash": "5071cd05b849fd97d4831834483292c2",
+      "code_hash": "78d516e82f2e103cb1a649a914be136e",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='02b3a138-1b83-b357-e8f8-27a1ea630366'><marimo-slider data-initial-value='2' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003efilter reads column &#36;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='5' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='023dd6bb-5565-11dc-1ce2-76d3f1afd6e2'><marimo-slider data-initial-value='2' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003efilter reads column &#36;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='5' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element>"
           }
         }
       ],
@@ -259,7 +259,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.25rem'><marimo-ui-element object-id='Vxnm-0' random-id='4dc703f0-825e-fd46-fb5d-5c507aadd82e'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eDelete order 1 (ada, 30)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='Vxnm-1' random-id='4ad6112c-0a88-048f-2e45-6bf73aa613ab'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 4 (cy, 50)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='Vxnm-2' random-id='83d2f901-6cdd-eff0-71fc-b604b6a3bf8f'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eUpdate order 2: amount 5 \u2192 20&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='Vxnm-3' random-id='a0316532-c2c6-90b6-37c3-96bcc0f1b393'><marimo-checkbox data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 5 (dee, amount NULL)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.25rem'><marimo-ui-element object-id='Vxnm-0' random-id='6b763278-0c80-5e54-6f39-f0f165644e62'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eDelete order 1 (ada, 30)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='Vxnm-1' random-id='e5f641c4-370b-6fa5-e01f-29b2c3b51fc5'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 4 (cy, 50)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='Vxnm-2' random-id='7d955b33-e410-8a7e-00a6-746fa9a3560c'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eUpdate order 2: amount 5 \u2192 20&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='Vxnm-3' random-id='63c77eb0-2e51-8d11-54c9-7d4d22ce6e3e'><marimo-checkbox data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 5 (dee, amount NULL)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element></div>"
           }
         }
       ],
@@ -324,7 +324,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ZBYS-0' random-id='80332e5e-fc1a-e2b8-5c1c-147ef9369041'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ZBYS-0' random-id='297ec25e-9f83-8a80-1d56-953dc8c92224'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],

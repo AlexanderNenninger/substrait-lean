@@ -2,6 +2,7 @@ import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
 import SubstraitLean.Weighted
 import SubstraitLean.Terms
+import SubstraitLean.Contracts
 
 /-!
 # Examples
@@ -107,3 +108,4 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_lift
 #print axioms Substrait.Rel.weighted_eval
 #print axioms Substrait.Rel.zeval_terms
+#print axioms Substrait.contract_sound

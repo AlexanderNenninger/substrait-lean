@@ -7,6 +7,8 @@ import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Write
 import SubstraitLean.Check
+import SubstraitLean.Contracts
+import SubstraitLean.ContractCheck
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples

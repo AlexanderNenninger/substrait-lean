@@ -95,6 +95,8 @@ def mkCall : String → List Expr → J Expr
   | "is_null", [a] => pure (.un .isNull a)
   | "is_not_null", [a] => pure (.un .not (.un .isNull a))
   | "negate", [a] => pure (.un .neg a)
+  -- DuckDB writes unary minus as a one-argument `subtract`.
+  | "subtract", [a] => pure (.un .neg a)
   | "add", [a, b] => pure (.bin .add a b)
   | "subtract", [a, b] => pure (.bin .sub a b)
   | "multiply", [a, b] => pure (.bin .mul a b)

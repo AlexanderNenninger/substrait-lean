@@ -1,6 +1,13 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["marimo"]
+# dependencies = [
+#     "ibis-framework==12.0.0",
+#     "marimo",
+#     "sverify",
+# ]
+#
+# [tool.uv.sources]
+# sverify = { path = "../python", editable = true }
 # ///
 
 import marimo
@@ -37,7 +44,9 @@ def _(mo):
     4. Why NULL makes "obviously true" rewrites false.
     5. Well-formedness: the column-count bugs a checker can rule out.
     6. Incremental updates: refreshing a result from just the changed rows, provably.
-    7. What is proven, and what is still trusted.
+    7. The same, on a real engine (DuckDB), with the `sverify` package.
+    8. Pre- and postconditions: stating what a transformation guarantees, and proving it.
+    9. What is proven, and what is still trusted.
     """)
     return
 
@@ -324,7 +333,7 @@ def _(eq, filter_rows, mo, n_tests, null_rate):
     for _ in range(n_tests.value):
         _table = [[None if _rng.random() < null_rate.value else _rng.randint(0, 9)] for _ in range(5)]
         _original = filter_rows(_table, lambda r: eq(r[0], r[0]))
-        _rewritten = filter_rows(_table, lambda r: True)
+        _rewritten = filter_rows(_table, lambda _: True)
         _caught += _original != _rewritten
 
     mo.callout(
@@ -399,7 +408,7 @@ def _(mo):
     def run_check(plan):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             json.dump(plan, f)
-        proc = subprocess.run([str(CLI), f.name], capture_output=True, text=True)
+        proc = subprocess.run([str(CLI), f.name], capture_output=True, text=True, check=False)
         return proc.returncode, (proc.stdout + proc.stderr).strip()
 
     field_index = mo.ui.slider(0, 5, value=2, label="filter reads column $", show_value=True)
@@ -682,7 +691,262 @@ def _(mo):
     rows must be *retracted* when a match shows up later, and LIMIT depends on
     row order. They need different rules.
 
-    ## 7. What is proven, and what is trusted
+    ## 7. On a real engine: incremental views in DuckDB
+
+    So far everything ran in this notebook's mini interpreter. The `sverify`
+    package does it for real: you write the query once (in Ibis or SQL), and it
+    keeps the result up to date in DuckDB from the inserts and deletes alone.
+    The update plans it runs are the ones Lean generated and proved correct.
+    """)
+    return
+
+
+@app.cell
+def _():
+    import ibis
+    import sverify as sv
+    from sverify.examples import PIPELINES, create_tables
+
+    con = sv.connect()  # DuckDB, standing in for your engine
+    create_tables(con)
+    con.executemany(
+        "insert into orders values (?, ?, ?)", [(1, "ada", 30), (2, "bob", 5), (3, "ada", None)]
+    )
+    con.executemany("insert into customers values (?, ?)", [("ada", "Paris"), ("bob", "Oslo")])
+
+    # orders JOIN customers ON orders.customer = customers.name, selecting (id, city)
+    view = sv.IncrementalView.from_ibis(con, PIPELINES["inner_join"], "orders_with_city")
+    return con, ibis, sv, view
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    apply_batch = mo.ui.button(
+        value=0, on_click=lambda n: n + 1, label="Apply a random batch of changes", kind="success"
+    )
+    apply_batch
+    return (apply_batch,)
+
+
+@app.cell(hide_code=True)
+def _(apply_batch, as_table, con, mo, sv, view):
+    import random as _random
+
+    def _batch(rng, table, make_row):
+        current = con.sql(f"select * from {table}").fetchall()
+        deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
+        return sv.Changes(inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes)
+
+    def _changes_table(ch, cols):
+        rows = [list(r) for r in [*ch.inserts, *ch.deletes]]
+        return as_table(rows, cols, [1] * len(ch.inserts) + [-1] * len(ch.deletes))
+
+    _names = ["ada", "bob", "cy", None]
+    _last = None
+    if apply_batch.value:
+        _rng = _random.Random(apply_batch.value)
+        _last = {
+            "orders": _batch(
+                _rng, "orders", lambda r: (r.randint(1, 9), r.choice(_names), r.choice([None, 5, 30, 50]))
+            ),
+            "customers": _batch(
+                _rng, "customers", lambda r: (r.choice(_names), r.choice(["Paris", "Oslo", "Lima"]))
+            ),
+        }
+        view.apply(_last)
+
+    _equal = view.rows() == view.recompute()
+    _shown = (
+        mo.md("*Press the button to change both tables at once.*")
+        if _last is None
+        else mo.hstack(
+            [
+                mo.vstack([mo.md("**changes to orders**"), _changes_table(_last["orders"], ["id", "customer", "amount"])]),
+                mo.vstack([mo.md("**changes to customers**"), _changes_table(_last["customers"], ["name", "city"])]),
+            ],
+            justify="start",
+            gap=2,
+        )
+    )
+    mo.vstack(
+        [
+            _shown,
+            mo.hstack(
+                [
+                    mo.vstack([mo.md("**maintained view**"), as_table([list(r) for r in view.rows()], ["id", "city"])]),
+                    mo.vstack(
+                        [mo.md("**recomputed from scratch**"), as_table([list(r) for r in view.recompute()], ["id", "city"])]
+                    ),
+                ],
+                justify="start",
+                gap=2,
+            ),
+            mo.callout(
+                mo.md(
+                    f"After {apply_batch.value} batch(es): the maintained view "
+                    + ("**equals** full recomputation ✓" if _equal else "**differs** ✗")
+                    + f". Each batch runs {len(view.deltas)} Lean-generated delta plans on DuckDB."
+                ),
+                kind="success" if _equal else "danger",
+            ),
+        ],
+        gap=1,
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    What happens on each batch:
+
+    1. DuckDB turns the query into a Substrait plan.
+    2. Lean builds the **delta plan** (`Rel.delta`), splits it into pieces without
+       `UNION ALL` (`Rel.terms`), and encodes each row's weight as an extra
+       `__weight` column (`Rel.weighted`). Each step has a theorem saying it
+       computes exactly the change to the result.
+    3. DuckDB runs those plans on the change tables, and `sverify` adds the
+       result to the stored view.
+
+    Why split out `UNION ALL`? The randomized tests in `python/tests` found that
+    DuckDB's Substrait reader runs `UNION ALL` as `UNION DISTINCT`, silently
+    dropping duplicate rows. The engine is not covered by the proofs, so it is
+    tested hard instead, and that is how the bug turned up.
+
+    ## 8. Pre- and postconditions
+
+    In verified programming you state what a function **requires** of its inputs
+    (preconditions) and what it **ensures** about its output (postconditions),
+    and the machine proves the second follows from the first. `sverify` brings
+    that to transformations:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+
+    orders_table = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, _.id.notnull()]},
+        ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
+    )
+    def doubled(orders):
+        return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
+
+    doubled(orders_table)  # proves the postconditions, or raises VerificationError
+    doubled.last_report
+    return (orders_table,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Conditions can be Ibis expressions, like `_.doubled >= 0`, or SQL snippets,
+    like `"id IS NOT NULL"`. Preconditions are about data that comes from outside,
+    so when the inputs are real tables they are checked on the data at call time.
+    Postconditions are **proved**: they hold for every input satisfying the
+    preconditions, not only for the data you happen to have.
+
+    ### How does Lean know `doubled ≥ 22`?
+
+    It runs the plan on *descriptions* of values instead of values: for each
+    column, whether it can be NULL and which integers it can hold. This is
+    called *abstract interpretation*. Each operator updates the descriptions:
+
+    * the filter `amount > 10` keeps only rows where that is TRUE, so `amount`
+      is a non-NULL integer ≥ 11 afterwards (NULL > 10 is not TRUE);
+    * `amount * 2` is then an integer ≥ 22, and never NULL.
+
+    A postcondition is proved when its description says it can only be TRUE.
+    Change the transformation and the conditions below and watch what Lean
+    can establish:
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    threshold = mo.ui.slider(-10, 50, value=10, label="filter: keep orders with amount >", show_value=True)
+    factor = mo.ui.slider(-3, 5, value=2, label="new column: doubled = amount ×", show_value=True)
+    pre_nonneg = mo.ui.checkbox(value=True, label="requires amount ≥ 0")
+    pre_upper = mo.ui.checkbox(value=False, label="requires amount ≤ 100")
+    post = mo.ui.text(value="doubled >= 20", label="ensures (SQL)", full_width=True)
+    mo.vstack([threshold, factor, mo.hstack([pre_nonneg, pre_upper], justify="start"), post])
+    return factor, post, pre_nonneg, pre_upper, threshold
+
+
+@app.cell(hide_code=True)
+def _(as_table, factor, mo, orders_table, post, pre_nonneg, pre_upper, sv, threshold):
+    from ibis import _
+
+    _o = orders_table
+    _pre = [c for c, on in [(_.amount >= 0, pre_nonneg.value), (_.amount <= 100, pre_upper.value)] if on]
+    _filtered = _o.filter(_o.amount > threshold.value)
+    _result = _filtered.select(_o.id, doubled=_o.amount * factor.value)
+    _req = {"orders": _pre}
+
+    def _facts(expr, col):
+        return sv.verify(expr, requires=_req).facts[col]
+
+    _stages = [
+        ["orders (input)", _facts(_o.select("amount"), "amount"), ""],
+        [f"after filter amount > {threshold.value}", _facts(_filtered.select("amount"), "amount"), ""],
+        [f"doubled = amount × {factor.value}", "", _facts(_result, "doubled")],
+    ]
+    try:
+        _check = sv.verify(_result, requires=_req, ensures=[post.value]).ensures[0]
+        _verdict = mo.callout(
+            mo.md(
+                f"`{post.value}` is **proved** ✓"
+                if _check.proved
+                else f"`{post.value}` is **not proved**: Lean can only show it is {_check.value}."
+            ),
+            kind="success" if _check.proved else "warn",
+        )
+    except Exception as _e:
+        _verdict = mo.callout(mo.md(f"Could not check `{post.value}`: {_e}"), kind="danger")
+    mo.vstack([as_table(_stages, ["step", "what Lean knows about amount", "… about doubled"]), _verdict])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Things to try: untick *amount ≥ 0* and pick a negative factor; set the
+    threshold below 0; ask for `doubled IS NOT NULL` and think about why it
+    holds even though `amount` can be NULL in the input.
+
+    The guarantee behind the green checkmark is theorem `contract_sound` in
+    `SubstraitLean/Contracts.lean`:
+
+    ```lean
+    theorem contract_sound (hcat : cat.WF)
+        (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)               -- rows match the schema
+        (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue)  -- preconditions hold
+        (hQ : Q.WF cat)
+        (hproved : (Q.aeval cat fun t => tableEnv (S t) (pre t)).all AVal.certainlyTrue) :
+        ∀ row ∈ Q.eval cat, ∀ v ∈ row, v = .bool true                   -- postconditions hold
+    ```
+
+    Read: *if every input row matches its schema and satisfies the
+    preconditions, and the abstract interpretation says every postcondition is
+    certainly TRUE, then every postcondition is TRUE on every output row.*
+
+    What the abstract interpreter does not track yet: relations between two
+    columns (`a < b`), string contents, and facts across rows (uniqueness, row
+    counts). Postconditions like that are refused rather than guessed; use
+    `on_unproved="runtime"` to check them on the data instead.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 9. What is proven, and what is trusted
 
     A proof is only as good as what it is about. Here is the honest picture:
     """)
@@ -695,7 +959,7 @@ def _(mo):
         """
         graph LR
           J["Substrait JSON<br/>(from DuckDB, Ibis, …)"] -->|"parser<br/>TRUSTED · golden tests"| M["Lean model: Rel"]
-          M -->|"PROVEN<br/>rewrites, type safety,<br/>incremental rules"| M2["equivalent / delta plan"]
+          M -->|"PROVEN<br/>rewrites, type safety,<br/>incremental rules, contracts"| M2["equivalent / delta plan,<br/>proved postconditions"]
           M2 -->|"engine runs it<br/>TRUSTED · differential tests"| D["DuckDB result"]
           style M fill:#d4f4dd,stroke:#2e8b57
           style M2 fill:#d4f4dd,stroke:#2e8b57
@@ -708,12 +972,15 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     * **Proven (green):** everything about the Lean model `Rel`: the rewrites,
-      type safety, the incremental rules. Lean checks these mechanically, and
-      `#print axioms` confirms no step was skipped.
-    * **Trusted, guarded by tests:** the JSON parser (does it translate the plan
-      faithfully?) and the engine (does DuckDB behave like the model, e.g. on
-      NULLs or integer overflow?). We compare against them with golden tests and,
-      next, random differential tests.
+      type safety, the incremental rules, the weight-column encoding and the
+      contract checker. Lean checks these mechanically, and `#print axioms`
+      confirms no step was skipped.
+    * **Trusted, guarded by tests:** the JSON parser and writer (do they translate
+      plans faithfully?), the column descriptions taken from table schemas, the
+      `sverify` glue code, and the engine (does DuckDB behave like the model?).
+      Golden tests and randomized tests cover them. The randomized tests compare
+      incremental views with full recomputation, and check that proved
+      postconditions hold on random data. They have already caught a DuckDB bug.
 
     This is the normal shape of verified systems: a small proven core, plus a
     clearly labelled trusted boundary that is tested hard.
@@ -737,6 +1004,8 @@ def _(mo):
     * **Linear operator:** one that handles each row independently, so `Q(A + ΔA) = Q(A) + Q(ΔA)`.
     * **`Perm`:** "same rows, possibly in a different order."
     * **Trusted base:** the parts not covered by proofs (parser, engine).
+    * **Precondition / postcondition:** what a transformation assumes about its inputs / guarantees about its output.
+    * **Abstract interpretation:** running a plan on descriptions of values (can it be NULL? which integers?) instead of values.
     """),
             "Where to look in the code": mo.md(r"""
     | Topic | File | Key names |
@@ -746,13 +1015,16 @@ def _(mo):
     | Optimizer rewrites | `SubstraitLean/Rewrites.lean` | `filter_filter`, `filter_project_pushdown` |
     | Executable checker | `SubstraitLean/Check.lean` | `Rel.checkWF`, `checkWF_iff` |
     | Incremental maintenance | `SubstraitLean/Incremental.lean` | `zeval_add`, `delta_correct`, `incremental_sound` |
-    | Substrait JSON | `SubstraitLean/Parse.lean` | `parsePlan` |
+    | Substrait JSON | `SubstraitLean/Parse.lean`, `Write.lean` | `parsePlan`, `writePlan` |
+    | Delta plans for engines | `SubstraitLean/Terms.lean`, `Weighted.lean` | `zeval_terms`, `weighted_eval` |
+    | Contracts | `SubstraitLean/Contracts.lean` | `Rel.aeval_sound`, `contract_sound` |
+    | Python package | `python/src/sverify/` | `IncrementalView`, `transform`, `verify` |
     """),
             "Try it yourself": mo.md(r"""
     ```bash
     lake build                                    # check every proof
     .lake/build/bin/substrait-check tests/fixtures/virtual_left_join.json
-    tests/run.sh                                  # golden tests
+    cd python && uv run poe qa                    # proofs, lint, types, all tests
     ```
 
     A good first exercise in Lean: in `Rewrites.lean`, try to prove

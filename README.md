@@ -51,7 +51,7 @@ lake build                       # checks every proof and builds the substrait-c
 cd python && uv sync             # DuckDB 1.2.2, Ibis, pyarrow, pytest, hypothesis
 ```
 ```bash
-uv run pytest                    # should end with "8 passed"
+uv run pytest                    # should end with "20 passed"
 ```
 
 `lake build` has to come first, because the Python package calls the
@@ -64,6 +64,27 @@ To run your own scripts with the package available, from the project root:
 ```bash
 uv run --project python python my_pipeline.py
 ```
+
+### Development tasks
+
+Tasks are defined with [poe](https://poethepoet.natn.io) in `python/pyproject.toml`:
+
+```bash
+cd python && uv run poe qa       # everything below, in order; stops at the first failure
+```
+
+| Task | What it does |
+|---|---|
+| `poe prove` | Checks every Lean proof. Any warning fails, including a `sorry` (an unfinished proof). |
+| `poe build` | Builds the `substrait-check` CLI that `sverify` calls |
+| `poe lint` | `ruff check` and `ruff format --check` |
+| `poe fmt` | Fixes lint issues and formats the Python code |
+| `poe typecheck` | Type-checks the Python code with pyrefly |
+| `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
+| `poe test` | Python tests, including the randomized DuckDB tests |
+
+From the project root, use `uv run --project python poe -C python qa`. The Lean
+tasks need `lake` on your PATH.
 
 ### The notebook
 
@@ -142,6 +163,9 @@ con.sql("select * from big_orders").show()
 ```
 
 Plain SQL works too: `sv.IncrementalView(con, "select ... from ...", "name")`.
+Both routes reach DuckDB as SQL: `from_ibis` compiles the expression with
+`ibis.to_sql`. More example pipelines, with unbound tables you can reuse on any
+connection, are in [`sverify/examples.py`](python/src/sverify/examples.py).
 
 ### What is supported, and what is refused
 
@@ -150,15 +174,75 @@ joins and `UNION ALL`. Anything outside that is refused up front instead of
 being maintained incorrectly:
 
 ```python
-sv.IncrementalView(con, "select * from orders limit 5", "top5")
+sv.IncrementalView.from_ibis(con, orders.limit(5), "top5")
 # NotIncremental: not incrementally maintainable (left join or fetch)
 
-sv.IncrementalView(con, "select customer, sum(amount) from orders group by customer", "totals")
+totals = orders.group_by("customer").aggregate(total=orders.amount.sum())
+sv.IncrementalView.from_ibis(con, totals, "totals")
 # ValueError: ... unsupported relation: {"aggregate": ...
 ```
 
 Aggregates (`GROUP BY` with `SUM`/`COUNT`) are the next thing to add; see
 [Possible next steps](#possible-next-steps).
+
+### Pre- and postconditions on a transformation
+
+Declare what you assume about the inputs (`requires`) and what the output
+guarantees (`ensures`). Postconditions are **proved** before the expression is
+returned, not tested:
+
+```python
+from ibis import _
+import sverify as sv
+
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.id.notnull()]},
+    ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
+)
+def doubled(orders):
+    return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
+
+expr = doubled(orders)          # proves all three postconditions, then returns the expression
+print(doubled.last_report)
+# ensures (_.doubled >= 0): proved
+# ensures _.doubled.notnull(): proved
+# ensures id IS NOT NULL: proved
+# known about the output:
+#   id: any integer
+#   doubled: an integer ≥ 22
+```
+
+Lean worked out that `doubled` is at least 22: the filter keeps only `amount > 10`,
+and doubling preserves that. A postcondition that doesn't follow is refused, along with
+the reason:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
+def plus_one(orders):
+    return orders.select(orders.id, total=orders.amount + 1)
+
+plus_one(orders)
+# VerificationError: could not prove: (_.total > 5) (it is TRUE or FALSE)
+#   known about the output: total: an integer ≥ 1
+```
+
+* **Conditions** can be Ibis expressions (`_.amount >= 0`, or a function of the
+  table) or SQL snippets (`"amount >= 0"`). Here's a SQL transformation:
+  `sv.verify("select ... from orders where ...", tables={"orders": orders}, ensures=["rest >= 0"])`.
+* **Preconditions** are assumptions about data that comes from outside. When the
+  inputs are bound to a backend (real tables), they are checked on the data at
+  call time and raise `PreconditionError` if violated.
+* **Unproved postconditions** raise `VerificationError` by default. With
+  `on_unproved="runtime"` they are checked on the output data instead, raising
+  `PostconditionError` on a violation. With `on_unproved="warn"` you get a warning.
+* **What Lean tracks** per column: whether it can be NULL, an integer range, which
+  booleans it can be, and whether it can be a string. Filters like
+  `amount > 10`, `amount <= 50`, `x = 3` and `x IS NOT NULL` refine those facts. It
+  also understands arithmetic (multiplication by constants), comparisons, `AND`/`OR`/`NOT`
+  with SQL NULL semantics, `CASE`, joins and `UNION ALL`. Column schemas count too:
+  a non-nullable column (`!int64`) is never NULL.
+* **Not tracked yet:** relations between two columns (`a < b`), string contents, and
+  facts that only hold across rows (uniqueness, counts).
 
 ### Checking a query plan
 
@@ -251,8 +335,9 @@ The parser ([Parse.lean](SubstraitLean/Parse.lean)) and writer
 ([Write.lean](SubstraitLean/Write.lean)) are **trusted, unverified code**. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
-`duckdb_*.json` fixtures are real plans captured from DuckDB
-(`python/scripts/capture_fixtures.py`); the others are hand-written.
+`duckdb_*.json` fixtures are real plans: the Ibis pipelines in
+`sverify/examples.py`, compiled by Ibis and DuckDB
+(`python/scripts/capture_fixtures.py`). The others are hand-written.
 
 ## Incremental views in Python
 
@@ -264,15 +349,16 @@ import sverify as sv
 
 con = sv.connect()          # DuckDB with the substrait extension loaded
 ...                         # create and fill `orders`, `customers`
-view = sv.IncrementalView(con, "select o.id, c.city from orders o "
-                               "join customers c on o.customer = c.name", "v")
+from sverify.examples import PIPELINES
+
+view = sv.IncrementalView.from_ibis(con, PIPELINES["inner_join"], "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
             "customers": sv.Changes(inserts=[("bob", "Rome")])})
 assert view.rows() == view.recompute()
 ```
 
-`IncrementalView.from_ibis(con, expr, name)` takes an Ibis expression instead.
-It goes through `ibis.to_sql` and DuckDB's own Substrait producer.
+`IncrementalView(con, sql, name)` takes a SQL string instead. Both go through
+DuckDB's own Substrait producer; for Ibis, `ibis.to_sql` writes the SQL.
 
 How it works:
 
@@ -290,8 +376,10 @@ How it works:
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
-recomputed from scratch. It covers filters and projections, inner joins,
-self-joins, `UNION ALL`, cross products and an Ibis pipeline.
+recomputed from scratch. It runs every pipeline in `sverify/examples.py`:
+filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
+and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
+entry point stays covered.
 
 **Engine findings.** The substrait extension is only published for DuckDB
 1.2.x, so `duckdb==1.2.2` is pinned. Its consumer also runs `SET_OP_UNION_ALL` as
@@ -315,6 +403,8 @@ differential test instead.
 | `SubstraitLean/Terms.lean` | Splitting a plan into union-free terms |
 | `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
+| `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
+| `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/Check.lean` | Executable `checkWF`, proven equivalent to `Rel.WF`; `Decidable` instance |
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
@@ -334,6 +424,26 @@ differential test instead.
 * `filter_project_pushdown`: a filter that only reads input columns can be moved below a `ProjectRel`.
 * `filter_cross_pushdown_left`: a filter that only reads left columns can be pushed into the left side of a `CrossRel`.
 * `emit_project_identity`: emitting only the input columns of a `ProjectRel` removes the projection.
+
+### Contracts
+
+[Contracts.lean](SubstraitLean/Contracts.lean) is an abstract interpreter
+over `Rel`. Each column gets an `AVal`, a set of possible values: whether it can be NULL, an integer
+interval, possible booleans, and whether it can be a string.
+
+* `Expr.abs_sound`: abstract evaluation of expressions is sound, including SQL's
+  three-valued `AND`/`OR`, NULL-propagating arithmetic and comparisons.
+* `Expr.refine_sound`: a row that passes a filter satisfies what the condition
+  says about its columns.
+* `Rel.aeval_sound`: every row a well-formed plan produces is described by `Rel.aeval`.
+* `Rel.colExprs_eval`: a precondition plan (`orders.select(cond, ...)`) computes its
+  conditions row by row, so "all its columns are TRUE" is the precondition.
+* `contract_sound`: suppose every input row matches its schema and satisfies its
+  preconditions. If every column of the postcondition plan is certainly TRUE,
+  then every output row satisfies every postcondition.
+
+Trusted: the schema description taken from `baseSchema` types and nullability, and
+the JSON plumbing.
 
 ### Incremental view maintenance
 

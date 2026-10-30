@@ -10,8 +10,13 @@ tables `t` and change tables `t$delta` (the same columns plus a trailing
 `__weight`); concatenated, their outputs are the change to the result, with a
 trailing `__weight` column. Each plan is union-free (see `Rel.terms`).
 
-Exit codes: 0 ok, 1 parse/unsupported error, 2 ill-formed plan,
-3 not incrementally maintainable.
+`substrait-check --contract contract.json`: try to prove postconditions from
+preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
+and print a JSON report.
+
+Exit codes: 0 ok (for `--contract`: every postcondition proved), 1
+parse/unsupported error, 2 ill-formed plan, 3 not incrementally maintainable,
+4 some postcondition not proved.
 -/
 
 open Substrait Parse
@@ -45,6 +50,16 @@ def delta (plan : Plan) : IO UInt32 := do
     IO.println (Write.writeDeltaTerm plan term).compress
   return 0
 
+def contract (path : String) : IO UInt32 := do
+  let input ← match Lean.Json.parse (← IO.FS.readFile path) with
+    | .ok j => pure j
+    | .error e => IO.eprintln s!"error: {e}"; return 1
+  match ContractCheck.check input with
+  | .error e => IO.eprintln s!"error: {e}"; return 1
+  | .ok report =>
+    IO.println report.json.compress
+    return if report.allProved then 0 else 4
+
 def check (plan : Plan) : IO UInt32 := do
   let cat := plan.catalog
   IO.println plan.root.render
@@ -69,7 +84,8 @@ def main (args : List String) : IO UInt32 := do
   let (mode, path) ← match args with
     | [path] => pure (check, path)
     | ["--delta", path] => pure (delta, path)
-    | _ => IO.eprintln "usage: substrait-check [--delta] <plan.json>"; return 1
+    | ["--contract", path] => return ← contract path
+    | _ => IO.eprintln "usage: substrait-check [--delta | --contract] <file.json>"; return 1
   match ← load path with
   | .ok plan => mode plan
   | .error e => IO.eprintln s!"error: {e}"; return 1
