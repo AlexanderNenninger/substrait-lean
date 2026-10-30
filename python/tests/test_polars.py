@@ -31,11 +31,16 @@ from sverify.engine import (
     run_sql,
     run_substrait_json,
     substrait_json,
+    to_sql,
     written_plan,
 )
 from sverify.examples import PIPELINES, create_tables
 from sverify.incremental import WEIGHT
 from sverify.testing import canonical, inline_tables, lean_rows
+from test_numeric import DOUBLES, INT_QUERIES, MIN, F, lean_rows_any
+from test_numeric import PIPELINES as NUMERIC_PIPELINES
+from test_numeric import R as NUMERIC_R
+from test_numeric import values as numeric_values
 from test_rewrites import QUERIES as REWRITE_QUERIES
 from test_rewrites import R, S
 from test_windows import QUERIES as WINDOW_QUERIES
@@ -496,3 +501,133 @@ def test_checker_writes_what_polars_reads():
         check=True,
     )
     assert json.loads(proc.stdout) == json.loads(once)
+
+
+# --- Integer division, powers, rounding and runtime errors --------------------
+
+
+@pytest.mark.parametrize("sql", INT_QUERIES)
+@SETTINGS
+@given(rows=st.lists(st.tuples(small, small), max_size=8))
+def test_integer_functions_match_lean_in_order(sql, rows):
+    con = connect()
+    create_table(con, "r", NUMERIC_R, rows)
+    plan = written_plan(substrait_json(con, sql))
+    inlined = inline_tables(json.loads(plan), {"r": rows})
+    polars = rows_of(run_plan(con, plan, "polars"))
+    assert lean_rows_any(json.dumps(inlined)) == polars
+    assert same_bag(rows_of(run_sql(con, sql)), polars)
+
+
+def test_rounding_matches_datafusion_bit_for_bit():
+    """Halves away from zero, `CEIL(-0.5)` is -0.0, NaN and ±∞ stay."""
+    con = connect()
+    xs = [*DOUBLES, -0.0, -0.4, math.nan, math.inf, -math.inf, None]
+    create_table(con, "r", F, [(x,) for x in xs])
+    for sql in [
+        "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
+        "SELECT f, round(f, 1) AS x, round(f, -1) AS y FROM r",
+        "SELECT f, power(f, 2.0) AS p FROM r",
+        "SELECT f, f / 10.0 AS x, 3.0 / f AS y FROM r",
+    ]:
+        df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+        assert repr(df) == repr(pl_rows), sql
+        assert [math.copysign(1, v) for r in pl_rows for v in r if v is not None] == [
+            math.copysign(1, v) for r in df for v in r if v is not None
+        ], sql
+
+
+def test_casts_to_bigint_truncate_and_refuse_nan():
+    con = connect()
+    create_table(con, "r", F, [(x,) for x in DOUBLES])
+    sql = "SELECT f, CAST(f AS BIGINT) AS i FROM r"
+    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+    assert df == pl_rows
+    create_table(con, "r", F, [(1.0,), (math.nan,)])
+    with pytest.raises(polars_engine.BadCast):
+        polars_rows(con, sql)
+    create_table(con, "r", F, [(2.0**63,)])
+    with pytest.raises(polars_engine.BadCast):
+        polars_rows(con, sql)
+
+
+@pytest.mark.parametrize(
+    ("sql", "error"),
+    [
+        ("SELECT a / b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
+        ("SELECT a % b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
+        ("SELECT a / b AS q FROM r WHERE b = -1", polars_engine.Overflow),
+        ("SELECT power(a, 2) AS p FROM r WHERE b = -1", polars_engine.Overflow),
+        ("SELECT power(a, b) AS p FROM r WHERE b = -1", polars_engine.NegativeExponent),
+        # Both sides of AND are evaluated.
+        ("SELECT a FROM r WHERE b <> 0 AND a % b > 1", polars_engine.DivisionByZero),
+        # An unused column is still computed.
+        ("SELECT a FROM (SELECT a, a % b AS q FROM r)", polars_engine.DivisionByZero),
+        # Wrapping, which DataFusion does silently.
+        ("SELECT a - 1 AS x FROM r WHERE b = -1", polars_engine.IntegerOverflow),
+        ("SELECT -a AS x FROM r WHERE b = -1", polars_engine.IntegerOverflow),
+    ],
+)
+def test_runtime_errors_raise(sql, error):
+    con = connect()
+    create_table(con, "r", NUMERIC_R, [(5, 0), (MIN, -1), (7, 2)])
+    with pytest.raises(error):
+        polars_rows(con, sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CASE WHEN b <> 0 THEN a / b END AS q FROM r",
+        "SELECT a / NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r",
+        "SELECT a / b AS q FROM r WHERE b > 0",
+        "SELECT CASE WHEN b > 0 THEN power(a, b) ELSE 0 END AS p FROM r WHERE a = 7",
+    ],
+)
+def test_guarded_operations_do_not_raise(sql):
+    """A `CASE` branch counts only on the rows that take it, and a filter's
+    rows are the only ones a later projection sees."""
+    con = connect()
+    # Lean prints integers of magnitude 2^63 as double codes, so not MIN itself.
+    rows = [(5, 0), (-7, 2), (7, -2), (None, 0), (MIN + 1, 1)]
+    create_table(con, "r", NUMERIC_R, rows)
+    plan = written_plan(substrait_json(con, sql))
+    polars = rows_of(run_plan(con, plan, "polars"))
+    assert lean_rows_any(json.dumps(inline_tables(json.loads(plan), {"r": rows}))) == polars
+
+
+@pytest.mark.parametrize("i", range(len(NUMERIC_PIPELINES)))
+@SETTINGS
+@given(rows=st.lists(st.tuples(numeric_values, numeric_values), max_size=6))
+def test_polars_fails_only_where_reported(i, rows):
+    """Polars raises an error only where `Rel.mayIssues` reports one (and
+    `IntegerOverflow` only where it warns of wrapping). When neither engine
+    fails and nothing wraps, they agree."""
+    expr = NUMERIC_PIPELINES[i]
+    report = sv.verify(expr)
+    con = connect()
+    put_table(
+        con,
+        "t",
+        pa.table(
+            {
+                "qty": pa.array([q for q, _ in rows], pa.int64()),
+                "n": pa.array([n for _, n in rows], pa.int64()),
+                "amount": pa.array([1.0 for _ in rows], pa.float64()),
+            }
+        ),
+    )
+    plan = written_plan(substrait_json(con, to_sql(expr)))
+    try:
+        polars = rows_of(run_plan(con, plan, "polars"))
+    except polars_engine.IntegerOverflow:
+        assert [w.kind for w in report.warnings] == ["may wrap around"]
+        return
+    except polars_engine.RuntimeIssue as e:
+        assert report.errors, f"Polars failed ({e}) but no error was reported"
+        return
+    try:
+        df = rows_of(run_sql(con, to_sql(expr)))
+    except Exception:  # noqa: BLE001 - DataFusion evaluates more rows (`Rel.loose`)
+        return
+    assert same_bag(df, polars)

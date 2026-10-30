@@ -505,16 +505,25 @@ translator pins the semantics instead of taking Polars defaults:
 * Doubles compare, join, partition and sort by DataFusion's total order
   (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
   Window sorts are stable and place NULLs as each key says.
-* Integers are unbounded in Lean. Polars computes on 128 bits and casts back
-  strictly, so a result outside 64 bits raises `IntegerOverflow`.
-  (DataFusion wraps silently: `2^62 + 2^62` gives `-2^63`.) Only doubles
-  divide, as in the model.
+* Integers are unbounded in Lean. Polars computes on 128 bits, and a result
+  outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
+  (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
+  toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
+* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
+  zero, `MIN / -1`, bad `POWER`s and out-of-range casts. Each expression
+  carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
+  masks it. The operator raises the matching error if a flag is set on a row
+  it evaluates. Polars runs filters where the plan puts them, so a filter
+  guards the projections above it. DataFusion merges filters, which is what
+  `Rel.loose` models.
+* Doubles divide in numpy: Polars divides a column by a constant by
+  multiplying with its reciprocal, which rounds differently.
 
 `python/tests/test_polars.py` runs every golden fixture, the window and
 rewrite queries of the other suites, and every delta plan of the example
 pipelines on both engines. It checks Polars against DataFusion as bags and
 against Lean's `Rel.eval` in order. It also has targeted tests for NULL join
-keys, three-valued filters, NULL and NaN order in windows, and overflow. The
+keys, three-valued filters, NULL and NaN order in windows, overflow, and each runtime error and its guards. The
 incremental-view tests run on both engines.
 
 Known gaps: the writer gives virtual tables placeholder `i64` column types and

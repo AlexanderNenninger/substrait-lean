@@ -20,8 +20,15 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   NaN equal to itself. Comparisons, join keys, window partitions and sort keys
   use an integer key with that order (`_float_key`).
 * Integers are unbounded in Lean. Columns are widened to `Int64` on read, and
-  arithmetic runs on 128 bits and is cast back strictly, so a result outside
-  64 bits raises `IntegerOverflow` instead of wrapping. Only doubles divide.
+  arithmetic runs on 128 bits. A result outside 64 bits raises
+  `IntegerOverflow` instead of wrapping as DataFusion does. Division and
+  remainder truncate toward zero (`Int.tdiv`, `Int.tmod`; Polars floors).
+* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`, which a
+  checked plan is proved free of. Each expression carries a per-row flag for
+  each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
+  `AND`/`OR` count), and the operator raises the matching `RuntimeIssue` if it
+  hits on a row it evaluates: a filter on its input, a project on every
+  expression and row, a join's residual condition on the key matches.
 * Window sorts are stable and place NULLs as each sort key says; partitions
   group NULLs together, as `samePart` does.
 """
@@ -29,7 +36,9 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -50,8 +59,31 @@ class Unsupported(ValueError):
     """The plan uses something the translator does not map to Polars."""
 
 
-class IntegerOverflow(ArithmeticError):
-    """Integer arithmetic left 64 bits; Lean's integers are unbounded."""
+class RuntimeIssue(ArithmeticError):
+    """A runtime error happened on a row the operator evaluates: one of the
+    `Issue`s of `SubstraitLean/Safety.lean`, which a checked plan is proved
+    free of."""
+
+
+class IntegerOverflow(RuntimeIssue):
+    """`+`, `-`, `*` or negation left 64 bits. DataFusion wraps around; the
+    model's integers are unbounded, so the only faithful answer is to stop."""
+
+
+class Overflow(RuntimeIssue):
+    """`MIN / -1` or an integer `POWER` outside 64 bits: DataFusion fails."""
+
+
+class DivisionByZero(RuntimeIssue):
+    """Integer division or remainder by zero."""
+
+
+class NegativeExponent(RuntimeIssue):
+    """`POWER` of integers with a negative exponent."""
+
+
+class BadCast(RuntimeIssue):
+    """`CAST(double AS BIGINT)` of NaN, ±∞ or a value outside 64 bits."""
 
 
 def col(i: int) -> str:
@@ -169,9 +201,34 @@ def lit_expr(value: Any, dtype: DType) -> pl.Expr:
 
 # --- Expressions -----------------------------------------------------------
 
-Typed = tuple[pl.Expr, DType]
-
 INTEGRAL = (pl.Int64, US, INTERVAL)
+
+
+@dataclass(frozen=True)
+class Issue:
+    """A runtime error `Expr.issues` (`SubstraitLean/Safety.lean`) reports:
+    `flag` is TRUE (never NULL) on the rows where it happens."""
+
+    flag: pl.Expr
+    kind: type[RuntimeIssue]
+    message: str
+
+
+@dataclass(frozen=True)
+class Val:
+    """A translated expression: its value, dtype and possible issues."""
+
+    expr: pl.Expr
+    dtype: DType
+    issues: tuple[Issue, ...] = ()
+
+
+def issues(*vals: Val) -> tuple[Issue, ...]:
+    return tuple(i for v in vals for i in v.issues)
+
+
+def issue(when: pl.Expr, kind: type[RuntimeIssue], message: str) -> Issue:
+    return Issue(when.fill_null(False), kind, message)
 
 
 def unify(a: DType, b: DType, what: str) -> DType:
@@ -182,11 +239,21 @@ def unify(a: DType, b: DType, what: str) -> DType:
     raise Unsupported(f"{what} of {a} and {b}")
 
 
-def _checked(op: Callable[[pl.Expr, pl.Expr], pl.Expr], a: Typed, b: Typed, out: DType):
-    """Integer arithmetic on the physical values (microseconds for timestamps
-    and intervals), in 128 bits, cast back strictly: overflow raises."""
-    wide = op(a[0].to_physical().cast(pl.Int128), b[0].to_physical().cast(pl.Int128))
-    return wide.cast(pl.Int64, strict=True).cast(out)
+def wide(v: Val) -> pl.Expr:
+    """The physical value (microseconds for times and intervals) in 128 bits."""
+    return v.expr.to_physical().cast(pl.Int128)
+
+
+def narrow(w: pl.Expr, out: DType, what: str, *vals: Val, kind=None) -> Val:
+    """A 128-bit result back in 64 bits. Leaving them is an issue: an error
+    for `MIN / -1` (`kind`), and where DataFusion would wrap, `IntegerOverflow`
+    (the model's integers are unbounded, so wrapping would be wrong)."""
+    outside = (w < I64_MIN) | (w > I64_MAX)
+    return Val(
+        pl.when(outside).then(None).otherwise(w).cast(pl.Int64).cast(out),
+        out,
+        (*issues(*vals), issue(outside, kind or IntegerOverflow, f"{what} leaves 64 bits")),
+    )
 
 
 def arith_type(name: str, a: DType, b: DType) -> DType:
@@ -209,6 +276,55 @@ def arith_type(name: str, a: DType, b: DType) -> DType:
     if out is None:
         raise Unsupported(f"{name} of {a} and {b}")
     return out
+
+
+def _ieee_divide(s: pl.Series) -> pl.Series:
+    x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return pl.Series(np.divide(x, y), dtype=pl.Float64)
+
+
+def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """IEEE division. Polars divides a column by a constant by multiplying with
+    its reciprocal, which rounds differently (`1.0000000000000004e16 / 10`);
+    numpy divides each pair."""
+    both = pl.struct(x.alias("x"), y.alias("y"))
+    q = both.map_batches(_ieee_divide, return_dtype=pl.Float64, is_elementwise=True)
+    return pl.when(x.is_null() | y.is_null()).then(None).otherwise(q)
+
+
+def tdiv(a: pl.Expr, b: pl.Expr) -> pl.Expr:
+    """Quotient truncated toward zero (`Int.tdiv`); Polars' `//` floors."""
+    q = a // b
+    return pl.when((a % b != 0) & ((a < 0) != (b < 0))).then(q + 1).otherwise(q)
+
+
+def _ipow(s: pl.Series) -> pl.Series:
+    """`BinFn.ipow` where it is defined and fits 64 bits, else NULL."""
+    out = []
+    for a, b in zip(s.struct.field("a").to_list(), s.struct.field("b").to_list(), strict=True):
+        ok = a is not None and b is not None and b >= 0 and (b <= 64 or abs(a) <= 1)
+        p = a**b if ok else None
+        out.append(p if p is not None and I64_MIN <= p <= I64_MAX else None)
+    return pl.Series(out, dtype=pl.Int64)
+
+
+def ipow(a: Val, b: Val) -> Val:
+    """Integer powers. Exponents beyond 64 overflow unless `|a| ≤ 1`."""
+    both = pl.struct(a.expr.alias("a"), b.expr.alias("b"))
+    value = both.map_batches(_ipow, return_dtype=pl.Int64, is_elementwise=True)
+    known = a.expr.is_not_null() & b.expr.is_not_null()
+    negative = known & (b.expr < 0)
+    return Val(
+        value,
+        pl.Int64,
+        (
+            *issues(a, b),
+            issue(negative, NegativeExponent, "POWER with a negative exponent"),
+            issue(known & ~negative & value.is_null(), Overflow, "POWER leaves 64 bits"),
+        ),
+    )
 
 
 def and3(a: pl.Expr, b: pl.Expr) -> pl.Expr:
@@ -238,6 +354,16 @@ def is_true(e: pl.Expr) -> pl.Expr:
     return e.eq_missing(True)
 
 
+def ftoi(v: Val) -> Val:
+    """`CAST(double AS BIGINT)`: truncation toward zero (`FloatCode.toInt?`);
+    NaN, ±∞ and results outside 64 bits are errors."""
+    x = v.expr.cast(pl.Float64)
+    t = pl.when(x >= 0).then(x.floor()).otherwise(x.ceil())
+    bad = v.expr.is_nan() | v.expr.is_infinite() | (t < -(2.0**63)) | (t >= 2.0**63)
+    value = pl.when(bad).then(None).otherwise(t).cast(pl.Int64, strict=False)
+    return Val(value, pl.Int64, (*v.issues, issue(bad, BadCast, "CAST to BIGINT out of range")))
+
+
 class Exprs:
     """Translates expressions over input columns of the given dtypes."""
 
@@ -248,7 +374,7 @@ class Exprs:
         anchor = int(ref or 0)
         if anchor not in self.functions:
             raise Unsupported(f"function reference {anchor} is not declared in extensions")
-        return self.functions[anchor]
+        return self.functions[anchor].split(":")[0]
 
     def field(self, j: dict) -> int:
         if "outerReference" in j:
@@ -261,90 +387,178 @@ class Exprs:
             raise Unsupported(f"field {i} is out of range ({len(self.dtypes)} columns)")
         return i
 
-    def __call__(self, j: dict) -> Typed:
+    def __call__(self, j: dict) -> Val:
         if "literal" in j:
             v, t = literal(j["literal"])
-            return lit_expr(v, t), t
+            return Val(lit_expr(v, t), t)
         if "selection" in j:
             i = self.field(j["selection"])
-            return pl.col(col(i)), self.dtypes[i]
+            return Val(pl.col(col(i)), self.dtypes[i])
         if "cast" in j:
-            c = j["cast"]
-            e, t = self(c["input"])
-            target = c.get("type", {})
-            if ("fp64" in target or "fp32" in target) and t in (pl.Int64, pl.Null):
-                return e.cast(pl.Float64), pl.Float64
-            raise Unsupported(f"unsupported cast from {t} to {json.dumps(target)}")
+            return self.cast(j["cast"])
         if "ifThen" in j:
             return self.if_then(j["ifThen"])
         if "scalarFunction" in j:
             f = j["scalarFunction"]
-            name = self.function(f.get("functionReference")).split(":")[0]
-            args = [self(a["value"]) for a in f.get("arguments", [])]
-            return self.call(name, args)
+            name = self.function(f.get("functionReference"))
+            arg_js = [a["value"] for a in f.get("arguments", [])]
+            if name == "round" and len(arg_js) == 2:
+                return self.round_to(self(arg_js[0]), arg_js[1])
+            return self.call(name, [self(a) for a in arg_js])
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
 
-    def if_then(self, t: dict) -> Typed:
-        out, out_t = self(t["else"])
-        for clause in reversed(t.get("ifs", [])):
-            c, ct = self(clause["if"])
-            if ct not in (pl.Boolean, pl.Null):
-                raise Unsupported(f"IF condition of type {ct}")
-            then, tt = self(clause["then"])
-            out_t = unify(tt, out_t, "IF branches")
-            out = pl.when(is_true(c)).then(then).otherwise(out)
-        return out, out_t
+    def cast(self, c: dict) -> Val:
+        v = self(c["input"])
+        target = c.get("type", {})
+        if ("fp64" in target or "fp32" in target) and v.dtype in (pl.Int64, pl.Null):
+            return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
+        if "i64" in target and v.dtype == pl.Float64:
+            return ftoi(v)
+        if "string" in target and v.dtype in (pl.Int64, pl.Null):
+            return Val(v.expr.cast(pl.String), pl.String, v.issues)
+        raise Unsupported(f"unsupported cast from {v.dtype} to {json.dumps(target)}")
 
-    def call(self, name: str, args: list[Typed]) -> Typed:
+    def if_then(self, t: dict) -> Val:
+        """A `CASE` only evaluates the branch a row takes, so a branch's issues
+        count only on its rows (`Expr.issues`)."""
+        out = self(t["else"])
+        for clause in reversed(t.get("ifs", [])):
+            c = self(clause["if"])
+            if c.dtype not in (pl.Boolean, pl.Null):
+                raise Unsupported(f"IF condition of type {c.dtype}")
+            then = self(clause["then"])
+            taken = is_true(c.expr)
+            out = Val(
+                pl.when(taken).then(then.expr).otherwise(out.expr),
+                unify(then.dtype, out.dtype, "IF branches"),
+                (
+                    *c.issues,
+                    *(Issue(taken & i.flag, i.kind, i.message) for i in then.issues),
+                    *(Issue(~taken & i.flag, i.kind, i.message) for i in out.issues),
+                ),
+            )
+        return out
+
+    def call(self, name: str, args: list[Val]) -> Val:
+        types = [v.dtype for v in args]
         if name in ("and", "or") and args:
-            for _, t in args:
-                if t not in (pl.Boolean, pl.Null):
-                    raise Unsupported(f"{name} of {t}")
+            if any(t not in (pl.Boolean, pl.Null) for t in types):
+                raise Unsupported(f"{name} of {types}")
             op = and3 if name == "and" else or3
-            acc = args[0][0]
-            for e, _ in args[1:]:
-                acc = op(acc, e)
-            return acc, pl.Boolean
+            acc = args[0].expr
+            for v in args[1:]:
+                acc = op(acc, v.expr)
+            # Both sides are evaluated, so all their issues count.
+            return Val(acc, pl.Boolean, issues(*args))
         if len(args) == 1:
-            (e, t) = args[0]
-            if name == "not" and t in (pl.Boolean, pl.Null):
-                return ~e, pl.Boolean
-            if name == "is_null":
-                return e.is_null(), pl.Boolean
-            if name in ("negate", "subtract"):
-                if t == pl.Float64:
-                    return -e, t  # flips the sign bit, also of zeros and NaN
-                if t in (pl.Int64, INTERVAL, pl.Null):
-                    zero = (pl.lit(0, pl.Int64).cast(t), t)
-                    out = pl.Int64 if t == pl.Null else t
-                    return _checked(lambda x, y: y - x, args[0], zero, out), out
+            return self.unary(name, args[0])
         if len(args) == 2:
-            (a, ta), (b, tb) = args
-            if name in ("add", "subtract", "multiply", "divide") and pl.Float64 in (ta, tb):
-                if unify(ta, tb, name) != pl.Float64:
-                    raise Unsupported(f"{name} of {ta} and {tb}")
-                ops = {"add": a + b, "subtract": a - b, "multiply": a * b, "divide": a / b}
-                return ops[name], pl.Float64
-            if name in ("add", "subtract", "multiply"):
-                out = arith_type(name, ta, tb)
-                op = {
-                    "add": lambda x, y: x + y,
-                    "subtract": lambda x, y: x - y,
-                    "multiply": lambda x, y: x * y,
-                }[name]
-                return _checked(op, args[0], args[1], out), out
-            if name in ("equal", "lt"):
-                t = unify(ta, tb, name)
-                if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Float64, pl.Null):
-                    # `BinFn.lt` is only defined on integers (and the codes
-                    # of doubles and times); strings would differ from SQL.
-                    raise Unsupported(f"lt of {t}")
-                ka, kb = ordered(a, t), ordered(b, t)
-                return (ka == kb if name == "equal" else ka < kb), pl.Boolean
-        raise Unsupported(f"unsupported function {name}/{len(args)} on {[t for _, t in args]}")
+            return self.binary(name, *args)
+        raise Unsupported(f"unsupported function {name}/{len(args)} on {types}")
+
+    def unary(self, name: str, a: Val) -> Val:
+        e, t = a.expr, a.dtype
+        if name == "not" and t in (pl.Boolean, pl.Null):
+            return Val(~e, pl.Boolean, a.issues)
+        if name == "is_null":
+            return Val(e.is_null(), pl.Boolean, a.issues)
+        if name in ("negate", "subtract"):
+            if t == pl.Float64:
+                return Val(-e, t, a.issues)  # flips the sign bit, also of zeros and NaN
+            if t in (pl.Int64, INTERVAL, pl.Null):
+                return narrow(
+                    pl.lit(0, pl.Int128) - wide(a), pl.Int64 if t == pl.Null else t, "negation", a
+                )
+        if t == pl.Float64:
+            # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
+            # The sign of a zero result is kept, as `onMag` keeps it.
+            if name == "floor":
+                return Val(e.floor(), t, a.issues)
+            if name == "ceil":
+                return Val(e.ceil(), t, a.issues)
+            if name == "round":
+                return Val(e.round(0, mode="half_away_from_zero"), t, a.issues)
+        raise Unsupported(f"unsupported function {name}/1 on {t}")
+
+    def binary(self, name: str, a: Val, b: Val) -> Val:
+        ta, tb = a.dtype, b.dtype
+        floats = ("add", "subtract", "multiply", "divide", "power")
+        if name in floats and pl.Float64 in (ta, tb):
+            if unify(ta, tb, name) != pl.Float64:
+                raise Unsupported(f"{name} of {ta} and {tb}")
+            x, y = a.expr, b.expr
+            ops = {"add": x + y, "subtract": x - y, "multiply": x * y, "divide": fdiv(x, y),
+                   "power": x.pow(y)}  # fmt: skip
+            return Val(ops[name], pl.Float64, issues(a, b))
+        if name in ("add", "subtract", "multiply"):
+            out = arith_type(name, ta, tb)
+            x, y = wide(a), wide(b)
+            w = {"add": x + y, "subtract": x - y, "multiply": x * y}[name]
+            return narrow(w, out, name, a, b)
+        if name in ("divide", "modulus", "power"):
+            if unify(ta, tb, name) not in (pl.Int64, pl.Null):
+                raise Unsupported(f"{name} of {ta} and {tb}")
+            if name == "power":
+                return ipow(a, b)
+            x, y = wide(a), wide(b)
+            zero = b.expr.eq_missing(0)
+            y = pl.when(zero).then(1).otherwise(y)
+            by_zero = issue(zero & a.expr.is_not_null(), DivisionByZero, f"{name} by zero")
+            if name == "modulus":
+                r = (x - y * tdiv(x, y)).cast(pl.Int64)
+                return Val(pl.when(zero).then(None).otherwise(r), pl.Int64,
+                           (*issues(a, b), by_zero))  # fmt: skip
+            q = narrow(tdiv(x, y), pl.Int64, "division", a, b, kind=Overflow)
+            return Val(pl.when(zero).then(None).otherwise(q.expr), pl.Int64,
+                       (*q.issues, by_zero))  # fmt: skip
+        if name in ("equal", "lt"):
+            t = unify(ta, tb, name)
+            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Float64, pl.Null):
+                # `BinFn.lt` is only defined on integers (and the codes of
+                # doubles and times); strings would differ from SQL.
+                raise Unsupported(f"lt of {t}")
+            ka, kb = ordered(a.expr, t), ordered(b.expr, t)
+            return Val(ka == kb if name == "equal" else ka < kb, pl.Boolean, issues(a, b))
+        raise Unsupported(f"unsupported function {name}/2 on {[ta, tb]}")
+
+    def round_to(self, a: Val, digits: dict) -> Val:
+        """`ROUND(x, d)`, as `FloatCode.roundTo`: `round(x · p) / p` with native
+        doubles, `p = 10^d`."""
+        if "literal" not in digits or literal(digits["literal"])[1] != pl.Int64:
+            raise Unsupported("ROUND digits must be an integer literal")
+        if a.dtype != pl.Float64:
+            raise Unsupported(f"round of {a.dtype}")
+        p = math.pow(10.0, float(literal(digits["literal"])[0]))
+        r = fdiv((a.expr * p).round(0, mode="half_away_from_zero"), pl.lit(p, pl.Float64))
+        return Val(r, pl.Float64, a.issues)
 
 
 # --- Relations ---------------------------------------------------------------
+
+
+def _raise_issues(issues: tuple[Issue, ...]):
+    def check(s: pl.Series) -> pl.Series:
+        for k, i in enumerate(issues):
+            hits = s.struct.field(f"i{k}")
+            if hits.any():
+                raise i.kind(f"{i.message} ({hits.sum()} row(s))")
+        return pl.Series([True] * len(s), dtype=pl.Boolean)
+
+    return check
+
+
+def guard(lf: pl.LazyFrame, vals: list[Val]) -> pl.LazyFrame:
+    """Raise if any row of `lf` runs into an issue of `vals`, which an operator
+    evaluates on exactly these rows. A filter is never pruned, and `collect`
+    keeps it in place (no predicate pushdown), so it sees the same rows."""
+    found = issues(*vals)
+    if not found:
+        return lf
+    flags = pl.struct([i.flag.alias(f"i{k}") for k, i in enumerate(found)])
+    return lf.filter(
+        flags.map_batches(_raise_issues(found), return_dtype=pl.Boolean, is_elementwise=True)
+    )
+
 
 Frame = tuple[pl.LazyFrame, list[DType]]
 
@@ -485,10 +699,10 @@ class Translator:
 
     def filter(self, r: dict) -> Frame:
         lf, dtypes = self.rel(r["input"])
-        cond, t = self.exprs(dtypes)(r["condition"])
-        if t not in (pl.Boolean, pl.Null):
-            raise Unsupported(f"filter condition of type {t}")
-        return lf.filter(is_true(cond)), dtypes
+        cond = self.exprs(dtypes)(r["condition"])
+        if cond.dtype not in (pl.Boolean, pl.Null):
+            raise Unsupported(f"filter condition of type {cond.dtype}")
+        return guard(lf, [cond]).filter(is_true(cond.expr)), dtypes
 
     def project(self, r: dict) -> Frame:
         lf, dtypes = self.rel(r["input"])
@@ -500,12 +714,13 @@ class Translator:
             return self.window(lf, dtypes, [e["windowFunction"] for e in es])
         ex = self.exprs(dtypes)
         new = [ex(e) for e in es]
-        out = [materialize(t) for _, t in new]
+        out = [materialize(v.dtype) for v in new]
         n = len(dtypes)
-        lf = lf.with_columns(
+        # Every expression is evaluated on every row, used later or not.
+        lf = guard(lf, new).with_columns(
             [
-                e.cast(t).alias(col(n + k))
-                for k, ((e, _), t) in enumerate(zip(new, out, strict=True))
+                v.expr.cast(t).alias(col(n + k))
+                for k, (v, t) in enumerate(zip(new, out, strict=True))
             ]
         )
         return lf, dtypes + out
@@ -529,22 +744,24 @@ class Translator:
             d = s.get("direction")
             if d not in directions:
                 raise Unsupported(f"unsupported sort direction {d}")
-            by.append(ordered(*self.column(ex, s["expr"])))
+            key = self.column(ex, s["expr"])
+            by.append(ordered(key.expr, key.dtype))
             desc.append(directions[d][0])
             nulls_last.append(directions[d][1])
-        keys = [ordered(*self.column(ex, p)) for p in part]
+        keys = [ordered(v.expr, v.dtype) for v in (self.column(ex, p) for p in part)]
         if by:
             lf = lf.sort(by, descending=desc, nulls_last=nulls_last, maintain_order=True)
         n = len(dtypes)
         new, out = [], []
         for k, w in enumerate(ws):
-            name = ex.function(w.get("functionReference")).split(":")[0]
+            name = ex.function(w.get("functionReference"))
             args = [a["value"] for a in w.get("arguments", [])]
             if name == "row_number" and not args:
                 e: pl.Expr = pl.int_range(1, pl.len() + 1, dtype=pl.Int64)
                 t: DType = pl.Int64
             elif name in ("lag", "lead") and 1 <= len(args) <= 3:
-                c, t = self.column(ex, args[0])
+                arg = self.column(ex, args[0])
+                c, t = arg.expr, arg.dtype
                 offset = 1
                 if len(args) > 1:
                     if "literal" not in args[1] or literal(args[1]["literal"])[1] != pl.Int64:
@@ -567,7 +784,7 @@ class Translator:
         return lf.with_columns(new), dtypes + out
 
     @staticmethod
-    def column(ex: Exprs, j: dict) -> Typed:
+    def column(ex: Exprs, j: dict) -> Val:
         if "selection" not in j:
             raise Unsupported("window partitions, sort keys and arguments must be columns")
         return ex(j)
@@ -618,11 +835,16 @@ class Translator:
             )
         else:
             matches = left.join(right, how="cross", maintain_order="left_right")
-        for c in rest:
-            e, t = ex(c)
-            if t not in (pl.Boolean, pl.Null):
-                raise Unsupported(f"join condition of type {t}")
-            matches = matches.filter(is_true(e))
+        if rest:
+            # The rest of the condition, as one `and3` evaluated on every match.
+            conds = [ex(c) for c in rest]
+            for c in conds:
+                if c.dtype not in (pl.Boolean, pl.Null):
+                    raise Unsupported(f"join condition of type {c.dtype}")
+            on = conds[0].expr
+            for c in conds[1:]:
+                on = and3(on, c.expr)
+            matches = guard(matches, conds).filter(is_true(on))
         cols = [col(i) for i in range(len(dtypes))]
         if how == "left":
             unmatched = left.join(matches.select(_LEFT), on=_LEFT, how="anti").with_columns(
@@ -637,7 +859,7 @@ class Translator:
 
     def conjuncts(self, j: dict, ex: Exprs) -> list[dict]:
         f = j.get("scalarFunction")
-        if f is not None and ex.function(f.get("functionReference")).split(":")[0] == "and":
+        if f is not None and ex.function(f.get("functionReference")) == "and":
             return [c for a in f.get("arguments", []) for c in self.conjuncts(a["value"], ex)]
         return [j]
 
@@ -646,7 +868,7 @@ class Translator:
     ) -> tuple[pl.Expr, pl.Expr] | None:
         """`left col = right col` (either way round) of one type, as join keys."""
         f = j.get("scalarFunction")
-        if f is None or ex.function(f.get("functionReference")).split(":")[0] != "equal":
+        if f is None or ex.function(f.get("functionReference")) != "equal":
             return None
         args = [a["value"] for a in f.get("arguments", [])]
         if len(args) != 2 or not all("selection" in a for a in args):
@@ -702,13 +924,10 @@ def to_lazy(plan: str | dict, tables: Tables) -> pl.LazyFrame:
 
 
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:
-    try:
-        return lf.collect()
-    except pl.exceptions.InvalidOperationError as e:
-        # `_checked`'s strict cast back from 128 bits is the only source.
-        if "from `i128`" in str(e):
-            raise IntegerOverflow(f"integer arithmetic overflows 64 bits: {e}") from e
-        raise
+    """Run a translated plan. Predicate pushdown would move `guard`s (and
+    filters) below the filters that come before them, onto rows the plan
+    never evaluates there, so it is off."""
+    return lf.collect(optimizations=pl.QueryOptFlags(predicate_pushdown=False))
 
 
 def run(plan: str | dict, tables: Tables) -> pa.Table:
