@@ -3,6 +3,7 @@ Lean."""
 
 from sverify.asof import asof_join
 from sverify.contracts import (
+    Issue,
     PostconditionError,
     PreconditionError,
     Report,
@@ -26,6 +27,7 @@ from sverify.incremental import Changes, IncrementalView, NotIncremental, delta_
 
 __all__ = [
     "asof_join",
+    "Issue",
     "PostconditionError",
     "PreconditionError",
     "Report",

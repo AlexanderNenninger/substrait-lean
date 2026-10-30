@@ -63,7 +63,7 @@ def contract (path : String) : IO UInt32 := do
 def check (plan : Plan) : IO UInt32 := do
   let cat := plan.catalog
   IO.println plan.root.render
-  let tables := (plan.tables.map fun (t, n, _) => s!"{t}({n})").eraseDups
+  let tables := (plan.tables.filter (!isValuesKey ·.1) |>.map fun (t, n, _) => s!"{t}({n})").eraseDups
   unless tables.isEmpty do
     IO.println s!"tables: {", ".intercalate tables}"
   IO.println s!"arity: {plan.root.arity cat}"

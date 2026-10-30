@@ -254,12 +254,129 @@ theorem AVal.certainlyTrue_mem {a : AVal} {v : Value} (hc : a.certainlyTrue = tr
 
 /-! ## Abstract expression evaluation -/
 
+/-! ### Rounding, division and casts -/
+
+/-- The image of an interval under a monotone map. -/
+def Bound.mapMono (g : Int → Int) (b : Bound) : Bound := ⟨b.lo.map g, b.hi.map g⟩
+
+theorem Bound.mem_mapMono {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {b : Bound} {i : Int}
+    (h : b.Mem i) : (b.mapMono g).Mem (g i) := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.Mem, Bound.mapMono] at *
+  constructor
+  · intro l hl
+    cases bl with
+    | none => simp at hl
+    | some l' => simp only [Option.map_some, Option.some.injEq] at hl; subst hl; exact hg (h.1 l' rfl)
+  · intro u hu
+    cases bh with
+    | none => simp at hu
+    | some u' => simp only [Option.map_some, Option.some.injEq] at hu; subst hu; exact hg (h.2 u' rfl)
+
+/-- A double rounded by a monotone map (`FLOOR`, `CEIL`, `ROUND`). -/
+def monoAbs (g : Int → Int) (a : AVal) : AVal :=
+  ⟨a.nonInt, a.int.map (·.mapMono g), false, false, false⟩
+
+/-- `CAST(x AS BIGINT)`: between the casts of the ends, if both are finite;
+otherwise it may also fail (NULL here). -/
+def ftoiAbs (a : AVal) : AVal :=
+  match a.int with
+  | some ⟨some lo, some hi⟩ =>
+    match FloatCode.toInt? lo, FloatCode.toInt? hi with
+    | some x, some y => ⟨a.nonInt, some ⟨some x, some y⟩, false, false, false⟩
+    | _, _ => ⟨true, some Bound.top, false, false, false⟩
+  | some _ => ⟨true, some Bound.top, false, false, false⟩
+  | none => ⟨a.nonInt, none, false, false, false⟩
+
+/-- Can the interval contain 0? -/
+def Bound.has0 (b : Bound) : Bool := b.lo.all (· ≤ 0) && b.hi.all (0 ≤ ·)
+
+theorem Bound.ne_zero {b : Bound} {i : Int} (h : b.Mem i) (h0 : b.has0 = false) : i ≠ 0 := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.Mem, Bound.has0] at *
+  rintro rfl
+  cases bl <;> cases bh <;> simp_all <;> omega
+
+/-- May an integer drawn from `a` be 0? -/
+def AVal.mayZero (a : AVal) : Bool := a.int.all Bound.has0
+
+/-- `[-A, A]` for `A` the largest absolute value in a finite interval. -/
+def Bound.absHull (b : Bound) : Bound :=
+  match b.lo, b.hi with
+  | some l, some h => let A : Int := max l.natAbs h.natAbs; ⟨some (-A), some A⟩
+  | _, _ => Bound.top
+
+theorem Bound.mem_absHull {b : Bound} {i j : Int} (h : b.Mem i) (hj : j.natAbs ≤ i.natAbs) :
+    b.absHull.Mem j := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.Mem, Bound.absHull] at *
+  cases bl <;> cases bh <;> simp_all [Bound.top]
+  rename_i l u
+  have := h.1; have := h.2
+  constructor <;> omega
+
+/-- Between `min(lo, 0)` and `max(hi, 0)`. -/
+def Bound.signHull (b : Bound) : Bound := ⟨b.lo.map (min · 0), b.hi.map (max · 0)⟩
+
+/-- Truncating division: monotone for a positive constant divisor, between 0
+and the dividend for any positive divisor, and never larger in absolute value
+than the dividend. -/
+def divBound (x y : Bound) : Bound :=
+  match y.point with
+  | some k => if 0 < k then x.mapMono (·.tdiv k) else x.absHull
+  | none => if y.lo.any (1 ≤ ·) then x.signHull else x.absHull
+
+/-- For a positive divisor, `a / b` lies between 0 and `a`. -/
+theorem tdiv_between {a b : Int} (hb : 0 < b) : min a 0 ≤ a.tdiv b ∧ a.tdiv b ≤ max a 0 := by
+  rcases Int.le_total 0 a with ha | ha
+  · have h₁ := Int.tdiv_nonneg ha (Int.le_of_lt hb)
+    have h₂ := Int.tdiv_le_self b ha
+    omega
+  · have h₁ := Int.tdiv_nonneg (a := -a) (by omega) (Int.le_of_lt hb)
+    have h₂ := Int.tdiv_le_self b (a := -a) (by omega)
+    rw [Int.neg_tdiv] at h₁ h₂
+    omega
+
+/-- The remainder is smaller in absolute value than the divisor, and not
+negative for a non-negative dividend. -/
+def modBound (x y : Bound) : Bound :=
+  let nonneg := x.lo.any (0 ≤ ·)
+  match y.lo, y.hi with
+  | some l, some h =>
+    let M : Int := max l.natAbs h.natAbs - 1
+    ⟨some (if nonneg then 0 else -M), some M⟩
+  | _, _ => if nonneg then ⟨some 0, none⟩ else Bound.top
+
+/-- Division and remainder: NULL for a NULL operand, and (here) for a zero
+divisor, where DataFusion fails. -/
+def divAbs (bound : Bound → Bound → Bound) (a b : AVal) : AVal :=
+  ⟨a.nonInt || b.nonInt || b.mayZero,
+   (match a.int, b.int with | some x, some y => some (bound x y) | _, _ => none), false, false, false⟩
+
+/-- Integer powers: `x²` is not negative; the exponent must be in `[0, 64]`
+for a result. -/
+def powAbs (a b : AVal) : AVal :=
+  let inRange := match b.int with
+    | some ⟨some l, some h⟩ => decide (0 ≤ l) && decide (h ≤ 64)
+    | _ => false
+  let square := match b.int with | some y => y.point == some 2 | none => false
+  ⟨a.nonInt || b.nonInt || !inRange,
+   (match a.int, b.int with
+    | some _, some _ => some (if square then ⟨some 0, none⟩ else Bound.top)
+    | _, _ => none), false, false, false⟩
+
 def UnFn.abs : UnFn → AVal → AVal
   | .not, a => ⟨a.nonBool, none, a.ff, a.tt, false⟩
   | .isNull, a => ⟨false, none, a.null, a.int.isSome || a.tt || a.ff || a.str, false⟩
   | .neg, a => ⟨a.nonInt, a.int.map Bound.neg, false, false, false⟩
   -- Float results: some double (any code), or NULL.
-  | .itof, a | .fneg, a => ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  | .itof, a | .fneg, a | .froundTo _, a =>
+      ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  | .ffloor, a => monoAbs FloatCode.floor a
+  | .fceil, a => monoAbs FloatCode.ceil a
+  | .fround, a => monoAbs FloatCode.round a
+  | .ftoi, a => ftoiAbs a
+  | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -299,7 +416,11 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .add, a, b => arith Bound.add a b
   | .sub, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
-  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b => arith (fun _ _ => Bound.top) a b
+  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
+      arith (fun _ _ => Bound.top) a b
+  | .idiv, a, b => divAbs divBound a b
+  | .imod, a, b => divAbs modBound a b
+  | .ipow, a, b => powAbs a b
   | .eq, a, b =>
       let mismatch := a.null || b.null || (a.int.isSome && (b.tt || b.ff || b.str)) ||
         ((a.tt || a.ff) && (b.int.isSome || b.str)) || (a.str && (b.int.isSome || b.tt || b.ff))
@@ -321,17 +442,6 @@ def Expr.abs (env : List AVal) : Expr → AVal
       (if ac.tt then t.abs env else AVal.bot).join
         (if ac.nonBool || ac.ff then e.abs env else AVal.bot)
 
-theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
-    (f.abs a).Mem (f.apply v) := by
-  cases f <;> match v, h with
-    | .null, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
-    | .int i, ⟨b, hb, hm⟩ =>
-        simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt, Bound.mem_neg,
-          Bound.mem_top]
-    | .bool true, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
-    | .bool false, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
-    | .str _, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
-
 /-- Shapes of a value, for case analysis in the binary soundness proofs. -/
 theorem mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
     (v = .null ∧ a.null = true) ∨ (∃ i b, v = .int i ∧ a.int = some b ∧ b.Mem i) ∨
@@ -343,6 +453,71 @@ theorem mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
   | .bool true, h => exact .inr (.inr (.inl ⟨rfl, h⟩))
   | .bool false, h => exact .inr (.inr (.inr (.inl ⟨rfl, h⟩)))
   | .str s, h => exact .inr (.inr (.inr (.inr ⟨s, rfl, h⟩)))
+
+theorem monoAbs_sound {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {f : UnFn}
+    (hf : ∀ v, f.apply v = match v with | .int c => .int (g c) | _ => .null)
+    {a : AVal} {v : Value} (h : a.Mem v) : (monoAbs g a).Mem (f.apply v) := by
+  rw [hf]
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩
+  · simp [monoAbs, AVal.Mem, AVal.nonInt, hn]
+  · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
+  all_goals simp_all [monoAbs, AVal.Mem, AVal.nonInt]
+
+theorem ftoiAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
+    (ftoiAbs a).Mem (UnFn.apply .ftoi v) := by
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨c, b, rfl, hb, hc⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+  · unfold ftoiAbs; split <;> (try split) <;> simp_all [AVal.Mem, AVal.nonInt, UnFn.apply]
+  · simp only [UnFn.apply]
+    unfold ftoiAbs
+    rw [hb]
+    obtain ⟨bl, bh⟩ := b
+    match bl, bh, hc with
+    | some lo, some hi, hc =>
+      simp only []
+      split
+      · rename_i x y hx hy
+        obtain ⟨z, hz⟩ := FloatCode.toInt?_between (hc.1 lo rfl) (hc.2 hi rfl) hx hy
+        rw [hz]
+        exact ⟨_, rfl, fun _ hl => by
+          cases hl; exact FloatCode.toInt?_mono (hc.1 lo rfl) hx hz,
+          fun _ hh => by cases hh; exact FloatCode.toInt?_mono (hc.2 hi rfl) hz hy⟩
+      · split <;> simp [AVal.Mem, Bound.mem_top]
+    | none, _, _ | some _, none, _ =>
+      simp only []
+      split <;> simp [AVal.Mem, Bound.mem_top]
+  all_goals unfold ftoiAbs; split <;> (try split) <;> simp_all [AVal.Mem, AVal.nonInt, UnFn.apply]
+
+/-- A double result that is "some double" (native arithmetic). -/
+theorem topAbs_sound {g : Int → Int} {f : UnFn}
+    (hf : ∀ v, f.apply v = match v with | .int c => .int (g c) | _ => .null)
+    {a : AVal} {v : Value} (h : a.Mem v) :
+    (⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩ : AVal).Mem (f.apply v) := by
+  rw [hf]
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩
+  · simp [AVal.Mem, AVal.nonInt, hn]
+  · exact ⟨Bound.top, by simp [hb], Bound.mem_top _⟩
+  all_goals simp_all [AVal.Mem, AVal.nonInt]
+
+theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
+    (f.abs a).Mem (f.apply v) := by
+  cases f
+  case ffloor => exact monoAbs_sound FloatCode.floor_mono (fun v => by cases v <;> rfl) h
+  case fceil => exact monoAbs_sound FloatCode.ceil_mono (fun v => by cases v <;> rfl) h
+  case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> rfl) h
+  case ftoi => exact ftoiAbs_sound h
+  case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case fneg => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case itos =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  all_goals match v, h with
+    | .null, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
+    | .int i, ⟨b, hb, hm⟩ =>
+        simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt, Bound.mem_neg]
+    | .bool true, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
+    | .bool false, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
+    | .str _, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
 
 theorem arith_sound {op : Bound → Bound → Bound} {f : Int → Int → Int}
     (hop : ∀ {x y : Bound} {i j : Int}, x.Mem i → y.Mem j → (op x y).Mem (f i j))
@@ -376,6 +551,113 @@ theorem intNe_of {a b : AVal} {x y : Bound} {i j : Int} (ha : a.int = some x)
     simpa using h
   · rfl
 
+theorem divBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (_ : j ≠ 0) :
+    (divBound x y).Mem (i.tdiv j) := by
+  unfold divBound
+  split
+  · rename_i k hk
+    split
+    · rename_i hk0
+      rw [Bound.point_mem hk hj]
+      exact Bound.mem_mapMono (fun h => Int.tdiv_le_tdiv hk0 h) hi
+    · exact Bound.mem_absHull hi (Int.natAbs_tdiv_le_natAbs i j)
+  · split
+    · rename_i hpos
+      obtain ⟨yl, yh⟩ := y
+      cases yl with
+      | none => simp at hpos
+      | some l =>
+        simp only [Option.any_some, decide_eq_true_eq] at hpos
+        have hj1 := hj.1 l rfl
+        obtain ⟨h₁, h₂⟩ := tdiv_between (a := i) (b := j) (by omega)
+        obtain ⟨xl, xh⟩ := x
+        refine ⟨fun l' hl' => ?_, fun u' hu' => ?_⟩
+        · simp only [Bound.signHull, Option.map_eq_some_iff] at hl'
+          obtain ⟨l₀, h₀, rfl⟩ := hl'; have := hi.1 l₀ h₀; omega
+        · simp only [Bound.signHull, Option.map_eq_some_iff] at hu'
+          obtain ⟨u₀, h₀, rfl⟩ := hu'; have := hi.2 u₀ h₀; omega
+    · exact Bound.mem_absHull hi (Int.natAbs_tdiv_le_natAbs i j)
+
+theorem modBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (hj0 : j ≠ 0) :
+    (modBound x y).Mem (i.tmod j) := by
+  have hlt : (i.tmod j).natAbs < j.natAbs := by rw [Int.natAbs_tmod]; exact Nat.mod_lt _ (by omega)
+  have hnn : x.lo.any (0 ≤ ·) = true → 0 ≤ i.tmod j := by
+    intro h
+    obtain ⟨xl, xh⟩ := x
+    cases xl with
+    | none => simp at h
+    | some l => simp at h; exact Int.tmod_nonneg _ (by have := hi.1 l rfl; omega)
+  obtain ⟨yl, yh⟩ := y
+  have hj' := hj
+  simp only [Bound.Mem] at hj'
+  unfold modBound
+  cases yl <;> cases yh <;> simp only []
+  case some.some l u =>
+    have h₁ := hj'.1 l rfl; have h₂ := hj'.2 u rfl
+    constructor
+    · intro b hb
+      simp only [Option.some.injEq] at hb; subst hb
+      split
+      · exact hnn ‹_›
+      · omega
+    · intro b hb
+      simp only [Option.some.injEq] at hb; subst hb
+      omega
+  all_goals
+    split
+    · exact ⟨fun l hl => by simp at hl; subst hl; exact hnn ‹_›, fun _ h => by simp at h⟩
+    · exact Bound.mem_top _
+
+theorem divAbs_sound {bound : Bound → Bound → Bound} {op : Int → Int → Int} {g : BinFn}
+    (hbound : ∀ {x y : Bound} {i j : Int}, x.Mem i → y.Mem j → j ≠ 0 → (bound x y).Mem (op i j))
+    (hg : ∀ v w, g.apply v w = match v, w with
+      | .int i, .int j => if j = 0 then .null else .int (op i j) | _, _ => .null)
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
+    (divAbs bound a b).Mem (g.apply v w) := by
+  rw [hg]
+  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
+  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ <;>
+  simp only [] <;> try (simp_all [divAbs, AVal.Mem, AVal.nonInt]; done)
+  by_cases hj0 : j = 0
+  · subst hj0
+    have : y.has0 = true := by
+      cases h0 : y.has0
+      · exact absurd rfl (Bound.ne_zero hj h0)
+      · rfl
+    simp [divAbs, AVal.Mem, AVal.mayZero, hy, this]
+  · simp only [hj0, ↓reduceIte]
+    exact ⟨bound x y, by simp [divAbs, hx, hy], hbound hi hj hj0⟩
+
+theorem powAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
+    (powAbs a b).Mem (BinFn.apply .ipow v w) := by
+  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
+  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ <;>
+  try (simp_all [powAbs, BinFn.apply, AVal.Mem, AVal.nonInt]; done)
+  simp only [BinFn.apply]
+  split
+  · -- No result: the exponent is out of `[0, 64]`, so NULL is allowed.
+    rename_i hout
+    simp only [AVal.Mem, powAbs, Bool.or_eq_true, Bool.not_eq_true']
+    right
+    obtain ⟨yl, yh⟩ := y
+    simp only [hy]
+    cases yl <;> cases yh <;> simp only [Bool.and_eq_false_iff, decide_eq_false_iff_not] <;>
+      first | rfl | (simp only [Bound.Mem] at hj; have := hj.1 _ rfl; have := hj.2 _ rfl; omega)
+  · simp only [AVal.Mem, powAbs, hx, hy]
+    refine ⟨_, rfl, ?_⟩
+    split
+    · rename_i hsq
+      rw [Bound.point_mem (by simpa using hsq) hj]
+      constructor
+      · intro l hl; cases hl
+        show 0 ≤ i ^ (2 : Int).toNat
+        rw [show (2 : Int).toNat = 2 from rfl, Int.pow_succ, Int.pow_succ, Int.pow_zero, Int.one_mul]
+        rcases Int.le_total 0 i with h | h
+        · exact Int.mul_nonneg h h
+        · exact Int.mul_nonneg_of_nonpos_of_nonpos h h
+      · intro _ h; cases h
+    · exact Bound.mem_top _
+
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
@@ -386,6 +668,10 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fdiv => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case ipow => exact powAbs_sound ha hb
   case eq =>
     rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
@@ -719,12 +1005,15 @@ inductive Cstr where
   | notNull
   /-- An integer in `b`; if `strict`, certainly a (non-NULL) integer. -/
   | intIn (b : Bound) (strict : Bool)
+  /-- Not the integer `k` (but maybe NULL or not an integer). -/
+  | ne (k : Int)
 
 def Cstr.Holds : Cstr → Value → Prop
   | .null, v => v = .null
   | .notNull, v => v ≠ .null
   | .intIn b true, v => ∃ j, v = .int j ∧ b.Mem j
   | .intIn b false, v => ∀ j, v = .int j → b.Mem j
+  | .ne k, v => ∀ j, v = .int j → j ≠ k
 
 /-- What `c` being TRUE (`pos`) or not TRUE says about its subject. -/
 def Expr.cstr (pos : Bool) : Expr → Option (Expr × Cstr)
@@ -738,6 +1027,9 @@ def Expr.cstr (pos : Bool) : Expr → Option (Expr × Cstr)
       else .intIn ⟨none, some (k - 1)⟩ false)
   | .un .not (.bin .lt (.lit (.int k)) s) => some (s, if pos then .intIn ⟨none, some k⟩ true
       else .intIn ⟨some (k + 1), none⟩ false)
+  | .bin .eq s (.lit (.int k)) => some (s, if pos then .intIn (.exact k) true else .ne k)
+  | .un .not (.bin .eq s (.lit (.int k))) => some (s, if pos then .ne k
+      else .intIn (.exact k) false)
   | _ => none
 
 /-- Narrow an abstract value by a constraint. -/
@@ -746,12 +1038,15 @@ def Cstr.apply : Cstr → AVal → AVal
   | .notNull, a => { a with null := false }
   | .intIn b true, a => ⟨false, a.int.map (·.meet b), false, false, false⟩
   | .intIn b false, a => { a with int := a.int.map (·.meet b) }
+  -- Intervals cannot exclude a single value.
+  | .ne _, a => a
 
 /-- The constraint on `-v` (integer or double negation) given one on `v`. -/
 def Cstr.neg : Cstr → Option Cstr
   | .null => some .null
   | .notNull => none
   | .intIn b strict => some (.intIn b.neg strict)
+  | .ne k => some (.ne (-k))
 
 theorem Value.isTrue_bool (b : Bool) : (Value.bool b).isTrue = b := by cases b <;> rfl
 
@@ -762,8 +1057,8 @@ theorem Expr.cstr_sound {pos : Bool} {c s : Expr} {k : Cstr} {row : Row}
     obtain ⟨rfl, rfl⟩ := hc <;> simp only [eval] at ht <;>
     generalize Expr.eval row _ = v at ht ⊢ <;> cases pos <;>
     cases v <;> simp only [UnFn.apply, BinFn.apply, Value.isTrue_bool, decide_eq_true_eq,
-      decide_eq_false_iff_not] at ht <;>
-    simp_all [Cstr.Holds, Value.isTrue, Bound.Mem] <;> omega
+      decide_eq_false_iff_not, beq_iff_eq, beq_eq_false_iff_ne] at ht <;>
+    simp_all [Cstr.Holds, Value.isTrue, Bound.Mem, Bound.exact] <;> omega
 
 theorem Cstr.apply_sound {k : Cstr} {a : AVal} {v : Value} (hk : k.Holds v) (ha : a.Mem v) :
     (k.apply a).Mem v := by
@@ -773,6 +1068,7 @@ theorem Cstr.apply_sound {k : Cstr} {a : AVal} {v : Value} (hk : k.Holds v) (ha 
     | notNull => simp_all [Cstr.Holds, Cstr.apply, AVal.Mem]
     | intIn b strict =>
       cases strict <;> simp_all [Cstr.Holds, Cstr.apply, AVal.Mem] <;> exact Bound.mem_meet hm hk
+    | ne k => simp_all [Cstr.Holds, Cstr.apply, AVal.Mem]
 
 theorem Cstr.neg_sound {k k' : Cstr} {f : UnFn} (hf : f = .neg ∨ f = .fneg) {v : Value}
     (hk' : k.neg = some k') (hk : k.Holds v) : k'.Holds (f.apply v) := by
@@ -786,6 +1082,10 @@ theorem Cstr.neg_sound {k k' : Cstr} {f : UnFn} (hf : f = .neg ∨ f = .fneg) {v
       intro j hj
       cases v <;> simp_all [UnFn.apply, FloatCode.neg]
       rename_i i; rw [← hj]; exact Bound.mem_neg (hk i rfl)
+  | .ne k, _, rfl =>
+      intro j hj
+      cases v <;> simp_all [UnFn.apply, FloatCode.neg]
+      rename_i i; have := hk i rfl; omega
 
 /-- Constraints known to hold on the current row, each on the value of an
 expression (the conditions of the enclosing `CASE` branches and `OR`s). -/

@@ -2,8 +2,8 @@
 DataFusion.
 
 `inline_tables` replaces each named-table read by a Substrait virtual table
-holding given rows (integers and NULLs); `lean_rows` evaluates the plan with
-`Rel.eval` via `substrait-check`.
+holding given rows (integers, finite doubles and NULLs); `lean_rows` evaluates
+the plan with `Rel.eval` via `substrait-check` (doubles come back as codes).
 """
 
 import subprocess
@@ -12,8 +12,12 @@ from collections.abc import Iterable, Mapping
 from sverify.engine import checker_path
 
 
-def literal(v: int | None) -> dict:
-    return {"literal": {"null": {"i64": {}}} if v is None else {"i64": str(v)}}
+def literal(v: int | float | None) -> dict:
+    if v is None:
+        return {"literal": {"null": {"i64": {}}}}
+    if isinstance(v, float):
+        return {"literal": {"fp64": v}}
+    return {"literal": {"i64": str(v)}}
 
 
 def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:

@@ -81,6 +81,25 @@ class CheckedCondition:
     """What Lean established about the condition, e.g. "TRUE or NULL"."""
 
 
+@dataclass(frozen=True)
+class Issue:
+    """Something that may go wrong when the transformation runs
+    (`Rel.mayIssues_sound` in `SubstraitLean/Safety.lean`)."""
+
+    kind: str
+    """"division by zero", "overflow", "cast out of range", "negative exponent",
+    or "may wrap around" (64-bit overflow of `+`, `-`, `*`, which DataFusion
+    does not report)."""
+    expr: str
+    """The operation, in Lean's notation (`$i` is the operation's i-th input
+    column)."""
+    error: bool
+    """True if DataFusion fails at run time; wrapping around is a warning."""
+
+    def __str__(self) -> str:
+        return f"{self.kind}: {self.expr}"
+
+
 @dataclass
 class Report:
     requires: dict[str, list[str]]
@@ -90,10 +109,22 @@ class Report:
     deterministic: bool = True
     """False when rows may tie in a window's ORDER BY: the engine then picks
     an order, and nothing is proved about the result."""
+    issues: list[Issue] = field(default_factory=list)
+    """Runtime errors and wrap-arounds Lean could not rule out; when empty,
+    the transformation provably runs without them."""
 
     @property
     def proved(self) -> bool:
-        return all(c.proved for c in self.ensures)
+        """Every postcondition holds and no runtime error is possible."""
+        return all(c.proved for c in self.ensures) and not self.errors
+
+    @property
+    def errors(self) -> list[Issue]:
+        return [i for i in self.issues if i.error]
+
+    @property
+    def warnings(self) -> list[Issue]:
+        return [i for i in self.issues if not i.error]
 
     @property
     def unproved(self) -> list[CheckedCondition]:
@@ -106,6 +137,8 @@ class Report:
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
             lines.append(f"ensures {c.label}: {mark}")
+        lines += [f"may fail: {i}" for i in self.errors]
+        lines += [f"warning: {i}" for i in self.warnings]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
         if self.facts:
@@ -118,6 +151,8 @@ class Report:
             f"| `{c.label}` | {'✅ proved' if c.proved else '❌ ' + c.value} |"
             for c in self.ensures
         ]
+        rows += [f"| runtime | ❌ may fail: {i} |" for i in self.errors]
+        rows += [f"| runtime | ⚠️ {i} |" for i in self.warnings]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         return "\n".join(
@@ -141,12 +176,13 @@ TIES_HINT = (
 
 
 class VerificationError(Exception):
-    """A postcondition could not be proved."""
+    """A postcondition, or the absence of runtime errors, could not be proved."""
 
     def __init__(self, report: Report):
         self.report = report
-        unproved = ", ".join(f"{c.label} (it is {c.value})" for c in report.unproved)
-        super().__init__(f"could not prove: {unproved}\n{report}")
+        problems = [f"{c.label} (it is {c.value})" for c in report.unproved]
+        problems += [f"no runtime error ({i})" for i in report.errors]
+        super().__init__(f"could not prove: {', '.join(problems)}\n{report}")
 
 
 class PreconditionError(Exception):
@@ -199,6 +235,10 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
     if rng is not None:
         lo = None if rng["lo"] is None else int(rng["lo"])
         hi = None if rng["hi"] is None else int(rng["hi"])
+        if not dtype.is_floating():
+            # Bounds near the 64-bit limits go without saying (as in Lean's text).
+            lo = None if lo is not None and lo <= -(2**60) else lo
+            hi = None if hi is not None and hi >= 2**60 else hi
         if lo is None and hi is None:
             parts.append(f"any {noun.split()[-1]}")
         elif lo is not None and hi is not None and lo == hi:
@@ -367,6 +407,7 @@ def verify(
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
         deterministic=out["deterministic"],
+        issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
     )
 
 
@@ -441,6 +482,8 @@ class ContractedTransform:
         if not report.proved:
             if self.on_unproved == "warn":
                 warnings.warn(str(VerificationError(report)), stacklevel=2)
+            # Runtime errors cannot be checked on the data beforehand: in
+            # "runtime" mode the engine raises them if they happen.
             elif self.on_unproved == "runtime" and is_bound(result):
                 unproved = {c.label for c in report.unproved}
                 for c in self.ensures:
