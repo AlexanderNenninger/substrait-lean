@@ -1,0 +1,1 @@
+-- Unsupported: Snowflake has a single NaN; a negative NaN cannot be written
