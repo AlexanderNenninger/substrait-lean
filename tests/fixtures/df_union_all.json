@@ -1,0 +1,215 @@
+{
+  "extensions": [
+    {
+      "extensionFunction": {
+        "name": "lt",
+        "extensionUrnReference": 4294967295
+      }
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "set": {
+            "inputs": [
+              {
+                "project": {
+                  "common": {
+                    "emit": {
+                      "outputMapping": [
+                        1
+                      ]
+                    }
+                  },
+                  "input": {
+                    "project": {
+                      "common": {
+                        "emit": {
+                          "outputMapping": [
+                            3
+                          ]
+                        }
+                      },
+                      "input": {
+                        "read": {
+                          "baseSchema": {
+                            "names": [
+                              "id",
+                              "customer",
+                              "amount"
+                            ],
+                            "struct": {
+                              "types": [
+                                {
+                                  "i64": {
+                                    "nullability": "NULLABILITY_NULLABLE"
+                                  }
+                                },
+                                {
+                                  "string": {
+                                    "nullability": "NULLABILITY_NULLABLE"
+                                  }
+                                },
+                                {
+                                  "i64": {
+                                    "nullability": "NULLABILITY_NULLABLE"
+                                  }
+                                }
+                              ],
+                              "nullability": "NULLABILITY_REQUIRED"
+                            }
+                          },
+                          "namedTable": {
+                            "names": [
+                              "orders"
+                            ]
+                          }
+                        }
+                      },
+                      "expressions": [
+                        {
+                          "selection": {
+                            "directReference": {
+                              "structField": {}
+                            },
+                            "rootReference": {}
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "expressions": [
+                    {
+                      "selection": {
+                        "directReference": {
+                          "structField": {}
+                        },
+                        "rootReference": {}
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "project": {
+                  "common": {
+                    "emit": {
+                      "outputMapping": [
+                        1
+                      ]
+                    }
+                  },
+                  "input": {
+                    "project": {
+                      "common": {
+                        "emit": {
+                          "outputMapping": [
+                            3
+                          ]
+                        }
+                      },
+                      "input": {
+                        "filter": {
+                          "input": {
+                            "read": {
+                              "baseSchema": {
+                                "names": [
+                                  "id",
+                                  "customer",
+                                  "amount"
+                                ],
+                                "struct": {
+                                  "types": [
+                                    {
+                                      "i64": {
+                                        "nullability": "NULLABILITY_NULLABLE"
+                                      }
+                                    },
+                                    {
+                                      "string": {
+                                        "nullability": "NULLABILITY_NULLABLE"
+                                      }
+                                    },
+                                    {
+                                      "i64": {
+                                        "nullability": "NULLABILITY_NULLABLE"
+                                      }
+                                    }
+                                  ],
+                                  "nullability": "NULLABILITY_REQUIRED"
+                                }
+                              },
+                              "namedTable": {
+                                "names": [
+                                  "orders"
+                                ]
+                              }
+                            }
+                          },
+                          "condition": {
+                            "scalarFunction": {
+                              "arguments": [
+                                {
+                                  "value": {
+                                    "selection": {
+                                      "directReference": {
+                                        "structField": {
+                                          "field": 2
+                                        }
+                                      },
+                                      "rootReference": {}
+                                    }
+                                  }
+                                },
+                                {
+                                  "value": {
+                                    "literal": {
+                                      "i64": "3"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      "expressions": [
+                        {
+                          "selection": {
+                            "directReference": {
+                              "structField": {}
+                            },
+                            "rootReference": {}
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "expressions": [
+                    {
+                      "selection": {
+                        "directReference": {
+                          "structField": {}
+                        },
+                        "rootReference": {}
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "op": "SET_OP_UNION_ALL"
+          }
+        },
+        "names": [
+          "id"
+        ]
+      }
+    }
+  ],
+  "version": {
+    "minorNumber": 77,
+    "producer": "datafusion"
+  }
+}

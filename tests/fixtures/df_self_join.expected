@@ -1,8 +1,8 @@
-Emit [1, 2]
-  Project +[($0 * 2)]
-    Filter (10 < $0)
-      Emit [2, 0]
-        Read orders
+Emit [6, 7]
+  Project +[$0, $3]
+    InnerJoin ($1 = $4)
+      Read orders
+      Read orders
 tables: orders(3)
 arity: 2
 well-formed: yes

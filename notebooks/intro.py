@@ -44,7 +44,7 @@ def _(mo):
     4. Why NULL makes "obviously true" rewrites false.
     5. Well-formedness: the column-count bugs a checker can rule out.
     6. Incremental updates: refreshing a result from just the changed rows, provably.
-    7. The same, on a real engine (DuckDB), with the `sverify` package.
+    7. The same, on a real engine (DataFusion), with the `sverify` package.
     8. Pre- and postconditions: stating what a transformation guarantees, and proving it.
     9. What is proven, and what is still trusted.
     """)
@@ -179,7 +179,7 @@ def _():
     def cross(a, b):
         return [x + y for x in a for y in b]
 
-    return and3, cross, emit, eq, filter_rows, is_true, lt, mul, project, show
+    return and3, emit, eq, filter_rows, is_true, lt, mul, project, show
 
 
 @app.cell
@@ -879,7 +879,17 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(as_table, factor, mo, orders_table, post, pre_nonneg, pre_upper, sv, threshold):
+def _(
+    as_table,
+    factor,
+    mo,
+    orders_table,
+    post,
+    pre_nonneg,
+    pre_upper,
+    sv,
+    threshold,
+):
     from ibis import _
 
     _o = orders_table

@@ -1,11 +1,15 @@
 UnionAll
-  Emit [0]
-    Read orders
   Emit [1]
     Project +[$0]
-      Filter ($0 < 3)
-        Emit [2, 0]
+      Emit [3]
+        Project +[$0]
           Read orders
+  Emit [1]
+    Project +[$0]
+      Emit [3]
+        Project +[$0]
+          Filter ($2 < 3)
+            Read orders
 tables: orders(3)
 arity: 1
 well-formed: yes

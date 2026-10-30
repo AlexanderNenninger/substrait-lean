@@ -1,0 +1,11 @@
+Emit [2, 3, 4]
+  Project +[$0, ($0 + 60000000), ($1 *. 2.500000d)]
+    Filter ((NOT(($1 = -9999.000000d)) AND NOT((NOT(IS_NULL($1)) AND (($1 = NaNd) OR ($1 = NaNd))))) AND (0.500000d < $1))
+      Read readings
+tables: readings(2)
+arity: 3
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

@@ -5,8 +5,9 @@ import SubstraitLean.Incremental
 
 Every operator in the incremental fragment distributes over `UNION ALL`, so
 a plan is equivalent to the concatenation of union-free plans (`Rel.terms`).
-Engines can then run each term separately, which works around DuckDB 1.2's
-Substrait consumer executing `SET_OP_UNION_ALL` as `UNION DISTINCT`.
+Engines can then run each term separately. DataFusion's Substrait consumer
+needs this for delta plans: it loses table qualifiers at a union, and the
+duplicate column names then break a later join.
 -/
 
 namespace Substrait
@@ -23,7 +24,7 @@ def Rel.terms : Rel → List Rel
 def Rel.hasUnion : Rel → Bool
   | .unionAll _ _ => true
   | .read _ | .values _ _ => false
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ => r.hasUnion
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ => r.hasUnion
   | .cross a b | .join a b _ _ => a.hasUnion || b.hasUnion
 
 theorem perm_flatMap_congr {α β : Type} {L : List α} {f g : α → List β}
@@ -85,6 +86,6 @@ theorem Rel.zeval_terms {Z : ZCatalog} :
       simp only [ZSet.filter, List.filter_flatMap]
       exact List.Perm.refl _
   | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h => h.elim
 
 end Substrait

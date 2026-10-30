@@ -3,6 +3,8 @@ import SubstraitLean.Incremental
 import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Contracts
+import SubstraitLean.Keys
+import SubstraitLean.Completeness
 
 /-!
 # Examples
@@ -97,6 +99,20 @@ def joinPlan : Rel := join (read "orders") (read "customers") .inner (.bin .eq (
 #guard (ZSet.consolidate (joinPlan.zeval (zcat₂ + Δ))).contains
        ([.int 4, .str "cy", .int 50, .str "cy"], 1)
 
+/-! ## Windows -/
+
+/-- Readings `(sensor, ts, value)`, out of order. -/
+def readings : Rel :=
+  .values 3 [[.int 1, .int 20, .int 7], [.int 2, .int 10, .int 5], [.int 1, .int 10, .int 3]]
+
+/-- `LAG(value)` and `ROW_NUMBER()` per sensor, by timestamp. -/
+def withPrev : Rel := .window readings [0] [{ col := 1 }] [.lag 2 1 .null, .rowNumber]
+
+#guard withPrev.eval (fun _ => ⟨0, []⟩) ==
+  [[.int 2, .int 10, .int 5, .null, .int 1],
+   [.int 1, .int 10, .int 3, .null, .int 1],
+   [.int 1, .int 20, .int 7, .int 3, .int 2]]
+
 end Substrait.Examples
 
 -- Proofs rely only on Lean's standard axioms (no `sorry`).
@@ -109,3 +125,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.weighted_eval
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
+#print axioms Substrait.Rel.keys_sound
+#print axioms Substrait.IoT.window_complete
+#print axioms Substrait.window_tiebreak
+#print axioms Substrait.Rel.window_deterministic

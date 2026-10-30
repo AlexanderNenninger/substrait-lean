@@ -2,8 +2,8 @@
 
 Used by the tests, by `scripts/capture_fixtures.py` and in the docs. The
 tables are unbound: `ibis.to_sql` (and so `IncrementalView.from_ibis`)
-compiles them without a backend, and any DuckDB connection with tables of the
-same names and columns can run them.
+compiles them without a backend, and any connection with tables of the same
+names and columns can run them.
 """
 
 import ibis
@@ -46,7 +46,9 @@ UNSUPPORTED: dict[str, ibis.Table] = {
 }
 
 
-def create_tables(con) -> None:
-    """Create empty `orders` and `customers` tables on a DuckDB connection."""
-    con.sql("create table orders(id bigint, customer varchar, amount bigint)")
-    con.sql("create table customers(name varchar, city varchar)")
+def create_tables(con, orders_rows=(), customers_rows=()) -> None:
+    """Create `orders` and `customers` on an Ibis DataFusion backend."""
+    from sverify.engine import create_table
+
+    create_table(con, "orders", ibis.schema(ORDERS_SCHEMA), orders_rows)
+    create_table(con, "customers", ibis.schema(CUSTOMERS_SCHEMA), customers_rows)

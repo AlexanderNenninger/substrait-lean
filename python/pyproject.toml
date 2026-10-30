@@ -1,16 +1,17 @@
 [project]
 name = "sverify"
 version = "0.1.0"
-description = "Incremental views on DuckDB with delta plans proven correct in Lean"
+description = "Contracts and incremental views on DataFusion, proven in Lean"
 readme = "README.md"
 authors = [
     { name = "Alexander Nenninger", email = "alexander.nenninger@live.de" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "duckdb==1.2.2",
-    "ibis-framework[duckdb]>=12.0.0",
+    "datafusion==51.0.0",
+    "ibis-framework[datafusion]>=12.0.0",
     "pyarrow>=26.0.0",
+    "substrait>=0.37.0",
 ]
 
 [build-system]
@@ -72,7 +73,7 @@ cmd = "tests/run.sh"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.test]
-help = "Python tests, including the DuckDB differential tests"
+help = "Python tests, including the randomized engine tests"
 cmd = "pytest"
 
 [tool.poe.tasks.qa]

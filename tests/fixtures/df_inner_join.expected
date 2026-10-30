@@ -1,0 +1,12 @@
+Emit [5, 6]
+  Project +[$0, $4]
+    InnerJoin ($1 = $3)
+      Read orders
+      Read customers
+tables: customers(2), orders(3)
+arity: 2
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

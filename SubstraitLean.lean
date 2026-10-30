@@ -1,5 +1,6 @@
 import SubstraitLean.Value
 import SubstraitLean.Expr
+import SubstraitLean.Window
 import SubstraitLean.Rel
 import SubstraitLean.Rewrites
 import SubstraitLean.Incremental
@@ -8,6 +9,8 @@ import SubstraitLean.Terms
 import SubstraitLean.Write
 import SubstraitLean.Check
 import SubstraitLean.Contracts
+import SubstraitLean.Keys
+import SubstraitLean.Completeness
 import SubstraitLean.ContractCheck
 import SubstraitLean.Parse
 import SubstraitLean.Pretty

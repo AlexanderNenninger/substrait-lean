@@ -85,18 +85,19 @@ instance : Add ZCatalog := ⟨fun cat Δ t => cat t ++ Δ t⟩
 theorem ZCatalog.add_apply (cat Δ : ZCatalog) (t : String) : (cat + Δ) t = cat t ++ Δ t := rfl
 
 /-- Operators whose result changes linearly (or bilinearly) with their
-inputs. A left join can retract its null-padded rows and a fetch depends on
-row positions, so neither has a delta rule of this shape. -/
+inputs. A left join can retract its null-padded rows, and a fetch or a
+window depends on the other rows' positions, so none has a delta rule of this
+shape. -/
 def Rel.Incremental : Rel → Prop
   | .read _ | .values _ _ => True
   | .filter r _ | .project r _ | .emit r _ => r.Incremental
   | .cross a b | .unionAll a b | .join a b .inner _ => a.Incremental ∧ b.Incremental
-  | .join _ _ .left _ | .fetch _ _ _ => False
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => False
 
 def Rel.tables : Rel → List String
   | .read t => [t]
   | .values _ _ => []
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ => r.tables
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ => r.tables
   | .cross a b | .join a b _ _ | .unionAll a b => a.tables ++ b.tables
 
 /-- Z-set semantics. Mirrors `Rel.eval` on the incremental fragment. -/
@@ -111,7 +112,7 @@ def Rel.zeval (cat : ZCatalog) : Rel → ZSet
       ZSet.filter (fun row => (on.eval row).isTrue) (ZSet.cross (a.zeval cat) (b.zeval cat))
   | .unionAll a b => a.zeval cat ++ b.zeval cat
   -- Outside the incremental fragment; every theorem excludes these.
-  | .join _ _ .left _ | .fetch _ _ _ => []
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => []
 
 /-- The change in a plan's output caused by the change set `Δ`. -/
 def Rel.zdelta (cat Δ : ZCatalog) : Rel → ZSet
@@ -128,7 +129,7 @@ def Rel.zdelta (cat Δ : ZCatalog) : Rel → ZSet
         (ZSet.cross (a.zdelta cat Δ) (b.zeval cat ++ b.zdelta cat Δ) ++
           ZSet.cross (a.zeval cat) (b.zdelta cat Δ))
   | .unionAll a b => a.zdelta cat Δ ++ b.zdelta cat Δ
-  | .join _ _ .left _ | .fetch _ _ _ => []
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => []
 
 /-- **Delta rule**: `Q(D + ΔD) ~ Q(D) + ΔQ`. -/
 theorem Rel.zeval_add {cat Δ : ZCatalog} :
@@ -158,7 +159,7 @@ theorem Rel.zeval_add {cat Δ : ZCatalog} :
       simp only [List.append_assoc]
       exact List.Perm.append_left _ (List.perm_append_comm_assoc _ _ _)
   | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h => h.elim
 
 /-! ## Delta plans
 
@@ -177,6 +178,7 @@ def Rel.delta (δ : String → String) : Rel → Rel
       .unionAll (.join (a.delta δ) (.unionAll b (b.delta δ)) ty on) (.join a (b.delta δ) ty on)
   | .unionAll a b => .unionAll (a.delta δ) (b.delta δ)
   | .fetch r o c => .fetch (r.delta δ) o c
+  | .window r p s f => .window (r.delta δ) p s f
 
 /-- A plan only depends on the tables it reads. -/
 theorem Rel.zeval_congr {C cat : ZCatalog} :
@@ -185,7 +187,7 @@ theorem Rel.zeval_congr {C cat : ZCatalog} :
   | .values _ _, _ => rfl
   | .filter r _, h | .project r _, h | .emit r _, h => by
       simp only [zeval, zeval_congr (r := r) h]
-  | .fetch _ _ _, _ => rfl
+  | .fetch _ _ _, _ | .window _ _ _ _, _ => rfl
   | .cross a b, h | .unionAll a b, h => by
       simp only [tables, List.mem_append] at h
       simp only [zeval, zeval_congr (r := a) (fun t ht => h t (.inl ht)),
@@ -226,7 +228,7 @@ theorem Rel.delta_correct {C cat Δ : ZCatalog} {δ : String → String} :
         delta_correct (r := a) h.1 (fun t ht => hold t (.inl ht)) (fun t ht => hδ t (.inl ht)),
         delta_correct (r := b) h.2 (fun t ht => hold t (.inr ht)) (fun t ht => hδ t (.inr ht))]
   | .join _ _ .left _, h, _, _ => h.elim
-  | .fetch _ _ _, h, _, _ => h.elim
+  | .fetch _ _ _, h, _, _ | .window _ _ _ _, h, _, _ => h.elim
 
 /-- **Incremental maintenance is sound**: the new result is the old result
 plus the output of the delta plan. -/
@@ -263,6 +265,6 @@ theorem Rel.zeval_lift {cat : Catalog} :
       simp only [zeval, eval]; rw [zeval_lift (r := a) h.1, zeval_lift (r := b) h.2]
       simp [ZSet.lift]
   | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h => h.elim
 
 end Substrait
