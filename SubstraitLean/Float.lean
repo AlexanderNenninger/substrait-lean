@@ -22,7 +22,7 @@ day/second intervals are microseconds.
 namespace Substrait.FloatCode
 
 /-- Magnitude of the largest finite double: (2⁵³ − 1) · 2⁹⁷¹ · 2¹⁰⁷⁴. -/
-def maxMag : Nat := (2 ^ 53 - 1) * 2 ^ 2045
+@[irreducible] def maxMag : Nat := (2 ^ 53 - 1) * 2 ^ 2045
 def infMag : Nat := maxMag + 1
 def nanMag : Nat := maxMag + 2
 
@@ -61,6 +61,11 @@ def toFloat (c : Int) : Float :=
   Float.ofBits (UInt64.ofNat (sign * 2 ^ 63 + bits))
 
 def lift₂ (op : Float → Float → Float) (a b : Int) : Int := ofFloat (op (toFloat a) (toFloat b))
+
+/-- `ROUND(x, d)`, as DataFusion computes it: `round(x · 10ᵈ) / 10ᵈ`. -/
+def roundTo (d : Int) (c : Int) : Int :=
+  let p := Float.pow 10.0 (Float.ofInt d)
+  ofFloat ((toFloat c * p).round / p)
 
 /-- Negation flips the sign, also of zero and NaN. -/
 def neg (c : Int) : Int := -c

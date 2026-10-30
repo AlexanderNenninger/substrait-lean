@@ -16,10 +16,13 @@ def Row.render (row : Row) : String :=
 
 def UnFn.render : UnFn → String
   | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
+  | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
+  | .ftoi => "BIGINT" | .itos => "VARCHAR"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
   | .and => "AND" | .or => "OR" | .fadd => "+." | .fsub => "-." | .fmul => "*." | .fdiv => "/."
+  | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^."
 
 def Expr.render : Expr → String
   | .lit v => v.render

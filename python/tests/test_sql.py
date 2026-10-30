@@ -388,10 +388,89 @@ def test_null_ordering_in_windows(order):
     assert not re.search(r"\b(ASC|DESC)\b(?! NULLS (FIRST|LAST))", text)
 
 
-def test_integer_division_is_refused():
-    r = ints(a=[7, -7], b=[2, 2])
-    with pytest.raises(Unsupported, match="divide"):
-        to_sql(json.loads(plan_of("SELECT a / b AS q FROM r", {"r": r})), DUCKDB)
+def test_integer_division_truncates():
+    """DuckDB's `//` floors; Lean's (and DataFusion's) `/` truncates."""
+    # (Lean prints -2^63 as a double code, so the extremes stop one short.)
+    r = ints(a=[7, -7, 7, -7, 0, 2**63 - 1, -(2**63) + 1], b=[2, 2, -2, -2, 5, -1, 2])
+    rows = check_three_ways("SELECT a, b, a / b AS q, a % b AS m FROM r", {"r": r})
+    assert [(q, m) for _, _, q, m in rows[:4]] == [(3, 1), (-3, -1), (-3, 1), (3, -1)]
+
+
+@pytest.mark.parametrize(
+    ("sql", "a", "b"),
+    [
+        ("SELECT a / b AS q FROM r", 7, 0),
+        ("SELECT a % b AS q FROM r", 7, 0),
+        ("SELECT a / b AS q FROM r", -(2**63), -1),
+        ("SELECT power(a, 3) AS q FROM r", 2**22, 0),
+        ("SELECT power(a, -1) AS q FROM r", 2, 0),
+        ("SELECT CAST(f AS BIGINT) AS q FROM r", None, None),
+    ],
+)
+def test_runtime_errors_raise(sql, a, b):
+    """Where DataFusion fails at run time, Lean's value is NULL (and
+    `Safety.lean` reports the plan); the SQL fails too instead of answering."""
+    r = pa.table({"a": pa.array([a], pa.int64()), "b": pa.array([b], pa.int64()), "f": [math.nan]})
+    plan_json = plan_of(sql, {"r": r})
+    with pytest.raises(duckdb.Error):
+        duckdb_rows(plan_json, {"r": r})
+
+
+def test_remainder_by_minus_one_is_zero():
+    """`MIN % -1` is 0 in Lean; DuckDB's `%` raises there, so it is special-cased."""
+    r = ints(a=[-(2**63), 5, None], b=[-1, -1, -1])
+    assert check_three_ways("SELECT a % b AS m FROM r", {"r": r}) == [(0,), (0,), (None,)]
+
+
+def test_integer_powers_are_exact():
+    r = ints(a=[-3, 2, 0, 1, -1, None, 3037000499])
+    rows = check_three_ways("SELECT power(a, 2) AS s FROM r", {"r": r})
+    assert rows[-1][0] == 3037000499**2
+    # DataFusion gives `power(NULL, 0)` = 1; Lean (and so the SQL) gives NULL.
+    plan_json = plan_of("SELECT power(a, 0) AS z FROM r", {"r": r})
+    lean = lean_on(json.loads(plan_json), {"r": r})
+    assert duckdb_rows(plan_json, {"r": r}) == lean == [(1,)] * 5 + [(None,), (1,)]
+    check_three_ways("SELECT power(a, 3) AS c FROM r", {"r": ints(a=[-3, 2, 0, 1, -1, None])})
+    # Beyond 64, only -1, 0 and 1 have powers that fit.
+    units = ints(a=[0, 1, -1, None])
+    check_three_ways("SELECT power(a, 65) AS h, power(a, 66) AS e FROM r", {"r": units})
+
+
+def test_integer_powers_with_an_exponent_column():
+    r = ints(a=[2, -2, 3, 0, 1, -1, -1, 0, None, 5], b=[62, 61, 0, 0, 100, 101, 64, 7, 2, None])
+    check_three_ways("SELECT a, b, power(a, b) AS p FROM r", {"r": r})
+    for a, b in [(2, 63), (2, -1), (3, 100)]:
+        bad = ints(a=[a], b=[b])
+        with pytest.raises(duckdb.Error):
+            duckdb_rows(plan_of("SELECT power(a, b) AS p FROM r", {"r": bad}), {"r": bad})
+
+
+ROUNDING = [0.0, -0.0, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, -0.4, 2.7, -2.7, 1e15 + 0.5]
+ROUNDING += [math.nan, NEG_NAN, math.inf, -math.inf, 9.2e18, -9.2e18, 1.005, None]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
+        "SELECT f, round(f, 2) AS x, round(f, -1) AS y, power(f, 2) AS p FROM r",
+        "SELECT f, CAST(f AS BIGINT) AS i FROM r WHERE f > -1e18 AND f < 1e18",
+        "SELECT CAST(i AS VARCHAR) AS s FROM r",
+    ],
+)
+def test_rounding_and_casts_match_datafusion(sql):
+    """Signs of zeros and NaNs included (compared by `repr`)."""
+    r = pa.table(
+        {
+            "f": pa.array(ROUNDING, pa.float64()),
+            "i": pa.array(
+                [None if v is None else len(ROUNDING) - 2 * k for k, v in enumerate(ROUNDING)],
+                pa.int64(),
+            ),
+        }
+    )
+    df, duck = both(plan_of(sql, {"r": r}), {"r": r})
+    assert canonical(duck) == canonical(df)
 
 
 def test_double_division_follows_ieee():
@@ -529,7 +608,7 @@ def test_unsupported_constructs_raise():
         ("SELECT a, SUM(b) AS s FROM r GROUP BY a", {"r": r}, "unsupported relation"),
         ("SELECT a FROM r ORDER BY a", {"r": r}, "unsupported relation"),
         ("SELECT name FROM s WHERE name < 'b'", {"s": s}, "ordering comparisons of str"),
-        ("SELECT a % b AS m FROM r", {"r": r}, "unsupported function"),
+        ("SELECT a FROM r WHERE a < 1 IS TRUE", {"r": r}, "unsupported function is_true"),
     ]:
         with pytest.raises(Unsupported, match=match):
             to_sql(json.loads(plan_of(sql, tables)), DUCKDB)

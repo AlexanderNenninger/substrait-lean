@@ -1,7 +1,9 @@
 import SubstraitLean.Contracts
+import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Check
 import SubstraitLean.Parse
+import SubstraitLean.Pretty
 
 /-!
 # Checking a contract
@@ -42,7 +44,10 @@ def typeEnv (ty : Json) : AVal :=
   let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""
   let body := ty.getObjValD kind
   let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
-  if ints.contains kind then ⟨nullable, some Bound.top, false, false, false⟩
+  -- `BIGINT` and timestamps (microseconds) are 64-bit: what makes `a / 2` safe.
+  let i64 := ["i64", "precisionTimestamp", "timestamp"]
+  if i64.contains kind then ⟨nullable, some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, false, false, false⟩
+  else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false⟩
   else if ["string", "varchar", "fixedChar"].contains kind then ⟨nullable, none, false, false, true⟩
   else if kind == "bool" then ⟨nullable, none, true, true, false⟩
   else AVal.top
@@ -52,7 +57,13 @@ def schemaEnv (schema : Json) : List AVal :=
   | some tys => tys.toList.map typeEnv
   | none => []
 
+/-- Bounds near the 64-bit limits every `BIGINT` has go without saying
+(leaving them out only weakens what is shown). Not for double codes. -/
+def _root_.Substrait.Bound.shown (b : Bound) : Bound :=
+  ⟨b.lo.filter (-2 ^ 60 < ·), b.hi.filter (· < 2 ^ 60)⟩
+
 def _root_.Substrait.Bound.render (b : Bound) : String :=
+  let b := b.shown
   match b.lo, b.hi with
   | none, none => "any integer"
   | some l, some h => if l == h then s!"the integer {l}" else s!"an integer in [{l}, {h}]"
@@ -85,6 +96,8 @@ structure Report where
   keys : List (List Nat × Bool)
   /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
   deterministic : Bool := true
+  /-- Runtime errors and wrap-arounds `Rel.mayIssues_sound` cannot rule out. -/
+  issues : List (Issue × Expr) := []
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
@@ -95,9 +108,13 @@ def Report.json (r : Report) : Json :=
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
-    ("deterministic", Lean.toJson r.deterministic)]
+    ("deterministic", Lean.toJson r.deterministic),
+    ("issues", Json.arr (r.issues.map fun (i, e) =>
+      Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
+        ("expr", Lean.toJson e.render)]).toArray)]
 
-def Report.allProved (r : Report) : Bool := r.ensures.all (·.2.1) && r.keys.all (·.2)
+def Report.allProved (r : Report) : Bool :=
+  r.ensures.all (·.2.1) && r.keys.all (·.2) && !r.issues.any (·.1.isError)
 
 def natLists (j : Json) : List (List Nat) :=
   ((j.getArr?).toOption.getD #[]).toList.map fun k =>
@@ -164,10 +181,14 @@ def check (input : Json) : Except String Report := do
       let derived := p.root.keys cat A F inputKeys
       pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
+  let issues := match transform with
+    | some p => if p.root.checkWF cat then (p.root.mayIssues cat A F T false).eraseDups else []
+    | none => []
   return {
     ensures := results
     facts
     keys
-    deterministic }
+    deterministic
+    issues }
 
 end Substrait.ContractCheck

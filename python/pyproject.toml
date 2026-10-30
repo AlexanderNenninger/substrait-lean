@@ -15,6 +15,11 @@ dependencies = [
     "substrait>=0.37.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
+Source = "https://github.com/AlexanderNenninger/substrait-lean"
+Issues = "https://github.com/AlexanderNenninger/substrait-lean/issues"
+
 [build-system]
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"

@@ -11,7 +11,10 @@ defaults:
   references are unambiguous whatever the input tables call their columns.
 * Integers are `BIGINT`: operands are cast, and arithmetic must raise on
   overflow (Lean's integers are unbounded; a wrapped result would be wrong).
-  Lean has no integer division, so neither has this module.
+  Division and remainder truncate. Where DataFusion fails at run time
+  (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
+  Lean's value is NULL and `SubstraitLean/Safety.lean` says when that can
+  happen; the SQL raises there too (`Dialect.raise_`).
 * Doubles compare by the total order of `SubstraitLean/Float.lean`
   (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`, NaN equal to itself), in
   comparisons, join conditions, window partitions and sort keys.
@@ -143,6 +146,82 @@ class Dialect:
     def int_neg(self, a: str) -> str:
         return f"(- {a})"
 
+    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+        """An expression of type `kind` that fails at run time with `message`
+        when evaluated (and is NULL when `dep` is NULL). Only evaluated in a
+        `CASE` branch that needs it."""
+        raise Unsupported(f"{self.name} has no way to raise an error at run time")
+
+    def trunc_div(self, a: str, b: str) -> str:
+        """`a / b` rounded toward zero, for `b <> 0`; must raise on `MIN / -1`."""
+        raise Unsupported(f"{self.name}: integer division is not implemented")
+
+    def trunc_mod(self, a: str, b: str) -> str:
+        """The remainder of `trunc_div`, with the sign of `a`, for `b` not 0 or -1."""
+        raise Unsupported(f"{self.name}: integer remainder is not implemented")
+
+    def int_div(self, a: str, b: str) -> str:
+        """`BinFn.idiv`: truncating; division by zero raises (Lean: NULL)."""
+        fail = self.raise_("division by zero", b, "int")
+        return f"(CASE WHEN {b} = {self.int_lit(0)} THEN {fail} ELSE {self.trunc_div(a, b)} END)"
+
+    def int_mod(self, a: str, b: str) -> str:
+        """`BinFn.imod`: the sign of `a`; by zero raises (Lean: NULL), by -1 is 0."""
+        fail = self.raise_("division by zero", b, "int")
+        zero = self.int_mul(a, self.int_lit(0))
+        return (
+            f"(CASE WHEN {b} = {self.int_lit(0)} THEN {fail} WHEN {b} = {self.int_lit(-1)} "
+            f"THEN {zero} ELSE {self.trunc_mod(a, b)} END)"
+        )
+
+    def int_pow(self, a: str, b: int) -> str:
+        """`BinFn.ipow` with a constant exponent: a negative exponent, or a
+        result outside 64 bits, raises (Lean: NULL); NULL stays NULL."""
+        null = self.null("int")
+        if b < 0:
+            fail = self.raise_("negative exponent", a, "int")
+            return f"(CASE WHEN {a} IS NULL THEN {null} ELSE {fail} END)"
+        if b > 64:
+            # Only -1, 0 and 1 have powers that fit; `a * a` is |a| for them.
+            small = a if b % 2 else self.int_mul(a, a)
+            fail = self.raise_("integer overflow", a, "int")
+            lo, hi = self.int_lit(-1), self.int_lit(1)
+            return (
+                f"(CASE WHEN {a} IS NULL THEN {null} WHEN {a} >= {lo} AND {a} <= {hi} "
+                f"THEN {small} ELSE {fail} END)"
+            )
+        if b == 0:
+            return f"(CASE WHEN {a} IS NULL THEN {null} ELSE {self.int_lit(1)} END)"
+        # Partial products grow in magnitude, so checked multiplication raises
+        # exactly when the result leaves 64 bits.
+        out = a
+        for _ in range(b - 1):
+            out = self.int_mul(out, a)
+        return out
+
+    def int_product(self, a: str, n: str) -> str:
+        """`a` multiplied `n` times (1 ≤ n ≤ 64), raising on 64-bit overflow."""
+        raise Unsupported(f"{self.name}: POWER with a non-constant exponent is not implemented")
+
+    def int_pow_var(self, a: str, b: str) -> str:
+        """`BinFn.ipow` with an exponent column: as `int_pow`, row by row."""
+        null, one = self.null("int"), self.int_lit(1)
+        lo, sixty_four = self.int_lit(-1), self.int_lit(64)
+        small = (
+            f"(CASE WHEN {self.trunc_mod(b, self.int_lit(2))} = {one} "
+            f"THEN {a} ELSE {self.int_mul(a, a)} END)"
+        )
+        big = (
+            f"(CASE WHEN {a} >= {lo} AND {a} <= {one} THEN {small} "
+            f"ELSE {self.raise_('integer overflow', a, 'int')} END)"
+        )
+        return (
+            f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN {null} "
+            f"WHEN {b} < {self.int_lit(0)} THEN {self.raise_('negative exponent', b, 'int')} "
+            f"WHEN {b} = {self.int_lit(0)} THEN {one} WHEN {b} > {sixty_four} THEN {big} "
+            f"ELSE {self.int_product(a, b)} END)"
+        )
+
     # Doubles: IEEE 754, so x / 0 is ±inf or NaN rather than an error.
 
     def float_add(self, a: str, b: str) -> str:
@@ -162,6 +241,36 @@ class Dialect:
 
     def int_to_float(self, a: str) -> str:
         return self.cast(a, "float")
+
+    def int_to_str(self, a: str) -> str:
+        """Decimal digits with a leading `-` for negatives (Lean's `toString`)."""
+        return self.cast(a, "str")
+
+    def float_floor(self, x: str) -> str:
+        """Exact; keeps the sign of a zero result and NaN/±inf as they are."""
+        return f"FLOOR({x})"
+
+    def float_ceil(self, x: str) -> str:
+        """Exact; `CEIL(-0.5)` is -0.0; NaN/±inf stay."""
+        return f"CEIL({x})"
+
+    def float_round(self, x: str) -> str:
+        """To an integer, halves away from zero; `ROUND(-0.4)` is -0.0."""
+        return f"ROUND({x})"
+
+    def float_round_to(self, x: str, digits: int) -> str:
+        """`ROUND(x, d)` as DataFusion computes it: `round(x · 10ᵈ) / 10ᵈ`."""
+        p = self.float_lit(10.0**digits)
+        return self.float_div(self.float_round(self.float_mul(x, p)), p)
+
+    def float_pow(self, a: str, b: str) -> str:
+        """C's `pow`: IEEE results, no errors."""
+        return f"POWER({a}, {b})"
+
+    def float_to_int(self, x: str) -> str:
+        """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
+        outside 64 bits must raise (Lean: NULL)."""
+        raise Unsupported(f"{self.name}: CAST(double AS BIGINT) is not implemented")
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN of either sign, NULL for NULL."""
@@ -334,13 +443,21 @@ class Field:
 
 @dataclass(frozen=True)
 class Un:
-    op: Literal["not", "is_null", "neg", "itof", "fneg"]
+    op: Literal[
+        "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
+        "ftoi", "itos",
+    ]  # fmt: skip
     arg: Expr
+    digits: int = 0
+    """The `d` of `froundTo d`."""
 
 
 @dataclass(frozen=True)
 class Bin:
-    op: Literal["add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv"]
+    op: Literal[
+        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
+        "idiv", "imod", "ipow", "fpow",
+    ]  # fmt: skip
     left: Expr
     right: Expr
 
@@ -383,6 +500,7 @@ class Values:
     arity: int
     rows: tuple[tuple[Expr, ...], ...]
     kinds: tuple[Kind | None, ...]
+    lean_kinds: tuple[LeanKind, ...]
 
 
 @dataclass(frozen=True)
@@ -470,8 +588,9 @@ def lean_kinds(r: Rel) -> list[LeanKind]:
     match r:
         case Read():
             return list(r.lean_kinds)
-        case Values(arity=n):
-            return ["other"] * n
+        case Values():
+            # `Rel.kinds` reads them from the `baseSchema`, as for tables.
+            return list(r.lean_kinds)
         case Filter(input=i) | Fetch(input=i):
             return lean_kinds(i)
         case Project(input=i, exprs=es):
@@ -517,14 +636,20 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return cols[i] if i < len(cols) else "other"
         case Un(op="neg", arg=a):
             return lean_expr_kind(a, cols)
-        case Un(op="itof" | "fneg"):
+        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
+        case Un(op="ftoi"):
+            return "int"
+        case Un(op="itos"):
+            return "str"
         case Un():
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
             return "float"
+        case Bin(op="idiv" | "imod" | "ipow"):
+            return "int"
         case Bin():
             return "bool"
         case If(then=Lit(value=v), orelse=o):
@@ -541,8 +666,12 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return _get(cols, i)
         case Un(op="neg", arg=a):
             return expr_kind(a, cols)
-        case Un(op="itof" | "fneg"):
+        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
+        case Un(op="ftoi"):
+            return "int"
+        case Un(op="itos"):
+            return "str"
         case Un():
             return "bool"
         case Bin(op="add" | "sub", left=a, right=b):
@@ -552,8 +681,10 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return ka if ka in ("time", "interval") or kb is None else kb
         case Bin(op="mul", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
             return "float"
+        case Bin(op="idiv" | "imod" | "ipow"):
+            return "int"
         case Bin():
             return "bool"
         case If(then=t, orelse=o):
@@ -982,18 +1113,40 @@ class _Parser:
                 name = _base_name(self.name(_nat_d(v, "functionReference")))
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 parsed = [self.expr(a, cols) for a in arg_js]
+
+                def keep_int(k: int) -> bool:
+                    # `ROUND(x, d)`: the digits stay an integer.
+                    return name == "round" and k == 1
+
                 # An integer constant next to a double stands for that double.
                 if any(lean_expr_kind(e, cols.lean) == "float" for e in parsed):
-                    parsed = [self._as_double(a, e) for a, e in zip(arg_js, parsed, strict=True)]
+                    parsed = [
+                        e if keep_int(k) else self._as_double(a, e)
+                        for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
+                    ]
                 out = _lean_type_kind(_field(v, "outputType"))
-                arith = name in ("add", "subtract", "multiply", "divide", "negate", "abs")
-                if arith and (
+                floats = (
+                    "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
+                    "ceil", "round",
+                )  # fmt: skip
+                if name in floats and (
                     out == "float" or any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
                 ):
+                    # Integer arguments of a double function are converted.
+                    parsed = [
+                        Un("itof", e)
+                        if lean_expr_kind(e, cols.lean) == "int"
+                        and not keep_int(k)
+                        and not isinstance(e, Lit)
+                        else e
+                        for k, e in enumerate(parsed)
+                    ]
                     return _float_call(name, parsed)
                 return _call(name, parsed)
             case "ifThen":
-                acc = self.expr(_req(v, "else"), cols)
+                # A `CASE` without `ELSE` is `ELSE NULL`.
+                orelse = _field(v, "else")
+                acc = Lit(None, None) if orelse is None else self.expr(orelse, cols)
                 for clause in reversed(_arr(v, "ifs")):
                     acc = If(
                         self.expr(_req(clause, "if"), cols),
@@ -1007,6 +1160,11 @@ class _Parser:
                 k = lean_expr_kind(e, cols.lean)
                 if target == "float" and k == "int":
                     return Un("itof", e)
+                # Fails on NaN, ±inf and out-of-range values.
+                if target == "int" and k == "float":
+                    return Un("ftoi", e)
+                if target == "str" and k == "int":
+                    return Un("itos", e)
                 if target == k and target != "other":
                     return e
                 raise Unsupported(f"unsupported cast from {k} to {target}")
@@ -1164,7 +1322,7 @@ class _Parser:
                     tuple(_lit(_const_literal(e)) for e in _arr(row, "fields"))
                     for row in _arr(v, "values")
                 )
-            base = Values(arity, rows, _values_kinds(rows, sql_kinds))
+            base = Values(arity, rows, _values_kinds(rows, sql_kinds), tuple(lean))
         cond = _field(r, "filter")
         if cond is not None:
             base = Filter(base, self.expr(cond, _Cols(lean, kinds(base))))
@@ -1356,6 +1514,13 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return a
         case "abs", [a]:
             return If(Bin("lt", a, Lit(0, "int")), Un("neg", a), a)
+        # Integer division and remainder truncate; doubles go to `_float_call`.
+        case "divide", [a, b]:
+            return Bin("idiv", a, b)
+        case "modulus", [a, b]:
+            return Bin("imod", a, b)
+        case "power", [a, b]:
+            return Bin("ipow", a, b)
     raise Unsupported(f"unsupported function {name}/{len(args)}")
 
 
@@ -1387,6 +1552,16 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return If(
                 Bin("lt", a, neg_zero), Un("fneg", a), If(Bin("lt", a, pos_zero), pos_zero, a)
             )
+        case "power", [a, b]:
+            return Bin("fpow", a, b)
+        case "floor", [a]:
+            return Un("ffloor", a)
+        case "ceil", [a]:
+            return Un("fceil", a)
+        case "round", [a]:
+            return Un("fround", a)
+        case "round", [a, Lit(value=int(d), kind="int")] if not isinstance(d, bool):
+            return Un("fround", a) if d == 0 else Un("froundTo", a, d)
     raise Unsupported(f"unsupported double function {name}/{len(args)}")
 
 
@@ -1721,19 +1896,41 @@ class _Writer:
                 return d.int_to_float(self.int_operand(a, ref, cols, "CAST to DOUBLE"))
             case Un(op="fneg", arg=a):
                 return d.float_neg(self.float_operand(a, ref, cols))
+            case Un(op="ffloor" | "fceil" | "fround" as op, arg=a):
+                f = {"ffloor": d.float_floor, "fceil": d.float_ceil, "fround": d.float_round}[op]
+                return f(self.float_operand(a, ref, cols))
+            case Un(op="froundTo", arg=a, digits=digits):
+                return d.float_round_to(self.float_operand(a, ref, cols), digits)
+            case Un(op="ftoi", arg=a):
+                return d.float_to_int(self.float_operand(a, ref, cols))
+            case Un(op="itos", arg=a):
+                return d.int_to_str(self.int_operand(a, ref, cols, "CAST to VARCHAR"))
             case Bin(op="and" | "or" as op, left=a, right=b):
                 f = d.and3 if op == "and" else d.or3
                 return f(go(a, "bool"), go(b, "bool"))
-            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" as op, left=a, right=b):
+            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" as op, left=a, right=b):
                 f = {
                     "fadd": d.float_add,
                     "fsub": d.float_sub,
                     "fmul": d.float_mul,
                     "fdiv": d.float_div,
+                    "fpow": d.float_pow,
                 }[op]
                 return f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
             case Bin(op="add" | "sub" | "mul" as op, left=a, right=b):
                 return self.arith(op, a, b, ref, cols)
+            case Bin(op="idiv" | "imod" as op, left=a, right=b):
+                what = "division" if op == "idiv" else "remainder"
+                sa = self.int_operand(a, ref, cols, what)
+                sb = self.int_operand(b, ref, cols, what)
+                return d.int_div(sa, sb) if op == "idiv" else d.int_mod(sa, sb)
+            case Bin(op="ipow", left=a, right=b):
+                if isinstance(b, Lit) and b.value is None:
+                    return d.null("int")
+                sa = self.int_operand(a, ref, cols, "POWER")
+                if isinstance(b, Lit) and isinstance(b.value, int) and b.kind == "int":
+                    return d.int_pow(sa, b.value)
+                return d.int_pow_var(sa, self.int_operand(b, ref, cols, "POWER"))
             case Bin(op="eq" | "lt" as op, left=a, right=b):
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
@@ -1809,9 +2006,10 @@ class _Writer:
 
 
 def _is_int_arith(e: Expr) -> bool:
-    return (
-        isinstance(e, Bin) and e.op in ("add", "sub", "mul") or isinstance(e, Un) and e.op == "neg"
-    )
+    """Is `e` computed as a BIGINT already?"""
+    if isinstance(e, Bin):
+        return e.op in ("add", "sub", "mul", "idiv", "imod", "ipow")
+    return isinstance(e, Un) and e.op in ("neg", "ftoi")
 
 
 def _no_fields() -> str:

@@ -134,6 +134,9 @@ class IncrementalView:
         plan = json.loads(self.plan)
         self.columns: list[str] = plan["relations"][0]["root"]["names"]
         self.tables = read_tables(plan)
+        # Publishing the view would replace the table it is computed from.
+        if name in self.tables:
+            raise ValueError(f"view name {name!r} is a table the view reads")
         self.deltas = delta_plans(self.plan)
         self.engine = executor(con, engine)
         copy_tables(con, self.engine, self.tables)
