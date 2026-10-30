@@ -683,7 +683,7 @@ def _(mo):
     step further: `Rel.delta` *generates* the delta plan automatically, as an
     ordinary plan that reads the old tables and the change tables, and
     `Rel.delta_correct` proves the generated plan computes exactly the change.
-    Since the delta plan is an ordinary plan, a regular engine such as DuckDB
+    Since the delta plan is an ordinary plan, a regular engine such as DataFusion
     can run it.
 
     The fragment covers filter, project, emit, union, cross and inner join.
@@ -691,12 +691,13 @@ def _(mo):
     rows must be *retracted* when a match shows up later, and LIMIT depends on
     row order. They need different rules.
 
-    ## 7. On a real engine: incremental views in DuckDB
+    ## 7. On a real engine: incremental views in DataFusion
 
     So far everything ran in this notebook's mini interpreter. The `sverify`
     package does it for real: you write the query once (in Ibis or SQL), and it
-    keeps the result up to date in DuckDB from the inserts and deletes alone.
-    The update plans it runs are the ones Lean generated and proved correct.
+    keeps the result up to date in [DataFusion](https://datafusion.apache.org)
+    from the inserts and deletes alone. The update plans it runs are the ones
+    Lean generated and proved correct.
     """)
     return
 
@@ -707,15 +708,15 @@ def _():
     import sverify as sv
     from sverify.examples import PIPELINES, create_tables
 
-    con = sv.connect()  # DuckDB, standing in for your engine
-    create_tables(con)
-    con.executemany(
-        "insert into orders values (?, ?, ?)", [(1, "ada", 30), (2, "bob", 5), (3, "ada", None)]
+    con = sv.connect()  # an Ibis DataFusion backend, standing in for your engine
+    create_tables(
+        con,
+        orders_rows=[(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
+        customers_rows=[("ada", "Paris"), ("bob", "Oslo")],
     )
-    con.executemany("insert into customers values (?, ?)", [("ada", "Paris"), ("bob", "Oslo")])
 
     # orders JOIN customers ON orders.customer = customers.name, selecting (id, city)
-    view = sv.IncrementalView.from_ibis(con, PIPELINES["inner_join"], "orders_with_city")
+    view = sv.IncrementalView(con, PIPELINES["inner_join"], "orders_with_city")
     return con, ibis, sv, view
 
 
@@ -733,7 +734,7 @@ def _(apply_batch, as_table, con, mo, sv, view):
     import random as _random
 
     def _batch(rng, table, make_row):
-        current = con.sql(f"select * from {table}").fetchall()
+        current = sv.table_rows(con, table)
         deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
         return sv.Changes(inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes)
 
@@ -785,7 +786,7 @@ def _(apply_batch, as_table, con, mo, sv, view):
                 mo.md(
                     f"After {apply_batch.value} batch(es): the maintained view "
                     + ("**equals** full recomputation ✓" if _equal else "**differs** ✗")
-                    + f". Each batch runs {len(view.deltas)} Lean-generated delta plans on DuckDB."
+                    + f". Each batch runs {len(view.deltas)} Lean-generated delta plans on DataFusion."
                 ),
                 kind="success" if _equal else "danger",
             ),
@@ -800,18 +801,49 @@ def _(mo):
     mo.md(r"""
     What happens on each batch:
 
-    1. DuckDB turns the query into a Substrait plan.
+    1. DataFusion turns the query into a Substrait plan.
     2. Lean builds the **delta plan** (`Rel.delta`), splits it into pieces without
        `UNION ALL` (`Rel.terms`), and encodes each row's weight as an extra
        `__weight` column (`Rel.weighted`). Each step has a theorem saying it
        computes exactly the change to the result.
-    3. DuckDB runs those plans on the change tables, and `sverify` adds the
+    3. DataFusion runs those plans on the change tables, and `sverify` adds the
        result to the stored view.
 
-    Why split out `UNION ALL`? The randomized tests in `python/tests` found that
-    DuckDB's Substrait reader runs `UNION ALL` as `UNION DISTINCT`, silently
-    dropping duplicate rows. The engine is not covered by the proofs, so it is
-    tested hard instead, and that is how the bug turned up.
+    Why split out `UNION ALL`? DataFusion's Substrait reader forgets which table
+    a column came from once it passes a `UNION ALL`, and the duplicate column
+    names then break a later join. The engine is not covered by the proofs, so
+    it is tested hard instead: the randomized tests in `python/tests` compare
+    every maintained view with a full recompute, and that is how such engine
+    quirks turn up.
+
+    Not everything can be maintained this way. Plans outside the fragment are
+    refused up front, before any data is touched:
+    """)
+    return
+
+
+@app.cell
+def _(con, sv):
+    from sverify.examples import UNSUPPORTED
+
+    _refusals = {}
+    for _name, _query in UNSUPPORTED.items():
+        try:
+            sv.IncrementalView(con, _query, f"try_{_name}")
+            _refusals[_name] = "accepted"
+        except (sv.NotIncremental, ValueError) as _e:
+            _refusals[_name] = f"{type(_e).__name__}: {str(_e).splitlines()[0][:90]}"
+    _refusals
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    A left join's NULL-padded rows have to be *retracted* when a match arrives
+    later, and a `GROUP BY` sum changes in place rather than gaining rows. Both
+    need delta rules of their own, which are not proved yet, so `sverify`
+    says no instead of maintaining them wrongly.
 
     ## 8. Pre- and postconditions
 
@@ -945,10 +977,57 @@ def _(mo):
     preconditions, and the abstract interpretation says every postcondition is
     certainly TRUE, then every postcondition is TRUE on every output row.*
 
-    What the abstract interpreter does not track yet: relations between two
-    columns (`a < b`), string contents, and facts across rows (uniqueness, row
-    counts). Postconditions like that are refused rather than guessed; use
-    `on_unproved="runtime"` to check them on the data instead.
+    ### Facts across rows: keys
+
+    Some guarantees are not about one row but about the whole table, such as
+    "no two rows have the same `id`". `sv.unique(...)` states one. In `requires`
+    it is checked on the data; in `ensures` it is proved, by following keys
+    through the plan (theorem `Rel.keys_sound` in `SubstraitLean/Keys.lean`).
+
+    Joining orders with customers keeps `id` unique only if each order finds at
+    most one customer, so it depends on whether `name` is a key of `customers`:
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    customers_keyed = mo.ui.switch(value=True, label="requires unique(name) on customers")
+    customers_keyed
+    return (customers_keyed,)
+
+
+@app.cell
+def _(customers_keyed, sv):
+    from sverify.examples import customers as customers_table
+    from sverify.examples import orders as orders_t
+
+    with_city = orders_t.join(customers_table, orders_t.customer == customers_table.name).select(
+        orders_t.id, customers_table.city
+    )
+    _requires = {"orders": [sv.unique("id")]}
+    if customers_keyed.value:
+        _requires["customers"] = [sv.unique("name")]
+    sv.verify(with_city, requires=_requires, ensures=[sv.unique("id")])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Without the key, two customer rows named `ada` would turn order 1 into two
+    output rows, so the claim is refused. That is the same reasoning behind the
+    overlapping-workouts example in `notebooks/fitness.py`.
+
+    Lean also tracks simple relations between columns ("`t1` is `t0 + 60`",
+    "`prev_ts < ts`") taken from join and filter conditions, and what window
+    functions such as `LAG` and `ROW_NUMBER` produce. `notebooks/sensors.py`
+    uses both to align sensors sampled at different rates.
+
+    Not tracked yet: relations that need more than "column plus constant"
+    (`a < 2 * b`), string contents, and row counts. Postconditions like that are
+    refused rather than guessed; use `on_unproved="runtime"` to check them on
+    the data instead.
     """)
     return
 
@@ -968,9 +1047,9 @@ def _(mo):
     mo.mermaid(
         """
         graph LR
-          J["Substrait JSON<br/>(from DuckDB, Ibis, …)"] -->|"parser<br/>TRUSTED · golden tests"| M["Lean model: Rel"]
+          J["Substrait JSON<br/>(from DataFusion, via Ibis or SQL)"] -->|"parser<br/>TRUSTED · golden tests"| M["Lean model: Rel"]
           M -->|"PROVEN<br/>rewrites, type safety,<br/>incremental rules, contracts"| M2["equivalent / delta plan,<br/>proved postconditions"]
-          M2 -->|"engine runs it<br/>TRUSTED · differential tests"| D["DuckDB result"]
+          M2 -->|"engine runs it<br/>TRUSTED · differential tests"| D["DataFusion result"]
           style M fill:#d4f4dd,stroke:#2e8b57
           style M2 fill:#d4f4dd,stroke:#2e8b57
         """
@@ -982,15 +1061,17 @@ def _(mo):
 def _(mo):
     mo.md(r"""
     * **Proven (green):** everything about the Lean model `Rel`: the rewrites,
-      type safety, the incremental rules, the weight-column encoding and the
-      contract checker. Lean checks these mechanically, and `#print axioms`
-      confirms no step was skipped.
+      type safety, the incremental rules, the weight-column encoding, the
+      contract checker and the key analysis. Floats are modelled with
+      DataFusion's total order, so NaN and −0.0 are covered too. Lean checks
+      these mechanically, and `#print axioms` confirms no step was skipped.
     * **Trusted, guarded by tests:** the JSON parser and writer (do they translate
       plans faithfully?), the column descriptions taken from table schemas, the
-      `sverify` glue code, and the engine (does DuckDB behave like the model?).
+      `sverify` glue code, and the engine (does DataFusion behave like the model?).
       Golden tests and randomized tests cover them. The randomized tests compare
-      incremental views with full recomputation, and check that proved
-      postconditions hold on random data. They have already caught a DuckDB bug.
+      incremental views with full recomputation, run Lean's interpreter against
+      DataFusion on generated tables, and check that proved postconditions hold
+      on random data.
 
     This is the normal shape of verified systems: a small proven core, plus a
     clearly labelled trusted boundary that is tested hard.
@@ -1016,6 +1097,7 @@ def _(mo):
     * **Trusted base:** the parts not covered by proofs (parser, engine).
     * **Precondition / postcondition:** what a transformation assumes about its inputs / guarantees about its output.
     * **Abstract interpretation:** running a plan on descriptions of values (can it be NULL? which integers?) instead of values.
+    * **Key:** columns no two rows agree on, such as `unique("id")`.
     """),
             "Where to look in the code": mo.md(r"""
     | Topic | File | Key names |
@@ -1028,7 +1110,10 @@ def _(mo):
     | Substrait JSON | `SubstraitLean/Parse.lean`, `Write.lean` | `parsePlan`, `writePlan` |
     | Delta plans for engines | `SubstraitLean/Terms.lean`, `Weighted.lean` | `zeval_terms`, `weighted_eval` |
     | Contracts | `SubstraitLean/Contracts.lean` | `Rel.aeval_sound`, `contract_sound` |
-    | Python package | `python/src/sverify/` | `IncrementalView`, `transform`, `verify` |
+    | Keys, window determinism | `SubstraitLean/Keys.lean` | `Rel.keys_sound`, `window_tiebreak` |
+    | Window functions | `SubstraitLean/Window.lean` | `ROW_NUMBER`, `LAG`, `LEAD` |
+    | Doubles and timestamps | `SubstraitLean/Float.lean` | DataFusion's total order on doubles |
+    | Python package | `python/src/sverify/` | `IncrementalView`, `transform`, `verify`, `asof_join` |
     """),
             "Try it yourself": mo.md(r"""
     ```bash
@@ -1040,6 +1125,13 @@ def _(mo):
     A good first exercise in Lean: in `Rewrites.lean`, try to prove
     `filter_project_pushdown` **without** the hypothesis `hp`. Lean will get
     stuck exactly where a filter reads a column that only exists after the projection.
+    """),
+            "More demos": mo.md(r"""
+    * `notebooks/fitness.py`: heart-rate samples joined with workouts. NaN
+      handling, a key that is rightly refused, and a view you stream samples into.
+    * `notebooks/sensors.py`: an accelerometer at 100 Hz aligned with a
+      gyroscope at 130 Hz by an ASOF join, dropout detection with `LAG`, and why
+      ties in a window's order make Lean refuse to claim anything.
     """),
         }
     )

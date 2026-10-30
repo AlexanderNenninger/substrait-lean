@@ -30,8 +30,11 @@ update plan, and DataFusion runs that plan.
 interactive introduction with live examples. [notebooks/fitness.py](notebooks/fitness.py)
 is one realistic pipeline end to end: heart-rate samples joined with workouts,
 a decorator contract with proved and refused postconditions, and an
-incrementally maintained view you can stream samples into (see [Setup](#setup)
-for how to open them).
+incrementally maintained view you can stream samples into.
+[notebooks/sensors.py](notebooks/sensors.py) aligns a 100 Hz accelerometer with a
+130 Hz gyroscope by an ASOF join, proves the alignment never uses a future or
+stale reading, finds dropouts with `LAG`, and shows why ties make Lean refuse
+to claim anything (see [Setup](#setup) for how to open them).
 
 ## Setup
 
@@ -106,6 +109,9 @@ uvx marimo run --sandbox notebooks/intro.py      # read-only app view
 ```
 ```bash
 uvx marimo run --sandbox notebooks/fitness.py    # the fitness pipeline
+```
+```bash
+uvx marimo run --sandbox notebooks/sensors.py    # ASOF joins and windows
 ```
 ```bash
 uv run --project python --with marimo marimo edit notebooks/intro.py   # edit it

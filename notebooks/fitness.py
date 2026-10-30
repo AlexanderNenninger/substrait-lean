@@ -378,7 +378,8 @@ def _(mo):
     * **Trusted**: the translation from DataFusion's Substrait JSON into the
       Lean model, DataFusion itself, and the small amount of Python that
       stores the view and merges changes. The intro notebook
-      (`notebooks/intro.py`) explains the formal side step by step.
+      (`notebooks/intro.py`) explains the formal side step by step, and
+      `notebooks/sensors.py` covers ASOF joins and window functions.
     """)
     return
 
