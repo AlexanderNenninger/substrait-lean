@@ -79,6 +79,13 @@ def test_aggregate_is_rejected():
         sv.IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 
+def test_view_named_after_an_input_is_rejected():
+    con = setup([(1, "ada", 30), (2, "bob", 5)], [])
+    with pytest.raises(ValueError, match="is a table the view reads"):
+        sv.IncrementalView(con, PIPELINES["filter_project"], "orders")
+    assert table_rows(con, "orders") == [(1, "ada", 30), (2, "bob", 5)]
+
+
 def test_deleting_a_missing_row_fails_and_rolls_back():
     con = setup([(1, "ada", 30)], [])
     view = sv.IncrementalView(con, PIPELINES["filter_project"], "v")
