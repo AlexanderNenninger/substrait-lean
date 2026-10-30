@@ -39,7 +39,7 @@ def delta (plan : Plan) : IO UInt32 := do
     IO.eprintln msg; return code
   -- `isIncremental_iff`: this decides `Rel.Incremental`.
   if !plan.root.isIncremental then
-    IO.eprintln "not incrementally maintainable (left join or fetch)"; return 3
+    IO.eprintln "not incrementally maintainable (left join, fetch or window)"; return 3
   let cat := Write.deltaCatalog plan
   let terms := Write.deltaTerms plan
   -- `Rel.weighted_eval` needs each term to be incremental and well-formed.
@@ -47,7 +47,7 @@ def delta (plan : Plan) : IO UInt32 := do
     if !term.isIncremental || term.hasUnion || !term.checkWF cat then
       IO.eprintln "a delta term failed its static checks"; return 2
   for term in terms do
-    IO.println (Write.writeDeltaTerm plan term).compress
+    IO.println (Write.writeDeltaPlan plan term).compress
   return 0
 
 def contract (path : String) : IO UInt32 := do
@@ -85,6 +85,9 @@ def main (args : List String) : IO UInt32 := do
     | [path] => pure (check, path)
     | ["--delta", path] => pure (delta, path)
     | ["--contract", path] => return ← contract path
+    | ["--write", path] => pure (fun plan => do
+        IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names).compress
+        return 0, path)
     | _ => IO.eprintln "usage: substrait-check [--delta | --contract] <file.json>"; return 1
   match ← load path with
   | .ok plan => mode plan

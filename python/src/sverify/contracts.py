@@ -21,8 +21,7 @@ Preconditions are assumptions about data that comes from outside, so when the
 inputs are bound to a backend they are checked on the data at call time.
 
 Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
-or SQL snippets (`"amount >= 0"`). DuckDB only compiles them to Substrait here;
-the transformation itself can run on any Ibis backend.
+or SQL snippets (`"amount >= 0"`). DataFusion compiles them to Substrait.
 """
 
 from __future__ import annotations
@@ -30,11 +29,14 @@ from __future__ import annotations
 import functools
 import inspect
 import json
+import math
 import subprocess
 import tempfile
 import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+from fractions import Fraction
 from typing import Any, Literal
 
 import ibis
@@ -42,10 +44,33 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 
-from sverify.duck import connect, substrait_json
-from sverify.incremental import checker_path, q
+from sverify.engine import connect, create_table, substrait_json, to_sql
+from sverify.incremental import checker_path
 
-Condition = Deferred | ir.BooleanValue | str | Callable[[ir.Table], ir.BooleanValue]
+
+def q(name: str) -> str:
+    """Quote a SQL identifier."""
+    return '"' + name.replace('"', '""') + '"'
+
+
+@dataclass(frozen=True)
+class Unique:
+    """No two rows agree on these columns (see `unique`)."""
+
+    cols: tuple[str, ...]
+
+
+def unique(*cols: str) -> Unique:
+    """A key: at most one row per combination of `cols`.
+
+    In `requires` it is an assumption about an input (checked on the data when
+    the input is bound to a backend); in `ensures` it is proved by
+    `Rel.keys_sound` from the input keys and the transformation.
+    """
+    return Unique(tuple(cols))
+
+
+Condition = Deferred | ir.BooleanValue | str | Unique | Callable[[ir.Table], ir.BooleanValue]
 Transform = ir.Table | str
 
 
@@ -63,6 +88,9 @@ class Report:
     ensures: list[CheckedCondition]
     facts: dict[str, str] = field(default_factory=dict)
     """What Lean established about each output column."""
+    deterministic: bool = True
+    """False when rows may tie in a window's ORDER BY: the engine then picks
+    an order, and nothing is proved about the result."""
 
     @property
     def proved(self) -> bool:
@@ -79,6 +107,8 @@ class Report:
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
             lines.append(f"ensures {c.label}: {mark}")
+        if not self.deterministic:
+            lines.append(f"note: {TIES_HINT}")
         if self.facts:
             lines.append("known about the output:")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
@@ -90,8 +120,10 @@ class Report:
             for c in self.ensures
         ]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
+        note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         return "\n".join(
             [
+                *note,
                 "| postcondition | status |",
                 "|---|---|",
                 *rows,
@@ -101,6 +133,12 @@ class Report:
                 *facts,
             ]
         )
+
+
+TIES_HINT = (
+    "rows may tie in a window's ORDER BY, so the engine decides their order. "
+    "Declare `unique(...)` on the partition and order columns of the input."
+)
 
 
 class VerificationError(Exception):
@@ -120,12 +158,89 @@ class PostconditionError(Exception):
     """Output data violates a postcondition (only raised by runtime checks)."""
 
 
+# Doubles, timestamps and dates are integer codes in the Lean model
+# (SubstraitLean/Float.lean). A double with magnitude m = |x| * 2^1074 has
+# code ±(2m + 1), which orders codes like DataFusion orders doubles
+# (-NaN < -inf < ... < -0.0 < +0.0 < ... < +inf < NaN). Timestamps are
+# microseconds, dates days.
+MAX_MAG = (2**53 - 1) * 2**2045
+INF_MAG, NAN_MAG = MAX_MAG + 1, MAX_MAG + 2
+
+
+def decode_double(code: int) -> float:
+    sign = -1.0 if code < 0 else 1.0
+    mag = (abs(code) - 1) // 2
+    if mag >= NAN_MAG:
+        return math.nan
+    if mag == INF_MAG:
+        return sign * math.inf
+    return sign * float(Fraction(mag, 2**1074))
+
+
+def render_fact(abstract: dict, dtype: Any) -> str | None:
+    """Describe a column's abstract value for doubles, timestamps, dates and
+    intervals (microseconds); None keeps Lean's own description."""
+    rng = abstract.get("int")
+    if dtype.is_floating():
+        show: Callable[[int], str] = lambda k: repr(decode_double(k))  # noqa: E731
+        noun = "a double"
+    elif dtype.is_timestamp():
+        epoch = datetime(1970, 1, 1)
+        show = lambda k: (epoch + timedelta(microseconds=k)).isoformat(sep=" ")  # noqa: E731
+        noun = "a timestamp"
+    elif dtype.is_date():
+        show = lambda k: (date(1970, 1, 1) + timedelta(days=k)).isoformat()  # noqa: E731
+        noun = "a date"
+    elif dtype.is_interval():
+        show = lambda k: str(timedelta(microseconds=k))  # noqa: E731
+        noun = "an interval"
+    else:
+        return None
+    parts = []
+    if rng is not None:
+        lo = None if rng["lo"] is None else int(rng["lo"])
+        hi = None if rng["hi"] is None else int(rng["hi"])
+        if lo is None and hi is None:
+            parts.append(f"any {noun.split()[-1]}")
+        elif lo is not None and hi is not None and lo == hi:
+            parts.append(f"{noun} = {show(lo)}")
+        elif dtype.is_floating():
+            # Valid codes are odd; an even bound lies strictly between two doubles.
+            def ge(k: int) -> str:
+                return f"≥ {show(k)}" if k % 2 else f"> {show(k - 1)}"
+
+            def le(k: int) -> str:
+                return f"≤ {show(k)}" if k % 2 else f"< {show(k + 1)}"
+
+            if hi is None:
+                parts.append(f"{noun} {ge(lo)}")  # type: ignore[arg-type]
+            elif lo is None:
+                parts.append(f"{noun} {le(hi)}")
+            else:
+                parts.append(f"{noun} {ge(lo)} and {le(hi)}")
+        elif hi is None:
+            parts.append(f"{noun} ≥ {show(lo)}")  # type: ignore[arg-type]
+        elif lo is None:
+            parts.append(f"{noun} ≤ {show(hi)}")
+        else:
+            parts.append(f"{noun} in [{show(lo)}, {show(hi)}]")
+    if abstract.get("null"):
+        parts.append("NULL")
+    return " or ".join(parts) if parts else "nothing (no rows)"
+
+
 def label(cond: Condition) -> str:
+    if isinstance(cond, Unique):
+        return f"unique({', '.join(cond.cols)})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
         return repr(cond)
     return getattr(cond, "__name__", repr(cond))
+
+
+def column_names(schema: ibis.Schema) -> list[str]:
+    return [name for name, _ in schema.items()]
 
 
 def leaf_tables(expr: ir.Table) -> dict[str, ibis.Schema]:
@@ -144,11 +259,11 @@ def resolve(cond: Condition, table: ir.Table) -> ir.BooleanValue:
 def condition_sql(table: Transform, cond: Condition) -> str:
     """SQL selecting one condition column from a table or transformation."""
     if isinstance(cond, str):
-        source = table if isinstance(table, str) else ibis.to_sql(table, dialect="duckdb")
+        source = table if isinstance(table, str) else to_sql(table)
         return f'SELECT ({cond}) AS "c" FROM ({source}) AS "t"'
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
-    return ibis.to_sql(table.select(c=resolve(cond, table)), dialect="duckdb")
+    return to_sql(table.select(c=resolve(cond, table)))
 
 
 def verify(
@@ -171,24 +286,50 @@ def verify(
         schemas = {**leaf_tables(transform), **schemas}
     requires = requires or {}
     con = connect()
-    db = ibis.duckdb.from_connection(con)
     for name, schema in schemas.items():
-        db.create_table(name, schema=schema)
+        create_table(con, name, schema)
 
     def plan(sql: str) -> Any:
         return json.loads(substrait_json(con, sql))
 
     def table_ref(name: str) -> Transform:
-        return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else db.table(name)
+        return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
 
-    req_plans = [plan(condition_sql(table_ref(t), c)) for t, cs in requires.items() for c in cs]
+    req_plans = [
+        plan(condition_sql(table_ref(t), c))
+        for t, cs in requires.items()
+        for c in cs
+        if not isinstance(c, Unique)
+    ]
     ens_plans = []
     for c in ensures:
+        if isinstance(c, Unique):
+            continue
         p = plan(condition_sql(transform, c))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
-    transform_sql = transform if isinstance(transform, str) else ibis.to_sql(transform, "duckdb")
-    contract = {"requires": req_plans, "ensures": ens_plans, "transform": plan(transform_sql)}
+    transform_sql = transform if isinstance(transform, str) else to_sql(transform)
+    transform_plan = plan(transform_sql)
+    out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
+
+    def positions(cols: Sequence[str], names: Sequence[str]) -> list[int]:
+        missing = [c for c in cols if c not in names]
+        if missing:
+            raise ValueError(f"unique() names unknown columns: {missing}")
+        return [list(names).index(c) for c in cols]
+
+    keys = {
+        t: [positions(c.cols, column_names(schemas[t])) for c in cs if isinstance(c, Unique)]
+        for t, cs in requires.items()
+    }
+    ensures_keys = [positions(c.cols, out_cols) for c in ensures if isinstance(c, Unique)]
+    contract = {
+        "requires": req_plans,
+        "ensures": ens_plans,
+        "transform": transform_plan,
+        "keys": keys,
+        "ensures_keys": ensures_keys,
+    }
 
     with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
         json.dump(contract, f)
@@ -199,15 +340,44 @@ def verify(
     if proc.returncode not in (0, 4):
         raise ValueError(f"substrait-check --contract failed: {proc.stderr.strip()}")
     out = json.loads(proc.stdout)
+    dtypes = {} if isinstance(transform, str) else dict(transform.schema().items())
+
+    def describe(f: dict) -> str:
+        dtype = dtypes.get(f["name"])
+        return (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
+
+    rows = iter(out["ensures"])
+    key_results = iter(out["keys"])
+    checked = []
+    for c in ensures:
+        if isinstance(c, Unique):
+            ok = next(key_results)["proved"]
+            value = (
+                "a key"
+                if ok
+                else "not shown to be a key"
+                if out["deterministic"]
+                else "undetermined: rows may tie in a window's ORDER BY"
+            )
+            checked.append(CheckedCondition(label(c), ok, value))
+        else:
+            e = next(rows)
+            checked.append(CheckedCondition(e["name"], e["proved"], e["value"]))
     return Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
-        ensures=[CheckedCondition(e["name"], e["proved"], e["value"]) for e in out["ensures"]],
-        facts={f["name"]: f["value"] for f in out["facts"]},
+        ensures=checked,
+        facts={f["name"]: describe(f) for f in out["facts"]},
+        deterministic=out["deterministic"],
     )
 
 
 def violations(table: ir.Table, cond: Condition) -> int:
-    """Rows of a backend-bound table where `cond` is not TRUE (FALSE or NULL)."""
+    """Rows of a backend-bound table where `cond` is not TRUE (FALSE or NULL),
+    or for `unique`, rows beyond the first for each repeated key."""
+    if isinstance(cond, Unique):
+        total: Any = table.count()
+        distinct: Any = table.select(*cond.cols).distinct().count()
+        return int(total.execute()) - int(distinct.execute())
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -260,7 +430,7 @@ class ContractedTransform:
                         if n := violations(table, c):
                             raise PreconditionError(f"{n} row(s) of {param} violate {label(c)}")
         key = tuple((p, inputs[p].get_name(), inputs[p].schema()) for p in self.requires) + (
-            ibis.to_sql(result, dialect="duckdb"),
+            to_sql(result),
         )
         if key not in self._cache:
             self._cache[key] = verify(

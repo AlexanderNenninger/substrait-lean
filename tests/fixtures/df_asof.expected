@@ -1,0 +1,20 @@
+Emit [7, 8, 9, 10, 11]
+  Project +[$0, $1, $2, $4, $5]
+    Filter ($6 = 0)
+      Emit [7, 8, 9, 10, 11, 12, 13]
+        Project +[$0, $1, $2, $3, $4, $5, ($6 - 1)]
+          Emit [7, 8, 9, 10, 11, 12, 6]
+            Project +[$0, $1, $2, $3, $4, $5]
+              Window +[ROW_NUMBER()] PARTITION BY [$0, $1] ORDER BY [$4 DESC]
+                Emit [6, 7, 8, 9, 10, 11]
+                  Project +[$0, $1, $2, $3, $4, $5]
+                    LeftJoin ((($0 = $3) AND NOT(($1 < $4))) AND NOT(($4 < ($1 - 10000))))
+                      Read acc
+                      Read gyr
+tables: gyr(3), acc(3)
+arity: 5
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

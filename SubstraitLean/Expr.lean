@@ -1,4 +1,5 @@
 import SubstraitLean.Value
+import SubstraitLean.Float
 
 /-!
 # Scalar expressions
@@ -12,16 +13,26 @@ Models a fragment of Substrait's `Expression` message:
 
 Boolean connectives use SQL three-valued logic (Kleene logic), which is what
 the Substrait standard extensions (`functions_boolean.yaml`) specify.
+
+Doubles are integer *codes* (see `SubstraitLean/Float.lean`), so they share
+`Value.int` and the integer comparisons. Float arithmetic has its own
+operators (`fadd`, …), computed with native floats.
 -/
 
 namespace Substrait
 
 inductive UnFn where
   | not | isNull | neg
+  /-- Integer to double (`CAST(x AS DOUBLE)`). -/
+  | itof
+  /-- Negation of a double. -/
+  | fneg
   deriving Repr, DecidableEq
 
 inductive BinFn where
   | add | sub | mul | eq | lt | and | or
+  /-- Double arithmetic, rounded like IEEE 754. -/
+  | fadd | fsub | fmul | fdiv
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -37,6 +48,8 @@ def UnFn.apply : UnFn → Value → Value
   | .isNull, .null => .bool true
   | .isNull, _ => .bool false
   | .neg, .int i => .int (-i)
+  | .itof, .int i => .int (FloatCode.ofInt i)
+  | .fneg, .int k => .int (FloatCode.neg k)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -65,6 +78,10 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
   | .lt, .int a, .int b => .bool (decide (a < b))
+  | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
+  | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
+  | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
+  | .fdiv, .int a, .int b => .int (FloatCode.lift₂ (· / ·) a b)
   | _, _, _ => .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules

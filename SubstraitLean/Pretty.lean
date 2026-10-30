@@ -7,18 +7,19 @@ namespace Substrait
 def Value.render : Value → String
   | .null => "NULL"
   | .bool b => toString b
-  | .int i => toString i
+  -- Too large for a 64-bit integer: a double's code (SubstraitLean/Float.lean).
+  | .int i => if i.natAbs ≥ 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
   | .str s => s.quote
 
 def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"
 
 def UnFn.render : UnFn → String
-  | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-"
+  | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
-  | .and => "AND" | .or => "OR"
+  | .and => "AND" | .or => "OR" | .fadd => "+." | .fsub => "-." | .fmul => "*." | .fdiv => "/."
 
 def Expr.render : Expr → String
   | .lit v => v.render
@@ -26,6 +27,11 @@ def Expr.render : Expr → String
   | .un f a => s!"{f.render}({a.render})"
   | .bin f a b => s!"({a.render} {f.render} {b.render})"
   | .ifThen c t e => s!"IF {c.render} THEN {t.render} ELSE {e.render}"
+
+def WinFn.render : WinFn → String
+  | .rowNumber => "ROW_NUMBER()"
+  | .lag c k d => s!"LAG(${c}, {k}, {d.render})"
+  | .lead c k d => s!"LEAD(${c}, {k}, {d.render})"
 
 def Rel.renderLines : Rel → List String
   | .read t => [s!"Read {t}"]
@@ -40,6 +46,11 @@ def Rel.renderLines : Rel → List String
   | .fetch r off cnt =>
       s!"Fetch offset={off} count={(cnt.map toString).getD "all"}" :: indent r.renderLines
   | .unionAll a b => "UnionAll" :: indent a.renderLines ++ indent b.renderLines
+  | .window r part sort fns =>
+      let key (k : SortKey) :=
+        s!"${k.col}{if k.desc then " DESC" else ""}{if k.nullsFirst then " NULLS FIRST" else ""}"
+      s!"Window +[{", ".intercalate (fns.map WinFn.render)}] PARTITION BY {part.map (s!"${·}")} ORDER BY {sort.map key}"
+        :: indent r.renderLines
 where
   indent (ls : List String) : List String := ls.map ("  " ++ ·)
 

@@ -9,24 +9,29 @@ newer than…") is fast, but it tends to go wrong silently: deletes are missed,
 late rows are skipped, a join gets a new match.
 
 This project gives you a third option. You write the query once, in Ibis or SQL,
-and `sverify` maintains the result in DuckDB from the inserts and deletes alone.
+and `sverify` maintains the result in DataFusion from the inserts and deletes alone.
 The update logic comes from a delta plan that is **mathematically proven to give
 the same result as a full recompute**. The proof is in [Lean](https://lean-lang.org),
 a proof assistant: a program that checks every step of a proof, so you don't
 have to take the math on trust.
 
 ```python
-view = sv.IncrementalView.from_ibis(con, big_orders, "big_orders")
+view = sv.IncrementalView(con, big_orders, "big_orders")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 30)])})
 # `big_orders` now equals what a full recompute would give, with no recompute.
 ```
 
 Underneath, queries travel as [Substrait](https://substrait.io), an open,
-engine-neutral format for query plans. DuckDB writes your query as a Substrait plan, Lean
-checks it and computes the proven update plan, and DuckDB runs that plan.
+engine-neutral format for query plans. [DataFusion](https://datafusion.apache.org)
+writes your query as a Substrait plan, Lean checks it and computes the proven
+update plan, and DataFusion runs that plan.
 
 **New to formal verification?** The [marimo notebook](notebooks/intro.py) is an
-interactive introduction with live examples (see [Setup](#setup) for how to open it).
+interactive introduction with live examples. [notebooks/fitness.py](notebooks/fitness.py)
+is one realistic pipeline end to end: heart-rate samples joined with workouts,
+a decorator contract with proved and refused postconditions, and an
+incrementally maintained view you can stream samples into (see [Setup](#setup)
+for how to open them).
 
 ## Setup
 
@@ -48,16 +53,14 @@ the project root:
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
-cd python && uv sync             # DuckDB 1.2.2, Ibis, pyarrow, pytest, hypothesis
+cd python && uv sync             # DataFusion 51, Ibis, pyarrow, substrait, pytest, hypothesis
 ```
 ```bash
-uv run pytest                    # should end with "20 passed"
+uv run pytest                    # should end with "31 passed"
 ```
 
 `lake build` has to come first, because the Python package calls the
-`substrait-check` binary it produces. The first time you connect, DuckDB
-downloads its Substrait extension, so that step needs network access. After
-that it is cached in `~/.duckdb`.
+`substrait-check` binary it produces.
 
 To run your own scripts with the package available, from the project root:
 
@@ -81,15 +84,18 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe fmt` | Fixes lint issues and formats the Python code |
 | `poe typecheck` | Type-checks the Python code with pyrefly |
 | `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
-| `poe test` | Python tests, including the randomized DuckDB tests |
+| `poe test` | Python tests, including the randomized engine tests |
 
 From the project root, use `uv run --project python poe -C python qa`. The Lean
 tasks need `lake` on your PATH.
 
-### The notebook
+### The notebooks
 
 ```bash
 uvx marimo run --sandbox notebooks/intro.py      # read-only app view
+```
+```bash
+uvx marimo run --sandbox notebooks/fitness.py    # the fitness pipeline
 ```
 ```bash
 uv run --project python --with marimo marimo edit notebooks/intro.py   # edit it
@@ -106,8 +112,8 @@ is enough for the introduction.
 * **`no configuration file …lakefile`**: run `lake` from the project root, where `lakefile.toml` is.
 * **`… does not exist`** for a notebook or `--project` path: those paths are relative to the
   project root, not to `python/`.
-* **Why DuckDB 1.2.2?** DuckDB's Substrait extension is only published for 1.2.x,
-  not for 1.3 or 2.x.
+* **Why DataFusion 51?** Ibis 12's DataFusion backend fails to connect with
+  DataFusion 52 and later (a changed user-defined-function API).
 
 ## Examples
 
@@ -117,21 +123,20 @@ is enough for the introduction.
 import ibis
 import sverify as sv
 
-con = sv.connect()  # DuckDB with the Substrait extension loaded
-con.sql("create table orders(id bigint, customer varchar, amount bigint)")
-con.sql("create table customers(name varchar, city varchar)")
-con.sql("insert into orders values (1, 'ada', 30), (2, 'bob', 5)")
-con.sql("insert into customers values ('ada', 'Paris')")
+con = sv.connect()  # an Ibis DataFusion backend
+sv.create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+                [(1, "ada", 30), (2, "bob", 5)])
+sv.create_table(con, "customers", ibis.schema({"name": "string", "city": "string"}),
+                [("ada", "Paris")])
 
-db = ibis.duckdb.from_connection(con)
-orders, customers = db.table("orders"), db.table("customers")
+orders, customers = con.table("orders"), con.table("customers")
 big_orders = (
     orders.filter(orders.amount > 10)
     .join(customers, orders.customer == customers.name)
     .select(orders.id, customers.city, orders.amount)
 )
 
-view = sv.IncrementalView.from_ibis(con, big_orders, "big_orders")
+view = sv.IncrementalView(con, big_orders, "big_orders")
 view.rows()                      # [(1, 'Paris', 30)]
 
 # Changes to both tables at once: order 1 leaves, order 3 arrives,
@@ -148,37 +153,28 @@ view.apply({"orders": sv.Changes(deletes=[(3, "bob", 50)], inserts=[(3, "bob", 7
 view.rows()                      # [(3, 'Rome', 70)]
 ```
 
-`apply` also updates the base tables, and the whole step runs in one
-transaction: if anything fails, for example deleting a row that doesn't exist,
-nothing changes. The result is an ordinary DuckDB table, with a `__count`
-column for duplicate rows:
-
-```python
-con.sql("select * from big_orders").show()
-# ┌───────┬─────────┬────────┬─────────┐
-# │  id   │  city   │ amount │ __count │
-# ├───────┼─────────┼────────┼─────────┤
-# │     3 │ Rome    │     70 │       1 │
-# └───────┴─────────┴────────┴─────────┘
-```
+`apply` also updates the base tables. A batch is computed completely before
+anything is replaced: if anything fails, for example deleting a row that doesn't
+exist, nothing changes. The view is also a table you can query:
+`con.table("big_orders")`.
 
 Plain SQL works too: `sv.IncrementalView(con, "select ... from ...", "name")`.
-Both routes reach DuckDB as SQL: `from_ibis` compiles the expression with
-`ibis.to_sql`. More example pipelines, with unbound tables you can reuse on any
-connection, are in [`sverify/examples.py`](python/src/sverify/examples.py).
+More example pipelines, with unbound tables you can reuse on any connection, are
+in [`sverify/examples.py`](python/src/sverify/examples.py).
 
 ### What is supported, and what is refused
 
 Supported: filters, computed columns, inner joins (including self-joins), cross
 joins and `UNION ALL`. Anything outside that is refused up front instead of
-being maintained incorrectly:
+being maintained incorrectly (window functions can be verified with contracts,
+but not maintained incrementally yet):
 
 ```python
-sv.IncrementalView.from_ibis(con, orders.limit(5), "top5")
-# NotIncremental: not incrementally maintainable (left join or fetch)
+sv.IncrementalView(con, orders.limit(5), "top5")
+# NotIncremental: not incrementally maintainable (left join, fetch or window)
 
 totals = orders.group_by("customer").aggregate(total=orders.amount.sum())
-sv.IncrementalView.from_ibis(con, totals, "totals")
+sv.IncrementalView(con, totals, "totals")
 # ValueError: ... unsupported relation: {"aggregate": ...
 ```
 
@@ -241,8 +237,78 @@ plus_one(orders)
   also understands arithmetic (multiplication by constants), comparisons, `AND`/`OR`/`NOT`
   with SQL NULL semantics, `CASE`, joins and `UNION ALL`. Column schemas count too:
   a non-nullable column (`!int64`) is never NULL.
-* **Not tracked yet:** relations between two columns (`a < b`), string contents, and
-  facts that only hold across rows (uniqueness, counts).
+* **Relations and excluded values:** join and filter conditions such as
+  `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become facts
+  about the row. Joining on `a.ts = b.ts` makes both sides non-NULL. Postconditions
+  such as `t1 - t0 == 60`, `t1 > t0` or `value != -9999` follow from those facts.
+  So a windowed IoT training set (sensors joined on time, error values dropped,
+  consecutive timesteps joined) is proved complete, error-free and consecutive. See
+  `test_iot_windows_are_proved_complete_and_consecutive` in `python/tests/test_contracts.py`.
+* **Keys:** `sv.unique("ts")` in `requires` says the producer sends at most one
+  row per `ts` (checked on the data when bound). In `ensures` it is proved, since
+  keys survive filters, projections and joins whose condition pins down the other
+  side's key (`a.ts = b.ts`, `w1.ts = w0.ts + 60`).
+* **Window functions:** `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY …`
+  (any directions, NULLs first or last, offsets and defaults). Lean knows that
+  `LAG(ts)` comes from an earlier row of the same partition, that a lagged
+  partition column equals the row's own, and that `ROW_NUMBER()` is positive
+  (Ibis numbers from 0). With a key on the partition and the (single) order
+  column, earlier means strictly earlier: `prev_ts < ts`, and a computed
+  `gap = ts - prev_ts` is positive. Guard the first row's NULL with `isnull() | …`:
+
+  ```python
+  @sv.transform(
+      requires={"readings": [sv.unique("sensor", "ts"), _.sensor.notnull(), _.ts.notnull()]},
+      ensures=[_.prev_ts.isnull() | (_.prev_ts < _.ts), _.rn >= 0],
+  )
+  def with_previous(readings):
+      w = ibis.window(group_by=readings.sensor, order_by=readings.ts)
+      return readings.select("sensor", "ts", prev_ts=readings.ts.lag().over(w),
+                             rn=ibis.row_number().over(w))
+  ```
+
+  **Ties are refused.** If two rows of a partition can have the same `ORDER BY`
+  values, DataFusion decides which comes first, and `LAG` depends on that.
+  Unless `requires` gives a key on (a subset of) the partition and order columns,
+  every postcondition is reported as `undetermined` and `report.deterministic` is
+  `False`. `window_tiebreak` proves that with such a key, every way of breaking
+  ties gives the same rows.
+* **ASOF joins** align sensors with different sampling rates. `sv.asof_join` matches
+  each left row with the latest right row of the same `by` values at or before
+  it, at most `tolerance` earlier. DataFusion has no ASOF join (and Ibis's
+  `asof_join` compiles to DuckDB syntax), so it is built from a range join and
+  `ROW_NUMBER`, which Lean checks like any other plan:
+
+  ```python
+  # Accelerometer at 100 Hz, gyroscope at 130 Hz.
+  @sv.transform(
+      requires={"acc": [sv.unique("device", "ts"), _.device.notnull(), _.ts.notnull()],
+                "gyr": [sv.unique("device", "ts")]},
+      ensures=[sv.unique("device", "ts"),                       # one row per acc sample
+               _.ts_right.isnull() | (_.ts_right <= _.ts),       # never from the future
+               _.ts_right.isnull() | (_.ts_right >= _.ts - ibis.interval(milliseconds=10))],
+  )
+  def aligned(acc, gyr):
+      return sv.asof_join(acc, gyr, on="ts", by="device",
+                          tolerance=ibis.interval(milliseconds=10))
+  ```
+
+  All three are proved, for `how="left"` (the default, keeping unmatched rows
+  with NULLs) and `how="inner"`. The right side needs a key on `(by, on)`:
+  otherwise two gyroscope readings at the same instant tie, and the result is
+  `undetermined`. (`sverify` lifts Ibis's refusal of sub-second interval literals
+  for DataFusion, which supports them.)
+* **Doubles, timestamps, dates:** comparisons with constants are exact, including
+  sentinels like `-9999.0`, `isnan()`, `INTERVAL '60' SECOND` and ranges like `v > 0.5`.
+  Double arithmetic (`v * 2.5`) is only known to give "some double", because rounding
+  isn't modelled. Comparisons follow DataFusion's total order: NaN equals itself
+  and sorts above every number (so `v > 0` keeps NaN rows), and −0.0 < +0.0.
+* **Not tracked yet:** relations that need more than "column plus constant"
+  (`a < 2 * b`), string contents, DECIMAL columns, and counts across rows.
+  Strict window order needs a single `ORDER BY` column (with several, rows
+  are only ordered lexicographically).
+
+  [notebooks/fitness.py](notebooks/fitness.py) walks through a complete example.
 
 ### Checking a query plan
 
@@ -275,13 +341,12 @@ Substrait works.
 
 * **Proofs**: `lake build` re-checks every theorem. The main ones say that the
   update plan computes exactly the change to the result, and that running it on
-  DuckDB with the weight-column encoding gives that result. See
+  DataFusion with the weight-column encoding gives that result. See
   [Proven theorems](#proven-theorems).
 * **Randomized testing**: `uv run pytest` generates random tables and random batches of
   inserts and deletes, including NULLs and duplicates. After every batch it
   checks that the maintained result equals a full recompute. This covers the parts
-  the proofs don't: the JSON translation, the Python glue and DuckDB itself.
-  These tests already caught a real DuckDB bug (see below).
+  the proofs don't: the JSON translation, the Python glue and the engine itself.
 
 ## The formal side
 
@@ -297,7 +362,7 @@ There are no dependencies beyond Lean core (no Mathlib yet), so the build takes 
 ## Checking real plans
 
 `substrait-check plan.json` reads a Substrait plan in protobuf-JSON form, as
-produced by DuckDB's `get_substrait_json`, Isthmus or substrait-python. It then:
+produced by DataFusion's Substrait producer (Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
 2. decides `Rel.WF` with `checkWF`, which is proven equivalent (`checkWF_iff`), and
@@ -335,44 +400,42 @@ The parser ([Parse.lean](SubstraitLean/Parse.lean)) and writer
 ([Write.lean](SubstraitLean/Write.lean)) are **trusted, unverified code**. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
-`duckdb_*.json` fixtures are real plans: the Ibis pipelines in
-`sverify/examples.py`, compiled by Ibis and DuckDB
+`df_*.json` fixtures are real plans: the Ibis pipelines in
+`sverify/examples.py`, compiled by Ibis and DataFusion
 (`python/scripts/capture_fixtures.py`). The others are hand-written.
 
 ## Incremental views in Python
 
-`python/` holds `sverify`, which maintains DuckDB query results incrementally
-using delta plans from Lean:
+`python/` holds `sverify`, which maintains query results incrementally on
+DataFusion, using delta plans from Lean:
 
 ```python
 import sverify as sv
+from sverify.examples import PIPELINES, create_tables
 
-con = sv.connect()          # DuckDB with the substrait extension loaded
-...                         # create and fill `orders`, `customers`
-from sverify.examples import PIPELINES
-
-view = sv.IncrementalView.from_ibis(con, PIPELINES["inner_join"], "v")
+con = sv.connect()          # an Ibis DataFusion backend
+create_tables(con, orders_rows=[(1, "ada", 30)], customers_rows=[("ada", "Paris")])
+view = sv.IncrementalView(con, PIPELINES["inner_join"], "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
             "customers": sv.Changes(inserts=[("bob", "Rome")])})
 assert view.rows() == view.recompute()
 ```
 
-`IncrementalView(con, sql, name)` takes a SQL string instead. Both go through
-DuckDB's own Substrait producer; for Ibis, `ibis.to_sql` writes the SQL.
+The query can be an Ibis expression or a SQL string.
 
 How it works:
 
-1. DuckDB compiles the SQL to Substrait, with the optimizer disabled (with it
-   on, DuckDB uses table statistics and drops a `WHERE` on an empty table, so
-   the plan would only be valid for the data at capture time).
+1. Ibis writes the query as DataFusion SQL, and DataFusion's Substrait producer
+   turns it into a plan.
 2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
    union-free terms (`Rel.terms`) and applies the weight-column encoding
    (`Rel.weighted`). It prints one Substrait plan per term, after checking each
-   one is incremental and well-formed.
-3. For each change batch, `sverify` loads the change tables `t$delta` (rows plus
-   `__weight` = ±1), runs every term with `from_substrait_json`, concatenates the
-   outputs, consolidates them (`GROUP BY … SUM(__weight)`), and merges the
-   result into the stored view (rows plus a `__count` multiplicity).
+   one is incremental and well-formed. The plans are union-free because
+   DataFusion's Substrait consumer loses table qualifiers at a `UNION ALL`,
+   and the duplicate column names then break a later join.
+3. For each change batch, `sverify` registers the change tables `t$delta` (rows
+   plus `__weight` = ±1), runs every term with DataFusion's Substrait consumer,
+   sums the weights per row, and merges the result into the view.
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
@@ -381,15 +444,17 @@ filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
 and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
 
-**Engine findings.** The substrait extension is only published for DuckDB
-1.2.x, so `duckdb==1.2.2` is pinned. Its consumer also runs `SET_OP_UNION_ALL` as
-`UNION DISTINCT`, which loses duplicate rows. The differential test caught this,
-and it's the reason delta plans are split into union-free terms.
+**Engine notes.** DataFusion 51 is pinned: Ibis 12's DataFusion backend can't
+connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
+`sverify` registers Arrow tables directly (`sv.create_table`). They are
+registered as record batches, not datasets: DataFusion pushes filters into
+datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
+total order, which would make filters and projections disagree on NaN.
 
 **Trusted components** (not covered by the proofs): the JSON parser and
-writer, the `sverify` glue (change tables, consolidation, merge), and DuckDB's
-execution of Substrait. These are covered by golden tests, round trips and the
-differential test instead.
+writer, the `sverify` glue (change tables, consolidation, merge), and
+DataFusion's execution of Substrait. These are covered by golden tests, round
+trips and the differential test instead.
 
 ## What's here
 
@@ -397,10 +462,11 @@ differential test instead.
 |---|---|
 | `SubstraitLean/Value.lean` | Nullable values, rows, bag-semantics relations |
 | `SubstraitLean/Expr.lean` | `Literal`, `FieldReference`, scalar functions, `IfThen`, Kleene 3-valued logic |
-| `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left), `Fetch`, `UnionAll`; arity, well-formedness, `eval`; **type soundness** |
+| `SubstraitLean/Window.lean` | Sort orders, `ROW_NUMBER`/`LAG`/`LEAD` semantics over partitions |
+| `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left), `Fetch`, `UnionAll`, `Window`; arity, well-formedness, `eval`; **type soundness** |
 | `SubstraitLean/Rewrites.lean` | Verified rewrites (below) |
 | `SubstraitLean/Incremental.lean` | Z-set semantics, delta rules, delta plans (incremental view maintenance) |
-| `SubstraitLean/Terms.lean` | Splitting a plan into union-free terms |
+| `SubstraitLean/Terms.lean` | Splitting a plan into union-free terms (for DataFusion's consumer) |
 | `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
 | `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
@@ -409,7 +475,7 @@ differential test instead.
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
-| `python/` | `sverify`: incremental views on DuckDB, differential tests |
+| `python/` | `sverify`: contracts and incremental views on DataFusion, differential tests |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
 ### Proven theorems
@@ -435,6 +501,34 @@ interval, possible booleans, and whether it can be a string.
   three-valued `AND`/`OR`, NULL-propagating arithmetic and comparisons.
 * `Expr.refine_sound`: a row that passes a filter satisfies what the condition
   says about its columns.
+* `Expr.factsOf_sound`, `Rel.facts_sound`: relational facts (`x − y ∈ [lo, hi]`,
+  `x ≠ k`) taken from filter and join conditions hold on every output row. They
+  survive projections, emits, joins, NULL padding and unions.
+* `Expr.absD_sound`: evaluating expressions with those facts (sharpening
+  `x − y`, `x < y`, `x = y` and `x = k`) is sound.
+* `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
+  output rows agree on them.
+* Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
+  columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
+  integer column can stand in for it in a key; a filter `$i = k` drops `i` from
+  keys; join keys drop right-key columns the condition ties to the left side
+  (`a.device = b.device`), for inner and left joins.
+* `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](SubstraitLean/Keys.lean)):
+  when a window's partition and sort columns contain a key of its input, every
+  arrangement of the input sorted by the window's keys gives the same rows as
+  `Rel.eval`. So the proofs describe what DataFusion computes, however it breaks ties.
+* `orderFact_sound`, `winFacts_sound`, `WinFn.abs_sound`: what is known about
+  `LAG`/`LEAD`/`ROW_NUMBER` columns holds. Strict order uses an oracle saying
+  which windows have a key (`WindowKeys`); `Rel.keyedWindows_sound` proves the
+  one computed from `Rel.keys` right, which is what `contract_sound` asks for.
+* `IoT.window_complete` ([Completeness.lean](SubstraitLean/Completeness.lean)): the
+  converse of the contracts. If both sensors have valid readings at `t` and `t + 60`,
+  the window at `t` is in the output, so no window is lost. It's built from one
+  membership lemma per operator.
+
+Doubles are modelled as exact integer codes (each double is a multiple of 2⁻¹⁰⁷⁴),
+timestamps as microseconds; see [Float.lean](SubstraitLean/Float.lean). The conversions
+between codes and native floats are trusted code.
 * `Rel.aeval_sound`: every row a well-formed plan produces is described by `Rel.aeval`.
 * `Rel.colExprs_eval`: a precondition plan (`orders.select(cond, ...)`) computes its
   conditions row by row, so "all its columns are TRUE" is the precondition.
@@ -482,6 +576,9 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   `RelCommon.emit`. Here `Emit` is its own node rather than a field on every rel.
 * **Bags as lists.** `Rel.eval` returns a `List`, and plan equivalence is `List.Perm`.
   Several rewrites are stronger than that and hold as exact list equality.
+* **Windows sort stably.** `Rel.eval` sorts a window's input with a stable merge
+  sort, so ties keep input order. The checker only claims results for windows
+  without ties (see `window_tiebreak`).
 * **Fetch is order-dependent.** Without a `SortRel`, real engines may return any
   rows. The semantics fixes list order, so `fetch` theorems describe one valid behavior.
 * **Ill-typed calls evaluate to `null`.** This keeps `eval` total. `Rel.WF` rules out
@@ -521,19 +618,22 @@ No existing formal semantics for Substrait came up in my search. The closest wor
 
 ## Possible next steps
 
-0. **Non-linear operators.** Aggregates (SUM/COUNT per group are linear over
-   Z-sets), DISTINCT and left join. DuckDB's real plans use `AggregateRel` a lot.
-1. **More producers.** Capture plans from Isthmus or DataFusion, and consider
-   DataFusion as a second consumer, since DuckDB's Substrait support is stuck on 1.2.
+0. **Completeness for ASOF and windows.** Contracts say what every output row
+   satisfies; the converse ("every accelerometer sample with a gyroscope sample
+   within 10 ms is matched") is a Lean theorem per plan today
+   (`IoT.window_complete`), not something the checker reports. Still missing for
+   windows: framed aggregates (`AVG(v) OVER (ROWS 5 PRECEDING)`) and
+   incremental maintenance.
+1. **Non-linear operators.** Aggregates (SUM/COUNT per group are linear over
+   Z-sets), DISTINCT and left join. Real plans use `AggregateRel` a lot.
 2. **Translation validation.** Given a plan and its optimized form, have Lean
    check that they are equivalent. A decision procedure for the conjunctive
    fragment would mirror Cosette and HoTTSQL.
-3. **AggregateRel and SortRel.** Grouping semantics would follow Benzaken and
-   Contejean. A sort would make `fetch` deterministic.
-4. **Real types.** Add a typing judgement over Substrait types (i32/i64 overflow,
+3. **Real types.** Add a typing judgement over Substrait types (integer overflow,
    decimals, nullability) and prove `eval` respects it.
-5. **Mathlib `Multiset` or K-relations.** Move bag equivalence to quotients, or
+4. **Mathlib `Multiset` or K-relations.** Move bag equivalence to quotients, or
    generalize to semiring-annotated relations as HoTTSQL and provenance do.
-6. **Compare the Lean evaluator with engines.** The current differential test
-   compares incremental and full evaluation, both on DuckDB. Comparing Lean's
-   `eval` with DuckDB on generated data would check the semantics itself.
+5. **Compare the Lean evaluator with the engine.** The differential tests
+   compare incremental and full evaluation, both on DataFusion. For windows and
+   ASOF joins, `sverify.testing` already runs Lean's `eval` against DataFusion on
+   generated tables; the other operators could get the same.

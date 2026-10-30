@@ -1,27 +1,35 @@
-"""Verified Substrait plans: incremental view maintenance with Lean-checked delta plans."""
+"""Verified Substrait plans on DataFusion: contracts and incremental views, checked in Lean."""
 
+from sverify.asof import asof_join
 from sverify.contracts import (
     PostconditionError,
     PreconditionError,
     Report,
+    Unique,
     VerificationError,
     transform,
+    unique,
     verify,
 )
-from sverify.duck import connect, run_substrait_json, substrait_json
+from sverify.engine import connect, create_table, run_substrait_json, substrait_json, table_rows
 from sverify.incremental import Changes, IncrementalView, NotIncremental, delta_plans
 
 __all__ = [
+    "asof_join",
     "PostconditionError",
     "PreconditionError",
     "Report",
+    "Unique",
     "VerificationError",
     "transform",
+    "unique",
     "verify",
     "Changes",
     "IncrementalView",
     "NotIncremental",
     "connect",
+    "create_table",
+    "table_rows",
     "delta_plans",
     "run_substrait_json",
     "substrait_json",

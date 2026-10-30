@@ -1,0 +1,269 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "6dfc3486f564e6336d4ddc3117833f80"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "1d0db38904205bec4d6f6f6a1f6cec3e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "713cd6b5193bda8f811464aac72af55c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"a-verified-fitness-pipeline\">A verified fitness pipeline</h1>\n<span class=\"paragraph\">A watch streams heart-rate samples, and users log workouts in an app. For\ntraining a model we want <strong>the heart rate during each workout</strong>, with\nsensor glitches removed. The pipeline is a few lines of Ibis; the\ninteresting part is the <em>contract</em> on it:</span>\n<ul>\n<li><strong>requires</strong>: what we assume about the inputs (at most one sample per\n  user and timestamp; every workout has a start and an end);</li>\n<li><strong>ensures</strong>: what the output must satisfy (plausible heart rates, no\n  NaN, every sample inside its workout, one row per user and timestamp).</li>\n</ul>\n<span class=\"paragraph\">Lean checks every <code>ensures</code> against the pipeline's Substrait plan <em>before\nany data runs</em>. A \u2705 is a proof for <strong>all</strong> possible inputs that satisfy\n<code>requires</code>, not a test on the rows below. Then the same pipeline runs as\nan incrementally maintained view whose update rules are proved correct\ntoo.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "b553a633cedfa49fb77e3540d4a5a990",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-data\">1. The data</h2>\n<span class=\"paragraph\">Real sensor data is messy: <code>-1</code> means the sensor lost contact, and the\noccasional <code>NaN</code> slips through. User 2's 09:00 sample is outside any\nworkout.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "e87dcf61cf9c0ed1a0a6d3d2a32b2f41",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "ce6a0db56a9d2133f32396f35b1b2d7d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>heart_rate</strong></span></span><marimo-ui-element object-id='lEQa-0' random-id='1cae2831-6543-5d5b-885e-6049d555f829'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:00:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:72.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:05:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:131.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:10:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:-1.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:05:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:&#92;&quot;NaN&#92;&quot;},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:10:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:155.0},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 09:00:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:64.0}]&quot;' data-total-rows='7' data-total-columns='3' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>workouts</strong></span></span><marimo-ui-element object-id='lEQa-1' random-id='2ca56931-a007-70ae-efcb-7edd920d051b'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;start&#92;&quot;:&#92;&quot;2024-05-01 07:00:00&#92;&quot;,&#92;&quot;end&#92;&quot;:&#92;&quot;2024-05-01 07:30:00&#92;&quot;},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;kind&#92;&quot;:&#92;&quot;bike&#92;&quot;,&#92;&quot;start&#92;&quot;:&#92;&quot;2024-05-01 07:00:00&#92;&quot;,&#92;&quot;end&#92;&quot;:&#92;&quot;2024-05-01 08:00:00&#92;&quot;}]&quot;' data-total-rows='2' data-total-columns='4' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "4b88c8a76203dd3a5907db4fd2755bb8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-pipeline-and-its-contract\">2. The pipeline and its contract</h2>\n<span class=\"paragraph\">The decorator states the contract; the function body is ordinary Ibis.\nConditions are Ibis expressions over the output columns (<code>_.bpm</code>), and\n<code>sv.unique(...)</code> says the listed columns form a key.</span>\n<span class=\"paragraph\"><code>on_unproved=\"warn\"</code> lets the call go through with a warning when Lean\ncan't prove something; the default, <code>\"error\"</code>, refuses the pipeline, and\n<code>\"runtime\"</code> checks the unproved conditions on the actual output instead.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "3ff1bbcff7c341bf916c32e3ed6fd96c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "7b48ed26a3668502bc7fdcc1ccb5f245",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "af7733a5a1a566d1a915b56196b34ae1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.bpm &gt;= 30)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.bpm &lt;= 230)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>~_.bpm.isnan()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.ts &gt;= _.start)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.ts &lt; _.end)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(user_id, ts)</code></td>\n<td>\u274c not shown to be a key</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>user_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>kind</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>bpm</code></td>\n<td>a double \u2265 30.0 and \u2264 230.0</td>\n</tr>\n<tr>\n<td><code>start</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>end</code></td>\n<td>any timestamp</td>\n</tr>\n</tbody>\n</table></span><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003eWarning:&#92;u003c/strong&#92;u003e The &#x27;future.infer_string&#x27; option is deprecated and will be removed in pandas 4.0. Inferring str dtype for string data has been the default since pandas 3.0, and it will no longer be possible to disable it.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;warn&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "144903a2f6cda52f660a9d3ae1338e8c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"reading-the-verdicts\">Reading the verdicts</h3>\n<ul>\n<li><strong><code>bpm &gt;= 30</code>, <code>bpm &lt;= 230</code></strong>: the filter keeps only those rows, and\n  Lean tracks the interval of every column through the plan.</li>\n<li><strong><code>~bpm.isnan()</code></strong>: subtle! There is no NaN check in the pipeline. But\n  DataFusion orders floats <em>totally</em>, with NaN above every number, so\n  <code>NaN &lt;= 230</code> is false and the filter already removes NaN. Lean models\n  DataFusion's floats exactly, so it knows this. Careful: unlike in\n  Python, <code>NaN &gt;= 30</code> is TRUE in DataFusion, so a lower bound alone would\n  let NaN through. Try it in section 3.</li>\n<li><strong><code>ts &gt;= start</code>, <code>ts &lt; end</code></strong>: the join condition holds for every\n  joined row, and <code>requires</code> says <code>start</code> and <code>end</code> are never NULL, so\n  the comparisons are TRUE rather than NULL.</li>\n<li><strong><code>unique(user_id, ts)</code>: refused, and rightly so.</strong> Each sample is unique\n  in <code>heart_rate</code>, but nothing stops a user from logging two <em>overlapping</em>\n  workouts; a sample inside both would appear twice. Lean finds no proof\n  because there is none. Section 4 makes the counterexample real.</li>\n</ul>\n<span class=\"paragraph\">The <strong>known values</strong> table is everything Lean derived about the output,\nwhether or not you asked: it is a free, proved data dictionary.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "95704322f8c69fc7b8cf219d4ac1b5fb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"3-break-the-pipeline-watch-the-proof-go\">3. Break the pipeline, watch the proof go</h2>\n<span class=\"paragraph\">Change the filter and the postconditions below are re-proved on the fly.\nLower bounds under 30 lose <code>bpm &gt;= 30</code>; drop the upper bound and NaN\ngets through, so <code>~bpm.isnan()</code> fails as well.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "6059aa0dd6e78ee15179de7234bfa173",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='emfo-0' random-id='0373db7c-ea33-212a-058f-71fa89ecf368'><marimo-slider data-initial-value='30' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep samples with bpm \u2265&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='60' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='emfo-1' random-id='faefcf04-cf6b-208e-caaf-0a44c6c3cd3a'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ealso require bpm \u2264 230&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "22391b3bd6405dcc156e4e400a862312",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.bpm &gt;= 30)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.bpm &lt;= 230)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>~_.bpm.isnan()</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>user_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>kind</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>bpm</code></td>\n<td>a double \u2265 30.0 and \u2264 230.0</td>\n</tr>\n<tr>\n<td><code>start</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>end</code></td>\n<td>any timestamp</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "81317c8d9f6d0a6363cf4e87d6cfdb6d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-keep-it-up-to-date-incrementally\">4. Keep it up to date, incrementally</h2>\n<span class=\"paragraph\">New samples arrive every few seconds; recomputing the join each time is\nwasteful. <code>sv.IncrementalView</code> asks Lean for <strong>delta plans</strong>: queries\nthat compute only the <em>change</em> to the result from the changes to the\ninputs. Lean proves that old result + change = new result, for every\ndatabase and every batch of changes.</span>\n<span class=\"paragraph\">The view below starts from the result of <code>workout_heart_rate</code>. Stream in\nsamples, and log an overlapping workout to see why <code>unique(user_id, ts)</code>\nwas refused.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "5e9e560f2639d24fec3933bf009767ad",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<pre class='text-xs'>&#x27;3 delta plans, generated and proved by Lean&#x27;</pre>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "b03fea7d5ce5b7bdc143f5b2e587133a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='ZHCJ-0' random-id='070d8376-ca7d-6b62-385b-76071693e958'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eStream the next two samples&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='ZHCJ-1' random-id='9acf55da-80fb-0b64-2a74-89deac443760'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eLog an overlapping workout (user 1, stretch 07:10\u201307:20)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;warn&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "81db26ee3d20dc0a1c065040c17e2529",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "d7b624fbea851c89fd988765258ddf5e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "825aca46b32d9506f9113ea768ffd9b9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 1rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Last batch: 1 row(s) inserted into <code>workouts</code>.</span></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>maintained incrementally</strong></span></span><marimo-ui-element object-id='TqIu-0' random-id='872f01ce-95a5-7cc9-1b92-ad3265aa4b1b'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:00:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:72.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:05:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:131.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;stretch&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;stretch&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:20:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:140.0},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;kind&#92;&quot;:&#92;&quot;bike&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:10:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:155.0},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;kind&#92;&quot;:&#92;&quot;bike&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:20:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:150.0}]&quot;' data-total-rows='8' data-total-columns='4' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>recomputed from scratch</strong></span></span><marimo-ui-element object-id='TqIu-1' random-id='f9dd9ebf-5861-e20f-0582-29c729448441'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:00:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:72.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:05:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:131.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;stretch&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;stretch&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:15:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:148.0},{&#92;&quot;user_id&#92;&quot;:1,&#92;&quot;kind&#92;&quot;:&#92;&quot;run&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:20:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:140.0},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;kind&#92;&quot;:&#92;&quot;bike&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:10:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:155.0},{&#92;&quot;user_id&#92;&quot;:2,&#92;&quot;kind&#92;&quot;:&#92;&quot;bike&#92;&quot;,&#92;&quot;ts&#92;&quot;:&#92;&quot;2024-05-01 07:20:00&#92;&quot;,&#92;&quot;bpm&#92;&quot;:150.0}]&quot;' data-total-rows='8' data-total-columns='4' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eAfter 3 batch(es) the maintained view &#92;u003cstrong&#92;u003eequals&#92;u003c/strong&#92;u003e full recomputation \u2713. Glitched samples (bpm 0) never enter it: the filter is part of the delta plans.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003e&#92;u003ccode&#92;u003eunique(user_id, ts)&#92;u003c/code&#92;u003e is violated&#92;u003c/strong&#92;u003e for user 1 at 07:15: the samples fall inside both the run and the stretch. This is exactly the input Lean could not rule out.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;warn&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "9d4e70002d9b24bb03502ae9b80d3bac",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-is-trusted-what-is-proved\">What is trusted, what is proved</h2>\n<ul>\n<li><strong>Proved in Lean</strong>: the interval and NULL analysis behind every \u2705, the\n  key analysis behind <code>unique</code>, and that the delta plans compute exactly\n  the change to the view. Floats follow DataFusion's semantics bit for\n  bit, NaN and \u22120.0 included.</li>\n<li><strong>Trusted</strong>: the translation from DataFusion's Substrait JSON into the\n  Lean model, DataFusion itself, and the small amount of Python that\n  stores the view and merges changes. The intro notebook\n  (<code>notebooks/intro.py</code>) explains the formal side step by step.</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

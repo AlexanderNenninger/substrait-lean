@@ -1,0 +1,16 @@
+Emit [6, 7, 8, 9, 10]
+  Project +[$0, $1, $3, ($4 - 1), $5]
+    Emit [6, 7, 8, 9, 10, 5]
+      Project +[$0, $1, $2, $3, $4]
+        Window +[LEAD($1, 2, NULL)] PARTITION BY [] ORDER BY [$1 DESC]
+          Emit [5, 6, 7, 3, 4]
+            Project +[$0, $1, $2]
+              Window +[LAG($2, 1, NULL), ROW_NUMBER()] PARTITION BY [$0] ORDER BY [$1]
+                Read sensors
+tables: sensors(3)
+arity: 5
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

@@ -50,6 +50,16 @@ def test_null_propagates_unless_ruled_out():
     assert report.proved
 
 
+def test_equality_uses_intervals():
+    zero = orders.select(t=orders.amount * 0)
+    assert sv.verify(zero, requires={"orders": [_.amount.notnull()]}, ensures=[_.t == 0]).proved
+    big = orders.filter(orders.amount > 10).select("amount")
+    report = sv.verify(big, ensures=[_.amount != 5, _.amount == 5, _.amount == 11])
+    assert [c.proved for c in report.ensures] == [True, False, False]
+    assert report.ensures[1].value == "FALSE"  # 5 is outside [11, ∞)
+    assert report.ensures[2].value == "TRUE or FALSE"
+
+
 def test_inner_join_keeps_facts_left_join_does_not():
     inner = orders.join(customers, orders.customer == customers.name).select(
         orders.id, customers.city
@@ -81,10 +91,8 @@ def test_non_nullable_schema_is_used():
 
 def bound_orders(rows):
     con = sv.connect()
-    con.sql("create table orders(id bigint, customer varchar, amount bigint)")
-    if rows:
-        con.executemany("insert into orders values (?, ?, ?)", rows)
-    return ibis.duckdb.from_connection(con).table("orders")
+    sv.create_table(con, "orders", orders.schema(), rows)
+    return con.table("orders")
 
 
 def test_preconditions_are_checked_on_data():
@@ -109,12 +117,17 @@ CONTRACTS = [
     (
         {"orders": [_.amount >= 0, _.id.notnull()]},
         lambda o: o.filter(o.amount > 10).select(o.id, d=o.amount * 2 - 3),
-        [_.d > 15, _.d.notnull(), _.id.notnull(), _.d >= 19, _.d > 19],
+        [_.d > 15, _.d.notnull(), _.id.notnull(), _.d >= 19, _.d > 19, _.d != 0, _.d == 19],
     ),
     (
         {"orders": [_.amount <= 50]},
         lambda o: o.filter(o.amount >= -5).select(n=-o.amount, s=o.amount - 7),
         [_.n >= -50, _.n <= 5, _.s <= 43, _.s >= -12, _.n.notnull(), _.n > -50],
+    ),
+    (
+        {"orders": []},
+        lambda o: o.filter(o.amount == 7).select(z=o.amount * 0, e=o.amount),
+        [_.z == 0, _.e == 7, _.e != 8, _.e == 8, _.z != 0],
     ),
 ]
 amounts = st.one_of(st.none(), st.integers(-100, 100))
@@ -136,3 +149,99 @@ def test_proved_postconditions_hold_on_data(index, data):
     for cond, checked in zip(ensures, report.ensures, strict=True):
         if checked.proved:
             assert violations(result, cond) == 0, checked.label
+
+
+# IoT: per-sensor cleaning, a wide join on time, and a two-step window.
+ERR, STEP = -9999, 60
+sensor1 = ibis.table({"ts": "int64", "value": "int64"}, name="sensor1")
+sensor2 = ibis.table({"ts": "int64", "value": "int64"}, name="sensor2")
+
+
+def iot_windows(s1, s2):
+    a = s1.filter((s1.value != ERR) & s1.value.notnull())
+    b = s2.filter((s2.value != ERR) & s2.value.notnull())
+    wide = a.join(b, a.ts == b.ts).select(ts=a.ts, s1=a.value, s2=b.value)
+    w0, w1 = wide.view(), wide.view()
+    return w0.join(w1, w1.ts == w0.ts + STEP).select(
+        t0=w0.ts, t1=w1.ts, a0=w0.s1, a1=w1.s1, b0=w0.s2, b1=w1.s2
+    )
+
+
+IOT_ENSURES = [
+    _.t1 - _.t0 == STEP,
+    _.t1 > _.t0,
+    _.t0.notnull(),
+    _.a0 != ERR,
+    _.a1 != ERR,
+    _.b0 != ERR,
+    _.b1.notnull(),
+    _.t1 - _.t0 == 2 * STEP,  # wrong on purpose
+]
+
+
+def test_iot_windows_are_proved_complete_and_consecutive():
+    report = sv.verify(iot_windows(sensor1, sensor2), ensures=IOT_ENSURES)
+    assert [c.proved for c in report.ensures] == [True] * 7 + [False]
+    assert report.ensures[-1].value == "FALSE"
+
+
+@settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(data=st.data())
+def test_iot_proved_postconditions_hold_on_data(data):
+    readings = st.lists(
+        st.tuples(st.sampled_from([0, 60, 120, 180, 300]), st.sampled_from([None, ERR, 1, 7, 42])),
+        max_size=8,
+    )
+    db = sv.connect()
+    for name in ["sensor1", "sensor2"]:
+        sv.create_table(db, name, sensor1.schema(), data.draw(readings))
+    report = sv.verify(iot_windows(sensor1, sensor2), ensures=IOT_ENSURES)
+    result = iot_windows(db.table("sensor1"), db.table("sensor2"))
+    for cond, checked in zip(IOT_ENSURES, report.ensures, strict=True):
+        if checked.proved:
+            assert violations(result, cond) == 0, checked.label
+
+
+KEYS = {"sensor1": [sv.unique("ts")], "sensor2": [sv.unique("ts")]}
+
+
+def test_keys_flow_through_joins_and_windows():
+    report = sv.verify(
+        iot_windows(sensor1, sensor2),
+        requires=KEYS,
+        ensures=[sv.unique("t0"), sv.unique("t0", "a0"), sv.unique("a0")],
+    )
+    assert [c.proved for c in report.ensures] == [True, True, False]
+    # Without a key on sensor2, duplicate readings could duplicate windows.
+    report = sv.verify(
+        iot_windows(sensor1, sensor2),
+        requires={"sensor1": [sv.unique("ts")]},
+        ensures=[sv.unique("t0")],
+    )
+    assert not report.proved
+
+
+def test_unique_precondition_is_checked_on_data():
+    @sv.transform(requires={"orders": [sv.unique("id")]}, ensures=[sv.unique("id")])
+    def big(orders):
+        return orders.filter(orders.amount > 10)
+
+    with pytest.raises(sv.PreconditionError, match="unique"):
+        big(bound_orders([(1, "ada", 30), (1, "bob", 40)]))
+    big(bound_orders([(1, "ada", 30), (2, "bob", 40)]))
+    assert big.last_report is not None and big.last_report.proved
+
+
+@settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(data=st.data())
+def test_proved_keys_hold_on_data(data):
+    readings = st.lists(
+        st.tuples(st.sampled_from([0, 60, 120, 180, 240]), st.sampled_from([None, ERR, 1, 7])),
+        max_size=5,
+        unique_by=lambda r: r[0],
+    )
+    db = sv.connect()
+    for name in ["sensor1", "sensor2"]:
+        sv.create_table(db, name, sensor1.schema(), data.draw(readings))
+    result = iot_windows(db.table("sensor1"), db.table("sensor2"))
+    assert violations(result, sv.unique("t0")) == 0

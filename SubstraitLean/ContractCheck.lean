@@ -1,4 +1,5 @@
 import SubstraitLean.Contracts
+import SubstraitLean.Keys
 import SubstraitLean.Check
 import SubstraitLean.Parse
 
@@ -10,13 +11,21 @@ Input (JSON):
 ```json
 { "requires": [<plan>, ...],   -- each: one table, select of its preconditions
   "ensures": [<plan>, ...],    -- each: the transformation, select of postconditions
-  "transform": <plan> }        -- optional: the transformation, to report facts
+  "transform": <plan>,         -- the transformation, to report facts and keys
+  "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
+  "ensures_keys": [[<col>, ...], ...] }       -- keys to prove on the output
 ```
 
 A postcondition is **proved** when its column of `ensures` is certainly TRUE
 under `Rel.aeval` with each table described by its schema refined by its
-preconditions; `contract_sound` is the theorem that makes this a proof. The
-schema description (`schemaEnv`, from `baseSchema` types and nullability) and
+preconditions; `contract_sound` is the theorem that makes this a proof.
+
+`Rel.eval` breaks ties in a window's `ORDER BY` one particular way. The
+proofs are about the engine's result only when no window has ties, which
+`Rel.windowsTotal` checks with the input keys (`Rel.window_deterministic`).
+Otherwise nothing is reported as proved: the result depends on the engine.
+
+The schema description (`schemaEnv`, from `baseSchema` types and nullability) and
 the JSON handling are trusted.
 -/
 
@@ -27,11 +36,13 @@ open Parse
 
 /-- What a column's declared type allows. -/
 def typeEnv (ty : Json) : AVal :=
-  let kinds := ["i8", "i16", "i32", "i64", "string", "varchar", "fixedChar", "bool"]
+  -- Doubles, timestamps and dates are integer codes (`SubstraitLean/Float.lean`).
+  let ints := ["i8", "i16", "i32", "i64", "fp32", "fp64", "precisionTimestamp", "timestamp", "date"]
+  let kinds := ints ++ ["string", "varchar", "fixedChar", "bool"]
   let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""
   let body := ty.getObjValD kind
   let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
-  if ["i8", "i16", "i32", "i64"].contains kind then ⟨nullable, some Bound.top, false, false, false⟩
+  if ints.contains kind then ⟨nullable, some Bound.top, false, false, false⟩
   else if ["string", "varchar", "fixedChar"].contains kind then ⟨nullable, none, false, false, true⟩
   else if kind == "bool" then ⟨nullable, none, true, true, false⟩
   else AVal.top
@@ -57,19 +68,40 @@ def _root_.Substrait.AVal.render (a : AVal) : String :=
   | [p] => p
   | ps => ", ".intercalate ps.dropLast ++ " or " ++ ps.getLast!
 
+/-- Machine-readable abstract value, so callers can display codes as doubles
+or timestamps. -/
+def _root_.Substrait.AVal.json (a : AVal) : Json :=
+  let bound (o : Option Int) : Json := (o.map fun i => Json.str (toString i)).getD .null
+  Json.mkObj [("null", Lean.toJson a.null), ("true", Lean.toJson a.tt), ("false", Lean.toJson a.ff),
+    ("string", Lean.toJson a.str),
+    ("int", match a.int with
+      | some b => Json.mkObj [("lo", bound b.lo), ("hi", bound b.hi)]
+      | none => .null)]
+
 structure Report where
   ensures : List (String × Bool × String)
-  facts : List (String × String)
+  facts : List (String × String × Json)
+  /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
+  keys : List (List Nat × Bool)
+  /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
+  deterministic : Bool := true
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
     ("ensures", Json.arr (r.ensures.map fun (n, ok, v) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
         ("value", Lean.toJson v)]).toArray),
-    ("facts", Json.arr (r.facts.map fun (n, v) =>
-      Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v)]).toArray)]
+    ("facts", Json.arr (r.facts.map fun (n, v, a) =>
+      Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
+    ("keys", Json.arr (r.keys.map fun (k, ok) =>
+      Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
+    ("deterministic", Lean.toJson r.deterministic)]
 
-def Report.allProved (r : Report) : Bool := r.ensures.all (·.2.1)
+def Report.allProved (r : Report) : Bool := r.ensures.all (·.2.1) && r.keys.all (·.2)
+
+def natLists (j : Json) : List (List Nat) :=
+  ((j.getArr?).toOption.getD #[]).toList.map fun k =>
+    ((k.getArr?).toOption.getD #[]).toList.filterMap fun c => (c.getNat?).toOption
 
 def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
 
@@ -99,25 +131,43 @@ def check (input : Json) : Except String Report := do
     pre := (t, cs) :: pre
   let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
   let A := fun t => tableEnv (schemas t) (preOf t)
+  let F := fun t => (preOf t).flatMap Expr.factsOf
+  let inputKeys : String → List (List Nat) := fun t =>
+    natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
+  let T := Rel.keyedWindows cat A F inputKeys
+  let tied := "undetermined: rows may tie in a window's ORDER BY, and the engine orders them"
   let mut results : List (String × Bool × String) := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
     if !q.root.checkWF cat then throw "a postcondition plan is not well-formed"
-    let env := q.root.aeval cat A
+    let env := q.root.aeval cat A F T
     let names := if q.names.length == env.length then q.names
       else (List.range env.length).map (s!"#{·}")
-    results := results ++ names.zip (env.map fun a => (a.certainlyTrue, a.render))
+    let total := q.root.windowsTotal cat A F inputKeys
+    results := results ++ names.zip (env.map fun a =>
+      if total then (a.certainlyTrue, a.render) else (false, tied))
   let facts := match transform with
     | some p =>
       if !p.root.checkWF cat then []
       else
-        let fenv := p.root.aeval cat A
+        let fenv := p.root.aeval cat A F T
         let fnames := if p.names.length == fenv.length then p.names
           else (List.range fenv.length).map (s!"#{·}")
-        fnames.zip (fenv.map AVal.render)
+        fnames.zip (fenv.map fun a => (a.render, a.json))
     | none => []
+  -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
+  let deterministic := transform.all (·.root.windowsTotal cat A F inputKeys)
+  let wanted := natLists ((input.getObjVal? "ensures_keys").toOption.getD (.arr #[]))
+  let keys ← match transform with
+    | some p =>
+      if !p.root.checkWF cat then throw "the transformation plan is not well-formed"
+      let derived := p.root.keys cat A F inputKeys
+      pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
+    | none => pure (wanted.map (·, false))
   return {
     ensures := results
-    facts }
+    facts
+    keys
+    deterministic }
 
 end Substrait.ContractCheck

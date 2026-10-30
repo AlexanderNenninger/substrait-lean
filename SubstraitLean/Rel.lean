@@ -1,4 +1,4 @@
-import SubstraitLean.Expr
+import SubstraitLean.Window
 
 /-!
 # Relational operators
@@ -16,6 +16,7 @@ Models a fragment of Substrait's `Rel` message:
 | `JoinRel` (`INNER`, `LEFT`)       | `Rel.join`               |
 | `FetchRel`                        | `Rel.fetch`              |
 | `SetRel` (`UNION_ALL`)            | `Rel.unionAll`           |
+| `windowFunction` in a `ProjectRel`| `Rel.window`             |
 
 Two Substrait-specific details are kept on purpose:
 
@@ -51,6 +52,8 @@ inductive Rel where
   | join (left right : Rel) (type : JoinType) (on : Expr)
   | fetch (input : Rel) (offset : Nat) (count : Option Nat)
   | unionAll (a b : Rel)
+  /-- Window functions over one `PARTITION BY … ORDER BY …`, appended as columns. -/
+  | window (input : Rel) (part : List Nat) (sort : List SortKey) (fns : List WinFn)
   deriving Repr, BEq
 
 /-- Output arity (the length of the output schema). -/
@@ -64,6 +67,7 @@ def Rel.arity (cat : Catalog) : Rel → Nat
   | .join a b _ _ => a.arity cat + b.arity cat
   | .fetch r _ _ => r.arity cat
   | .unionAll a _ => a.arity cat
+  | .window r _ _ fns => r.arity cat + fns.length
 
 /-- Static well-formedness: every field reference is in range, literal
 tables are rectangular, and union inputs agree on arity. -/
@@ -77,6 +81,8 @@ def Rel.WF (cat : Catalog) : Rel → Prop
   | .join a b _ on => a.WF cat ∧ b.WF cat ∧ on.refsLt (a.arity cat + b.arity cat)
   | .fetch r _ _ => r.WF cat
   | .unionAll a b => a.WF cat ∧ b.WF cat ∧ a.arity cat = b.arity cat
+  | .window r part sort fns => r.WF cat ∧ (∀ i ∈ part, i < r.arity cat) ∧
+      (∀ k ∈ sort, k.col < r.arity cat) ∧ ∀ f ∈ fns, f.refsLt (r.arity cat) = true
 
 def crossRows (xs ys : Relation) : Relation :=
   xs.flatMap fun x => ys.map (x ++ ·)
@@ -107,6 +113,7 @@ def Rel.eval (cat : Catalog) : Rel → Relation
       | none => rest
       | some n => rest.take n
   | .unionAll a b => a.eval cat ++ b.eval cat
+  | .window r part sort fns => windowEval part sort fns (r.eval cat)
 
 /-- Bag equivalence of plans: same rows with the same multiplicities, on
 every catalog. -/
@@ -114,6 +121,27 @@ def Rel.Equiv (r₁ r₂ : Rel) : Prop :=
   ∀ cat, (r₁.eval cat).Perm (r₂.eval cat)
 
 @[inherit_doc] infix:50 " ≈ᵣ " => Rel.Equiv
+
+/-! ## Keys -/
+
+def keyOf (k : List Nat) (row : Row) : List Value := k.map (row.getD · .null)
+
+/-- No two rows (at different positions) agree on the columns `k`. -/
+def KeyOn (k : List Nat) (rows : Relation) : Prop :=
+  rows.Pairwise fun r s => keyOf k r ≠ keyOf k s
+
+/-- Which windows `Rel.window r part sort _` have a key of `r` among their
+partition and sort columns. The fact analysis takes this as an oracle (it is
+computed from `Rel.keys`, which itself uses the fact analysis). -/
+abbrev WindowKeys := Rel → List Nat → List SortKey → Bool
+
+def WindowKeys.Sound (T : WindowKeys) (cat : Catalog) : Prop :=
+  ∀ r part sort, T r part sort = true → r.WF cat → KeyOn (part ++ sort.map (·.col)) (r.eval cat)
+
+def WindowKeys.none : WindowKeys := fun _ _ _ => false
+
+theorem WindowKeys.none_sound (cat : Catalog) : WindowKeys.none.Sound cat :=
+  fun _ _ _ h => by simp [WindowKeys.none] at h
 
 /-! ## Type soundness -/
 
@@ -170,5 +198,8 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
       rcases h with h | h
       · exact eval_arity hcat hwf.1 row h
       · simp only [arity, hwf.2.2]; exact eval_arity hcat hwf.2.1 row h
+  | .window r _ _ _, hwf, row, h => by
+      obtain ⟨_, x, _, _, hx, rfl⟩ := mem_windowEval h
+      simp [arity, eval_arity hcat hwf.1 x hx]
 
 end Substrait
