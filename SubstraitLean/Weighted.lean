@@ -59,6 +59,10 @@ def Rel.weighted (cat : Catalog) (isW : String → Bool) : Rel → Rel
   | .unionAll a b => .unionAll (a.weighted cat isW) (b.weighted cat isW)
   | .fetch r o c => .fetch (r.weighted cat isW) o c
   | .window r p s f => .window (r.weighted cat isW) p s f
+  | .orderBy r keys => .orderBy (r.weighted cat isW) keys
+  -- Outside the incremental fragment.
+  | .semi a b anti on => .semi (a.weighted cat isW) (b.weighted cat isW) anti on
+  | .distinct r => .distinct (r.weighted cat isW)
 
 /-! ## Index bookkeeping -/
 
@@ -144,8 +148,25 @@ theorem Rel.zeval_arity {cat : Catalog} {Z : ZCatalog}
       rcases h with h | h
       · exact zeval_arity hZ hwf.1 hi.1 x h
       · simp only [arity, hwf.2.2]; exact zeval_arity hZ hwf.2.1 hi.2 x h
+  | .orderBy r _, hwf, hi, x, h => by
+      simp only [zeval, List.mem_mergeSort] at h
+      exact zeval_arity hZ (r := r) hwf.1 hi x h
   | .join _ _ .left _, _, hi, _, _ => hi.elim
-  | .fetch _ _ _, _, hi, _, _ | .window _ _ _ _, _, hi, _, _ => hi.elim
+  | .fetch _ _ _, _, hi, _, _ | .window _ _ _ _, _, hi, _, _ | .semi _ _ _ _, _, hi, _, _
+  | .distinct _, _, hi, _, _ => hi.elim
+
+/-- Sort keys only look at their own columns. -/
+theorem sortLe_append {x y e e' : Row} :
+    ∀ {ks : List SortKey}, (∀ k ∈ ks, k.col < x.length) → (∀ k ∈ ks, k.col < y.length) →
+      sortLe ks (x ++ e) (y ++ e') = sortLe ks x y
+  | [], _, _ => rfl
+  | k :: ks, hx, hy => by
+      have hkx : (x ++ e).getD k.col .null = x.getD k.col .null := by
+        simp [List.getD, List.getElem?_append_left (hx k (by simp))]
+      have hky : (y ++ e').getD k.col .null = y.getD k.col .null := by
+        simp [List.getD, List.getElem?_append_left (hy k (by simp))]
+      simp only [sortLe, lexLe, SortKey.le, hkx, hky,
+        sortLe_append (ks := ks) (fun k hk => hx k (by simp [hk])) (fun k hk => hy k (by simp [hk]))]
 
 /-! ## Correctness -/
 
@@ -279,8 +300,16 @@ theorem Rel.weighted_eval {cat E : Catalog} {Z : ZCatalog} {isW : String → Boo
       simp [weighted, eval, zeval, ZSet.encode,
         weighted_eval hZ hwf.1 hi.1 (fun t ht => hT t (.inl ht)),
         weighted_eval hZ hwf.2.1 hi.2 (fun t ht => hT t (.inr ht))]
+  | .orderBy r keys, hwf, hi, hT => by
+      simp only [weighted, eval, zeval, weighted_eval hZ hwf.1 hi hT, ZSet.encode]
+      refine (List.map_mergeSort fun a ha b hb => ?_).symm
+      have hla := zeval_arity hZ hwf.1 hi a ha
+      have hlb := zeval_arity hZ hwf.1 hi b hb
+      simp only [wrow]
+      exact (sortLe_append (fun k hk => hla ▸ hwf.2 k hk) (fun k hk => hlb ▸ hwf.2 k hk)).symm
   | .join _ _ .left _, _, hi, _ => hi.elim
-  | .fetch _ _ _, _, hi, _ | .window _ _ _ _, _, hi, _ => hi.elim
+  | .fetch _ _ _, _, hi, _ | .window _ _ _ _, _, hi, _ | .semi _ _ _ _, _, hi, _
+  | .distinct _, _, hi, _ => hi.elim
 
 /-- Old (unweighted) tables satisfy `weighted_eval`'s table hypothesis with
 every row at weight 1. -/
@@ -291,9 +320,9 @@ theorem weighted_read_plain {cat E : Catalog} {isW : String → Bool} {t : Strin
 
 def Rel.isIncremental : Rel → Bool
   | .read _ | .values _ _ => true
-  | .filter r _ | .project r _ | .emit r _ => r.isIncremental
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.isIncremental
   | .cross a b | .unionAll a b | .join a b .inner _ => a.isIncremental && b.isIncremental
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => false
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _ => false
 
 theorem Rel.isIncremental_iff {r : Rel} : r.isIncremental = true ↔ r.Incremental := by
   induction r with

@@ -26,17 +26,24 @@ def functions : List (Nat × String) :=
   [(1, "not"), (2, "is_null"), (3, "negate"), (4, "add"), (5, "subtract"), (6, "multiply"),
    (7, "equal"), (8, "lt"), (9, "and"), (10, "or"), (11, "divide"),
    (12, "row_number"), (13, "lag"), (14, "lead"), (15, "floor"), (16, "ceil"), (17, "round"),
-   (18, "modulus"), (19, "power")]
+   (18, "modulus"), (19, "power"), (20, "upper"), (21, "lower"), (22, "character_length"),
+   (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
+   (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
+   (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim")]
 
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
-  -- Casts are written as casts, not calls.
-  | .itof | .ftoi | .itos => 0
+  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
+  -- Casts are written as casts, not calls; `regexp_match` as two calls.
+  | .itof | .ftoi | .itos | .regexMatch _ => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
+  | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
+  | .substr _ => 32
+  | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
@@ -110,6 +117,10 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a => call 17 [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]]
   | .un .neg a => call 3 [writeExpr cols ctx a]
+  | .un (.regexMatch p) a =>
+    call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
+  | .un (.datePart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .time a]
+  | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (a.kind cols) a]
   | .bin f a b =>
     let ka := if isLit a then b.kind cols else a.kind cols
@@ -122,6 +133,11 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       match ka, b with
       | .time, .lit (.int us) => call (BinFn.anchor f) [writeExpr cols ka a, writeInterval us]
       | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+    | .substr (some n) =>
+      call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
+    | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]
+    | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ =>
+      call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
     | _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
   | .ifThen c t e => obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool c), ("then", writeExpr cols ctx t)]]),
@@ -153,7 +169,7 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List Parse.Kind
   | .read t => Parse.schemaKinds (schemas t (cat t).arity)
   | .values n _ => List.replicate n .other
-  | .filter r _ | .fetch r _ _ => relKinds schemas cat r
+  | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
       ks ++ es.map (·.kind ks)
@@ -166,6 +182,14 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List Parse.Kind
       let ks := relKinds schemas cat r
       ks ++ fns.map (WinFn.kind ks)
 
+def writeSortKey (cols : List Parse.Kind) (k : SortKey) : Json :=
+  let dir : Json := match k.desc, k.nullsFirst with
+    | false, true => "SORT_DIRECTION_ASC_NULLS_FIRST"
+    | false, false => "SORT_DIRECTION_ASC_NULLS_LAST"
+    | true, true => "SORT_DIRECTION_DESC_NULLS_FIRST"
+    | true, false => "SORT_DIRECTION_DESC_NULLS_LAST"
+  obj [("expr", writeExpr cols .other (.field k.col)), ("direction", dir)]
+
 /-- A window function over input columns of kinds `cols`. -/
 def writeWindow (cols : List Parse.Kind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
   let col (i : Nat) := writeExpr cols .other (.field i)
@@ -175,15 +199,10 @@ def writeWindow (cols : List Parse.Kind) (part : List Nat) (sort : List SortKey)
       let base := [col c, writeLit .int (.int k)]
       (if f matches .lag .. then 13 else 14,
         if d == Value.null then base else base ++ [writeLit (cols.getD c .other) d])
-  let dir (k : SortKey) : Json := match k.desc, k.nullsFirst with
-    | false, true => "SORT_DIRECTION_ASC_NULLS_FIRST"
-    | false, false => "SORT_DIRECTION_ASC_NULLS_LAST"
-    | true, true => "SORT_DIRECTION_DESC_NULLS_FIRST"
-    | true, false => "SORT_DIRECTION_DESC_NULLS_LAST"
   obj [("windowFunction", obj [
     ("functionReference", toJson anchor),
     ("partitions", Json.arr (part.map col).toArray),
-    ("sorts", Json.arr (sort.map fun (k : SortKey) => obj [("expr", col k.col), ("direction", dir k)]).toArray),
+    ("sorts", Json.arr (sort.map (writeSortKey cols)).toArray),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
     ("lowerBound", obj [("unbounded", obj [])]), ("upperBound", obj [("unbounded", obj [])]),
     ("boundsType", "BOUNDS_TYPE_ROWS")])]
@@ -220,6 +239,22 @@ def writeRel (schemas : Schemas) (cat : Catalog) : Rel → Option (List Nat) →
   | .unionAll a b, out => withCommon "set" [
       ("inputs", Json.arr #[writeRel schemas cat a none, writeRel schemas cat b none]),
       ("op", "SET_OP_UNION_ALL")] out
+  | .semi a b anti on, out => withCommon "join" [
+      ("left", writeRel schemas cat a none), ("right", writeRel schemas cat b none),
+      ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
+      ("type", if anti then "JOIN_TYPE_LEFT_ANTI" else "JOIN_TYPE_LEFT_SEMI")] out
+  | .orderBy r keys, out => withCommon "sort" [
+      ("input", writeRel schemas cat r none),
+      ("sorts", Json.arr (keys.map (writeSortKey (relKinds schemas cat r))).toArray)] out
+  -- Grouping by every column, with no measures.
+  | .distinct r, out =>
+      let ks := relKinds schemas cat r
+      withCommon "aggregate" [
+        ("input", writeRel schemas cat r none),
+        ("groupingExpressions", Json.arr ((List.range ks.length).map fun i =>
+          writeExpr ks .other (.field i)).toArray),
+        ("groupings", Json.arr #[obj [("expressionReferences",
+          Json.arr ((List.range ks.length).map toJson).toArray)]])] out
   | .window r part sort fns, out => withCommon "project" [
       ("input", writeRel schemas cat r none),
       ("expressions",

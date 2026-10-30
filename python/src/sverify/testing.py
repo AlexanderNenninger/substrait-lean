@@ -3,12 +3,12 @@ DataFusion and DuckDB.
 
 `inline_tables` replaces each named-table read by a Substrait virtual table
 holding given rows (integers, strings, booleans, timestamps, doubles and
-NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`;
-`duckdb_rows` runs it as SQL on DuckDB.
+NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`
+(`lean_values` also reads printed doubles); `duckdb_rows` runs it as SQL on
+DuckDB.
 """
 
 import datetime as dt
-import json
 import math
 import re
 import subprocess
@@ -76,10 +76,38 @@ def lean_rows(plan_json: str) -> list[tuple]:
     return parse_rows(out)
 
 
+def lean_values(plan_json: str) -> list[tuple]:
+    """Like `lean_rows`, but reads doubles too, which Lean prints with six
+    decimals and a `d` (so only approximately)."""
+    out = subprocess.run(
+        [str(checker_path()), "/dev/stdin"],
+        input=plan_json,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return parse_rows(out, doubles=True)
+
+
 _VALUE = re.compile(r'\s*(NULL|true|false|"(?:[^"\\]|\\.)*"|[^,]+?)\s*(?:,|$)')
+_ESCAPE = re.compile(r"\\(x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)")
 
 
-def parse_rows(output: str) -> list[tuple]:
+def _unquote(s: str) -> str:
+    """A string in Lean's quotes (`String.quote`, which escapes with `\\x..`)."""
+
+    def char(m: re.Match[str]) -> str:
+        e = m.group(1)
+        if e[0] == "x":
+            return chr(int(e[1:], 16))
+        if e[0] == "u":
+            return chr(int(e[2:-1], 16))
+        return {"n": "\n", "t": "\t", "r": "\r"}.get(e, e)
+
+    return _ESCAPE.sub(char, s[1:-1])
+
+
+def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
     """The rows section of `substrait-check` output (`Row.render`)."""
     rows = []
     for line in output.split("rows (")[1].splitlines()[1:]:
@@ -93,9 +121,11 @@ def parse_rows(output: str) -> list[tuple]:
             elif x in ("true", "false"):
                 values.append(x == "true")
             elif x.startswith('"'):
-                values.append(json.loads(x))
+                values.append(_unquote(x))
             elif re.fullmatch(r"-?\d+", x):
                 values.append(int(x))
+            elif doubles and x.endswith("d"):
+                values.append(float(x[:-1]))
             else:
                 raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")
         rows.append(tuple(values))

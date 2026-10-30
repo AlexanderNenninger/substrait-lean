@@ -365,6 +365,44 @@ def powAbs (a b : AVal) : AVal :=
     | some _, some _ => some (if square then ⟨some 0, none⟩ else Bound.top)
     | _, _ => none), false, false, false⟩
 
+/-- May be something other than a (non-NULL) string. -/
+def AVal.nonStr (a : AVal) : Bool := a.null || a.int.isSome || a.tt || a.ff
+
+/-- The interval `[lo, ∞)`. -/
+def Bound.ge (lo : Int) : Bound := ⟨some lo, none⟩
+
+/-- `b` cut down to `[lo, hi]`. -/
+def Bound.clamp (lo hi : Int) (b : Bound) : Bound :=
+  ⟨some (max lo (b.lo.getD lo)), some (min hi (b.hi.getD hi))⟩
+
+theorem Bound.mem_clamp {lo hi i : Int} {b : Bound} (h : b.Mem i) (hl : lo ≤ i) (hh : i ≤ hi) :
+    (b.clamp lo hi).Mem i := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.Mem, Bound.clamp] at *
+  constructor
+  · intro l hl'; simp only [Option.some.injEq] at hl'; subst hl'
+    cases bl with
+    | none => simpa using hl
+    | some x => have := h.1 x rfl; simp only [Option.getD_some]; omega
+  · intro u hu; simp only [Option.some.injEq] at hu; subst hu
+    cases bh with
+    | none => simpa using hh
+    | some x => have := h.2 x rfl; simp only [Option.getD_some]; omega
+
+/-- `date_part`: a fixed range, or for the year, the years of the ends of the
+timestamps `chrono` represents. -/
+def partBound (p : Time.DatePart) (b : Bound) : Bound :=
+  match p.range with
+  | some (lo, hi) => ⟨some lo, some hi⟩
+  | none => (b.clamp Time.partMin Time.partMax).mapMono (Time.partOf .year)
+
+/-- Certainly within the timestamps `chrono` represents. -/
+def Bound.inChrono (b : Bound) : Bool :=
+  b.lo.any (Time.partMin ≤ ·) && b.hi.any (· ≤ Time.partMax)
+
+def datePartAbs (p : Time.DatePart) (a : AVal) : AVal :=
+  ⟨a.nonInt || !a.int.all Bound.inChrono, a.int.map (partBound p), false, false, false⟩
+
 def UnFn.abs : UnFn → AVal → AVal
   | .not, a => ⟨a.nonBool, none, a.ff, a.tt, false⟩
   | .isNull, a => ⟨false, none, a.null, a.int.isSome || a.tt || a.ff || a.str, false⟩
@@ -377,6 +415,12 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fround, a => monoAbs FloatCode.round a
   | .ftoi, a => ftoiAbs a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
+  | .upper, a | .lower, a => ⟨a.nonStr, none, false, false, a.str⟩
+  | .length, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
+  -- `NULL` when the pattern does not match.
+  | .regexMatch _, a => ⟨true, if a.str then some (.ge 1) else none, false, false, false⟩
+  | .datePart p, a => datePartAbs p a
+  | .dateTrunc u, a => monoAbs (Time.trunc u) a
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -421,6 +465,13 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
   | .ipow, a, b => powAbs a b
+  | .concat, a, b | .trim _ _, a, b =>
+      ⟨a.nonStr || b.nonStr, none, false, false, a.str && b.str⟩
+  | .strpos, a, b =>
+      ⟨a.nonStr || b.nonStr, if a.str && b.str then some (.ge 0) else none, false, false, false⟩
+  | .startsWith, a, b | .endsWith, a, b | .like, a, b =>
+      ⟨a.nonStr || b.nonStr, none, a.str && b.str, a.str && b.str, false⟩
+  | .substr _, a, b => ⟨a.nonStr || b.nonInt, none, false, false, a.str && b.int.isSome⟩
   | .eq, a, b =>
       let mismatch := a.null || b.null || (a.int.isSome && (b.tt || b.ff || b.str)) ||
         ((a.tt || a.ff) && (b.int.isSome || b.str)) || (a.str && (b.int.isSome || b.tt || b.ff))
@@ -498,6 +549,34 @@ theorem topAbs_sound {g : Int → Int} {f : UnFn}
   · exact ⟨Bound.top, by simp [hb], Bound.mem_top _⟩
   all_goals simp_all [AVal.Mem, AVal.nonInt]
 
+theorem datePartAbs_sound (p : Time.DatePart) {a : AVal} {v : Value} (h : a.Mem v) :
+    (datePartAbs p a).Mem (UnFn.apply (.datePart p) v) := by
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨ts, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+  · simp [datePartAbs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
+  · simp only [UnFn.apply, Time.datePart]
+    by_cases hr : Time.partMin ≤ ts ∧ ts ≤ Time.partMax
+    · simp only [hr, and_self, ↓reduceIte]
+      refine ⟨partBound p b, by simp [datePartAbs, hb], ?_⟩
+      simp only [partBound]
+      split
+      · rename_i lo hi hp
+        have := Time.partOf_range hp ts
+        exact ⟨fun l hl => by simp at hl; omega, fun u hu => by simp at hu; omega⟩
+      · rename_i hp
+        have hy : p = .year := by cases p <;> simp_all [Time.DatePart.range]
+        subst hy
+        exact Bound.mem_mapMono Time.year_mono (Bound.mem_clamp hi hr.1 hr.2)
+    · simp only [hr, ↓reduceIte]
+      simp only [AVal.Mem, datePartAbs, hb, Option.all_some, Bool.or_eq_true, Bool.not_eq_true']
+      right
+      obtain ⟨bl, bh⟩ := b
+      simp only [Bound.Mem] at hi
+      cases bl <;> cases bh <;> simp_all [Bound.inChrono] <;> omega
+  all_goals simp_all [datePartAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+
+theorem Text.strpos_nonneg (s t : String) : 0 ≤ Text.strpos s t := by
+  unfold Text.strpos; split <;> omega
+
 theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     (f.abs a).Mem (f.apply v) := by
   cases f
@@ -511,6 +590,15 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case itos =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case datePart p => exact datePartAbs_sound p h
+  case dateTrunc u => exact monoAbs_sound (Time.trunc_mono u) (fun v => by cases v <;> rfl) h
+  case upper | lower | length =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
+  case regexMatch p =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+      simp only [UnFn.abs, UnFn.apply, AVal.Mem]
+    all_goals (try cases Text.regexMatch s p) <;> simp_all [Bound.ge, Bound.Mem] <;> omega
   all_goals match v, h with
     | .null, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
     | .int i, ⟨b, hb, hm⟩ =>
@@ -672,6 +760,13 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ipow => exact powAbs_sound ha hb
+  case concat | trim | strpos | startsWith | endsWith | like | substr =>
+    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
+    rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
+      ⟨s', rfl, h'⟩ <;>
+    simp_all [BinFn.abs, BinFn.apply, AVal.Mem, AVal.nonStr, AVal.nonInt, Bound.ge, Bound.Mem,
+      Text.strpos_nonneg]
+    all_goals split <;> simp_all
   case eq =>
     rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
@@ -1479,6 +1574,9 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   | .window r part sort fns =>
       (r.facts cat F T).filter (·.inRange (r.arity cat)) ++
         winFacts part sort (T r part sort) (r.arity cat) fns
+  -- Some of the left rows, or all of the rows in another order or once each.
+  | .semi a _ _ _ => a.facts cat F T
+  | .orderBy r _ | .distinct r => r.facts cat F T
 
 theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
     (hσ : ∀ i, ∀ p ∈ σ i, row'.getD p .null = row.getD i .null) :
@@ -1870,6 +1968,15 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
       split at h
       · exact this row (List.mem_of_mem_drop h)
       · exact this row (List.mem_of_mem_drop (List.mem_of_mem_take h))
+  | .semi a _ _ _, hwf, row, h => by
+      simp only [eval, List.mem_filter] at h
+      exact facts_sound hcat hF hT hwf.1 row h.1
+  | .orderBy r _, hwf, row, h => by
+      simp only [eval, List.mem_mergeSort] at h
+      exact facts_sound hcat hF hT (r := r) hwf.1 row h
+  | .distinct r, hwf, row, h => by
+      simp only [eval, mem_dedup] at h
+      exact facts_sound hcat hF hT (r := r) hwf row h
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       intro f hf
@@ -2227,6 +2334,8 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .fetch r _ _ => r.aeval cat A F T
   | .unionAll a b => List.zipWith AVal.join (a.aeval cat A F T) (b.aeval cat A F T)
   | .window r _ _ fns => r.aeval cat A F T ++ fns.map (WinFn.abs (r.aeval cat A F T))
+  | .semi a _ _ _ => a.aeval cat A F T
+  | .orderBy r _ | .distinct r => r.aeval cat A F T
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} :
@@ -2245,6 +2354,9 @@ theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String 
   | .unionAll a b, h => by
       simp [aeval, arity, aeval_length (r := a) h.1, aeval_length (r := b) h.2.1, h.2.2]
   | .window r _ _ _, h => by simp [aeval, arity, aeval_length (r := r) h.1]
+  | .semi a _ _ _, h => by simp [aeval, arity, aeval_length (r := a) h.1]
+  | .orderBy r _, h => by simp [aeval, arity, aeval_length (r := r) h.1]
+  | .distinct r, h => by simp [aeval, arity, aeval_length (r := r) h]
 
 theorem EnvMem.append {e₁ e₂ : List AVal} {r₁ r₂ : Row} (h₁ : EnvMem e₁ r₁) (h₂ : EnvMem e₂ r₂)
     (hl : e₁.length = r₁.length) : EnvMem (e₁ ++ e₂) (r₁ ++ r₂) := by
@@ -2389,6 +2501,15 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       split at h
       · exact this row (List.mem_of_mem_drop h)
       · exact this row (List.mem_of_mem_drop (List.mem_of_mem_take h))
+  | .semi a _ _ _, hwf, row, h => by
+      simp only [eval, List.mem_filter] at h
+      exact aeval_sound hcat hA hF hT hwf.1 row h.1
+  | .orderBy r _, hwf, row, h => by
+      simp only [eval, List.mem_mergeSort] at h
+      exact aeval_sound hcat hA hF hT (r := r) hwf.1 row h
+  | .distinct r, hwf, row, h => by
+      simp only [eval, mem_dedup] at h
+      exact aeval_sound hcat hA hF hT (r := r) hwf row h
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       rcases h with h | h
@@ -2474,7 +2595,8 @@ theorem Rel.colExprs_eval {cat : Catalog} (hcat : cat.WF) :
       intro a _
       exact getD_map_eval cs' row a
   | .values _ _, _, _, h | .filter _ _, _, _, h | .cross _ _, _, _, h | .join _ _ _ _, _, _, h
-  | .fetch _ _ _, _, _, h | .unionAll _ _, _, _, h | .window _ _ _ _, _, _, h => by
+  | .fetch _ _ _, _, _, h | .unionAll _ _, _, _, h | .window _ _ _ _, _, _, h
+  | .semi _ _ _ _, _, _, h | .orderBy _ _, _, _, h | .distinct _, _, _, h => by
       simp [colExprs] at h
 
 /-- What is known about a table: its schema, refined by its preconditions. -/

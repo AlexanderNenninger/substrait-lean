@@ -14,6 +14,9 @@ Models a fragment of Substrait's `Rel` message:
 | `RelCommon.emit.output_mapping`   | `Rel.emit`               |
 | `CrossRel`                        | `Rel.cross`              |
 | `JoinRel` (`INNER`, `LEFT`)       | `Rel.join`               |
+| `JoinRel` (`LEFT_SEMI`, `LEFT_ANTI`) | `Rel.semi`            |
+| `SortRel`                         | `Rel.orderBy`            |
+| `AggregateRel` without measures   | `Rel.distinct`           |
 | `FetchRel`                        | `Rel.fetch`              |
 | `SetRel` (`UNION_ALL`)            | `Rel.unionAll`           |
 | `windowFunction` in a `ProjectRel`| `Rel.window`             |
@@ -54,6 +57,12 @@ inductive Rel where
   | unionAll (a b : Rel)
   /-- Window functions over one `PARTITION BY … ORDER BY …`, appended as columns. -/
   | window (input : Rel) (part : List Nat) (sort : List SortKey) (fns : List WinFn)
+  /-- The left rows with some (`anti`: no) right row satisfying `on`. -/
+  | semi (left right : Rel) (anti : Bool) (on : Expr)
+  /-- `ORDER BY`: a stable sort. -/
+  | orderBy (input : Rel) (keys : List SortKey)
+  /-- `DISTINCT`: the first occurrence of every row. -/
+  | distinct (input : Rel)
   deriving Repr, BEq
 
 /-- Output arity (the length of the output schema). -/
@@ -68,6 +77,8 @@ def Rel.arity (cat : Catalog) : Rel → Nat
   | .fetch r _ _ => r.arity cat
   | .unionAll a _ => a.arity cat
   | .window r _ _ fns => r.arity cat + fns.length
+  | .semi a _ _ _ => a.arity cat
+  | .orderBy r _ | .distinct r => r.arity cat
 
 /-- Static well-formedness: every field reference is in range, literal
 tables are rectangular, and union inputs agree on arity. -/
@@ -83,6 +94,9 @@ def Rel.WF (cat : Catalog) : Rel → Prop
   | .unionAll a b => a.WF cat ∧ b.WF cat ∧ a.arity cat = b.arity cat
   | .window r part sort fns => r.WF cat ∧ (∀ i ∈ part, i < r.arity cat) ∧
       (∀ k ∈ sort, k.col < r.arity cat) ∧ ∀ f ∈ fns, f.refsLt (r.arity cat) = true
+  | .semi a b _ on => a.WF cat ∧ b.WF cat ∧ on.refsLt (a.arity cat + b.arity cat)
+  | .orderBy r keys => r.WF cat ∧ ∀ k ∈ keys, k.col < r.arity cat
+  | .distinct r => r.WF cat
 
 def crossRows (xs ys : Relation) : Relation :=
   xs.flatMap fun x => ys.map (x ++ ·)
@@ -93,9 +107,45 @@ def leftJoinRow (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row) : Relat
   let ms := (ys.map (x ++ ·)).filter fun row => (on.eval row).isTrue
   if ms.isEmpty then [x ++ List.replicate rightArity .null] else ms
 
+/-- The first occurrence of every row, in order (`n` bounds the length). -/
+def dedupN : Nat → Relation → Relation
+  | 0, _ | _, [] => []
+  | n + 1, x :: xs => x :: dedupN n (xs.filter (· != x))
+
+def dedup (l : Relation) : Relation := dedupN l.length l
+
+theorem dedupN_spec : ∀ (n : Nat) (l : Relation), l.length ≤ n →
+    (∀ y, y ∈ dedupN n l ↔ y ∈ l) ∧ (dedupN n l).Sublist l ∧ (dedupN n l).Pairwise (· ≠ ·)
+  | _, [], _ => by cases ‹Nat› <;> simp [dedupN]
+  | 0, _ :: _, h => by simp at h
+  | n + 1, x :: xs, h => by
+    have hf : (xs.filter (· != x)).length ≤ n := by
+      have := List.length_filter_le (· != x) xs; simp at h; omega
+    obtain ⟨hm, hs, hp⟩ := dedupN_spec n _ hf
+    simp only [dedupN]
+    refine ⟨fun y => ?_, ?_, ?_⟩
+    · simp only [List.mem_cons, hm, List.mem_filter, bne_iff_ne, ne_eq]
+      by_cases hy : y = x <;> simp [hy]
+    · exact (hs.trans List.filter_sublist).cons_cons x
+    · refine List.Pairwise.cons (fun y hy => ?_) hp
+      have := (hm y).mp hy
+      simp only [List.mem_filter, bne_iff_ne, ne_eq] at this
+      exact fun h => this.2 h.symm
+
+theorem mem_dedup {l : Relation} {y : Row} : y ∈ dedup l ↔ y ∈ l :=
+  (dedupN_spec _ l (Nat.le_refl _)).1 y
+theorem dedup_sublist (l : Relation) : (dedup l).Sublist l := (dedupN_spec _ l (Nat.le_refl _)).2.1
+theorem dedup_pairwise (l : Relation) : (dedup l).Pairwise (· ≠ ·) :=
+  (dedupN_spec _ l (Nat.le_refl _)).2.2
+
+/-- Does some row of `ys` satisfy `on` next to `x`? -/
+def hasMatch (on : Expr) (ys : Relation) (x : Row) : Bool :=
+  ys.any fun y => (on.eval (x ++ y)).isTrue
+
 /-- Denotational semantics. `FetchRel` takes rows in list order; real engines
 only promise this after a `SortRel`, so theorems about `fetch` hold for one
-particular (deterministic) choice. -/
+particular (deterministic) choice. Likewise `SortRel` is stable here, while
+engines may order ties either way. -/
 def Rel.eval (cat : Catalog) : Rel → Relation
   | .read t => (cat t).rows
   | .values _ rows => rows
@@ -114,6 +164,9 @@ def Rel.eval (cat : Catalog) : Rel → Relation
       | some n => rest.take n
   | .unionAll a b => a.eval cat ++ b.eval cat
   | .window r part sort fns => windowEval part sort fns (r.eval cat)
+  | .semi a b anti on => (a.eval cat).filter fun x => hasMatch on (b.eval cat) x != anti
+  | .orderBy r keys => (r.eval cat).mergeSort (sortLe keys)
+  | .distinct r => dedup (r.eval cat)
 
 /-- Bag equivalence of plans: same rows with the same multiplicities, on
 every catalog. -/
@@ -201,5 +254,14 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
   | .window r _ _ _, hwf, row, h => by
       obtain ⟨_, x, _, _, hx, rfl⟩ := mem_windowEval h
       simp [arity, eval_arity hcat hwf.1 x hx]
+  | .semi a _ _ _, hwf, row, h => by
+      simp only [eval, List.mem_filter] at h
+      exact eval_arity hcat hwf.1 row h.1
+  | .orderBy r _, hwf, row, h => by
+      simp only [eval, List.mem_mergeSort] at h
+      exact eval_arity hcat hwf.1 row h
+  | .distinct r, hwf, row, h => by
+      simp only [eval, mem_dedup] at h
+      exact eval_arity hcat (r := r) hwf row h
 
 end Substrait

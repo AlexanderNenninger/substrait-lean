@@ -294,6 +294,10 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .unionAll _ _ => []
   | .window r part _ fns =>
       (r.keys cat A F K).filter (·.all (· < r.arity cat)) ++ windowKeys part (r.arity cat) fns
+  | .semi a _ _ _ => a.keys cat A F K
+  | .orderBy r _ => r.keys cat A F K
+  -- After `DISTINCT`, all columns together are a key.
+  | .distinct r => List.range (r.arity cat) :: r.keys cat A F K
 
 theorem crossRows_key {A B : Relation} {n : Nat} {ka kb : List Nat}
     (hA : ∀ x ∈ A, x.length = n) (hka : ∀ c ∈ ka, c < n)
@@ -443,6 +447,13 @@ theorem windowRows_rowNumber_key {part : List Nat} {fns : List WinFn} {n t : Nat
         List.length_nil, and_true] at hrn
       omega
 
+/-- All the columns of a row are the row. -/
+theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n) x = x := by
+  subst h
+  apply List.ext_getElem (by simp [keyOf])
+  intro i h₁ h₂
+  simp [keyOf, List.getD, List.getElem?_eq_getElem h₂]
+
 /-- **Soundness of key derivation.** -/
 theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
@@ -536,6 +547,20 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       · exact this.sublist (List.drop_sublist _ _)
       · exact this.sublist ((List.take_sublist _ _).trans (List.drop_sublist _ _))
   | .unionAll _ _, _, k, hk => by simp [Rel.keys] at hk
+  | .semi a _ _ _, hwf, k, hk =>
+      (keys_sound hcat hA hF hK hwf.1 k hk).sublist List.filter_sublist
+  | .orderBy r _, hwf, k, hk =>
+      (keys_sound hcat hA hF hK (r := r) hwf.1 k hk).perm (List.mergeSort_perm _ _).symm
+        fun h => Ne.symm h
+  | .distinct r, hwf, k, hk => by
+      simp only [Rel.keys, List.mem_cons] at hk
+      rcases hk with rfl | hk
+      · show (dedup (r.eval cat)).Pairwise _
+        refine (dedup_pairwise (r.eval cat)).imp_of_mem fun hx hy hne => ?_
+        rw [keyOf_range (eval_arity hcat (r := r) hwf _ (mem_dedup.mp hx)),
+          keyOf_range (eval_arity hcat (r := r) hwf _ (mem_dedup.mp hy))]
+        exact hne
+      · exact (keys_sound hcat hA hF hK (r := r) hwf k hk).sublist (dedup_sublist _)
   | .window r part sort fns, hwf, k, hk => by
       simp only [Rel.keys, List.mem_append] at hk
       rcases hk with hk | hk
@@ -694,8 +719,10 @@ its input? -/
 def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ => r.windowsTotal cat A F K
-  | .cross a b | .join a b _ _ | .unionAll a b => a.windowsTotal cat A F K && b.windowsTotal cat A F K
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r =>
+      r.windowsTotal cat A F K
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
+      a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort _ =>
       r.windowsTotal cat A F K && (r.keys cat A F K).any fun k => k.all (· ∈ part ++ sort.map (·.col))
 

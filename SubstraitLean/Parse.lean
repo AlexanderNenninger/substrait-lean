@@ -125,14 +125,17 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ => .int
-  | .un .itos _ => .str
+  | .un .itos _ | .un .upper _ | .un .lower _ => .str
+  | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
+  | .un (.dateTrunc _) _ => .time
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
   | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
-  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ => .int
+  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ => .int
+  | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ => .str
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
   -- than the other one.
@@ -172,6 +175,8 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .window r _ _ fns =>
       let ks := r.kinds tables
       ks ++ fns.map (WinFn.kind ks)
+  | .semi a _ _ _ => a.kinds tables
+  | .orderBy r _ | .distinct r => r.kinds tables
 
 /-! ## Constants
 
@@ -379,12 +384,50 @@ def mkCall : String → List Expr → J Expr
   | "greatest", a :: as => pure (as.foldl (pick fun x y => .bin .lt x y) a)
   | "least", a :: as => pure (as.foldl (pick fun x y => .bin .lt y x) a)
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .neg a) a)
+  -- Equality where `NULL` equals `NULL`: never `NULL` itself.
+  | "is_not_distinct_from", [a, b] => pure (notDistinct a b)
+  | "is_distinct_from", [a, b] => pure (.un .not (notDistinct a b))
   -- Integer division and remainder truncate; doubles go to `mkFloatCall`.
   | "divide", [a, b] => pure (.bin .idiv a b)
   | "modulus", [a, b] => pure (.bin .imod a b)
   | "power", [a, b] => pure (.bin .ipow a b)
+  -- Strings (`SubstraitLean/Text.lean`).
+  | "upper", [a] => pure (.un .upper a)
+  | "lower", [a] => pure (.un .lower a)
+  | "character_length", [a] | "char_length", [a] | "length", [a] => pure (.un .length a)
+  | "str_concat", [a, b] => pure (.bin .concat a b)
+  | "strpos", [a, b] => pure (.bin .strpos a b)
+  | "starts_with", [a, b] => pure (.bin .startsWith a b)
+  | "ends_with", [a, b] => pure (.bin .endsWith a b)
+  -- The third argument is the escape character; `NULL` means a backslash.
+  | "like", [a, b] | "like", [a, b, .lit .null] => pure (.bin .like a b)
+  | "like", [_, _, _] => throw "LIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+  | "substring", [s, a] => pure (.bin (.substr none) s a)
+  | "substring", [s, a, .lit (.int n)] =>
+    if n < 0 then throw "a negative substring length always fails"
+    else pure (.bin (.substr (some n.toNat)) s a)
+  | "substring", [_, _, _] => throw "substring lengths must be constants"
+  | "btrim", [a] => pure (.bin (.trim true true) a (.lit (.str " ")))
+  | "ltrim", [a] => pure (.bin (.trim true false) a (.lit (.str " ")))
+  | "rtrim", [a] => pure (.bin (.trim false true) a (.lit (.str " ")))
+  | "btrim", [a, b] => pure (.bin (.trim true true) a b)
+  | "ltrim", [a, b] => pure (.bin (.trim true false) a b)
+  | "rtrim", [a, b] => pure (.bin (.trim false true) a b)
+  | "regexp_match", _ => throw "regexp_match is only supported as array_length(regexp_match(s, p))"
+  -- Timestamps (`SubstraitLean/Time.lean`).
+  | "date_part", [.lit (.str p), a] | "datepart", [.lit (.str p), a] =>
+    match Time.DatePart.ofName? p with
+    | some p => pure (.un (.datePart p) a)
+    | none => throw s!"unsupported date part '{p}'"
+  | "date_trunc", [.lit (.str u), a] | "datetrunc", [.lit (.str u), a] =>
+    match Time.TimeUnit.ofName? u with
+    | some u => pure (.un (.dateTrunc u) a)
+    | none => throw s!"unsupported date_trunc unit '{u}'"
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
+  notDistinct (a b : Expr) : Expr :=
+    .ifThen (.un .isNull a) (.un .isNull b)
+      (.ifThen (.un .isNull b) (.lit (.bool false)) (.bin .eq a b))
   /-- `COALESCE(a, as…)`: the first argument that is not `NULL`. -/
   coalesce (a : Expr) : List Expr → Expr
     | [] => a
@@ -433,7 +476,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     let some name := fns.lookup anchor
       | throw s!"function reference {anchor} is not declared in extensions"
     let argJs ← (← arrD f "arguments").mapM fun a => field a "value"
+    -- `array_length(regexp_match(s, p))`: NULL if `p` does not match.
+    if baseName name == "array_length" then
+      if let [j] := argJs then
+        if let some g := field? j "scalarFunction" then
+          if (fns.lookup (← natD g "functionReference")).map baseName == some "regexp_match" then
+            let gargs ← (← arrD g "arguments").mapM fun a => field a "value"
+            let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
+            let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
+            return .un (.regexMatch p) (← parseExpr fns cols sj)
     let parsed ← argJs.mapM (parseExpr fns cols)
+    if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
+      if (parsed.getD 1 (.lit .null)).kind cols != .time then
+        throw s!"{baseName name} is only supported on timestamps"
     -- An integer constant next to a double stands for that double (DataFusion
     -- leaves `bpm >= 30` uncast); give it the double's code.
     let hasFloat := parsed.any (·.kind cols == .float)
@@ -619,15 +674,38 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   | some m => return .emit filtered (← parseMask m)
   | none => return filtered
 
+/-- The conjuncts of a condition, splitting top-level `and` calls. -/
+partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
+  if let some f := field? j "scalarFunction" then
+    if (fns.lookup (← natD f "functionReference")).map baseName == some "and" then
+      let args ← (← arrD f "arguments").mapM fun a => field a "value"
+      return (← args.mapM (conjuncts fns)).flatten
+  return [j]
+
 partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
-  let (kind, r) ← oneof "relation" j ["read", "filter", "project", "cross", "join", "fetch", "set"]
+  let (kind, r) ← oneof "relation" j
+    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"]
   let input := fun (k : String) => do parseRel fns (← field r k)
   let core ← match kind with
     | "read" => parseRead fns r
     | "filter" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
-      pure (.filter inp (← parseExpr fns cols (← field r "condition")))
+      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter.
+      let mut base := inp
+      let mut rest : List Expr := []
+      for c in ← conjuncts fns (← field r "condition") do
+        match (field? c "subquery").bind (field? · "inPredicate") with
+        | some ip =>
+          let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
+          let needle ← parseExpr fns cols nj
+          let hay ← parseRel fns (← field ip "haystack")
+          if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
+          base := .semi base hay false (.bin .eq needle (.field cols.length))
+        | none => rest := rest ++ [← parseExpr fns cols c]
+      match rest with
+      | [] => pure base
+      | e :: es => pure (.filter base (es.foldl (.bin .and) e))
     | "project" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
@@ -640,11 +718,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         if es.isEmpty then pure inp else pure (.project inp es)
     | "cross" => pure (.cross (← input "left") (← input "right"))
     | "join" =>
-      let (ty, swap) ← match field? r "type" with
-        | some (.str "JOIN_TYPE_INNER") => pure (JoinType.inner, false)
-        | some (.str "JOIN_TYPE_LEFT") => pure (JoinType.left, false)
-        | some (.str "JOIN_TYPE_RIGHT") => pure (JoinType.left, true)
-        | t => throw s!"unsupported join type: {(t.map (·.compress)).getD "unspecified"}"
+      let ty := match field? r "type" with
+        | some (.str t) => t
+        | _ => "unspecified"
       if (field? r "postJoinFilter").isSome then
         throw "JoinRel.postJoinFilter is not supported"
       let left ← input "left"
@@ -653,12 +729,24 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       let cols := left.kinds (← get) ++ right.kinds (← get)
       let on ← (field? r "expression").elim (pure (Expr.lit (.bool true)))
         fun e => do return (← parseExpr fns cols e)
-      if !swap then pure (.join left right ty on)
-      else
-        -- `a RIGHT JOIN b` is `b LEFT JOIN a` with the columns put back:
-        -- a's columns `i < n` move to `m + i`, b's columns `n + j` to `j`.
-        let on := on.mapFields fun i => if i < n then m + i else i - n
-        pure (.emit (.join right left .left on) ((List.range n).map (m + ·) ++ List.range m))
+      -- The condition with the sides swapped: a's columns `i < n` move to
+      -- `m + i`, b's columns `n + j` to `j`.
+      let swapped := on.mapFields fun i => if i < n then m + i else i - n
+      -- `b`'s columns, then `a`'s: put back in order.
+      let back := (List.range n).map (m + ·) ++ List.range m
+      match ty with
+      | "JOIN_TYPE_INNER" => pure (.join left right .inner on)
+      | "JOIN_TYPE_LEFT" => pure (.join left right .left on)
+      | "JOIN_TYPE_RIGHT" => pure (.emit (.join right left .left swapped) back)
+      | "JOIN_TYPE_LEFT_SEMI" => pure (.semi left right false on)
+      | "JOIN_TYPE_LEFT_ANTI" => pure (.semi left right true on)
+      | "JOIN_TYPE_RIGHT_SEMI" => pure (.semi right left false swapped)
+      | "JOIN_TYPE_RIGHT_ANTI" => pure (.semi right left true swapped)
+      -- The left join, plus the right rows nothing matches, padded with NULLs.
+      | "JOIN_TYPE_OUTER" =>
+        let unmatched := Rel.project (.semi right left true swapped) (List.replicate n (.lit .null))
+        pure (.unionAll (.join left right .left on) (.emit unmatched ((List.range n).map (m + ·) ++ List.range m)))
+      | t => throw s!"unsupported join type: {t}"
     | "fetch" =>
       -- Current encoding: `offsetExpr`/`countExpr` (constants only here);
       -- deprecated encoding: `offset`/`count`.
@@ -675,12 +763,41 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       -- An absent count, or the legacy `-1`, means "all remaining rows".
       let count := (← constInt "count").bind fun n => if n < 0 then none else some n.toNat
       pure (.fetch (← input "input") offset count)
+    | "sort" =>
+      let inp ← input "input"
+      let cols := inp.kinds (← get)
+      pure (.orderBy inp (← (← arrD r "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)))
+    | "aggregate" =>
+      let inp ← input "input"
+      let cols := inp.kinds (← get)
+      if !(← arrD r "measures").isEmpty then throw "aggregate functions are not supported yet"
+      let keys ← match ← arrD r "groupings" with
+        -- DataFusion writes `DISTINCT` as one empty grouping (which its own
+        -- consumer rejects); it can only mean all columns.
+        | [g] =>
+          if (field? g "expressionReferences").isNone && (field? g "groupingExpressions").isNone then
+            pure (List.range cols.length)
+          else
+            let top ← arrD r "groupingExpressions"
+            let exprs ← match field? g "expressionReferences" with
+              | some _ => (← arrD g "expressionReferences").mapM fun i => do
+                  let k ← getNat i
+                  match top[k]? with
+                  | some e => pure e
+                  | none => throw s!"grouping expression {k} does not exist"
+              | none => arrD g "groupingExpressions"
+            exprs.mapM fun e => (parseColumn fns cols "grouping keys" e : J Nat)
+        | _ => throw "grouping sets are not supported"
+      if keys == List.range cols.length then pure (.distinct inp)
+      else pure (.distinct (.emit inp keys))
     | _ =>
-      match field? r "op" with
-      | some (.str "SET_OP_UNION_ALL") =>
-        match ← (← arrD r "inputs").mapM (parseRel fns) with
+      let inputs ← (← arrD r "inputs").mapM (parseRel fns)
+      let union ← match inputs with
         | a :: as => pure (as.foldl .unionAll a)
         | [] => throw "SetRel without inputs"
+      match field? r "op" with
+      | some (.str "SET_OP_UNION_ALL") => pure union
+      | some (.str "SET_OP_UNION_DISTINCT") => pure (.distinct union)
       | op => throw s!"unsupported set operation: {(op.map (·.compress)).getD "unspecified"}"
   match (field? r "common").bind (field? · "emit") with
   | some e =>

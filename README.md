@@ -181,11 +181,12 @@ but not maintained incrementally yet):
 
 ```python
 sv.IncrementalView(con, orders.limit(5), "top5")
-# NotIncremental: not incrementally maintainable (left join, fetch or window)
+# NotIncremental: not incrementally maintainable (left, semi or anti join, DISTINCT,
+# fetch or window)
 
 totals = orders.group_by("customer").aggregate(total=orders.amount.sum())
 sv.IncrementalView(con, totals, "totals")
-# ValueError: ... unsupported relation: {"aggregate": ...
+# ValueError: ... aggregate functions are not supported yet
 ```
 
 Aggregates (`GROUP BY` with `SUM`/`COUNT`) are the next thing to add; see
@@ -196,18 +197,18 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-39 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+61 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
-| rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✗ order_by · ✓ limit · ✓ limit with offset · ✗ order_by + limit · ✗ sample |
-| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✗ outer join · ✗ semi join · ✗ anti join · ✗ isin subquery · ✓ union all *inc.* · ✗ union distinct · ✗ intersect · ✗ difference |
-| aggregation | ✗ count() · ✗ group_by sum · ✗ count, max, mean · ✗ nunique · ✗ sum(where=) · ✗ having · ✗ value_counts · ✗ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
+| rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
+| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
+| aggregation | ✗ count() · ✗ group_by sum · ✗ count, max, mean · ✗ nunique · ✗ sum(where=) · ✗ having · ✗ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
 | windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · – rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
-| strings | ✗ upper · ✗ length · ✗ concat · ✗ substr · ✗ contains · ✗ startswith · ✗ like · ✗ re_search · ✗ strip |
-| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✗ year · ✗ date · ✗ truncate |
+| strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
+| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* |
 <!-- coverage:end -->
 
 ### Pre- and postconditions on a transformation
@@ -626,6 +627,8 @@ round trips and the differential tests instead.
 |---|---|
 | `SubstraitLean/Value.lean` | Nullable values, rows, bag-semantics relations |
 | `SubstraitLean/Rounding.lean` | Exact `FLOOR`/`CEIL`/`ROUND` and casts to `BIGINT` on double codes; monotonicity |
+| `SubstraitLean/Text.lean` | String functions, `LIKE`; black-box `UPPER`/`LOWER`/regexes; patterns that certainly compile |
+| `SubstraitLean/Time.lean` | Exact `date_part` and `date_trunc` on the proleptic Gregorian calendar; monotonicity |
 | `SubstraitLean/Expr.lean` | `Literal`, `FieldReference`, scalar functions, `IfThen`, Kleene 3-valued logic |
 | `SubstraitLean/Window.lean` | Sort orders, `ROW_NUMBER`/`LAG`/`LEAD` semantics over partitions |
 | `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left), `Fetch`, `UnionAll`, `Window`; arity, well-formedness, `eval`; **type soundness** |
@@ -719,10 +722,13 @@ runtime errors, or reports what may go wrong. `sverify` reports these as
 `warning: …`.
 
 * Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
-  integer `POWER` with a negative exponent or a result outside 64 bits, and
-  `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value.
-* Warnings: `+`, `-`, `*` and negation leaving 64 bits. DataFusion wraps around
-  silently, so the result is not the mathematical one.
+  integer `POWER` with a negative exponent or a result outside 64 bits,
+  `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
+  that may not compile, and `date_trunc` to a week, month, quarter or year outside
+  ±2⁶³ nanoseconds (DataFusion panics or returns garbage there).
+* Warnings: `+`, `-`, `*` and negation leaving 64 bits, and `date_trunc` to a day or
+  less below `-2⁶³` µs. DataFusion wraps around silently, so the result is not the
+  mathematical one.
 * `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
   are understood where DataFusion respects them: in a `CASE` branch (and so
   `NULLIF(b, 0)`), or in a filter below a *projection*. They are not respected in the
@@ -734,6 +740,12 @@ runtime errors, or reports what may go wrong. `sverify` reports these as
   `amount.round()` is an integer in `[0, 100]`, and the cast safe.
 * Abstract rules for truncating `/` and `%` (`divBound_sound`, `modBound_sound`) and
   for squares (`powAbs_sound`).
+* `Time.monthIndex_spec`, `Time.trunc_mono`, `Time.year_mono`
+  ([Time.lean](SubstraitLean/Time.lean)): every day lies in the month the calendar
+  arithmetic computes, so years and truncations grow with the timestamp, and
+  `ts ∈ [2024-01-01, 2025-01-01)` proves `ts.year() == 2024` and
+  `ts.truncate("M") >= 2024-01-01`. The other parts have proved ranges (`day` in
+  `[1, 31]`, …); `date_part` is `NULL` outside the years ±262142.
 
 Trusted: *when* DataFusion evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
 `AND`/`OR` are not, filter and join conditions may run before the filters below
@@ -746,10 +758,11 @@ against 64-bit limits, so its overflow is not caught.
 
 Table updates are Z-sets: rows with signed weights, where a deletion has weight `-1` and an
 update is a delete plus an insert. This follows DBSP (Budiu et al., VLDB 2023).
-It covers every operator except left join and fetch (`Rel.Incremental`):
+It covers every operator except left, semi and anti joins, `DISTINCT`, fetch and
+windows (`Rel.Incremental`):
 
-* `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit and union are
-  linear, and cross and inner join use the bilinear rule
+* `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
+  are linear (a sort only orders the bag), and cross and inner join use the bilinear rule
   `Δ(A×B) = ΔA×(B+ΔB) + A×ΔB`.
 * `Rel.delta`: compiles a plan into a **delta plan**, an ordinary `Rel` that reads the
   old tables and the change tables (`δ t`, e.g. `orders$delta`).
@@ -784,18 +797,40 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   without ties (see `window_tiebreak`).
 * **Fetch is order-dependent.** Without a `SortRel`, real engines may return any
   rows. The semantics fixes list order, so `fetch` theorems describe one valid behavior.
+  `SortRel` is a stable sort here, while engines may order ties either way, so after
+  `ORDER BY … LIMIT` the checker's claims hold for every row the engine could keep.
+* **Semi joins and `DISTINCT` are their own operators.** `Rel.semi` keeps the left
+  rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
+  the first occurrence of every row (NULLs equal, doubles by their codes, as in
+  DataFusion). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  `DISTINCT` as an aggregate with one empty grouping, which its own consumer
+  rejects; the parser reads it as "all columns".
 * **Ill-typed calls evaluate to `null`.** This keeps `eval` total. `Rel.WF` rules out
   out-of-range field references.
 * **Some operations are rewrites in the parser.** `IN` lists become `OR`s of
   equalities; `COALESCE`, `NULLIF`, `GREATEST`, `LEAST` and `ABS` become
-  conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped.
-  The rewrites are trusted code, checked against DataFusion by
-  `python/tests/test_rewrites.py`. (`ABS` of the smallest `BIGINT` fails in
+  conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped;
+  `FULL OUTER JOIN` becomes the left join plus the anti join of the right side,
+  padded with NULLs; `x IN (subquery)` in a filter becomes a semi join on `=`;
+  `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
+  conditional. The rewrites are trusted code, checked against DataFusion by
+  `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
   DataFusion; here it is reported as wrapping around.)
 * **Integers are unbounded; overflow is an `Issue`.** `Rel.eval` computes exact
   integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation that may
   leave 64 bits. Where DataFusion fails instead (division, `POWER`, casts), the
   value in the model is `NULL`.
+* **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`
+  and `character_length` are computed exactly, checked against DataFusion by
+  `python/tests/test_text.py`. `UPPER`, `LOWER` and regular expressions are black
+  boxes (`opaque`): no proof depends on what they compute, and Lean's evaluator
+  handles only ASCII case and no regular expressions. A pattern is an error unless
+  `Text.simpleRegex` accepts it, a conservative subset of Rust's syntax that is
+  tested to compile.
+* **Timestamps are microseconds (UTC).** `date_part` and `date_trunc` are computed
+  exactly, checked against DataFusion by `python/tests/test_time.py`, including at
+  the ends of the ranges where DataFusion stops being exact. Dates (`DATE`) are not
+  supported by them yet.
 * **Integer `//` from Ibis is exact.** Ibis compiles it through doubles
   (`CAST(FLOOR(CAST(a AS DOUBLE) / b) AS BIGINT)`), which is wrong beyond 2⁵³;
   `sverify` compiles it to integer division instead.
@@ -841,7 +876,8 @@ No existing formal semantics for Substrait came up in my search. The closest wor
    windows: framed aggregates (`AVG(v) OVER (ROWS 5 PRECEDING)`) and
    incremental maintenance.
 1. **Non-linear operators.** Aggregates (SUM/COUNT per group are linear over
-   Z-sets), DISTINCT and left join. Real plans use `AggregateRel` a lot.
+   Z-sets), and incremental DISTINCT, semi and left joins. Real plans use
+   `AggregateRel` a lot.
 2. **Translation validation.** Given a plan and its optimized form, have Lean
    check that they are equivalent. A decision procedure for the conjunctive
    fragment would mirror Cosette and HoTTSQL.
