@@ -133,22 +133,23 @@ CONTRACTS = [
 amounts = st.one_of(st.none(), st.integers(-100, 100))
 
 
+@pytest.mark.parametrize("engine", ["datafusion", "duckdb"])
 @pytest.mark.parametrize("index", range(len(CONTRACTS)))
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
-def test_proved_postconditions_hold_on_data(index, data):
+def test_proved_postconditions_hold_on_data(index, engine, data):
     requires, make, ensures = CONTRACTS[index]
     report = sv.verify(make(orders), requires=requires, ensures=ensures)
     assert any(c.proved for c in report.ensures)
     rows = data.draw(st.lists(st.tuples(st.integers(0, 5) | st.none(), st.just("ada"), amounts)))
     table = bound_orders(rows)
-    rows_ok = all(violations(table, c) == 0 for c in requires["orders"])
+    rows_ok = all(violations(table, c, engine) == 0 for c in requires["orders"])
     if not rows_ok:
         return
     result = make(table)
     for cond, checked in zip(ensures, report.ensures, strict=True):
         if checked.proved:
-            assert violations(result, cond) == 0, checked.label
+            assert violations(result, cond, engine) == 0, checked.label
 
 
 # IoT: per-sensor cleaning, a wide join on time, and a two-step window.

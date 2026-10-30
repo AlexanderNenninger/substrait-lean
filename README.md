@@ -53,7 +53,7 @@ the project root:
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
-cd python && uv sync             # DataFusion 51, Ibis, pyarrow, substrait, pytest, hypothesis
+cd python && uv sync             # DataFusion 51, DuckDB, Ibis, pyarrow, substrait, pytest, hypothesis
 ```
 ```bash
 uv run pytest                    # should end with "161 passed"
@@ -483,7 +483,7 @@ total order, which would make filters and projections disagree on NaN.
 ### Engines
 
 Plans always come from DataFusion's Substrait producer, but they can run on
-DataFusion or [Polars](https://pola.rs). Pass `engine="polars"` to
+DataFusion, [Polars](https://pola.rs) or DuckDB (below). Pass `engine="polars"` to
 `IncrementalView` or `sv.run_plan(con, plan, "polars")`. The tables stay in
 `con` and are handed to Polars as Arrow. The point is differential testing,
 with the Lean semantics as the spec.
@@ -532,10 +532,93 @@ written plans with string `VALUES` or a fetch run only on Polars. Doubles in a
 virtual table come out as their integer codes. `lt` on strings or booleans is
 undefined in the model (unlike in SQL), so the translator refuses it.
 
+### DuckDB, through generated SQL
+
+`engine="duckdb"` runs plans on [DuckDB](https://duckdb.org) as SQL that
+`sverify.sql.to_sql(plan, DUCKDB)` generates from them. DuckDB's Substrait
+extension is not used. Like Polars, DuckDB runs Lean's written plans over the
+tables of `con`, which are copied into a fresh in-process database for each
+run. Contracts take `engine=` for their runtime checks on data too:
+
+```python
+view = sv.IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+
+@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
+def passthrough(orders): ...
+```
+
+The SQL generator (`python/src/sverify/sql/`) reads Substrait JSON as
+`Parse.lean` does. It accepts exactly the plans `substrait-check` accepts and
+raises `Unsupported` on everything else. It then writes SQL whose result is
+`Rel.eval`. The query spells out every semantic choice instead of leaving it to
+the engine:
+
+* subqueries name their columns `c0, c1, …`;
+* integers are `BIGINT`, and overflow raises (DataFusion wraps around);
+* division and remainder truncate; where DataFusion fails at run time
+  (division by zero, `MIN / -1`, bad `POWER` or `CAST(double AS BIGINT)`),
+  Lean's value is NULL and the SQL raises;
+* doubles compare by the model's total order (`-NaN < -inf < … < -0.0 < +0.0
+  < … < inf < NaN`) in comparisons, joins, partitions and sorts;
+* every `ORDER BY` key says `NULLS FIRST`/`LAST`;
+* filters keep only TRUE rows;
+* below a `FETCH` or a window, an ordinal column carries Lean's list order, so
+  `LIMIT` and window ties pick Lean's rows.
+
+Engine differences go through the hooks of a `Dialect`
+(`sverify/sql/core.py`). DuckDB's is `sverify/sql/duckdb.py`.
+
+`python/tests/test_sql.py` checks the generator. Every golden fixture and every
+delta plan of the incremental fixtures and example pipelines runs on DataFusion
+and on DuckDB with random tables. The results must agree with each other and
+with Lean's `Rel.eval` (row for row, in Lean's order, when `FETCH` or a window
+makes order matter). The file also has targeted tests for engine traps: NULL
+join keys, three-valued logic, NULL ordering in windows, refused integer
+division, overflow, and NaN and signed zeros. It keeps snapshots of the
+generated SQL in `python/tests/sql_snapshots/`. The incremental, window,
+rewrite and ASOF differential tests run on DuckDB too.
+
+#### Snowflake
+
+`to_sql(plan, SNOWFLAKE)` (from `sverify.sql.snowflake`) writes checked plans
+and Lean delta plans as Snowflake SQL. The SQL is written to match Lean where
+Snowflake's documented behaviour differs:
+
+* integers are `NUMBER(38,0)` and are checked against the 64-bit range;
+* timestamps are `TIMESTAMP_NTZ(6)`;
+* backslashes in strings are escaped;
+* every identifier is quoted, so create tables and columns with quoted
+  lower-case names.
+
+Where Snowflake can't match, the plan is refused (`Unsupported`) or the query
+raises instead of answering differently:
+
+* FETCH over a named table is refused: Snowflake tables have no row order.
+  Windows are refused too, unless you pass `tie_free=True` to promise there
+  are no ties (a contract report's `deterministic` says so).
+* Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
+  interval type.
+* Snowflake has one NaN, which stands for Lean's +NaN. A negative-NaN literal
+  is refused, and negating a NaN raises.
+* Lean orders −0.0 below +0.0, and Snowflake doesn't document whether the sign
+  of a zero is visible. So comparing two zeros raises, and so does sorting or
+  partitioning on a double column that holds a zero.
+
+Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
+collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
+fixture and delta plan, parses it with sqlglot's Snowflake parser, and runs it
+on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`.
+fakesnow emulates Snowflake on DuckDB, so this checks the SQL, not Snowflake's
+behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
+`SNOWFLAKE_USER`, a credential (`SNOWFLAKE_PASSWORD`,
+`SNOWFLAKE_AUTHENTICATOR` or `SNOWFLAKE_PRIVATE_KEY_FILE`) and
+`SNOWFLAKE_WAREHOUSE`/`DATABASE`/`SCHEMA`.
+
 **Trusted components** (not covered by the proofs): the JSON parser and
 writer, the `sverify` glue (change tables, consolidation, merge), the Polars
-translator, and each engine's execution of Substrait. These are covered by golden tests, round
-trips and the differential test instead.
+translator, the SQL generator, and each engine's execution (DataFusion's
+Substrait consumer, Polars, DuckDB's SQL). These are covered by golden tests,
+round trips and the differential tests instead.
 
 ## What's here
 
