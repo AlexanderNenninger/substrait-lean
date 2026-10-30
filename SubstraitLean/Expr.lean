@@ -1,5 +1,7 @@
 import SubstraitLean.Value
 import SubstraitLean.Rounding
+import SubstraitLean.Text
+import SubstraitLean.Time
 
 /-!
 # Scalar expressions
@@ -22,6 +24,10 @@ integer is exact (see `SubstraitLean/Rounding.lean`).
 Integer division and remainder truncate toward zero, as in DataFusion. Where
 DataFusion raises an error (division by zero, a cast out of range, …) the
 value here is `null`; `SubstraitLean/Safety.lean` says when that happens.
+
+String functions are in `SubstraitLean/Text.lean` (`UPPER`, `LOWER` and
+regular expressions are black boxes there); timestamps are microseconds, and
+`date_part`/`date_trunc` are in `SubstraitLean/Time.lean`.
 -/
 
 namespace Substrait
@@ -40,6 +46,15 @@ inductive UnFn where
   | ftoi
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
+  /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
+  | upper | lower | length
+  /-- `array_length(regexp_match(s, p))` for a constant pattern `p` (a black box):
+  `NULL` if `p` does not match. -/
+  | regexMatch (p : String)
+  /-- `date_part(p, ts)`: `NULL` outside the years ±262142. -/
+  | datePart (p : Time.DatePart)
+  /-- `date_trunc(u, ts)`. -/
+  | dateTrunc (u : Time.TimeUnit)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -50,6 +65,12 @@ inductive BinFn where
   | idiv | imod | ipow
   /-- `POWER` of doubles. -/
   | fpow
+  /-- `s || t`, `strpos(s, t)`, `starts_with`, `ends_with` and `s LIKE p`. -/
+  | concat | strpos | startsWith | endsWith | like
+  /-- `substring(s FROM a [FOR n])` for a constant `n`. -/
+  | substr (n : Option Nat)
+  /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
+  | trim (left right : Bool)
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -75,6 +96,16 @@ def UnFn.apply : UnFn → Value → Value
     | some i => .int i
     | none => .null
   | .itos, .int i => .str (toString i)
+  | .upper, .str s => .str (Text.upper s)
+  | .lower, .str s => .str (Text.lower s)
+  | .length, .str s => .int s.length
+  | .regexMatch p, .str s => match Text.regexMatch s p with
+    | some k => .int (k + 1)
+    | none => .null
+  | .datePart p, .int ts => match Time.datePart p ts with
+    | some v => .int v
+    | none => .null
+  | .dateTrunc u, .int ts => .int (Time.trunc u ts)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -113,6 +144,13 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .ipow, .int a, .int b =>
     if b < 0 ∨ (64 < b ∧ 1 < a.natAbs) then .null else .int (a ^ b.toNat)
   | .fpow, .int a, .int b => .int (FloatCode.lift₂ Float.pow a b)
+  | .concat, .str a, .str b => .str (a ++ b)
+  | .strpos, .str a, .str b => .int (Text.strpos a b)
+  | .startsWith, .str a, .str b => .bool (Text.startsWith a b)
+  | .endsWith, .str a, .str b => .bool (Text.endsWith a b)
+  | .like, .str a, .str b => .bool (Text.like a b)
+  | .substr n, .str s, .int a => .str (Text.substr s a n)
+  | .trim l r, .str s, .str set => .str (Text.trim l r s set)
   | _, _, _ => .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules

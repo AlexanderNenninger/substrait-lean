@@ -1,0 +1,9 @@
+Distinct
+  Read t
+tables: t(1)
+arity: 1
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

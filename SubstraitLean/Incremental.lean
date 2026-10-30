@@ -85,20 +85,22 @@ instance : Add ZCatalog := ⟨fun cat Δ t => cat t ++ Δ t⟩
 theorem ZCatalog.add_apply (cat Δ : ZCatalog) (t : String) : (cat + Δ) t = cat t ++ Δ t := rfl
 
 /-- Operators whose result changes linearly (or bilinearly) with their
-inputs. A left join can retract its null-padded rows, and a fetch or a
-window depends on the other rows' positions, so none has a delta rule of this
-shape. -/
+inputs. A left join can retract its null-padded rows, a semi or anti join
+depends on whether *any* right row matches, `DISTINCT` on whether a row was
+there before, and a fetch or a window on the other rows' positions, so none
+has a delta rule of this shape. A sort is just a bag in some order. -/
 def Rel.Incremental : Rel → Prop
   | .read _ | .values _ _ => True
-  | .filter r _ | .project r _ | .emit r _ => r.Incremental
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.Incremental
   | .cross a b | .unionAll a b | .join a b .inner _ => a.Incremental ∧ b.Incremental
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => False
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _ => False
 
 def Rel.tables : Rel → List String
   | .read t => [t]
   | .values _ _ => []
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ => r.tables
-  | .cross a b | .join a b _ _ | .unionAll a b => a.tables ++ b.tables
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r => r.tables
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => a.tables ++ b.tables
 
 /-- Z-set semantics. Mirrors `Rel.eval` on the incremental fragment. -/
 def Rel.zeval (cat : ZCatalog) : Rel → ZSet
@@ -111,8 +113,9 @@ def Rel.zeval (cat : ZCatalog) : Rel → ZSet
   | .join a b .inner on =>
       ZSet.filter (fun row => (on.eval row).isTrue) (ZSet.cross (a.zeval cat) (b.zeval cat))
   | .unionAll a b => a.zeval cat ++ b.zeval cat
+  | .orderBy r keys => (r.zeval cat).mergeSort fun x y => sortLe keys x.1 y.1
   -- Outside the incremental fragment; every theorem excludes these.
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => []
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _ => []
 
 /-- The change in a plan's output caused by the change set `Δ`. -/
 def Rel.zdelta (cat Δ : ZCatalog) : Rel → ZSet
@@ -129,7 +132,8 @@ def Rel.zdelta (cat Δ : ZCatalog) : Rel → ZSet
         (ZSet.cross (a.zdelta cat Δ) (b.zeval cat ++ b.zdelta cat Δ) ++
           ZSet.cross (a.zeval cat) (b.zdelta cat Δ))
   | .unionAll a b => a.zdelta cat Δ ++ b.zdelta cat Δ
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ => []
+  | .orderBy r keys => (r.zdelta cat Δ).mergeSort fun x y => sortLe keys x.1 y.1
+  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _ => []
 
 /-- **Delta rule**: `Q(D + ΔD) ~ Q(D) + ΔQ`. -/
 theorem Rel.zeval_add {cat Δ : ZCatalog} :
@@ -158,8 +162,12 @@ theorem Rel.zeval_add {cat Δ : ZCatalog} :
       refine ((zeval_add (r := a) h.1).append (zeval_add (r := b) h.2)).trans ?_
       simp only [List.append_assoc]
       exact List.Perm.append_left _ (List.perm_append_comm_assoc _ _ _)
+  | .orderBy r _, h => by
+      simp only [zeval, zdelta]
+      exact (List.mergeSort_perm _ _).trans ((zeval_add (r := r) h).trans
+        (List.Perm.append (List.mergeSort_perm _ _).symm (List.mergeSort_perm _ _).symm))
   | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h | .window _ _ _ _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h => h.elim
 
 /-! ## Delta plans
 
@@ -179,15 +187,18 @@ def Rel.delta (δ : String → String) : Rel → Rel
   | .unionAll a b => .unionAll (a.delta δ) (b.delta δ)
   | .fetch r o c => .fetch (r.delta δ) o c
   | .window r p s f => .window (r.delta δ) p s f
+  | .orderBy r keys => .orderBy (r.delta δ) keys
+  | .semi a b anti on => .semi (a.delta δ) (b.delta δ) anti on
+  | .distinct r => .distinct (r.delta δ)
 
 /-- A plan only depends on the tables it reads. -/
 theorem Rel.zeval_congr {C cat : ZCatalog} :
     ∀ {r : Rel}, (∀ t ∈ r.tables, C t = cat t) → r.zeval C = r.zeval cat
   | .read t, h => h t (by simp [tables])
   | .values _ _, _ => rfl
-  | .filter r _, h | .project r _, h | .emit r _, h => by
+  | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h => by
       simp only [zeval, zeval_congr (r := r) h]
-  | .fetch _ _ _, _ | .window _ _ _ _, _ => rfl
+  | .fetch _ _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .distinct _, _ => rfl
   | .cross a b, h | .unionAll a b, h => by
       simp only [tables, List.mem_append] at h
       simp only [zeval, zeval_congr (r := a) (fun t ht => h t (.inl ht)),
@@ -206,7 +217,8 @@ theorem Rel.delta_correct {C cat Δ : ZCatalog} {δ : String → String} :
       (r.delta δ).zeval C = r.zdelta cat Δ
   | .read t, _, _, hδ => hδ t (by simp [tables])
   | .values _ _, _, _, _ => rfl
-  | .filter r _, h, hold, hδ | .project r _, h, hold, hδ | .emit r _, h, hold, hδ => by
+  | .filter r _, h, hold, hδ | .project r _, h, hold, hδ | .emit r _, h, hold, hδ
+  | .orderBy r _, h, hold, hδ => by
       simp only [delta, zeval, zdelta, delta_correct (r := r) h hold hδ]
   | .cross a b, h, hold, hδ => by
       simp only [tables, List.mem_append] at hold hδ
@@ -228,7 +240,8 @@ theorem Rel.delta_correct {C cat Δ : ZCatalog} {δ : String → String} :
         delta_correct (r := a) h.1 (fun t ht => hold t (.inl ht)) (fun t ht => hδ t (.inl ht)),
         delta_correct (r := b) h.2 (fun t ht => hold t (.inr ht)) (fun t ht => hδ t (.inr ht))]
   | .join _ _ .left _, h, _, _ => h.elim
-  | .fetch _ _ _, h, _, _ | .window _ _ _ _, h, _, _ => h.elim
+  | .fetch _ _ _, h, _, _ | .window _ _ _ _, h, _, _ | .semi _ _ _ _, h, _, _
+  | .distinct _, h, _, _ => h.elim
 
 /-- **Incremental maintenance is sound**: the new result is the old result
 plus the output of the delta plan. -/
@@ -264,7 +277,11 @@ theorem Rel.zeval_lift {cat : Catalog} :
   | .unionAll a b, h => by
       simp only [zeval, eval]; rw [zeval_lift (r := a) h.1, zeval_lift (r := b) h.2]
       simp [ZSet.lift]
+  | .orderBy r _, h => by
+      simp only [zeval, eval]; rw [zeval_lift (r := r) h]
+      simp only [ZSet.lift]
+      exact (List.map_mergeSort (f := fun row => (row, (1 : Int))) fun _ _ _ _ => rfl).symm
   | .join _ _ .left _, h => h.elim
-  | .fetch _ _ _, h | .window _ _ _ _, h => h.elim
+  | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h => h.elim
 
 end Substrait

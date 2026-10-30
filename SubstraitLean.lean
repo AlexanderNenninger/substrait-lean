@@ -1,5 +1,7 @@
 import SubstraitLean.Value
 import SubstraitLean.Rounding
+import SubstraitLean.Text
+import SubstraitLean.Time
 import SubstraitLean.Expr
 import SubstraitLean.Window
 import SubstraitLean.Rel

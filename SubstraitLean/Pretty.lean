@@ -17,12 +17,18 @@ def Row.render (row : Row) : String :=
 def UnFn.render : UnFn → String
   | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
   | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
-  | .ftoi => "BIGINT" | .itos => "VARCHAR"
+  | .ftoi => "BIGINT" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
+  | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
+  | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
   | .and => "AND" | .or => "OR" | .fadd => "+." | .fsub => "-." | .fmul => "*." | .fdiv => "/."
   | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^."
+  | .concat => "||" | .strpos => "STRPOS" | .startsWith => "STARTS_WITH"
+  | .endsWith => "ENDS_WITH" | .like => "LIKE"
+  | .substr n => s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}"
+  | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
 
 def Expr.render : Expr → String
   | .lit v => v.render
@@ -50,12 +56,16 @@ def Rel.renderLines : Rel → List String
       s!"Fetch offset={off} count={(cnt.map toString).getD "all"}" :: indent r.renderLines
   | .unionAll a b => "UnionAll" :: indent a.renderLines ++ indent b.renderLines
   | .window r part sort fns =>
-      let key (k : SortKey) :=
-        s!"${k.col}{if k.desc then " DESC" else ""}{if k.nullsFirst then " NULLS FIRST" else ""}"
       s!"Window +[{", ".intercalate (fns.map WinFn.render)}] PARTITION BY {part.map (s!"${·}")} ORDER BY {sort.map key}"
         :: indent r.renderLines
+  | .semi a b anti on =>
+      s!"{if anti then "Anti" else "Semi"}Join {on.render}" :: indent a.renderLines ++ indent b.renderLines
+  | .orderBy r keys => s!"OrderBy {keys.map key}" :: indent r.renderLines
+  | .distinct r => "Distinct" :: indent r.renderLines
 where
   indent (ls : List String) : List String := ls.map ("  " ++ ·)
+  key (k : SortKey) : String :=
+    s!"${k.col}{if k.desc then " DESC" else ""}{if k.nullsFirst then " NULLS FIRST" else ""}"
 
 def Rel.render (r : Rel) : String := "\n".intercalate r.renderLines
 

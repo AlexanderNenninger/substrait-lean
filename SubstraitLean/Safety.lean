@@ -5,9 +5,11 @@ import SubstraitLean.Contracts
 
 DataFusion fails at run time on integer division or remainder by zero, on
 `MIN / -1`, on integer powers with a negative exponent or a result outside
-64 bits, and on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value.
-Integer `+`, `-`, `*` and negation do not fail: they wrap around silently, so
-the result differs from `Rel.eval`'s (unbounded) integers. All of these are
+64 bits, on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, on
+an invalid regular expression and on `date_trunc` to a week, month, quarter or
+year outside ±2⁶³ nanoseconds. Integer `+`, `-`, `*` and negation do not fail:
+they wrap around silently, so the result differs from `Rel.eval`'s
+(unbounded) integers; so does `date_trunc` to a day or less below `-2⁶³`. All of these are
 `Issue`s; wrapping is a warning, the rest are errors.
 
 **When does DataFusion evaluate an expression?** (Checked against DataFusion
@@ -43,6 +45,8 @@ inductive Issue where
   | badCast
   /-- `POWER` of integers with a negative exponent. -/
   | negExponent
+  /-- A regular expression outside `Text.simpleRegex`, which may not compile. -/
+  | badRegex
   /-- `+`, `-`, `*` or negation leaving 64 bits: DataFusion wraps around. -/
   | wraps
   deriving Repr, DecidableEq
@@ -52,6 +56,7 @@ def Issue.name : Issue → String
   | .overflow => "overflow"
   | .badCast => "cast out of range"
   | .negExponent => "negative exponent"
+  | .badRegex => "invalid regular expression"
   | .wraps => "may wrap around"
 
 /-- Errors stop the query; wrapping silently gives a different result. -/
@@ -70,6 +75,12 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .ftoi, .int c => match FloatCode.toInt? c with
     | some x => if inI64 x then none else some .badCast
     | none => some .badCast
+  -- The pattern is compiled whatever the input.
+  | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
+  | .dateTrunc u, .int ts =>
+    if u.calendar then
+      if ts ≤ Time.nsMax ∧ Time.nsMin ≤ Time.trunc u ts then none else some .overflow
+    else wrapIf (Time.trunc u ts)
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
@@ -112,9 +123,18 @@ theorem AVal.inI64_of_fits {a : AVal} {i : Int} (h : a.intFits = true) (hm : a.M
 /-- Every double code `a` describes casts to a `BIGINT`. -/
 def AVal.castFits (a : AVal) : Bool := a.int.all fun b => b.lo.any (castLo ≤ ·) && b.hi.any (· ≤ castHi)
 
+/-- Every timestamp `aa` describes, and its truncation `ar`, is within
+DataFusion's nanosecond range. -/
+def nsFits (aa ar : AVal) : Bool :=
+  aa.int.all (·.hi.any (· ≤ Time.nsMax)) && ar.int.all (·.lo.any (Time.nsMin ≤ ·))
+
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.intFits then [] else [.wraps]
   | .ftoi, aa, _ => if aa.castFits then [] else [.badCast]
+  | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
+  | .dateTrunc u, aa, ar =>
+    if u.calendar then (if nsFits aa ar then [] else [.overflow])
+    else if ar.intFits then [] else [.wraps]
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -257,6 +277,34 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       rw [hx] at hk
       simp [inI64, hx₁, hx₂] at hk
     · cases hx : FloatCode.toInt? c <;> simp only [hx] at hk <;> (try split at hk) <;> simp_all
+  case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str =>
+    simp only [UnFn.mayIssue]
+    split at hk <;> simp_all
+  case dateTrunc.int u ts =>
+    simp only [UnFn.mayIssue]
+    cases hc : u.calendar <;> simp only [hc, Bool.false_eq_true, ↓reduceIte] at hk ⊢
+    · simp only [wrapIf] at hk
+      split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk
+      split
+      · rename_i hn hfits
+        exact absurd (AVal.inI64_of_fits hfits (by simpa [UnFn.apply] using hr)) hn
+      · simp
+    · split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk
+      split
+      · rename_i hout hfits
+        exfalso; apply hout
+        simp only [nsFits, Bool.and_eq_true, Option.all_eq_true] at hfits
+        obtain ⟨b, hb, hm⟩ := ha
+        obtain ⟨b', hb', hm'⟩ : ar.Mem (.int (Time.trunc u ts)) := by simpa [UnFn.apply] using hr
+        have h1 := hfits.1 b hb
+        have h2 := hfits.2 b' hb'
+        obtain ⟨bl, bh⟩ := b
+        obtain ⟨bl', bh'⟩ := b'
+        simp only [Bound.Mem] at hm hm'
+        cases bh <;> cases bl' <;> simp_all <;> constructor <;> omega
+      · simp
 
 theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : Bool} {k : Issue}
     (ha : aa.Mem v) (hb : ab.Mem w) (hr : ar.Mem (f.apply v w))
@@ -413,7 +461,8 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
 /-! ## Plans -/
 
 /-- The plan with the filters DataFusion may merge into or push past removed:
-filters go, inner joins become cross joins. Fetches and windows stop it:
+filters go, inner joins become cross joins, semi and anti joins, sorts and
+`DISTINCT` give way to their (left) input. Fetches and windows stop it:
 filters do not move across them. -/
 def Rel.loose : Rel → Rel
   | .read t => .read t
@@ -427,6 +476,8 @@ def Rel.loose : Rel → Rel
   | .fetch r off cnt => .fetch r off cnt
   | .unionAll a b => .unionAll a.loose b.loose
   | .window r part sort fns => .window r part sort fns
+  | .semi a _ _ _ => a.loose
+  | .orderBy r _ | .distinct r => r.loose
 
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat
   | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ => rfl
@@ -437,6 +488,8 @@ theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.ari
   | .join a b .inner _ | .join a b .left _ => by
       simp [loose, arity, loose_arity cat a, loose_arity cat b]
   | .unionAll a _ => by simp [loose, arity, loose_arity cat a]
+  | .semi a _ _ _ => by simp [loose, arity, loose_arity cat a]
+  | .orderBy r _ | .distinct r => by simp [loose, arity, loose_arity cat r]
 
 theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF cat
   | .read _, h | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h => h
@@ -449,6 +502,9 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
     ⟨loose_wf (r := a) h.1, loose_wf (r := b) h.2.1, by rw [loose_arity, loose_arity]; exact h.2.2⟩
   | .unionAll a b, h =>
     ⟨loose_wf (r := a) h.1, loose_wf (r := b) h.2.1, by rw [loose_arity, loose_arity]; exact h.2.2⟩
+  | .semi a _ _ _, h => loose_wf (r := a) h.1
+  | .orderBy r _, h => loose_wf (r := r) h.1
+  | .distinct r, h => loose_wf (r := r) h
 
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
@@ -458,9 +514,10 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | _, .filter r c, p => r.HasIssue cat true p ∨ ∃ row ∈ r.loose.eval cat, p ∈ c.issues row
   | u, .project r es, p => r.HasIssue cat u p ∨
       ∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ es, p ∈ e.issues row
-  | u, .emit r _, p | u, .fetch r _ _, p | u, .window r _ _ _, p => r.HasIssue cat u p
+  | u, .emit r _, p | u, .fetch r _ _, p | u, .window r _ _ _, p | u, .orderBy r _, p
+  | u, .distinct r, p => r.HasIssue cat u p
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
-  | _, .join a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
+  | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
 
 /-- The issues the abstract evaluation cannot rule out. -/
@@ -472,14 +529,30 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | u, .project r es =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T))
-  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ => r.mayIssues cat A F T u
+  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ | u, .orderBy r _ | u, .distinct r =>
+    r.mayIssues cat A F T u
   | u, .cross a b | u, .unionAll a b => a.mayIssues cat A F T u ++ b.mayIssues cat A F T u
-  | _, .join a b _ on =>
+  | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
     a.mayIssues cat A F T true ++ b.mayIssues cat A F T true ++
       on.mayIssues (ab.aeval cat A F T) (ab.facts cat F T)
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
+
+/-- Join and semi-join conditions run on pairs of loose input rows. -/
+theorem condIssue_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {a b : Rel} {on : Expr} {p : Issue × Expr} {x y : Row} (ha : a.WF cat) (hb : b.WF cat)
+    (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) (hp : p ∈ on.issues (x ++ y)) :
+    p ∈ on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T)
+      ((Rel.cross a.loose b.loose).facts cat F T) := by
+  have hab : (Rel.cross a.loose b.loose).WF cat := ⟨Rel.loose_wf ha, Rel.loose_wf hb⟩
+  have hrow : x ++ y ∈ (Rel.cross a.loose b.loose).eval cat := by
+    simp only [Rel.eval, mem_crossRows]; exact ⟨x, hx, y, hy, rfl⟩
+  exact Expr.mayIssues_sound (Rel.aeval_sound hcat hA hF hT hab _ hrow)
+    (Rel.facts_sound hcat hF hT hab _ hrow) (KsHold.nil _) on p hp
 
 /-- **Soundness**: every issue that can happen when running a well-formed plan
 is among `Rel.mayIssues`. So an empty list proves the plan runs without
@@ -512,6 +585,8 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | _, .emit r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .fetch r _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
   | _, .window r _ _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
+  | _, .orderBy r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
+  | _, .distinct r, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
   | _, .cross a b, hwf, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
@@ -532,10 +607,13 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     rcases h with h | h | ⟨x, hx, y, hy, hp⟩
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT ha p h))
     · exact .inl (.inr (mayIssues_sound hcat hA hF hT hb p h))
-    · have hab : (Rel.cross a.loose b.loose).WF cat := ⟨loose_wf ha, loose_wf hb⟩
-      have hrow : x ++ y ∈ (Rel.cross a.loose b.loose).eval cat := by
-        simp only [eval, mem_crossRows]; exact ⟨x, hx, y, hy, rfl⟩
-      exact .inr (Expr.mayIssues_sound (aeval_sound hcat hA hF hT hab _ hrow)
-        (facts_sound hcat hF hT hab _ hrow) (KsHold.nil _) on p hp)
+    · exact .inr (condIssue_sound hcat hA hF hT ha hb hx hy hp)
+  | _, .semi a b _ on, hwf, p, h => by
+    simp only [HasIssue] at h
+    simp only [mayIssues, List.mem_append]
+    rcases h with h | h | ⟨x, hx, y, hy, hp⟩
+    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 p h))
+    · exact .inl (.inr (mayIssues_sound hcat hA hF hT hwf.2.1 p h))
+    · exact .inr (condIssue_sound hcat hA hF hT hwf.1 hwf.2.1 hx hy hp)
 
 end Substrait
