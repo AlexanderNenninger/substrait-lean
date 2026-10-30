@@ -106,6 +106,11 @@ theorem isTrue_and3 (a b : Value) :
   unfold and3
   split <;> simp_all [Value.isTrue] <;> split <;> simp_all
 
+theorem isTrue_or3 (a b : Value) :
+    (or3 a b).isTrue = (a.isTrue || b.isTrue) := by
+  unfold or3
+  split <;> simp_all [Value.isTrue] <;> split <;> simp_all
+
 /-- An expression that only looks at the first `n` columns ignores whatever
 is appended after them. This is the key lemma behind pushdown rewrites. -/
 theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)

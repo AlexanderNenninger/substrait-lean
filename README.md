@@ -196,18 +196,18 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-20 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+32 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
-| rows | ✓ filter, select *inc.*, ✓ mutate *inc.*, ✓ drop, rename *inc.*, ✓ drop_null *inc.*, ✓ isnull *inc.*, ✓ between *inc.*, ✗ isin, ✗ notin, ✓ ifelse *inc.*, ✓ cases *inc.*, ✗ order_by, ✗ limit, ✗ limit with offset, ✗ order_by + limit, ✗ sample |
-| joins | ✓ inner join *inc.*, ✓ non-equi join *inc.*, ✓ cross join *inc.*, ✓ left join, ✗ right join, ✗ outer join, ✗ semi join, ✗ anti join, ✗ isin subquery, ✓ union all *inc.*, ✗ union distinct, ✗ intersect, ✗ difference |
-| aggregation | ✗ count(), ✗ group_by sum, ✗ count, max, mean, ✗ nunique, ✗ sum(where=), ✗ having, ✗ value_counts, ✗ distinct, ✗ distinct(on=), ✗ std, ✗ collect, – scalar subquery, – unnest |
-| windows | ✓ row_number, ✓ lag, ✗ rank, ✗ dense_rank, ✗ cumsum, ✗ sum over group, ✗ rolling mean (rows), – rolling mean (interval), ✗ ntile, ✗ first |
-| numbers | ✓ +, -, * *inc.*, ✓ float division *inc.*, ✗ integer division, ✗ mod, ✗ abs, ✗ round, ✗ ceil, floor, ✗ power, ✗ greatest, ✗ least, ✗ clip, ✓ cast int → double *inc.*, ✗ cast int → string, ✗ cast double → int |
-| nulls | ✗ fill_null, ✗ coalesce, ✗ nullif |
-| strings | ✗ upper, ✗ length, ✗ concat, ✗ substr, ✗ contains, ✗ startswith, ✗ like, ✗ re_search, ✗ strip |
-| time | ✓ timestamp + interval *inc.*, ✓ compare with literal *inc.*, ✗ year, ✗ date, ✗ truncate |
+| rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✗ order_by · ✓ limit · ✓ limit with offset · ✗ order_by + limit · ✗ sample |
+| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✗ outer join · ✗ semi join · ✗ anti join · ✗ isin subquery · ✓ union all *inc.* · ✗ union distinct · ✗ intersect · ✗ difference |
+| aggregation | ✗ count() · ✗ group_by sum · ✗ count, max, mean · ✗ nunique · ✗ sum(where=) · ✗ having · ✗ value_counts · ✗ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
+| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · – rolling mean (interval) · ✗ ntile · ✗ first |
+| numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✗ integer division · ✗ mod · ✓ abs *inc.* · ✗ round · ✗ ceil, floor · ✗ power · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✗ cast int → string · ✗ cast double → int |
+| nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
+| strings | ✗ upper · ✗ length · ✗ concat · ✗ substr · ✗ contains · ✗ startswith · ✗ like · ✗ re_search · ✗ strip |
+| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✗ year · ✗ date · ✗ truncate |
 <!-- coverage:end -->
 
 ### Pre- and postconditions on a transformation
@@ -534,7 +534,13 @@ interval, possible booleans, and whether it can be a string.
   `x ≠ k`) taken from filter and join conditions hold on every output row. They
   survive projections, emits, joins, NULL padding and unions.
 * `Expr.absD_sound`: evaluating expressions with those facts (sharpening
-  `x − y`, `x < y`, `x = y` and `x = k`) is sound.
+  `x − y`, `x < y`, `x = y` and `x = k`) is sound. Each `CASE` branch is
+  evaluated knowing whether its condition is TRUE: `Expr.cstr_sound` turns
+  `IS NULL` and comparisons with constants into constraints on the tested
+  expression (or its negation), and `Expr.refineNeg_sound` refines columns
+  where a condition is not TRUE. This is how `clip`, `abs`, `greatest` and
+  `least` get their bounds. `Expr.refine_sound` also covers `OR`, so a filter
+  `x IN (1, 2, 3)` gives `x ∈ [1, 3]`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
@@ -612,6 +618,12 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   rows. The semantics fixes list order, so `fetch` theorems describe one valid behavior.
 * **Ill-typed calls evaluate to `null`.** This keeps `eval` total. `Rel.WF` rules out
   out-of-range field references.
+* **Some operations are rewrites in the parser.** `IN` lists become `OR`s of
+  equalities; `COALESCE`, `NULLIF`, `GREATEST`, `LEAST` and `ABS` become
+  conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped.
+  The rewrites are trusted code, checked against DataFusion by
+  `python/tests/test_rewrites.py`. Integers are unbounded, so 64-bit overflow
+  (e.g. `ABS` of the smallest `BIGINT`) is not modelled yet.
 
 ## Prior work to build on
 

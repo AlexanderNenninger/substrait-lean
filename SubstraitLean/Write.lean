@@ -72,6 +72,12 @@ def writeLit (k : Parse.Kind) (v : Value) : Json :=
   | .time, .int us =>
     lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .date, .int d => lit [("date", toJson d)]
+  -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
+  | .float, .null => lit [("null", fp64Type)]
+  | .str, .null => lit [("null", obj [("string", obj [])])]
+  | .bool, .null => lit [("null", obj [("bool", obj [])])]
+  | .time, .null => lit [("null", obj [("precisionTimestamp", obj [("precision", toJson 6)])])]
+  | .date, .null => lit [("null", obj [("date", obj [])])]
   | _, v => obj [("literal", writeValue v)]
 
 /-- A day/second interval of `us` microseconds. -/
