@@ -1,12 +1,17 @@
-"""DataFusion as Substrait producer and consumer.
+"""DataFusion as Substrait producer, DataFusion or Polars as consumer.
 
-Every plan comes from DataFusion and runs on DataFusion. Pipelines are Ibis
-expressions on an Ibis DataFusion backend (`connect()`); `con.con` is the
-underlying `datafusion.SessionContext`.
+Every plan comes from DataFusion. Pipelines are Ibis expressions on an Ibis
+DataFusion backend (`connect()`); `con.con` is the underlying
+`datafusion.SessionContext`, which also holds the tables. `run_plan` runs a
+plan in Lean's written form (`substrait-check --write`, `--delta`) on the
+engine a call names, reading the tables from `con`.
 """
 
 import json
-from typing import Any
+import os
+import subprocess
+from pathlib import Path
+from typing import Any, Literal
 
 import ibis
 import ibis.expr.types as ir
@@ -18,6 +23,8 @@ from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
 Backend = Any  # ibis.backends.datafusion.Backend
+Engine = Literal["datafusion", "polars"]
+ENGINES: tuple[Engine, ...] = ("datafusion", "polars")
 
 _literal = DataFusionCompiler.visit_NonNullLiteral
 
@@ -83,6 +90,70 @@ def run_substrait_json(con: Backend, plan_json: str) -> pa.Table:
         con.con, ss.Serde.deserialize_bytes(proto.SerializeToString())
     )
     return con.con.create_dataframe_from_logical_plan(logical).to_arrow_table()
+
+
+def checker_path() -> Path:
+    """`$SVERIFY_CHECK` if set, else the `substrait-check` the wheel ships with
+    (a symlink to the lake build in an editable install)."""
+    if env := os.environ.get("SVERIFY_CHECK"):
+        return Path(env)
+    bundled = Path(__file__).parent / "_bin" / "substrait-check"
+    if not bundled.exists():
+        raise FileNotFoundError(f"{bundled} is missing; reinstall sverify or set SVERIFY_CHECK")
+    return bundled
+
+
+def read_tables(plan: dict) -> list[str]:
+    """Named tables a Substrait plan reads."""
+    found: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if "namedTable" in node:
+                name = ".".join(node["namedTable"]["names"])
+                if name not in found:
+                    found.append(name)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan)
+    return found
+
+
+def written_plan(plan_json: str) -> str:
+    """The plan as Lean parsed it, written back out from its `Rel`
+    (`substrait-check --write`; the golden tests check this round trip), once
+    the checker has found it well-formed."""
+
+    def check(*flags: str) -> str:
+        proc = subprocess.run(
+            [str(checker_path()), *flags, "/dev/stdin"],
+            input=plan_json,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            msg = (proc.stderr or proc.stdout).strip().splitlines()[-1:]
+            raise ValueError(f"substrait-check {' '.join(flags)} rejects the plan: {msg}")
+        return proc.stdout
+
+    check()
+    return check("--write")
+
+
+def run_plan(con: Backend, plan_json: str, engine: Engine = "datafusion") -> pa.Table:
+    """Run a plan in Lean's written form on `engine`, over the tables of `con`."""
+    if engine == "datafusion":
+        return run_substrait_json(con, plan_json)
+    if engine == "polars":
+        from sverify import polars_engine
+
+        names = read_tables(json.loads(plan_json))
+        return polars_engine.run(plan_json, {t: con.con.table(t).to_arrow_table() for t in names})
+    raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 
 def run_sql(con: Backend, sql: str) -> pa.Table:

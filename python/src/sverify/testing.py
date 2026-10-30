@@ -9,7 +9,7 @@ the plan with `Rel.eval` via `substrait-check` (doubles come back as codes).
 import subprocess
 from collections.abc import Iterable, Mapping
 
-from sverify.incremental import checker_path
+from sverify.engine import checker_path
 
 
 def literal(v: int | float | None) -> dict:

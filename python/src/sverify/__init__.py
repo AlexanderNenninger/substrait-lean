@@ -1,4 +1,5 @@
-"""Verified Substrait plans on DataFusion: contracts and incremental views, checked in Lean."""
+"""Verified Substrait plans on DataFusion and Polars: contracts and incremental views, checked in
+Lean."""
 
 from sverify.asof import asof_join
 from sverify.contracts import (
@@ -12,7 +13,16 @@ from sverify.contracts import (
     unique,
     verify,
 )
-from sverify.engine import connect, create_table, run_substrait_json, substrait_json, table_rows
+from sverify.engine import (
+    ENGINES,
+    connect,
+    create_table,
+    run_plan,
+    run_substrait_json,
+    substrait_json,
+    table_rows,
+    written_plan,
+)
 from sverify.incremental import Changes, IncrementalView, NotIncremental, delta_plans
 
 __all__ = [
@@ -34,5 +44,8 @@ __all__ = [
     "table_rows",
     "delta_plans",
     "run_substrait_json",
+    "run_plan",
+    "written_plan",
+    "ENGINES",
     "substrait_json",
 ]
