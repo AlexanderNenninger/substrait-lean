@@ -22,6 +22,12 @@ inputs are bound to a backend they are checked on the data at call time.
 
 Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
 or SQL snippets (`"amount >= 0"`). DataFusion compiles them to Substrait.
+
+Runtime checks run on DataFusion through Ibis by default; `engine="duckdb"`
+runs each condition's Substrait plan on DuckDB instead (see
+`sverify.executors`), with Lean's semantics, so such conditions must be inside
+the Lean model. `unique` checks need aggregation, which the model lacks, and
+always run through Ibis.
 """
 
 from __future__ import annotations
@@ -45,7 +51,8 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 
 from sverify.engine import connect, create_table, substrait_json, to_sql
-from sverify.incremental import checker_path
+from sverify.executors import EngineName, Executor, copy_tables, executor
+from sverify.incremental import checker_path, read_tables
 
 
 def q(name: str) -> str:
@@ -371,9 +378,20 @@ def verify(
     )
 
 
-def violations(table: ir.Table, cond: Condition) -> int:
+def violations(
+    table: ir.Table, cond: Condition, engine: EngineName | Executor = "datafusion"
+) -> int:
     """Rows of a backend-bound table where `cond` is not TRUE (FALSE or NULL),
-    or for `unique`, rows beyond the first for each repeated key."""
+    or for `unique`, rows beyond the first for each repeated key.
+
+    With an engine other than DataFusion, the condition's plan runs there on
+    copies of the tables it reads."""
+    if not isinstance(cond, Unique) and engine != "datafusion":
+        bound: Any = ibis.get_backend(table)
+        plan = substrait_json(bound, condition_sql(table, cond))
+        ex = executor(bound, engine)
+        copy_tables(bound, ex, read_tables(json.loads(plan)))
+        return sum(v is not True for v in ex.run(plan).column(0).to_pylist())
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
@@ -408,9 +426,11 @@ class ContractedTransform:
         ensures: Sequence[Condition],
         on_unproved: Literal["error", "runtime", "warn"],
         check_requires: bool,
+        engine: EngineName | Executor,
     ):
         self.fn, self.requires, self.ensures = fn, requires, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
+        self.engine = engine
         self.signature = inspect.signature(fn)
         unknown = set(requires) - set(self.signature.parameters)
         if unknown:
@@ -427,7 +447,7 @@ class ContractedTransform:
                 table = inputs[param]
                 if is_bound(table):
                     for c in conds:
-                        if n := violations(table, c):
+                        if n := violations(table, c, self.engine):
                             raise PreconditionError(f"{n} row(s) of {param} violate {label(c)}")
         key = tuple((p, inputs[p].get_name(), inputs[p].schema()) for p in self.requires) + (
             to_sql(result),
@@ -445,7 +465,7 @@ class ContractedTransform:
             elif self.on_unproved == "runtime" and is_bound(result):
                 unproved = {c.label for c in report.unproved}
                 for c in self.ensures:
-                    if label(c) in unproved and (n := violations(result, c)):
+                    if label(c) in unproved and (n := violations(result, c, self.engine)):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
@@ -458,6 +478,7 @@ def transform(
     *,
     on_unproved: Literal["error", "runtime", "warn"] = "error",
     check_requires: bool = True,
+    engine: EngineName | Executor = "datafusion",
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -465,6 +486,9 @@ def transform(
     the postconditions are proved (cached per input schema and expression) and
     the report is kept in `.last_report`; see the module docstring. With
     `on_unproved="runtime"`, unproved postconditions are checked on the output
-    data instead, which needs inputs bound to a backend.
+    data instead, which needs inputs bound to a backend. `engine` says where
+    those checks on data run (see the module docstring).
     """
-    return lambda fn: ContractedTransform(fn, requires or {}, ensures, on_unproved, check_requires)
+    return lambda fn: ContractedTransform(
+        fn, requires or {}, ensures, on_unproved, check_requires, engine
+    )

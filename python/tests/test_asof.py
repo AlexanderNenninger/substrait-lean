@@ -1,5 +1,5 @@
 """ASOF joins: the same results as a reference implementation, Lean's
-semantics agree with DataFusion, and the ASOF guarantees are proved."""
+semantics agree with DataFusion and DuckDB, and the ASOF guarantees are proved."""
 
 import datetime as dt
 import json
@@ -12,7 +12,7 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import connect, create_table, run_sql, substrait_json, to_sql
-from sverify.testing import canonical, inline_tables, lean_rows
+from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows
 
 INT_SCHEMA = {"device": "int64", "ts": "int64"}
 T0 = dt.datetime(2024, 5, 1, 7, 0)
@@ -80,7 +80,9 @@ def test_lean_semantics_of_asof_match_datafusion(how, left, right):
     sql = to_sql(sv.asof_join(acc, gyr, on="ts", by="device", tolerance=3, how=how))
     expected = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"acc": left, "gyr": right})
-    assert canonical(lean_rows(json.dumps(plan))) == canonical(expected)
+    lean = lean_rows(json.dumps(plan))
+    assert canonical(lean) == canonical(expected)
+    assert duckdb_rows(json.dumps(plan)) == lean
 
 
 acc_t = ibis.table({"device": "int64", "ts": "timestamp", "ax": "float64"}, name="acc")

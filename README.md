@@ -53,7 +53,7 @@ the project root:
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
-cd python && uv sync             # DataFusion 51, Ibis, pyarrow, substrait, pytest, hypothesis
+cd python && uv sync             # DataFusion 51, DuckDB, Ibis, pyarrow, substrait, pytest, hypothesis
 ```
 ```bash
 uv run pytest                    # should end with "56 passed"
@@ -473,6 +473,52 @@ filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
 and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
 
+### Engines
+
+Plans always come from DataFusion's Substrait producer (and from Lean, for
+delta plans). Where they run is chosen per call, with `engine=`:
+
+```python
+view = sv.IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+
+@sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
+def passthrough(orders): ...
+```
+
+* **DataFusion** (the default) runs plans with its own Substrait consumer, on
+  `con`'s tables.
+* **DuckDB** runs them as SQL that `sverify.sql.to_sql(plan, DUCKDB)` generates
+  from the plan. DuckDB's Substrait extension is not used. Tables are copied
+  into an in-process DuckDB database, and base-table changes go to both.
+
+The SQL generator (`python/src/sverify/sql/`) reads Substrait JSON as
+`Parse.lean` does. It accepts exactly the plans `substrait-check` accepts and
+raises `Unsupported` on everything else. It then writes SQL whose result is
+`Rel.eval`. The query spells out every semantic choice instead of leaving it to
+the engine:
+
+* subqueries name their columns `c0, c1, …`;
+* integers are `BIGINT`, and overflow raises (DataFusion wraps around);
+* doubles compare by the model's total order (`-NaN < -inf < … < -0.0 < +0.0
+  < … < inf < NaN`) in comparisons, joins, partitions and sorts;
+* every `ORDER BY` key says `NULLS FIRST`/`LAST`;
+* filters keep only TRUE rows;
+* below a `FETCH` or a window, an ordinal column carries Lean's list order, so
+  `LIMIT` and window ties pick Lean's rows.
+
+Engine differences go through the hooks of a `Dialect`
+(`sverify/sql/core.py`). DuckDB's is `sverify/sql/duckdb.py`.
+
+`python/tests/test_sql.py` checks the generator. Every golden fixture and every
+delta plan of the incremental fixtures and example pipelines runs on DataFusion
+and on DuckDB with random tables. The results must agree with each other and
+with Lean's `Rel.eval` (row for row, in Lean's order, when `FETCH` or a window
+makes order matter). The file also has targeted tests for engine traps: NULL
+join keys, three-valued logic, NULL ordering in windows, refused integer
+division, overflow, and NaN and signed zeros. It keeps snapshots of the
+generated SQL in `python/tests/sql_snapshots/`. The incremental, window,
+rewrite and ASOF differential tests run on both engines.
+
 **Engine notes.** DataFusion 51 is pinned: Ibis 12's DataFusion backend can't
 connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
 `sverify` registers Arrow tables directly (`sv.create_table`). They are
@@ -481,9 +527,10 @@ datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
 total order, which would make filters and projections disagree on NaN.
 
 **Trusted components** (not covered by the proofs): the JSON parser and
-writer, the `sverify` glue (change tables, consolidation, merge), and
-DataFusion's execution of Substrait. These are covered by golden tests, round
-trips and the differential test instead.
+writer, the `sverify` glue (change tables, consolidation, merge), the SQL
+generator, and the engines' execution (DataFusion's Substrait consumer,
+DuckDB's SQL). These are covered by golden tests, round trips and the
+differential tests instead.
 
 ## What's here
 

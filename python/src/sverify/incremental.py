@@ -6,9 +6,10 @@ view's Substrait plan with `Rel.delta`, splits it into union-free terms
 proves the concatenated results are the change to the view
 (`Rel.incremental_sound`, `Rel.zeval_terms`, `Rel.weighted_eval`). This module
 is the trusted glue around it: it keeps the view as rows with multiplicities,
-builds the change tables, runs the delta plans on DataFusion and merges the
-result. A batch is computed completely before anything is replaced, so a
-failing batch changes nothing.
+builds the change tables, runs the delta plans on an engine (DataFusion, or
+DuckDB through generated SQL; see `sverify.executors`) and merges the result.
+A batch is computed completely before anything is replaced, so a failing batch
+changes nothing.
 """
 
 from __future__ import annotations
@@ -25,15 +26,8 @@ from pathlib import Path
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify.engine import (
-    Backend,
-    put_table,
-    run_sql,
-    run_substrait_json,
-    substrait_json,
-    to_arrow,
-    to_sql,
-)
+from sverify.engine import Backend, put_table, substrait_json, to_arrow, to_sql
+from sverify.executors import EngineName, Executor, copy_tables, executor, runs_on
 
 Row = tuple
 WEIGHT = "__weight"
@@ -121,16 +115,29 @@ class IncrementalView:
 
     `query` is an Ibis expression or SQL over tables of `con`, an Ibis
     DataFusion backend. The view is also registered as table `name`.
+
+    `engine` runs the plans: `"datafusion"` (on `con`'s tables), `"duckdb"` (a
+    DuckDB database holding copies of the tables the view reads) or an
+    `Executor`. Base tables change in `con` and in the engine alike.
     """
 
-    def __init__(self, con: Backend, query: ir.Table | str, name: str):
+    def __init__(
+        self,
+        con: Backend,
+        query: ir.Table | str,
+        name: str,
+        engine: EngineName | Executor = "datafusion",
+    ):
         self.con, self.name = con, name
         self.sql = query if isinstance(query, str) else to_sql(query)
-        plan = json.loads(substrait_json(con, self.sql))
+        self.plan = substrait_json(con, self.sql)
+        plan = json.loads(self.plan)
         self.columns: list[str] = plan["relations"][0]["root"]["names"]
         self.tables = read_tables(plan)
-        self.deltas = delta_plans(json.dumps(plan))
-        result = run_sql(con, self.sql)
+        self.deltas = delta_plans(self.plan)
+        self.engine = executor(con, engine)
+        copy_tables(con, self.engine, self.tables)
+        result = self.engine.run(self.plan)
         self.schema = result.schema
         self.counts: Counter[tuple] = Counter()
         self.examples: dict[tuple, Row] = {}
@@ -145,7 +152,13 @@ class IncrementalView:
 
     def _publish(self) -> None:
         rows = [self.examples[k] for k, n in self.counts.items() for _ in range(n)]
-        put_table(self.con, self.name, to_arrow(rows, self.schema))
+        self._put(self.name, to_arrow(rows, self.schema))
+
+    def _put(self, t: str, table: pa.Table) -> None:
+        """Replace a table in the engine, and in `con` if that is another one."""
+        self.engine.put(t, table)
+        if not runs_on(self.engine, self.con):
+            put_table(self.con, t, table)
 
     def rows(self) -> list[Row]:
         """The view's contents as a bag of rows, in a canonical order."""
@@ -154,13 +167,13 @@ class IncrementalView:
 
     def recompute(self) -> list[Row]:
         """The view computed from scratch, for checking."""
-        return sorted(arrow_rows(run_sql(self.con, self.sql)), key=lambda r: repr(row_key(r)))
+        rows = arrow_rows(self.engine.run(self.plan))
+        return sorted(rows, key=lambda r: repr(row_key(r)))
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
         unknown = set(changes) - set(self.tables)
         if unknown:
             raise ValueError(f"view does not read {sorted(unknown)}")
-        con = self.con
         # New base tables first: this also checks that every delete exists.
         new_tables = {t: self._apply_to_table(t, ch) for t, ch in changes.items()}
         try:
@@ -170,33 +183,33 @@ class IncrementalView:
             delta = Counter[tuple]()
             examples: dict[tuple, Row] = {}
             for plan in self.deltas:
-                for r in arrow_rows(run_substrait_json(con, plan)):
+                for r in arrow_rows(self.engine.run(plan)):
                     k = row_key(r[:-1])
                     delta[k] += r[-1]
                     examples.setdefault(k, r[:-1])
         finally:
             for t in self.tables:
-                con.con.deregister_table(t + "$delta")
+                self.engine.drop(t + "$delta")
         merged = self.counts.copy()
         merged.update(delta)
         if any(n < 0 for n in merged.values()):
             raise ValueError("changes delete rows that are not in the tables")
         # Commit: nothing above changed any state.
         for t, table in new_tables.items():
-            put_table(con, t, table)
+            self._put(t, table)
         self.counts = Counter({k: n for k, n in merged.items() if n > 0})
         for k, r in examples.items():
             self.examples.setdefault(k, r)
         self._publish()
 
     def _load_delta_table(self, t: str, ch: Changes) -> None:
-        base = self.con.con.table(t).schema()
+        base = self.engine.get(t).schema
         schema = pa.schema([*base, pa.field(WEIGHT, pa.int64())])
         rows = [(*r, 1) for r in ch.inserts] + [(*r, -1) for r in ch.deletes]
-        put_table(self.con, t + "$delta", to_arrow(rows, schema))
+        self.engine.put(t + "$delta", to_arrow(rows, schema))
 
     def _apply_to_table(self, t: str, ch: Changes) -> pa.Table:
-        current = self.con.con.table(t).to_arrow_table()
+        current = self.engine.get(t)
         rows = arrow_rows(current)
         for r in ch.deletes:
             k = row_key(tuple(r))

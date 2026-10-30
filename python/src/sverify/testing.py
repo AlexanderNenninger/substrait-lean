@@ -1,19 +1,45 @@
 """Run a plan through Lean's own semantics, for differential tests against
-DataFusion.
+DataFusion and DuckDB.
 
 `inline_tables` replaces each named-table read by a Substrait virtual table
-holding given rows (integers and NULLs); `lean_rows` evaluates the plan with
-`Rel.eval` via `substrait-check`.
+holding given rows (integers, strings, booleans, timestamps, doubles and
+NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`;
+`duckdb_rows` runs it as SQL on DuckDB.
 """
 
+import datetime as dt
+import json
+import math
+import re
 import subprocess
 from collections.abc import Iterable, Mapping
 
-from sverify.incremental import checker_path
+import pyarrow as pa
+
+from sverify.executors import DuckDBExecutor
+from sverify.incremental import arrow_rows, checker_path
+
+EPOCH = dt.datetime(1970, 1, 1)
 
 
-def literal(v: int | None) -> dict:
-    return {"literal": {"null": {"i64": {}}} if v is None else {"i64": str(v)}}
+def literal(v: object) -> dict:
+    if v is None:
+        return {"literal": {"null": {"i64": {}}}}
+    if isinstance(v, bool):
+        return {"literal": {"boolean": v}}
+    if isinstance(v, int):
+        return {"literal": {"i64": str(v)}}
+    if isinstance(v, str):
+        return {"literal": {"string": v}}
+    if isinstance(v, dt.datetime):
+        micros = (v - EPOCH) // dt.timedelta(microseconds=1)
+        return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
+    if isinstance(v, float):
+        if math.copysign(1.0, v) < 0 and (math.isnan(v) or v == 0):
+            raise ValueError("Substrait JSON literals cannot hold -0.0 or -NaN")
+        text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"
+        return {"literal": {"fp64": v if math.isfinite(v) else text}}
+    raise TypeError(f"no literal for {v!r}")
 
 
 def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
@@ -36,7 +62,9 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
 
 
 def lean_rows(plan_json: str) -> list[tuple]:
-    """The rows `Rel.eval` gives for a plan with only virtual tables."""
+    """The rows `Rel.eval` gives for a plan with only virtual tables, in
+    Lean's order. Doubles, timestamps and dates come back as their integer
+    codes (`SubstraitLean/Float.lean`); doubles are refused."""
     out = subprocess.run(
         [str(checker_path()), "/dev/stdin"],
         input=plan_json,
@@ -44,11 +72,41 @@ def lean_rows(plan_json: str) -> list[tuple]:
         text=True,
         check=True,
     ).stdout
-    rows = out.split("rows (")[1].splitlines()[1:]
-    return [
-        tuple(None if x == "NULL" else int(x) for x in line.strip()[1:-1].split(", "))
-        for line in rows
-    ]
+    return parse_rows(out)
+
+
+_VALUE = re.compile(r'\s*(NULL|true|false|"(?:[^"\\]|\\.)*"|[^,]+?)\s*(?:,|$)')
+
+
+def parse_rows(output: str) -> list[tuple]:
+    """The rows section of `substrait-check` output (`Row.render`)."""
+    rows = []
+    for line in output.split("rows (")[1].splitlines()[1:]:
+        if not line.startswith("  ("):
+            break
+        values: list[object] = []
+        for m in _VALUE.finditer(line.strip()[1:-1]):
+            x = m.group(1)
+            if x == "NULL":
+                values.append(None)
+            elif x in ("true", "false"):
+                values.append(x == "true")
+            elif x.startswith('"'):
+                values.append(json.loads(x))
+            elif re.fullmatch(r"-?\d+", x):
+                values.append(int(x))
+            else:
+                raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")
+        rows.append(tuple(values))
+    return rows
+
+
+def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:
+    """Rows of the plan's SQL on a fresh DuckDB database holding `tables`."""
+    ex = DuckDBExecutor()
+    for name, table in (tables or {}).items():
+        ex.put(name, table)
+    return arrow_rows(ex.run(plan_json))
 
 
 def canonical(rows: Iterable[tuple]) -> list[str]:

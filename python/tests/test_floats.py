@@ -4,6 +4,7 @@ import datetime as dt
 import math
 
 import ibis
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from ibis import _
@@ -59,16 +60,20 @@ values = st.sampled_from([0.0, -0.0, 0.5, 1.5, ERR, math.nan, math.inf, -math.in
 minutes = st.integers(0, 4)
 
 
+ENGINES = ["datafusion", "duckdb"]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
-def test_incremental_view_with_floats_matches_recompute(data):
+def test_incremental_view_with_floats_matches_recompute(engine, data):
     con = sv.connect()
     db = con
     t = lambda m: dt.datetime(2024, 1, 1, 0, m)  # noqa: E731
     rows = st.lists(st.tuples(minutes.map(t), values), max_size=5, unique_by=lambda r: r[0])
     for name in ["s1", "s2"]:
         sv.create_table(con, name, s1.schema(), data.draw(rows))
-    view = sv.IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w")
+    view = sv.IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w", engine)
 
     def same(a, b):
         # NaN != NaN, so compare the rows' text.
@@ -113,23 +118,25 @@ def test_column_comparisons_imply_not_null():
     assert report.proved
 
 
-def test_incremental_view_with_integer_constants():
+@pytest.mark.parametrize("engine", ENGINES)
+def test_incremental_view_with_integer_constants(engine):
     con = sv.connect()
     t = lambda m: dt.datetime(2024, 5, 1, 7, m)  # noqa: E731
     sv.create_table(con, "hr", hr.schema(), [(1, t(0), 72.0), (1, t(10), -1.0)])
     sv.create_table(con, "sessions", sessions.schema(), [(1, t(0), t(30))])
-    view = sv.IncrementalView(con, in_session(con.table("hr"), con.table("sessions")), "v")
+    view = sv.IncrementalView(con, in_session(con.table("hr"), con.table("sessions")), "v", engine)
     view.apply({"hr": sv.Changes(inserts=[(1, t(20), 160.0), (1, t(25), 0.0)])})
     assert [r[2] for r in view.rows()] == [72.0, 160.0]
     assert view.rows() == view.recompute()
 
 
-def test_signed_zeros_are_different_rows():
+@pytest.mark.parametrize("engine", ENGINES)
+def test_signed_zeros_are_different_rows(engine):
     """DataFusion keeps -0.0 and 0.0 apart; so must the view's bookkeeping."""
     con = sv.connect()
     t = dt.datetime(2024, 1, 1)
     sv.create_table(con, "s1", s1.schema(), [(t, -0.0)])
     table = con.table("s1")
-    view = sv.IncrementalView(con, table.filter(table.value.notnull()), "v")
+    view = sv.IncrementalView(con, table.filter(table.value.notnull()), "v", engine)
     view.apply({"s1": sv.Changes(inserts=[(t, 0.0)], deletes=[(t, -0.0)])})
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0)])
