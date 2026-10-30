@@ -3,3 +3,7 @@
 .hypothesis/
 .pytest_cache/
 __pycache__/
+/python/src/sverify/_bin/
+/python/build/
+/python/dist/
+/python/wheelhouse/

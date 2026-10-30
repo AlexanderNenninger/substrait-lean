@@ -56,11 +56,21 @@ lake build                       # checks every proof and builds the substrait-c
 cd python && uv sync             # DataFusion 51, Ibis, pyarrow, substrait, pytest, hypothesis
 ```
 ```bash
-uv run pytest                    # should end with "31 passed"
+uv run pytest                    # should end with "56 passed"
 ```
 
-`lake build` has to come first, because the Python package calls the
-`substrait-check` binary it produces.
+`uv sync` installs `sverify` in editable mode. Its build hook runs
+`lake build substrait-check` and links `sverify/_bin/substrait-check` to the
+result, so later `lake build`s take effect without reinstalling. To use a
+different binary, set `SVERIFY_CHECK` to its path.
+
+### Wheels
+
+`uv build python --wheel` builds a wheel for the current platform. It bundles a
+stripped `substrait-check`, so installing it needs neither Lean nor elan. The
+[Wheels workflow](.github/workflows/wheels.yml) builds and tests wheels for Linux
+(x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
+version in `python/pyproject.toml` also publishes them to PyPI.
 
 To run your own scripts with the package available, from the project root:
 
@@ -180,6 +190,25 @@ sv.IncrementalView(con, totals, "totals")
 
 Aggregates (`GROUP BY` with `SUM`/`COUNT`) are the next thing to add; see
 [Possible next steps](#possible-next-steps).
+
+How much of the Ibis API gets through, from
+[`sverify/coverage.py`](python/src/sverify/coverage.py) (regenerate with
+`uv run python -m sverify.coverage --write-readme` in `python/`):
+
+<!-- coverage:start -->
+20 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+
+| Area | Operations |
+|---|---|
+| rows | ✓ filter, select *inc.*, ✓ mutate *inc.*, ✓ drop, rename *inc.*, ✓ drop_null *inc.*, ✓ isnull *inc.*, ✓ between *inc.*, ✗ isin, ✗ notin, ✓ ifelse *inc.*, ✓ cases *inc.*, ✗ order_by, ✗ limit, ✗ limit with offset, ✗ order_by + limit, ✗ sample |
+| joins | ✓ inner join *inc.*, ✓ non-equi join *inc.*, ✓ cross join *inc.*, ✓ left join, ✗ right join, ✗ outer join, ✗ semi join, ✗ anti join, ✗ isin subquery, ✓ union all *inc.*, ✗ union distinct, ✗ intersect, ✗ difference |
+| aggregation | ✗ count(), ✗ group_by sum, ✗ count, max, mean, ✗ nunique, ✗ sum(where=), ✗ having, ✗ value_counts, ✗ distinct, ✗ distinct(on=), ✗ std, ✗ collect, – scalar subquery, – unnest |
+| windows | ✓ row_number, ✓ lag, ✗ rank, ✗ dense_rank, ✗ cumsum, ✗ sum over group, ✗ rolling mean (rows), – rolling mean (interval), ✗ ntile, ✗ first |
+| numbers | ✓ +, -, * *inc.*, ✓ float division *inc.*, ✗ integer division, ✗ mod, ✗ abs, ✗ round, ✗ ceil, floor, ✗ power, ✗ greatest, ✗ least, ✗ clip, ✓ cast int → double *inc.*, ✗ cast int → string, ✗ cast double → int |
+| nulls | ✗ fill_null, ✗ coalesce, ✗ nullif |
+| strings | ✗ upper, ✗ length, ✗ concat, ✗ substr, ✗ contains, ✗ startswith, ✗ like, ✗ re_search, ✗ strip |
+| time | ✓ timestamp + interval *inc.*, ✓ compare with literal *inc.*, ✗ year, ✗ date, ✗ truncate |
+<!-- coverage:end -->
 
 ### Pre- and postconditions on a transformation
 
