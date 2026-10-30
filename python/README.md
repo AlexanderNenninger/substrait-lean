@@ -23,7 +23,8 @@ pip install sverify          # or: uv add sverify
 ```
 
 Wheels are available for Linux (x86_64, aarch64) and macOS (arm64, x86_64),
-on Python 3.12 and later.
+on Python 3.12 and later. Elsewhere pip builds from the sdist, which needs
+[elan](https://github.com/leanprover/elan) to compile the checker.
 
 ## Try it in the browser
 

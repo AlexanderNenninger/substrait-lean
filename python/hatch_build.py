@@ -4,6 +4,8 @@ The wheel is tagged `py3-none-<platform>`: the Python code is pure, the binary
 is not. A regular wheel gets a stripped copy in `sverify/_bin/`; an editable
 install gets a symlink to `.lake/build/bin/substrait-check`, so a later
 `lake build` takes effect without reinstalling.
+
+The Lean project is the repository root, or `lean/` in an unpacked sdist.
 """
 
 from __future__ import annotations
@@ -33,7 +35,9 @@ def platform_tag() -> str:
 
 class LakeBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
-        repo = Path(self.root).parent
+        repo = Path(self.root) / "lean"
+        if not repo.is_dir():
+            repo = Path(self.root).parent
         lake = shutil.which("lake") or str(Path.home() / ".elan" / "bin" / "lake")
         if not Path(lake).exists():
             raise RuntimeError("building sverify needs `lake` (install elan) on PATH")
