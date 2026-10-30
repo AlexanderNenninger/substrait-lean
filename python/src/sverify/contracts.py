@@ -39,6 +39,7 @@ import math
 import subprocess
 import tempfile
 import warnings
+import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -49,6 +50,7 @@ import ibis
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
+from ibis.common.graph import Node
 
 from sverify.engine import (
     Engine,
@@ -460,6 +462,126 @@ def is_bound(table: ir.Table) -> bool:
     return True
 
 
+class CompositionError(VerificationError):
+    """A contracted transformation's precondition on an input is not implied
+    by what the contracted transformation producing that input guarantees."""
+
+    def __init__(self, report: Report, consumer: str, param: str, producer: str, guarantees):
+        self.report = report
+        self.consumer, self.param, self.producer = consumer, param, producer
+        needs = ", ".join(f"{c.label} (it is {c.value})" for c in report.unproved)
+        given = ", ".join(guarantees) or "nothing"
+        Exception.__init__(
+            self,
+            f"{consumer} needs {needs} on {param!r}; {producer} only guarantees {given}",
+        )
+
+
+@dataclass(frozen=True)
+class Provenance:
+    """How a contracted result was made, kept so that a later contracted
+    transformation (or an incremental view) can build on its guarantees.
+
+    `body` is the result with every contracted or derived input replaced by a
+    placeholder table; `assumptions` are what the proof of `body` assumed about
+    each of its tables. The result satisfies `guarantees` whenever the base
+    tables satisfy `external`."""
+
+    transform: ContractedTransform
+    body: ir.Table
+    assumptions: dict[str, list[Condition]]
+    guarantees: list[Condition]
+    report: Report
+    external: dict[str, list[Condition]]
+    """Preconditions on base tables, of this transformation and every
+    contracted transformation upstream."""
+    unproved_links: list[str]
+    """Preconditions on derived inputs that were checked on the data, or
+    merely warned about, instead of proved."""
+
+
+# Keyed by identity: Ibis ops compare by structure, and an equal expression
+# built independently has not been through the contract's checks.
+_provenance: dict[int, tuple[weakref.ref[Node], Provenance]] = {}
+
+
+def _lookup(op: Node) -> Provenance | None:
+    entry = _provenance.get(id(op))
+    return entry[1] if entry is not None and entry[0]() is op else None
+
+
+def _register(op: Node, prov: Provenance) -> None:
+    key = id(op)
+    _provenance[key] = (weakref.ref(op, lambda _, reg=_provenance: reg.pop(key, None)), prov)
+
+
+def provenance(table: ir.Table) -> Provenance | None:
+    """The contract behind `table`, if a contracted transformation returned it."""
+    return _lookup(table.op())
+
+
+def _is_base(op: Node) -> bool:
+    return isinstance(op, ops.UnboundTable | ops.DatabaseTable)
+
+
+def _merge(into: dict[str, list[Condition]], extra: Mapping[str, Sequence[Condition]]) -> None:
+    for t, cs in extra.items():
+        have = into.setdefault(t, [])
+        have += [c for c in cs if label(c) not in {label(h) for h in have}]
+
+
+def _fresh(name: str, taken: set[str]) -> str:
+    out, n = name, 1
+    while out in taken:
+        n += 1
+        out = f"{name}_{n}"
+    taken.add(out)
+    return out
+
+
+@dataclass
+class _Abstraction:
+    """An expression with its contracted parts replaced by placeholder tables
+    (assume-guarantee reasoning: a contracted result is only known by its
+    guarantees)."""
+
+    body: ir.Table
+    assumptions: dict[str, list[Condition]]
+    external: dict[str, list[Condition]]
+    unproved_links: list[str]
+
+
+def _abstract(
+    expr: ir.Table,
+    placeholders: Mapping[Node, tuple[str, list[Condition]]] | None = None,
+    taken: set[str] | None = None,
+) -> _Abstraction:
+    """Replace `placeholders` (op -> table name and its assumptions) and every
+    other contracted result inside `expr` by placeholder tables."""
+    placeholders = dict(placeholders or {})
+    given = set(placeholders)
+    taken = set(leaf_tables(expr)) | {n for n, _ in placeholders.values()} | (taken or set())
+    for op in expr.op().find(lambda n: _lookup(n) is not None):
+        prov = _lookup(op)
+        if prov is not None and op not in placeholders and op is not expr.op():
+            placeholders[op] = (_fresh(prov.transform.name, taken), list(prov.guarantees))
+    mapping: dict[Node, Node] = {
+        op: ibis.table(op.to_expr().schema(), name=name).op()  # type: ignore[attr-defined]
+        for op, (name, _) in placeholders.items()
+    }
+    root = expr.op()
+    body: ir.Table = (mapping[root] if root in mapping else root.replace(mapping)).to_expr()  # type: ignore[attr-defined]
+    used = set(leaf_tables(body))
+    out = _Abstraction(body, {}, {}, [])
+    for op, (name, conds) in placeholders.items():
+        if name in used and conds:
+            _merge(out.assumptions, {name: conds})
+        if name in used and op not in given and (prov := _lookup(op)):
+            _merge(out.external, prov.external)
+            out.unproved_links += prov.unproved_links
+    return out
+
+
 class ContractedTransform:
     """A transformation with a contract; see `transform`."""
 
@@ -475,6 +597,7 @@ class ContractedTransform:
         self.fn, self.requires, self.ensures = fn, requires, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.engine = engine
+        self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
         unknown = set(requires) - set(self.signature.parameters)
         if unknown:
@@ -483,26 +606,102 @@ class ContractedTransform:
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
 
+    def _verify(
+        self, body: ir.Table, assumptions: Mapping[str, Sequence[Condition]], ensures, tag: str
+    ) -> Report:
+        key = (
+            tag,
+            to_sql(body),
+            tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
+            tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
+            tuple(label(c) for c in ensures),
+        )
+        if key not in self._cache:
+            self._cache[key] = verify(body, requires=assumptions, ensures=ensures)
+        return self._cache[key]
+
+    def _check_on_data(self, table: ir.Table, param: str, conds: Sequence[Condition]) -> bool:
+        """Check preconditions on a bound input; False if it is not bound."""
+        if not is_bound(table):
+            return False
+        for c in conds:
+            if n := violations(table, c, self.engine):
+                raise PreconditionError(f"{n} row(s) of {param} violate {label(c)}")
+        return True
+
+    def _link(self, param: str, value: ir.Table, conds: list[Condition]) -> _Abstraction:
+        """Discharge this transformation's preconditions on a derived input by
+        proving them from what produced it (assume-guarantee composition).
+        Returns, as `assumptions`, what may be assumed about the input."""
+        prov = _lookup(value.op())
+        if prov is not None:
+            inner = _Abstraction(
+                prov.body, prov.assumptions, prov.external, list(prov.unproved_links)
+            )
+            known = list(prov.guarantees)
+        else:
+            # A plain Ibis expression guarantees nothing by itself, but its
+            # obligations may still follow from its operations.
+            inner, known = _abstract(value), []
+        needed = [c for c in conds if label(c) not in {label(k) for k in known}]
+        out = _Abstraction(value, {param: known + needed}, inner.external, inner.unproved_links)
+        if not needed:
+            return out
+        report = self._verify(inner.body, inner.assumptions, needed, f"link {param}")
+        proved = {c.label for c in report.ensures if c.proved}
+        unproved = [c for c in needed if label(c) not in proved]
+        if not unproved:
+            return out
+        out.unproved_links += [f"{self.name}: {label(c)} on {param}" for c in unproved]
+        if prov is None:
+            # Like a base table: checked on the data when it is bound, else assumed.
+            if self.check_requires:
+                self._check_on_data(value, param, unproved)
+            return out
+        error = CompositionError(
+            report, self.name, param, prov.transform.name, [label(c) for c in known]
+        )
+        if self.on_unproved == "warn":
+            warnings.warn(str(error), stacklevel=3)
+        elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
+            raise error
+        return out
+
     def __call__(self, *args, **kwargs) -> ir.Table:
         inputs = self.signature.bind(*args, **kwargs).arguments
         result = self.fn(*args, **kwargs)
-        if self.check_requires:
-            for param, conds in self.requires.items():
-                table = inputs[param]
-                if is_bound(table):
-                    for c in conds:
-                        if n := violations(table, c, self.engine):
-                            raise PreconditionError(f"{n} row(s) of {param} violate {label(c)}")
-        key = tuple((p, inputs[p].get_name(), inputs[p].schema()) for p in self.requires) + (
-            to_sql(result),
+        placeholders: dict[Node, tuple[str, list[Condition]]] = {}
+        base: dict[str, list[Condition]] = {}
+        external: dict[str, list[Condition]] = {}
+        unproved_links: list[str] = []
+        taken = set(leaf_tables(result))
+        for param, value in inputs.items():
+            if not isinstance(value, ir.Table):
+                continue
+            conds = list(self.requires.get(param, ()))
+            op = value.op()
+            if _is_base(op) and _lookup(op) is None:
+                # Data from outside: checked when bound to a backend.
+                _merge(base, {op.name: conds})  # type: ignore[attr-defined]
+                if self.check_requires:
+                    self._check_on_data(value, param, conds)
+                continue
+            link = self._link(param, value, conds)
+            _merge(external, link.external)
+            unproved_links += link.unproved_links
+            if op in placeholders:  # the same input under two parameters
+                name, assumed = placeholders[op]
+                _merge({name: assumed}, {name: link.assumptions[param]})
+            else:
+                prov = _lookup(op)
+                name = _fresh(prov.transform.name if prov else param, taken)
+                placeholders[op] = (name, link.assumptions[param])
+        abstraction = _abstract(result, placeholders, taken)
+        assumptions = {**abstraction.assumptions}
+        _merge(assumptions, base)
+        report = self.last_report = self._verify(
+            abstraction.body, assumptions, self.ensures, "ensures"
         )
-        if key not in self._cache:
-            self._cache[key] = verify(
-                result,
-                requires={inputs[p].get_name(): cs for p, cs in self.requires.items()},
-                ensures=self.ensures,
-            )
-        report = self.last_report = self._cache[key]
         if not report.proved:
             if self.on_unproved == "warn":
                 warnings.warn(str(VerificationError(report)), stacklevel=2)
@@ -515,6 +714,21 @@ class ContractedTransform:
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
+        _merge(external, abstraction.external)
+        _merge(external, base)
+        proved = {c.label for c in report.ensures if c.proved}
+        _register(
+            result.op(),
+            Provenance(
+                transform=self,
+                body=abstraction.body,
+                assumptions=assumptions,
+                guarantees=[c for c in self.ensures if label(c) in proved],
+                report=report,
+                external=external,
+                unproved_links=unproved_links + abstraction.unproved_links,
+            ),
+        )
         return result
 
 
