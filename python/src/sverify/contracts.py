@@ -582,6 +582,47 @@ def _abstract(
     return out
 
 
+@dataclass
+class ViewContract:
+    """The contract of a (possibly composed) contracted expression, as seen by
+    an incremental view: it `guarantees` its proved postconditions on every
+    state whose base tables satisfy `requires`."""
+
+    requires: dict[str, list[Condition]]
+    guarantees: list[Condition]
+    provenance: Provenance | None
+
+
+def view_contract(expr: ir.Table) -> ViewContract:
+    """Collect the base-table preconditions of every contracted
+    transformation inside `expr`. Refuses preconditions on derived inputs that
+    were checked on data instead of proved: a view could not keep them true
+    from base-table changes."""
+    prov = _lookup(expr.op())
+    if prov is not None:
+        requires, unproved = prov.external, prov.unproved_links
+    else:
+        inner = _abstract(expr)
+        requires, unproved = inner.external, inner.unproved_links
+    if unproved:
+        raise ValueError(
+            "cannot maintain incrementally: preconditions on derived inputs were "
+            f"not proved ({'; '.join(unproved)})"
+        )
+    return ViewContract(
+        {t: list(cs) for t, cs in requires.items()},
+        list(prov.guarantees) if prov else [],
+        prov,
+    )
+
+
+def register_view(table: ir.Table, contract: ViewContract) -> None:
+    """Let contracted transformations that read a materialized view `table`
+    build on the guarantees of the expression it materializes."""
+    if contract.provenance is not None:
+        _register(table.op(), contract.provenance)
+
+
 class ContractedTransform:
     """A transformation with a contract; see `transform`."""
 

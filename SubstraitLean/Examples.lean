@@ -138,3 +138,7 @@ end Substrait.Examples
 #print axioms Substrait.Triple.of_contract
 #print axioms Substrait.Triple.of_keys
 #print axioms Substrait.Triple.of_aeval
+#print axioms Substrait.RowsSat.update
+#print axioms Substrait.KeyOn.update
+#print axioms Substrait.Spec.update
+#print axioms Substrait.Triple.maintained

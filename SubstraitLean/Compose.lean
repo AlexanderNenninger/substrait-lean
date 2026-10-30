@@ -197,4 +197,69 @@ theorem Triple.compose_spec {S S' : String → List AVal} {pre pre' : String →
     Triple (Spec S pre K) (f.after x g) B :=
   hg.compose hf hother
 
+/-! ## Preconditions under updates
+
+An incremental view keeps its base tables' preconditions true by checking
+each batch of changes, not the tables. A batch deletes `del` from `old` and
+inserts `ins`: `old ~ kept ++ del` and `new ~ kept ++ ins`. -/
+
+/-- Row-level conditions survive deleting rows. -/
+theorem RowsSat.of_subset {es : List Expr} {rows rows' : Relation} (h : RowsSat es rows)
+    (hsub : ∀ row ∈ rows', row ∈ rows) : RowsSat es rows' :=
+  fun row hr => h row (hsub row hr)
+
+/-- Row-level conditions hold after a batch if they held before and hold on
+the inserted rows. -/
+theorem RowsSat.update {es : List Expr} {old kept del ins new : Relation} (hold : RowsSat es old)
+    (hkept : (kept ++ del).Perm old) (hnew : new.Perm (kept ++ ins)) (hins : RowsSat es ins) :
+    RowsSat es new := by
+  intro row hr
+  rcases List.mem_append.1 (hnew.subset hr) with h | h
+  · exact hold.of_subset (fun r hr => hkept.subset (List.mem_append_left del hr)) row h
+  · exact hins row h
+
+theorem KeyOn.perm {k : List Nat} {rows rows' : Relation} (h : KeyOn k rows) (hp : rows.Perm rows') :
+    KeyOn k rows' :=
+  (hp.pairwise_iff fun hne heq => hne heq.symm).1 h
+
+/-- **Keys under updates.** If the old table has key `k`, the inserted rows
+agree on `k` with neither each other nor any row that the batch keeps, then
+the new table has key `k`. -/
+theorem KeyOn.update {k : List Nat} {old kept del ins new : Relation} (hold : KeyOn k old)
+    (hkept : (kept ++ del).Perm old) (hnew : new.Perm (kept ++ ins)) (hins : KeyOn k ins)
+    (hclash : ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) : KeyOn k new := by
+  have hk : KeyOn k kept := (List.pairwise_append.1 (hold.perm hkept.symm)).1
+  refine KeyOn.perm ?_ hnew.symm
+  exact List.pairwise_append.2 ⟨hk, hins, fun y hy x hx heq => hclash x hx y hy heq.symm⟩
+
+/-- A table's whole contract after a batch, from checks on the batch alone:
+the inserted rows match the schema and satisfy the row conditions, and their
+keys clash with neither each other nor the kept rows. -/
+theorem Spec.update {S : String → List AVal} {pre : String → List Expr}
+    {K : String → List (List Nat)} {t : String} {old kept del ins new : Relation}
+    (hold : Spec S pre K t old) (hkept : (kept ++ del).Perm old) (hnew : new.Perm (kept ++ ins))
+    (hS : ∀ row ∈ ins, EnvMem (S t) row) (hpre : RowsSat (pre t) ins)
+    (hK : ∀ k ∈ K t, KeyOn k ins ∧ ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) :
+    Spec S pre K t new := by
+  refine ⟨fun row hr => ?_, hold.2.1.update hkept hnew hpre, fun k hk =>
+    (hold.2.2 k hk).update hkept hnew (hK k hk).1 (hK k hk).2⟩
+  rcases List.mem_append.1 (hnew.subset hr) with h | h
+  · exact hold.1 row (hkept.subset (List.mem_append_left del h))
+  · exact hS row h
+
+/-- **A contracted view's guarantees hold in every state.** If every table
+of the old catalog met its contract and every table's batch passed the checks
+of `Spec.update`, the view's proved postconditions hold on the new catalog. -/
+theorem Triple.maintained {S : String → List AVal} {pre : String → List Expr}
+    {K : String → List (List Nat)} {q : Query} {B : Relation → Prop} {cat cat' : Catalog}
+    (hq : Triple (Spec S pre K) q B) (hcat' : cat'.WF) (hwf : q.WF cat')
+    (hold : Sat (Spec S pre K) cat)
+    (hbatch : ∀ t, ∃ kept del ins, (kept ++ del).Perm (cat t).rows ∧
+      (cat' t).rows.Perm (kept ++ ins) ∧ (∀ row ∈ ins, EnvMem (S t) row) ∧
+      RowsSat (pre t) ins ∧ ∀ k ∈ K t, KeyOn k ins ∧ ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) :
+    B (q.out cat').rows :=
+  hq cat' hcat' (fun t => by
+    obtain ⟨kept, del, ins, hkept, hnew, hS, hpre, hK⟩ := hbatch t
+    exact Spec.update (hold t) hkept hnew hS hpre hK) hwf
+
 end Substrait
