@@ -232,7 +232,11 @@ def test_windows_and_relations():
 
 
 def test_identifiers_are_quoted():
-    sql = to_sql(json.loads((FIXTURES / "df_inner_join.json").read_text()), SNOWFLAKE)
+    con = sv.connect()
+    create_tables(con)
+    sql = to_sql(
+        json.loads(sv.substrait_json(con, sv.engine.to_sql(PIPELINES["inner_join"]))), SNOWFLAKE
+    )
     assert '"orders"' in sql
     assert re.search(r'(?<!")\borders\b(?!")', sql) is None
 

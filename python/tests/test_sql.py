@@ -48,6 +48,13 @@ ACCEPTED = sorted(
 REFUSED = sorted(f.stem for f in FIXTURES.glob("*.json") if f.stem not in ACCEPTED)
 
 
+#: The Wheels workflow runs these tests against the installed wheel, with only
+#: `python/tests` copied out: there the fixture-driven tests have nothing to read.
+needs_fixtures = pytest.mark.skipif(
+    not FIXTURES.is_dir(), reason="the repository's tests/fixtures is not here"
+)
+
+
 def fixture(name: str) -> dict:
     return json.loads((FIXTURES / f"{name}.json").read_text())
 
@@ -222,6 +229,7 @@ def agree(plan: dict, df: list[tuple] | None, duck: list[tuple], lean: list[tupl
 # Golden fixtures
 
 
+@needs_fixtures
 def test_fixture_lists_are_complete():
     assert {"filter_project", "virtual_left_join", "union_fetch", "df_window"} <= set(ACCEPTED)
     assert set(REFUSED) == {"bad_field_ref", "df_aggregate", "unsupported_aggregate"}
@@ -663,6 +671,7 @@ SNAPSHOT_FIXTURES = [
 ]
 
 
+@needs_fixtures
 @pytest.mark.parametrize("name", SNAPSHOT_FIXTURES)
 def test_sql_snapshot(name):
     """Set SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
