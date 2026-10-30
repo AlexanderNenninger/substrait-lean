@@ -9,7 +9,7 @@ holding given rows (integers and NULLs); `lean_rows` evaluates the plan with
 import subprocess
 from collections.abc import Iterable, Mapping
 
-from sverify.incremental import checker_path
+from sverify.engine import checker_path
 
 
 def literal(v: int | None) -> dict:

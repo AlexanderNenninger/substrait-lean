@@ -44,8 +44,7 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 
-from sverify.engine import connect, create_table, substrait_json, to_sql
-from sverify.incremental import checker_path
+from sverify.engine import checker_path, connect, create_table, substrait_json, to_sql
 
 
 def q(name: str) -> str:

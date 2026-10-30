@@ -30,8 +30,7 @@ import ibis
 import ibis.expr.types as ir
 from ibis import _
 
-from sverify.engine import Backend, connect, create_table, substrait_json, to_sql
-from sverify.incremental import checker_path
+from sverify.engine import Backend, checker_path, connect, create_table, substrait_json, to_sql
 
 Status = Literal["verified", "rejected", "upstream"]
 

@@ -1,4 +1,4 @@
-"""Incrementally maintained views on DataFusion, with delta plans from Lean.
+"""Incrementally maintained views on DataFusion or Polars, with delta plans from Lean.
 
 The verified part is the delta plan: `substrait-check --delta` compiles the
 view's Substrait plan with `Rel.delta`, splits it into union-free terms
@@ -6,7 +6,7 @@ view's Substrait plan with `Rel.delta`, splits it into union-free terms
 proves the concatenated results are the change to the view
 (`Rel.incremental_sound`, `Rel.zeval_terms`, `Rel.weighted_eval`). This module
 is the trusted glue around it: it keeps the view as rows with multiplicities,
-builds the change tables, runs the delta plans on DataFusion and merges the
+builds the change tables, runs the delta plans on DataFusion or Polars and merges the
 result. A batch is computed completely before anything is replaced, so a
 failing batch changes nothing.
 """
@@ -15,39 +15,29 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import subprocess
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import ibis.expr.types as ir
 import pyarrow as pa
 
 from sverify.engine import (
     Backend,
+    Engine,
+    checker_path,
     put_table,
-    run_sql,
-    run_substrait_json,
+    read_tables,
+    run_plan,
     substrait_json,
     to_arrow,
     to_sql,
+    written_plan,
 )
 
 Row = tuple
 WEIGHT = "__weight"
-
-
-def checker_path() -> Path:
-    """`$SVERIFY_CHECK` if set, else the `substrait-check` the wheel ships with
-    (a symlink to the lake build in an editable install)."""
-    if env := os.environ.get("SVERIFY_CHECK"):
-        return Path(env)
-    bundled = Path(__file__).parent / "_bin" / "substrait-check"
-    if not bundled.exists():
-        raise FileNotFoundError(f"{bundled} is missing; reinstall sverify or set SVERIFY_CHECK")
-    return bundled
 
 
 class NotIncremental(Exception):
@@ -68,26 +58,6 @@ def delta_plans(plan_json: str) -> list[str]:
     if proc.returncode != 0:
         raise ValueError(f"substrait-check --delta failed: {proc.stderr.strip()}")
     return proc.stdout.splitlines()
-
-
-def read_tables(plan: dict) -> list[str]:
-    """Named tables a Substrait plan reads."""
-    found: list[str] = []
-
-    def walk(node: object) -> None:
-        if isinstance(node, dict):
-            if "namedTable" in node:
-                name = ".".join(node["namedTable"]["names"])
-                if name not in found:
-                    found.append(name)
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    walk(plan)
-    return found
 
 
 def _value_key(x: object) -> object:
@@ -121,16 +91,21 @@ class IncrementalView:
 
     `query` is an Ibis expression or SQL over tables of `con`, an Ibis
     DataFusion backend. The view is also registered as table `name`.
+    `engine` runs the plans: the view's plan as Lean read it
+    (`written_plan`) and the delta plans, all over the tables of `con`.
     """
 
-    def __init__(self, con: Backend, query: ir.Table | str, name: str):
-        self.con, self.name = con, name
+    def __init__(
+        self, con: Backend, query: ir.Table | str, name: str, engine: Engine = "datafusion"
+    ):
+        self.con, self.name, self.engine = con, name, engine
         self.sql = query if isinstance(query, str) else to_sql(query)
         plan = json.loads(substrait_json(con, self.sql))
         self.columns: list[str] = plan["relations"][0]["root"]["names"]
         self.tables = read_tables(plan)
         self.deltas = delta_plans(json.dumps(plan))
-        result = run_sql(con, self.sql)
+        self.plan = written_plan(json.dumps(plan))
+        result = run_plan(con, self.plan, engine)
         self.schema = result.schema
         self.counts: Counter[tuple] = Counter()
         self.examples: dict[tuple, Row] = {}
@@ -154,7 +129,8 @@ class IncrementalView:
 
     def recompute(self) -> list[Row]:
         """The view computed from scratch, for checking."""
-        return sorted(arrow_rows(run_sql(self.con, self.sql)), key=lambda r: repr(row_key(r)))
+        rows = arrow_rows(run_plan(self.con, self.plan, self.engine))
+        return sorted(rows, key=lambda r: repr(row_key(r)))
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
         unknown = set(changes) - set(self.tables)
@@ -170,7 +146,7 @@ class IncrementalView:
             delta = Counter[tuple]()
             examples: dict[tuple, Row] = {}
             for plan in self.deltas:
-                for r in arrow_rows(run_substrait_json(con, plan)):
+                for r in arrow_rows(run_plan(con, plan, self.engine)):
                     k = row_key(r[:-1])
                     delta[k] += r[-1]
                     examples.setdefault(k, r[:-1])

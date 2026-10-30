@@ -1,6 +1,6 @@
 # sverify
 
-Contracts and incremental views on DataFusion, with plans that are proven
+Contracts and incremental views on DataFusion or Polars, with plans that are proven
 correct in Lean. See the "Incremental views in Python" section of the
 [top-level README](../README.md).
 

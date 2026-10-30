@@ -54,17 +54,19 @@ def run_differential(data, make_view):
 SETTINGS = settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
 
+@pytest.mark.parametrize("engine", sv.ENGINES)
 @pytest.mark.parametrize("name", PIPELINES)
 @SETTINGS
 @given(data=st.data())
-def test_ibis_view_matches_recompute(name, data):
-    run_differential(data, lambda con: sv.IncrementalView(con, PIPELINES[name], "v"))
+def test_ibis_view_matches_recompute(name, engine, data):
+    run_differential(data, lambda con: sv.IncrementalView(con, PIPELINES[name], "v", engine))
 
 
+@pytest.mark.parametrize("engine", sv.ENGINES)
 @SETTINGS
 @given(data=st.data())
-def test_sql_view_matches_recompute(data):
-    run_differential(data, lambda con: sv.IncrementalView(con, SQL_QUERY, "v"))
+def test_sql_view_matches_recompute(engine, data):
+    run_differential(data, lambda con: sv.IncrementalView(con, SQL_QUERY, "v", engine))
 
 
 def test_left_join_is_rejected():
@@ -79,9 +81,10 @@ def test_aggregate_is_rejected():
         sv.IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 
-def test_deleting_a_missing_row_fails_and_rolls_back():
+@pytest.mark.parametrize("engine", sv.ENGINES)
+def test_deleting_a_missing_row_fails_and_rolls_back(engine):
     con = setup([(1, "ada", 30)], [])
-    view = sv.IncrementalView(con, PIPELINES["filter_project"], "v")
+    view = sv.IncrementalView(con, PIPELINES["filter_project"], "v", engine)
     with pytest.raises(ValueError):
         view.apply({"orders": sv.Changes(deletes=[(9, "zed", 1)])})
     assert view.rows() == view.recompute() == [(1, 60)]

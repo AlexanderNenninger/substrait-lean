@@ -480,9 +480,52 @@ registered as record batches, not datasets: DataFusion pushes filters into
 datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
 total order, which would make filters and projections disagree on NaN.
 
+### Engines
+
+Plans always come from DataFusion's Substrait producer, but they can run on
+DataFusion or [Polars](https://pola.rs). Pass `engine="polars"` to
+`IncrementalView` or `sv.run_plan(con, plan, "polars")`. The tables stay in
+`con` and are handed to Polars as Arrow. The point is differential testing,
+with the Lean semantics as the spec.
+
+Polars runs Lean's own serialisation of the checked plan: the plan as
+`substrait-check --write` writes it back out from the parsed `Rel`
+(`sv.written_plan`), and the delta plans of `--delta`, which use the same
+writer. `sverify/polars_engine.py` translates only that small, canonical form
+to a `LazyFrame` and raises `Unsupported` on anything else. It does not go
+through Ibis's Polars backend, which would compile a different plan. The
+translator pins the semantics instead of taking Polars defaults:
+
+* Filters and join conditions keep a row only when it is TRUE. `and`/`or` are
+  written out as Kleene `and3`/`or3`. Equi-join keys never match on NULL.
+* Rows come out in `Rel.eval`'s order. Joins are left-major, with a left
+  join's padded row in its place, and windows emit their sorted order. So
+  `FetchRel` takes the same rows as Lean, and the tests compare Polars with
+  Lean row for row.
+* Doubles compare, join, partition and sort by DataFusion's total order
+  (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
+  Window sorts are stable and place NULLs as each key says.
+* Integers are unbounded in Lean. Polars computes on 128 bits and casts back
+  strictly, so a result outside 64 bits raises `IntegerOverflow`.
+  (DataFusion wraps silently: `2^62 + 2^62` gives `-2^63`.) Only doubles
+  divide, as in the model.
+
+`python/tests/test_polars.py` runs every golden fixture, the window and
+rewrite queries of the other suites, and every delta plan of the example
+pipelines on both engines. It checks Polars against DataFusion as bags and
+against Lean's `Rel.eval` in order. It also has targeted tests for NULL join
+keys, three-valued filters, NULL and NaN order in windows, and overflow. The
+incremental-view tests run on both engines.
+
+Known gaps: the writer gives virtual tables placeholder `i64` column types and
+writes `FetchRel`'s deprecated `offset`/`count`. DataFusion rejects both, so
+written plans with string `VALUES` or a fetch run only on Polars. Doubles in a
+virtual table come out as their integer codes. `lt` on strings or booleans is
+undefined in the model (unlike in SQL), so the translator refuses it.
+
 **Trusted components** (not covered by the proofs): the JSON parser and
-writer, the `sverify` glue (change tables, consolidation, merge), and
-DataFusion's execution of Substrait. These are covered by golden tests, round
+writer, the `sverify` glue (change tables, consolidation, merge), the Polars
+translator, and each engine's execution of Substrait. These are covered by golden tests, round
 trips and the differential test instead.
 
 ## What's here
@@ -504,7 +547,7 @@ trips and the differential test instead.
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
-| `python/` | `sverify`: contracts and incremental views on DataFusion, differential tests |
+| `python/` | `sverify`: contracts and incremental views on DataFusion or Polars, differential tests |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
 ### Proven theorems
