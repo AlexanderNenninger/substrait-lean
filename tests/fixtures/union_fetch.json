@@ -1,0 +1,24 @@
+{
+  "relations": [{
+    "root": {
+      "input": {
+        "fetch": {
+          "input": {
+            "set": {
+              "op": "SET_OP_UNION_ALL",
+              "inputs": [
+                {"read": {"baseSchema": {"names": ["x"], "struct": {"types": [{"i32": {}}]}},
+                          "virtualTable": {"values": [{"fields": [{"i32": 1}]}, {"fields": [{"i32": 2}]}]}}},
+                {"read": {"baseSchema": {"names": ["x"], "struct": {"types": [{"i32": {}}]}},
+                          "virtualTable": {"values": [{"fields": [{"i32": 3}]}, {"fields": [{"i32": 4}]}]}}}
+              ]
+            }
+          },
+          "offset": "1",
+          "count": "2"
+        }
+      },
+      "names": ["x"]
+    }
+  }]
+}

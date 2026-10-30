@@ -1,0 +1,15 @@
+UnionAll
+  Emit [0]
+    Read orders
+  Emit [1]
+    Project +[$0]
+      Filter ($0 < 3)
+        Emit [2, 0]
+          Read orders
+tables: orders(3)
+arity: 1
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

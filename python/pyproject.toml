@@ -1,0 +1,76 @@
+[project]
+name = "sverify"
+version = "0.1.0"
+description = "Incremental views on DuckDB with delta plans proven correct in Lean"
+readme = "README.md"
+authors = [
+    { name = "Alexander Nenninger", email = "alexander.nenninger@live.de" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb==1.2.2",
+    "ibis-framework[duckdb]>=12.0.0",
+    "pyarrow>=26.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.14",
+    "poethepoet>=0.49.0",
+    "pyrefly>=1.4.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.pyrefly]
+project-includes = ["src", "tests", "scripts"]
+
+# Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
+# from the project root. Lean tasks run in the project root and need `lake`.
+[tool.poe.tasks.prove]
+help = "Check every Lean proof; warnings (including `sorry`) fail the build"
+cmd = "lake build --wfail SubstraitLean"
+cwd = "${POE_ROOT}/.."
+
+[tool.poe.tasks.build]
+help = "Build the substrait-check CLI that sverify calls"
+cmd = "lake build substrait-check"
+cwd = "${POE_ROOT}/.."
+
+[tool.poe.tasks.lint]
+help = "Lint and check formatting of the Python code"
+sequence = ["ruff check", "ruff format --check"]
+default_item_type = "cmd"
+
+[tool.poe.tasks.fmt]
+help = "Fix lint issues and format the Python code"
+sequence = ["ruff check --fix", "ruff format"]
+default_item_type = "cmd"
+
+[tool.poe.tasks.typecheck]
+help = "Type-check the Python code with pyrefly"
+cmd = "pyrefly check"
+
+[tool.poe.tasks.golden]
+help = "Golden tests: substrait-check output on every plan in tests/fixtures"
+cmd = "tests/run.sh"
+cwd = "${POE_ROOT}/.."
+
+[tool.poe.tasks.test]
+help = "Python tests, including the DuckDB differential tests"
+cmd = "pytest"
+
+[tool.poe.tasks.qa]
+help = "Run everything: prove, build, lint, typecheck, golden, test"
+sequence = ["prove", "build", "lint", "typecheck", "golden", "test"]

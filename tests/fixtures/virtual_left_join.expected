@@ -1,0 +1,14 @@
+Emit [0, 4]
+  Project +[IF IS_NULL($3) THEN "unknown" ELSE $3]
+    LeftJoin ($1 = $3)
+      Values[3] 3 row(s)
+      Values[1] 2 row(s)
+arity: 2
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (3):
+  (1, "ada")
+  (2, "unknown")
+  (3, "ada")
+[exit 0]

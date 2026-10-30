@@ -1,0 +1,14 @@
+{
+  "relations": [{
+    "root": {
+      "input": {
+        "aggregate": {
+          "input": {"read": {"baseSchema": {"names": ["x"], "struct": {"types": [{"i64": {}}]}},
+                             "namedTable": {"names": ["t"]}}},
+          "groupings": [{"groupingExpressions": [{"selection": {"directReference": {"structField": {}}, "rootReference": {}}}]}]
+        }
+      },
+      "names": ["x"]
+    }
+  }]
+}

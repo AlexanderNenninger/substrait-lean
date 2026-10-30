@@ -1,0 +1,17 @@
+{
+  "extensions": [{"extensionFunction": {"name": "is_null:any"}}],
+  "relations": [{
+    "root": {
+      "input": {
+        "filter": {
+          "input": {"read": {"baseSchema": {"names": ["a", "b", "c"],
+                                            "struct": {"types": [{"i64": {}}, {"i64": {}}, {"i64": {}}]}},
+                             "namedTable": {"names": ["t"]}}},
+          "condition": {"scalarFunction": {"arguments": [
+            {"value": {"selection": {"directReference": {"structField": {"field": 5}}, "rootReference": {}}}}]}}
+        }
+      },
+      "names": ["a", "b", "c"]
+    }
+  }]
+}

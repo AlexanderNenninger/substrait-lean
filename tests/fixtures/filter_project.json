@@ -1,0 +1,60 @@
+{
+  "extensionUris": [
+    {"extensionUriAnchor": 1, "uri": "https://github.com/substrait-io/substrait/blob/main/extensions/functions_comparison.yaml"},
+    {"extensionUriAnchor": 2, "uri": "https://github.com/substrait-io/substrait/blob/main/extensions/functions_arithmetic.yaml"}
+  ],
+  "extensions": [
+    {"extensionFunction": {"extensionUriReference": 1, "name": "gt:i64_i64"}},
+    {"extensionFunction": {"extensionUriReference": 2, "functionAnchor": 1, "name": "multiply:i64_i64"}}
+  ],
+  "relations": [{
+    "root": {
+      "input": {
+        "project": {
+          "common": {"emit": {"outputMapping": [0, 3]}},
+          "input": {
+            "filter": {
+              "input": {
+                "read": {
+                  "common": {"direct": {}},
+                  "baseSchema": {
+                    "names": ["id", "customer", "amount"],
+                    "struct": {
+                      "types": [
+                        {"i64": {"nullability": "NULLABILITY_REQUIRED"}},
+                        {"string": {"nullability": "NULLABILITY_NULLABLE"}},
+                        {"i64": {"nullability": "NULLABILITY_NULLABLE"}}
+                      ],
+                      "nullability": "NULLABILITY_REQUIRED"
+                    }
+                  },
+                  "namedTable": {"names": ["orders"]}
+                }
+              },
+              "condition": {
+                "scalarFunction": {
+                  "outputType": {"bool": {"nullability": "NULLABILITY_NULLABLE"}},
+                  "arguments": [
+                    {"value": {"selection": {"directReference": {"structField": {"field": 2}}, "rootReference": {}}}},
+                    {"value": {"literal": {"i64": "10"}}}
+                  ]
+                }
+              }
+            }
+          },
+          "expressions": [{
+            "scalarFunction": {
+              "functionReference": 1,
+              "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+              "arguments": [
+                {"value": {"selection": {"directReference": {"structField": {"field": 2}}, "rootReference": {}}}},
+                {"value": {"literal": {"i64": "2"}}}
+              ]
+            }
+          }]
+        }
+      },
+      "names": ["id", "doubled"]
+    }
+  }]
+}

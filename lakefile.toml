@@ -1,0 +1,9 @@
+name = "substrait-lean"
+defaultTargets = ["SubstraitLean", "substrait-check"]
+
+[[lean_lib]]
+name = "SubstraitLean"
+
+[[lean_exe]]
+name = "substrait-check"
+root = "Main"

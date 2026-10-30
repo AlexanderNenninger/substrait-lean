@@ -1,0 +1,11 @@
+Emit [0, 3]
+  Project +[($2 * 2)]
+    Filter (10 < $2)
+      Read orders
+tables: orders(3)
+arity: 2
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

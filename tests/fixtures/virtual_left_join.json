@@ -1,0 +1,60 @@
+{
+  "extensions": [
+    {"extensionFunction": {"extensionUriReference": 1, "functionAnchor": 7, "name": "equal:any_any"}},
+    {"extensionFunction": {"extensionUriReference": 1, "functionAnchor": 8, "name": "is_null:any"}}
+  ],
+  "relations": [{
+    "root": {
+      "input": {
+        "project": {
+          "common": {"emit": {"outputMapping": [0, 4]}},
+          "input": {
+            "join": {
+              "left": {
+                "read": {
+                  "baseSchema": {"names": ["id", "customer", "amount"],
+                                 "struct": {"types": [{"i64": {}}, {"string": {}}, {"i64": {}}]}},
+                  "virtualTable": {"expressions": [
+                    {"fields": [{"literal": {"i64": "1"}}, {"literal": {"string": "ada"}}, {"literal": {"i64": "30"}}]},
+                    {"fields": [{"literal": {"i64": "2"}}, {"literal": {"string": "bob"}}, {"literal": {"i64": "5"}}]},
+                    {"fields": [{"literal": {"i64": "3"}}, {"literal": {"string": "ada"}}, {"literal": {"null": {"i64": {}}}}]}
+                  ]}
+                }
+              },
+              "right": {
+                "read": {
+                  "baseSchema": {"names": ["name"], "struct": {"types": [{"string": {}}]}},
+                  "virtualTable": {"values": [
+                    {"fields": [{"string": "ada"}]},
+                    {"fields": [{"string": "cy"}]}
+                  ]}
+                }
+              },
+              "expression": {
+                "scalarFunction": {
+                  "functionReference": 7,
+                  "arguments": [
+                    {"value": {"selection": {"directReference": {"structField": {"field": 1}}, "rootReference": {}}}},
+                    {"value": {"selection": {"directReference": {"structField": {"field": 3}}, "rootReference": {}}}}
+                  ]
+                }
+              },
+              "type": "JOIN_TYPE_LEFT"
+            }
+          },
+          "expressions": [{
+            "ifThen": {
+              "ifs": [{
+                "if": {"scalarFunction": {"functionReference": 8, "arguments": [
+                  {"value": {"selection": {"directReference": {"structField": {"field": 3}}, "rootReference": {}}}}]}},
+                "then": {"literal": {"string": "unknown"}}
+              }],
+              "else": {"selection": {"directReference": {"structField": {"field": 3}}, "rootReference": {}}}
+            }
+          }]
+        }
+      },
+      "names": ["id", "customer"]
+    }
+  }]
+}

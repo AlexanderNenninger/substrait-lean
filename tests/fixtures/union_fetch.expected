@@ -1,0 +1,12 @@
+Fetch offset=1 count=2
+  UnionAll
+    Values[1] 2 row(s)
+    Values[1] 2 row(s)
+arity: 1
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (2):
+  (2)
+  (3)
+[exit 0]
