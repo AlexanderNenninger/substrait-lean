@@ -196,7 +196,7 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-32 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+39 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
@@ -204,7 +204,7 @@ How much of the Ibis API gets through, from
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✗ outer join · ✗ semi join · ✗ anti join · ✗ isin subquery · ✓ union all *inc.* · ✗ union distinct · ✗ intersect · ✗ difference |
 | aggregation | ✗ count() · ✗ group_by sum · ✗ count, max, mean · ✗ nunique · ✗ sum(where=) · ✗ having · ✗ value_counts · ✗ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
 | windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · – rolling mean (interval) · ✗ ntile · ✗ first |
-| numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✗ integer division · ✗ mod · ✓ abs *inc.* · ✗ round · ✗ ceil, floor · ✗ power · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✗ cast int → string · ✗ cast double → int |
+| numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✗ upper · ✗ length · ✗ concat · ✗ substr · ✗ contains · ✗ startswith · ✗ like · ✗ re_search · ✗ strip |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✗ year · ✗ date · ✗ truncate |
@@ -490,6 +490,7 @@ trips and the differential test instead.
 | File | Contents |
 |---|---|
 | `SubstraitLean/Value.lean` | Nullable values, rows, bag-semantics relations |
+| `SubstraitLean/Rounding.lean` | Exact `FLOOR`/`CEIL`/`ROUND` and casts to `BIGINT` on double codes; monotonicity |
 | `SubstraitLean/Expr.lean` | `Literal`, `FieldReference`, scalar functions, `IfThen`, Kleene 3-valued logic |
 | `SubstraitLean/Window.lean` | Sort orders, `ROW_NUMBER`/`LAG`/`LEAD` semantics over partitions |
 | `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left), `Fetch`, `UnionAll`, `Window`; arity, well-formedness, `eval`; **type soundness** |
@@ -499,6 +500,7 @@ trips and the differential test instead.
 | `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
 | `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
+| `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/Check.lean` | Executable `checkWF`, proven equivalent to `Rel.WF`; `Decidable` instance |
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
@@ -574,6 +576,37 @@ between codes and native floats are trusted code.
 Trusted: the schema description taken from `baseSchema` types and nullability, and
 the JSON plumbing.
 
+### Runtime errors
+
+[Safety.lean](SubstraitLean/Safety.lean) proves that a transformation runs without
+runtime errors, or reports what may go wrong. `sverify` reports these as
+`may fail: …` (a `VerificationError` from `@sv.transform`) or, for wrapping,
+`warning: …`.
+
+* Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
+  integer `POWER` with a negative exponent or a result outside 64 bits, and
+  `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value.
+* Warnings: `+`, `-`, `*` and negation leaving 64 bits. DataFusion wraps around
+  silently, so the result is not the mathematical one.
+* `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
+  are understood where DataFusion respects them: in a `CASE` branch (and so
+  `NULLIF(b, 0)`), or in a filter below a *projection*. They are not respected in the
+  same `AND`, nor in an earlier *filter*: DataFusion merges filters, so
+  `t.filter(n != 0).filter(q % n > 1)` can fail.
+* `FloatCode.floor_mono`, `round_mono`, `toInt?_mono`, `toInt?_of_range`
+  ([Rounding.lean](SubstraitLean/Rounding.lean)): `FLOOR`, `CEIL`, `ROUND` and the cast
+  to `BIGINT` are exact on double codes and monotone, so `amount ∈ [0, 100]` proves
+  `amount.round()` is an integer in `[0, 100]`, and the cast safe.
+* Abstract rules for truncating `/` and `%` (`divBound_sound`, `modBound_sound`) and
+  for squares (`powAbs_sound`).
+
+Trusted: *when* DataFusion evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
+`AND`/`OR` are not, filter and join conditions may run before the filters below
+them). `python/tests/test_numeric.py` runs DataFusion on random data and checks it
+only fails where an error was reported. `BIGINT` and timestamp columns are taken to
+hold 64-bit values (from the schema); arithmetic on 32-bit columns is checked
+against 64-bit limits, so its overflow is not caught.
+
 ### Incremental view maintenance
 
 Table updates are Z-sets: rows with signed weights, where a deletion has weight `-1` and an
@@ -622,8 +655,15 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   equalities; `COALESCE`, `NULLIF`, `GREATEST`, `LEAST` and `ABS` become
   conditionals; `RIGHT JOIN` becomes a `LEFT JOIN` with its sides swapped.
   The rewrites are trusted code, checked against DataFusion by
-  `python/tests/test_rewrites.py`. Integers are unbounded, so 64-bit overflow
-  (e.g. `ABS` of the smallest `BIGINT`) is not modelled yet.
+  `python/tests/test_rewrites.py`. (`ABS` of the smallest `BIGINT` fails in
+  DataFusion; here it is reported as wrapping around.)
+* **Integers are unbounded; overflow is an `Issue`.** `Rel.eval` computes exact
+  integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation that may
+  leave 64 bits. Where DataFusion fails instead (division, `POWER`, casts), the
+  value in the model is `NULL`.
+* **Integer `//` from Ibis is exact.** Ibis compiles it through doubles
+  (`CAST(FLOOR(CAST(a AS DOUBLE) / b) AS BIGINT)`), which is wrong beyond 2⁵³;
+  `sverify` compiles it to integer division instead.
 
 ## Prior work to build on
 
