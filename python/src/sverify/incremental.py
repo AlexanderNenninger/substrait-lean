@@ -40,9 +40,14 @@ WEIGHT = "__weight"
 
 
 def checker_path() -> Path:
+    """`$SVERIFY_CHECK` if set, else the `substrait-check` the wheel ships with
+    (a symlink to the lake build in an editable install)."""
     if env := os.environ.get("SVERIFY_CHECK"):
         return Path(env)
-    return Path(__file__).resolve().parents[3] / ".lake" / "build" / "bin" / "substrait-check"
+    bundled = Path(__file__).parent / "_bin" / "substrait-check"
+    if not bundled.exists():
+        raise FileNotFoundError(f"{bundled} is missing; reinstall sverify or set SVERIFY_CHECK")
+    return bundled
 
 
 class NotIncremental(Exception):

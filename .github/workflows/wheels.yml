@@ -1,0 +1,80 @@
+name: Wheels
+
+# Each wheel bundles the substrait-check binary for its platform, so every
+# platform builds on its own runner. Tags `v*` also publish to PyPI.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No cache: a release wheel is built only from what is in this commit.
+      - uses: ./.github/actions/setup-lean
+        with:
+          cache: "false"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+
+      - name: Build wheel
+        run: uv build python --wheel --out-dir dist
+
+      - name: Tag manylinux
+        if: runner.os == 'Linux'
+        run: |
+          uvx --with patchelf auditwheel show dist/*.whl
+          uvx --with patchelf auditwheel repair dist/*.whl --wheel-dir wheelhouse
+      - name: Collect macOS wheel
+        if: runner.os == 'macOS'
+        run: mkdir wheelhouse && cp dist/*.whl wheelhouse/
+
+      # Test the installed wheel, not the source tree: copy the tests out so
+      # `sverify` can only come from the wheel.
+      - name: Test installed wheel
+        run: |
+          cp -r python/tests "$RUNNER_TEMP/tests"
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --with "$wheel" --with pytest --with hypothesis \
+            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheel-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the tag matches the package version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' python/pyproject.toml)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != v$version"; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3

@@ -1,0 +1,26 @@
+name: Set up Lean
+description: Install elan with the toolchain from lean-toolchain and restore the lake build cache.
+inputs:
+  cache:
+    description: Restore and save ~/.elan and .lake
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Cache elan and the lake build
+      if: inputs.cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.elan
+          .lake
+        key: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-${{ hashFiles('lake-manifest.json', '**/*.lean') }}
+        restore-keys: lean-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain') }}-
+    - name: Install elan
+      shell: bash
+      run: |
+        if [ ! -x ~/.elan/bin/lake ]; then
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain "$(cat lean-toolchain)"
+        fi
+        echo "$HOME/.elan/bin" >> "$GITHUB_PATH"

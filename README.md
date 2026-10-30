@@ -56,11 +56,21 @@ lake build                       # checks every proof and builds the substrait-c
 cd python && uv sync             # DataFusion 51, Ibis, pyarrow, substrait, pytest, hypothesis
 ```
 ```bash
-uv run pytest                    # should end with "31 passed"
+uv run pytest                    # should end with "56 passed"
 ```
 
-`lake build` has to come first, because the Python package calls the
-`substrait-check` binary it produces.
+`uv sync` installs `sverify` in editable mode. Its build hook runs
+`lake build substrait-check` and links `sverify/_bin/substrait-check` to the
+result, so later `lake build`s take effect without reinstalling. To use a
+different binary, set `SVERIFY_CHECK` to its path.
+
+### Wheels
+
+`uv build python --wheel` builds a wheel for the current platform. It bundles a
+stripped `substrait-check`, so installing it needs neither Lean nor elan. The
+[Wheels workflow](.github/workflows/wheels.yml) builds and tests wheels for Linux
+(x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
+version in `python/pyproject.toml` also publishes them to PyPI.
 
 To run your own scripts with the package available, from the project root:
 
