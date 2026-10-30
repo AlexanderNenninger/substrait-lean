@@ -2,6 +2,9 @@
 view recomputed from scratch, across random batches of inserts and deletes, on
 every engine."""
 
+from datetime import datetime
+
+import ibis
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -78,7 +81,7 @@ def test_left_join_is_rejected():
 
 def test_aggregate_is_rejected():
     con = setup([], [])
-    with pytest.raises(ValueError, match="unsupported relation"):
+    with pytest.raises(ValueError, match="aggregate functions are not supported"):
         sv.IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 
@@ -97,3 +100,41 @@ def test_deleting_a_missing_row_fails_and_rolls_back(engine):
         view.apply({"orders": sv.Changes(deletes=[(9, "zed", 1)])})
     assert view.rows() == view.recompute() == [(1, 60)]
     assert table_rows(con, "orders") == [(1, "ada", 30)]
+
+
+EVENTS = ibis.table({"name": "string", "ts": "timestamp"}, name="events")
+#: Views with the string and time functions, whose delta plans Lean writes.
+EVENT_VIEWS = {
+    "strings": EVENTS.filter(EVENTS.name.like("a%") | EVENTS.name.re_search("^b")).select(
+        u=EVENTS.name.upper(),
+        n=EVENTS.name.length(),
+        s=EVENTS.name.substr(1, 2),
+        t=EVENTS.name.strip(),
+        c=EVENTS.name + "!",
+        e=EVENTS.name.endswith("y"),
+    ),
+    "time": EVENTS.filter(EVENTS.ts.year() >= 2000).select(
+        "name",
+        d=EVENTS.ts.date(),
+        h=EVENTS.ts.truncate("h"),
+        m=EVENTS.ts.month(),
+        w=EVENTS.ts.week_of_year(),
+    ),
+}
+events_row = st.tuples(
+    st.sampled_from(["ada", "bob", " amy ", "by", None]),
+    st.one_of(st.none(), st.datetimes(datetime(1990, 1, 1), datetime(2030, 1, 1))),
+)
+
+
+@pytest.mark.parametrize("name", EVENT_VIEWS)
+@SETTINGS
+@given(data=st.data())
+def test_string_and_time_views_match_recompute(name, data):
+    con = sv.connect()
+    sv.create_table(con, "events", EVENTS.schema(), data.draw(st.lists(events_row, max_size=6)))
+    view = sv.IncrementalView(con, EVENT_VIEWS[name], "v")
+    assert view.rows() == view.recompute()
+    for _ in range(data.draw(st.integers(1, 3))):
+        view.apply({"events": data.draw(batch(con, "events", events_row))})
+        assert view.rows() == view.recompute()

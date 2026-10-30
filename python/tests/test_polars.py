@@ -36,8 +36,8 @@ from sverify.engine import (
 )
 from sverify.examples import PIPELINES, create_tables
 from sverify.incremental import WEIGHT
-from sverify.testing import canonical, inline_tables, lean_rows
-from test_numeric import DOUBLES, INT_QUERIES, MIN, F, lean_rows_any
+from sverify.testing import canonical, inline_tables, lean_rows, lean_values
+from test_numeric import DOUBLES, INT_QUERIES, MIN, F
 from test_numeric import PIPELINES as NUMERIC_PIPELINES
 from test_numeric import R as NUMERIC_R
 from test_numeric import values as numeric_values
@@ -161,6 +161,11 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
     return pa.table(cols, schema=schema)
 
 
+#: Fixtures Lean accepts with relations the Polars translator does not have yet
+#: (`DISTINCT`): it must refuse them, not run them wrongly.
+NOT_IN_POLARS = {"group_by_without_measures"}
+
+
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
     return canonical(a) == canonical(b)
 
@@ -190,6 +195,10 @@ def test_golden_fixtures(fixture, data):
     tables = {t: data.draw(table_data(s)) for t, s in schemas.items()}
     for t, table in tables.items():
         put_table(con, t, table)
+    if fixture.stem in NOT_IN_POLARS:
+        with pytest.raises(polars_engine.Unsupported, match="unsupported relation"):
+            on_both(con, plan)
+        return
     df, pl_rows = on_both(con, plan)
     assert same_bag(df, pl_rows)
     if fixture.stem.startswith("df_"):
@@ -489,7 +498,7 @@ def test_unknown_function_is_refused():
 def test_aggregates_are_refused():
     con = connect()
     create_tables(con)
-    with pytest.raises(ValueError, match="unsupported relation"):
+    with pytest.raises(ValueError, match="aggregate functions are not supported"):
         written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
 
 
@@ -520,7 +529,7 @@ def test_integer_functions_match_lean_in_order(sql, rows):
     plan = written_plan(substrait_json(con, sql))
     inlined = inline_tables(json.loads(plan), {"r": rows})
     polars = rows_of(run_plan(con, plan, "polars"))
-    assert lean_rows_any(json.dumps(inlined)) == polars
+    assert lean_values(json.dumps(inlined)) == polars
     assert same_bag(rows_of(run_sql(con, sql)), polars)
 
 
@@ -598,7 +607,7 @@ def test_guarded_operations_do_not_raise(sql):
     create_table(con, "r", NUMERIC_R, rows)
     plan = written_plan(substrait_json(con, sql))
     polars = rows_of(run_plan(con, plan, "polars"))
-    assert lean_rows_any(json.dumps(inline_tables(json.loads(plan), {"r": rows}))) == polars
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), {"r": rows}))) == polars
 
 
 @pytest.mark.parametrize("i", range(len(NUMERIC_PIPELINES)))
