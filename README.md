@@ -56,7 +56,7 @@ lake build                       # checks every proof and builds the substrait-c
 cd python && uv sync             # DataFusion 51, Ibis, pyarrow, substrait, pytest, hypothesis
 ```
 ```bash
-uv run pytest                    # should end with "56 passed"
+uv run pytest                    # should end with "161 passed"
 ```
 
 `uv sync` installs `sverify` in editable mode. Its build hook runs
