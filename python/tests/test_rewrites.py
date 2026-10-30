@@ -25,7 +25,7 @@ from sverify.engine import (
     run_substrait_json,
     substrait_json,
 )
-from sverify.testing import canonical, inline_tables, lean_rows
+from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows
 
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "int64"})
@@ -62,7 +62,9 @@ def test_lean_semantics_match_datafusion(sql, rows):
     create_table(con, "s", S, s)
     expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": r, "s": s})
-    assert canonical(lean_rows(json.dumps(plan))) == canonical(expected)
+    lean = lean_rows(json.dumps(plan))
+    assert canonical(lean) == canonical(expected)
+    assert canonical(duckdb_rows(json.dumps(plan))) == canonical(lean)
 
 
 def test_limit_offset_takes_the_right_number_of_rows():
@@ -72,7 +74,7 @@ def test_limit_offset_takes_the_right_number_of_rows():
     plan = inline_tables(
         json.loads(substrait_json(con, "SELECT a FROM r LIMIT 3 OFFSET 4")), {"r": rows}
     )
-    assert lean_rows(json.dumps(plan)) == [(4,), (5,)]
+    assert lean_rows(json.dumps(plan)) == duckdb_rows(json.dumps(plan)) == [(4,), (5,)]
 
 
 def written(plan_json: str) -> str:
@@ -111,9 +113,12 @@ def test_written_plans_run_on_datafusion(sql):
         schema=pa.schema([("v", pa.float64()), ("w", pa.float64()), ("name", pa.string())]),
     )
     put_table(con, "f", table)
-    got = run_substrait_json(con, written(substrait_json(con, sql))).to_pylist()
+    plan = substrait_json(con, sql)
+    got = run_substrait_json(con, written(plan)).to_pylist()
     want = run_sql(con, sql).to_pylist()
     assert canonical(tuple(r.values()) for r in got) == canonical(tuple(r.values()) for r in want)
+    on_duckdb = duckdb_rows(plan, {"f": table})
+    assert canonical(on_duckdb) == canonical(tuple(r.values()) for r in want)
 
 
 #: The contract checker reads the rewrites' conditions: each `CASE` branch is

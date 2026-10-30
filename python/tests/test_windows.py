@@ -1,5 +1,6 @@
-"""Window functions: Lean's semantics agree with DataFusion, contracts see
-through LAG/LEAD/ROW_NUMBER, and ties in the window order are refused."""
+"""Window functions: Lean's semantics agree with DataFusion and with DuckDB
+(in Lean's row order), contracts see through LAG/LEAD/ROW_NUMBER, and ties in
+the window order are refused."""
 
 import json
 import subprocess
@@ -20,7 +21,7 @@ from sverify.engine import (
     substrait_json,
     to_sql,
 )
-from sverify.testing import canonical, inline_tables, lean_rows
+from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows
 
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})
 
@@ -57,7 +58,9 @@ def test_lean_semantics_match_datafusion(sql, rows):
     create_table(con, "r", SCHEMA, rows)
     expected = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
-    assert canonical(lean_rows(json.dumps(plan))) == canonical(expected)
+    lean = lean_rows(json.dumps(plan))
+    assert canonical(lean) == canonical(expected)
+    assert duckdb_rows(json.dumps(plan)) == lean
 
 
 def test_written_window_plans_run_on_datafusion():
