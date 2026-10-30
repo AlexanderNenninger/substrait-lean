@@ -11,6 +11,7 @@ runtime errors.
 import json
 import math
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -21,7 +22,7 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import decode_double
 from sverify.engine import connect, create_table, put_table, run_sql, substrait_json, to_sql
-from sverify.testing import canonical, inline_tables, lean_values
+from sverify.testing import canonical, duckdb_rows, inline_tables, lean_values
 
 R = ibis.schema({"a": "int64", "b": "int64"})
 MIN = -(2**63)
@@ -49,6 +50,7 @@ def test_integer_semantics_match_datafusion(sql, rows):
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
     out = lean_values(json.dumps(plan))
     assert canonical(out) == canonical(expected)
+    assert canonical(duckdb_rows(json.dumps(plan))) == canonical(expected)
 
 
 #: Finite doubles where rounding could go wrong: halves, results of -0.0
@@ -208,3 +210,30 @@ def test_datafusion_fails_only_where_reported(i, rows):
         run_sql(con, to_sql(expr))
     except Exception as e:  # noqa: BLE001 - any engine failure counts
         assert reported, f"DataFusion failed ({e}) but no error was reported"
+
+
+@pytest.mark.parametrize("i", range(len(PIPELINES)))
+@settings(
+    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(rows=st.lists(st.tuples(values, values), max_size=6))
+def test_duckdb_fails_only_where_reported(i, rows):
+    """The generated SQL raises where DataFusion fails, and also where
+    DataFusion would wrap around; both are reported."""
+    expr = PIPELINES[i]
+    report = sv.verify(expr)
+    reported = report.errors + report.warnings
+    table = pa.table(
+        {
+            "qty": pa.array([q for q, _ in rows], pa.int64()),
+            "n": pa.array([n for _, n in rows], pa.int64()),
+            "amount": pa.array([1.0 for _ in rows], pa.float64()),
+        }
+    )
+    con = connect()
+    put_table(con, "t", table)
+    plan = substrait_json(con, to_sql(expr))
+    try:
+        duckdb_rows(plan, {"t": table})
+    except duckdb.Error as e:
+        assert reported, f"DuckDB failed ({e}) but nothing was reported"

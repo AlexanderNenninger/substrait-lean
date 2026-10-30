@@ -1,5 +1,6 @@
 """Differential tests: an incrementally maintained view must always equal the
-view recomputed from scratch, across random batches of inserts and deletes."""
+view recomputed from scratch, across random batches of inserts and deletes, on
+every engine."""
 
 from datetime import datetime
 

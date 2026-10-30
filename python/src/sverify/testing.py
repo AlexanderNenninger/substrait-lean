@@ -1,27 +1,46 @@
 """Run a plan through Lean's own semantics, for differential tests against
-DataFusion.
+DataFusion and DuckDB.
 
 `inline_tables` replaces each named-table read by a Substrait virtual table
-holding given rows (integers, finite doubles, strings and NULLs); `lean_rows`
-evaluates the plan with `Rel.eval` via `substrait-check` (doubles come back as
-codes), and `lean_values` also reads strings, booleans and printed doubles.
+holding given rows (integers, strings, booleans, timestamps, doubles and
+NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`
+(`lean_values` also reads printed doubles); `duckdb_rows` runs it as SQL on
+DuckDB.
 """
 
+import datetime as dt
+import math
 import re
 import subprocess
 from collections.abc import Iterable, Mapping
 
+import pyarrow as pa
+
+from sverify import duckdb_engine
 from sverify.engine import checker_path
+from sverify.incremental import arrow_rows
+
+EPOCH = dt.datetime(1970, 1, 1)
 
 
-def literal(v: int | float | str | None) -> dict:
+def literal(v: object) -> dict:
     if v is None:
         return {"literal": {"null": {"i64": {}}}}
+    if isinstance(v, bool):
+        return {"literal": {"boolean": v}}
+    if isinstance(v, int):
+        return {"literal": {"i64": str(v)}}
     if isinstance(v, str):
         return {"literal": {"string": v}}
+    if isinstance(v, dt.datetime):
+        micros = (v - EPOCH) // dt.timedelta(microseconds=1)
+        return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, float):
-        return {"literal": {"fp64": v}}
-    return {"literal": {"i64": str(v)}}
+        if math.copysign(1.0, v) < 0 and (math.isnan(v) or v == 0):
+            raise ValueError("Substrait JSON literals cannot hold -0.0 or -NaN")
+        text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"
+        return {"literal": {"fp64": v if math.isfinite(v) else text}}
+    raise TypeError(f"no literal for {v!r}")
 
 
 def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
@@ -43,7 +62,10 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
     return plan
 
 
-def _evaluated_rows(plan_json: str) -> list[str]:
+def lean_rows(plan_json: str) -> list[tuple]:
+    """The rows `Rel.eval` gives for a plan with only virtual tables, in
+    Lean's order. Doubles, timestamps and dates come back as their integer
+    codes (`SubstraitLean/Float.lean`); doubles are refused."""
     out = subprocess.run(
         [str(checker_path()), "/dev/stdin"],
         input=plan_json,
@@ -51,23 +73,29 @@ def _evaluated_rows(plan_json: str) -> list[str]:
         text=True,
         check=True,
     ).stdout
-    return [line.strip()[1:-1] for line in out.split("rows (")[1].splitlines()[1:]]
+    return parse_rows(out)
 
 
-def lean_rows(plan_json: str) -> list[tuple]:
-    """The rows `Rel.eval` gives for a plan with only virtual tables."""
-    return [
-        tuple(None if x == "NULL" else int(x) for x in line.split(", "))
-        for line in _evaluated_rows(plan_json)
-    ]
+def lean_values(plan_json: str) -> list[tuple]:
+    """Like `lean_rows`, but reads doubles too, which Lean prints with six
+    decimals and a `d` (so only approximately)."""
+    out = subprocess.run(
+        [str(checker_path()), "/dev/stdin"],
+        input=plan_json,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return parse_rows(out, doubles=True)
 
 
-#: One rendered value: a string in Lean's quotes, or anything up to a comma.
-_VALUE = re.compile(r'\s*("(?:[^"\\]|\\.)*"|[^,]+)')
+_VALUE = re.compile(r'\s*(NULL|true|false|"(?:[^"\\]|\\.)*"|[^,]+?)\s*(?:,|$)')
 _ESCAPE = re.compile(r"\\(x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)")
 
 
 def _unquote(s: str) -> str:
+    """A string in Lean's quotes (`String.quote`, which escapes with `\\x..`)."""
+
     def char(m: re.Match[str]) -> str:
         e = m.group(1)
         if e[0] == "x":
@@ -79,25 +107,34 @@ def _unquote(s: str) -> str:
     return _ESCAPE.sub(char, s[1:-1])
 
 
-def lean_values(plan_json: str) -> list[tuple]:
-    """Like `lean_rows`, but also reads strings, booleans and doubles (which
-    are printed with six decimals and a `d`)."""
+def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
+    """The rows section of `substrait-check` output (`Row.render`)."""
+    rows = []
+    for line in output.split("rows (")[1].splitlines()[1:]:
+        if not line.startswith("  ("):
+            break
+        values: list[object] = []
+        for m in _VALUE.finditer(line.strip()[1:-1]):
+            x = m.group(1)
+            if x == "NULL":
+                values.append(None)
+            elif x in ("true", "false"):
+                values.append(x == "true")
+            elif x.startswith('"'):
+                values.append(_unquote(x))
+            elif re.fullmatch(r"-?\d+", x):
+                values.append(int(x))
+            elif doubles and x.endswith("d"):
+                values.append(float(x[:-1]))
+            else:
+                raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")
+        rows.append(tuple(values))
+    return rows
 
-    def value(x: str) -> object:
-        if x == "NULL":
-            return None
-        if x in ("true", "false"):
-            return x == "true"
-        if x.startswith('"'):
-            return _unquote(x)
-        if x.endswith("d"):
-            return float(x[:-1])
-        return int(x)
 
-    return [
-        tuple(value(m.group(1).strip()) for m in _VALUE.finditer(line))
-        for line in _evaluated_rows(plan_json)
-    ]
+def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:
+    """Rows of the plan's SQL on a fresh DuckDB database holding `tables`."""
+    return arrow_rows(duckdb_engine.run(plan_json, tables or {}))
 
 
 def canonical(rows: Iterable[tuple]) -> list[str]:

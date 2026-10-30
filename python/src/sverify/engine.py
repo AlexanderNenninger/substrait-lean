@@ -23,8 +23,8 @@ from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
 Backend = Any  # ibis.backends.datafusion.Backend
-Engine = Literal["datafusion", "polars"]
-ENGINES: tuple[Engine, ...] = ("datafusion", "polars")
+Engine = Literal["datafusion", "polars", "duckdb"]
+ENGINES: tuple[Engine, ...] = ("datafusion", "polars", "duckdb")
 
 _literal = DataFusionCompiler.visit_NonNullLiteral
 
@@ -153,6 +153,11 @@ def run_plan(con: Backend, plan_json: str, engine: Engine = "datafusion") -> pa.
 
         names = read_tables(json.loads(plan_json))
         return polars_engine.run(plan_json, {t: con.con.table(t).to_arrow_table() for t in names})
+    if engine == "duckdb":
+        from sverify import duckdb_engine
+
+        names = read_tables(json.loads(plan_json))
+        return duckdb_engine.run(plan_json, {t: con.con.table(t).to_arrow_table() for t in names})
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 
