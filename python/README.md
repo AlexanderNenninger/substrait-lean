@@ -1,7 +1,8 @@
 # sverify
 
 **Data pipelines with proofs: incremental views and pre/postconditions on
-[DataFusion](https://datafusion.apache.org), checked in [Lean](https://lean-lang.org).**
+[DataFusion](https://datafusion.apache.org) or [Polars](https://pola.rs), checked in
+[Lean](https://lean-lang.org).**
 
 You write a query once, in [Ibis](https://ibis-project.org) or SQL. `sverify`
 then does two things with it:
@@ -79,6 +80,8 @@ assert view.rows() == view.recompute()
   batch, such as one that deletes a row that doesn't exist, changes nothing.
 * The view is registered as a table, so you can query it with `con.table("big_orders")`.
 * Plain SQL works too: `sv.IncrementalView(con, "select ... from ...", "name")`.
+* `engine="polars"` runs the view's plans on Polars instead of DataFusion:
+  exactly the plans Lean checked, translated by `sverify` rather than recompiled.
 
 **Supported:** filters, computed columns, inner joins (including self-joins and
 non-equi joins), cross joins and `UNION ALL`. Anything else is refused up
