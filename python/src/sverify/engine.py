@@ -35,6 +35,30 @@ def _subsecond_literal(self: Any, op: Any, *, value: Any, dtype: Any) -> Any:
 
 DataFusionCompiler.visit_NonNullLiteral = _subsecond_literal
 
+_floor_divide = DataFusionCompiler.visit_FloorDivide
+
+
+def _int_floor_divide(self: Any, op: Any, *, left: Any, right: Any) -> Any:
+    """Ibis compiles integer `a // b` as `CAST(FLOOR(CAST(a AS DOUBLE) / b) AS
+    BIGINT)`, which is inexact beyond 2^53 and can't be proved safe (the cast
+    of an unbounded double). Floor division in integers instead:
+    `a / b - 1` when the truncating quotient is inexact and the signs differ."""
+    if not (op.left.dtype.is_integer() and op.right.dtype.is_integer()):
+        return _floor_divide(self, op, left=left, right=right)
+    e = sg.exp
+    zero = e.Literal.number(0)
+    quot = e.Div(this=left.copy(), expression=right.copy(), typed=True)
+    inexact = e.NEQ(this=e.Mod(this=left.copy(), expression=right.copy()), expression=zero)
+    signs = e.NEQ(
+        this=e.paren(e.LT(this=left.copy(), expression=zero)),
+        expression=e.paren(e.LT(this=right.copy(), expression=zero)),
+    )
+    down = e.Sub(this=quot.copy(), expression=e.Literal.number(1))
+    return e.Case(ifs=[e.If(this=e.and_(inexact, signs), true=down)], default=quot)
+
+
+DataFusionCompiler.visit_FloorDivide = _int_floor_divide
+
 
 def connect() -> Backend:
     return ibis.datafusion.connect()

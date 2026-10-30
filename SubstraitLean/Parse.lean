@@ -23,8 +23,15 @@ open Lean (Json)
 abbrev J := Except String
 
 /-- Named tables seen while parsing: arity and the original `baseSchema`
-JSON (kept so plans can be written back out). -/
+JSON (kept so plans can be written back out). Virtual tables are recorded
+too, under `valuesKey`, so that their column kinds are known. -/
 abbrev Tables := List (String × Nat × Json)
+
+/-- The entry of a virtual table in `Tables`; no table name starts with `$`
+in a plan the parser reads. -/
+def valuesKey (n : Nat) (rows : Relation) : String := s!"$values {n} {reprStr rows}"
+
+def isValuesKey (t : String) : Bool := t.startsWith "$values "
 
 abbrev P := StateT Tables J
 
@@ -115,13 +122,17 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
   | .field i => cols.getD i .other
   | .un .neg a => a.kind cols
-  | .un .itof _ | .un .fneg _ => .float
+  | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
+  | .un (.froundTo _) _ => .float
+  | .un .ftoi _ => .int
+  | .un .itos _ => .str
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
+  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ => .int
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
   -- than the other one.
@@ -146,7 +157,9 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
     | some (_, s) => schemaKinds s
     | none => []
-  | .values n _ => List.replicate n .other
+  | .values n rows => match tables.lookup (valuesKey n rows) with
+    | some (_, s) => schemaKinds s
+    | none => List.replicate n .other
   | .filter r _ | .fetch r _ _ => r.kinds tables
   | .project r es =>
       let ks := r.kinds tables
@@ -366,6 +379,10 @@ def mkCall : String → List Expr → J Expr
   | "greatest", a :: as => pure (as.foldl (pick fun x y => .bin .lt x y) a)
   | "least", a :: as => pure (as.foldl (pick fun x y => .bin .lt y x) a)
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .neg a) a)
+  -- Integer division and remainder truncate; doubles go to `mkFloatCall`.
+  | "divide", [a, b] => pure (.bin .idiv a b)
+  | "modulus", [a, b] => pure (.bin .imod a b)
+  | "power", [a, b] => pure (.bin .ipow a b)
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
   /-- `COALESCE(a, as…)`: the first argument that is not `NULL`. -/
@@ -392,6 +409,12 @@ def mkFloatCall : String → List Expr → J Expr
     let posZero := FloatCode.ofMag false 0
     pure (.ifThen (.bin .lt a (.lit (.int negZero))) (.un .fneg a)
       (.ifThen (.bin .lt a (.lit (.int posZero))) (.lit (.int posZero)) a))
+  | "power", [a, b] => pure (.bin .fpow a b)
+  | "floor", [a] => pure (.un .ffloor a)
+  | "ceil", [a] => pure (.un .fceil a)
+  | "round", [a] => pure (.un .fround a)
+  | "round", [a, .lit (.int 0)] => pure (.un .fround a)
+  | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
 /-- Parse an expression over input columns of kinds `cols`. -/
@@ -414,18 +437,27 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     -- An integer constant next to a double stands for that double (DataFusion
     -- leaves `bpm >= 30` uncast); give it the double's code.
     let hasFloat := parsed.any (·.kind cols == .float)
-    let args ← (argJs.zip parsed).mapM fun (j, e) => do
-      if hasFloat then
+    -- `ROUND(x, d)`: the digits stay an integer.
+    let keepInt (k : Nat) : Bool := baseName name == "round" && k == 1
+    let args ← ((argJs.zip parsed).zipIdx).mapM fun ((j, e), k) => do
+      if hasFloat && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.int (FloatCode.ofInt i))
       return e
-    -- Arithmetic on doubles rounds, so it gets the float operators.
+    -- Arithmetic on doubles rounds, so it gets the float operators; integer
+    -- arguments of a double function are converted, as DataFusion does.
     let out := typeKind ((field? f "outputType").getD .null)
-    let arith := ["add", "subtract", "multiply", "divide", "negate", "abs"].contains (baseName name)
-    if arith && (out == .float || args.any (·.kind cols == .float)) then
+    let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
+      "ceil", "round"]
+    if floats.contains (baseName name) && (out == .float || args.any (·.kind cols == .float)) then
+      let args := args.zipIdx.map fun (e, k) =>
+        if e.kind cols == .int && !keepInt k && !(e matches .lit _) then Expr.un .itof e else e
       mkFloatCall (baseName name) args
     else mkCall (baseName name) args
   | ("ifThen", t) =>
-    let els ← parseExpr fns cols (← field t "else")
+    -- A `CASE` without `ELSE` is `ELSE NULL`.
+    let els ← match field? t "else" with
+      | some e => parseExpr fns cols e
+      | none => pure (.lit .null)
     (← arrD t "ifs").foldrM (init := els) fun clause acc => do
       return .ifThen (← parseExpr fns cols (← field clause "if"))
         (← parseExpr fns cols (← field clause "then")) acc
@@ -434,6 +466,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     let target := typeKind (← field c "type")
     let k := e.kind cols
     if target == .float && k == .int then return .un .itof e
+    -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
+    if target == .int && k == .float then return .un .ftoi e
+    if target == .str && k == .int then return .un .itos e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
   | ("singularOrList", l) =>
@@ -573,6 +608,7 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
         | none => (← arrD v "values").mapM fun row => do
             (← arrD row "fields").mapM fun e => do
               return (← constExpr (← parseConstLiteral e)).eval []
+      modify ((valuesKey arity rows, arity, ← field r "baseSchema") :: ·)
       pure (Rel.values arity rows)
   -- `ReadRel.filter` must be applied exactly (`bestEffortFilter` may be
   -- ignored). It refers to the base schema, so it comes before the mask.

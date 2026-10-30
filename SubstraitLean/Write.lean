@@ -25,14 +25,18 @@ serves integers, doubles and timestamps. -/
 def functions : List (Nat × String) :=
   [(1, "not"), (2, "is_null"), (3, "negate"), (4, "add"), (5, "subtract"), (6, "multiply"),
    (7, "equal"), (8, "lt"), (9, "and"), (10, "or"), (11, "divide"),
-   (12, "row_number"), (13, "lag"), (14, "lead")]
+   (12, "row_number"), (13, "lag"), (14, "lead"), (15, "floor"), (16, "ceil"), (17, "round"),
+   (18, "modulus"), (19, "power")]
 
 def UnFn.anchor : UnFn → Nat
-  | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .itof => 0
+  | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
+  | .fround | .froundTo _ => 17
+  -- Casts are written as casts, not calls.
+  | .itof | .ftoi | .itos => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
-  | .and => 9 | .or => 10 | .fdiv => 11
+  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
@@ -43,6 +47,7 @@ def writeValue : Value → Json
   | .str s => obj [("string", toJson s)]
 
 def fp64Type : Json := obj [("fp64", obj [("nullability", "NULLABILITY_NULLABLE")])]
+def i64Type : Json := obj [("i64", obj [("nullability", "NULLABILITY_NULLABLE")])]
 
 /-- A double literal: exact, since `m · 2⁻¹⁰⁷⁴ = m · 5¹⁰⁷⁴ · 10⁻¹⁰⁷⁴`. -/
 def writeDouble (c : Int) : Json :=
@@ -99,13 +104,18 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       ("rootReference", obj [])])]
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .fneg a => call 3 [writeExpr cols .float a]
+  | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
+      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
+      ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | .un (.froundTo d) a => call 17 [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]]
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (a.kind cols) a]
   | .bin f a b =>
     let ka := if isLit a then b.kind cols else a.kind cols
     let kb := if isLit b then a.kind cols else b.kind cols
     match f with
-    | .fadd | .fsub | .fmul | .fdiv =>
+    | .fadd | .fsub | .fmul | .fdiv | .fpow =>
       call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b]
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
@@ -121,7 +131,6 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
 columns for tables the parser never saw. -/
 abbrev Schemas := String → Nat → Json
 
-def i64Type : Json := obj [("i64", obj [("nullability", "NULLABILITY_NULLABLE")])]
 
 def placeholderSchema (n : Nat) : Json :=
   obj [("names", Json.arr ((List.range n).map fun i => toJson s!"c{i}").toArray),

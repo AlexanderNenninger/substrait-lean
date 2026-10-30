@@ -1,5 +1,5 @@
 import SubstraitLean.Value
-import SubstraitLean.Float
+import SubstraitLean.Rounding
 
 /-!
 # Scalar expressions
@@ -16,7 +16,12 @@ the Substrait standard extensions (`functions_boolean.yaml`) specify.
 
 Doubles are integer *codes* (see `SubstraitLean/Float.lean`), so they share
 `Value.int` and the integer comparisons. Float arithmetic has its own
-operators (`fadd`, …), computed with native floats.
+operators (`fadd`, …), computed with native floats; rounding a double to an
+integer is exact (see `SubstraitLean/Rounding.lean`).
+
+Integer division and remainder truncate toward zero, as in DataFusion. Where
+DataFusion raises an error (division by zero, a cast out of range, …) the
+value here is `null`; `SubstraitLean/Safety.lean` says when that happens.
 -/
 
 namespace Substrait
@@ -27,12 +32,24 @@ inductive UnFn where
   | itof
   /-- Negation of a double. -/
   | fneg
+  /-- `FLOOR`, `CEIL` and `ROUND` of a double, as a double. -/
+  | ffloor | fceil | fround
+  /-- `ROUND(x, d)` of a double for `d ≠ 0`, computed with native floats. -/
+  | froundTo (d : Int)
+  /-- `CAST(x AS BIGINT)` of a double: truncation toward zero. -/
+  | ftoi
+  /-- `CAST(x AS VARCHAR)` of an integer. -/
+  | itos
   deriving Repr, DecidableEq
 
 inductive BinFn where
   | add | sub | mul | eq | lt | and | or
   /-- Double arithmetic, rounded like IEEE 754. -/
   | fadd | fsub | fmul | fdiv
+  /-- Integer division and remainder (truncating) and integer powers. -/
+  | idiv | imod | ipow
+  /-- `POWER` of doubles. -/
+  | fpow
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -50,6 +67,14 @@ def UnFn.apply : UnFn → Value → Value
   | .neg, .int i => .int (-i)
   | .itof, .int i => .int (FloatCode.ofInt i)
   | .fneg, .int k => .int (FloatCode.neg k)
+  | .ffloor, .int c => .int (FloatCode.floor c)
+  | .fceil, .int c => .int (FloatCode.ceil c)
+  | .fround, .int c => .int (FloatCode.round c)
+  | .froundTo d, .int c => .int (FloatCode.roundTo d c)
+  | .ftoi, .int c => match FloatCode.toInt? c with
+    | some i => .int i
+    | none => .null
+  | .itos, .int i => .str (toString i)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -82,6 +107,12 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
   | .fdiv, .int a, .int b => .int (FloatCode.lift₂ (· / ·) a b)
+  | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
+  | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
+  -- Exponents beyond 64 overflow anyway (unless `|a| ≤ 1`); don't compute them.
+  | .ipow, .int a, .int b =>
+    if b < 0 ∨ (64 < b ∧ 1 < a.natAbs) then .null else .int (a ^ b.toNat)
+  | .fpow, .int a, .int b => .int (FloatCode.lift₂ Float.pow a b)
   | _, _, _ => .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules
