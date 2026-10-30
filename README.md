@@ -519,6 +519,42 @@ division, overflow, and NaN and signed zeros. It keeps snapshots of the
 generated SQL in `python/tests/sql_snapshots/`. The incremental, window,
 rewrite and ASOF differential tests run on both engines.
 
+#### Snowflake
+
+`to_sql(plan, SNOWFLAKE)` (from `sverify.sql.snowflake`) writes checked plans
+and Lean delta plans as Snowflake SQL. The SQL is written to match Lean where
+Snowflake's documented behaviour differs:
+
+* integers are `NUMBER(38,0)` and are checked against the 64-bit range;
+* timestamps are `TIMESTAMP_NTZ(6)`;
+* backslashes in strings are escaped;
+* every identifier is quoted, so create tables and columns with quoted
+  lower-case names.
+
+Where Snowflake can't match, the plan is refused (`Unsupported`) or the query
+raises instead of answering differently:
+
+* FETCH over a named table is refused: Snowflake tables have no row order.
+  Windows are refused too, unless you pass `tie_free=True` to promise there
+  are no ties (a contract report's `deterministic` says so).
+* Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
+  interval type.
+* Snowflake has one NaN, which stands for Lean's +NaN. A negative-NaN literal
+  is refused, and negating a NaN raises.
+* Lean orders −0.0 below +0.0, and Snowflake doesn't document whether the sign
+  of a zero is visible. So comparing two zeros raises, and so does sorting or
+  partitioning on a double column that holds a zero.
+
+Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
+collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
+fixture and delta plan, parses it with sqlglot's Snowflake parser, and runs it
+on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`.
+fakesnow emulates Snowflake on DuckDB, so this checks the SQL, not Snowflake's
+behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
+`SNOWFLAKE_USER`, a credential (`SNOWFLAKE_PASSWORD`,
+`SNOWFLAKE_AUTHENTICATOR` or `SNOWFLAKE_PRIVATE_KEY_FILE`) and
+`SNOWFLAKE_WAREHOUSE`/`DATABASE`/`SCHEMA`.
+
 **Engine notes.** DataFusion 51 is pinned: Ibis 12's DataFusion backend can't
 connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
 `sverify` registers Arrow tables directly (`sv.create_table`). They are

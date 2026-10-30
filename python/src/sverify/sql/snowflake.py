@@ -1,0 +1,228 @@
+"""Snowflake SQL with the Lean model's semantics.
+
+Every hook either emits SQL whose result Snowflake's documentation pins down
+to the Lean value, or raises `Unsupported`; where only the data can tell
+(an i64 overflow, two float zeros compared), the SQL raises at run time
+instead of returning a different answer. The divergences, with the
+documentation they rest on:
+
+* **Integers** are `NUMBER(38,0)` (`BIGINT` is an alias). Arithmetic on two
+  i64 values is exact (|a·b| < 2¹²⁶ < 10³⁸), so each result is checked
+  against the i64 range and an overflow raises, as on the other engines.
+* **Integer division**: `/` returns a decimal rounded to 6 places, not a
+  truncated integer. The Lean model has no integer division, so the core
+  never asks for it.
+* **NULL order** defaults to the session's `DEFAULT_NULL_ORDERING`; the sort
+  keys always say `NULLS FIRST`/`NULLS LAST`.
+* **Three-valued logic**: `AND`/`OR`/`NOT` are Kleene, as in Lean. There is
+  no `IS TRUE`, so it is `COALESCE(x, FALSE)`.
+* **Floats** are IEEE doubles; all NaNs are equal and NaN is above `'inf'`
+  (documented), which is Lean's order for a positive NaN. Snowflake has one
+  NaN, read as Lean's +NaN: a negative-NaN literal is refused and negating a
+  NaN raises. Whether the sign of a zero is visible to `=`, `<`, `ORDER BY`
+  or `PARTITION BY` is not documented, so where Lean's −0.0 < +0.0 could
+  matter the SQL raises: comparing two zeros, or sorting or partitioning on
+  a double column that holds a zero.
+* **Timestamps** are `TIMESTAMP_NTZ(6)`: wall-clock microseconds like Lean.
+  Plain `TIMESTAMP` follows `TIMESTAMP_TYPE_MAPPING` and defaults to
+  nanoseconds; `LTZ` would depend on the session time zone. There is no
+  interval type, only interval constants added to a timestamp, so
+  interval-valued expressions are refused.
+* **Strings**: a backslash is an escape character in a quoted literal, so
+  it is doubled.
+* **Windows**: `LAG`/`LEAD` take the default when the offset leaves the
+  partition, as in Lean; `ORDER BY` is required. Tables have no row order
+  (no `rowid`), so nothing can stand for Lean's list order, which FETCH and
+  ties in a window follow: `row_ordinal` is refused. Windows run with
+  `to_sql(..., tie_free=True)`, when the caller knows there are no ties.
+* **Identifiers** fold to upper case unless quoted; every one is quoted.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import math
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+from sverify.sql.core import Dialect, Kind, Unsupported
+
+I64_MIN, I64_MAX = -(2**63), 2**63 - 1
+NAN = "CAST('NaN' AS FLOAT)"
+EPOCH = dt.datetime(1970, 1, 1)
+
+_TYPES: dict[str, str] = {
+    "int": "NUMBER(38,0)",
+    "float": "FLOAT",
+    "time": "TIMESTAMP_NTZ(6)",
+    "date": "DATE",
+    "str": "VARCHAR",
+    "bool": "BOOLEAN",
+}
+
+
+@dataclass(frozen=True)
+class SnowflakeDialect(Dialect):
+    def type_name(self, kind: Kind) -> str:
+        if kind not in _TYPES:
+            raise Unsupported(f"Snowflake has no {kind} type (intervals are only constants)")
+        return _TYPES[kind]
+
+    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+        """An expression of type `kind` that fails with `message`. Snowflake
+        has no RAISE function, but casting a non-numeric (non-boolean) string
+        is an error that quotes the string. It depends on `dep` so it cannot
+        be folded at compile time, and is NULL when `dep` is."""
+        msg = self.str_lit(f"sverify: {message}: ")
+        return f"CAST({msg} || TO_VARCHAR({dep}) AS {self.type_name(kind)})"
+
+    # Literals
+
+    def str_lit(self, s: str) -> str:
+        return "'" + s.replace("\\", "\\\\").replace("'", "''") + "'"
+
+    def float_lit(self, f: float) -> str:
+        if math.isnan(f):
+            if math.copysign(1.0, f) < 0:
+                raise Unsupported("Snowflake has a single NaN; a negative NaN cannot be written")
+            return NAN
+        if math.isinf(f):
+            return "CAST('inf' AS FLOAT)" if f > 0 else "CAST('-inf' AS FLOAT)"
+        if f == 0 and math.copysign(1.0, f) < 0:
+            return "(- CAST('0' AS FLOAT))"  # IEEE negation; '-0' parsing is undocumented
+        return f"CAST('{f!r}' AS FLOAT)"
+
+    def int_lit(self, i: int) -> str:
+        return str(i)
+
+    def timestamp_lit(self, micros: int) -> str:
+        try:
+            t = EPOCH + dt.timedelta(microseconds=micros)
+        except OverflowError as e:
+            raise Unsupported(f"timestamp {micros} µs is outside years 1-9999") from e
+        return f"CAST('{t:%Y-%m-%d %H:%M:%S.%f}' AS TIMESTAMP_NTZ(6))"
+
+    def date_lit(self, days: int) -> str:
+        try:
+            d = EPOCH.date() + dt.timedelta(days=days)
+        except OverflowError as e:
+            raise Unsupported(f"date {days} days is outside years 1-9999") from e
+        return f"CAST('{d:%Y-%m-%d}' AS DATE)"
+
+    def interval_lit(self, micros: int) -> str:
+        # One constant in microseconds: exact, and the documentation's own
+        # examples use counts above 2³² ('5000000001 nanoseconds'). Constants
+        # take no sign inside, so a negative one is `- INTERVAL …`, which only
+        # the two timestamp hooks below consume.
+        sign = "- " if micros < 0 else ""
+        return f"{sign}INTERVAL '{abs(micros)} microseconds'"
+
+    # Integers: exact NUMBER(38,0) arithmetic, then the i64 range check.
+
+    def checked(self, r: str) -> str:
+        fail = self.raise_("integer overflow", r, "int")
+        return f"IFF({r} BETWEEN {I64_MIN} AND {I64_MAX}, {r}, {fail})"
+
+    def int_add(self, a: str, b: str) -> str:
+        return self.checked(f"({a} + {b})")
+
+    def int_sub(self, a: str, b: str) -> str:
+        return self.checked(f"({a} - {b})")
+
+    def int_mul(self, a: str, b: str) -> str:
+        return self.checked(f"({a} * {b})")
+
+    def int_neg(self, a: str) -> str:
+        return self.checked(f"(- {a})")
+
+    # Doubles
+
+    def int_to_float(self, a: str) -> str:
+        return f"CAST({a} AS FLOAT)"
+
+    def float_neg(self, a: str) -> str:
+        fail = self.raise_("negating NaN gives a negative NaN, which Snowflake lacks", a, "float")
+        return f"IFF({a} = {NAN}, {fail}, (- {a}))"
+
+    def is_nan(self, x: str) -> str:
+        return f"({x} = {NAN})"
+
+    def sign_bit(self, x: str) -> str:
+        """Known except for a zero: NaN is +NaN, other values have the sign
+        `x < 0` says. The core asks for it to sort and partition doubles."""
+        fail = self.raise_("the sign of a float zero is not visible on Snowflake", x, "bool")
+        return f"(CASE WHEN {x} = 0 THEN {fail} WHEN {self.is_nan(x)} THEN FALSE ELSE {x} < 0 END)"
+
+    def float_rank(self, x: str) -> str:
+        return f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN 1 ELSE 0 END)"
+
+    def zeros_guard(self, a: str, b: str, cmp: str) -> str:
+        """`cmp` (Snowflake's `a = b` or `a < b`) agrees with Lean's total
+        order except between −0.0 and +0.0, which only the sign tells apart."""
+        fail = self.raise_("comparing float zeros, whose sign Snowflake does not expose", a, "bool")
+        return f"IFF({a} = 0 AND {b} = 0, {fail}, {cmp})"
+
+    def float_eq(self, a: str, b: str) -> str:
+        return self.zeros_guard(a, b, f"({a} = {b})")
+
+    def float_lt(self, a: str, b: str) -> str:
+        return self.zeros_guard(a, b, f"({a} < {b})")
+
+    # Temporal
+
+    def time_add_interval(self, ts: str, iv: str) -> str:
+        if iv.startswith("- "):
+            return f"({ts} - {iv[2:]})"
+        return f"({ts} + {iv})"
+
+    def time_sub_interval(self, ts: str, iv: str) -> str:
+        if iv.startswith("- "):
+            return f"({ts} + {iv[2:]})"
+        return f"({ts} - {iv})"
+
+    def time_diff(self, a: str, b: str) -> str:
+        raise Unsupported("Snowflake has no interval values, so timestamp - timestamp is refused")
+
+    def interval_add(self, a: str, b: str) -> str:
+        raise Unsupported("Snowflake has no interval values to add")
+
+    def interval_sub(self, a: str, b: str) -> str:
+        raise Unsupported("Snowflake has no interval values to subtract")
+
+    # Logic
+
+    def is_true(self, a: str) -> str:
+        return f"COALESCE({a}, FALSE)"
+
+    # Windows
+
+    def over(self, partition: Sequence[str], order: Sequence[str]) -> str:
+        if not order:
+            raise Unsupported("Snowflake window functions need an ORDER BY")
+        part = f"PARTITION BY {', '.join(partition)} " if partition else ""
+        return f"OVER ({part}ORDER BY {', '.join(order)})"
+
+    def lag(self, x: str, offset: int, default: str, over: str) -> str:
+        return x if offset == 0 else f"LAG({x}, {offset}, {default}) {over}"
+
+    def lead(self, x: str, offset: int, default: str, over: str) -> str:
+        return x if offset == 0 else f"LEAD({x}, {offset}, {default}) {over}"
+
+    # Relations
+
+    def row_ordinal(self) -> str:
+        raise Unsupported(
+            "Snowflake tables have no row order, so FETCH and windows over a named table "
+            "cannot follow the Lean model's list order (windows run with tie_free=True)"
+        )
+
+    def limit_offset(self, offset: int, count: int | None) -> str:
+        if count is None:
+            return f"LIMIT NULL OFFSET {offset}" if offset else ""
+        return f"LIMIT {count} OFFSET {offset}" if offset else f"LIMIT {count}"
+
+    def union_all(self, a: str, b: str) -> str:
+        return f"({a}) UNION ALL ({b})"
+
+
+SNOWFLAKE: Dialect = SnowflakeDialect("snowflake")
