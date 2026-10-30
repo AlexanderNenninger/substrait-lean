@@ -262,4 +262,84 @@ theorem Triple.maintained {S : String → List AVal} {pre : String → List Expr
     obtain ⟨kept, del, ins, hkept, hnew, hS, hpre, hK⟩ := hbatch t
     exact Spec.update (hold t) hkept hnew hS hpre hK) hwf
 
+/-! ## Views over views
+
+A `Pipeline` materializes every view and hands its change to the views that
+read it as their change table (DBSP's chain rule). The delta rule of the
+downstream view needs nothing about the upstream one except that its change
+table holds the upstream change (`hδ` of `Rel.delta_correct`); composing that
+hypothesis with the upstream `Rel.delta_correct` stacks views. -/
+
+/-- `c` with table `x` replaced by `z`. -/
+def ZCatalog.bind (c : ZCatalog) (x : String) (z : ZSet) : ZCatalog :=
+  fun t => if t = x then z else c t
+
+/-- **Stacking a view on a materialized one.** `V` reads table `u`, which
+holds a view's old state `old`, with its change `Δu` loaded as `δ u`; `V`'s
+other inputs are as in `cat` and `Δ`. Then `V`'s delta plan computes `V`'s
+change, and `V`'s new state is its old state plus that change, with `u` at
+its new state `old ++ Δu`. `Δu` may be any change: an incremental view's
+(`Rel.chain_sound`) or a recomputed view's diff (`ZSet.diff_correct`). -/
+theorem Rel.stack_sound {C cat Δ : ZCatalog} {δ : String → String} {u : String} {old Δu : ZSet}
+    {V : Rel} (hV : V.Incremental) (hu : C u = old) (hδu : C (δ u) = Δu)
+    (hold : ∀ t ∈ V.tables, t ≠ u → C t = cat t) (hδ : ∀ t ∈ V.tables, t ≠ u → C (δ t) = Δ t) :
+    (V.delta δ).zeval C = V.zdelta (cat.bind u old) (Δ.bind u Δu) ∧
+      (V.zeval (cat.bind u old + Δ.bind u Δu)).Perm
+        (V.zeval (cat.bind u old) ++ (V.delta δ).zeval C) := by
+  have hold' : ∀ t ∈ V.tables, C t = cat.bind u old t := by
+    intro t ht
+    by_cases h : t = u
+    · subst h; simp [ZCatalog.bind, hu]
+    · simp [ZCatalog.bind, h, hold t ht h]
+  have hδ' : ∀ t ∈ V.tables, C (δ t) = Δ.bind u Δu t := by
+    intro t ht
+    by_cases h : t = u
+    · subst h; simp [ZCatalog.bind, hδu]
+    · simp [ZCatalog.bind, h, hδ t ht h]
+  exact ⟨Rel.delta_correct hV hold' hδ', Rel.incremental_sound hV hold' hδ'⟩
+
+/-- **The chain rule.** View `U` reads base tables; view `V` reads `U`'s
+materialized result as table `u`, and other base tables. If `U`'s change
+(the output of its delta plan) is loaded as `V`'s change table `δ u`, then:
+`U`'s new state is `U` on the new tables; `V`'s delta plan computes the change
+of `V` caused by the base changes and `U`'s change; and `V`'s new state is its
+old state plus that change. -/
+theorem Rel.chain_sound {C cat Δ : ZCatalog} {δ : String → String} {u : String} {U V : Rel}
+    (hU : U.Incremental) (hV : V.Incremental)
+    (holdU : ∀ t ∈ U.tables, C t = cat t) (hδU : ∀ t ∈ U.tables, C (δ t) = Δ t)
+    (hu : C u = U.zeval cat) (hδu : C (δ u) = (U.delta δ).zeval C)
+    (hold : ∀ t ∈ V.tables, t ≠ u → C t = cat t) (hδ : ∀ t ∈ V.tables, t ≠ u → C (δ t) = Δ t) :
+    (C u ++ C (δ u)).Perm (U.zeval (cat + Δ)) ∧
+      (V.delta δ).zeval C = V.zdelta (cat.bind u (U.zeval cat)) (Δ.bind u (U.zdelta cat Δ)) ∧
+      (V.zeval (cat.bind u (U.zeval cat) + Δ.bind u (U.zdelta cat Δ))).Perm
+        (V.zeval (cat.bind u (U.zeval cat)) ++ (V.delta δ).zeval C) := by
+  have hUδ : C (δ u) = U.zdelta cat Δ := hδu.trans (Rel.delta_correct hU holdU hδU)
+  refine ⟨?_, Rel.stack_sound hV hu hUδ hold hδ⟩
+  rw [hu, hUδ]
+  exact (Rel.zeval_add hU).symm
+
+/-- A row's total weight in a Z-set. -/
+def ZSet.weight (z : ZSet) (r : Row) : Int :=
+  ((List.filter (fun x : Row × Int => x.1 == r) z).map (·.2)).sum
+
+def ZSet.neg (z : ZSet) : ZSet := List.map (fun x : Row × Int => (x.1, -x.2)) z
+
+theorem ZSet.weight_append (a b : ZSet) (r : Row) : (a ++ b).weight r = a.weight r + b.weight r := by
+  simp [ZSet.weight, List.filter_append, List.sum_append]
+
+theorem ZSet.weight_neg (z : ZSet) (r : Row) : z.neg.weight r = -z.weight r := by
+  induction z with
+  | nil => simp [ZSet.neg, ZSet.weight]
+  | cons x z ih =>
+      simp only [ZSet.neg, ZSet.weight, List.map_cons, List.filter_cons] at ih ⊢
+      split <;> simp_all <;> omega
+
+/-- **Recompute and diff.** A view without a delta rule is recomputed (`new`)
+and its change taken as `new - old`; its old state plus that change has the
+weights of `new`, so it is a correct change for the views downstream. -/
+theorem ZSet.diff_correct (old new : ZSet) (r : Row) :
+    (old ++ (new ++ old.neg)).weight r = new.weight r := by
+  simp only [ZSet.weight_append, ZSet.weight_neg]
+  omega
+
 end Substrait

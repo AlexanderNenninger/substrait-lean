@@ -339,6 +339,89 @@ plus_one(orders)
 
   [notebooks/fitness.py](notebooks/fitness.py) walks through a complete example.
 
+### Composing contracted transformations
+
+Contracted transformations compose. When one's result feeds another, the
+downstream precondition is **proved** from the upstream contract, never checked
+on the data, and the downstream function is proved assuming only what the
+upstream one guarantees:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0, sv.unique("id")]},
+              ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")])
+def paid(orders):
+    return orders.filter(orders.amount.notnull())
+
+@sv.transform(requires={"t": [_.amount >= 0, _.amount.notnull()]},
+              ensures=[_.doubled >= 0, _.doubled.notnull()])
+def doubled(t):
+    return t.select(t.id, t.customer, doubled=t.amount * 2)
+
+expr = doubled(paid(orders))
+print(doubled.last_report)
+# requires paid: (_.amount >= 0)          ← what `paid` guarantees, not `orders`
+# requires paid: _.amount.notnull()
+# requires paid: unique(id)
+# ensures (_.doubled >= 0): proved
+# ensures _.doubled.notnull(): proved
+```
+
+If the upstream contract doesn't imply the downstream precondition, the call
+fails and names the broken link:
+
+```python
+@sv.transform(ensures=[_.amount.notnull()])
+def not_null(orders):
+    return orders.filter(orders.amount.notnull())
+
+doubled(not_null(orders))
+# CompositionError: doubled needs (_.amount >= 0) (it is TRUE or FALSE) on 't';
+#   not_null only guarantees _.amount.notnull()
+```
+
+A precondition can also follow from more than the upstream `ensures`: it is
+proved as an extra postcondition of the upstream transformation, from its own
+preconditions. Keys (`sv.unique`) propagate the same way. Plain Ibis steps in
+a chain (`doubled(paid(orders).filter(...))`) carry no guarantees: what
+follows from their own operations is proved, and the rest is checked on the
+data like a base table's. `sv.contracts.provenance(expr)` shows what a
+contracted result assumed and guarantees.
+
+### Contracted pipelines, kept up to date
+
+A `Pipeline` maintains views that read each other. Each view's change is
+handed to the views that read it, so intermediate results are computed once
+and shared. Views of contracted transformations keep their guarantees in every
+state: their preconditions on the base tables are checked in full once, then
+only on each batch (row conditions on the inserted rows, keys against the keys
+the batch keeps):
+
+```python
+pipe = sv.Pipeline(con)
+base = pipe.view("base", doubled(paid(con.table("orders"))))
+b, customers = base.table, con.table("customers")
+cities = pipe.view("cities", b.join(customers, b.customer == customers.name)
+                              .select("id", "city", "doubled"))
+located = pipe.view("located", b.left_join(customers, b.customer == customers.name)
+                                .select("id", "city"))
+pipe.fallbacks
+# {'located': 'not incrementally maintainable (left join, fetch or window)'}
+
+pipe.apply({"orders": sv.Changes(inserts=[(3, "ada", 7)], deletes=[(2, "bob", 5)]),
+            "customers": sv.Changes(inserts=[("bob", "Rome")])})
+cities.rows()                    # [(1, 'Paris', 60), (3, 'Paris', 14)]
+
+pipe.apply({"orders": sv.Changes(inserts=[(1, "cy", 4)])})
+# PreconditionError: 1 inserted key(s) of orders violate unique(id)
+```
+
+A view reads base tables and earlier views (`view.table`). A contracted
+transformation applied to `view.table` builds on that view's guarantees, as
+in a direct composition. A view without a delta rule (left join, fetch,
+window) is recomputed and diffed; its change still flows to the views
+downstream, and `pipe.fallbacks` lists such views. `sv.IncrementalView` is a
+pipeline with one view, and refuses a query without delta rules.
+
 ### Checking a query plan
 
 `substrait-check` reads any Substrait JSON plan, shows it in readable form,
@@ -635,6 +718,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
 | `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
+| `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/Check.lean` | Executable `checkWF`, proven equivalent to `Rel.WF`; `Decidable` instance |
@@ -710,6 +794,25 @@ between codes and native floats are trusted code.
 
 Trusted: the schema description taken from `baseSchema` types and nullability, and
 the JSON plumbing.
+
+### Composition
+
+[Compose.lean](SubstraitLean/Compose.lean) builds on `contract_sound`,
+`Rel.keys_sound` and `Rel.delta_correct`, with no induction over plans:
+
+* `Triple.compose`: Hoare triples over queries compose, `{P} g {Q}` and
+  `{Q} f {S}` give `{P} f ∘ g {S}`, where `f ∘ g` reads `g`'s output as one of
+  its tables. `Triple.of_contract`, `Triple.of_keys` and `Triple.of_aeval` turn
+  what the checker proves into triples; `Triple.compose_spec` is the rule as
+  `sverify` applies it.
+* `RowsSat.update`, `KeyOn.update`, `Spec.update`: a table's contract survives a
+  batch if the inserted rows satisfy the row conditions and their keys clash
+  with neither each other nor the kept rows. `Triple.maintained`: a contracted
+  view's guarantees then hold in the new state.
+* `Rel.chain_sound`: when a view reads another view's materialized result and
+  gets that view's delta-plan output as its change table, its own delta plan is
+  correct (DBSP's chain rule). `Rel.stack_sound` holds for any upstream change;
+  `ZSet.diff_correct` shows a recomputed view's `new − old` is one.
 
 ### Runtime errors
 

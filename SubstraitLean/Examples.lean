@@ -142,3 +142,6 @@ end Substrait.Examples
 #print axioms Substrait.KeyOn.update
 #print axioms Substrait.Spec.update
 #print axioms Substrait.Triple.maintained
+#print axioms Substrait.Rel.stack_sound
+#print axioms Substrait.Rel.chain_sound
+#print axioms Substrait.ZSet.diff_correct

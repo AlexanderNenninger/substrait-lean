@@ -20,6 +20,35 @@ unless `on_unproved` asks for a runtime check or a warning instead.
 Preconditions are assumptions about data that comes from outside, so when the
 inputs are bound to a backend they are checked on the data at call time.
 
+Contracted transformations compose. When the result of one feeds another, the
+downstream precondition is *proved* from the upstream contract instead of
+checked on the data, and the downstream postconditions are proved assuming
+only what the upstream one guarantees (`Triple.compose` in
+`SubstraitLean/Compose.lean`):
+
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, sv.unique("id")]},
+        ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
+    )
+    def paid(orders):
+        return orders.filter(orders.amount.notnull())
+
+    @sv.transform(
+        requires={"t": [_.amount >= 0, _.amount.notnull()]},
+        ensures=[_.doubled >= 0, _.doubled.notnull()],
+    )
+    def doubled(t):
+        return t.select(t.id, t.customer, doubled=t.amount * 2)
+
+    doubled(paid(orders))     # `doubled` is proved from `paid`'s guarantees
+
+A link that does not hold raises `CompositionError` naming both sides:
+"doubled needs (_.amount >= 0) (it is TRUE or FALSE) on 't'; not_null only
+guarantees _.amount.notnull()". Plain Ibis steps in between carry no
+guarantees of their own. A composed result can be maintained incrementally
+(`sverify.incremental`): its preconditions on the base tables are then
+checked on each batch of changes, and its guarantees hold in every state.
+
 Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
 or SQL snippets (`"amount >= 0"`). DataFusion compiles them to Substrait.
 
