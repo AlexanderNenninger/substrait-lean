@@ -473,10 +473,72 @@ filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
 and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
 
+**Engine notes.** DataFusion 51 is pinned: Ibis 12's DataFusion backend can't
+connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
+`sverify` registers Arrow tables directly (`sv.create_table`). They are
+registered as record batches, not datasets: DataFusion pushes filters into
+datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
+total order, which would make filters and projections disagree on NaN.
+
 ### Engines
 
-Plans always come from DataFusion's Substrait producer (and from Lean, for
-delta plans). Where they run is chosen per call, with `engine=`:
+Plans always come from DataFusion's Substrait producer, but they can run on
+DataFusion, [Polars](https://pola.rs) or DuckDB (below). Pass `engine="polars"` to
+`IncrementalView` or `sv.run_plan(con, plan, "polars")`. The tables stay in
+`con` and are handed to Polars as Arrow. The point is differential testing,
+with the Lean semantics as the spec.
+
+Polars runs Lean's own serialisation of the checked plan: the plan as
+`substrait-check --write` writes it back out from the parsed `Rel`
+(`sv.written_plan`), and the delta plans of `--delta`, which use the same
+writer. `sverify/polars_engine.py` translates only that small, canonical form
+to a `LazyFrame` and raises `Unsupported` on anything else. It does not go
+through Ibis's Polars backend, which would compile a different plan. The
+translator pins the semantics instead of taking Polars defaults:
+
+* Filters and join conditions keep a row only when it is TRUE. `and`/`or` are
+  written out as Kleene `and3`/`or3`. Equi-join keys never match on NULL.
+* Rows come out in `Rel.eval`'s order. Joins are left-major, with a left
+  join's padded row in its place, and windows emit their sorted order. So
+  `FetchRel` takes the same rows as Lean, and the tests compare Polars with
+  Lean row for row.
+* Doubles compare, join, partition and sort by DataFusion's total order
+  (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
+  Window sorts are stable and place NULLs as each key says.
+* Integers are unbounded in Lean. Polars computes on 128 bits, and a result
+  outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
+  (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
+  toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
+* Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
+  zero, `MIN / -1`, bad `POWER`s and out-of-range casts. Each expression
+  carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
+  masks it. The operator raises the matching error if a flag is set on a row
+  it evaluates. Polars runs filters where the plan puts them, so a filter
+  guards the projections above it. DataFusion merges filters, which is what
+  `Rel.loose` models.
+* Doubles divide in numpy: Polars divides a column by a constant by
+  multiplying with its reciprocal, which rounds differently.
+
+`python/tests/test_polars.py` runs every golden fixture, the window and
+rewrite queries of the other suites, and every delta plan of the example
+pipelines on both engines. It checks Polars against DataFusion as bags and
+against Lean's `Rel.eval` in order. It also has targeted tests for NULL join
+keys, three-valued filters, NULL and NaN order in windows, overflow, and each runtime error and its guards. The
+incremental-view tests run on both engines.
+
+Known gaps: the writer gives virtual tables placeholder `i64` column types and
+writes `FetchRel`'s deprecated `offset`/`count`. DataFusion rejects both, so
+written plans with string `VALUES` or a fetch run only on Polars. Doubles in a
+virtual table come out as their integer codes. `lt` on strings or booleans is
+undefined in the model (unlike in SQL), so the translator refuses it.
+
+### DuckDB, through generated SQL
+
+`engine="duckdb"` runs plans on [DuckDB](https://duckdb.org) as SQL that
+`sverify.sql.to_sql(plan, DUCKDB)` generates from them. DuckDB's Substrait
+extension is not used. Like Polars, DuckDB runs Lean's written plans over the
+tables of `con`, which are copied into a fresh in-process database for each
+run. Contracts take `engine=` for their runtime checks on data too:
 
 ```python
 view = sv.IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
@@ -484,12 +546,6 @@ view = sv.IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
 @sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
 def passthrough(orders): ...
 ```
-
-* **DataFusion** (the default) runs plans with its own Substrait consumer, on
-  `con`'s tables.
-* **DuckDB** runs them as SQL that `sverify.sql.to_sql(plan, DUCKDB)` generates
-  from the plan. DuckDB's Substrait extension is not used. Tables are copied
-  into an in-process DuckDB database, and base-table changes go to both.
 
 The SQL generator (`python/src/sverify/sql/`) reads Substrait JSON as
 `Parse.lean` does. It accepts exactly the plans `substrait-check` accepts and
@@ -520,7 +576,7 @@ makes order matter). The file also has targeted tests for engine traps: NULL
 join keys, three-valued logic, NULL ordering in windows, refused integer
 division, overflow, and NaN and signed zeros. It keeps snapshots of the
 generated SQL in `python/tests/sql_snapshots/`. The incremental, window,
-rewrite and ASOF differential tests run on both engines.
+rewrite and ASOF differential tests run on DuckDB too.
 
 #### Snowflake
 
@@ -558,18 +614,11 @@ behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 `SNOWFLAKE_AUTHENTICATOR` or `SNOWFLAKE_PRIVATE_KEY_FILE`) and
 `SNOWFLAKE_WAREHOUSE`/`DATABASE`/`SCHEMA`.
 
-**Engine notes.** DataFusion 51 is pinned: Ibis 12's DataFusion backend can't
-connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
-`sverify` registers Arrow tables directly (`sv.create_table`). They are
-registered as record batches, not datasets: DataFusion pushes filters into
-datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
-total order, which would make filters and projections disagree on NaN.
-
 **Trusted components** (not covered by the proofs): the JSON parser and
-writer, the `sverify` glue (change tables, consolidation, merge), the SQL
-generator, and the engines' execution (DataFusion's Substrait consumer,
-DuckDB's SQL). These are covered by golden tests, round trips and the
-differential tests instead.
+writer, the `sverify` glue (change tables, consolidation, merge), the Polars
+translator, the SQL generator, and each engine's execution (DataFusion's
+Substrait consumer, Polars, DuckDB's SQL). These are covered by golden tests,
+round trips and the differential tests instead.
 
 ## What's here
 
@@ -592,7 +641,7 @@ differential tests instead.
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
-| `python/` | `sverify`: contracts and incremental views on DataFusion, differential tests |
+| `python/` | `sverify`: contracts and incremental views on DataFusion or Polars, differential tests |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
 ### Proven theorems

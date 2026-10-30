@@ -16,8 +16,9 @@ from collections.abc import Iterable, Mapping
 
 import pyarrow as pa
 
-from sverify.executors import DuckDBExecutor
-from sverify.incremental import arrow_rows, checker_path
+from sverify import duckdb_engine
+from sverify.engine import checker_path
+from sverify.incremental import arrow_rows
 
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -103,10 +104,7 @@ def parse_rows(output: str) -> list[tuple]:
 
 def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:
     """Rows of the plan's SQL on a fresh DuckDB database holding `tables`."""
-    ex = DuckDBExecutor()
-    for name, table in (tables or {}).items():
-        ex.put(name, table)
-    return arrow_rows(ex.run(plan_json))
+    return arrow_rows(duckdb_engine.run(plan_json, tables or {}))
 
 
 def canonical(rows: Iterable[tuple]) -> list[str]:

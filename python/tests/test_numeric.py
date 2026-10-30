@@ -57,7 +57,7 @@ def lean_rows_any(plan_json: str) -> list[tuple]:
     """Like `lean_rows`, but keeps string values (rendered in quotes)."""
     import subprocess
 
-    from sverify.incremental import checker_path
+    from sverify.engine import checker_path
 
     out = subprocess.run(
         [str(checker_path()), "/dev/stdin"],

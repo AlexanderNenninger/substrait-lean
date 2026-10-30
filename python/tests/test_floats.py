@@ -60,10 +60,7 @@ values = st.sampled_from([0.0, -0.0, 0.5, 1.5, ERR, math.nan, math.inf, -math.in
 minutes = st.integers(0, 4)
 
 
-ENGINES = ["datafusion", "duckdb"]
-
-
-@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("engine", sv.ENGINES)
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_incremental_view_with_floats_matches_recompute(engine, data):
@@ -118,7 +115,7 @@ def test_column_comparisons_imply_not_null():
     assert report.proved
 
 
-@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("engine", sv.ENGINES)
 def test_incremental_view_with_integer_constants(engine):
     con = sv.connect()
     t = lambda m: dt.datetime(2024, 5, 1, 7, m)  # noqa: E731
@@ -130,7 +127,7 @@ def test_incremental_view_with_integer_constants(engine):
     assert view.rows() == view.recompute()
 
 
-@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("engine", sv.ENGINES)
 def test_signed_zeros_are_different_rows(engine):
     """DataFusion keeps -0.0 and 0.0 apart; so must the view's bookkeeping."""
     con = sv.connect()

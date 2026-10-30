@@ -29,7 +29,6 @@ from hypothesis import strategies as st
 import sverify as sv
 from sverify.engine import connect, put_table, run_substrait_json, substrait_json
 from sverify.examples import PIPELINES
-from sverify.executors import DuckDBExecutor
 from sverify.incremental import arrow_rows, checker_path, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
@@ -650,15 +649,6 @@ def test_contract_checks_on_duckdb():
     sv.examples.create_tables(con, [(1, "ada", -1)])
     with pytest.raises(sv.PreconditionError):
         passthrough(con.table("orders"))
-
-
-def test_engine_executes_on_its_own_copy():
-    ex = DuckDBExecutor()
-    ex.put("t", ints(x=[2, 1]))
-    assert arrow_rows(ex.get("t")) == [(2,), (1,)]
-    ex.drop("t")
-    with pytest.raises(duckdb.CatalogException):
-        ex.get("t")
 
 
 # --------------------------------------------------------------------------
