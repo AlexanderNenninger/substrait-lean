@@ -1,10 +1,19 @@
 name: Wheels
 
 # Each wheel bundles the substrait-check binary for its platform, so every
-# platform builds on its own runner. Tags `v*` also publish to PyPI.
+# platform builds on its own runner. Tags `v*` also publish to PyPI; PRs that
+# change the packaging only build and test.
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - python/pyproject.toml
+      - python/hatch_build.py
+      - lean-toolchain
+      - lakefile.toml
+      - .github/workflows/wheels.yml
+      - .github/actions/setup-lean/**
   workflow_dispatch:
 
 permissions:
