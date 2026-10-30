@@ -191,6 +191,25 @@ sv.IncrementalView(con, totals, "totals")
 Aggregates (`GROUP BY` with `SUM`/`COUNT`) are the next thing to add; see
 [Possible next steps](#possible-next-steps).
 
+How much of the Ibis API gets through, from
+[`sverify/coverage.py`](python/src/sverify/coverage.py) (regenerate with
+`uv run python -m sverify.coverage --write-readme` in `python/`):
+
+<!-- coverage:start -->
+20 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+
+| Area | Operations |
+|---|---|
+| rows | ✓ filter, select *inc.*, ✓ mutate *inc.*, ✓ drop, rename *inc.*, ✓ drop_null *inc.*, ✓ isnull *inc.*, ✓ between *inc.*, ✗ isin, ✗ notin, ✓ ifelse *inc.*, ✓ cases *inc.*, ✗ order_by, ✗ limit, ✗ limit with offset, ✗ order_by + limit, ✗ sample |
+| joins | ✓ inner join *inc.*, ✓ non-equi join *inc.*, ✓ cross join *inc.*, ✓ left join, ✗ right join, ✗ outer join, ✗ semi join, ✗ anti join, ✗ isin subquery, ✓ union all *inc.*, ✗ union distinct, ✗ intersect, ✗ difference |
+| aggregation | ✗ count(), ✗ group_by sum, ✗ count, max, mean, ✗ nunique, ✗ sum(where=), ✗ having, ✗ value_counts, ✗ distinct, ✗ distinct(on=), ✗ std, ✗ collect, – scalar subquery, – unnest |
+| windows | ✓ row_number, ✓ lag, ✗ rank, ✗ dense_rank, ✗ cumsum, ✗ sum over group, ✗ rolling mean (rows), – rolling mean (interval), ✗ ntile, ✗ first |
+| numbers | ✓ +, -, * *inc.*, ✓ float division *inc.*, ✗ integer division, ✗ mod, ✗ abs, ✗ round, ✗ ceil, floor, ✗ power, ✗ greatest, ✗ least, ✗ clip, ✓ cast int → double *inc.*, ✗ cast int → string, ✗ cast double → int |
+| nulls | ✗ fill_null, ✗ coalesce, ✗ nullif |
+| strings | ✗ upper, ✗ length, ✗ concat, ✗ substr, ✗ contains, ✗ startswith, ✗ like, ✗ re_search, ✗ strip |
+| time | ✓ timestamp + interval *inc.*, ✓ compare with literal *inc.*, ✗ year, ✗ date, ✗ truncate |
+<!-- coverage:end -->
+
 ### Pre- and postconditions on a transformation
 
 Declare what you assume about the inputs (`requires`) and what the output
