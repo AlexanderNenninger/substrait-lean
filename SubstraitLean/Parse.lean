@@ -105,11 +105,14 @@ def schemaKinds (schema : Json) : List Kind :=
   | some tys => tys.toList.map typeKind
   | none => []
 
+def litKind : Value → Kind
+  | .int _ => .int
+  | .str _ => .str
+  | .bool _ => .bool
+  | .null => .other
+
 def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
-  | .lit (.int _) => .int
-  | .lit (.str _) => .str
-  | .lit (.bool _) => .bool
-  | .lit .null => .other
+  | .lit v => litKind v
   | .field i => cols.getD i .other
   | .un .neg a => a.kind cols
   | .un .itof _ | .un .fneg _ => .float
@@ -120,7 +123,20 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
       | _ => a.kind cols
   | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ => .float
   | .bin _ _ _ => .bool
+  -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
+  -- than the other one.
+  | .ifThen _ (.lit v) e => match e with
+    | .lit _ => litKind v
+    | _ => e.kind cols
   | .ifThen _ t _ => t.kind cols
+
+/-- Renumber field references. -/
+def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
+  | .lit v => .lit v
+  | .field i => .field (f i)
+  | .un g a => .un g (a.mapFields f)
+  | .bin g a b => .bin g (a.mapFields f) (b.mapFields f)
+  | .ifThen c t e => .ifThen (c.mapFields f) (t.mapFields f) (e.mapFields f)
 
 def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
   | .rowNumber => .int
@@ -343,7 +359,23 @@ def mkCall : String → List Expr → J Expr
   -- `and` / `or` are variadic in Substrait.
   | "and", a :: as => pure (as.foldl (.bin .and) a)
   | "or", a :: as => pure (as.foldl (.bin .or) a)
+  -- Null handling and `GREATEST`/`LEAST`, as conditionals. These duplicate
+  -- their arguments, which is harmless: expressions have no side effects.
+  | "coalesce", a :: as => pure (coalesce a as)
+  | "nullif", [a, b] => pure (.ifThen (.bin .eq a b) (.lit .null) a)
+  | "greatest", a :: as => pure (as.foldl (pick fun x y => .bin .lt x y) a)
+  | "least", a :: as => pure (as.foldl (pick fun x y => .bin .lt y x) a)
+  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .neg a) a)
   | name, args => throw s!"unsupported function {name}/{args.length}"
+where
+  /-- `COALESCE(a, as…)`: the first argument that is not `NULL`. -/
+  coalesce (a : Expr) : List Expr → Expr
+    | [] => a
+    | b :: bs => .ifThen (.un .not (.un .isNull a)) a (coalesce b bs)
+  /-- `GREATEST`/`LEAST` of two values, where `better x y` says `y` wins. Like
+  DataFusion, they skip `NULL`s: the result is `NULL` only if both are. -/
+  pick (better : Expr → Expr → Expr) (a b : Expr) : Expr :=
+    .ifThen (.un .isNull a) b (.ifThen (.un .isNull b) a (.ifThen (better a b) b a))
 
 /-- Arithmetic whose result is a double. -/
 def mkFloatCall : String → List Expr → J Expr
@@ -352,12 +384,20 @@ def mkFloatCall : String → List Expr → J Expr
   | "multiply", [a, b] => pure (.bin .fmul a b)
   | "divide", [a, b] => pure (.bin .fdiv a b)
   | "subtract", [a] | "negate", [a] => pure (.un .fneg a)
+  -- `ABS` clears the sign bit. Codes below `-0.0` (negatives, `-∞`, negative
+  -- NaNs) are negated; `-0.0` becomes `+0.0`; the rest stay. Handling `-0.0`
+  -- on its own lets the contract checker see that the result is `≥ +0.0`.
+  | "abs", [a] =>
+    let negZero := FloatCode.ofMag true 0
+    let posZero := FloatCode.ofMag false 0
+    pure (.ifThen (.bin .lt a (.lit (.int negZero))) (.un .fneg a)
+      (.ifThen (.bin .lt a (.lit (.int posZero))) (.lit (.int posZero)) a))
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json) : J Expr := do
   if let some c ← constOf? fns j then return ← constExpr c
-  match ← oneof "expression" j ["selection", "scalarFunction", "ifThen", "cast"] with
+  match ← oneof "expression" j ["selection", "scalarFunction", "ifThen", "cast", "singularOrList"] with
   | ("selection", s) =>
     if (field? s "outerReference").isSome then
       throw "outer references are not supported"
@@ -380,7 +420,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
       return e
     -- Arithmetic on doubles rounds, so it gets the float operators.
     let out := typeKind ((field? f "outputType").getD .null)
-    let arith := ["add", "subtract", "multiply", "divide", "negate"].contains (baseName name)
+    let arith := ["add", "subtract", "multiply", "divide", "negate", "abs"].contains (baseName name)
     if arith && (out == .float || args.any (·.kind cols == .float)) then
       mkFloatCall (baseName name) args
     else mkCall (baseName name) args
@@ -396,6 +436,16 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     if target == .float && k == .int then return .un .itof e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
+  | ("singularOrList", l) =>
+    -- `x IN (a, b)` is `x = a OR x = b`, which has SQL's null semantics.
+    let v ← parseExpr fns cols (← field l "value")
+    let opts ← (← arrD l "options").mapM fun o => do
+      if v.kind cols == .float then
+        if let some (.int i) ← constOf? fns o then return Expr.lit (.int (FloatCode.ofInt i))
+      parseExpr fns cols o
+    match opts.map (.bin .eq v) with
+    | [] => return .lit (.bool false)
+    | e :: es => return es.foldl (.bin .or) e
   | (k, _) => throw s!"unsupported expression: {k}"
 
 /-! ## Window functions -/
@@ -554,28 +604,41 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         if es.isEmpty then pure inp else pure (.project inp es)
     | "cross" => pure (.cross (← input "left") (← input "right"))
     | "join" =>
-      let ty ← match field? r "type" with
-        | some (.str "JOIN_TYPE_INNER") => pure JoinType.inner
-        | some (.str "JOIN_TYPE_LEFT") => pure JoinType.left
+      let (ty, swap) ← match field? r "type" with
+        | some (.str "JOIN_TYPE_INNER") => pure (JoinType.inner, false)
+        | some (.str "JOIN_TYPE_LEFT") => pure (JoinType.left, false)
+        | some (.str "JOIN_TYPE_RIGHT") => pure (JoinType.left, true)
         | t => throw s!"unsupported join type: {(t.map (·.compress)).getD "unspecified"}"
       if (field? r "postJoinFilter").isSome then
         throw "JoinRel.postJoinFilter is not supported"
       let left ← input "left"
       let right ← input "right"
+      let (n, m) := ((left.kinds (← get)).length, (right.kinds (← get)).length)
       let cols := left.kinds (← get) ++ right.kinds (← get)
       let on ← (field? r "expression").elim (pure (Expr.lit (.bool true)))
         fun e => do return (← parseExpr fns cols e)
-      pure (.join left right ty on)
+      if !swap then pure (.join left right ty on)
+      else
+        -- `a RIGHT JOIN b` is `b LEFT JOIN a` with the columns put back:
+        -- a's columns `i < n` move to `m + i`, b's columns `n + j` to `j`.
+        let on := on.mapFields fun i => if i < n then m + i else i - n
+        pure (.emit (.join right left .left on) ((List.range n).map (m + ·) ++ List.range m))
     | "fetch" =>
-      if (field? r "offsetExpr").isSome || (field? r "countExpr").isSome then
-        throw "expression offsets/counts in FetchRel are not supported"
+      -- Current encoding: `offsetExpr`/`countExpr` (constants only here);
+      -- deprecated encoding: `offset`/`count`.
+      let constInt (key : String) : J (Option Int) := do
+        match field? r (key ++ "Expr") with
+        | some e => match ← constOf? fns e with
+          | some (.int i) => pure (some i)
+          | some .null => pure none
+          | _ => throw s!"FetchRel.{key}Expr must be an integer constant"
+        | none => (field? r key).mapM getInt
+      let offset ← match ← constInt "offset" with
+        | some i => if i < 0 then throw "negative FetchRel offset" else pure i.toNat
+        | none => pure 0
       -- An absent count, or the legacy `-1`, means "all remaining rows".
-      let count ← match field? r "count" with
-        | none => pure none
-        | some c => do
-          let n ← getInt c
-          pure (if n < 0 then none else some n.toNat)
-      pure (.fetch (← input "input") (← natD r "offset") count)
+      let count := (← constInt "count").bind fun n => if n < 0 then none else some n.toNat
+      pure (.fetch (← input "input") offset count)
     | _ =>
       match field? r "op" with
       | some (.str "SET_OP_UNION_ALL") =>

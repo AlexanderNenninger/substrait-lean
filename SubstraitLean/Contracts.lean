@@ -499,6 +499,8 @@ def Expr.refine (env : List AVal) : Expr → List AVal
       (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
   | .un .not (.un .isNull (.bin .mul a b)) =>
       (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+  -- `p OR q` (e.g. `x IN (1, 2)`): what `p` gives, or what `q` gives.
+  | .bin .or p q => List.zipWith AVal.join (p.refine env) (q.refine env)
   | _ => env
 termination_by e => sizeOf e
 
@@ -520,6 +522,20 @@ theorem refineCol_sound {env : List AVal} {row : Row} {i : Nat} {f : AVal → AV
 
 theorem refineCol_length (env : List AVal) (i : Nat) (f : AVal → AVal) :
     (refineCol env i f).length = env.length := by simp [refineCol]
+
+theorem EnvMem.zip_left {e₁ e₂ : List AVal} {row : Row} (h : EnvMem e₁ row) :
+    EnvMem (List.zipWith AVal.join e₁ e₂) row := by
+  intro j
+  have := h j
+  simp only [getD_top_eq, List.getElem?_zipWith] at *
+  split <;> simp_all [AVal.mem_top, AVal.mem_join_left]
+
+theorem EnvMem.zip_right {e₁ e₂ : List AVal} {row : Row} (h : EnvMem e₂ row) :
+    EnvMem (List.zipWith AVal.join e₁ e₂) row := by
+  intro j
+  have := h j
+  simp only [getD_top_eq, List.getElem?_zipWith] at *
+  split <;> simp_all [AVal.mem_top, AVal.mem_join_right]
 
 theorem Expr.refine_length (env : List AVal) (e : Expr) : (e.refine env).length = env.length := by
   fun_induction Expr.refine env e <;> simp_all [refineCol_length]
@@ -681,7 +697,178 @@ theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem e
         (BinFn.apply .mul (a.eval row) (b.eval row)))).isTrue = true := by simpa [eval] using ht
     obtain ⟨h₁, h₂⟩ := not_isNull_arith (.inr (.inr rfl)) ht'
     exact ihb (iha h (by simpa [eval] using h₁)) (by simpa [eval] using h₂)
-  case case15 => exact h
+  case case15 env p q ihp ihq =>
+    simp only [eval, BinFn.apply, isTrue_or3, Bool.or_eq_true] at ht
+    rcases ht with ht | ht
+    · exact EnvMem.zip_left (ihp h ht)
+    · exact EnvMem.zip_right (ihq h ht)
+  case case16 => exact h
+
+/-! ## What a condition says about one expression
+
+`CASE WHEN c THEN t ELSE e END` evaluates `t` only where `c` is TRUE and `e`
+only where it is not (FALSE or NULL). The rewrites of `GREATEST`, `LEAST`,
+`ABS` and `NULLIF` branch on `IS NULL` and on comparisons with constants, so a
+condition's *subject* (the expression it tests) is often the branch itself:
+`CASE WHEN x < 0 THEN 0 ELSE x END` is `≥ 0` because in the `ELSE` branch
+`x < 0` is not TRUE. -/
+
+/-- A constraint on a value. -/
+inductive Cstr where
+  | null
+  | notNull
+  /-- An integer in `b`; if `strict`, certainly a (non-NULL) integer. -/
+  | intIn (b : Bound) (strict : Bool)
+
+def Cstr.Holds : Cstr → Value → Prop
+  | .null, v => v = .null
+  | .notNull, v => v ≠ .null
+  | .intIn b true, v => ∃ j, v = .int j ∧ b.Mem j
+  | .intIn b false, v => ∀ j, v = .int j → b.Mem j
+
+/-- What `c` being TRUE (`pos`) or not TRUE says about its subject. -/
+def Expr.cstr (pos : Bool) : Expr → Option (Expr × Cstr)
+  | .un .isNull s => some (s, if pos then .null else .notNull)
+  | .un .not (.un .isNull s) => some (s, if pos then .notNull else .null)
+  | .bin .lt s (.lit (.int k)) => some (s, if pos then .intIn ⟨none, some (k - 1)⟩ true
+      else .intIn ⟨some k, none⟩ false)
+  | .bin .lt (.lit (.int k)) s => some (s, if pos then .intIn ⟨some (k + 1), none⟩ true
+      else .intIn ⟨none, some k⟩ false)
+  | .un .not (.bin .lt s (.lit (.int k))) => some (s, if pos then .intIn ⟨some k, none⟩ true
+      else .intIn ⟨none, some (k - 1)⟩ false)
+  | .un .not (.bin .lt (.lit (.int k)) s) => some (s, if pos then .intIn ⟨none, some k⟩ true
+      else .intIn ⟨some (k + 1), none⟩ false)
+  | _ => none
+
+/-- Narrow an abstract value by a constraint. -/
+def Cstr.apply : Cstr → AVal → AVal
+  | .null, a => ⟨a.null, none, false, false, false⟩
+  | .notNull, a => { a with null := false }
+  | .intIn b true, a => ⟨false, a.int.map (·.meet b), false, false, false⟩
+  | .intIn b false, a => { a with int := a.int.map (·.meet b) }
+
+/-- The constraint on `-v` (integer or double negation) given one on `v`. -/
+def Cstr.neg : Cstr → Option Cstr
+  | .null => some .null
+  | .notNull => none
+  | .intIn b strict => some (.intIn b.neg strict)
+
+theorem Value.isTrue_bool (b : Bool) : (Value.bool b).isTrue = b := by cases b <;> rfl
+
+theorem Expr.cstr_sound {pos : Bool} {c s : Expr} {k : Cstr} {row : Row}
+    (hc : c.cstr pos = some (s, k)) (ht : (c.eval row).isTrue = pos) : k.Holds (s.eval row) := by
+  unfold Expr.cstr at hc
+  split at hc <;> simp only [Option.some.injEq, Prod.mk.injEq, reduceCtorEq] at hc <;>
+    obtain ⟨rfl, rfl⟩ := hc <;> simp only [eval] at ht <;>
+    generalize Expr.eval row _ = v at ht ⊢ <;> cases pos <;>
+    cases v <;> simp only [UnFn.apply, BinFn.apply, Value.isTrue_bool, decide_eq_true_eq,
+      decide_eq_false_iff_not] at ht <;>
+    simp_all [Cstr.Holds, Value.isTrue, Bound.Mem] <;> omega
+
+theorem Cstr.apply_sound {k : Cstr} {a : AVal} {v : Value} (hk : k.Holds v) (ha : a.Mem v) :
+    (k.apply a).Mem v := by
+  rcases mem_cases ha with ⟨rfl, hn⟩ | ⟨j, x, rfl, hx, hm⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+  all_goals cases k with
+    | null => simp_all [Cstr.Holds, Cstr.apply, AVal.Mem]
+    | notNull => simp_all [Cstr.Holds, Cstr.apply, AVal.Mem]
+    | intIn b strict =>
+      cases strict <;> simp_all [Cstr.Holds, Cstr.apply, AVal.Mem] <;> exact Bound.mem_meet hm hk
+
+theorem Cstr.neg_sound {k k' : Cstr} {f : UnFn} (hf : f = .neg ∨ f = .fneg) {v : Value}
+    (hk' : k.neg = some k') (hk : k.Holds v) : k'.Holds (f.apply v) := by
+  rcases hf with rfl | rfl <;>
+  match k, k', hk' with
+  | .null, _, rfl => simp_all [Cstr.Holds, UnFn.apply]
+  | .intIn b true, _, rfl =>
+      obtain ⟨j, rfl, hj⟩ := hk
+      exact ⟨-j, by simp [UnFn.apply, FloatCode.neg], Bound.mem_neg hj⟩
+  | .intIn b false, _, rfl =>
+      intro j hj
+      cases v <;> simp_all [UnFn.apply, FloatCode.neg]
+      rename_i i; rw [← hj]; exact Bound.mem_neg (hk i rfl)
+
+/-- Constraints known to hold on the current row, each on the value of an
+expression (the conditions of the enclosing `CASE` branches and `OR`s). -/
+abbrev Assumptions := List (Expr × Cstr)
+
+def KsHold (ks : Assumptions) (row : Row) : Prop := ∀ p ∈ ks, p.2.Holds (p.1.eval row)
+
+/-- `c`'s constraint when it is TRUE (`pos`) or not, as assumptions. -/
+def Expr.cstrs (pos : Bool) (c : Expr) : Assumptions := (c.cstr pos).toList
+
+theorem KsHold.cons_cstrs {pos : Bool} {c : Expr} {ks : Assumptions} {row : Row}
+    (ht : (c.eval row).isTrue = pos) (hks : KsHold ks row) : KsHold (c.cstrs pos ++ ks) row := by
+  intro p hp
+  simp only [List.mem_append, Expr.cstrs] at hp
+  rcases hp with hp | hp
+  · cases hc : c.cstr pos with
+    | none => simp [hc] at hp
+    | some sk => simp only [hc, Option.toList_some, List.mem_singleton] at hp; subst hp;
+                 exact Expr.cstr_sound hc ht
+  · exact hks p hp
+
+/-- Narrow the abstract value `a` of `e` by an assumption about `e`, or about
+`x` when `e` is `-x`. -/
+def narrowBy (e : Expr) (a : AVal) (sk : Expr × Cstr) : AVal :=
+  if sk.1 = e then sk.2.apply a
+  else match e with
+    | .un f y => if (f = .neg ∨ f = .fneg) ∧ y = sk.1 then (sk.2.neg.map (·.apply a)).getD a else a
+    | _ => a
+
+def narrowAll (ks : Assumptions) (e : Expr) (a : AVal) : AVal := ks.foldl (narrowBy e) a
+
+theorem narrowBy_sound {e : Expr} {a : AVal} {sk : Expr × Cstr} {row : Row}
+    (hk : sk.2.Holds (sk.1.eval row)) (ha : a.Mem (e.eval row)) :
+    (narrowBy e a sk).Mem (e.eval row) := by
+  unfold narrowBy
+  split
+  · rename_i hs; rw [← hs]; exact Cstr.apply_sound hk (hs ▸ ha)
+  · split
+    · rename_i f y _
+      split
+      · rename_i hfy
+        obtain ⟨hf, rfl⟩ := hfy
+        cases hn : sk.2.neg with
+        | none => exact ha
+        | some k' => exact Cstr.apply_sound (Cstr.neg_sound hf hn hk) ha
+      · exact ha
+    · exact ha
+
+theorem narrowAll_sound {e : Expr} {row : Row} :
+    ∀ {ks : Assumptions} {a : AVal}, KsHold ks row → a.Mem (e.eval row) →
+      (narrowAll ks e a).Mem (e.eval row)
+  | [], _, _, ha => ha
+  | sk :: ks, _, hks, ha => by
+      simp only [narrowAll, List.foldl_cons]
+      exact narrowAll_sound (ks := ks) (fun p hp => hks p (by simp [hp]))
+        (narrowBy_sound (hks sk (by simp)) ha)
+
+/-- What a row on which `e` is *not* TRUE satisfies (the `ELSE` branch of a
+`CASE`). Recognizes the constraints of `Expr.cstr` on columns, and `OR`
+(neither side is TRUE) and `AND` (one side is not TRUE). -/
+def Expr.refineNeg (env : List AVal) : Expr → List AVal
+  | .bin .or p q => q.refineNeg (p.refineNeg env)
+  | .bin .and p q => List.zipWith AVal.join (p.refineNeg env) (q.refineNeg env)
+  | e => match e.cstr false with
+    | some (.field i, k) => refineCol env i k.apply
+    | _ => env
+
+theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNeg env) row := by
+  fun_induction Expr.refineNeg env e
+  case case1 env p q ihp ihq =>
+    simp only [eval, BinFn.apply, isTrue_or3, Bool.or_eq_false_iff] at ht
+    exact ihq (ihp h ht.1) ht.2
+  case case2 env p q ihp ihq =>
+    simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_false_iff] at ht
+    rcases ht with ht | ht
+    · exact EnvMem.zip_left (ihp h ht)
+    · exact EnvMem.zip_right (ihq h ht)
+  case case3 env e _ _ i k hc =>
+    refine refineCol_sound h ?_
+    have hk := Expr.cstr_sound hc ht
+    exact Cstr.apply_sound (by simpa [eval] using hk) (h i)
+  case case4 => exact h
 
 /-! ## Relational facts
 
@@ -1467,18 +1654,20 @@ conditions such as `prev IS NULL OR prev <= ts`. -/
 def orSplit (ap bq : AVal) : AVal :=
   (if ap.tt then AVal.ofValue (.bool true) else AVal.bot).join (if ap.ff then bq.orFalse else AVal.bot)
 
-def Expr.absD (env : List AVal) (fs : List Fact) : Expr → AVal
+def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr → AVal
   | .lit v => AVal.ofValue v
-  | .field i => env.getD i AVal.top
-  | .un f a => f.abs (a.absD env fs)
-  | .bin f a b =>
-      if f = .or ∧ (a.absD env fs).nonBool = false then
-        orSplit (a.absD env fs) (b.absD ((Expr.un .not a).refine env) fs)
-      else sharpen fs f a b (a.absD env fs) (f.abs (a.absD env fs) (b.absD env fs))
-  | .ifThen c t e =>
-      let ac := c.absD env fs
-      (if ac.tt then t.absD env fs else AVal.bot).join
-        (if ac.nonBool || ac.ff then e.absD env fs else AVal.bot)
+  | .field i => narrowAll ks (.field i) (env.getD i AVal.top)
+  | .un f a => narrowAll ks (.un f a) (f.abs (a.absD env fs ks))
+  | .bin f a b => narrowAll ks (.bin f a b) <|
+      if f = .or ∧ (a.absD env fs ks).nonBool = false then
+        orSplit (a.absD env fs ks) (b.absD ((Expr.un .not a).refine env) fs (a.cstrs false ++ ks))
+      else sharpen fs f a b (a.absD env fs ks) (f.abs (a.absD env fs ks) (b.absD env fs ks))
+  -- Each branch is evaluated knowing whether `c` is TRUE.
+  | .ifThen c t e => narrowAll ks (.ifThen c t e) <|
+      let ac := c.absD env fs ks
+      (if ac.tt then t.absD (c.refine env) fs (c.cstrs true ++ ks) else AVal.bot).join
+        (if ac.nonBool || ac.ff then e.absD (c.refineNeg env) fs (c.cstrs false ++ ks)
+         else AVal.bot)
 
 theorem Bound.mem_exact_iff {k i : Int} : (Bound.exact k).Mem i ↔ i = k := by
   simp only [Bound.Mem, Bound.exact, Option.some.injEq]
@@ -1652,17 +1841,20 @@ theorem sharpen_sound {fs : List Fact} {row : Row} (f : BinFn) (a b : Expr) {aa 
       · exact hbase
   all_goals exact hbase
 
-theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {row : Row} (h : EnvMem env row)
-    (hfs : FactsHold fs row) : ∀ e : Expr, (e.absD env fs).Mem (e.eval row)
+theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {row : Row}
+    (h : EnvMem env row) (hfs : FactsHold fs row) (hks : KsHold ks row) :
+    ∀ e : Expr, (e.absD env fs ks).Mem (e.eval row)
   | .lit v => AVal.mem_ofValue v
-  | .field i => h i
-  | .un f a => UnFn.abs_sound f (Expr.absD_sound h hfs a)
+  | .field i => narrowAll_sound hks (h i)
+  | .un f a => narrowAll_sound hks (UnFn.abs_sound f (Expr.absD_sound h hfs hks a))
   | .bin f a b => by
-      simp only [absD, eval]
+      simp only [absD]
+      refine narrowAll_sound hks ?_
+      simp only [eval]
       split
       · rename_i hc
         obtain ⟨rfl, hnb⟩ := hc
-        have ha := Expr.absD_sound h hfs a
+        have ha := Expr.absD_sound h hfs hks a
         rcases mem_cases ha with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩
         · simp [AVal.nonBool, hn] at hnb
         · simp [AVal.nonBool, hb] at hnb
@@ -1671,28 +1863,32 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {row : Row} (h : EnvM
           rw [ite_eq_left ht]
           exact AVal.mem_ofValue _
         · have hr := Expr.refine_sound env (.un .not a) h (by simp [eval, hv, UnFn.apply, Value.isTrue])
-          have hq := Expr.absD_sound hr hfs b
+          have hks' := KsHold.cons_cstrs (c := a) (pos := false)
+            (by simp [hv, Value.isTrue]) hks
+          have hq := Expr.absD_sound hr hfs hks' b
           rw [hv]
           apply AVal.mem_join_right
           rw [ite_eq_left hf]
           rcases mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ <;>
             rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem]
         · simp [AVal.nonBool, hs] at hnb
-      · exact sharpen_sound f a b hfs (Expr.absD_sound h hfs a)
-          (BinFn.abs_sound f (Expr.absD_sound h hfs a) (Expr.absD_sound h hfs b))
+      · exact sharpen_sound f a b hfs (Expr.absD_sound h hfs hks a)
+          (BinFn.abs_sound f (Expr.absD_sound h hfs hks a) (Expr.absD_sound h hfs hks b))
   | .ifThen c t e => by
-      have hc := Expr.absD_sound h hfs c
-      simp only [absD, eval]
+      have hc := Expr.absD_sound h hfs hks c
+      simp only [absD]
+      refine narrowAll_sound hks ?_
+      simp only [eval]
       by_cases hct : (c.eval row).isTrue = true
       · rw [ite_eq_left hct]
         rw [Value.eq_true_of_isTrue hct] at hc
-        have htt : (c.absD env fs).tt = true := hc
+        have htt : (c.absD env fs ks).tt = true := hc
         apply AVal.mem_join_left
         rw [ite_eq_left htt]
-        exact Expr.absD_sound h hfs t
+        exact Expr.absD_sound (Expr.refine_sound env c h hct) hfs (KsHold.cons_cstrs hct hks) t
       · rw [ite_eq_right hct]
         apply AVal.mem_join_right
-        have : ((c.absD env fs).nonBool || (c.absD env fs).ff) = true := by
+        have : ((c.absD env fs ks).nonBool || (c.absD env fs ks).ff) = true := by
           rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩
           · simp [AVal.nonBool, hn]
           · simp [AVal.nonBool, hb]
@@ -1700,7 +1896,8 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {row : Row} (h : EnvM
           · simp [hf]
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
-        exact Expr.absD_sound h hfs e
+        have hf : (c.eval row).isTrue = false := by simpa using hct
+        exact Expr.absD_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e
 
 /-! ## Abstract plan evaluation -/
 
@@ -1769,7 +1966,7 @@ theorem EnvMem.mapD {env : List AVal} {fs : List Fact} {row : Row} (h : EnvMem e
     EnvMem (es.map (·.absD env fs)) (es.map (·.eval row)) := by
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases es[j]? <;> simp [AVal.mem_top, Expr.absD_sound h hfs]
+  cases es[j]? <;> simp [AVal.mem_top, Expr.absD_sound h hfs (ks := []) (by simp [KsHold])]
 
 theorem EnvMem.emit {env : List AVal} {row : Row} (h : EnvMem env row) (m : List Nat) :
     EnvMem (m.map (env.getD · AVal.top)) (m.map (row.getD · .null)) := by
@@ -1812,20 +2009,6 @@ theorem EnvMem.nulls (env : List AVal) (m : Nat) :
   intro j
   simp only [List.getElem?_map, List.getD_eq_getElem?_getD, List.getElem?_replicate]
   cases env[j]? <;> split <;> simp [AVal.top, AVal.nullable, AVal.Mem]
-
-theorem EnvMem.zip_left {e₁ e₂ : List AVal} {row : Row} (h : EnvMem e₁ row) :
-    EnvMem (List.zipWith AVal.join e₁ e₂) row := by
-  intro j
-  have := h j
-  simp only [getD_top_eq, List.getElem?_zipWith] at *
-  split <;> simp_all [AVal.mem_top, AVal.mem_join_left]
-
-theorem EnvMem.zip_right {e₁ e₂ : List AVal} {row : Row} (h : EnvMem e₂ row) :
-    EnvMem (List.zipWith AVal.join e₁ e₂) row := by
-  intro j
-  have := h j
-  simp only [getD_top_eq, List.getElem?_zipWith] at *
-  split <;> simp_all [AVal.mem_top, AVal.mem_join_right]
 
 /-- **Soundness of abstract plan evaluation**: every row a well-formed plan
 produces is described by `Rel.aeval`, provided the tables are. -/
