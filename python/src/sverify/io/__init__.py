@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING, Any
 
+from sverify.incremental import StaticSource, Stored
 from sverify.io._common import ColumnStats, Contract, stats_facts
 
 if TYPE_CHECKING:
@@ -54,5 +55,7 @@ __all__ = [
     "IcebergSource",
     "IcebergWrite",
     "SinkWrite",
+    "StaticSource",
+    "Stored",
     "stats_facts",
 ]

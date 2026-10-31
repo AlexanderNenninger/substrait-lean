@@ -14,8 +14,12 @@ against DataFusion 51 by `python/tests/test_text.py`:
 * `btrim`/`ltrim`/`rtrim` remove characters of a set from the ends.
 
 `UPPER`, `LOWER` and regular expressions are **black boxes**: `opaque`
-functions, so no proof depends on what they compute. Lean's evaluator maps
-ASCII case only, and evaluates no regular expressions.
+functions, so no proof depends on what they compute. Their meaning is Rust's
+(`str::to_uppercase`, the `regex` crate), which DataFusion and Polars use;
+the SQL translations refuse at run time what their engines compute
+differently (#70). Lean's evaluator maps ASCII case only, and evaluates no
+regular expressions: it panics instead, and `substrait-check` then refuses
+to print rows rather than print wrong ones.
 -/
 
 namespace Substrait.Text
@@ -93,8 +97,10 @@ def lowerAscii (s : String) : String := asciiOnly String.toLower "LOWER" s
 /-- `LOWER`: Unicode case mapping. -/
 @[implemented_by lowerAscii] opaque lower : String → String
 
-def regexUnevaluated (_ _ : String) : Option Nat :=
-  panic! "regular expressions are not evaluated in Lean"
+/-- Panics on every call (the message depends on the pattern, so it is not a
+constant the compiler evaluates once). -/
+def regexUnevaluated (_ p : String) : Option Nat :=
+  panic! s!"regular expressions are not evaluated in Lean ({p})"
 
 /-- `regexp_match(s, p)`: `none` if `p` does not match `s`, otherwise `some k`
 where the match has `k + 1` entries (its groups, or the whole match). -/

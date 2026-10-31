@@ -13,7 +13,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="5. Doubles, time and text")
+app = marimo.App(width="medium", app_title="12. Doubles, time and text")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 4. [Keys and relations](?file=04_keys_and_relations.py) · [Contents](?file=00_start_here.py) · 6. [Runtime errors](?file=06_runtime_errors.py) →
+    ← 11. [Engines and SQL](?file=11_engines.py) · [Contents](?file=00_start_here.py) · 13. [Plans, meaning and proofs](?file=13_plans_and_proofs.py) →
     """)
     return
 
@@ -35,7 +35,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 5. Doubles, time and text
+    # 12. Doubles, time and text
 
     Integers are the easy case. Real pipelines are full of floating-point
     measurements, timestamps and strings, each with traps of its own. The
@@ -55,7 +55,7 @@ def _(mo):
     **one zero**: IEEE's −0.0 *is* 0.0, so `-0.0 >= 0` holds and −0.0 never
     shows in a result. (DataFusion's own order, `f64::total_cmp`, splits
     both; `sverify` stores DataFusion's tables the model's way, see
-    [chapter 14](?file=14_datafusion_semantics.py).) Here it is, live:
+    [chapter 16](?file=16_datafusion_semantics.py).) Here it is, live:
     """)
     return
 
@@ -312,7 +312,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 4. [Keys and relations](?file=04_keys_and_relations.py) · [Contents](?file=00_start_here.py) · 6. [Runtime errors](?file=06_runtime_errors.py) →
+    ← 11. [Engines and SQL](?file=11_engines.py) · [Contents](?file=00_start_here.py) · 13. [Plans, meaning and proofs](?file=13_plans_and_proofs.py) →
     """)
     return
 

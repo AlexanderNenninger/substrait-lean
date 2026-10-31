@@ -30,9 +30,10 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis import _
 
@@ -53,7 +54,44 @@ T = ibis.table(
     name="t",
 )
 U = ibis.table({"name": "string", "region": "string"}, name="u")
-t, u = T, U
+L = ibis.table({"k": "int64", "xs": "array<int64>"}, name="l")
+t, u, ls = T, U, L
+#: Every table the cases read.
+TABLES = (T, U, L)
+#: A memtable: its rows are part of the plan.
+M = ibis.memtable(
+    {"name": ["ada", "bob", None], "score": [1, None, 3]},
+    schema={"name": "string", "score": "int64"},
+)
+
+
+def sql_view(table: ir.Table, query: str) -> ir.Table:
+    """`table.alias("v").sql(query)` without a backend: `Table.sql` needs one
+    to infer the schema, which DataFusion does here. (Ibis 12's DuckDB backend
+    cannot: it calls a method DuckDB 2 no longer has.)"""
+    from sverify.ibis_substrait import sql_view_schema
+
+    parent: Any = table.alias("v").op()
+    schema = sql_view_schema(parent, query)
+    return ops.SQLStringView(parent=parent, query=query, schema=schema).to_expr()
+
+
+class _Tables:
+    """The schemas of `t` and `u`, as a backend gives them to `Backend.sql`."""
+
+    def get_schema(self, name: str) -> ibis.Schema:
+        return {"t": T, "u": U}[name].schema()
+
+
+def sql_query(query: str, schema: dict[str, str]) -> ir.Table:
+    """`backend.sql(query)` over `t` and `u`."""
+    return ops.SQLQueryResult(query, ibis.schema(schema), _Tables()).to_expr()
+
+
+def exists(table: ir.Table) -> ir.BooleanValue:
+    """`EXISTS (table)`; Ibis builds it only from a correlated `.any()`."""
+    rel: Any = table.op()
+    return ops.ExistsSubquery(rel).to_expr()
 
 
 @dataclass(frozen=True)
@@ -87,6 +125,25 @@ CASES: list[Case] = [
     case("rows", "limit with offset", V, lambda: t.limit(3, offset=1)),
     case("rows", "order_by + limit", V, lambda: t.order_by(ibis.desc("qty")).limit(3)),
     case("rows", "sample", R, lambda: t.sample(0.5)),
+    case("rows", "order_by expression", V, lambda: t.order_by(t.qty + 1)),
+    # Ibis's annotations are narrower than what it accepts.
+    case("rows", "limit expression", R, lambda: t.limit(ibis.literal(2) + 1)),  # pyrefly: ignore
+    case("rows", "limit count()", R, lambda: t.limit(t.count())),  # pyrefly: ignore
+    case("rows", "fill_null table", V, lambda: t.fill_null({"qty": 0, "name": "?"})),  # pyrefly: ignore
+    case("rows", "fill_null all", V, lambda: t.select("id", "qty").fill_null(0)),  # pyrefly: ignore
+    case("rows", "memtable", V, lambda: t.join(M, t.name == M.name)),
+    case("rows", "constant table", V, lambda: ibis.literal(1, "int64").name("one").as_table()),
+    case("rows", "alias", V, lambda: t.alias("v").filter(_.qty > 1)),
+    case("rows", "sql view", V, lambda: sql_view(t, "SELECT name, qty FROM v WHERE qty > 1")),
+    case(
+        "rows",
+        "sql query",
+        V,
+        lambda: sql_query(
+            "SELECT t.name, region FROM t JOIN u ON t.name = u.name",
+            {"name": "string", "region": "string"},
+        ),
+    ),
     # Joins and set operations
     case("joins", "inner join", V, lambda: t.join(u, "name")),
     case("joins", "non-equi join", V, lambda: t.join(u, t.name < u.name)),
@@ -97,6 +154,40 @@ CASES: list[Case] = [
     case("joins", "semi join", V, lambda: t.semi_join(u, "name")),
     case("joins", "anti join", V, lambda: t.anti_join(u, "name")),
     case("joins", "isin subquery", V, lambda: t.filter(t.name.isin(u.name))),
+    case("joins", "isin subquery in select", V, lambda: t.select("id", x=t.name.isin(u.name))),
+    case(
+        "joins",
+        "notin subquery",
+        V,
+        lambda: t.filter(t.name.notin(u.name) | t.flag),
+    ),
+    case("joins", "scalar subquery in select", V, lambda: t.select("id", n=u.count())),
+    case(
+        "joins",
+        "scalar subquery, one row",
+        V,
+        lambda: t.select("id", r=u.order_by("name").limit(1).name.as_scalar()),
+    ),
+    case(
+        "joins",
+        "scalar subquery, many rows",
+        R,
+        lambda: t.select("id", r=u.filter(u.region == "eu").name.as_scalar()),
+    ),
+    case("joins", "exists", V, lambda: t.filter((u.name == t.name).any())),
+    case("joins", "not exists", V, lambda: t.filter(~(u.name == t.name).any())),
+    case(
+        "joins",
+        "exists, uncorrelated",
+        V,
+        lambda: t.select("id", e=exists(u.filter(u.region == "eu"))),
+    ),
+    case(
+        "joins",
+        "correlated scalar subquery",
+        R,
+        lambda: t.filter(u.filter(u.name == t.name).count() > 0),  # pyrefly: ignore
+    ),
     case("joins", "union all", V, lambda: t.select("name").union(u.select("name"))),
     case(
         "joins",
@@ -106,6 +197,18 @@ CASES: list[Case] = [
     ),
     case("joins", "intersect", V, lambda: t.select("name").intersect(u.select("name"))),
     case("joins", "difference", V, lambda: t.select("name").difference(u.select("name"))),
+    case(
+        "joins",
+        "intersect all",
+        V,
+        lambda: t.select("name").intersect(u.select("name"), distinct=False),
+    ),
+    case(
+        "joins",
+        "difference all",
+        V,
+        lambda: t.select("name").difference(u.select("name"), distinct=False),
+    ),
     # Aggregation
     case("aggregation", "count()", V, lambda: t.aggregate(n=t.count())),
     case("aggregation", "group_by sum", V, lambda: t.group_by("name").aggregate(s=t.qty.sum())),
@@ -133,14 +236,36 @@ CASES: list[Case] = [
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
-    case("aggregation", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
-    case("aggregation", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
+    case("aggregation", "collect", V, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
+    case(
+        "aggregation",
+        "collect ordered",
+        V,
+        lambda: t.group_by("name").aggregate(xs=t.qty.collect(order_by="qty")),
+    ),
+    case(
+        "aggregation",
+        "collect include_null",
+        R,
+        lambda: t.group_by("name").aggregate(xs=t.qty.collect(include_null=True)),
+    ),
+    case("aggregation", "scalar subquery", V, lambda: t.filter(t.qty > t.qty.mean())),
     case(
         "aggregation",
         "unnest",
-        R,
+        V,
         lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs"),
     ),
+    # Lists
+    case("lists", "unnest column", V, lambda: ls.unnest("xs")),
+    case("lists", "unnest keep_empty", R, lambda: ls.unnest("xs", keep_empty=True)),
+    case(
+        "lists",
+        "list literal",
+        V,
+        lambda: t.select("id", xs=ibis.literal([1, 2], "array<int64>")),
+    ),
+    case("lists", "list column", V, lambda: ls.filter(ls.k > 0)),
     # Window functions
     case(
         "windows",
@@ -250,6 +375,9 @@ REFUSED: dict[str, dict[str, str]] = {
         "spark": "ordering comparisons of str values",
     },
     "order_by": NO_ROW_ORDER,
+    "scalar subquery": NO_ROW_ORDER,
+    "scalar subquery, one row": NO_ROW_ORDER,
+    "order_by expression": NO_ROW_ORDER,
     "limit": NO_ROW_ORDER,
     "limit with offset": NO_ROW_ORDER,
     "order_by + limit": NO_ROW_ORDER,
@@ -257,7 +385,41 @@ REFUSED: dict[str, dict[str, str]] = {
     "lag": NO_ROW_ORDER,
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
-TIE_FREE = {"order_by", "row_number", "lag"}
+TIE_FREE = {"order_by", "order_by expression", "row_number", "lag"}
+
+#: The SQL dialects have no lists yet (#94).
+NO_LISTS = {
+    "duckdb": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+    "snowflake": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+    "spark": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+}
+REFUSED.update(
+    {
+        label: NO_LISTS
+        for label in ("collect", "collect ordered", "unnest", "unnest column", "list literal")
+    }
+)
+#: Lists built from rows in an order the plan does not fix: compared as bags.
+UNORDERED_LISTS = {"collect"}
+
+
+#: Verified cases where DataFusion running Ibis's own SQL means something else
+#: than the plan (and SQL), or fails: the tests compare them with DuckDB running Ibis's
+#: DuckDB SQL instead.
+DATAFUSION_SQL = {
+    "intersect all": "DataFusion 51 plans INTERSECT ALL as a semi join: every left copy stays",
+    "difference all": "DataFusion 51 plans EXCEPT ALL as an anti join: every left copy goes",
+    "isin subquery in select": "DataFusion 51 cannot run IN (subquery) outside a filter",
+    "exists, uncorrelated": "DataFusion 51 cannot run EXISTS (subquery) outside a filter",
+    "notin subquery": "DataFusion 51's NOT IN (subquery) ignores NULLs in the subquery",
+    "unnest": "Ibis cannot compile TableUnnest for DataFusion",
+    "unnest column": "Ibis cannot compile TableUnnest for DataFusion",
+}
+
+#: The memtables of the cases, by name: engines that run Ibis's SQL need them
+#: as tables.
+_M: Any = M.op()
+MEMTABLES = {_M.name: _M.data.to_pyarrow(M.schema())}
 
 
 def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
@@ -273,7 +435,7 @@ def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
     plan = json.loads(written_plan(to_substrait_json(c.build())))
     try:
         if engine == "polars":
-            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in (T, U)}
+            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}
             polars_engine.run(plan, tables)
         else:
             plan_sql(plan, dialects[engine], tie_free=tie_free)

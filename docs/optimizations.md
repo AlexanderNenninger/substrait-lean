@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | #75–#80 |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79), eager aggregation (#80) |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -104,10 +104,12 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 | Polars | 281 ms | 103 ms | 2.7× |
 | DuckDB | 30 ms | 26 ms | 1.1× (DuckDB checks overflow natively; only the `CASE`s go) |
 
-**Limits found on the way.** `Bound.mul` of two non-constant ranges is ⊤, so
-`a * b` keeps its overflow guard even when both columns are bounded. Interval
-multiplication would let more plans go guard-free. The elimination is also
-all or nothing per plan; per-expression elimination is a follow-up. Both are in #83.
+**Limits found on the way.** `Bound.mul` of two non-constant ranges used to
+be ⊤, so `a * b` kept its overflow guard even when both columns are bounded.
+It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
+so such products go guard-free; a half-open range still gives ⊤. The
+elimination is also all or nothing per plan; per-expression elimination is a
+follow-up in #83.
 
 ## 2. Sharded evaluation (prototype)
 
@@ -200,7 +202,8 @@ guarantees. The question is when
   of the converted doubles (`Aggregate.lean`), which is not
   `CAST(SUM(x)) / COUNT(x)` either. Supporting it needs an exact accumulator.
   A proved error bound for the two-phase sum, which would let these run
-  sharded with a stated tolerance, is the epic #85.
+  sharded with a stated tolerance, is the epic #85; its model and
+  dependency are in `docs/float-bounds.md`.
 * **Other `DISTINCT` aggregates** are refused: a value in two shards counts
   once in the whole and twice in the parts. `DISTINCT` without the split
   key, windows and `FETCH` are refused because they look at rows of other
@@ -239,31 +242,76 @@ optimizer. DataFusion uses primary keys for functional dependencies in
 or proved through composition, so each rewrite below rests on facts we know
 hold:
 
-* **Join elimination** (#75). Take `R ⋈ S` on an FK `R.k → S.pk`, with `S.pk` a key
-  (`Keys.lean`) and `R.k` NOT NULL (`AVal.null = false`), where the output
-  needs no column of `S`. Then the join is `R`. A left join on a key needs no
-  FK at all. Proof obligation: a bag equation stating that each left row has
-  exactly one match.
-* **DISTINCT elimination** (#76). If `Rel.keys` proves a key among the output
-  columns, then `DISTINCT r ~ r`. The ingredients exist already: `KeyOn` and
-  `dedup` of a `Pairwise ≠` list.
-* **Outer-to-inner join conversion** (#77). A filter above a left join that
-  rejects NULLs on a right column turns it into an inner join. With an FK and
-  NOT NULL, every left row matches, so the conversion holds without a filter.
-  Engines do the filter case; the FK case needs our facts.
-* **Filters implied by CHECK constraints** (#78). If `aeval` proves the condition
-  certainly TRUE on the input (`AVal.certainlyTrue`), then `filter r c ~ r`.
-  This is nearly free given `contract_sound`, and it composes: a downstream
-  re-check of an upstream guarantee disappears.
-* **GROUP BY simplification through functional dependencies** (#79). If a key
-  `k ⊆ gs` determines the other grouping columns, group by `k` alone and
-  carry the rest through `MIN` (or `ANY_VALUE`). This needs functional
-  dependencies, which follow from keys plus projections.
-* **Eager aggregation below joins** (#80). Push `GROUP BY` below a join on a key
-  (Yan and Larson), using the two-phase lemmas of `Partition.lean`
-  (`AggFn.combine_apply`). Multiplicities make it subtle: `COUNT` and `SUM`
-  must be scaled by match counts unless the join is on a key, which is where
-  our keys come in.
+* **Join elimination** (#75, done). Take `R ⋈ S` on a condition that
+  determines a key of `S` (`Keys.determines`), so each left row has at most
+  one partner. A left join then gives exactly one row per left row, and so
+  does an inner join on a NOT NULL foreign key (`sv.references`, as in
+  #77). When an emit, a projection or an aggregate above reads no column of
+  `S`, the join goes (`Rel.joinElim`, `flatMap_single`, `aggregateEval_map`).
+* **DISTINCT elimination** (#76, done). If `Rel.keys` proves any key of
+  `r`, its rows are pairwise distinct and `DISTINCT r` is `r`
+  (`dedup_of_nodup`). The same goes for a `GROUP BY` without measures whose
+  grouping expressions contain a key's columns (it becomes a projection), and
+  for `fn(DISTINCT x)` when `x` alone is a key (`COUNT(DISTINCT id)` becomes
+  `COUNT(id)`).
+
+**Wiring.** `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
+rewrites bottom-up, deciding each from the analyses of the already rewritten
+inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
+is well-formed, has the same arity and gives the same list of rows (not just
+the same bag). `substrait-check --contract` reports the rewritten plan as
+`optimized`, in Lean's written form, with the names of the rewrites applied
+(`rewrites`); `sverify.Report.optimized` and `Report.rewrites` expose them.
+Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
+`polars_engine.run`) only on data that meets the preconditions, as with
+`guards=False`.
+* **Outer-to-inner join conversion** (#77, done). A filter above a left
+  join that is never TRUE on a padded row (`Expr.absD` with the right
+  columns NULL) turns it into an inner join; engines do this case too. With a
+  foreign key and NOT NULL, every left row matches, so the conversion holds
+  without a filter. `sv.references(col, table, other)` declares the foreign
+  key (`ForeignKeys.Hold`), checked on the data like `unique`. `Rel.origin`
+  follows the join column back to a table column and `Rel.cover` checks that
+  the right side keeps every value of the referenced one. The inner join is
+  in the incremental fragment (`--delta`), which excludes left joins. Incremental
+  views do not take `references` preconditions yet: they would have to check
+  deletes from the referenced table.
+* **Filters implied by CHECK constraints** (#78, done). If `Expr.absD`
+  shows the condition certainly TRUE on the input's abstract rows
+  (`AVal.certainlyTrue`, as for a postcondition), `filter r c` is `r`. If it
+  shows the condition never TRUE (`tt = false`), the filter is an empty
+  `VALUES`. This composes: a downstream re-check of an upstream guarantee
+  disappears (`test_composed_pipeline_drops_the_downstream_check`).
+* **GROUP BY simplification through functional dependencies** (#79, done).
+  `Rel.fds` derives dependencies: input keys and aggregate groups determine
+  every column, equalities in filters and inner joins and copied columns
+  determine each other, and they follow emits, projections and joins
+  (`Rel.fds_sound`). `Rel.fdAgg` drops each grouping column that the closure
+  of the others determines and carries it through `MIN`, which is the
+  group's one value, NULL included (`Measure.eval_min_const`). The groups
+  stay the same (`dedup_parallel`), so the result is the same list of rows.
+  **Benchmark** (`scripts/bench_optimizations.py`, laptop, 10⁶ line items,
+  TPC-H Q3-style `GROUP BY l_orderkey, o_date, o_prio` after a join on the
+  order key): DuckDB 57 ms as written, 67 ms by key; Polars 420 ms and
+  600 ms. Neither engine gains: both hash a few more key columns more
+  cheaply than they compute the `MIN`s. The rewrite may pay off on engines
+  with costly wide hash keys or spilling, which is not measured here.
+* **Eager aggregation below joins** (#80, done for joins on a key). Take a
+  `GROUP BY` of left columns over `R ⋈ S`, where the condition determines a
+  key of `S` (so each left row has at most one partner,
+  `Rel.partners_le_one`) and reads only left columns that are grouped (so the
+  rows of a group all have a partner or none). Then `R` is aggregated first
+  and the groups are joined with `S` (`Rel.eagerAgg`): the join keeps or
+  drops whole groups (`aggregateEval_filter`, `dedup_filter_map`). No
+  scaling of `COUNT` or `SUM` is needed, since every multiplicity is 0 or 1.
+  The general case, without a key, needs measures scaled by match counts
+  (`AggFn.combine_apply` in `Partition.lean`) and is not done.
+  **Benchmark** (`scripts/bench_optimizations.py`, laptop): 10⁶ line items
+  grouped by order key, 4 rows per group: DuckDB 10 ms as written, 12 ms
+  aggregated first; Polars 78 ms and 131 ms. With 1000 rows per group, DuckDB
+  is even (4.9 ms and 4.2 ms) and Polars still slower (31 ms and 43 ms). The
+  join to a small keyed table is cheap in both engines, so aggregating first
+  saves little.
 
 ## 4. Partition and file pruning (#81)
 

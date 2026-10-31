@@ -187,6 +187,8 @@ def null_type(t: dict) -> DType:
         return pl.Date
     if "i64" in t:
         return pl.Null
+    if "list" in t:
+        return pl.List(materialize(null_type(t["list"].get("type", {"i64": {}}))))
     raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
 
 
@@ -200,6 +202,9 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return bool(v), pl.Boolean
     if kind == "i64":
         return _int(v), pl.Int64
+    if kind in ("i8", "i16", "i32"):
+        # A virtual table's narrow column (Lean writes its rows typed).
+        return _int(v), {"i8": pl.Int8, "i16": pl.Int16, "i32": pl.Int32}[kind]
     if kind == "string":
         return str(v), pl.String
     if kind == "fp64":
@@ -214,6 +219,14 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return _int(v), pl.Date
     if kind == "intervalDayToSecond":
         return _int(interval_micros(v)), INTERVAL
+    if kind == "emptyList":
+        return [], pl.List(materialize(null_type(v.get("type", {"i64": {}}))))
+    if kind == "list":
+        elems = [literal(e) for e in v.get("values", [])]
+        t: DType = pl.Null
+        for _, et in elems:
+            t = unify(t, et, "list literal")
+        return [e for e, _ in elems], pl.List(materialize(t))
     raise Unsupported(f"unsupported literal {json.dumps(lit)}")
 
 
@@ -847,6 +860,8 @@ def type_of(t: dict) -> DType:
         return pl.Date
     if "intervalDayToSecond" in t:
         return INTERVAL
+    if "list" in t:
+        return pl.List(type_of(t["list"].get("type", {})))
     raise Unsupported(f"unsupported column type {json.dumps(t)}")
 
 
@@ -894,6 +909,8 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
             # DataFusion wraps around; Lean's sum is the true one (`Issue.sumWraps`).
             raise IntegerOverflow("SUM leaves 64 bits")
         return total
+    if fn == "collect":
+        return list(vs)
     if fn in ("fsum", "avg"):
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
@@ -901,6 +918,14 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
         return acc / len(vs) + 0.0 if fn == "avg" else acc
     # `pickFold` keeps the first extreme; equal values are the same value here.
     return min(vs) if fn == "min" else max(vs)
+
+
+SORT_DIRECTIONS = {
+    "SORT_DIRECTION_ASC_NULLS_FIRST": (False, False),
+    "SORT_DIRECTION_ASC_NULLS_LAST": (False, True),
+    "SORT_DIRECTION_DESC_NULLS_FIRST": (True, False),
+    "SORT_DIRECTION_DESC_NULLS_LAST": (True, True),
+}
 
 
 @dataclass(frozen=True)
@@ -911,6 +936,8 @@ class Measure:
     arg: Val
     distinct: bool
     filter: Val | None
+    #: `collect`'s order: key, descending, NULLs last.
+    sorts: tuple[tuple[Val, bool, bool], ...] = ()
 
     @property
     def vals(self) -> list[Val]:
@@ -920,6 +947,8 @@ class Measure:
     def dtype(self) -> DType:
         if self.fn in ("count", "sum"):
             return pl.Int64
+        if self.fn == "collect":
+            return pl.List(materialize(self.arg.dtype))
         return pl.Float64 if self.fn in ("fsum", "avg") else materialize(self.arg.dtype)
 
     @property
@@ -959,7 +988,10 @@ class Translator:
         return Exprs(self.functions, dtypes)
 
     def rel(self, j: dict) -> Frame:
-        kinds = ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"]
+        kinds = [
+            "read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate",
+            "extensionSingle",
+        ]  # fmt: skip
         found = [k for k in kinds if k in j]
         if len(found) != 1 or len(j) != 1:
             raise Unsupported(f"unsupported relation {json.dumps(j)[:80]}")
@@ -977,6 +1009,22 @@ class Translator:
         elif "common" in r and r["common"]:
             raise Unsupported(f"unsupported RelCommon {json.dumps(r['common'])}")
         return lf, dtypes
+
+    def extensionSingle(self, r: dict) -> Frame:  # noqa: N802 - the relation's name
+        """`Rel.unnest`: one row per element of the list in a column, in its
+        place; none for an empty list or NULL (Polars' `explode` would give a
+        row of NULL for those)."""
+        d = r.get("detail", {})
+        if d.get("@type") != "type.googleapis.com/sverify.Unnest" or d.get("keepEmpty"):
+            raise Unsupported(f"unsupported ExtensionSingleRel {json.dumps(d)[:80]}")
+        lf, dtypes = self.rel(r["input"])
+        c = int(d.get("column", 0))
+        t = dtypes[c] if c < len(dtypes) else None
+        if not isinstance(t, pl.List):
+            raise Unsupported(f"UNNEST of column {c} of type {t}")
+        lf = lf.filter(pl.col(col(c)).list.len() > 0).explode(col(c))
+        inner: Any = t.inner
+        return lf, [*dtypes[:c], materialize(inner), *dtypes[c + 1 :]]
 
     def read(self, r: dict) -> Frame:
         for k in ("filter", "bestEffortFilter", "projection"):
@@ -1113,12 +1161,7 @@ class Translator:
         NULL placement, values in `Value.le` order (strings by code point,
         which is UTF-8 byte order, as Polars sorts them)."""
         by, desc, nulls_last = [], [], []
-        directions = {
-            "SORT_DIRECTION_ASC_NULLS_FIRST": (False, False),
-            "SORT_DIRECTION_ASC_NULLS_LAST": (False, True),
-            "SORT_DIRECTION_DESC_NULLS_FIRST": (True, False),
-            "SORT_DIRECTION_DESC_NULLS_LAST": (True, True),
-        }
+        directions = SORT_DIRECTIONS
         for s in sorts:
             d = s.get("direction")
             if d not in directions:
@@ -1171,8 +1214,24 @@ class Translator:
             [ordered(g.expr, g.dtype).alias(k) for g, k in zip(groups, keys, strict=True)]
             + [g.expr.alias(f"__sv_v{k}") for k, g in enumerate(groups)]
             + [m.values.alias(f"__sv_m{j}") for j, m in enumerate(ms)]
+            + [
+                ordered(key.expr, key.dtype).alias(f"__sv_m{j}_k{i}")
+                for j, m in enumerate(ms)
+                for i, (key, _, _) in enumerate(m.sorts)
+            ]
         )
-        values = [pl.col(f"__sv_m{j}").drop_nulls() for j in range(len(ms))]
+        values = []
+        for j, m in enumerate(ms):
+            v = pl.col(f"__sv_m{j}")
+            if m.sorts:
+                # `Measure.eval`: the group's rows in a stable sort by the keys.
+                v = v.sort_by(
+                    [pl.col(f"__sv_m{j}_k{i}") for i in range(len(m.sorts))],
+                    descending=[d for _, d, _ in m.sorts],
+                    nulls_last=[n for _, _, n in m.sorts],
+                    maintain_order=True,
+                )
+            values.append(v.drop_nulls())
         if groups:
             firsts = [pl.col(f"__sv_v{k}").first() for k in range(len(groups))]
             out = lf.group_by(keys, maintain_order=True).agg(firsts + values)
@@ -1206,7 +1265,7 @@ class Translator:
         an optional `FILTER`."""
         m = j.get("measure", {})
         name = ex.function(m.get("functionReference"))
-        if m.get("sorts"):
+        if m.get("sorts") and name != "array_agg":
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         invocation = m.get("invocation", "AGGREGATION_INVOCATION_ALL")
         if invocation not in ("AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_DISTINCT"):
@@ -1228,9 +1287,18 @@ class Translator:
             fn = "avg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
             fn = name
+        elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):
+            fn = "collect"
         if fn is None:
             raise Unsupported(f"unsupported aggregate {name} of {t}")
-        return Measure(fn, arg, invocation == "AGGREGATION_INVOCATION_DISTINCT", cond)
+        sorts = []
+        for s in m.get("sorts", []):
+            d = s.get("direction")
+            if d not in SORT_DIRECTIONS:
+                raise Unsupported(f"unsupported sort direction {d}")
+            sorts.append((self.column(ex, s["expr"]), *SORT_DIRECTIONS[d]))
+        distinct = invocation == "AGGREGATION_INVOCATION_DISTINCT"
+        return Measure(fn, arg, distinct, cond, tuple(sorts))
 
     @staticmethod
     def column(ex: Exprs, j: dict) -> Val:
@@ -1341,11 +1409,23 @@ class Translator:
         return ordered(pl.col(col(i)), dtypes[i]), ordered(pl.col(col(k)), dtypes[k])
 
     def fetch(self, r: dict) -> Frame:
-        if "offsetExpr" in r or "countExpr" in r:
-            raise Unsupported("FetchRel offsetExpr/countExpr are not in Lean's written form")
         lf, dtypes = self.rel(r["input"])
-        offset = int(r.get("offset", 0))
-        count = int(r["count"]) if "count" in r else -1
+
+        def constant(key: str) -> int | None:
+            """`offsetExpr`/`countExpr` (Lean writes integer literals), or the
+            deprecated `offset`/`count`."""
+            if key + "Expr" in r:
+                lit = r[key + "Expr"].get("literal", {})
+                if "null" in lit:
+                    return None
+                if "i64" not in lit:
+                    raise Unsupported(f"FetchRel.{key}Expr must be an integer literal")
+                return int(lit["i64"])
+            return int(r[key]) if key in r else None
+
+        offset = constant("offset") or 0
+        count = constant("count")
+        count = -1 if count is None else count
         if offset < 0:
             raise Unsupported("negative FetchRel offset")
         return lf.slice(offset, None if count < 0 else count), dtypes

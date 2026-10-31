@@ -94,13 +94,13 @@ def Rel.Incremental : Rel → Prop
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.Incremental
   | .cross a b | .unionAll a b | .join a b .inner _ => a.Incremental ∧ b.Incremental
   | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
-  | .aggregate _ _ _ => False
+  | .aggregate _ _ _ | .unnest _ _ => False
 
 def Rel.tables : Rel → List String
   | .read t => [t]
   | .values _ _ => []
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
-  | .distinct r | .aggregate r _ _ => r.tables
+  | .distinct r | .aggregate r _ _ | .unnest r _ => r.tables
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => a.tables ++ b.tables
 
 /-- Z-set semantics. Mirrors `Rel.eval` on the incremental fragment. -/
@@ -117,7 +117,7 @@ def Rel.zeval (cat : ZCatalog) : Rel → ZSet
   | .orderBy r keys => (r.zeval cat).mergeSort fun x y => sortLe keys x.1 y.1
   -- Outside the incremental fragment; every theorem excludes these.
   | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
-  | .aggregate _ _ _ => []
+  | .aggregate _ _ _ | .unnest _ _ => []
 
 /-- The change in a plan's output caused by the change set `Δ`. -/
 def Rel.zdelta (cat Δ : ZCatalog) : Rel → ZSet
@@ -136,7 +136,7 @@ def Rel.zdelta (cat Δ : ZCatalog) : Rel → ZSet
   | .unionAll a b => a.zdelta cat Δ ++ b.zdelta cat Δ
   | .orderBy r keys => (r.zdelta cat Δ).mergeSort fun x y => sortLe keys x.1 y.1
   | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
-  | .aggregate _ _ _ => []
+  | .aggregate _ _ _ | .unnest _ _ => []
 
 /-- **Delta rule**: `Q(D + ΔD) ~ Q(D) + ΔQ`. -/
 theorem Rel.zeval_add {cat Δ : ZCatalog} :
@@ -171,7 +171,7 @@ theorem Rel.zeval_add {cat Δ : ZCatalog} :
         (List.Perm.append (List.mergeSort_perm _ _).symm (List.mergeSort_perm _ _).symm))
   | .join _ _ .left _, h => h.elim
   | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h
-  | .aggregate _ _ _, h => h.elim
+  | .aggregate _ _ _, h | .unnest _ _, h => h.elim
 
 /-! ## Delta plans
 
@@ -194,6 +194,7 @@ def Rel.delta (δ : String → String) : Rel → Rel
   | .orderBy r keys => .orderBy (r.delta δ) keys
   | .semi a b anti on => .semi (a.delta δ) (b.delta δ) anti on
   | .distinct r => .distinct (r.delta δ)
+  | .unnest r c => .unnest (r.delta δ) c
   | .aggregate r gs ms => .aggregate (r.delta δ) gs ms
 
 /-- A plan only depends on the tables it reads. -/
@@ -204,7 +205,7 @@ theorem Rel.zeval_congr {C cat : ZCatalog} :
   | .filter r _, h | .project r _, h | .emit r _, h | .orderBy r _, h => by
       simp only [zeval, zeval_congr (r := r) h]
   | .fetch _ _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .distinct _, _
-  | .aggregate _ _ _, _ => rfl
+  | .aggregate _ _ _, _ | .unnest _ _, _ => rfl
   | .cross a b, h | .unionAll a b, h => by
       simp only [tables, List.mem_append] at h
       simp only [zeval, zeval_congr (r := a) (fun t ht => h t (.inl ht)),
@@ -247,7 +248,7 @@ theorem Rel.delta_correct {C cat Δ : ZCatalog} {δ : String → String} :
         delta_correct (r := b) h.2 (fun t ht => hold t (.inr ht)) (fun t ht => hδ t (.inr ht))]
   | .join _ _ .left _, h, _, _ => h.elim
   | .fetch _ _ _, h, _, _ | .window _ _ _ _, h, _, _ | .semi _ _ _ _, h, _, _
-  | .distinct _, h, _, _ | .aggregate _ _ _, h, _, _ => h.elim
+  | .distinct _, h, _, _ | .aggregate _ _ _, h, _, _ | .unnest _ _, h, _, _ => h.elim
 
 /-- **Incremental maintenance is sound**: the new result is the old result
 plus the output of the delta plan. -/
@@ -289,6 +290,6 @@ theorem Rel.zeval_lift {cat : Catalog} :
       exact (List.map_mergeSort (f := fun row => (row, (1 : Int))) fun _ _ _ _ => rfl).symm
   | .join _ _ .left _, h => h.elim
   | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h
-  | .aggregate _ _ _, h => h.elim
+  | .aggregate _ _ _, h | .unnest _ _, h => h.elim
 
 end Substrait
