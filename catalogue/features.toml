@@ -79,7 +79,7 @@ dedup_latest = { lean = "yes", description = "keep one row per key, the latest (
 arithmetic_int = { lean = "yes", description = "+ - * on integers" }
 arithmetic_float = { lean = "yes", description = "+ - * / on doubles" }
 integer_division = { lean = "yes", description = "integer / or % (truncating), or Ibis floor //" }
-decimal = { lean = "no", description = "DECIMAL(p, s) columns and arithmetic", note = "Values are refused (\"cast them to DOUBLE\"), SUM of DECIMAL too; the catalogue also probes each such query with DOUBLE in their place" }
+decimal = { lean = "partial", description = "DECIMAL(p, s) columns and arithmetic", note = "columns pass through and compare; SUM/AVG/MIN/MAX of DECIMAL and DECIMAL literals are refused (\"cast them to DOUBLE\"); the Polars translation refuses DECIMAL columns. The catalogue also probes each failing query with DOUBLE in their place" }
 case_when = { lean = "yes", description = "CASE WHEN / ifelse" }
 coalesce_nullif = { lean = "yes", description = "COALESCE / NULLIF / fill_null" }
 in_list = { lean = "yes", description = "x IN (literal list)" }
@@ -102,6 +102,8 @@ interval_day_time = { lean = "yes", description = "x ± INTERVAL in days, hours,
 dynamic_interval = { lean = "no", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "Ibis as_interval compiles to CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), refused as a string cast" }
 interval_month = { lean = "no", description = "x ± INTERVAL in months or years", note = "\"month and year intervals are not supported\"" }
 date_diff = { lean = "yes", description = "difference of two dates or timestamps" }
+interval_to_number = { lean = "no", description = "a duration as a number of seconds (time weighting, rates per second)", note = "casting an interval to a number is refused; Ibis delta() and epoch_seconds() do not compile or are refused" }
+math_transcendental = { lean = "no", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "unsupported function ln/1" }
 epoch = { lean = "no", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "unsupported date part 'EPOCH'" }
 timezone = { lean = "no", description = "time zones (AT TIME ZONE, tz-aware timestamps)" }
 json = { lean = "no", description = "JSON / semi-structured extraction" }

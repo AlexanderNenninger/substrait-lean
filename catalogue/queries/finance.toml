@@ -1,0 +1,313 @@
+# Financial-transaction and market-data idioms: balances, fraud and AML
+# checks, reconciliation, double-entry ledgers, receivables aging, customer
+# segmentation, and tick-data analytics (VWAP, candlesticks, Bollinger
+# bands, drawdowns, returns, FIFO P&L). Money is DECIMAL, as in any ledger.
+# Re-written in our own words over the `fin` data.
+dataset = "fin"
+
+[[query]]
+id = "fin-running-balance"
+title = "Running account balance"
+intent = "Show each transaction with the account's balance after it, deposits adding and withdrawals subtracting."
+domain = "finance"
+source = { name = "OneUptime blog: PostgreSQL window functions for running totals", url = "https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view", licence = "CC-BY-4.0" }
+features = ["case_when", "running_agg", "sum", "decimal"]
+pitfalls = ["tie_order: two transactions at the same instant need a tie-breaker (txn_id) or the intermediate balances differ", "window_default_frame: the default RANGE frame gives simultaneous transactions the same balance", "decimal_scale: SUM of DECIMAL(18,2) widens to DECIMAL(38,2)"]
+ibis = '''
+signed = transactions.mutate(
+    delta=ibis.ifelse(transactions.kind == "deposit", transactions.amount, -transactions.amount)
+)
+w = ibis.cumulative_window(group_by="account_id", order_by=["ts", "txn_id"])
+q = signed.mutate(balance=signed.delta.sum().over(w))
+'''
+
+[[query]]
+id = "fin-velocity-check"
+title = "Card velocity in the last hour"
+intent = "For each card transaction, count and total the same card's transactions in the hour up to it."
+domain = "finance"
+source = { name = "RisingWave blog: transaction velocity fraud detection in SQL", url = "https://risingwave.com/blog/transaction-velocity-fraud-sql/", licence = "no licence stated; paraphrased" }
+features = ["self_join", "range_join", "group_by", "count", "sum", "interval_day_time", "decimal"]
+pitfalls = ["gap_threshold: is a transaction exactly one hour earlier inside the window?", "null_join_keys: transactions without a card match nothing", "decimal_scale: sum of amounts"]
+ibis = '''
+a, b = transactions, transactions.view()
+j = a.join(b, (a.card_id == b.card_id) & (b.ts <= a.ts) & (b.ts > a.ts - ibis.interval(hours=1)))
+q = j.group_by(txn_id=a.txn_id, card_id=a.card_id, ts=a.ts).aggregate(n_1h=b.txn_id.count(), sum_1h=b.amount.sum())
+'''
+notes = "Stream processors write this as a RANGE window over an interval (`OVER (PARTITION BY card ORDER BY ts RANGE INTERVAL '1' HOUR PRECEDING)`); the self join is the portable form."
+
+[[query]]
+id = "fin-impossible-travel"
+title = "Impossible travel"
+intent = "Flag pairs of transactions of one card in different countries less than an hour apart."
+domain = "finance"
+source = { name = "Azure Stream Analytics: real-time fraud detection (self-join)", url = "https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection", licence = "CC-BY-4.0 (code samples MIT)" }
+features = ["self_join", "range_join", "non_equi_join", "filter", "interval_day_time"]
+pitfalls = ["null_join_keys: a NULL country compares as unknown, so the pair is not flagged", "gap_threshold: exactly one hour"]
+ibis = '''
+a, b = transactions, transactions.view()
+q = a.join(
+    b,
+    (a.card_id == b.card_id)
+    & (a.country != b.country)
+    & (b.ts > a.ts)
+    & (b.ts < a.ts + ibis.interval(hours=1)),
+).select(card_id=a.card_id, first_txn=a.txn_id, second_txn=b.txn_id, from_country=a.country, to_country=b.country)
+'''
+
+[[query]]
+id = "fin-duplicate-payments"
+title = "Duplicate payments"
+intent = "Find card payments repeated with the same amount at the same merchant within five minutes."
+domain = "finance"
+source = { name = "GitHub gist: detecting duplicate transactions with LAG", url = "https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7", licence = "no licence stated; paraphrased" }
+features = ["self_join", "range_join", "non_equi_join", "filter", "interval_day_time", "decimal"]
+pitfalls = ["decimal_scale: equality of amounts is exact only in DECIMAL; as DOUBLE 0.1 + 0.2 style values may not match", "null_join_keys: NULL merchants never match"]
+ibis = '''
+a, b = transactions, transactions.view()
+q = a.join(
+    b,
+    (a.card_id == b.card_id)
+    & (a.merchant == b.merchant)
+    & (a.amount == b.amount)
+    & (a.txn_id < b.txn_id)
+    & (b.ts >= a.ts)
+    & (b.ts <= a.ts + ibis.interval(minutes=5)),
+).select(first_txn=a.txn_id, duplicate_txn=b.txn_id, merchant=a.merchant, amount=a.amount)
+'''
+
+[[query]]
+id = "fin-structuring"
+title = "Structuring: repeated deposits just below a threshold"
+intent = "Find accounts with three or more deposits between 9,000 and 10,000 on the same day."
+domain = "finance"
+source = { name = "RisingWave blog: AML transaction monitoring", url = "https://risingwave.com/blog/aml-transaction-monitoring-streaming-database", licence = "no licence stated; paraphrased" }
+features = ["filter", "between", "cast_date", "group_by", "count", "sum", "having", "decimal"]
+pitfalls = ["timezone_dst: 'same day' depends on the zone", "decimal_scale: the bounds 9000 and 9999.99 must compare exactly"]
+ibis = '''
+d = transactions.filter((transactions.kind == "deposit") & transactions.amount.between(9000, 9999.99))
+q = (
+    d.group_by(["account_id", d.ts.date().name("day")])
+    .aggregate(n=_.count(), total=_.amount.sum())
+    .filter(_.n >= 3)
+)
+'''
+
+[[query]]
+id = "fin-reconciliation"
+title = "Ledger vs bank statement reconciliation"
+intent = "Match ledger entries with bank statement lines by reference and classify each as matched, amount mismatch, missing in bank or missing in ledger."
+domain = "finance"
+source = { name = "Metabase glossary: full outer join (charges vs ledger)", url = "https://www.metabase.com/glossary/full_outer_join", licence = "no licence stated; paraphrased" }
+features = ["full_join", "case_when", "coalesce_nullif", "decimal"]
+pitfalls = ["null_join_keys: lines without a reference never match and appear twice, once per side", "decimal_scale: amounts must compare exactly; a 0.01 difference is a mismatch"]
+ibis = '''
+j = ledger.outer_join(bank_statement, ledger.ref == bank_statement.ref)
+q = j.select(
+    ref=ibis.coalesce(ledger.ref, bank_statement.ref),
+    ledger_amount=ledger.amount,
+    bank_amount=bank_statement.amount,
+    status=ibis.cases(
+        (bank_statement.ref.isnull(), "missing in bank"),
+        (ledger.ref.isnull(), "missing in ledger"),
+        (ledger.amount != bank_statement.amount, "amount mismatch"),
+        else_="matched",
+    ),
+)
+'''
+
+[[query]]
+id = "fin-double-entry-check"
+title = "Unbalanced journal entries"
+intent = "Find the journal entries whose debits and credits do not sum to the same total."
+domain = "finance"
+source = { name = "ledger-core: integrity triggers (debits = credits)", url = "https://github.com/ByteEntropyDotCom/ledger-core", licence = "MIT" }
+features = ["group_by", "sum", "having", "decimal", "coalesce_nullif"]
+pitfalls = ["null_aggregate: a NULL debit or credit is skipped by SUM; COALESCE to 0 first", "decimal_scale: exact only in DECIMAL"]
+ibis = '''
+q = (
+    journal_lines.group_by("entry_id")
+    .aggregate(debits=_.debit.fill_null(0).sum(), credits=_.credit.fill_null(0).sum())
+    .filter(_.debits != _.credits)
+)
+'''
+
+[[query]]
+id = "fin-ar-aging"
+title = "Accounts receivable aging"
+intent = "Total each customer's unpaid invoices by how overdue they are at month end: current, 1-30, 31-60, 61-90 and over 90 days."
+domain = "finance"
+source = { name = "Metabase: accounts receivable aging", url = "https://www.metabase.com/metrics/accounts-receivable-aging", licence = "no licence stated; paraphrased" }
+features = ["filter", "date_diff", "date_literal", "interval_day_time", "group_by", "sum", "agg_filter", "decimal"]
+pitfalls = ["empty_aggregate: a customer with nothing in a bucket gets NULL, not 0", "gap_threshold: is day 30 in the first or the second bucket?"]
+ibis = '''
+asof = D("2024-05-31")
+open_ = invoices.filter(~invoices.paid)
+late = asof - open_.due_date
+def days(n):
+    return ibis.interval(days=n)
+q = open_.group_by("customer_id").aggregate(
+    current=_.amount.sum(where=late <= days(0)),
+    d1_30=_.amount.sum(where=(late > days(0)) & (late <= days(30))),
+    d31_60=_.amount.sum(where=(late > days(30)) & (late <= days(60))),
+    d61_90=_.amount.sum(where=(late > days(60)) & (late <= days(90))),
+    over_90=_.amount.sum(where=late > days(90)),
+)
+'''
+
+[[query]]
+id = "fin-rfm"
+title = "RFM segmentation"
+intent = "Score each account from 1 to 5 on recency, frequency and monetary value of its card transactions."
+domain = "marketing"
+source = { name = "RFM marketing SQL analysis", url = "https://github.com/mustafaa7med/rfm-marketing-sql-analysis", licence = "no licence stated; paraphrased" }
+features = ["filter", "group_by", "min_max", "count", "sum", "ntile", "decimal"]
+pitfalls = ["tie_order: accounts with equal values on a quintile boundary land in either", "rank_semantics: NTILE is 0-based in Ibis"]
+ibis = '''
+c = transactions.filter(transactions.kind == "card")
+per = c.group_by("account_id").aggregate(last=_.ts.max(), n=_.count(), spend=_.amount.sum())
+q = per.mutate(
+    r=ibis.ntile(5).over(order_by="last") + 1,
+    f=ibis.ntile(5).over(order_by="n") + 1,
+    m=ibis.ntile(5).over(order_by="spend") + 1,
+)
+'''
+
+[[query]]
+id = "fin-dormant-reactivation"
+title = "Dormant accounts that became active again"
+intent = "Find transactions that follow more than 90 days of inactivity on their account."
+domain = "finance"
+source = { name = "RisingWave blog: AML transaction monitoring (dormancy alerts)", url = "https://risingwave.com/blog/aml-transaction-monitoring-streaming-database", licence = "no licence stated; paraphrased" }
+features = ["lag_lead", "date_diff", "interval_day_time", "filter"]
+pitfalls = ["gap_threshold: exactly 90 days", "tie_order: none, the gap is between distinct instants"]
+ibis = '''
+prev = transactions.ts.lag().over(ibis.window(group_by="account_id", order_by="ts"))
+q = transactions.mutate(prev_ts=prev).filter(_.ts - _.prev_ts > ibis.interval(seconds=90 * 86400))
+'''
+notes = "Ibis types a timestamp difference in seconds and refuses to compare it with ibis.interval(days=90), so the threshold is written in seconds."
+
+[[query]]
+id = "fin-vwap"
+title = "Volume-weighted average price per minute"
+intent = "Compute each symbol's volume-weighted average price and volume per minute."
+domain = "finance"
+source = { name = "QuestDB cookbook: VWAP", url = "https://questdb.com/docs/cookbook/sql/finance/vwap/", licence = "Apache-2.0" }
+features = ["date_trunc", "group_by", "sum", "arithmetic_float", "cast_numeric"]
+pitfalls = ["division_by_zero: a minute whose trades have zero size", "float_sum_order: price * size sums"]
+ibis = '''
+q = ticks.group_by(["symbol", _.ts.truncate("m").name("minute")]).aggregate(
+    vwap=(_.price * _.size.cast("float64")).sum() / _.size.sum().cast("float64"),
+    volume=_.size.sum(),
+)
+'''
+
+[[query]]
+id = "fin-ohlc"
+title = "OHLC candlesticks"
+intent = "Build one-minute candlesticks per symbol: open, high, low, close and volume."
+domain = "finance"
+source = { name = "QuestDB cookbook: OHLC", url = "https://questdb.com/docs/cookbook/sql/finance/ohlc/", licence = "Apache-2.0" }
+features = ["date_trunc", "group_by", "arg_max", "min_max", "sum"]
+pitfalls = ["tie_order: open and close are arbitrary between ticks at the same instant", "float_nan: a NaN price"]
+ibis = '''
+q = ticks.group_by(["symbol", _.ts.truncate("m").name("minute")]).aggregate(
+    open=_.price.argmin(_.ts),
+    high=_.price.max(),
+    low=_.price.min(),
+    close=_.price.argmax(_.ts),
+    volume=_.size.sum(),
+)
+'''
+
+[[query]]
+id = "fin-bollinger"
+title = "Bollinger bands"
+intent = "Show each tick with the mean and two-standard-deviation bands of the symbol's last 20 prices."
+domain = "finance"
+source = { name = "QuestDB cookbook: Bollinger bands", url = "https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/", licence = "Apache-2.0" }
+features = ["rows_frame", "avg", "stddev_var", "arithmetic_float"]
+pitfalls = ["tie_order: ticks at the same instant", "float_sum_order: rolling means and deviations"]
+ibis = '''
+w = ibis.window(group_by="symbol", order_by="ts", preceding=19, following=0)
+mean, sd = ticks.price.mean().over(w), ticks.price.std().over(w)
+q = ticks.mutate(mid=mean, upper=mean + 2 * sd, lower=mean - 2 * sd)
+'''
+
+[[query]]
+id = "fin-max-drawdown"
+title = "Maximum drawdown"
+intent = "Find each symbol's largest fall from a running peak price, as a fraction of the peak."
+domain = "finance"
+source = { name = "QuestDB cookbook: maximum drawdown", url = "https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/", licence = "Apache-2.0" }
+features = ["running_agg", "min_max", "group_by", "arithmetic_float"]
+pitfalls = ["division_by_zero: a peak of 0", "window_default_frame: the running maximum must include all earlier ticks"]
+ibis = '''
+w = ibis.cumulative_window(group_by="symbol", order_by="ts")
+dd = ticks.mutate(drawdown=ticks.price / ticks.price.max().over(w) - 1)
+q = dd.group_by("symbol").aggregate(max_drawdown=_.drawdown.min())
+'''
+
+[[query]]
+id = "fin-log-returns"
+title = "Log returns"
+intent = "Compute the log return of each tick against the symbol's previous tick."
+domain = "finance"
+source = { name = "QuestDB cookbook: log returns", url = "https://questdb.com/docs/cookbook/sql/finance/log-returns/", licence = "Apache-2.0" }
+features = ["lag_lead", "math_transcendental", "arithmetic_float"]
+pitfalls = ["division_by_zero: a previous price of 0", "float_nan: LN of a non-positive ratio"]
+ibis = '''
+prev = ticks.price.lag().over(ibis.window(group_by="symbol", order_by="ts"))
+q = ticks.mutate(log_return=(ticks.price / prev).ln())
+'''
+
+[[query]]
+id = "fin-fifo-pnl"
+title = "FIFO realised profit and loss"
+intent = "Match each sale with the earliest unsold purchases (first in, first out) and total the realised profit per symbol."
+domain = "finance"
+source = { name = "SQLServerCentral: solving FIFO queues using windowed functions", url = "https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions", licence = "no licence stated; paraphrased" }
+features = ["running_agg", "sum", "range_join", "non_equi_join", "math_funcs", "group_by", "arithmetic_float", "cast_numeric"]
+pitfalls = ["tie_order: purchases at the same instant need a tie-breaker, or the matching is arbitrary", "window_default_frame: the cumulative quantities must be ROWS-based"]
+ibis = '''
+w = ibis.cumulative_window(group_by="symbol", order_by="ts")
+def ranges(side):
+    t = lots.filter(lots.side == side)
+    t = t.mutate(hi=t.qty.sum().over(w))
+    return t.mutate(lo=t.hi - t.qty)
+buys, sells = ranges("buy"), ranges("sell")
+# Each unit sold is matched with the unit bought at the same cumulative position.
+j = buys.join(sells, (buys.symbol == sells.symbol) & (buys.lo < sells.hi) & (sells.lo < buys.hi))
+matched = ibis.least(buys.hi, sells.hi) - ibis.greatest(buys.lo, sells.lo)
+q = j.group_by(symbol=buys.symbol).aggregate(
+    realised=(matched.cast("float64") * (sells.price - buys.price)).sum()
+)
+'''
+
+[[query]]
+id = "fin-realized-volatility"
+title = "Daily realised volatility"
+intent = "Compute each symbol's daily realised volatility as the standard deviation of its tick log returns, annualised."
+domain = "finance"
+source = { name = "QuestDB cookbook: realized volatility", url = "https://questdb.com/docs/cookbook/sql/finance/realized-volatility/", licence = "Apache-2.0" }
+features = ["lag_lead", "math_transcendental", "cast_date", "group_by", "stddev_var", "arithmetic_float"]
+pitfalls = ["float_nan: LN of a non-positive ratio", "percentile_method: none, but sample vs population standard deviation differ between engines' STDDEV defaults", "tie_order: ticks at the same instant"]
+ibis = '''
+prev = ticks.price.lag().over(ibis.window(group_by="symbol", order_by="ts"))
+r = ticks.mutate(day=ticks.ts.date(), log_return=(ticks.price / prev).ln())
+q = r.group_by(["symbol", "day"]).aggregate(vol=_.log_return.std() * (252**0.5))
+'''
+
+[[query]]
+id = "fin-volume-spike"
+title = "Volume spikes"
+intent = "Flag minutes whose traded volume exceeds three times the average of the symbol's previous ten minutes."
+domain = "finance"
+source = { name = "QuestDB cookbook: volume spike", url = "https://questdb.com/docs/cookbook/sql/finance/volume-spike/", licence = "Apache-2.0" }
+features = ["date_trunc", "group_by", "sum", "rows_frame", "avg", "window_over_aggregate", "filter", "arithmetic_float"]
+pitfalls = ["empty_aggregate: minutes without trades are missing, so 'previous ten minutes' means ten previous rows", "division_by_zero: none, the comparison multiplies"]
+ibis = '''
+per_min = ticks.group_by(["symbol", _.ts.truncate("m").name("minute")]).aggregate(volume=_.size.sum())
+w = ibis.window(group_by="symbol", order_by="minute", preceding=10, following=-1)
+q = per_min.mutate(avg_prev=per_min.volume.mean().over(w)).filter(_.volume > 3 * _.avg_prev)
+'''

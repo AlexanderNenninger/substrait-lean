@@ -16,6 +16,29 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | clickbench-q37 | [ClickBench Q37: most visited URLs of a site in a month](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | F |  |
 | clickbench-q42 | [ClickBench Q42: page views per minute, paginated](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | F |  |
 
+## finance
+
+| id | query | checker | engines | missing |
+|---|---|---|---|---|
+| fin-running-balance | [Running account balance](https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view) | ✗ | F | `running_agg`, `decimal` |
+| fin-velocity-check | [Card velocity in the last hour](https://risingwave.com/blog/transaction-velocity-fraud-sql/) | ✗ *(dbl)* | F | `decimal` |
+| fin-impossible-travel | [Impossible travel](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection) | ✓ | FDS |  |
+| fin-duplicate-payments | [Duplicate payments](https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7) | ✓ | FDS |  |
+| fin-structuring | [Structuring: repeated deposits just below a threshold](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | F | `decimal` |
+| fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✓ | FDS |  |
+| fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✗ *(dbl)* | F | `decimal` |
+| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✗ *(dbl)* | F | `decimal` |
+| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✗ | F | `ntile`, `decimal` |
+| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | F |  |
+| fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | F |  |
+| fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | F | `arg_max` |
+| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `rows_frame`, `stddev_var` |
+| fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✗ | F | `running_agg` |
+| fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✗ | F | `math_transcendental` |
+| fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✗ | F | `running_agg` |
+| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `math_transcendental`, `stddev_var` |
+| fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | – | — | `rows_frame` |
+
 ## h2o
 
 | id | query | checker | engines | missing |
@@ -30,6 +53,23 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | h2o-join-q1 | [H2O join q1: inner join with a small table on an integer key](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | FPDS |  |
 | h2o-join-q3 | [H2O join q3: left join with a medium table](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | FPDS |  |
 | h2o-join-q5 | [H2O join q5: inner join on a string key](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | FPDS |  |
+
+## iot
+
+| id | query | checker | engines | missing |
+|---|---|---|---|---|
+| iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✗ | F | `epoch`, `interval_to_number` |
+| iot-silent-devices | [Devices that stopped reporting](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg) | ✓ | F |  |
+| iot-condition-duration | [How long a temperature stayed above a threshold](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✗ | F | `running_agg` |
+| iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✗ | F | `epoch`, `interval_to_number` |
+| iot-counter-increase | [Increase of a counter with resets](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation) | ✓ | F |  |
+| iot-gapfill-locf | [Hourly averages with last observation carried forward](https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/) | ✗ | F | `first_last_value`, `running_agg` |
+| iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✗ | F | `min_max`, `arg_max` |
+| iot-latest-reading | [Latest reading per device](https://questdb.com/docs/query/sql/latest-on/) | ✓ | FPDS |  |
+| iot-change-detection | [Keep only state changes](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
+| iot-consecutive-threshold | [Alert on three consecutive high readings](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
+| iot-daily-energy | [Daily energy consumption from a cumulative meter](https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption) | ✗ | F | `min_max` |
+| iot-event-correlation | [Door openings followed by motion](https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/sql/reference/queries/joins/) | ✓ | FPDS |  |
 
 ## job
 

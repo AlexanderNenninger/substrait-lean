@@ -480,14 +480,10 @@ def consistency(
         s = status[q.id]
         e = effective(s)
         bad = [f for f in q.features if features[f].lean == "no"]
-        if e is not s:  # verified only with DOUBLE for DECIMAL
-            bad = [f for f in bad if f != "decimal"]
         if e["checker"] == "verified" and bad:
             problems.append(f"{q.id}: verified, yet uses {bad} (lean = 'no')")
         if e["checker"] in ("rejected", "upstream") and not blockers(q, features):
             problems.append(f"{q.id}: {e['checker']} ({e['detail']}), yet every feature is 'yes'")
-        if "decimal" in q.features and s["checker"] == "verified":
-            problems.append(f"{q.id}: lists decimal, but verifies on its own types")
         for st in (s, e) if e is not s else (s,):
             if st["checker"] in ("rejected", "upstream"):
                 cause = blocker_of(st["detail"])
@@ -522,7 +518,7 @@ BLOCKERS: list[tuple[str, set[str]]] = [
         r"window function: (sum|avg|count|min|max)",
         {"running_agg", "window_partition_agg", "rows_frame", "range_frame"},
     ),
-    (r"frame offsets for RANGE|following end point", {"range_frame", "rows_frame"}),
+    (r"frame offsets for (RANGE|ROWS)|following end point", {"range_frame", "rows_frame"}),
     (r"regexp_replace|regexp_extract", {"regex_replace"}),
     (r"split_part|concat_ws", {"string_split"}),
     (r"md5|sha|'Hash'", {"hash"}),
@@ -530,6 +526,8 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"Kind\.str to Substrait\.Parse\.Kind\.other", {"dynamic_interval"}),
     (r"Kind\.time to Substrait\.Parse\.Kind\.other|AT TIME ZONE", {"timezone"}),
     (r"Kind\.date to Substrait\.Parse\.Kind\.str", {"cast_date"}),
+    (r"Kind\.time to Substrait\.Parse\.Kind\.int|'TimestampDelta'", {"interval_to_number"}),
+    (r"function (ln|exp|log|log10|log2|sqrt)/", {"math_transcendental"}),
     (r"Cannot convert <subquery>", {"scalar_subquery", "correlated_subquery"}),
     (r"Cannot convert Exists", {"exists_subquery"}),
     (r"inPredicate", {"not_in_subquery"}),
@@ -589,12 +587,15 @@ def index(queries: list[Query], features: dict[str, Feature], status: dict[str, 
 
 def missing(q: Query, features: dict[str, Feature], s: dict[str, Any]) -> list[str]:
     """What keeps an unverified query from verifying: its features Lean lacks
-    (`no`), plus the partial ones its failure points at. Empty if it
-    verifies (DECIMAL left out when it verifies as DOUBLE)."""
+    (`no`), the partial ones its failure points at, and DECIMAL arithmetic.
+    Only `decimal` if it verifies as DOUBLE; empty if it verifies."""
     e = effective(s)
     if e["checker"] == "verified":
         return ["decimal"] if e is not s else []
     cause = (blocker_of(e["detail"]) or set()) & set(q.features)
+    # A query lists `decimal` when it computes with money, which Lean refuses;
+    # the checker stops at an earlier error in some of them.
+    cause.add("decimal")
     return [f for f in q.features if features[f].lean == "no" or f in cause]
 
 

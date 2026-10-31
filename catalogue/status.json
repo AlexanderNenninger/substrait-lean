@@ -64,6 +64,206 @@
    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
   }
  },
+ "fin-running-balance": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: sum",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: sum",
+   "datafusion": "runs"
+  }
+ },
+ "fin-velocity-check": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "fin-impossible-travel": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql"
+  }
+ },
+ "fin-duplicate-payments": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql"
+  }
+ },
+ "fin-structuring": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "fin-reconciliation": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql"
+  }
+ },
+ "fin-double-entry-check": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "fin-ar-aging": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "fin-rfm": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: ntile",
+   "datafusion": "runs"
+  }
+ },
+ "fin-dormant-reactivation": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: comparison of time with interval; cast one side first",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: comparison of time with interval; cast one side first"
+  }
+ },
+ "fin-vwap": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "fin-ohlc": {
+  "checker": "rejected",
+  "detail": "error: ordered aggregates are not supported: first_value",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: ordered aggregates are not supported: first_value",
+   "datafusion": "runs"
+  }
+ },
+ "fin-bollinger": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: avg",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: avg",
+   "datafusion": "runs"
+  }
+ },
+ "fin-max-drawdown": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: max",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: max",
+   "datafusion": "runs"
+  }
+ },
+ "fin-log-returns": {
+  "checker": "rejected",
+  "detail": "error: unsupported function ln/1",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported function ln/1",
+   "datafusion": "runs"
+  }
+ },
+ "fin-fifo-pnl": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: sum",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: sum",
+   "datafusion": "runs"
+  }
+ },
+ "fin-realized-volatility": {
+  "checker": "rejected",
+  "detail": "error: unsupported function ln/1",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported function ln/1",
+   "datafusion": "runs"
+  }
+ },
+ "fin-volume-spike": {
+  "checker": "upstream",
+  "stage": "datafusion",
+  "detail": "DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")",
+  "as_double": {
+   "checker": "upstream",
+   "stage": "datafusion",
+   "detail": "DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")"
+  }
+ },
  "h2o-groupby-q1": {
   "checker": "verified",
   "incremental": false,
@@ -145,6 +345,96 @@
   }
  },
  "h2o-join-q5": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "iot-time-weighted-average": {
+  "checker": "rejected",
+  "detail": "error: unsupported function extract_epoch_seconds_timestamp/1",
+  "datafusion": "runs"
+ },
+ "iot-silent-devices": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "iot-condition-duration": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: sum",
+  "datafusion": "runs"
+ },
+ "iot-time-in-state": {
+  "checker": "rejected",
+  "detail": "error: unsupported function extract_epoch_seconds_timestamp/1",
+  "datafusion": "runs"
+ },
+ "iot-counter-increase": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "iot-gapfill-locf": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: last_value",
+  "datafusion": "runs"
+ },
+ "iot-downsample": {
+  "checker": "rejected",
+  "detail": "error: min of doubles is not supported",
+  "datafusion": "runs"
+ },
+ "iot-latest-reading": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-change-detection": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-consecutive-threshold": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-daily-energy": {
+  "checker": "rejected",
+  "detail": "error: max of doubles is not supported",
+  "datafusion": "runs"
+ },
+ "iot-event-correlation": {
   "checker": "verified",
   "incremental": true,
   "datafusion": "runs",

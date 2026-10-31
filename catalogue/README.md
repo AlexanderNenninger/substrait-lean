@@ -14,7 +14,7 @@ verifies it, and which engines run it.
 
 | File | Contents |
 |---|---|
-| `queries/*.toml` | The queries, one file per suite: `tpch` (all 22), `tpcds` (8), `ssb` (4), `clickbench` (7), `job` (3), `h2o` (10), and practitioner idioms in `windows`, `timeseries`, `product`, `modelling` |
+| `queries/*.toml` | The queries, one file per suite: `tpch` (all 22), `tpcds` (8), `ssb` (4), `clickbench` (7), `job` (3), `h2o` (10), and practitioner idioms in `windows`, `timeseries`, `product`, `modelling`, `iot` (12) and `finance` (18) |
 | `features.toml` | The vocabulary of operators and features, with Lean's support for each (`yes`, `partial`, `no`), found by probing |
 | `pitfalls.toml` | Cross-engine correctness pitfalls, each linked to the DataFusion quirks of [chapter 14 of the tour](../notebooks/14_datafusion_semantics.py) |
 | `schemas.toml` | The tables of each dataset (only the columns the queries use), with value pools for synthetic data |

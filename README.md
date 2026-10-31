@@ -921,7 +921,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
 | `python/` | `sverify`: contracts and incremental views on DataFusion or Polars, differential tests |
-| `catalogue/` | 109 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
+| `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
 ### Proven theorems

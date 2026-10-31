@@ -477,3 +477,138 @@ end_ts = "timestamp"
 
 [datasets.app]
 not_null = ["readings.ts", "trades.ts", "quotes.ts", "fx_rates.ts", "payments.payment_id"]
+
+# IoT telemetry: sensor readings, cumulative meters and counters, device
+# states, discrete events. Timestamps cluster in two days so windows and
+# time buckets have several rows.
+[datasets.iot.tables.readings]
+device_id = "int64"
+ts = "timestamp"
+temperature = "float64"
+
+[datasets.iot.tables.meters]
+device_id = "int64"
+ts = "timestamp"
+kwh_total = "float64"
+
+[datasets.iot.tables.counters]
+device_id = "int64"
+ts = "timestamp"
+packets = "int64"
+
+[datasets.iot.tables.states]
+device_id = "int64"
+ts = "timestamp"
+state = "string"
+
+[datasets.iot.tables.devices]
+device_id = "int64"
+site = "string"
+installed_at = "timestamp"
+
+[datasets.iot.tables.door_events]
+door_id = "int64"
+ts = "timestamp"
+event = "string"
+
+[datasets.iot.tables.motion_events]
+door_id = "int64"
+ts = "timestamp"
+
+[datasets.iot.tables.calendar]
+day = "date"
+
+[datasets.iot]
+not_null = ["readings.ts", "meters.ts", "counters.ts", "states.ts", "door_events.ts", "motion_events.ts"]
+
+[datasets.iot.values]
+"readings.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:01:00", "2024-03-01 00:02:30", "2024-03-01 00:05:00", "2024-03-01 00:20:00", "2024-03-01 01:00:00", "2024-03-01 06:00:00", "2024-03-02 00:00:00", "2024-03-02 12:00:00"]
+"readings.temperature" = [18.5, 21.0, 25.5, 30.0, 31.5, 35.0, -2.0]
+"meters.ts" = ["2024-03-01 00:00:00", "2024-03-01 08:00:00", "2024-03-01 23:00:00", "2024-03-02 00:00:00", "2024-03-02 12:00:00", "2024-03-03 00:00:00"]
+"meters.kwh_total" = [100.0, 102.5, 104.0, 110.0, 111.5, 120.0]
+"counters.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:01:00", "2024-03-01 00:02:00", "2024-03-01 00:03:00", "2024-03-01 00:04:00"]
+"counters.packets" = [0, 10, 25, 40, 3, 15]
+"states.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:10:00", "2024-03-01 00:25:00", "2024-03-01 01:00:00", "2024-03-01 02:00:00"]
+"states.state" = ["running", "idle", "fault"]
+"devices.site" = ["plant-a", "plant-b"]
+"devices.installed_at" = ["2024-01-01 00:00:00", "2024-02-15 00:00:00"]
+"door_events.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:00:20", "2024-03-01 00:01:00", "2024-03-01 00:05:00"]
+"door_events.event" = ["open", "close"]
+"motion_events.ts" = ["2024-03-01 00:00:10", "2024-03-01 00:00:50", "2024-03-01 00:04:00"]
+"calendar.day" = ["2024-03-01", "2024-03-02", "2024-03-03"]
+
+# Financial transactions: card and account transactions, a double-entry
+# ledger, bank statements, invoices, and market prices. Money is DECIMAL as
+# in any ledger; market prices are DOUBLE as in most tick stores.
+[datasets.fin.tables.transactions]
+txn_id = "int64"
+account_id = "int64"
+card_id = "int64"
+ts = "timestamp"
+amount = "decimal(18,2)"
+kind = "string"
+merchant = "string"
+country = "string"
+
+[datasets.fin.tables.journal_lines]
+entry_id = "int64"
+account = "string"
+debit = "decimal(18,2)"
+credit = "decimal(18,2)"
+
+[datasets.fin.tables.ledger]
+ref = "string"
+booked_on = "date"
+amount = "decimal(18,2)"
+
+[datasets.fin.tables.bank_statement]
+ref = "string"
+value_date = "date"
+amount = "decimal(18,2)"
+
+[datasets.fin.tables.invoices]
+invoice_id = "int64"
+customer_id = "int64"
+due_date = "date"
+amount = "decimal(18,2)"
+paid = "boolean"
+
+[datasets.fin.tables.ticks]
+symbol = "string"
+ts = "timestamp"
+price = "float64"
+size = "int64"
+
+[datasets.fin.tables.lots]
+symbol = "string"
+ts = "timestamp"
+side = "string"
+qty = "int64"
+price = "float64"
+
+[datasets.fin]
+not_null = ["transactions.ts", "ticks.ts", "lots.ts"]
+
+[datasets.fin.values]
+"transactions.ts" = ["2024-05-01 09:00:00", "2024-05-01 09:20:00", "2024-05-01 09:45:00", "2024-05-01 12:00:00", "2024-05-02 09:00:00", "2024-09-01 10:00:00"]
+"transactions.amount" = [5.00, 9500.00, 9900.00, 120.00, 120.00, 42.50, 15000.00]
+"transactions.kind" = ["deposit", "withdrawal", "card"]
+"transactions.merchant" = ["acme", "bobs", "cafe"]
+"transactions.country" = ["DE", "FR", "US"]
+"journal_lines.account" = ["cash", "revenue", "receivables"]
+"journal_lines.debit" = [0.00, 100.00, 250.00]
+"journal_lines.credit" = [0.00, 100.00, 250.00]
+"ledger.ref" = ["INV-1", "INV-2", "INV-3", "INV-4"]
+"bank_statement.ref" = ["INV-1", "INV-2", "INV-3", "INV-5"]
+"ledger.amount" = [100.00, 250.00, 99.99]
+"bank_statement.amount" = [100.00, 250.00, 99.90]
+"ledger.booked_on" = ["2024-05-01", "2024-05-02"]
+"bank_statement.value_date" = ["2024-05-01", "2024-05-03"]
+"invoices.due_date" = ["2024-01-15", "2024-03-01", "2024-04-20", "2024-05-30"]
+"ticks.symbol" = ["AAPL", "MSFT"]
+"ticks.ts" = ["2024-05-01 09:30:00", "2024-05-01 09:30:20", "2024-05-01 09:31:05", "2024-05-01 09:31:40", "2024-05-01 09:35:00", "2024-05-02 09:30:00"]
+"ticks.price" = [100.0, 101.5, 99.0, 102.0, 98.5, 103.0]
+"lots.symbol" = ["AAPL"]
+"lots.side" = ["buy", "sell"]
+"lots.qty" = [10, 5, 20]
+"lots.price" = [100.0, 110.0, 95.0]
