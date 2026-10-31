@@ -108,6 +108,8 @@ inductive WKind where
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
   | .str => .str | .bool => .bool | .other => .other | .list k => .list (ofKind k)
+  -- Zoned timestamps are only compared with each other (`checkArgKinds`).
+  | .timeTz => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Parse.Kind
