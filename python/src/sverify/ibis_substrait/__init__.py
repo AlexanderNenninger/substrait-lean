@@ -35,6 +35,9 @@ import ibis
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
+from ibis.common.collections import FrozenOrderedDict
+from ibis.common.typing import VarTuple
+from ibis.expr.schema import Schema
 
 __all__ = ["Unsupported", "to_substrait", "to_substrait_json"]
 
@@ -1446,6 +1449,82 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
     return walk(root["input"])
 
 
+class SQLModel(ops.Relation):
+    """A SQL query over named input relations (`sverify.sql`): the query reads
+    each input by its name in `names`."""
+
+    query: str
+    inputs: VarTuple[ops.Relation]
+    names: VarTuple[str]
+    schema: Schema
+    values = FrozenOrderedDict()
+
+
+def _isthmus_plan(query: str, tables: Mapping[str, Any]) -> Json:
+    """Isthmus's plan of `query` over empty tables with these schemas."""
+    import pyarrow as pa
+
+    from sverify.engine import SqlError, connect, isthmus_json
+
+    con = connect(sql_producer="isthmus")
+    for name, schema in tables.items():
+        con.put(name, pa.schema(schema.to_pyarrow()).empty_table())
+    try:
+        return json.loads(isthmus_json(con, query))
+    except SqlError as e:
+        raise Unsupported(f"Isthmus cannot plan the SQL: {e}") from e
+
+
+def sql_model_plan(query: str, tables: Mapping[str, Any]) -> Json:
+    """The plan of `query` over tables of these (Ibis) schemas, from
+    DataFusion's SQL producer, or Isthmus's where DataFusion is not installed."""
+    from sverify.engine import default_sql_producer
+
+    try:
+        producer = default_sql_producer()
+    except ImportError as e:
+        raise ImportError(
+            "sverify.sql needs a SQL producer: pip install 'sverify[datafusion]' "
+            "(or put an Isthmus binary on PATH as `isthmus` or in $SVERIFY_ISTHMUS)"
+        ) from e
+    if producer == "isthmus":
+        return _isthmus_plan(query, tables)
+    return _sql_plan(query, tables)
+
+
+def sql_model_schema(query: str, tables: Mapping[str, Any]) -> Any:
+    """The schema of `query` over tables of these (Ibis) schemas."""
+    from sverify.engine import default_sql_producer
+
+    try:
+        producer = default_sql_producer()
+    except ImportError:
+        producer = None
+    if producer == "datafusion":
+        try:
+            return ibis.Schema.from_pyarrow(_sql_context(tables).sql(query).schema())
+        except Exception as e:  # noqa: BLE001 - DataFusion raises plain exceptions
+            raise Unsupported(f"DataFusion cannot plan the SQL: {str(e).splitlines()[0]}") from e
+    # Isthmus gives types only in the plan: run it, as Lean writes it, on
+    # empty tables.
+    import pyarrow as pa
+
+    from sverify.engine import connect, run_plan, written_plan
+
+    plan = sql_model_plan(query, tables)
+    con = connect()
+    for name, schema in tables.items():
+        con.put(name, pa.schema(schema.to_pyarrow()).empty_table())
+    result = run_plan(con, written_plan(json.dumps(plan)), "duckdb")
+    return ibis.Schema.from_pyarrow(result.schema)
+
+
+def _sql_model(op: Any) -> Json:
+    tables = {n: i.schema for n, i in zip(op.names, op.inputs, strict=True)}
+    plan = sql_model_plan(op.query, tables)
+    return _splice(plan, dict(zip(op.names, op.inputs, strict=True)))
+
+
 def _sql_string_view(op: Any) -> Json:
     if not isinstance(op.parent, ops.AliasedRelation):
         raise Unsupported("SQL over a table needs an alias to refer to it: use t.alias(name).sql")
@@ -1503,6 +1582,7 @@ _RELS: dict[Any, Callable[[Any], Json]] = {
     ops.InMemoryTable: _memtable,
     ops.DummyTable: _dummy_table,
     ops.SQLStringView: _sql_string_view,
+    SQLModel: _sql_model,
     ops.SQLQueryResult: _sql_query_result,
     ops.TableUnnest: _table_unnest,
 }

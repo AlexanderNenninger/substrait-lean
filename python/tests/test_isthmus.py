@@ -194,3 +194,15 @@ def test_sql_producer_choice(monkeypatch):
         plan_json(sv.connect(), "SELECT 1")
     with pytest.raises(ImportError, match="Isthmus binary"):
         plan_json(sv.connect(sql_producer="isthmus"), "SELECT 1")
+
+
+@needs_isthmus
+def test_without_datafusion_isthmus_plans_sql_models(monkeypatch):
+    """`sverify.sql` falls back to Isthmus for its schema and plan."""
+    from test_sql_models import paid, per_customer, rows, sources
+
+    monkeypatch.setattr("sverify.engine.has_datafusion", lambda: False)
+    orders, _customers = sources()
+    node = per_customer(paid(orders))
+    node.refresh()
+    assert rows(node) == [("ada", 5), ("bob", 7)]

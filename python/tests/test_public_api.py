@@ -44,6 +44,7 @@ def test_the_top_level_is_small():
         "connect",
         "group",
         "references",
+        "sql",
         "transform",
         "unique",
         "verify",

@@ -93,6 +93,35 @@ except VerificationError as e:
 # could not prove: (_.total > 5) (it is TRUE or FALSE)
 ```
 
+## SQL models
+
+A transform's body can be SQL, over its inputs by name. It is proved,
+composed and refreshed like any other:
+
+```python
+@sv.transform(
+    requires={"orders": ["amount >= 0", "amount IS NOT NULL"]},
+    ensures=["total >= 0", sv.unique("customer")],
+)
+def per_customer(orders):
+    return sv.sql(
+        "SELECT customer, coalesce(sum(amount), 0) AS total FROM orders GROUP BY customer",
+        orders=orders,
+    )
+
+
+totals = per_customer(orders)  # proved here, like an Ibis transform
+totals.refresh()
+assert sorted(totals.to_arrow().to_pylist(), key=str) == [
+    {"customer": "bob", "total": 5},
+    {"customer": "cy", "total": 50},
+]
+```
+
+Several inputs are several keywords (`sv.sql(query, orders=orders,
+customers=customers)`). The SQL is planned by DataFusion
+(`pip install 'sverify[datafusion]'`), or by Isthmus without it.
+
 ## Workflows
 
 Three complete jobs from a catalogue of 139 real analytical queries, each
