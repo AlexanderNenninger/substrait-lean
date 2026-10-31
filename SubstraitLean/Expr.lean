@@ -55,6 +55,8 @@ inductive UnFn where
   | datePart (p : Time.DatePart)
   /-- `date_trunc(u, ts)`. -/
   | dateTrunc (u : Time.TimeUnit)
+  /-- `CAST(ts AS DATE)`: days since 1970-01-01, rounding down. -/
+  | toDate
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -106,6 +108,7 @@ def UnFn.apply : UnFn → Value → Value
     | some v => .int v
     | none => .null
   | .dateTrunc u, .int ts => .int (Time.trunc u ts)
+  | .toDate, .int ts => .int (Time.days ts)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
