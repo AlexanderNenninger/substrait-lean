@@ -280,27 +280,28 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-68 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+74 of 88 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✗ scalar subquery · ✓ unnest |
+| lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* |
 | windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* |
 
-Every engine runs the plans of the 68 verified operations, except:
+Every engine runs the plans of the 74 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 67 | non-equi join |
-| DuckDB | 67 | non-equi join |
-| Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
-| Spark | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Polars | 73 | non-equi join |
+| DuckDB | 68 | non-equi join · collect · collect ordered · unnest · unnest column · list literal |
+| Snowflake | 61 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · collect · collect ordered · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Spark | 61 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · collect · collect ordered · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
