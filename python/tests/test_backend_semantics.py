@@ -348,18 +348,28 @@ def test_translators_agree(con, sql):
 
 
 @pytest.mark.parametrize(
-    ("sql", "expected"),
+    ("sql", "table", "rows"),
     [
-        # Opaque in Lean, so no proof depends on it, but the translators differ.
-        ("SELECT upper(s) FROM ss", ([("STRASSE",), ("A\\B",)], [("STRAẞE",), ("A\\B",)])),
-        (
-            "SELECT array_length(regexp_match(s, '\\d')) FROM u",
-            ([(1,), (1,), (None,)], [(None,), (1,), (None,)]),
-        ),
+        ("SELECT upper(s) FROM ss", "ss", [("STRASSE",), ("A\\B",)]),
+        ("SELECT lower(s) FROM ss", "ss", [("straße",), ("a\\b",)]),
+        ("SELECT array_length(regexp_match(s, '\\d')) FROM u", "u", [(1,), (1,), (None,)]),
+        ("SELECT array_length(regexp_match(s, '\\s')) FROM u", "u", [(None,), (None,), (1,)]),
     ],
 )
-def test_translators_disagree_on_opaque_functions(con, sql, expected):
-    assert translated(con, sql) == expected
+def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
+    """Black boxes in Lean, meaning Rust's case mapping and regex classes
+    (#70): Polars computes them as DataFusion does; DuckDB, whose utf8proc and
+    RE2 differ on non-ASCII text, raises there; on ASCII text it agrees."""
+    plan = written_plan(substrait_json(con, sql))
+    assert positional(con.datafusion.sql(sql).to_arrow_table()) == rows
+    assert positional(polars_engine.run(plan, {table: TABLES[table]})) == rows
+    with pytest.raises(duckdb.Error, match="non-ASCII text differs between engines"):
+        duckdb_engine.run(plan, {table: TABLES[table]})
+    ascii_only = pa.table({"s": ["Strasse", "3", "a b", None]})
+    assert same(
+        positional(polars_engine.run(plan, {table: ascii_only})),
+        positional(duckdb_engine.run(plan, {table: ascii_only})),
+    )
 
 
 # --- sverify gaps, fixed ---------------------------------------------------------

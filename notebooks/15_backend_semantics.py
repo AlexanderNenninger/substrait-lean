@@ -1080,10 +1080,10 @@ def _(E, render):
             sverify="opaque",
             why="Rust (DataFusion, Polars) maps ß to 'SS'; DuckDB's utf8proc to 'ẞ' "
             "(capital sharp s). `upper` is an uninterpreted function in Lean, so no "
-            "proof depends on it. But the same verified plan gives different strings on "
-            "sverify's two translators, and Lean's own evaluator only maps ASCII (it "
-            "prints '' for the rest).",
-            picks="uninterpreted",
+            "proof depends on it; its meaning is Rust's. sverify's DuckDB, Snowflake and "
+            "Spark SQL raise on non-ASCII text, where their case tables could differ, and "
+            "Lean's own evaluator refuses to print rows it cannot compute (#70).",
+            picks="Rust's case mapping; SQL engines raise on non-ASCII text",
         ).run(),
         E(
             "S5",
@@ -1115,9 +1115,10 @@ def _(E, render):
             sverify="opaque",
             why="Rust's regex (DataFusion, Polars) is Unicode-aware: the Arabic-Indic "
             "digit ٣ is a `\\d` and a no-break space is a `\\s`. DuckDB's RE2 is "
-            "ASCII-only. Lean leaves regular expressions uninterpreted, but sverify's "
-            "DuckDB and Polars translators of one verified plan disagree on ٣.",
-            picks="uninterpreted",
+            "ASCII-only. Lean leaves regular expressions uninterpreted; their meaning is "
+            "Rust's. sverify's SQL raises where a pattern with \\d, \\w or \\s meets "
+            "non-ASCII text, so the translators agree or fail (#70).",
+            picks="Rust's classes; SQL engines raise on non-ASCII text",
         ).run(),
         E(
             "S7",
@@ -1324,10 +1325,11 @@ def _(mo):
       as one implementation.
     * **Uninterpreted is not the same as agreed.** `upper`, `lower` and
       regular expressions are black boxes in Lean, which keeps proofs honest,
-      but sverify's translators then compute them with different Unicode
-      tables (S4, S6). Pinning them (to Rust's `str::to_uppercase` and the
-      `regex` crate, say) or refusing non-ASCII input would make "the same
-      plan, the same rows" true across engines.
+      and sverify's translators used to compute them with different Unicode
+      tables (S4, S6). Their meaning is now pinned to Rust's
+      `str::to_uppercase` and `regex` crate (DataFusion, Polars); the SQL
+      translations raise on non-ASCII text where their engines could differ,
+      so "the same plan, the same rows, or an error" holds across engines.
     * **sverify gaps found here, all fixed.** Constant casts used to round
       (`CAST(2.7 AS BIGINT)` was proved to be 3; DataFusion gives 2, F9) and
       to trim spaces from strings (`' 12'` was proved to be 12; DataFusion
