@@ -220,7 +220,11 @@ they exist for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents every public function and class, for the released version (built
-from `python/great-docs.yml` with `uv run poe docs`). The [tour](#the-tour)
+from `python/great-docs.yml` with `uv run poe docs`), and so do
+[agent skills](https://alexandernenninger.github.io/substrait-lean/skills.html)
+for coding agents that write sverify code (`npx skills add
+https://alexandernenninger.github.io/substrait-lean/`, or `sverify/skills/` in
+the wheel). The [tour](#the-tour)
 explains each feature in a chapter of its own
 (chapters 4 to 12).
 

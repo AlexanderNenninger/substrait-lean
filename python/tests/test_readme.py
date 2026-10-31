@@ -35,18 +35,14 @@ def shown_output(block: str) -> list[str]:
     return out
 
 
-@pytest.mark.parametrize("readme", READMES, ids=lambda p: str(p.relative_to(ROOT)))
-def test_readme_examples_run(readme, tmp_path, monkeypatch):
-    # The Wheels workflow runs these tests against the installed wheel, with
-    # only `python/tests` copied out: there the READMEs are not here.
-    if not readme.is_file():
-        pytest.skip(f"{readme.relative_to(ROOT)} of the repository is not here")
-    monkeypatch.chdir(tmp_path)
+def run_blocks(path: Path, text: str) -> None:
+    """Run the ```python blocks of `text` in order, in one namespace, checking
+    each printed line against the block's `# ...` comments."""
     namespace: dict = {"__name__": "__readme__"}
-    for k, block in enumerate(python_blocks(readme.read_text())):
+    for k, block in enumerate(python_blocks(text)):
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
-            exec(compile(block, f"{readme.name} block {k + 1}", "exec"), namespace)
+            exec(compile(block, f"{path.name} block {k + 1}", "exec"), namespace)
         lines = [line.rstrip() for line in printed.getvalue().splitlines()]
         for expected in shown_output(block):
             expected = expected.removesuffix("...").rstrip()  # "..." elides the rest
@@ -54,6 +50,16 @@ def test_readme_examples_run(readme, tmp_path, monkeypatch):
                 continue
             head, _, tail = expected.partition("...")  # "..." inside elides a part too
             assert any(line.startswith(head) and tail in line for line in lines), (
-                f"{readme.name} block {k + 1}: no printed line starts with {expected!r}; "
+                f"{path.name} block {k + 1}: no printed line starts with {expected!r}; "
                 f"printed:\n{printed.getvalue()}"
             )
+
+
+@pytest.mark.parametrize("readme", READMES, ids=lambda p: str(p.relative_to(ROOT)))
+def test_readme_examples_run(readme, tmp_path, monkeypatch):
+    # The Wheels workflow runs these tests against the installed wheel, with
+    # only `python/tests` copied out: there the READMEs are not here.
+    if not readme.is_file():
+        pytest.skip(f"{readme.relative_to(ROOT)} of the repository is not here")
+    monkeypatch.chdir(tmp_path)
+    run_blocks(readme, readme.read_text())

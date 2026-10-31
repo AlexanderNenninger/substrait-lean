@@ -116,4 +116,19 @@ reference:
       - run_substrait_json
       - delta_plans
 
+# Agent skills for sverify users, written by hand and shipped in the wheel
+# (`sverify/skills/<name>/SKILL.md`, with their `references/`). The site
+# publishes them under `.well-known/agent-skills/` with a Skills page;
+# `tests/test_skills.py` runs their code.
+skill:
+  enabled: true
+  well_known: true
+  skills:
+    - name: sverify
+      file: src/sverify/skills/sverify/SKILL.md
+    - name: sverify-pipelines
+      file: src/sverify/skills/sverify-pipelines/SKILL.md
+    - name: sverify-engines
+      file: src/sverify/skills/sverify-engines/SKILL.md
+
 jupyter: python3

@@ -37,7 +37,12 @@ native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
 [elan](https://github.com/leanprover/elan).
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
-documents every public function and class, for the released version.
+documents every public function and class, for the released version. For
+coding agents, the site also publishes
+[skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for
+writing contracts, pipelines and engine code with sverify
+(`npx skills add https://alexandernenninger.github.io/substrait-lean/`); they
+ship in the wheel too, under `sverify/skills/`.
 
 ## In thirty lines
 
