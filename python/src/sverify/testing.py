@@ -40,6 +40,11 @@ def literal(v: object) -> dict:
         # The model's one zero and one NaN: -0.0 is 0.0, a negative NaN is NaN.
         text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"
         return {"literal": {"fp64": v + 0.0 if math.isfinite(v) else text}}
+    if isinstance(v, list):
+        # Elements are literals without the `literal` key.
+        if not v:
+            return {"literal": {"emptyList": {"type": {"i64": {}}}}}
+        return {"literal": {"list": {"values": [literal(x)["literal"] for x in v]}}}
     raise TypeError(f"no literal for {v!r}")
 
 
@@ -84,7 +89,7 @@ def lean_values(plan_json: str) -> list[tuple]:
     return parse_rows(out, doubles=True)
 
 
-_VALUE = re.compile(r'\s*(NULL|true|false|"(?:[^"\\]|\\.)*"|[^,]+?)\s*(?:,|$)')
+_TOKEN = re.compile(r'\s*(NULL|true|false|"(?:[^"\\]|\\.)*"|\[|\]|,|[^,\[\]]+)')
 _ESCAPE = re.compile(r"\\(x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)")
 
 
@@ -102,28 +107,50 @@ def _unquote(s: str) -> str:
     return _ESCAPE.sub(char, s[1:-1])
 
 
+def _value(x: str, doubles: bool) -> object:
+    if x == "NULL":
+        return None
+    if x in ("true", "false"):
+        return x == "true"
+    if x.startswith('"'):
+        return _unquote(x)
+    if re.fullmatch(r"-?\d+", x):
+        return int(x)
+    if doubles and x.endswith("d"):
+        return float(x[:-1])
+    raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")
+
+
+def parse_row(text: str, doubles: bool = False) -> tuple:
+    """One row as `Row.render` prints it: `(v, …)`, lists as `[v, …]`."""
+    tokens = [m.group(1) for m in _TOKEN.finditer(text.strip()[1:-1])]
+    pos = 0
+
+    def items(close: str | None) -> list[object]:
+        nonlocal pos
+        out: list[object] = []
+        while pos < len(tokens) and tokens[pos] != close:
+            t = tokens[pos]
+            pos += 1
+            if t == ",":
+                continue
+            if t == "[":
+                out.append(items("]"))
+                pos += 1  # the "]"
+            else:
+                out.append(_value(t.strip(), doubles))
+        return out
+
+    return tuple(items(None))
+
+
 def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
     """The rows section of `substrait-check` output (`Row.render`)."""
     rows = []
     for line in output.split("rows (")[1].splitlines()[1:]:
         if not line.startswith("  ("):
             break
-        values: list[object] = []
-        for m in _VALUE.finditer(line.strip()[1:-1]):
-            x = m.group(1)
-            if x == "NULL":
-                values.append(None)
-            elif x in ("true", "false"):
-                values.append(x == "true")
-            elif x.startswith('"'):
-                values.append(_unquote(x))
-            elif re.fullmatch(r"-?\d+", x):
-                values.append(int(x))
-            elif doubles and x.endswith("d"):
-                values.append(float(x[:-1]))
-            else:
-                raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")
-        rows.append(tuple(values))
+        rows.append(parse_row(line, doubles))
     return rows
 
 

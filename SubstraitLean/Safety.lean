@@ -18,6 +18,12 @@ they wrap around silently, so the result differs from `Rel.eval`'s
 * `CASE` evaluates a branch only on rows that take it, so
   `CASE WHEN b <> 0 THEN a / b END` and `a / NULLIF(b, 0)` are safe.
 * `AND` and `OR` evaluate both sides: `b <> 0 AND a / b > 1` fails on `b = 0`.
+* Not every `CASE` is lazy, though. `COALESCE` evaluates all its arguments,
+  and the simplifier rewrites a `CASE` with a boolean value into `AND`/`OR`,
+  so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END` fails on `b = 0`. The
+  parser makes those eager (`Parse.eagerly`); `Expr.ifThen` itself is lazy.
+* `ABS` fails on the smallest integer (the parser writes `-a` as `a / -1`),
+  and the simplifier makes `POWER(x, 0)` the constant 1, so it never fails.
 * The optimizer merges filters and pushes them down through projections and
   joins, so a filter condition may be evaluated on rows that a filter below it
   would remove: `t.filter(b != 0).filter(a / b > 1)` fails on `b = 0`.
@@ -245,11 +251,12 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
       · simp only [hct, ite_false, Bool.false_eq_true] at hj
         have hf : (c.eval row).isTrue = false := by simpa using hct
         rcases he with he | he
-        · rcases mem_cases hcm with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩
+        · rcases mem_cases hcm with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
           · simp_all [AVal.nonBool]
           · simp_all [AVal.nonBool]
           · rw [hv] at hct; simp [Value.isTrue] at hct
           · simp_all
+          · simp_all [AVal.nonBool]
           · simp_all [AVal.nonBool]
         · exact Expr.nonZero_sound (Expr.refineNeg_sound env c h hf) hfs
             (KsHold.cons_cstrs hf hks) e he j hj
@@ -292,7 +299,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       simp only [hb, Option.all_some] at hfits
       exact absurd (Bound.fitsBits_mem hfits hi) hn
     · simp_all
-  case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str =>
+  case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str | regexMatch.list =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp_all
   case dateTrunc.int u ts =>
@@ -464,11 +471,12 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct
         have : ((c.absD env fs ks).nonBool || (c.absD env fs ks).ff) = true := by
-          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩
+          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
           · simp [AVal.nonBool, hn]
           · simp [AVal.nonBool, hb]
           · rw [hv] at hct; simp [Value.isTrue] at hct
           · simp [hff]
+          · simp [AVal.nonBool, hs]
           · simp [AVal.nonBool, hs]
         simp only [this, ite_true]
         exact Expr.mayIssues_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e p hp
@@ -495,6 +503,9 @@ def Rel.loose : Rel → Rel
   | .semi a _ _ _ => a.loose
   | .orderBy r _ | .distinct r => r.loose
   | .aggregate r gs ms => .aggregate r gs ms
+  -- DataFusion pushes filters on the other columns below an `UNNEST`, onto
+  -- rows whose lists may be empty: the loose rows are both.
+  | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat
   | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
@@ -507,6 +518,7 @@ theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.ari
   | .unionAll a _ => by simp [loose, arity, loose_arity cat a]
   | .semi a _ _ _ => by simp [loose, arity, loose_arity cat a]
   | .orderBy r _ | .distinct r => by simp [loose, arity, loose_arity cat r]
+  | .unnest r _ => by simp [loose, arity, loose_arity cat r]
 
 theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF cat
   | .read _, h | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
@@ -522,6 +534,8 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
   | .semi a _ _ _, h => loose_wf (r := a) h.1
   | .orderBy r _, h => loose_wf (r := r) h.1
   | .distinct r, h => loose_wf (r := r) h
+  | .unnest r _, h => ⟨⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩, loose_wf (r := r) h.1,
+      by simp [arity, loose_arity]⟩
 
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
@@ -535,7 +549,7 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .project r es, p => r.HasIssue cat u p ∨
       ∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ es, p ∈ e.issues row
   | u, .emit r _, p | u, .fetch r _ _, p | u, .window r _ _ _, p | u, .orderBy r _, p
-  | u, .distinct r, p => r.HasIssue cat u p
+  | u, .distinct r, p | u, .unnest r _, p => r.HasIssue cat u p
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
   | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
@@ -554,8 +568,8 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | u, .project r es =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T))
-  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ | u, .orderBy r _ | u, .distinct r =>
-    r.mayIssues cat A F T u
+  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ | u, .orderBy r _ | u, .distinct r
+  | u, .unnest r _ => r.mayIssues cat A F T u
   | u, .cross a b | u, .unionAll a b => a.mayIssues cat A F T u ++ b.mayIssues cat A F T u
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
@@ -618,6 +632,7 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | _, .window r _ _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .orderBy r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .distinct r, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
+  | _, .unnest r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .cross a b, hwf, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
