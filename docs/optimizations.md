@@ -164,6 +164,8 @@ other table is broadcast (`Sharding S cat cs`). The question is when
   does not help for doubles. For integers, `AVG(x)` is defined as the `AVG`
   of the converted doubles (`Aggregate.lean`), which is not
   `CAST(SUM(x)) / COUNT(x)` either. Supporting it needs an exact accumulator.
+  A proved error bound for the two-phase sum, which would let these run
+  sharded with a stated tolerance, is the epic #85.
 * **`DISTINCT` aggregates** are refused: a value in two shards counts once
   in the whole and twice in the parts. `DISTINCT` itself, windows and
   `FETCH` are refused because they look at rows of other shards.
