@@ -1,4 +1,4 @@
-"""DataFusion's surprising semantics, pinned (`notebooks/14_datafusion_semantics.py`).
+"""DataFusion's surprising semantics, pinned (`notebooks/16_datafusion_semantics.py`).
 
 The first half pins what DataFusion does where the Lean model relies on it
 (the total order on doubles, truncating division, which operations fail and
@@ -21,7 +21,7 @@ import pytest
 import sverify as sv
 from sverify.engine import connect, put_table, run_substrait_json, substrait_json
 from sverify.incremental import arrow_rows
-from sverify.testing import inline_tables, lean_rows
+from sverify.testing import inline_tables, lean_rows, lean_values
 
 pytestmark = pytest.mark.backend("datafusion")
 
@@ -124,6 +124,19 @@ def nan_aware(rows: list[tuple]) -> list[tuple]:
         ("SELECT CASE WHEN b <> 0 THEN a / b END FROM t", [(5,), (None,)]),
         # DataFusion's own bug: NOT IN ignores the subquery's NULL (SQL: no rows).
         ("SELECT x FROM n WHERE x NOT IN (SELECT y FROM s) ORDER BY x", [(2,), (None,)]),
+        # INTERSECT ALL and EXCEPT ALL are a semi and an anti join: every
+        # left copy stays or goes (SQL: min(m, n) and max(m - n, 0) copies).
+        # The Ibis producer writes SQL's meaning (`sverify.coverage.DATAFUSION_SQL`).
+        (
+            "SELECT * FROM (VALUES (1), (1), (1), (2)) a(x) "
+            "INTERSECT ALL SELECT * FROM (VALUES (1), (3)) b(x) ORDER BY x",
+            [(1,), (1,), (1,)],
+        ),
+        (
+            "SELECT * FROM (VALUES (1), (1), (2)) a(x) "
+            "EXCEPT ALL SELECT * FROM (VALUES (1)) b(x) ORDER BY x",
+            [(2,)],
+        ),
     ],
 )
 def test_datafusion_behaviour(con, sql, expected):
@@ -181,9 +194,18 @@ def test_lean_writes_the_deprecated_fetch_fields(con):
         run_substrait_json(con, plan)
 
 
-def test_not_in_subquery_is_refused(con):
-    with pytest.raises(ValueError, match="rejects the plan"):
-        sv.written_plan(substrait_json(con, "SELECT x FROM n WHERE x NOT IN (SELECT y FROM s)"))
+def test_not_in_subquery_means_what_sql_means(con):
+    """DataFusion keeps rows (`test_datafusion_behaviour`); the checker lifts
+    the subquery with SQL's NULL rules, so `s`'s NULL leaves none."""
+    plan = substrait_json(con, "SELECT x FROM n WHERE x NOT IN (SELECT y FROM s)")
+
+    def lean(s: list[tuple]) -> list[tuple]:
+        rows = {"n": [(1,), (None,), (2,)], "s": s}
+        return lean_values(json.dumps(inline_tables(json.loads(plan), rows)))
+
+    assert lean([(1,), (None,)]) == []
+    assert lean([(1,)]) == [(2,)]
+    assert lean([]) == [(1,), (None,), (2,)]
 
 
 def verify(sql: str, table: str, schema: dict, requires=(), ensures=()) -> sv.Report:
@@ -204,7 +226,7 @@ def test_reported_runtime_errors():
 
 
 gap = pytest.mark.xfail(
-    strict=True, reason="soundness gap, see notebooks/14_datafusion_semantics.py"
+    strict=True, reason="soundness gap, see notebooks/16_datafusion_semantics.py"
 )
 
 

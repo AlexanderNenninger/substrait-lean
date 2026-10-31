@@ -7,6 +7,9 @@
   because the contract report is `guard_free`).
 * Sharded evaluation: a grouped aggregate on Polars over all the rows, and
   in two phases over 8 shards run in parallel threads.
+* GROUP BY simplification (`Rel.fdAgg`): a TPC-H Q3-style join then group by
+  `l_orderkey, o_date, o_prio`, as written and grouped by `l_orderkey` alone
+  (the contract's key on `o_orderkey` determines the rest).
 
 Prints the median of 5 runs of each.
 """
@@ -76,7 +79,42 @@ def sharded(n: int, k: int = 8) -> None:
     )
 
 
+def group_by_fd(n: int) -> None:
+    line = ibis.table({"l_orderkey": "int64", "l_price": "int64"}, name="lineitem")
+    orders = ibis.table({"o_orderkey": "int64", "o_date": "int64", "o_prio": "string"}, name="ord")
+    expr = (
+        line.join(orders, line.l_orderkey == orders.o_orderkey)
+        .group_by([line.l_orderkey, orders.o_date, orders.o_prio])
+        .agg(rev=line.l_price.sum())
+    )
+    report = sv.verify(expr, requires={"ord": [sv.unique("o_orderkey")]})
+    assert report.optimized is not None and report.rewrites, str(report)
+    rng = np.random.default_rng(0)
+    m = n // 4
+    data = {
+        "lineitem": pa.table(
+            {"l_orderkey": rng.integers(0, m, n), "l_price": rng.integers(0, 1000, n)}
+        ),
+        "ord": pa.table(
+            {
+                "o_orderkey": np.arange(m),
+                "o_date": rng.integers(0, 3000, m),
+                "o_prio": pa.array([f"{i % 5}-PRIO" for i in range(m)]),
+            }
+        ),
+    }
+    p = json.loads(plan_json(connect(), expr))
+    for name, run in [("polars", polars_engine.run), ("duckdb", duckdb_engine.run)]:
+        as_written = median_ms(lambda run=run: run(p, data))
+        rewritten = median_ms(lambda run=run: run(report.optimized, data))
+        print(
+            f"group-fd {name:7} {n:>9} rows: {as_written:8.1f} ms as written, {rewritten:8.1f} ms"
+            f" by key ({as_written / rewritten:.1f}x)"
+        )
+
+
 if __name__ == "__main__":
     rows = int(sys.argv[1]) if len(sys.argv) > 1 else 1_000_000
     guards(rows)
     sharded(rows)
+    group_by_fd(rows)

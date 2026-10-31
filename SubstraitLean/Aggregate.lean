@@ -93,8 +93,10 @@ structure Measure where
 def Measure.refsLt (n : Nat) (m : Measure) : Prop :=
   m.arg.refsLt n ∧ ∀ c ∈ m.filter, c.refsLt n
 
-/-- The expressions a measure evaluates (on every input row). -/
-def Measure.exprs (m : Measure) : List Expr := m.arg :: m.filter.toList
+/-- The expressions a measure evaluates (on every input row), and the
+columns it orders the rows by. -/
+def Measure.exprs (m : Measure) : List Expr :=
+  m.arg :: m.filter.toList ++ m.sort.map (.field ·.col)
 
 /-- The rows a measure looks at: those passing its filter. -/
 def Measure.kept (m : Measure) (rows : Relation) : Relation :=

@@ -37,16 +37,19 @@ inductive Value where
 ## Abstract values
 
 `AVal` (contracts, runtime errors, keys) does not look inside lists. An
-abstract value admits a list exactly where it admits every non-NULL scalar
-(an integer, both booleans, a string): `AVal.top`, or a column's description
-after `IS NOT NULL`. Functions of one type give NULL on any other, so every
-existing abstraction already covers a list as it covers a value of the wrong
-type, and refinements keep it (`x IS NOT NULL` holds for a list). Reusing the
-`str` flag alone would be unsound (`length(list)` is NULL, while the
+abstract value admits a list exactly where it admits both booleans and a
+string (`AVal.top`, or a column's description after `IS NOT NULL`). A
+function of integers, booleans or strings gives NULL on a value of another
+type, so every existing abstraction already covers a list as it covers a
+value of the wrong type, and refinements keep it (`x IS NOT NULL` holds for a
+list; `AVal.prune`, which drops empty integer intervals, leaves it). Reusing
+the `str` flag alone would be unsound (`length(list)` is NULL, while the
 abstraction of `length` on strings says it is not), and so would requiring
 the `null` flag (`IS NOT NULL` clears it). Every proof that cases on a
 `Value` gains a `.list` case. Length bounds and element descriptions (#59's
 "abstract values for lists") are left for when a contract needs them.
+
+`=` on two lists is their structural equality (`BinFn.apply .eq`).
 
 ## Collect
 

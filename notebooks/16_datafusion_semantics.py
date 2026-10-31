@@ -16,7 +16,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", app_title="14. DataFusion's surprising semantics")
+app = marimo.App(width="full", app_title="16. DataFusion's surprising semantics")
 
 
 @app.cell(hide_code=True)
@@ -29,7 +29,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py) · 15. [One expression, many engines](?file=15_backend_semantics.py) →
+    ← 15. [What is proved, what is trusted](?file=15_trust.py) · [Contents](?file=00_start_here.py) · 17. [One expression, many engines](?file=17_backend_semantics.py) →
     """)
     return
 
@@ -37,7 +37,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 14. DataFusion's surprising semantics, against the Lean model
+    # 16. DataFusion's surprising semantics, against the Lean model
 
     `sverify` proves things about a pipeline's Substrait plan in Lean and then
     runs that plan on **DataFusion**. The proofs are about Lean's semantics
@@ -423,9 +423,10 @@ def _(mo):
       it returns rows for `x NOT IN (SELECT y …)` even when `y` contains a
       `NULL`. It runs the query as an ordinary anti join, without SQL's
       "null-aware" rule. DuckDB gives the standard answer, which is no rows.
-      Lean's parser does not accept `NOT IN (subquery)`, so no proof
-      depends on it. Positive `IN (subquery)` becomes a semi join, which is
-      correct.
+      Lean's parser lifts `NOT IN (subquery)` with SQL's rule (a left join
+      with the subquery's values and a count of its `NULL`s), so the checked
+      plan gives no rows; DataFusion running the SQL does not. Positive
+      `IN (subquery)` in a filter becomes a semi join, which is correct.
     * **N4**: aggregates over no rows: `COUNT` is 0, but `SUM`, `AVG` and
       `MIN` are `NULL`, not 0. The model has no aggregates yet, so it
       refuses these plans.
@@ -471,8 +472,8 @@ def _(P, Q, pl, prove, render):
             "NOT IN a subquery with NULL",
             "SELECT x FROM n WHERE x NOT IN (SELECT y FROM s)",
             "handled",
-            "DataFusion bug (no null-aware anti join). The checker refuses `NOT IN (subquery)`, "
-            "so nothing is proved. Use NOT EXISTS, which DataFusion gets right.",
+            "DataFusion bug (no null-aware anti join). The checker plans `NOT IN (subquery)` "
+            "with SQL's NULL rule, so the checked plan is right where DataFusion's SQL is not.",
             std="no rows (s contains NULL)",
             duck="same",
         ),
@@ -540,7 +541,7 @@ def _(mo):
 
     The model does not follow DataFusion here. SQL engines (PostgreSQL,
     DuckDB, Spark, Snowflake) have **one NaN**, equal to itself and above
-    `∞`, and **one zero**, and so does Lean's `Float.lean` (chapter 5): the
+    `∞`, and **one zero**, and so does Lean's `Float.lean` (chapter 12): the
     least surprising choice. So:
 
     * **F1–F2**: `NaN = NaN` and `NaN > ∞` are true everywhere. DataFusion
@@ -1446,7 +1447,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py) · 15. [One expression, many engines](?file=15_backend_semantics.py) →
+    ← 15. [What is proved, what is trusted](?file=15_trust.py) · [Contents](?file=00_start_here.py) · 17. [One expression, many engines](?file=17_backend_semantics.py) →
     """)
     return
 
