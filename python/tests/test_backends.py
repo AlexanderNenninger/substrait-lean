@@ -10,6 +10,12 @@ FETCH, a window or a sort). Where a FETCH takes "the first rows" of an unsorted
 input DataFusion may take others, and it adds the doubles of a SUM or AVG in
 an order of its own, so there only Polars and DuckDB are compared. The
 Snowflake SQL is generated for every case too (and parsed).
+
+The Spark SQL of every case runs on a local Spark session (`spark_session`,
+one JVM for the whole test) and agrees with DuckDB, row for row where the
+order is part of the result. Spark refuses what needs a table's row order;
+the cases of `TIE_FREE` run with `tie_free=True` on the tables drawn here,
+whose timestamps are distinct.
 """
 
 import datetime as dt
@@ -39,6 +45,7 @@ from sverify.sql import Unsupported, parse_plan
 from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Aggregate, Fetch, Rel, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
+from sverify.sql.spark import SPARK
 from sverify.testing import canonical
 
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
@@ -155,16 +162,58 @@ def test_engines_agree(con, case, data):
             assert canonical(got) == df
 
 
+def engine_sql(case, engine: str, dialect, read: str) -> str | None:
+    """The SQL of a case for a dialect that refuses what needs row order: the
+    query, None where it is refused, or the `tie_free` query of `TIE_FREE`.
+    It parses as `read` SQL (sqlglot)."""
+    plan = json.loads(written_plan(to_substrait_json(case.build())))
+    if engine in REFUSED.get(case.label, {}):
+        with pytest.raises(Unsupported, match=REFUSED[case.label][engine]):
+            plan_sql(plan, dialect)
+        if case.label not in TIE_FREE:
+            return None
+        sql = plan_sql(plan, dialect, tie_free=True)
+    else:
+        sql = plan_sql(plan, dialect)
+    sqlglot.parse_one(sql, read=read)
+    return sql
+
+
 @pytest.mark.backend("snowflake")
 @pytest.mark.parametrize("case", VERIFIED, ids=lambda c: c.label)
 def test_snowflake_sql(case):
-    plan = json.loads(written_plan(to_substrait_json(case.build())))
-    if "snowflake" in REFUSED.get(case.label, {}):
-        with pytest.raises(Unsupported, match=REFUSED[case.label]["snowflake"]):
-            plan_sql(plan, SNOWFLAKE)
-        if case.label not in TIE_FREE:
-            return
-        sql = plan_sql(plan, SNOWFLAKE, tie_free=True)
-    else:
-        sql = plan_sql(plan, SNOWFLAKE)
-    sqlglot.parse_one(sql, read="snowflake")
+    engine_sql(case, "snowflake", SNOWFLAKE, "snowflake")
+
+
+@pytest.mark.backend("spark")
+@pytest.mark.parametrize("case", VERIFIED, ids=lambda c: c.label)
+def test_spark_sql(case):
+    engine_sql(case, "spark", SPARK, "spark")
+
+
+@pytest.mark.backend("spark")
+@settings(max_examples=6, deadline=None, suppress_health_check=list(HealthCheck))
+@given(data=tables())
+def test_spark_agrees_with_duckdb(con, data):
+    """Every case on one drawn pair of tables: one test, so one JVM."""
+    from spark_session import put_tables, query
+
+    put_tables(data)
+    for name, table in data.items():
+        put_table(con, name, table)
+    for case in VERIFIED:
+        sql = engine_sql(case, "spark", SPARK, "spark")
+        if sql is None:
+            continue
+        plan = written_plan(to_substrait_json(case.build()))
+        try:
+            duck = rows(run_plan(con, plan, "duckdb"))
+        except duckdb.Error:
+            # A runtime error of `SubstraitLean/Safety.lean`: Spark raises too.
+            with pytest.raises(Exception, match="(?i)sverify|overflow|cast"):
+                query(sql)
+            continue
+        got = query(sql)
+        root = parse_plan(json.loads(plan)).root
+        ordered = order_matters(root) and case.label not in TIE_FREE
+        assert same(got, duck) if ordered else canonical(got) == canonical(duck), case.label

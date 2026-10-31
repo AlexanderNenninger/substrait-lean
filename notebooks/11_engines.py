@@ -191,7 +191,7 @@ def _(mo):
     def step(orders): ...
     ```
 
-    ## SQL for DuckDB and Snowflake
+    ## SQL for DuckDB, Snowflake and Spark
 
     The SQL generator in `sverify.sql` writes a checked plan, or one of
     Lean's update plans, as SQL whose result is `Rel.eval` of the plan.
@@ -205,7 +205,9 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo):
-    dialect = mo.ui.radio(["duckdb", "snowflake"], value="duckdb", label="dialect", inline=True)
+    dialect = mo.ui.radio(
+        ["duckdb", "snowflake", "spark"], value="duckdb", label="dialect", inline=True
+    )
     sql_query = mo.ui.text_area(
         value="select k, qty * 2 as doubled from t where qty > 0",
         label="query over t(k, qty, v)",
@@ -221,10 +223,12 @@ def _(con, dialect, json, mo, sql_query, sqlglot, sv):
     from sverify.sql import Unsupported, to_sql
     from sverify.sql.duckdb import DUCKDB
     from sverify.sql.snowflake import SNOWFLAKE
+    from sverify.sql.spark import SPARK
 
     try:
         _plan = json.loads(sv.substrait_json(con, sql_query.value))
-        _sql = to_sql(_plan, {"duckdb": DUCKDB, "snowflake": SNOWFLAKE}[dialect.value])
+        _dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
+        _sql = to_sql(_plan, _dialects[dialect.value])
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
         _out = mo.md(f"```sql\n{_pretty}\n```")
     except Unsupported as _e:
@@ -240,9 +244,9 @@ def _(mo):
     mo.md(r"""
     Long, but every line is there for a reason. Try
     `select k, row_number() over (partition by k order by qty) as rn from t`
-    in both dialects: DuckDB gets an ordinal column so ties break the way
-    Lean's stable sort breaks them, while **Snowflake refuses**, because its
-    tables have no row order to break ties with. If a contract report says
+    in each dialect: DuckDB gets an ordinal column so ties break the way
+    Lean's stable sort breaks them, while **Snowflake and Spark refuse**,
+    because their tables have no row order to break ties with. If a contract report says
     `deterministic` (chapter 7), pass `tie_free=True` to promise there are
     no ties.
 
@@ -252,6 +256,38 @@ def _(mo):
     instead of answering differently: interval-valued expressions, a
     negative NaN, comparisons between two zeros (Snowflake doesn't document
     whether the sign of zero is visible).
+
+    ## Spark and Databricks
+
+    The Spark dialect (`sverify.sql.spark`) targets Spark 4 and Databricks
+    SQL. It assumes the session settings of `SPARK_CONF`, above all
+    `spark.sql.ansi.enabled`: without ANSI mode an overflow wraps around and
+    a bad cast is NULL. Spark answers several of
+    [chapter 15](?file=15_backend_semantics.py)'s questions its own way, and
+    each is spelled out or refused:
+
+    * `/` of integers is a double, so division is `div`; `/` of doubles
+      raises on a zero divisor in ANSI mode, so `x / 0.0` is written as the
+      IEEE ±inf or NaN.
+    * `CAST(9.3e18 AS BIGINT)` saturates instead of raising, `FLOOR` and
+      `CEIL` return integers, and `ROUND(-0.4)` is +0.0: each is checked or
+      repaired.
+    * `SUM` of `BIGINT` raises on an overflowing partial sum, though Lean's
+      total may fit: it adds `DECIMAL(38,0)` instead.
+    * `TIMESTAMP` is the session time zone's (`TIMESTAMP_LTZ`), and so is
+      what `date_trunc` returns: the SQL stays in `TIMESTAMP_NTZ`.
+    * `GROUP BY` turns -0.0 into +0.0, and the optimizer takes the literals
+      -0.0 and +0.0 for equal, folding `CASE WHEN c THEN -0.0 ELSE 0.0 END`
+      to `0.0`. The sign is read from a zero's text (`'-0.0'`) and kept.
+    * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's), so it
+      is refused, as are sorts and windows over a table without
+      `tie_free=True`. Over `VALUES`, a `SUM` of doubles adds in Lean's
+      order (`aggregate` over the sorted list).
+
+    Unlike Snowflake, Spark runs locally: the tests run every coverage case
+    and every query of the Snowflake suite on a local Spark session and
+    compare them with `Rel.eval`. DataFusion's own departures from the model
+    are in [chapter 14](?file=14_datafusion_semantics.py).
 
     ## Testing the engines against the model
 

@@ -11,7 +11,7 @@ Each case is an Ibis expression over two unbound tables. It is compiled the way
 * `upstream`: Ibis fails before a plan exists.
 
 Every verified case also runs on each engine (`ENGINES`): Polars and the SQL
-of DuckDB and Snowflake translate the plan Lean writes back out. `REFUSED`
+of DuckDB, Snowflake and Spark translate the plan Lean writes back out. `REFUSED`
 lists the cases an engine refuses, and why; `tests/test_backends.py` runs the
 rest on random tables and compares the engines.
 
@@ -229,31 +229,34 @@ CASES: list[Case] = [
 
 
 #: The engines besides DataFusion, which runs Ibis's own plans.
-ENGINES = ("polars", "duckdb", "snowflake")
+ENGINES = ("polars", "duckdb", "snowflake", "spark")
 
 #: Verified cases an engine refuses (`Unsupported`), with a pattern of the
 #: reason. These are what cannot be expressed there:
 #:
 #: * `lt` on strings is undefined in the model (`BinFn.apply` has no case for
 #:   it, so it is NULL, where SQL compares), so no engine may run it.
-#: * Snowflake tables have no row order, which FETCH and a stable sort's or a
-#:   window's ties follow. Sorts and windows run with `tie_free=True`.
-#:   A `SUM` or `AVG` of doubles adds in that order too (rounding depends on it).
+#: * Snowflake and Spark tables have no row order, which FETCH and a stable
+#:   sort's or a window's ties follow. Sorts and windows run with
+#:   `tie_free=True`. A `SUM` or `AVG` of doubles adds in that order too
+#:   (rounding depends on it).
+NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
 REFUSED: dict[str, dict[str, str]] = {
-    "count, max, mean": {"snowflake": "no row order"},
+    "count, max, mean": NO_ROW_ORDER,
     "non-equi join": {
         "polars": "lt of String",
         "duckdb": "ordering comparisons of str values",
         "snowflake": "ordering comparisons of str values",
+        "spark": "ordering comparisons of str values",
     },
-    "order_by": {"snowflake": "no row order"},
-    "limit": {"snowflake": "no row order"},
-    "limit with offset": {"snowflake": "no row order"},
-    "order_by + limit": {"snowflake": "no row order"},
-    "row_number": {"snowflake": "no row order"},
-    "lag": {"snowflake": "no row order"},
+    "order_by": NO_ROW_ORDER,
+    "limit": NO_ROW_ORDER,
+    "limit with offset": NO_ROW_ORDER,
+    "order_by + limit": NO_ROW_ORDER,
+    "row_number": NO_ROW_ORDER,
+    "lag": NO_ROW_ORDER,
 }
-#: Of those, the cases Snowflake runs when the caller promises no ties.
+#: Of those, the cases Snowflake and Spark run when the caller promises no ties.
 TIE_FREE = {"order_by", "row_number", "lag"}
 
 
@@ -264,14 +267,16 @@ def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.duckdb import DUCKDB
     from sverify.sql.snowflake import SNOWFLAKE
+    from sverify.sql.spark import SPARK
 
+    dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
     plan = json.loads(written_plan(to_substrait_json(c.build())))
     try:
         if engine == "polars":
             tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in (T, U)}
             polars_engine.run(plan, tables)
         else:
-            plan_sql(plan, DUCKDB if engine == "duckdb" else SNOWFLAKE, tie_free=tie_free)
+            plan_sql(plan, dialects[engine], tie_free=tie_free)
     except (polars_engine.Unsupported, Untranslatable) as e:
         return str(e)
     return None
@@ -311,7 +316,7 @@ def results() -> list[Result]:
 
 SYMBOL = {"verified": "✓", "rejected": "✗", "upstream": "–"}
 START, END = "<!-- coverage:start -->", "<!-- coverage:end -->"
-NAMES = {"polars": "Polars", "duckdb": "DuckDB", "snowflake": "Snowflake"}
+NAMES = {"polars": "Polars", "duckdb": "DuckDB", "snowflake": "Snowflake", "spark": "Spark"}
 
 
 def table(rs: list[Result]) -> str:

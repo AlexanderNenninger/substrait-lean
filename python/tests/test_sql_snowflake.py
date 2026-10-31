@@ -29,7 +29,7 @@ import sverify as sv
 from sverify.engine import run_checker
 from sverify.examples import PIPELINES, create_tables
 from sverify.incremental import delta_plans
-from sverify.sql import Unsupported, to_sql
+from sverify.sql import Dialect, Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
 
 pytestmark = pytest.mark.backend("snowflake")
@@ -181,15 +181,15 @@ def snowflake_sql(plan: dict, tie_free: bool = False) -> str:
         return f"-- Unsupported: {e}"
 
 
-def check_snapshot(name: str, sql: str) -> None:
-    path = SNAPSHOTS / f"{name}.snowflake.sql"
+def check_snapshot(name: str, sql: str, dialect: str = "snowflake") -> None:
+    path = SNAPSHOTS / f"{name}.{dialect}.sql"
     if UPDATE:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(sql + "\n")
     assert path.exists(), f"no snapshot {path.name}; run with SVERIFY_UPDATE_SNAPSHOTS=1"
     assert sql + "\n" == path.read_text()
     if not sql.startswith("-- Unsupported"):
-        sqlglot.parse_one(sql, read="snowflake")
+        sqlglot.parse_one(sql, read=dialect)
 
 
 @pytest.mark.parametrize("path", accepted_fixtures(), ids=lambda p: p.stem)
@@ -343,33 +343,41 @@ def load_tables(cur, suffix: str) -> Callable[[str], str]:
     return retarget
 
 
-def run_differential(cur, suffix: str) -> None:
-    retarget = load_tables(cur, suffix)
+def run_differential(
+    run: Callable[[str], list[tuple]], retarget: Callable[[str], str], d: Dialect = SNOWFLAKE
+) -> None:
+    """Every plan of this module, as `d`'s SQL (`run` executes a query), against
+    Lean's evaluation; `retarget` points a query at the loaded tables."""
     plans = {**PLANS, **DELTA_PLANS}
     for name, plan in plans.items():
-        got = cur.execute(retarget(to_sql(plan, SNOWFLAKE))).fetchall()
+        got = run(retarget(to_sql(plan, d)))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in ORDERED_PLANS.items():
-        got = cur.execute(to_sql(plan, SNOWFLAKE)).fetchall()
+        got = run(to_sql(plan, d))
         assert got == lean_rows(plan, {}), name  # in Lean's row order
     for name, plan in TIE_FREE.items():
-        got = cur.execute(retarget(to_sql(plan, SNOWFLAKE, tie_free=True))).fetchall()
+        got = run(retarget(to_sql(plan, d, tie_free=True)))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in FEATURE_PLANS.items():
-        got = cur.execute(retarget(to_sql(plan, SNOWFLAKE))).fetchall()
+        got = run(retarget(to_sql(plan, d)))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
     for name, expr in SORTED.items():
         plan = json.loads(sv.substrait_json(con, sv.engine.to_sql(expr)))
-        got = cur.execute(retarget(to_sql(plan, SNOWFLAKE, tie_free=True))).fetchall()
+        got = run(retarget(to_sql(plan, d, tie_free=True)))
         assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():
         plan = json.loads(path.read_text())
         if "namedTable" in path.read_text():
             continue  # schema-only tables: covered by the pipelines above
-        got = cur.execute(to_sql(plan, SNOWFLAKE)).fetchall()
+        got = run(to_sql(plan, d))
         assert canonical(got) == canonical(lean_rows(plan, {})), path.stem
+
+
+def snowflake_differential(cur, suffix: str) -> None:
+    retarget = load_tables(cur, suffix)
+    run_differential(lambda sql: cur.execute(sql).fetchall(), retarget)
 
 
 def run_semantics(cur) -> None:
@@ -419,7 +427,7 @@ def fakesnow_cursor():
 @pytest.mark.filterwarnings("ignore::UserWarning")
 def test_emulated_on_fakesnow_matches_lean(fakesnow_cursor):
     """EMULATION: fakesnow runs the queries on DuckDB, not on Snowflake."""
-    run_differential(fakesnow_cursor, "")
+    snowflake_differential(fakesnow_cursor, "")
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -444,5 +452,5 @@ def test_real_snowflake_matches_lean():
     """Opt-in: runs only with SNOWFLAKE_* connection variables set."""
     with snowflake_connection() as conn:
         cur = conn.cursor()
-        run_differential(cur, f"_{uuid.uuid4().hex[:8]}")
+        snowflake_differential(cur, f"_{uuid.uuid4().hex[:8]}")
         run_semantics(cur)

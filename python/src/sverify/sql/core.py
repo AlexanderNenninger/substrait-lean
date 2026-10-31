@@ -444,6 +444,12 @@ class Dialect:
         and NaN) are different partitions."""
         return [x, self.sign_bit(x)] if kind == "float" else [x]
 
+    def group_value(self, x: str, kind: Kind | None) -> str:
+        """The value of column `x` in the output of a `GROUP BY` on
+        `partition_keys(x, kind)`: `x` itself, unless the engine rewrites
+        grouped values (a double's sign, say)."""
+        return x
+
     def over(self, partition: Sequence[str], order: Sequence[str]) -> str:
         parts = []
         if partition:
@@ -2269,7 +2275,10 @@ class _Writer:
             keys = [
                 x for c, k in zip(g_cols, g_kinds, strict=True) for x in d.partition_keys(col(c), k)
             ]
-        out = [f"{col(c)} AS {self.c(k)}" for k, c in enumerate(g_cols)]
+        out = [
+            f"{d.group_value(col(c), k)} AS {self.c(i)}"
+            for i, (c, k) in enumerate(zip(g_cols, g_kinds, strict=True))
+        ]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
             sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
@@ -2320,8 +2329,11 @@ class _Writer:
         keys = [x for j in range(n) for x in d.partition_keys(self.ref(a, self.c(j)), ks[j])]
         if not ordered:
             # Any row of a group stands for it: they are all the same value.
+            items = [
+                f"{d.group_value(self.ref(a, self.c(j)), ks[j])} AS {self.c(j)}" for j in range(n)
+            ]
             return self.select(
-                self.passthrough(a, n, False),
+                items,
                 d.subquery(self.rel(i, False), a),
                 "GROUP BY " + ", ".join(keys),
             )
