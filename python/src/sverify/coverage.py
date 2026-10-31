@@ -25,9 +25,7 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import sys
-import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,9 +37,9 @@ from ibis import _
 
 from sverify.engine import (
     Backend,
-    checker_path,
     connect,
     create_table,
+    run_checker,
     substrait_json,
     to_sql,
     written_plan,
@@ -305,12 +303,9 @@ def check(con: Backend, c: Case) -> Result:
         plan = substrait_json(con, to_sql(c.build()))
     except Exception as e:  # noqa: BLE001 - any producer failure counts
         return Result(c, "upstream", False, str(e).splitlines()[0], {})
-    with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
-        f.write(plan)
-        f.flush()
-        proc = subprocess.run([str(checker_path()), f.name], capture_output=True, text=True)
-    out = proc.stdout + proc.stderr
-    if proc.returncode == 0:
+    code, stdout, stderr = run_checker((), plan)
+    out = stdout + stderr
+    if code == 0:
         refused = {e: why for e in ENGINES if (why := refusal(con, c, e)) is not None}
         return Result(c, "verified", "incremental: yes" in out, "", refused)
     lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]

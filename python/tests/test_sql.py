@@ -14,7 +14,6 @@ import json
 import math
 import os
 import re
-import subprocess
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -27,9 +26,9 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_substrait_json, substrait_json
+from sverify.engine import connect, put_table, run_checker, run_substrait_json, substrait_json
 from sverify.examples import PIPELINES
-from sverify.incremental import arrow_rows, checker_path, delta_plans, read_tables
+from sverify.incremental import arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
@@ -139,13 +138,8 @@ def written(plan_json: str) -> str:
     """The plan as `substrait-check --write` writes it back out, with FETCH in
     the current encoding (Lean writes the deprecated `offset`/`count`, which
     DataFusion's protobuf no longer has; the parser reads both alike)."""
-    out = subprocess.run(
-        [str(checker_path()), "--write", "/dev/stdin"],
-        input=plan_json,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    code, out, err = run_checker(("--write",), plan_json)
+    assert code == 0, err
 
     def walk(node: object) -> None:
         if isinstance(node, dict):

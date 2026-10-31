@@ -17,7 +17,6 @@ import json
 import math
 import os
 import re
-import subprocess
 import uuid
 from collections.abc import Callable, Mapping
 from decimal import Decimal
@@ -27,8 +26,9 @@ import pytest
 import sqlglot
 
 import sverify as sv
+from sverify.engine import run_checker
 from sverify.examples import PIPELINES, create_tables
-from sverify.incremental import checker_path, delta_plans
+from sverify.incremental import delta_plans
 from sverify.sql import Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
 
@@ -296,13 +296,8 @@ def parse_lean_rows(out: str) -> list[tuple]:
 
 def lean_rows(plan: dict, tables: Mapping[str, list[tuple]]) -> list[tuple]:
     """`Rel.eval` of `plan` with its named tables replaced by `tables`."""
-    out = subprocess.run(
-        [str(checker_path()), "/dev/stdin"],
-        input=json.dumps(inline(plan, tables)),
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    code, out, err = run_checker((), json.dumps(inline(plan, tables)))
+    assert code == 0, err
     return parse_lean_rows(out)
 
 
