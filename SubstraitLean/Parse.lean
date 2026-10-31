@@ -207,13 +207,17 @@ def floatOfScientific (m : Int) (e : Nat) : Float :=
   let f := Float.ofScientific m.natAbs true e
   if m < 0 then -f else f
 
+/-- `CAST(c AS DOUBLE)` of a constant. A string is read as DataFusion reads it,
+with no spaces around the number (DataFusion fails on those). -/
 def Const.toFloat? : Const → Option Float
   | .int i => some (Float.ofInt i)
   | .flt f => some f
   | .code c => some (FloatCode.toFloat c)
   | .dec m s => some (floatOfScientific m s)
   | .str s =>
-    match s.trimAscii.toString.toLower with
+    -- `Json.parse` skips surrounding spaces, so refuse them first.
+    if s.trimAscii.toString != s then none else
+    match s.toLower with
     | "inf" | "+inf" | "infinity" | "+infinity" => some (1.0 / 0.0)
     | "-inf" | "-infinity" => some (-1.0 / 0.0)
     | "nan" => some (0.0 / 0.0)
@@ -222,17 +226,45 @@ def Const.toFloat? : Const → Option Float
       | _ => none
   | _ => none
 
-/-- Round half away from zero when casting a double to an integer. -/
+/-- An integer written as DataFusion's casts accept one: an optional sign
+and ASCII digits, nothing else (no spaces, no `_` separators). -/
+def parseInt? (s : String) : Option Int :=
+  let (neg, ds) := match s.toList with
+    | '-' :: r => (true, r)
+    | '+' :: r => (false, r)
+    | r => (false, r)
+  if ds.isEmpty || !ds.all Char.isDigit then none
+  else
+    let n : Nat := ds.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0
+    some (if neg then -(n : Int) else n)
+
+/-- `CAST(c AS BIGINT)` of a constant, as DataFusion casts a column
+(`FloatCode.toInt?`): doubles and decimals truncate toward zero, and NaN, ±∞
+and doubles outside 64 bits have no value. -/
 def Const.toInt? : Const → Option Int
   | .int i => some i
-  | .flt f => if f.isNaN || f.isInf then none else some f.round.toInt64.toInt
+  | .flt f =>
+    if f.isNaN || f < -9223372036854775808.0 || f ≥ 9223372036854775808.0 then none
+    else some f.toInt64.toInt
   | .dec m s =>
-    let q := m.natAbs / 10 ^ s
-    let r := m.natAbs % 10 ^ s
-    let mag : Int := if 2 * r ≥ 10 ^ s then q + 1 else q
-    some (if m < 0 then -mag else mag)
-  | .str s => s.trimAscii.toString.toInt?
+    let q : Int := (m.natAbs / 10 ^ s : Nat)
+    some (if m < 0 then -q else q)
+  | .str s => parseInt? s
   | _ => none
+
+/-- Microseconds from seconds, rounded to the nearest (`f * 10⁶` is rarely
+exact: `0.3 * 10⁶` is just below 300000). -/
+def roundMicros? (f : Float) : Option Int :=
+  if f.isNaN || f.isInf then none else some f.round.toInt64.toInt
+
+#guard (Const.dec 27 1).toInt? == some 2 && (Const.dec (-25) 1).toInt? == some (-2)
+#guard (Const.flt 2.7).toInt? == some 2 && (Const.flt (-2.7)).toInt? == some (-2)
+#guard (Const.flt 1e30).toInt? == none && (Const.flt (-9223372036854775808.0)).toInt? == some (-2 ^ 63)
+#guard (Const.str "+12").toInt? == some 12 && (Const.str "-012").toInt? == some (-12)
+#guard [" 12", "12 ", "1_000", "", "-", "١٢"].all fun s => (Const.str s).toInt? == none
+#guard (Const.str " 1.5").toFloat? == none && (Const.str "1.5\n").toFloat? == none
+#guard (Time.parseTimestamp? " 2024-01-01").isNone && (Time.parseDate? "2024-01-01 ").isNone
+#guard roundMicros? (0.3 * 1000000.0) == some 300000
 
 def intBits (ty : Json) : Nat :=
   if (ty.getObjVal? "i8").toOption.isSome then 8
@@ -253,14 +285,14 @@ def castConst (ty : Json) (c : Const) : J Const := do
     else throw s!"cast of {i} to a {bits}-bit integer overflows"
   | .time =>
     match c with
-    | .str s => match Time.parseTimestamp? s.trimAscii.toString with
+    | .str s => match Time.parseTimestamp? s with
       | some us => return .int us
       | none => throw s!"cannot parse timestamp '{s}'"
     | .int us => return .int us
     | _ => throw "cannot cast this value to a timestamp"
   | .date =>
     match c with
-    | .str s => match Time.parseDate? s.trimAscii.toString with
+    | .str s => match Time.parseDate? s with
       | some d => return .int d
       | none => throw s!"cannot parse date '{s}'"
     | .int d => return .int d
@@ -329,7 +361,7 @@ def foldCall : String → List Const → Option Const
   | "negate", [.code c] => some (.code (FloatCode.neg c))
   | "negate", [c] => c.toFloat? >>= fun f => some (.code (FloatCode.neg (FloatCode.ofFloat f)))
   | "trunc", [c] => c.toFloat? >>= fun f => some (.flt (if f ≥ 0 then f.floor else f.ceil))
-  | "to_seconds", [c] => c.toFloat? >>= fun f => (Const.flt (f * 1000000.0)).toInt? >>= (some ∘ .int)
+  | "to_seconds", [c] => c.toFloat? >>= fun f => roundMicros? (f * 1000000.0) >>= (some ∘ .int)
   | "to_minutes", [c] => c.toInt? >>= fun i => some (.int (i * 60_000_000))
   | "to_hours", [c] => c.toInt? >>= fun i => some (.int (i * 3_600_000_000))
   | "to_days", [c] => c.toInt? >>= fun i => some (.int (i * 86_400_000_000))

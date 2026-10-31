@@ -34,6 +34,8 @@ from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
 from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_rows, parse_rows
 
+pytestmark = pytest.mark.backend("duckdb")
+
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
 SNAPSHOTS = Path(__file__).parent / "sql_snapshots"
