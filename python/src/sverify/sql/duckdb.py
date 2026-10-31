@@ -21,7 +21,9 @@ raises on non-ASCII text where they would differ from DataFusion (#70).
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
 proleptic calendar with a year 0. DuckDB's timestamps reach beyond the years
-chrono represents, so `date_part` is NULL outside them, as in Lean. The
+chrono represents, so `date_part` is NULL outside them, as in Lean, and date
+arithmetic raises outside them, where DataFusion fails. Adding months clamps
+to the end of the month, as `Time.addMonths` does. The
 timestamp 2⁶³ - 1 µs is DuckDB's `infinity` (and its range starts in 290309
 BC), which `date_trunc` leaves as it is.
 """
@@ -83,6 +85,22 @@ class DuckDBDialect(Dialect):
             f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
         )
 
+    def window_int_sum(self, v: str, over: str) -> str:
+        # SUM of BIGINT is a HUGEINT: exact.
+        total = f"SUM({v}) {over}"
+        fail = self.raise_("integer overflow in SUM", total, "int")
+        inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
+        return (
+            f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
+            f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
+        )
+
+    def window_float_sum(self, v: str, over: str) -> str:
+        # The frame's values in frame order (its ORDER BY), folded from 0.0.
+        values = f"list({v}) FILTER (WHERE {v} IS NOT NULL) {over}"
+        start = self.cast("0", "float")
+        return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
+
     def float_sum(self, v: str, o: str) -> str:
         values = f"list({v} ORDER BY {o}) FILTER (WHERE {v} IS NOT NULL)"
         start = self.cast("0", "float")
@@ -124,6 +142,21 @@ class DuckDBDialect(Dialect):
 
     def date_trunc(self, unit: str, ts: str) -> str:
         return ts if unit == "microsecond" else f"date_trunc({self.str_lit(unit)}, {ts})"
+
+    def time_micros(self, ts: str) -> str:
+        return f"epoch_us({ts})"
+
+    def as_time(self, us: str) -> str:
+        return f"make_timestamp({us})"
+
+    def date_add_days(self, d: str, n: str) -> str:
+        # DATE + INTEGER is a DATE; a count beyond 32 bits leaves chrono's
+        # dates anyway (and the cast raises).
+        return f"({d} + CAST({n} AS INTEGER))"
+
+    def add_months(self, x: str, months: int, kind: Kind) -> str:
+        # DuckDB clamps to the month's end; DATE + INTERVAL is a TIMESTAMP.
+        return self.cast(f"({x} + to_months({self.int_lit(months)}))", kind)
 
 
 DUCKDB: Dialect = DuckDBDialect("duckdb")

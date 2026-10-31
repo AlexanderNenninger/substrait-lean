@@ -31,7 +31,9 @@ def functions : List (Nat × String) :=
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
    (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
-   (42, "array_agg")]
+   (42, "array_agg"), (60, "date_diff"), (61, "strftime"), (62, "date_bin"),
+   (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
+   (75, "first_value"), (76, "last_value"), (77, "nth_value")]
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40 | .collect => 42
@@ -39,15 +41,16 @@ def AggFn.anchor : AggFn → Nat
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
-  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
+  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ | .dayPart _ => 25
+  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4 | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
+  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
-  | .substr _ => 32
+  | .substr _ => 32 | .dateAdd => 4 | .dateDiff => 60
   | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
@@ -87,6 +90,7 @@ def kindType : Parse.Kind → Json
   | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
+  | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
   | .int | .other => i64Type
 where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
@@ -97,18 +101,18 @@ as microseconds, and `Expr.kind` calls `ts - ts` a time; the writer must tell
 them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
-  | int | float | time | date | interval | str | bool | other
+  | int | float | time | date | interval | str | bool | tod | other
   | list (elem : WKind)
   deriving BEq
 
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
-  | .str => .str | .bool => .bool | .other => .other | .list k => .list (ofKind k)
+  | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Parse.Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
-  | .str => .str | .bool => .bool | .other => .other | .list k => .list (toKind k)
+  | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
 
 /-- An expression without field references. -/
 def isConst : Expr → Bool
@@ -168,6 +172,9 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
     obj [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .interval, .int us => (writeInterval us).getObjValD "literal"
   | .date, .int d => obj [("date", toJson d)]
+  | .tod, .int us =>
+    obj [("precisionTime", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .tod, .null => obj [("null", obj [("precisionTime", obj [("precision", toJson 6)])])]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
   | .float, .null => obj [("null", fp64Type)]
   | .str, .null => obj [("null", obj [("string", obj [])])]
@@ -182,6 +189,12 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | _, v => writeValue v
 
 def writeLit (k : WKind) (v : Value) : Json := obj [("literal", writeLitBody k v)]
+
+/-- An interval of `m` months. -/
+def writeMonths (m : Int) : Json :=
+  obj [("literal", obj [("intervalCompound", obj [
+    ("intervalYearToMonth", obj [("months", toJson m)]),
+    ("intervalDayToSecond", obj [("precision", toJson 6)])])])]
 
 /-- A constant of a virtual table, as a literal of its column's type `ty`
 (integers of the column's width). -/
@@ -227,8 +240,19 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
-  | .un (.datePart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .time a]
+  | .un (.datePart p) a =>
+    let k := if wkind cols a == .tod then .tod else .time
+    call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols k a]
+  | .un .timeOfDay a => obj [("cast", obj [("type", obj [("precisionTime", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .time a)])]
+  | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
+  | .un (.strftime fmt) a => call 61 [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
+  | .un (.bucket k o) a => call 62 [writeInterval k, writeExpr cols .time a, writeLit .time (.int o)]
   | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
+  | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
+  | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
+  | .un (.addMonths m t) a => call 4 [writeExpr cols (if t then .time else .date) a, writeMonths m]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
@@ -242,6 +266,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       -- `timestamp ± constant`: the constant is an interval in microseconds.
       let (ka, kb) := sumKinds (f matches .sub) cols ctx a b
       call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+    -- Days added to a date: an interval of days, or a count of them.
+    | .dateAdd => match b with
+      | .lit (.int k) => call 4 [writeExpr cols .date a, writeInterval (k * Time.usPerDay)]
+      | _ => call 4 [writeExpr cols .date a, call 6 [writeExpr cols .int b, writeInterval Time.usPerDay]]
+    | .dateDiff => call 60 [writeExpr cols .date a, writeExpr cols .date b]
     | .substr (some n) =>
       call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
     | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]
@@ -290,8 +319,15 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .window r _ _ fns =>
       let ks := relKinds schemas cat r
       ks ++ fns.map fun
-        | .rowNumber => .int
-        | .lag c _ _ | .lead c _ _ => ks.getD c .other
+        | .rowNumber | .rank _ | .denseRank _ | .ntile _ => .int
+        | .percentRank _ | .cumeDist _ => .float
+        | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+          ks.getD c .other
+        | .agg m _ _ => match m.fn with
+          | .count | .sum => .int
+          | .fsum | .avg => .float
+          | .min | .max => wkind ks m.arg
+          | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
@@ -311,22 +347,37 @@ def writeSortKey (cols : List WKind) (k : SortKey) : Json :=
     | true, false => "SORT_DIRECTION_DESC_NULLS_LAST"
   obj [("expr", writeExpr cols .other (.field k.col)), ("direction", dir)]
 
+def writeBound : FrameBound → Json
+  | .unboundedPreceding | .unboundedFollowing => obj [("unbounded", obj [])]
+  | .preceding 0 => obj [("currentRow", obj [])]
+  | .preceding k => obj [("preceding", obj [("offset", toJson (toString k))])]
+  | .following k => obj [("following", obj [("offset", toJson (toString k))])]
+
 /-- A window function over input columns of kinds `cols`. -/
 def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
   let col (i : Nat) := writeExpr cols .other (.field i)
-  let (anchor, args) := match f with
-    | .rowNumber => (12, [])
+  let (anchor, args, fr) : Nat × List Json × Frame := match f with
+    | .rowNumber => (12, [], .all)
     | .lag c k d | .lead c k d =>
       let base := [col c, writeLit .int (.int k)]
       (if f matches .lag .. then 13 else 14,
-        if d == Value.null then base else base ++ [writeLit (cols.getD c .other) d])
+        if d == Value.null then base else base ++ [writeLit (cols.getD c .other) d], .all)
+    | .rank _ => (70, [], .all)
+    | .denseRank _ => (71, [], .all)
+    | .percentRank _ => (72, [], .all)
+    | .cumeDist _ => (73, [], .all)
+    | .ntile k => (74, [writeLit .int (.int k)], .all)
+    | .agg m _ fr => (Write.AggFn.anchor m.fn, [writeExpr cols (wkind cols m.arg) m.arg], fr)
+    | .firstValue c _ fr => (75, [col c], fr)
+    | .lastValue c _ fr => (76, [col c], fr)
+    | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
   obj [("windowFunction", obj [
     ("functionReference", toJson anchor),
     ("partitions", Json.arr (part.map col).toArray),
     ("sorts", Json.arr (sort.map (writeSortKey cols)).toArray),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
-    ("lowerBound", obj [("unbounded", obj [])]), ("upperBound", obj [("unbounded", obj [])]),
-    ("boundsType", "BOUNDS_TYPE_ROWS")])]
+    ("lowerBound", writeBound fr.lo), ("upperBound", writeBound fr.hi),
+    ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")])]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
 def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=

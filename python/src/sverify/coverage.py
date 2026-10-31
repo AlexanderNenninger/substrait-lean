@@ -24,6 +24,7 @@ README tables with
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import sys
@@ -56,6 +57,8 @@ T = ibis.table(
 U = ibis.table({"name": "string", "region": "string"}, name="u")
 L = ibis.table({"k": "int64", "xs": "array<int64>"}, name="l")
 t, u, ls = T, U, L
+#: A date constant.
+DAY0 = ibis.literal(dt.date(1970, 1, 5))
 #: Every table the cases read.
 TABLES = (T, U, L)
 #: A memtable: its rows are part of the plan.
@@ -275,16 +278,16 @@ CASES: list[Case] = [
     ),
     case("windows", "lag", V, lambda: t.mutate(p=t.qty.lag().over(group_by="name", order_by="ts"))),
     case(
-        "windows", "rank", R, lambda: t.mutate(r=ibis.rank().over(group_by="name", order_by="ts"))
+        "windows", "rank", V, lambda: t.mutate(r=ibis.rank().over(group_by="name", order_by="ts"))
     ),
     case(
         "windows",
         "dense_rank",
-        R,
+        V,
         lambda: t.mutate(r=ibis.dense_rank().over(group_by="name", order_by="ts")),
     ),
-    case("windows", "cumsum", R, lambda: t.mutate(c=t.qty.cumsum(order_by="ts"))),
-    case("windows", "sum over group", R, lambda: t.mutate(s=t.qty.sum().over(group_by="name"))),
+    case("windows", "cumsum", V, lambda: t.mutate(c=t.qty.cumsum(order_by="ts"))),
+    case("windows", "sum over group", V, lambda: t.mutate(s=t.qty.sum().over(group_by="name"))),
     case(
         "windows",
         "rolling mean (rows)",
@@ -303,12 +306,74 @@ CASES: list[Case] = [
             )
         ),
     ),
-    case("windows", "ntile", R, lambda: t.mutate(q=ibis.ntile(4).over(order_by="ts"))),
+    case("windows", "ntile", V, lambda: t.mutate(q=ibis.ntile(4).over(order_by="ts"))),
     case(
         "windows",
         "first",
-        R,
+        V,
         lambda: t.mutate(f=t.qty.first().over(group_by="name", order_by="ts")),
+    ),
+    case(
+        "windows",
+        "percent_rank, cume_dist",
+        V,
+        lambda: t.mutate(
+            p=ibis.percent_rank().over(order_by="qty"), c=ibis.cume_dist().over(order_by="qty")
+        ),
+    ),
+    case(
+        "windows",
+        "running mean",
+        V,
+        lambda: t.mutate(m=t.amount.mean().over(ibis.window(order_by="ts", following=0))),
+    ),
+    case(
+        "windows",
+        "rolling sum (interval)",
+        V,
+        lambda: t.mutate(
+            s=t.qty.sum().over(
+                ibis.range_window(order_by="ts", preceding=ibis.interval(minutes=5), following=0)
+            )
+        ),
+    ),
+    case(
+        "windows",
+        "rolling sum (range)",
+        V,
+        lambda: t.mutate(
+            s=t.id.sum().over(ibis.range_window(order_by="qty", preceding=2, following=0))
+        ),
+    ),
+    case(
+        "windows",
+        "last, nth",
+        V,
+        lambda: t.mutate(
+            l=t.qty.last().over(group_by="name", order_by="ts"),
+            n=t.qty.nth(1).over(group_by="name", order_by="ts"),
+        ),
+    ),
+    case(
+        "windows",
+        "max, count over frame",
+        V,
+        lambda: t.mutate(
+            b=t.qty.max().over(ibis.window(order_by="ts", preceding=1, following=1)),
+            c=t.qty.count().over(ibis.window(order_by="ts", preceding=1, following=1)),
+        ),
+    ),
+    case(
+        "windows",
+        "min over a sliding frame",
+        R,
+        lambda: t.mutate(a=t.qty.min().over(ibis.window(order_by="ts", preceding=1, following=1))),
+    ),
+    case(
+        "windows",
+        "window sum of an expression",
+        R,
+        lambda: t.mutate(s=(t.qty * 2).sum().over(group_by="name")),
     ),
     # Numbers
     case("numbers", "+, -, *", V, lambda: t.select(x=t.qty * 2 - t.id + 1)),
@@ -350,8 +415,147 @@ CASES: list[Case] = [
     case("time", "year", V, lambda: t.select(x=t.ts.year())),
     case("time", "date", V, lambda: t.select(x=t.ts.date())),
     case("time", "truncate", V, lambda: t.select(x=t.ts.truncate("h"))),
+    case("time", "date + days", V, lambda: t.select(x=t.ts.date() + ibis.interval(days=3))),
+    case("time", "date - months", V, lambda: t.select(x=t.ts.date() - ibis.interval(months=1))),
+    case("time", "date + years", V, lambda: t.select(x=t.ts.date() + ibis.interval(years=1))),
+    case(
+        "time",
+        "date - column days",
+        V,
+        lambda: t.select(x=t.ts.date() - t.qty.as_interval("D")),
+    ),
+    case("time", "timestamp + months", V, lambda: t.select(x=t.ts + ibis.interval(months=13))),
+    case(
+        "time",
+        "constant interval arithmetic",
+        V,
+        lambda: t.select(x=t.ts + (ibis.interval(days=1) + ibis.interval(hours=2))),
+    ),
+    case(
+        "time",
+        "date - date",
+        V,
+        lambda: t.filter(t.ts.date() - DAY0 > ibis.interval(days=3)),
+    ),
+    case("time", "date delta", V, lambda: t.select(x=t.ts.date().delta(DAY0, unit="day"))),
+    case("time", "date parts", V, lambda: t.select(y=t.ts.date().year(), m=t.ts.date().month())),
+    case("time", "date truncate", V, lambda: t.select(x=t.ts.date().truncate("M"))),
+    case("time", "day_of_week", V, lambda: t.select(x=t.ts.day_of_week.index())),
+    case("time", "day_of_week name", V, lambda: t.select(x=t.ts.date().day_of_week.full_name())),
+    case("time", "iso_year", V, lambda: t.select(x=t.ts.iso_year())),
+    case("time", "epoch_seconds", V, lambda: t.select(x=t.ts.epoch_seconds())),
+    case(
+        "time",
+        "millisecond, microsecond",
+        V,
+        lambda: t.select(x=t.ts.millisecond(), y=t.ts.microsecond()),
+    ),
+    case(
+        "time",
+        "timestamp + column interval",
+        R,
+        lambda: t.select(x=t.ts + t.qty.as_interval("h")),
+    ),
+    case(
+        "time",
+        "date + column months",
+        R,
+        lambda: t.select(x=t.ts.date() + t.qty.as_interval("M")),
+    ),
+    case("time", "timestamp delta", R, lambda: t.select(x=t.ts.delta(t.ts, unit="hour"))),
+    case("time", "bucket", V, lambda: t.select(x=t.ts.bucket(minutes=15))),
+    case(
+        "time",
+        "group_by_dynamic (no overlap)",
+        V,
+        lambda: t.mutate(b=t.ts.bucket(minutes=15)).group_by("b").aggregate(n=_.count()),
+    ),
+    case(
+        "time",
+        "rolling sum by time",
+        V,
+        lambda: t.mutate(
+            s=t.qty.sum().over(
+                ibis.range_window(
+                    order_by="ts",
+                    preceding=ibis.interval(days=7) - ibis.interval(microseconds=1),
+                    following=0,
+                )
+            )
+        ),
+    ),
+    case(
+        "time",
+        "offset_by months and days",
+        V,
+        lambda: t.select(x=t.ts + ibis.interval(months=1) + ibis.interval(days=2)),
+    ),
+    case(
+        "time",
+        "month end",
+        V,
+        lambda: t.select(
+            x=t.ts.date().truncate("M") + ibis.interval(months=1) - ibis.interval(days=1)
+        ),
+    ),
+    case(
+        "time",
+        "group_by_dynamic (overlapping)",
+        R,
+        lambda: t.mutate(
+            start=ibis.range(
+                t.ts.bucket(minutes=15) - ibis.interval(minutes=15), t.ts, ibis.interval(minutes=15)
+            ).unnest()
+        ),
+    ),
+    case("time", "time of day", V, lambda: t.select(x=t.ts.time())),
+    case("time", "time parts", V, lambda: t.select(h=t.ts.time().hour(), m=t.ts.time().minute())),
+    case("time", "compare times", V, lambda: t.filter(t.ts.time() > dt.time(9, 30))),
+    case("time", "strftime", V, lambda: t.select(x=t.ts.strftime("%Y-%m-%d %H:%M:%S"))),
+    case("time", "timestamp from unix", V, lambda: t.select(x=t.qty.as_timestamp("ms"))),
+    case(
+        "time", "date from constants", V, lambda: t.select(x=t.ts.date() < ibis.date(2024, 2, 29))
+    ),
+    case(
+        "time",
+        "timestamp from constants",
+        V,
+        lambda: t.filter(t.ts < ibis.timestamp(2024, 1, 2, 3, 4, 5)),
+    ),
+    case("time", "date from columns", R, lambda: t.select(x=ibis.date(t.qty, 1, 1))),
+    case("time", "string to timestamp", R, lambda: t.select(x=t.name.as_timestamp("%Y-%m-%d"))),
+    case("time", "time + interval", R, lambda: t.select(x=t.ts.time() + ibis.interval(hours=1))),
+    case("time", "time truncate", R, lambda: t.select(x=t.ts.time().truncate("h"))),
+    case("time", "strftime other directives", R, lambda: t.select(x=t.ts.strftime("%A"))),
+    case(
+        "time",
+        "between_time",
+        X,
+        lambda: t.filter(t.ts.time().between(dt.time(9), dt.time(17))),
+    ),
 ]
 
+
+#: Verified cases whose Ibis SQL DataFusion does not run, or runs wrongly:
+#: the tests check them against the other engines, Lean and Python instead.
+NO_DATAFUSION_SQL = {
+    # `CAST(n || ' day' AS INTERVAL)` fails on a NULL count.
+    "date - column days": "fails on NULL",
+    # Python UDFs of Ibis's DataFusion backend.
+    "epoch_seconds": "Ibis UDF",
+    "millisecond, microsecond": "Ibis UDF",
+    # No compilation rule.
+    "iso_year": "no rule",
+    "date delta": "no rule",
+    # A duration is compared with `INTERVAL '3 DAYS'` as (months, days, ns).
+    "date - date": "compares durations with days wrongly",
+    # "frame offsets for RANGE must be …": Ibis writes the bound as a cast.
+    "rolling sum (interval)": "refuses Ibis's interval frame",
+    "rolling sum by time": "refuses Ibis's interval frame",
+    # No compilation rule.
+    "bucket": "no rule",
+    "group_by_dynamic (no overlap)": "no rule",
+}
 
 #: The engines besides DataFusion, which runs Ibis's own plans.
 ENGINES = ("polars", "duckdb", "snowflake", "spark")
@@ -364,8 +568,12 @@ ENGINES = ("polars", "duckdb", "snowflake", "spark")
 #: * Snowflake and Spark tables have no row order, which FETCH and a stable
 #:   sort's or a window's ties follow. Sorts and windows run with
 #:   `tie_free=True`. A `SUM` or `AVG` of doubles adds in that order too
-#:   (rounding depends on it).
+#:   (rounding depends on it). So does a window frame's `SUM` or `AVG`.
+#: * Spark has no TIME type before 4.1.
 NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
+#: A frame's doubles are added in frame order (`floatSum`), which only DuckDB's
+#: and Polars' translations keep.
+FRAME_DOUBLES = {"snowflake": "doubles in order", "spark": "doubles in order"}
 REFUSED: dict[str, dict[str, str]] = {
     "count, max, mean": NO_ROW_ORDER,
     "non-equi join": {
@@ -383,9 +591,29 @@ REFUSED: dict[str, dict[str, str]] = {
     "order_by + limit": NO_ROW_ORDER,
     "row_number": NO_ROW_ORDER,
     "lag": NO_ROW_ORDER,
+    "time of day": {"spark": "no tod type"},
+    "time parts": {"spark": "no tod type"},
+    "compare times": {"spark": "no tod type"},
+    "rank": NO_ROW_ORDER,
+    "dense_rank": NO_ROW_ORDER,
+    "cumsum": NO_ROW_ORDER,
+    "sum over group": NO_ROW_ORDER,
+    "ntile": NO_ROW_ORDER,
+    "first": NO_ROW_ORDER,
+    "percent_rank, cume_dist": NO_ROW_ORDER,
+    "rolling sum (range)": NO_ROW_ORDER,
+    "rolling sum (interval)": NO_ROW_ORDER,
+    "rolling sum by time": NO_ROW_ORDER,
+    "running mean": FRAME_DOUBLES,
+    "last, nth": NO_ROW_ORDER,
+    "max, count over frame": NO_ROW_ORDER,
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
-TIE_FREE = {"order_by", "order_by expression", "row_number", "lag"}
+TIE_FREE = {
+    "order_by", "order_by expression", "row_number", "lag", "rank", "dense_rank", "cumsum",
+    "ntile", "first", "percent_rank, cume_dist", "rolling sum (range)", "rolling sum (interval)",
+    "rolling sum by time", "last, nth", "max, count over frame",
+}  # fmt: skip
 
 #: The SQL dialects have no lists yet (#94).
 NO_LISTS = {
