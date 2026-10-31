@@ -67,7 +67,8 @@ In order of what it is worth in day-to-day data engineering:
    watermark job ("process the rows newer than…"), which misses deletes,
    late rows and new join matches, sverify updates a result from the
    inserts and deletes alone, with a delta plan proved equal to a full
-   recompute. It reads Delta's Change Data Feed and Iceberg's appends,
+   recompute. It reads Delta's Change Data Feed and Iceberg's appends
+   (skipping the Delta files a proof shows a filter can't match),
    writes each state to a Delta or Iceberg sink exactly once, and the sink
    carries the proved contract to the next job, which builds on it instead
    of re-checking the data.
@@ -411,6 +412,12 @@ tables. A table format plays three roles:
   `amount >= 0 OR amount IS NULL`. A batch only uses the statistics of the
   files it added. Strings, decimals and zoned timestamps get no bounds, and
   keys are always checked on the data, since neither format enforces them.
+* **Proved file pruning (Delta).** `DeltaSource(uri, where="amount * 2 > 100")`
+  reads only the rows on which the condition is TRUE, and skips a file only
+  if Lean proves from its statistics that the condition is TRUE on none of
+  its rows. That covers conditions the readers' own statistics pushdown
+  doesn't, such as arithmetic on a column. Changes are filtered the same
+  way, and the condition becomes a fact about every row for the contracts.
 * **A sink that carries the contract.** `DeltaSink` and `IcebergSink` write a
   view in one commit per state, exactly once (keyed by the source versions).
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
@@ -482,6 +489,9 @@ The generated SQL makes some assumptions about the warehouse:
   so is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
   the additions. Snowflake has no interval type, so interval-valued
   expressions are refused there.
+
+How the engine translations relate to the reference semantics, and where
+that is going, is in the design note [docs/engine-profiles.md](docs/engine-profiles.md).
 
 ### Sharding and other optimizations
 
@@ -1365,6 +1375,9 @@ hypotheses:
   that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
   contract checker; `stats_fact`: with NULLs or a missing side it is
   `c IS NULL OR (…)`; `stats_all_null`: files that are all NULL give `c IS NULL`.
+* `prune_sound`: filtering only the files that are not skipped gives the
+  same rows as filtering the whole table, if no row of a skipped file makes
+  the filter TRUE (which the checker proves from the file's statistics).
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 
