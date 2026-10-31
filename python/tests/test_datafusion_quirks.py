@@ -186,6 +186,16 @@ def test_not_in_subquery_is_refused(con):
         sv.written_plan(substrait_json(con, "SELECT x FROM n WHERE x NOT IN (SELECT y FROM s)"))
 
 
+def test_lean_prints_integers_beyond_64_bits(con):
+    """`Rel.eval`'s integers are unbounded: `MAX + 1` is printed as itself (and
+    a doubled column as doubles), not as a double's code (#72)."""
+    plan = json.loads(substrait_json(con, "SELECT a + 1 AS s, -a AS n FROM mx WHERE a > 0"))
+    lean = lean_rows(json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]})))
+    assert lean == [(2**63, -(2**63) + 1)]
+    plan = json.loads(substrait_json(con, "SELECT -a AS n FROM m"))
+    assert lean_rows(json.dumps(inline_tables(plan, {"m": [(-(2**63),)]}))) == [(2**63,)]
+
+
 def verify(sql: str, table: str, schema: dict, requires=(), ensures=()) -> sv.Report:
     return sv.verify(
         sql, requires={table: list(requires)}, ensures=list(ensures), tables={table: schema}

@@ -57,6 +57,14 @@ def delta (plan : Plan) : IO UInt32 := do
     IO.println (Write.writeDeltaPlan plan term).compress
   return 0
 
+/-- A result value, printed by its column's kind: integers (unbounded in the
+model, so `MAX + 1` is a value) exactly, doubles as doubles. A column of
+unknown kind falls back to `Value.render`. -/
+def renderCell : Kind → Value → String
+  | .float, .int c => s!"{FloatCode.toFloat c}d"
+  | .int, .int i | .time, .int i | .date, .int i => toString i
+  | _, v => v.render
+
 def check (plan : Plan) : IO UInt32 := do
   let cat := plan.catalog
   IO.println plan.root.render
@@ -72,9 +80,11 @@ def check (plan : Plan) : IO UInt32 := do
   -- Named tables have no data in the schema-only catalog, so only
   -- `VirtualTable` rows show up here.
   let rows := plan.root.eval cat
+  let kinds := plan.root.kinds plan.tables
   IO.println s!"rows ({rows.length}):"
   for row in rows do
-    IO.println s!"  {Row.render row}"
+    let cells := row.zipIdx.map fun (v, i) => renderCell (kinds.getD i .other) v
+    IO.println s!"  ({", ".intercalate cells})"
   return 0
 
 def write (plan : Plan) : IO UInt32 := do
