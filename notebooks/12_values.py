@@ -37,10 +37,10 @@ def _(mo):
     mo.md(r"""
     # 12. Doubles, time and text
 
-    Integers are the easy case. Real pipelines are full of floating-point
-    measurements, timestamps and strings, each with traps of its own, and
-    a sensor that sends NaN or a timestamp at the edge of the calendar will
-    find them eventually. The
+    Say one of your sensors sends NaN, or a timestamp lands at the far edge
+    of the calendar. Integers are the easy case; real pipelines are full of
+    floating-point measurements, timestamps and strings, each with traps of
+    its own, and sooner or later your data finds them. The
     Lean model pins each of them down, bit for bit where it matters, because
     a proof about the wrong semantics proves nothing.
 

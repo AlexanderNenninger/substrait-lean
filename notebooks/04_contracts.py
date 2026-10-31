@@ -37,17 +37,17 @@ def _(mo):
     mo.md(r"""
     # 4. Contracts
 
-    Say a colleague's transformation feeds the billing job, and the docstring
-    promises that the new column is never negative and never NULL. Billing
-    will take that promise at face value, so it deserves better than a
-    docstring.
+    Say a colleague's transformation feeds the billing job you own. Its
+    docstring promises the new column is never negative and never NULL, and
+    customers are invoiced on that promise. You'd rather it were proved than
+    promised.
 
     In verified programming you state what a function **requires** of its
     inputs (preconditions) and what it **ensures** about its output
     (postconditions), and the machine proves the second follows from the
     first. `sverify` brings that to data transformations: a function from
     Ibis tables to an Ibis table, with a decorator that states the contract.
-    Let's write one.
+    We'll write one.
 
     ## A first contract
     """)
@@ -100,7 +100,7 @@ def _(mo):
 
     ## How does Lean know `doubled ≥ 22`?
 
-    Nobody showed it a single order. It runs the plan on *descriptions* of
+    Lean never sees a single order. It runs the plan on *descriptions* of
     values instead of values: for each column, whether it can be NULL and
     which values it can hold. This is called *abstract interpretation*.
     Each operator updates the descriptions:
@@ -112,8 +112,8 @@ def _(mo):
     * `amount * 2` is then an integer ≥ 22, and never NULL.
 
     A postcondition is proved when its description says it can only be TRUE.
-    Let's change the transformation and the conditions below and watch what
-    Lean can establish:
+    Change the transformation and the conditions below, and we'll watch
+    what Lean can establish:
     """)
     return
 
@@ -294,7 +294,7 @@ def _(mo):
     With the default settings, `amount < 100` can't be proved (nothing bounds
     `amount`), so `"runtime"` checks it on the output. It fails for one row,
     and it's `cy`'s: **NULL < 100 is not TRUE**, so the NULL row counts as a
-    violation. A contract condition must be TRUE, not just "not FALSE".
+    violation. A contract condition must be TRUE, not merely "not FALSE".
 
     Switch on *requires amount ≥ 0*: now the precondition check fails first,
     for the same NULL. Pass `check_requires=False` to `sv.transform` to trust
@@ -355,6 +355,14 @@ def _(mo):
     (`a < 2 * b`), string contents, DECIMAL columns, and counts across rows.
     Postconditions like those are refused rather than guessed; use
     `on_unproved="runtime"` to check them on the data instead.
+
+    You can now put a contract on a transformation, read what Lean proved
+    about every column, and choose what happens when a promise can't be
+    proved. The billing job gets a column whose promises were proved
+    before any data ran, and the assumptions about upstream data are
+    checked when the data arrives. **Next up:**
+    [Keys and relations](?file=05_keys_and_relations.py), where the facts
+    are about pairs of rows and pairs of columns.
     """)
     return
 

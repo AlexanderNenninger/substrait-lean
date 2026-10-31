@@ -37,11 +37,13 @@ def _(mo):
     mo.md(r"""
     # 10. Pipelines
 
-    Picture the Monday report: it reads a table of orders by city, which
-    reads the cleaned orders, which read the raw `orders` feed. Real
-    pipelines are layered like that: cleaned tables feed joined tables feed
-    reports. `sv.Pipeline` maintains several views that **read each other**.
-    Each view's change is handed to the views that read it, so an
+    Say you own the Monday report the sales team presents. It reads orders
+    by city, which read the cleaned orders, which read the raw `orders`
+    feed, and a bad row anywhere below ends up on their slides.
+
+    Real pipelines are layered like that: cleaned tables feed joined tables
+    feed reports. `sv.Pipeline` maintains several views that **read each
+    other**. Each view's change is handed to the views that read it, so an
     intermediate result is computed once and shared, and only changes flow
     through the layers.
 
@@ -138,9 +140,9 @@ def _(mo):
     mo.md(r"""
     ## Changes, layer by layer
 
-    Let's feed the pipeline. Each button applies one batch to `orders` and
-    `customers`. The first is well-behaved; the other two each sneak in an
-    order that breaks a precondition of `paid`:
+    We'll feed the pipeline. Each button applies one batch to `orders` and
+    `customers`. The first is valid; the other two each insert an order
+    that breaks a precondition of `paid`:
     """)
     return
 
@@ -269,6 +271,12 @@ def _(mo):
     `sv.IncrementalView` is a pipeline with a single view; on its own it
     refuses queries without update rules, since there's nothing to recompute
     for.
+
+    You can now stack views that pass only their changes along, with every
+    contract's guarantees holding in every state while only the batch is
+    checked. Next up, [Engines and SQL](?file=11_engines.py) runs the same
+    checked plans on Polars and DataFusion, and as SQL for Snowflake and
+    Spark.
     """)
     return
 

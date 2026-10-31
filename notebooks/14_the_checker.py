@@ -37,8 +37,9 @@ def _(mo):
     mo.md(r"""
     # 14. The checker
 
-    Behind every `@sv.transform` there is a small command-line program
-    doing the actual work. The Lean project compiles to it,
+    Say a reviewer asks what actually happens when you call
+    `@sv.transform`. The answer is a small command-line program that does
+    the work. The Lean project compiles to it,
     `substrait-check`. It is the bridge between the proofs and real queries:
     it reads a Substrait plan (as JSON), translates it into the Lean model
     `Rel`, and runs checks that are **proved** to answer the mathematical

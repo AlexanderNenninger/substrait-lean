@@ -37,8 +37,8 @@ def _(mo):
     mo.md(r"""
     # 15. What is proved, what is trusted
 
-    Sooner or later someone will ask what exactly they're trusting when they
-    see a ✅, and they deserve a straight answer. A proof is only as good as
+    Sooner or later someone will ask you what exactly they're trusting when
+    they see a ✅, and they deserve a straight answer. A proof is only as good as
     what it is about. Every ✅ in this tour is a
     theorem about the Lean model `Rel`. Between your Ibis code and the
     model, and between the model and the engine, there is code that is not

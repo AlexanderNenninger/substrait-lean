@@ -39,8 +39,8 @@ def _(mo):
     mo.md(r"""
     # 16. DataFusion's surprising semantics, against the Lean model
 
-    Every engine has a few habits that surprise people the first time they
-    meet them in production. This appendix catalogues DataFusion's.
+    Every engine has a few habits that surprise you the first time you meet
+    them in production. This appendix catalogues DataFusion's.
     `sverify` proves things about a pipeline's Substrait plan in Lean and can
     run that plan on **DataFusion**. The proofs are about Lean's semantics
     (`Rel.eval`, `Expr.eval` and the runtime-error model in `Safety.lean`). They

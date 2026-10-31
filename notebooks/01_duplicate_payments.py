@@ -39,10 +39,12 @@ def _(mo):
     mo.md(r"""
     # 1. Duplicate card payments, from a Delta table
 
-    Say you're on the payments team, and a customer has just been charged
-    twice for the same coffee. You want to catch these **double charges**,
-    the same card paying the same amount at the same merchant twice within
-    five minutes, and refund them before they turn into support tickets.
+    Say you're on the payments team. A customer was charged twice for the
+    same coffee, and by the time support hears about it, they've already
+    tweeted. You want to catch these **double charges**, the same card
+    paying the same amount at the same merchant twice within five minutes,
+    and refund them first.
+
     The rule comes from the [query catalogue](../catalogue/INDEX.md)
     (`fin-duplicate-payments`); stream processors write it as an interval
     join, and here it is a self-join on a Delta Lake table of card
@@ -50,7 +52,7 @@ def _(mo):
     right: no pair twice, no charge matched with itself, and nothing left
     over when a charge is reversed.
 
-    Let's go through the whole job:
+    We'll go through the whole job:
 
     1. read the transactions from a Delta table, with its Change Data Feed;
     2. write the rule in Ibis and state its **contract**: what it assumes
@@ -154,8 +156,10 @@ def _(mo):
     mo.md(r"""
     ## 2. The rule and its contract
 
-    The rule is plain Ibis. The interesting part is the decorator, which
-    writes down what everyone involved is counting on:
+    We'll write the rule in Ibis, state what it assumes and what it
+    promises, and have the checker prove it before any data runs. The rule
+    is plain Ibis; the decorator writes down what everyone involved is
+    counting on:
 
     * **`requires`**: what the job assumes about its input. Transaction ids
       are unique, amounts are not negative, and timestamps are before 2100
@@ -218,7 +222,7 @@ def _(dt, ibis, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Let's build it. A pipeline reads the Delta table as a source and
+    Now we build it. A pipeline reads the Delta table as a source and
     maintains the rule as a view. Building the view proves the contract (a
     `VerificationError` would stop here) and loads the current snapshot:
     """)
@@ -422,8 +426,7 @@ def _(mo):
     mo.md(r"""
     ## 4. New transactions: keeping the result up to date
 
-    An hour later, the world has moved on, as it does, and two things have
-    happened to the source table:
+    An hour later, two things have happened to the source table:
 
     * transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a
       duplicate of transaction **3**, which was loaded in the first run;
@@ -580,23 +583,19 @@ def _(mo):
     mo.md(r"""
     ## What you got
 
-    * The refund queue's assumptions (unique pairs, no self-matches, a
-      merchant on every row) were **proved before the job ran**, and a bug
-      that breaks one was caught at definition time, not by a customer.
-    * The preconditions were taken from Delta's own metadata where it has
-      them (constraints, file statistics), and checked on the data where it
-      doesn't (keys).
-    * The same plan runs on DuckDB, Polars and DataFusion with the same
-      rows, and is written as Snowflake or Spark SQL.
-    * New and deleted transactions were handled from the change feed, with
-      a proof that the result equals a full recompute; the watermark job
-      got two rows wrong.
-    * The output table carries its contract to the next job, and is
-      written exactly once per state.
+    You now have a refund queue you can trust. Its assumptions were proved
+    before a single row ran, and a bug that would have broken one was caught
+    at definition time, not by a customer. The preconditions came from
+    Delta's own constraints and file statistics where it has them, and from
+    the data where it doesn't. The same plan gives the same rows on DuckDB,
+    Polars and DataFusion and is written as Snowflake or Spark SQL. It stays
+    right as charges arrive and get reversed, where the watermark job got
+    two rows wrong, and the next job can build on its table without checking
+    again.
 
-    **Next:** [Sensor alerts from an Iceberg table](?file=02_sensor_alerts.py),
-    where windows, ties and NaN readings make the engines disagree. The
-    features used here are explained in [Contracts](?file=04_contracts.py),
+    **Next up:** [Sensor alerts from an Iceberg table](?file=02_sensor_alerts.py),
+    where ties and NaN get involved. The features used here are explained
+    in [Contracts](?file=04_contracts.py),
     [Incremental views](?file=09_incremental_views.py),
     [Pipelines](?file=10_pipelines.py) and [Engines and SQL](?file=11_engines.py).
     """)

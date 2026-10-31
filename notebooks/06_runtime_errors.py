@@ -37,9 +37,11 @@ def _(mo):
     mo.md(r"""
     # 6. Runtime errors
 
-    Think of whoever is on call when the nightly job dies. A pipeline that
-    is "correct" but crashes at 3 a.m. on a row nobody expected is not much
-    comfort to them, and one that quietly writes a wrong number is worse.
+    Say you're on call this week. At 3 a.m. a pipeline that was "correct"
+    crashes on a row nobody expected, and you're the one it pages. A
+    pipeline that quietly writes a wrong number instead is worse: nobody
+    gets paged at all.
+
     Some operations can **fail** in DataFusion, and some silently give a
     **wrong** answer:
 
@@ -65,10 +67,10 @@ def _(mo):
     The usual fix is a *guard*: make sure the divisor isn't zero before
     dividing. Whether a guard works depends on **when DataFusion evaluates
     each part**, and that is less obvious than it looks. The table below
-    has a row for each kind of trouble: a zero divisor, `MIN` waiting for a
-    `-1`, and doubles a `BIGINT` can't hold. Pick a variant; the
-    report is Lean's, and the result is DataFusion actually running it on
-    that table.
+    has a row for each kind of trouble: a zero divisor, `MIN` divided by
+    `-1`, and doubles a `BIGINT` can't hold. Pick a variant, and we'll
+    show Lean's report next to DataFusion actually running it on that
+    table.
     """)
     return
 
@@ -174,7 +176,7 @@ def _(mo):
 
     ## Contracts refuse possible errors
 
-    That is what lets the on-call engineer sleep: a contracted
+    For whoever is on call, this is the part that matters: a contracted
     transformation must be proved free of runtime errors, not only correct
     when it runs. Warnings (wrap-around) don't block it:
     """)
@@ -219,6 +221,12 @@ def _(mo):
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters). The test
     suite runs DataFusion and DuckDB on random data, including the extreme
     values, and checks that they only ever fail where Lean reported an error.
+
+    You can now tell a guard that works from one that only looks like it,
+    and a contract refuses any plan that could crash, so the 3 a.m. page
+    for a zero divisor never comes. **Next up:**
+    [Windows and ASOF joins](?file=07_windows_and_asof.py), where each row
+    looks at its neighbours.
     """)
     return
 

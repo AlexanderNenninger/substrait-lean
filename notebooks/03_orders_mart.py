@@ -39,10 +39,13 @@ def _(mo):
     mo.md(r"""
     # 3. An orders mart: dbt tests, proved
 
-    Say the sales team reads a dashboard of **revenue per city and day**
-    every morning, and the regional managers' bonuses depend on it. It's a
-    mart model of the kind every analytics team has, with one subtlety: the
-    city is the customer's city *when the order was placed*. Customers move,
+    Say you own the dashboard the sales team opens every morning:
+    **revenue per city and day**. The regional managers' bonuses depend on
+    it, so when a number is off, you hear about it before lunch.
+
+    It's a mart model of the kind every analytics team has, with one
+    subtlety: the city is the customer's city *when the order was placed*.
+    Customers move,
     so the city comes from a type-2 slowly changing dimension (dbt snapshots
     build these), and the join is a point-in-time join
     (`dbt-scd2-point-in-time` in the [query
@@ -209,8 +212,8 @@ def _(dt, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Let's check the first version, where `city` is the dimension's column
-    as is:
+    We check the first version, where `city` is the dimension's column as
+    is:
     """)
     return
 
@@ -250,7 +253,7 @@ def _(mo):
 
     Someone has to decide what such an order counts as, and the dashboard's
     readers would rather see an `unknown` row than revenue that silently
-    vanished. So let's say it:
+    vanished. So we say it:
     """)
     return
 
@@ -311,7 +314,7 @@ def _(mo):
 
     ## 3. Build it from the Delta tables
 
-    Let's wire it up. The pipeline reads both tables. A left join and an
+    Now we wire it up. The pipeline reads both tables. A left join and an
     aggregate have no proven delta rules yet, so the view is recomputed on
     each refresh, and the pipeline says so:
     """)
@@ -346,9 +349,8 @@ def _(mo):
 
     ## 4. Same answer on every engine, unlike the SQL text
 
-    The same SQL text doesn't mean the same thing everywhere. Suppose a
-    helpful colleague adds an average order value as
-    `revenue_cents / n_orders`:
+    The same SQL text doesn't mean the same thing everywhere. Suppose
+    someone adds an average order value as `revenue_cents / n_orders`:
     """)
     return
 
@@ -404,10 +406,9 @@ def _(mo):
     mo.md(r"""
     ## 5. The next day: a move and a new customer
 
-    Life goes on overnight. The snapshot job records that customer 2 moved
-    from Rome to Milan at 15:00 on 3 May: the old row is closed and a new
-    one added. And a new customer, 4, is keen enough to place an order
-    before their first snapshot.
+    Overnight, the snapshot job records that customer 2 moved from Rome to
+    Milan at 15:00 on 3 May: the old row is closed and a new one added. And
+    a new customer, 4, places an order before their first snapshot.
     """)
     return
 
@@ -457,18 +458,19 @@ def _(mo):
     mo.md(r"""
     ## What you got
 
-    * The model's dbt tests became a **contract proved before the model
-      runs**, and the one that would fail in production (`not_null(city)`
-      after a left join) failed at definition time, not on the dashboard.
-    * The preconditions were discharged from Delta metadata where possible.
-    * The checked plan runs with the same rows on DuckDB, Polars and
-      DataFusion, and as Snowflake or Spark SQL, where the same SQL text
-      would not.
-    * A model outside the incremental fragment still runs in the pipeline,
-      recomputed and diffed, and its sink is merged exactly once per state.
+    You now have a dashboard model whose tests can't fail in production for
+    a reason CI didn't see. Its dbt tests became a contract proved before
+    the model runs, and the one that would have failed, `not_null(city)`
+    after a left join, failed at definition time instead of on the
+    dashboard. The preconditions came from Delta metadata where possible.
+    The checked plan gives the same rows on DuckDB, Polars and DataFusion,
+    and as Snowflake or Spark SQL, where the same SQL text would not. And
+    although the model is outside the incremental fragment, it still runs
+    in the pipeline, recomputed and diffed, with its sink merged exactly
+    once per state.
 
-    **Next:** the rest of the tour explains each feature in turn, starting
-    with [Contracts](?file=04_contracts.py).
+    **Next up:** the rest of the tour explains each feature in turn,
+    starting with [Contracts](?file=04_contracts.py).
     """)
     return
 

@@ -37,15 +37,14 @@ def _(mo):
     mo.md(r"""
     # 5. Keys and relations
 
-    Say you add each customer's city to the orders table, and finance sums
+    Say you add each customer's city to the orders table so finance can sum
     revenue by city. If one customer appears twice in `customers`, their
     orders are counted twice, and the totals stop matching the ledger
     without anyone being told why.
 
     The facts in chapter 4 were about one value at a time: "this column is
     never NULL", "this one is at least 22". Facts like "one row per order"
-    are a different kind, and two such kinds matter just as much in
-    practice:
+    are of another kind, and two such kinds matter as much in practice:
 
     * **keys**: "no two rows have the same `id`", a fact about pairs of rows;
     * **relations between columns**: "`end` is after `start`", "`t1` is
@@ -60,7 +59,7 @@ def _(mo):
     most one partner on the other side.
 
     Joining orders with customers keeps one row per order only if each
-    customer name appears once. Let's flip the switch:
+    customer name appears once. We'll try it both ways with the switch:
     """)
     return
 
@@ -195,8 +194,8 @@ def _(mo):
     once a minute, `-9999` marks a sensor error, and the model needs pairs
     of *consecutive* clean readings. Whoever trains it will assume each pair
     is exactly one minute apart and that no `-9999` slipped through, so
-    let's prove that. The pipeline joins the clean readings with themselves,
-    one minute apart:
+    we'll prove both. The pipeline joins the clean readings with
+    themselves, one minute apart:
     """)
     return
 
@@ -272,6 +271,13 @@ def _(mo):
 
     Relations that need more than "a column plus a constant" (`a < 2 * b`)
     and relations between strings are not tracked yet.
+
+    You can now prove that a result has one row per key, and that its
+    columns keep the relations the filters and joins set up. Finance's
+    join stays one row per order, and whoever trains the model gets pairs
+    exactly one minute apart, as they assume. **Next up:**
+    [Runtime errors](?file=06_runtime_errors.py), where a plan that is
+    correct can still crash, or quietly give a wrong number.
     """)
     return
 

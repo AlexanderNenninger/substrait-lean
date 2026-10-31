@@ -40,13 +40,14 @@ def _(mo):
 
     Say your pipeline was proved and tested on DuckDB on your laptop, and
     the platform team wants it on Spark next quarter. The proof hasn't
-    changed, but will the answers? A proof is about the Lean model. Whether
-    an engine *computes* what the model says is a separate question, and
-    engines disagree with each other more than you'd think: about NULL join
-    keys, NaN, integer overflow, the rounding of integer division, the order
-    of ties. So plans in `sverify` come from one producer (the vendored Ibis
-    producer, or DataFusion's for SQL strings), but they can **run** on
-    three engines:
+    changed, but will the answers?
+
+    A proof is about the Lean model. Whether an engine *computes* what the
+    model says is a separate question, and engines disagree with each other
+    more than you'd think: about NULL join keys, NaN, integer overflow, the
+    rounding of integer division, the order of ties. So plans in `sverify`
+    come from one producer (the vendored Ibis producer, or DataFusion's for
+    SQL strings), but they can **run** on three engines:
 
     | engine | how the plan runs |
     |:---|:---|
@@ -62,7 +63,7 @@ def _(mo):
 
     ## The same plan on three engines
 
-    Let's line them up. Pick a query; each engine runs the same checked
+    We'll line them up. Pick a query; each engine runs the same checked
     plan, next to Lean's reference interpreter:
     """)
     return
@@ -301,6 +302,15 @@ def _(mo):
     windows). The Snowflake SQL is checked by parsing and by running it on
     [fakesnow](https://github.com/tekumara/fakesnow), a Snowflake emulator,
     or on a real account if you configure one.
+
+    You can now run a checked plan on DuckDB, Polars or DataFusion, or hand
+    it to Snowflake or Spark as SQL, and you know where an engine could
+    depart from the model: the translators and the SQL generator spell out
+    the model's semantics and raise or refuse rather than answer
+    differently, and the tests compare the engines with `Rel.eval`. That
+    ends the tour of what you can build. Chapter 12,
+    [Doubles, time and text](?file=12_values.py), starts the reference and
+    deep-dive part, with how the model treats the values themselves.
     """)
     return
 
