@@ -1,6 +1,8 @@
-"""DataFusion as Substrait producer, DataFusion or Polars as consumer.
+"""Substrait producers, and DataFusion, Polars or DuckDB as consumer.
 
-Every plan comes from DataFusion. Pipelines are Ibis expressions on an Ibis
+`plan_json` compiles Ibis expressions with the vendored producer
+(`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings with
+DataFusion's. Pipelines are Ibis expressions on an Ibis
 DataFusion backend (`connect()`); `con.con` is the underlying
 `datafusion.SessionContext`, which also holds the tables. `run_plan` runs a
 plan in Lean's written form (`substrait-check --write`, `--delta`) on the
@@ -24,6 +26,8 @@ from datafusion import substrait as ss
 from google.protobuf import json_format
 from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
+
+from sverify.ibis_substrait import to_substrait_json
 
 Backend = Any  # ibis.backends.datafusion.Backend
 Engine = Literal["datafusion", "polars", "duckdb"]
@@ -78,8 +82,16 @@ def to_sql(expr: ir.Table) -> str:
     return ibis.to_sql(expr, dialect="datafusion")
 
 
+def plan_json(con: Backend, query: ir.Table | str) -> str:
+    """The Substrait plan of a query, as protobuf JSON: an Ibis expression
+    through the vendored producer, SQL through DataFusion's (`substrait_json`)."""
+    if isinstance(query, str):
+        return substrait_json(con, query)
+    return to_substrait_json(query)
+
+
 def substrait_json(con: Backend, sql: str) -> str:
-    """Compile SQL to a Substrait plan, as protobuf JSON."""
+    """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON."""
     plan = ss.Producer.to_substrait_plan(con.con.sql(sql).logical_plan(), con.con)
     proto = Plan()
     proto.ParseFromString(plan.encode())

@@ -1,13 +1,14 @@
 """Which parts of the Ibis API reach the Lean checker.
 
 Each case is an Ibis expression over two unbound tables. It is compiled the way
-`sverify` compiles everything (Ibis → SQL → DataFusion → Substrait) and handed
-to `substrait-check`:
+`sverify` compiles Ibis expressions (the vendored producer,
+`sverify.ibis_substrait`) and handed to `substrait-check`:
 
 * `verified`: parsed into the Lean model and well-formed, so contracts and
   (where `incremental`) incremental views apply;
-* `rejected`: the checker refuses the plan (an operation outside the model);
-* `upstream`: Ibis or DataFusion fails before a plan exists.
+* `rejected`: the producer or the checker refuses it (an operation outside
+  the model);
+* `upstream`: Ibis fails before a plan exists.
 
 Every verified case also runs on each engine (`ENGINES`): Polars and the SQL
 of DuckDB and Snowflake translate the plan Lean writes back out. `REFUSED`
@@ -35,15 +36,8 @@ import ibis
 import ibis.expr.types as ir
 from ibis import _
 
-from sverify.engine import (
-    Backend,
-    connect,
-    create_table,
-    run_checker,
-    substrait_json,
-    to_sql,
-    written_plan,
-)
+from sverify.engine import run_checker, written_plan
+from sverify.ibis_substrait import Unsupported, to_substrait_json
 
 Status = Literal["verified", "rejected", "upstream"]
 
@@ -140,11 +134,11 @@ CASES: list[Case] = [
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
     case("aggregation", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
-    case("aggregation", "scalar subquery", X, lambda: t.filter(t.qty > t.qty.mean())),
+    case("aggregation", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
     case(
         "aggregation",
         "unnest",
-        X,
+        R,
         lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs"),
     ),
     # Window functions
@@ -177,7 +171,7 @@ CASES: list[Case] = [
     case(
         "windows",
         "rolling mean (interval)",
-        X,
+        R,
         lambda: t.mutate(
             m=t.amount.mean().over(
                 ibis.range_window(order_by="ts", preceding=ibis.interval(minutes=5), following=0)
@@ -269,22 +263,22 @@ REFUSED: dict[str, dict[str, str]] = {
 TIE_FREE = {"order_by", "row_number", "lag"}
 
 
-def refusal(con: Backend, c: Case, engine: str, tie_free: bool = False) -> str | None:
+def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
     """Why `engine` refuses the plan of a verified case, or None if it runs it."""
     from sverify import polars_engine
-    from sverify.sql import Unsupported
+    from sverify.sql import Unsupported as Untranslatable
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.duckdb import DUCKDB
     from sverify.sql.snowflake import SNOWFLAKE
 
-    plan = json.loads(written_plan(substrait_json(con, to_sql(c.build()))))
+    plan = json.loads(written_plan(to_substrait_json(c.build())))
     try:
         if engine == "polars":
             tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in (T, U)}
             polars_engine.run(plan, tables)
         else:
             plan_sql(plan, DUCKDB if engine == "duckdb" else SNOWFLAKE, tie_free=tie_free)
-    except (polars_engine.Unsupported, Unsupported) as e:
+    except (polars_engine.Unsupported, Untranslatable) as e:
         return str(e)
     return None
 
@@ -299,30 +293,26 @@ class Result:
     """Engine → reason, for the engines that refuse a verified case."""
 
 
-def setup() -> Backend:
-    con = connect()
-    for table in (T, U):
-        create_table(con, table.get_name(), table.schema())
-    return con
-
-
-def check(con: Backend, c: Case) -> Result:
+def check(c: Case) -> Result:
     try:
-        plan = substrait_json(con, to_sql(c.build()))
-    except Exception as e:  # noqa: BLE001 - any producer failure counts
+        expr = c.build()
+    except Exception as e:  # noqa: BLE001 - any Ibis failure counts
         return Result(c, "upstream", False, str(e).splitlines()[0], {})
+    try:
+        plan = to_substrait_json(expr)
+    except Unsupported as e:
+        return Result(c, "rejected", False, str(e), {})
     code, stdout, stderr = run_checker((), plan)
     out = stdout + stderr
     if code == 0:
-        refused = {e: why for e in ENGINES if (why := refusal(con, c, e)) is not None}
+        refused = {e: why for e in ENGINES if (why := refusal(c, e)) is not None}
         return Result(c, "verified", "incremental: yes" in out, "", refused)
     lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
     return Result(c, "rejected", False, (lines or [out.strip()])[-1], {})
 
 
 def results() -> list[Result]:
-    con = setup()
-    return [check(con, c) for c in CASES]
+    return [check(c) for c in CASES]
 
 
 SYMBOL = {"verified": "✓", "rejected": "✗", "upstream": "–"}
