@@ -8,7 +8,8 @@ def Value.render : Value → String
   | .null => "NULL"
   | .bool b => toString b
   -- Too large for a 64-bit integer: a double's code (SubstraitLean/Float.lean).
-  | .int i => if i.natAbs ≥ 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
+  -- Codes are odd, so `-2⁶³` is the smallest integer.
+  | .int i => if i.natAbs ≥ 2 ^ 63 ∧ i ≠ -2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
   | .str s => s.quote
 
 def Row.render (row : Row) : String :=
@@ -20,7 +21,7 @@ def UnFn.render : UnFn → String
   | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
-  | .toDate => "DATE"
+  | .toDate => "DATE" | .fmath f => f.name.toUpper
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
@@ -30,6 +31,9 @@ def BinFn.render : BinFn → String
   | .endsWith => "ENDS_WITH" | .like => "LIKE"
   | .substr n => s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}"
   | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
+  | .fatan2 => "ATAN2"
+  | .bit op => match op with
+    | .and => "&" | .or => "|" | .xor => "#" | .shl => "<<" | .shr => ">>"
 
 def Expr.render : Expr → String
   | .lit v => v.render

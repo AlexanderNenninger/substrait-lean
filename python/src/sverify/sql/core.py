@@ -289,6 +289,20 @@ class Dialect:
         """C's `pow`: IEEE results, no errors."""
         return f"POWER({a}, {b})"
 
+    def float_fn(self, name: str, x: str) -> str:
+        """An elementary function (`FMath`) as C's `libm` computes it, with
+        IEEE results (NaN, ±inf) outside its domain rather than errors."""
+        return f"{name.upper()}({x})"
+
+    def float_atan2(self, y: str, x: str) -> str:
+        """C's `atan2`."""
+        return f"ATAN2({y}, {x})"
+
+    def bitwise(self, op: str, a: str, b: str) -> str:
+        """A `BitOp` of 64-bit integers: shifts by `b` modulo 64, a left
+        shift wrapping around (Rust's `wrapping_shl`)."""
+        raise Unsupported(f"{self.name}: {op} is not implemented")
+
     def float_to_int(self, x: str) -> str:
         """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
         outside 64 bits must raise (Lean: NULL)."""
@@ -529,13 +543,14 @@ class Un:
     op: Literal[
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
-        "date_trunc", "to_date",
+        "date_trunc", "to_date", "fmath",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`, or the bits of `narrow`."""
     param: str = ""
-    """The pattern of `regexMatch`, the part of `datePart`, the unit of `dateTrunc`."""
+    """The pattern of `regexMatch`, the part of `datePart`, the unit of
+    `dateTrunc`, the function of `fmath` (`FMath.name`)."""
 
 
 @dataclass(frozen=True)
@@ -543,7 +558,7 @@ class Bin:
     op: Literal[
         "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
-        "like", "substr", "trim",
+        "like", "substr", "trim", "fatan2", "bit",
     ]  # fmt: skip
     left: Expr
     right: Expr
@@ -551,6 +566,16 @@ class Bin:
     """The `n` of `substr n`."""
     sides: tuple[bool, bool] = (True, True)
     """`left` and `right` of `trim`."""
+    param: str = ""
+    """The operation of `bit` (`BitOp.name`)."""
+
+
+#: `FMath.name`: elementary functions of a double.
+FMATH = ("sqrt", "exp", "ln", "sin", "cos", "tan", "asin", "acos", "atan")
+#: `BitOp.name`: bitwise operations of integers.
+BITWISE = (
+    "bitwise_and", "bitwise_or", "bitwise_xor", "bitwise_shift_left", "bitwise_shift_right",
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -793,7 +818,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return cols[i] if i < len(cols) else "other"
         case Un(op="neg", arg=a):
             return lean_expr_kind(a, cols)
-        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
+        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(op="ftoi" | "narrow" | "length" | "regex_match" | "date_part"):
             return "int"
@@ -807,9 +832,9 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "bit"):
             return "int"
         case Bin(op="concat" | "substr" | "trim"):
             return "str"
@@ -829,7 +854,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return _get(cols, i)
         case Un(op="neg", arg=a):
             return expr_kind(a, cols)
-        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
+        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(op="ftoi" | "narrow" | "length" | "regex_match" | "date_part"):
             return "int"
@@ -848,9 +873,9 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return ka if ka in ("time", "interval") or kb is None else kb
         case Bin(op="mul", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "bit"):
             return "int"
         case Bin(op="concat" | "substr" | "trim"):
             return "str"
@@ -1322,10 +1347,14 @@ class _Parser:
                 out = _lean_type_kind(_field(v, "outputType"))
                 floats = (
                     "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-                    "ceil", "round",
+                    "ceil", "round", "atan2", *FMATH,
                 )  # fmt: skip
+                # Elementary functions are of doubles whatever the output type says.
+                float_only = name == "atan2" or name in FMATH
                 has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
-                float_call = name in floats and (out == "float" or has_float)
+                float_call = name in floats and (out == "float" or has_float or float_only)
+                if name in BITWISE and has_float:
+                    raise Unsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
                 # function, stands for that double.
                 if has_float or float_call:
@@ -1919,6 +1948,8 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("trim", a, chars, sides=sides)
         case "regexp_match", _:
             raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
+        case _, [a, b] if name in BITWISE:
+            return Bin("bit", a, b, param=name)
         # Timestamps (`SubstraitLean/Time.lean`).
         case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
             if part.lower() not in DATE_PARTS:
@@ -1977,6 +2008,10 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Un("fround", a)
         case "round", [a, Lit(value=int(d), kind="int")] if not isinstance(d, bool):
             return Un("fround", a) if d == 0 else Un("froundTo", a, d)
+        case "atan2", [a, b]:
+            return Bin("fatan2", a, b)
+        case _, [a] if name in FMATH:
+            return Un("fmath", a, param=name)
     raise Unsupported(f"unsupported double function {name}/{len(args)}")
 
 
@@ -2503,13 +2538,22 @@ class _Writer:
             case Bin(op="and" | "or" as op, left=a, right=b):
                 f = d.and3 if op == "and" else d.or3
                 return f(go(a, "bool"), go(b, "bool"))
-            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" as op, left=a, right=b):
+            case Un(op="fmath", arg=a, param=name):
+                return d.canon(d.float_fn(name, self.float_operand(a, ref, cols)))
+            case Bin(op="bit", left=a, right=b, param=name):
+                sa = self.int_operand(a, ref, cols, name)
+                sb = self.int_operand(b, ref, cols, name)
+                return d.bitwise(name, sa, sb)
+            case Bin(
+                op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2" as op, left=a, right=b
+            ):
                 f = {
                     "fadd": d.float_add,
                     "fsub": d.float_sub,
                     "fmul": d.float_mul,
                     "fdiv": d.float_div,
                     "fpow": d.float_pow,
+                    "fatan2": d.float_atan2,
                 }[op]
                 sql = f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
                 # A sum or difference of doubles other than -0.0 is never -0.0.

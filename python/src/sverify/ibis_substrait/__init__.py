@@ -432,6 +432,69 @@ def _string_find(x: Exprs, op: Any) -> Json:
     return call("subtract", [call("strpos", [x(op.arg), x(op.substr)]), literal(1, dt.int64)])
 
 
+def _fmath(name: str) -> Callable[[Exprs, Any], Json]:
+    # `LN(x)` and friends: DataFusion converts integers to doubles.
+    return lambda x, op: call(name, [x(op.arg, dt.float64)])
+
+
+def _double(v: float) -> Json:
+    return literal(v, dt.float64)
+
+
+def _log(base: float | None) -> Callable[[Exprs, Any], Json]:
+    # DataFusion 51 computes `LOG(x)` as `ln(x) / ln(10)` and `LOG(b, x)` as
+    # `ln(x) / ln(b)` (not C's `log10`/`log2`); Ibis writes `Log(x, b)` so.
+    def rule(x: Exprs, op: Any) -> Json:
+        ln = call("ln", [x(op.arg, dt.float64)])
+        b = getattr(op, "base", None)
+        if base is None and b is None:
+            return ln
+        divisor = _double(base) if base is not None else x(b, dt.float64)
+        return call("divide", [ln, call("ln", [divisor])])
+
+    return rule
+
+
+def _sign(x: Exprs, op: Any) -> Json:
+    # `SIGN`: -1, 0 or 1 in the argument's type, NaN for NaN (whose code is
+    # above +inf, so it is tested first).
+    arg = x(op.arg)
+    t = op.arg.dtype
+    one, zero = literal(1, t), literal(0, t)
+    ifs = [(call("lt", [arg, zero]), literal(-1, t)), (call("gt", [arg, zero]), one)]
+    if t.is_floating():
+        ifs.insert(0, (_is_nan(x, op), arg))
+    return if_then(ifs, arg)
+
+
+def _is_inf(x: Exprs, op: Any) -> Json:
+    arg = x(op.arg, dt.float64)
+    return call(
+        "or",
+        [call("equal", [arg, _double(math.inf)]), call("equal", [arg, _double(-math.inf)])],
+    )
+
+
+def _bitwise(name: str) -> Callable[[Exprs, Any], Json]:
+    def rule(x: Exprs, op: Any) -> Json:
+        shift = "shift" in name
+        if shift and not op.dtype.is_int64():
+            # The count is taken modulo the width, and the result wraps in it.
+            raise Unsupported(f"shifts of {op.dtype} are not supported; cast to int64")
+        return call(name, [x(op.left, op.dtype), x(op.right, op.dtype)])
+
+    return rule
+
+
+def _xor(x: Exprs, op: Any) -> Json:
+    # As Ibis's DataFusion SQL writes it: (a AND NOT b) OR (NOT a AND b).
+    a, b = x(op.left), x(op.right)
+    return call(
+        "or",
+        [call("and", [a, call("not", [b])]), call("and", [call("not", [a]), b])],
+    )
+
+
 _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Field: _field,
     ops.Literal: _literal,
@@ -499,6 +562,38 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.IsNan: _is_nan,
     ops.StringFind: _string_find,
     ops.ExtractWeekOfYear: _date_part("week"),
+    ops.Sqrt: _fmath("sqrt"),
+    ops.Exp: _fmath("exp"),
+    ops.Ln: _fmath("ln"),
+    ops.Log: _log(None),
+    ops.Log10: _log(10.0),
+    ops.Log2: _log(2.0),
+    ops.Sin: _fmath("sin"),
+    ops.Cos: _fmath("cos"),
+    ops.Tan: _fmath("tan"),
+    ops.Asin: _fmath("asin"),
+    ops.Acos: _fmath("acos"),
+    ops.Atan: _fmath("atan"),
+    ops.Atan2: lambda x, op: call("atan2", [x(op.left, dt.float64), x(op.right, dt.float64)]),
+    # DataFusion's `COT(x)` is `1 / tan(x)`; `DEGREES` and `RADIANS` multiply
+    # by Rust's constants (`f64::to_degrees`, `to_radians`).
+    ops.Cot: lambda x, op: call("divide", [_double(1.0), call("tan", [x(op.arg, dt.float64)])]),
+    ops.Degrees: lambda x, op: call(
+        "multiply", [x(op.arg, dt.float64), _double(57.29577951308232)]
+    ),
+    ops.Radians: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(math.pi / 180.0)]),
+    ops.E: lambda x, op: call("exp", [_double(1.0)]),
+    ops.Pi: lambda x, op: _double(math.pi),
+    ops.Sign: _sign,
+    ops.IsInf: _is_inf,
+    ops.BitwiseAnd: _bitwise("bitwise_and"),
+    ops.BitwiseOr: _bitwise("bitwise_or"),
+    ops.BitwiseXor: _bitwise("bitwise_xor"),
+    ops.BitwiseLeftShift: _bitwise("bitwise_shift_left"),
+    ops.BitwiseRightShift: _bitwise("bitwise_shift_right"),
+    # `~x` is `x # -1`, as Ibis's DataFusion SQL writes it.
+    ops.BitwiseNot: lambda x, op: call("bitwise_xor", [x(op.arg, op.dtype), literal(-1, op.dtype)]),
+    ops.Xor: _xor,
 }
 
 

@@ -397,6 +397,21 @@ def _rows(fn, out: DType, *vals: Val) -> pl.Expr:
     return args.map_batches(apply, return_dtype=out, is_elementwise=True)
 
 
+def shift_left(a: int, b: int) -> int:
+    """`BitOp.shl`: by `b` modulo 64, wrapping around in 64 bits."""
+    return ((a << (b % 64)) + 2**63) % 2**64 - 2**63
+
+
+#: The shifts of `BitOp`; the others are Polars' `&`, `|` and `^`.
+BITWISE = {
+    "bitwise_and": None,
+    "bitwise_or": None,
+    "bitwise_xor": None,
+    "bitwise_shift_left": shift_left,
+    "bitwise_shift_right": lambda a, b: a >> (b % 64),
+}
+
+
 def strpos(s: str, t: str) -> int:
     """`Text.strpos`: the 1-based position of the first `t`, 0 if none."""
     return s.find(t) + 1
@@ -712,6 +727,11 @@ class Exprs:
                 return Val(canon(e.ceil()), t, a.issues)
             if name == "round":
                 return Val(canon(e.round(0, mode="half_away_from_zero")), t, a.issues)
+            # `FMath`: Rust's `f64` methods, which call C's `libm` as Lean does.
+            fmath = {"sqrt": e.sqrt, "exp": e.exp, "ln": e.log, "sin": e.sin, "cos": e.cos,
+                     "tan": e.tan, "asin": e.arcsin, "acos": e.arccos, "atan": e.arctan}  # fmt: skip
+            if name in fmath:
+                return Val(canon(fmath[name]()), t, a.issues)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
 
     def binary(self, name: str, a: Val, b: Val) -> Val:
@@ -750,6 +770,15 @@ class Exprs:
             q = narrow(tdiv(x, y), pl.Int64, "division", a, b, kind=Overflow)
             return Val(pl.when(zero).then(None).otherwise(q.expr), pl.Int64,
                        (*q.issues, by_zero))  # fmt: skip
+        if name == "atan2" and unify(ta, tb, name) == pl.Float64:
+            return Val(canon(pl.arctan2(a.expr, b.expr)), pl.Float64, issues(a, b))
+        if name in BITWISE:
+            if unify(ta, tb, name) not in (pl.Int64, pl.Null):
+                raise Unsupported(f"{name} of {ta} and {tb}")
+            x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
+            simple = {"bitwise_and": x & y, "bitwise_or": x | y, "bitwise_xor": x ^ y}
+            out = simple[name] if name in simple else _rows(BITWISE[name], pl.Int64, a, b)
+            return Val(out, pl.Int64, issues(a, b))
         strings = ("str_concat", "strpos", "starts_with", "ends_with", "like", "substring",
                    "btrim", "ltrim", "rtrim")  # fmt: skip
         if name in strings:

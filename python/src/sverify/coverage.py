@@ -232,7 +232,7 @@ CASES: list[Case] = [
     case("time", "truncate", V, lambda: t.select(x=t.ts.truncate("h"))),
     # Logic
     case("logic", "comparisons", V, lambda: t.filter((t.qty != 1) & (t.qty <= 5) | (t.id >= 2))),
-    case("logic", "xor", R, lambda: t.filter(t.flag ^ (t.qty > 1))),
+    case("logic", "xor", V, lambda: t.filter(t.flag ^ (t.qty > 1))),
     case("logic", "identical_to", V, lambda: t.filter(t.qty.identical_to(t.id))),
     case("logic", "notnull", V, lambda: t.filter(t.qty.notnull())),
     case("logic", "simple case", V, lambda: t.select(x=t.qty.cases((1, "one"), else_="many"))),
@@ -266,20 +266,20 @@ CASES: list[Case] = [
     case("statistics", "histogram bucket", R, lambda: t.select(b=t.qty.bucket([0, 10, 100]))),
     # Numbers
     case("numbers", "negate", V, lambda: t.select(x=-t.qty)),
-    case("numbers", "sign", R, lambda: t.select(x=t.amount.sign())),
-    case("numbers", "sqrt", R, lambda: t.select(x=t.amount.sqrt())),
-    case("numbers", "exp", R, lambda: t.select(x=t.amount.exp())),
+    case("numbers", "sign", V, lambda: t.select(x=t.amount.sign())),
+    case("numbers", "sqrt", V, lambda: t.select(x=t.amount.sqrt())),
+    case("numbers", "exp", V, lambda: t.select(x=t.amount.exp())),
     case(
         "numbers",
         "ln, log10, log2",
-        R,
+        V,
         lambda: t.select(a=t.amount.ln(), b=t.amount.log10(), c=t.amount.log2()),
     ),
-    case("numbers", "log(base)", R, lambda: t.select(x=t.amount.log(3))),
+    case("numbers", "log(base)", V, lambda: t.select(x=t.amount.log(3))),
     case(
         "numbers",
         "trigonometry",
-        R,
+        V,
         lambda: t.select(
             a=t.amount.sin(),
             b=t.amount.cos(),
@@ -294,19 +294,19 @@ CASES: list[Case] = [
     case(
         "numbers",
         "degrees, radians",
-        R,
+        V,
         lambda: t.select(x=t.amount.degrees(), y=t.amount.radians()),
     ),
-    case("numbers", "pi, e", R, lambda: t.select(x=t.amount * ibis.pi + ibis.e)),
+    case("numbers", "pi, e", V, lambda: t.select(x=t.amount * ibis.pi + ibis.e)),
     case("numbers", "isnan", V, lambda: t.filter(t.amount.isnan())),
-    case("numbers", "isinf", R, lambda: t.filter(t.amount.isinf())),
+    case("numbers", "isinf", V, lambda: t.filter(t.amount.isinf())),
     case(
         "numbers",
         "bitwise",
-        R,
+        V,
         lambda: t.select(a=t.qty & 3, b=t.qty | 3, c=t.qty ^ 3, d=~t.qty),
     ),
-    case("numbers", "shifts", R, lambda: t.select(a=t.qty << 1, b=t.qty >> 1)),
+    case("numbers", "shifts", V, lambda: t.select(a=t.qty << 1, b=t.qty >> 1)),
     case("numbers", "convert_base", R, lambda: t.select(x=t.name.convert_base(16, 10))),
     case("numbers", "random", R, lambda: t.select(x=ibis.random())),
     # Strings
@@ -622,11 +622,15 @@ ENGINES = ("polars", "duckdb", "snowflake", "spark")
 #:
 #: * `lt` on strings is undefined in the model (`BinFn.apply` has no case for
 #:   it, so it is NULL, where SQL compares), so no engine may run it.
+#: * The elementary functions of doubles (`LN`, `SIN`, …) round as C's `libm`
+#:   does; Snowflake's and Spark's (Java's `StrictMath`) may differ in the
+#:   last bit. Square roots are correctly rounded everywhere.
 #: * Snowflake and Spark tables have no row order, which FETCH and a stable
 #:   sort's or a window's ties follow. Sorts and windows run with
 #:   `tie_free=True`. A `SUM` or `AVG` of doubles adds in that order too
 #:   (rounding depends on it).
 NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
+LIBM = {"snowflake": "libm", "spark": "StrictMath"}
 REFUSED: dict[str, dict[str, str]] = {
     "count, max, mean": NO_ROW_ORDER,
     "non-equi join": {
@@ -643,6 +647,13 @@ REFUSED: dict[str, dict[str, str]] = {
     "lag": NO_ROW_ORDER,
     "lead": NO_ROW_ORDER,
     "timestamp - timestamp": {"snowflake": "no interval values"},
+    "sqrt": {"snowflake": "libm"},
+    "exp": LIBM,
+    "ln, log10, log2": LIBM,
+    "log(base)": LIBM,
+    "trigonometry": LIBM,
+    "pi, e": LIBM,
+    "shifts": {"snowflake": "shifts by 64 or more bits"},
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
 TIE_FREE = {"order_by", "row_number", "lag", "lead"}

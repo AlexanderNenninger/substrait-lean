@@ -427,7 +427,7 @@ def UnFn.abs : UnFn → AVal → AVal
   -- Double negation is code negation too (zero is `0`).
   | .neg, a | .fneg, a => ⟨a.nonInt, a.int.map Bound.neg, false, false, false⟩
   -- Float results: some double (any code), or NULL.
-  | .itof, a | .froundTo _, a =>
+  | .itof, a | .froundTo _, a | .fmath _, a =>
       ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
   | .ffloor, a => monoAbs FloatCode.floor a
   | .fceil, a => monoAbs FloatCode.ceil a
@@ -481,8 +481,8 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .add, a, b => arith Bound.add a b
   | .sub, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
-  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
-      arith (fun _ _ => Bound.top) a b
+  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b | .fatan2, a, b
+  | .bit _, a, b => arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
   | .ipow, a, b => powAbs a b
@@ -618,6 +618,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case fmath f => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case itos =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
@@ -790,6 +791,8 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fdiv => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fatan2 => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case bit op => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ipow => exact powAbs_sound ha hb

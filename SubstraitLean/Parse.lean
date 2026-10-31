@@ -159,13 +159,15 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
   | .un (.dateTrunc _) _ => .time
   | .un .toDate _ => .date
+  | .un (.fmath _) _ => .float
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
-  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ => .int
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _
+  | .bin .fatan2 _ _ => .float
+  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin (.bit _) _ _ => .int
   | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ => .str
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
@@ -467,7 +469,8 @@ timestamp literal is an integer), so only the signature speaks for it. -/
 
 /-- Functions whose arguments are numbers, timestamps or intervals. -/
 def arithmeticFns : List String :=
-  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"]
+  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"] ++
+    BitOp.all.map (·.name)
 
 /-- Functions that compare their arguments: these must have one kind. -/
 def comparisonFns : List String :=
@@ -610,6 +613,10 @@ def mkCall : String → List Expr → J Expr
     match Time.TimeUnit.ofName? u with
     | some u => pure (.un (.dateTrunc u) a)
     | none => throw s!"unsupported date_trunc unit '{u}'"
+  -- Bitwise operations of integers (`BitOp`).
+  | name, [a, b] => match BitOp.ofName? name with
+    | some op => pure (.bin (.bit op) a b)
+    | none => throw s!"unsupported function {name}/2"
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
   notDistinct (a b : Expr) : Expr :=
@@ -643,6 +650,10 @@ def mkFloatCall : String → List Expr → J Expr
   | "round", [a] => pure (.un .fround a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
+  | "atan2", [a, b] => pure (.bin .fatan2 a b)
+  | name, [a] => match FMath.ofName? name with
+    | some f => pure (.un (.fmath f) a)
+    | none => throw s!"unsupported double function {name}/1"
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
 /-- Parse an expression over input columns of kinds `cols`. -/
@@ -696,9 +707,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     -- (Isthmus types `POWER` of integers as a double).
     let out := typeKind ((field? f "outputType").getD .null)
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-      "ceil", "round"]
+      "ceil", "round", "atan2"] ++ FMath.all.map (·.name)
+    -- Elementary functions are of doubles whatever the output type says.
+    let floatOnly := baseName name == "atan2" || (FMath.ofName? (baseName name)).isSome
     let hasFloat := parsed.any (·.kind cols == .float)
-    let floatCall := floats.contains (baseName name) && (out == .float || hasFloat)
+    let floatCall := floats.contains (baseName name) && (out == .float || hasFloat || floatOnly)
+    if (BitOp.ofName? (baseName name)).isSome && hasFloat then
+      throw s!"{baseName name} is only supported on integers"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.

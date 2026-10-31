@@ -19,6 +19,10 @@ namespace Substrait.Write
 
 open Lean (Json toJson)
 
+/-- The anchors of `FMath.all` and `BitOp.all` start here. -/
+def fmathAnchor : Nat := 100
+def bitAnchor : Nat := 120
+
 /-- `(anchor, Substrait name)` for every function the writer can emit.
 DataFusion resolves functions by name and argument types, so the same `add`
 serves integers, doubles and timestamps. -/
@@ -30,7 +34,10 @@ def functions : List (Nat × String) :=
    (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl")]
+   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
+   (42, "atan2")] ++
+  (FMath.all.zipIdx.map fun (f, i) => (fmathAnchor + i, f.name)) ++
+  (BitOp.all.zipIdx.map fun (op, i) => (bitAnchor + i, op.name))
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
@@ -41,6 +48,7 @@ def UnFn.anchor : UnFn → Nat
   | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
+  | .fmath f => fmathAnchor + FMath.all.idxOf f
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
@@ -48,6 +56,7 @@ def BinFn.anchor : BinFn → Nat
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
   | .substr _ => 32
   | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
+  | .fatan2 => 42 | .bit op => bitAnchor + BitOp.all.idxOf op
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
@@ -135,6 +144,7 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
   | .un .ffloor a => canonical (call 15 [writeExpr cols .float a])
   | .un .fceil a => canonical (call 16 [writeExpr cols .float a])
   | .un .fround a => canonical (call 17 [writeExpr cols .float a])
+  | .un (.fmath f) a => canonical (call (UnFn.anchor (.fmath f)) [writeExpr cols .float a])
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
@@ -147,7 +157,7 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
     match f with
     -- A sum or difference of canonical doubles is `-0.0` never, NaN only
     -- as `inf - inf`, which IEEE engines may make negative.
-    | .fadd | .fsub | .fmul | .fdiv | .fpow =>
+    | .fadd | .fsub | .fmul | .fdiv | .fpow | .fatan2 =>
       canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.

@@ -21,6 +21,11 @@ Doubles are integer *codes* (see `SubstraitLean/Float.lean`), so they share
 operators (`fadd`, …), computed with native floats; rounding a double to an
 integer is exact (see `SubstraitLean/Rounding.lean`).
 
+Elementary functions of doubles (`SQRT`, `LN`, `SIN`, …) are computed with
+native floats, as `POWER` is: C's `libm`, which DataFusion's Rust calls too.
+Bitwise operations act on 64-bit two's complement, and shifts wrap as
+DataFusion's do (Rust's `wrapping_shl`: the count modulo 64).
+
 Integer division and remainder truncate toward zero, as in DataFusion. Where
 DataFusion raises an error (division by zero, a cast out of range, …) the
 value here is `null`; `SubstraitLean/Safety.lean` says when that happens.
@@ -31,6 +36,56 @@ regular expressions are black boxes there); timestamps are microseconds, and
 -/
 
 namespace Substrait
+
+/-- Elementary functions of a double. DataFusion has no errors here: outside
+a function's domain the result is NaN (`LN(-1)`, `ASIN(2)`) or infinite
+(`LN(0)`). -/
+inductive FMath where
+  | sqrt | exp | ln | sin | cos | tan | asin | acos | atan
+  deriving Repr, DecidableEq
+
+def FMath.name : FMath → String
+  | .sqrt => "sqrt" | .exp => "exp" | .ln => "ln" | .sin => "sin" | .cos => "cos"
+  | .tan => "tan" | .asin => "asin" | .acos => "acos" | .atan => "atan"
+
+def FMath.all : List FMath := [.sqrt, .exp, .ln, .sin, .cos, .tan, .asin, .acos, .atan]
+
+def FMath.ofName? (n : String) : Option FMath := FMath.all.find? (·.name == n)
+
+def FMath.eval : FMath → Float → Float
+  | .sqrt => Float.sqrt | .exp => Float.exp | .ln => Float.log | .sin => Float.sin
+  | .cos => Float.cos | .tan => Float.tan | .asin => Float.asin | .acos => Float.acos
+  | .atan => Float.atan
+
+/-- Bitwise operations on 64-bit integers. -/
+inductive BitOp where
+  | and | or | xor
+  /-- Shifts by the count modulo 64: left shifts wrap, right shifts keep the sign. -/
+  | shl | shr
+  deriving Repr, DecidableEq
+
+def BitOp.name : BitOp → String
+  | .and => "bitwise_and" | .or => "bitwise_or" | .xor => "bitwise_xor"
+  | .shl => "bitwise_shift_left" | .shr => "bitwise_shift_right"
+
+def BitOp.all : List BitOp := [.and, .or, .xor, .shl, .shr]
+
+def BitOp.ofName? (n : String) : Option BitOp := BitOp.all.find? (·.name == n)
+
+def BitOp.eval (op : BitOp) (a b : Int) : Int :=
+  let x := BitVec.ofInt 64 a
+  match op with
+  | .and => (x &&& BitVec.ofInt 64 b).toInt
+  | .or => (x ||| BitVec.ofInt 64 b).toInt
+  | .xor => (x ^^^ BitVec.ofInt 64 b).toInt
+  | .shl => (x <<< (b % 64).toNat).toInt
+  | .shr => (x.sshiftRight (b % 64).toNat).toInt
+
+#guard BitOp.eval .and (-3) 70 == 68 && BitOp.eval .or (-3) 70 == -1 && BitOp.eval .xor 7 (-1) == -8
+#guard BitOp.eval .shl (-3) 70 == -192 && BitOp.eval .shl 7 64 == 7
+#guard BitOp.eval .shl 9223372036854775807 (-65) == -9223372036854775808
+#guard BitOp.eval .shr (-3) 70 == -1 && BitOp.eval .shr (-9223372036854775808) 3 == -1152921504606846976
+#guard BitOp.eval .shr 9223372036854775807 (-65) == 0
 
 inductive UnFn where
   | not | isNull | neg
@@ -61,6 +116,8 @@ inductive UnFn where
   | dateTrunc (u : Time.TimeUnit)
   /-- `CAST(ts AS DATE)`: days since 1970-01-01, rounding down. -/
   | toDate
+  /-- `SQRT`, `LN`, `SIN`, … of a double. -/
+  | fmath (f : FMath)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -77,6 +134,10 @@ inductive BinFn where
   | substr (n : Option Nat)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
+  /-- `ATAN2(y, x)` of doubles. -/
+  | fatan2
+  /-- `&`, `|`, `#` (xor), `<<` and `>>` of integers. -/
+  | bit (op : BitOp)
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -118,6 +179,7 @@ def UnFn.apply : UnFn → Value → Value
     | none => .null
   | .dateTrunc u, .int ts => .int (Time.trunc u ts)
   | .toDate, .int ts => .int (Time.days ts)
+  | .fmath f, .int c => .int (FloatCode.ofFloat (f.eval (FloatCode.toFloat c)))
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -156,6 +218,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .ipow, .int a, .int b =>
     if b < 0 ∨ (64 < b ∧ 1 < a.natAbs) then .null else .int (a ^ b.toNat)
   | .fpow, .int a, .int b => .int (FloatCode.lift₂ Float.pow a b)
+  | .fatan2, .int a, .int b => .int (FloatCode.lift₂ Float.atan2 a b)
+  | .bit op, .int a, .int b => .int (op.eval a b)
   | .concat, .str a, .str b => .str (a ++ b)
   | .strpos, .str a, .str b => .int (Text.strpos a b)
   | .startsWith, .str a, .str b => .bool (Text.startsWith a b)

@@ -69,6 +69,23 @@ class DuckDBDialect(Dialect):
         # The cast raises on NaN, ±inf and values outside 64 bits.
         return f"CAST(trunc({x}) AS BIGINT)"
 
+    def bitwise(self, op: str, a: str, b: str) -> str:
+        # `& 63` is the count modulo 64 in two's complement. `<<` raises on
+        # negatives and overflow, so a left shift is a product of HUGEINTs
+        # (below 2¹²⁶) reduced into 64 bits.
+        match op:
+            case "bitwise_and":
+                return f"({a} & {b})"
+            case "bitwise_or":
+                return f"({a} | {b})"
+            case "bitwise_xor":
+                return f"xor({a}, {b})"
+            case "bitwise_shift_right":
+                return f"({a} >> ({b} & 63))"
+        wide = f"(CAST({a} AS HUGEINT) * (CAST(1 AS HUGEINT) << ({b} & 63)))"
+        m, h = 2**64, 2**63
+        return f"CAST((({wide} + {h}) % {m} + {m}) % {m} - {h} AS BIGINT)"
+
     def row_ordinal(self) -> str:
         return "rowid"
 
