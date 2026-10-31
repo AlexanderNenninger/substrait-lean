@@ -610,6 +610,7 @@ def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
   | some l, _ =>
     if (field? l "date").isSome then .date
     else if (field? l "precisionTimestamp").isSome || (field? l "timestamp").isSome then .time
+    else if (field? l "precisionTime").isSome || (field? l "time").isSome then .tod
     else .other
   -- A constant cast (`DATE '2024-01-31'` is a cast of a string).
   | none, some c => match typeKind ((field? c "type").getD .null) with
@@ -868,7 +869,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
       if (parsed.getD 0 (.lit .null)).kind cols != .time then
         throw s!"{baseName name} is only supported on timestamps"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
-      match (parsed.getD 1 (.lit .null)).kind cols with
+      -- A timestamp or date literal has its type's kind (`argKind`).
+      match argKind cols (argJs.getD 1 .null) (parsed.getD 1 (.lit .null)) with
       | .time => pure ()
       | .tod =>
         -- A time of day is a timestamp on 1970-01-01, for its clock parts.

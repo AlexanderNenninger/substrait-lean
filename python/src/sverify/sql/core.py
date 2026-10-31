@@ -1480,7 +1480,7 @@ class _Parser:
                         raise Unsupported(f"{name} is only supported on timestamps")
                 if name in ("date_part", "datepart", "date_trunc", "datetrunc"):
                     second = parsed[1] if len(parsed) > 1 else Lit(None, None)
-                    k = lean_expr_kind(second, cols.lean)
+                    k = _arg_kind(cols.lean, arg_js[1], second) if len(arg_js) > 1 else "other"
                     if k == "tod":
                         call = _call(name, parsed)
                         clock = ("hour", "minute", "second", "millisecond", "microsecond")
@@ -2101,6 +2101,8 @@ def _arg_kind(cols: list[LeanKind], j: Any, e: Expr) -> LeanKind:
             return "date"
         if _field(lit, "precisionTimestamp") is not None or _field(lit, "timestamp") is not None:
             return "time"
+        if _field(lit, "precisionTime") is not None or _field(lit, "time") is not None:
+            return "tod"
     # A constant cast (`DATE '2024-01-31'` is a cast of a string).
     if (c := _field(j, "cast")) is not None:
         k = _lean_type_kind(_field(c, "type"))
