@@ -104,10 +104,12 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 | Polars | 281 ms | 103 ms | 2.7× |
 | DuckDB | 30 ms | 26 ms | 1.1× (DuckDB checks overflow natively; only the `CASE`s go) |
 
-**Limits found on the way.** `Bound.mul` of two non-constant ranges is ⊤, so
-`a * b` keeps its overflow guard even when both columns are bounded. Interval
-multiplication would let more plans go guard-free. The elimination is also
-all or nothing per plan; per-expression elimination is a follow-up. Both are in #83.
+**Limits found on the way.** `Bound.mul` of two non-constant ranges used to
+be ⊤, so `a * b` kept its overflow guard even when both columns are bounded.
+It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
+so such products go guard-free; a half-open range still gives ⊤. The
+elimination is also all or nothing per plan; per-expression elimination is a
+follow-up in #83.
 
 ## 2. Sharded evaluation (prototype)
 
