@@ -12,7 +12,7 @@ DataFusion bit for bit.
 import itertools
 import json
 import math
-from typing import Any
+from typing import Any, cast
 
 import ibis
 import pyarrow as pa
@@ -80,7 +80,7 @@ def table_rows(expr: Any, rs: list[tuple], lean: bool) -> list[tuple]:
     """In the order of the key `k`: DataFusion may return rows in any order."""
     types = list(expr.schema().types)
     out = [tuple(normalize(v, t, lean) for v, t in zip(r, types, strict=True)) for r in rs]
-    return sorted(out, key=lambda r: r[0])
+    return sorted(out, key=lambda r: cast(int, r[0]))
 
 
 def close(printed: object, exact: object) -> bool:

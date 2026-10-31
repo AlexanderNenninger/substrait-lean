@@ -1089,7 +1089,7 @@ Spark differs:
 Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
 table without `tie_free=True` (tables have no row order), and so `SUM` or
 `AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
-`Math.pow` (within 1 ulp of C's).
+`Math.pow` (within 1 ulp of C's), and the other elementary functions but `SQRT`.
 
 String columns must use the default `UTF8_BINARY` collation (code point
 order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
@@ -1376,6 +1376,21 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation that may
   leave 64 bits. Where DataFusion fails instead (division, `POWER`, casts), the
   value in the model is `NULL`.
+* **Elementary functions of doubles are C's `libm`.** `SQRT`, `EXP`, `LN`,
+  `SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN` and `ATAN2` are computed with
+  Lean's native floats, which call the same `libm` as DataFusion's Rust, and
+  return NaN or ±∞ outside their domain (`LN(-1)`, `ASIN(2)`, `LN(0)`) where
+  DataFusion does; contracts treat their results as "some double". The Ibis
+  producer writes the rest in terms of them, as DataFusion 51 computes them:
+  `LOG10(x)` is `LN(x) / LN(10)` (not C's `log10`), `LOG2` and `LOG(x, b)`
+  likewise, `COT(x)` is `1 / TAN(x)`, `DEGREES`/`RADIANS` multiply by Rust's
+  constants, `SIGN` and `ISINF` are comparisons. Polars and DuckDB run them
+  bit for bit (`python/tests/test_math.py`); Snowflake and Spark refuse all
+  but `SQRT`, which IEEE 754 rounds correctly everywhere.
+* **Bitwise operations are 64-bit two's complement.** `&`, `|`, `#` (xor) and
+  `~` are exact; `<<` and `>>` shift by the count modulo 64, and a left shift
+  wraps around, as Rust's `wrapping_shl` in DataFusion does (no `Issue`).
+  DuckDB's `<<` raises instead, so its SQL multiplies in `HUGEINT`.
 * **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`
   and `character_length` are computed exactly, checked against DataFusion by
   `python/tests/test_text.py`. `UPPER`, `LOWER` and regular expressions are black

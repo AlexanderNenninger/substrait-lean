@@ -173,7 +173,8 @@ class SnowflakeDialect(Dialect):
 
     def float_fn(self, name: str, x: str) -> str:
         raise Unsupported(
-            f"Snowflake's {name.upper()} is not documented to be C's libm, which the Lean model uses"
+            f"Snowflake's {name.upper()} is not documented to be C's libm, "
+            "which the Lean model uses"
         )
 
     def float_atan2(self, y: str, x: str) -> str:

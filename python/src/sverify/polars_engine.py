@@ -729,7 +729,8 @@ class Exprs:
                 return Val(canon(e.round(0, mode="half_away_from_zero")), t, a.issues)
             # `FMath`: Rust's `f64` methods, which call C's `libm` as Lean does.
             fmath = {"sqrt": e.sqrt, "exp": e.exp, "ln": e.log, "sin": e.sin, "cos": e.cos,
-                     "tan": e.tan, "asin": e.arcsin, "acos": e.arccos, "atan": e.arctan}  # fmt: skip
+                     "tan": e.tan, "asin": e.arcsin, "acos": e.arccos,
+                     "atan": e.arctan}  # fmt: skip
             if name in fmath:
                 return Val(canon(fmath[name]()), t, a.issues)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
