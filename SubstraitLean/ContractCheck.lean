@@ -1,5 +1,6 @@
 import SubstraitLean.Contracts
 import SubstraitLean.Safety
+import SubstraitLean.Guards
 import SubstraitLean.Keys
 import SubstraitLean.Check
 import SubstraitLean.Parse
@@ -98,6 +99,9 @@ structure Report where
   deterministic : Bool := true
   /-- Runtime errors and wrap-arounds `Rel.mayIssues_sound` cannot rule out. -/
   issues : List (Issue × Expr) := []
+  /-- The transformation runs correctly without row-level checks
+  (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
+  guardFree : Bool := false
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
@@ -111,7 +115,8 @@ def Report.json (r : Report) : Json :=
     ("deterministic", Lean.toJson r.deterministic),
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
-        ("expr", Lean.toJson e.render)]).toArray)]
+        ("expr", Lean.toJson e.render)]).toArray),
+    ("guard_free", Lean.toJson r.guardFree)]
 
 def Report.allProved (r : Report) : Bool :=
   r.ensures.all (·.2.1) && r.keys.all (·.2) && !r.issues.any (·.1.isError)
@@ -184,11 +189,15 @@ def check (input : Json) : Except String Report := do
   let issues := match transform with
     | some p => if p.root.checkWF cat then (p.root.mayIssues cat A F T false).eraseDups else []
     | none => []
+  let guardFree := match transform with
+    | some p => p.root.checkWF cat && p.root.looseSub && issues.all (·.1 == .sumWraps)
+    | none => false
   return {
     ensures := results
     facts
     keys
     deterministic
-    issues }
+    issues
+    guardFree }
 
 end Substrait.ContractCheck

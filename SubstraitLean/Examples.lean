@@ -8,6 +8,8 @@ import SubstraitLean.Keys
 import SubstraitLean.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
+import SubstraitLean.Partition
+import SubstraitLean.Guards
 
 /-!
 # Examples
@@ -133,6 +135,14 @@ def totals : Rel :=
 #guard (Rel.aggregate (.values 1 []) [] [{ fn := .count, arg := .field 0 },
     { fn := .sum, arg := .field 0 }]).eval cat == [[.int 0, .null]]
 
+-- Two-phase aggregation: `totals` on two shards of `orders`, then combined.
+#guard
+  let shards := [(cat "orders").rows.take 1, (cat "orders").rows.drop 1]
+  let ms := [{ fn := .count, arg := .lit (.int 1) }, { fn := .sum, arg := .field 2 },
+    { fn := .max, arg := .field 2 : Measure }]
+  aggregateEval (keyFields 1) (combineMeasures 1 ms) (shards.flatMap (aggregateEval [.field 1] ms))
+    == totals.eval cat
+
 end Substrait.Examples
 
 -- Proofs rely only on Lean's standard axioms (no `sorry`).
@@ -173,3 +183,9 @@ end Substrait.Examples
 #print axioms Substrait.stats_table
 #print axioms Substrait.stats_append
 #print axioms Substrait.stats_bounds
+#print axioms Substrait.Rel.eval_sharded
+#print axioms Substrait.twoPhase_correct
+#print axioms Substrait.Rel.shardSplit_sound
+#print axioms Substrait.inI64_partial
+#print axioms Substrait.Rel.evalI_eq
+#print axioms Substrait.Rel.guardFree_sound
