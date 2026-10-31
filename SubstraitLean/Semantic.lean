@@ -1460,7 +1460,7 @@ theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {nam
         · exact ⟨x, hx, _, by simp, rfl⟩
       refine ⟨⟨⟨⟨ha, fun g hg' => hn ▸ hgl g hg', fun m hm => ?_⟩, hb, ?_⟩, ?_⟩, ?_, ?_⟩
       · exact ⟨hn ▸ hml m hm m.arg (by simp [Measure.exprs]),
-          fun c hc => hn ▸ hml m hm c (by simp [Measure.exprs]; exact .inr hc)⟩
+          fun c hc => hn ▸ hml m hm c (by simp [Measure.exprs]; exact .inr (.inl hc))⟩
       · simp only [arity, hkk, hout]
         refine Expr.refsLt_subst (fun c hc => ?_) on
         simp only [eagerCols, List.mem_append, List.mem_map, List.mem_range] at hc

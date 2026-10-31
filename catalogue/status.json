@@ -1259,8 +1259,7 @@
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
+   "detail": "error: max of doubles is not supported",
    "datafusion": "runs"
   }
  },

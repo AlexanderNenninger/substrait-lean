@@ -599,7 +599,8 @@ def Value.mapInt (g : Int → Int) : Value → Value
 
 theorem monoAbs_mem {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {a : AVal} {v : Value}
     (h : a.Mem v) : (monoAbs g a).Mem (Value.mapInt g v) := by
-  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩ |
+    ⟨_, rfl, hs⟩
   · simp [Value.mapInt, monoAbs, AVal.Mem, AVal.nonInt, hn]
   · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
   all_goals simp_all [Value.mapInt, monoAbs, AVal.Mem, AVal.nonInt]
