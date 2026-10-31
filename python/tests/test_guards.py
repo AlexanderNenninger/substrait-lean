@@ -29,6 +29,7 @@ GUARD_FREE = [
     T.select(q=T.a // T.b, m=T.a % T.b, s=T.a * 3 + T.b),
     T.filter(T.a % T.b == 0).select(x=T.a - T.b),
     T.group_by("b").agg(n=T.a.count(), s=(T.a * 3).sum()),
+    T.select(p=T.a * T.b, q=(T.a - 500) * (T.b - 50)),
 ]
 
 SETTINGS = settings(
@@ -58,6 +59,12 @@ def test_unguarded_sql_has_no_row_checks():
     assert "error(" not in to_sql(p, DUCKDB, guards=False)
     assert "sverify: integer overflow" in to_sql(p, SNOWFLAKE)
     assert "sverify: integer overflow" not in to_sql(p, SNOWFLAKE, guards=False)
+
+
+def test_product_of_unbounded_columns_keeps_its_guard():
+    """`Bound.mul` multiplies the corners of two finite intervals only."""
+    report = sv.verify(T.select(p=T.a * T.b), requires={"t": [_.a >= 0, _.b >= 1]})
+    assert not report.guard_free
 
 
 def test_sum_keeps_its_check():

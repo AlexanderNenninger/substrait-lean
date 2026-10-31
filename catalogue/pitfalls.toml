@@ -1,6 +1,6 @@
 # Correctness pitfalls across engines. A query lists them as "tag: what it
 # means for this query". `quirks` are entries of the DataFusion quirks
-# catalogue in notebooks/14_datafusion_semantics.py (chapter 14 of the tour).
+# catalogue in notebooks/16_datafusion_semantics.py (chapter 16 of the tour).
 
 [tie_order]
 description = "The result depends on how ties are broken: ROW_NUMBER, LIMIT or first/last over non-unique sort keys."
