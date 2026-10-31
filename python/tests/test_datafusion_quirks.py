@@ -71,7 +71,7 @@ def con():
 
 
 def rows(con, sql: str) -> list[tuple]:
-    return arrow_rows(con.con.sql(sql).to_arrow_table())
+    return arrow_rows(con.datafusion.sql(sql).to_arrow_table())
 
 
 def nan_aware(rows: list[tuple]) -> list[tuple]:

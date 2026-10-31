@@ -281,7 +281,7 @@ def test_delta_plans_agree(name, data):
     for t, row in [("orders", orders_row), ("customers", customers_row)]:
         rows = data.draw(st.lists(row, max_size=4))
         ws = data.draw(st.lists(weights, min_size=len(rows), max_size=len(rows)))
-        put_table(con, t + "$delta", with_weights(rows, ws, con.con.table(t).schema()))
+        put_table(con, t + "$delta", with_weights(rows, ws, con.arrow[t].schema))
     deltas = sv.delta_plans(plan)
     assert deltas
     for d in deltas:
@@ -495,7 +495,7 @@ def test_unknown_function_is_refused():
         }
     }
     with pytest.raises(polars_engine.Unsupported, match="sqrt"):
-        polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
+        polars_engine.to_lazy(plan, {"orders": con.arrow["orders"]})
 
 
 def test_integer_sum_overflow_raises():

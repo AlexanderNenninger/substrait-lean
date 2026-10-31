@@ -70,7 +70,7 @@ def _():
     from sverify.engine import checker_path
     from sverify.examples import create_tables
 
-    con = sv.connect()  # an Ibis DataFusion backend
+    con = sv.connect()  # plans run on DuckDB by default
     create_tables(
         con,
         orders_rows=[(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
