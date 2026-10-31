@@ -1,0 +1,2 @@
+error: add:date_iday: date arithmetic is not in the Lean model (dates are days, intervals microseconds)
+[exit 1]

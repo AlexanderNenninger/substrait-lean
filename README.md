@@ -776,7 +776,8 @@ The query can be an Ibis expression or a SQL string.
 How it works:
 
 1. The query becomes a Substrait plan: an Ibis expression through the vendored
-   Ibis producer (below), a SQL string through DataFusion's Substrait producer.
+   Ibis producer (below), a SQL string through the connection's SQL producer
+   (DataFusion's, or Isthmus: see "SQL producers" below).
 2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
    union-free terms (`Rel.terms`) and applies the weight-column encoding
    (`Rel.weighted`). It prints one Substrait plan per term, after checking each
@@ -804,7 +805,8 @@ the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
 **DataFusion is optional** (`pip install 'sverify[datafusion]'`): it runs plans
-with `engine="datafusion"` and compiles SQL strings, and nothing else needs it
+with `engine="datafusion"` and compiles SQL strings unless Isthmus does, and
+nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
 51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
 registered there as record batches, not datasets: DataFusion pushes filters
@@ -850,7 +852,27 @@ literals were read in local time), and anything outside the model raises
 `Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
 coverage case against DataFusion running Ibis's SQL on random tables.
 
-SQL strings still go through DataFusion's producer.
+### SQL producers
+
+SQL strings go through DataFusion's Substrait producer, or through
+[Isthmus](https://github.com/substrait-io/substrait-java) (substrait-java's
+Calcite-based compiler) as its native release binary, with no JVM:
+`sv.connect(sql_producer="isthmus")`, and the default when DataFusion is not
+installed. sverify finds the binary through `$SVERIFY_ISTHMUS` or `isthmus` on
+`PATH` and doesn't ship it (~120 MB; `python/scripts/fetch_isthmus.sh`
+downloads the pinned release). It writes a `CREATE TABLE` per connection table
+from its Arrow schema, with quoted identifiers, and keeps unquoted identifiers'
+case (`--unquotedcasing=UNCHANGED`). Isthmus reads standard SQL in Calcite's
+default conformance, not DataFusion's or Postgres's dialect: `FLOOR(ts TO DAY)`
+rather than `DATE_TRUNC`, no `GROUP BY` ordinals, `POSITION(a IN b)`.
+
+Isthmus writes typed function names (`add:date_iday`), CHAR and VARCHAR
+literals, window functions inside expressions (`ROW_NUMBER() OVER (…) - 1`),
+`is_true` and timestamps at precision 0; the parser reads these (hoisting the
+windows into `Rel.window`) and checks the argument kinds a signature names.
+`poe compare-sql` compiles every SQL string the tests compile with DataFusion
+with Isthmus too, and fails if both plans verify but give different rows;
+`python/scripts/isthmus_catalogue.py` does the same for the query catalogue.
 
 ### Engines
 

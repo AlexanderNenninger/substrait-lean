@@ -146,6 +146,20 @@ cmd = "pytest -n auto --dist worksteal -m snowflake"
 help = "Python tests of the Spark SQL (on a local Spark session, which needs a JVM)"
 cmd = "pytest -n auto --dist worksteal -m spark"
 
+[tool.poe.tasks.test-isthmus]
+help = "Python tests of Isthmus as the SQL producer (needs $SVERIFY_ISTHMUS or isthmus on PATH)"
+cmd = "pytest -n auto --dist worksteal tests/test_isthmus.py tests/test_without_datafusion.py"
+
+[tool.poe.tasks.compare-sql]
+help = "Compile the tests' SQL with Isthmus as well as DataFusion and compare (see tests/conftest.py)"
+shell = """
+out=$(mktemp)
+SVERIFY_COMPARE_SQL=$out SVERIFY_EXAMPLES=${SVERIFY_EXAMPLES:-0.2} \
+  pytest -n auto --dist worksteal -q -m 'core or duckdb or polars' > /dev/null
+python scripts/compare_sql_producers.py "$out"; status=$?
+rm -f "$out"; exit $status
+"""
+
 [tool.poe.tasks.notebooks]
 help = "Check the tour notebooks with marimo and run each one headless"
 shell = """

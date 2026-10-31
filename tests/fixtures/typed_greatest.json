@@ -1,0 +1,134 @@
+{
+  "extensions": [
+    {
+      "extensionFunction": {
+        "functionAnchor": 1,
+        "name": "greatest:i64_i64"
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 2,
+        "name": "least_skip_null:i64_i64"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "project": {
+            "input": {
+              "read": {
+                "baseSchema": {
+                  "names": [
+                    "a",
+                    "b"
+                  ],
+                  "struct": {
+                    "types": [
+                      {
+                        "i64": {}
+                      },
+                      {
+                        "i64": {}
+                      }
+                    ]
+                  }
+                },
+                "virtualTable": {
+                  "values": [
+                    {
+                      "fields": [
+                        {
+                          "i64": "1"
+                        },
+                        {
+                          "null": {
+                            "i64": {}
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "fields": [
+                        {
+                          "i64": "1"
+                        },
+                        {
+                          "i64": "5"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "expressions": [
+              {
+                "scalarFunction": {
+                  "functionReference": 1,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {}
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 2,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {}
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "names": [
+          "a",
+          "b",
+          "g",
+          "l"
+        ]
+      }
+    }
+  ]
+}
