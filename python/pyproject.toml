@@ -28,6 +28,7 @@ all = ["sverify[datafusion,polars,spark,delta,iceberg]"]
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
+Documentation = "https://alexandernenninger.github.io/substrait-lean/"
 Source = "https://github.com/AlexanderNenninger/substrait-lean"
 Issues = "https://github.com/AlexanderNenninger/substrait-lean/issues"
 
@@ -71,6 +72,8 @@ dev = [
     "snowflake-connector-python<5",
     "sqlglot>=30.22.0",
 ]
+# The API reference site (`poe docs`): Great Docs, on Quarto (installed separately).
+docs = ["great-docs>=0.11.0"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]
@@ -182,6 +185,14 @@ done
 rm -rf "$out"
 """
 cwd = "${POE_ROOT}/../notebooks"
+
+[tool.poe.tasks.docs]
+help = "Build the API reference site into great-docs/_site (needs Quarto and the docs group)"
+cmd = "great-docs build"
+
+[tool.poe.tasks.docs_preview]
+help = "Build the API reference site and serve it locally"
+cmd = "great-docs preview"
 
 [tool.poe.tasks.qa]
 help = "Run everything: prove, build, lint, typecheck, golden, test, notebooks"

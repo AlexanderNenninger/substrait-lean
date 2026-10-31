@@ -184,12 +184,23 @@ def contract_facts(t: Table) -> list[Fact]:
 
 
 class IcebergSource:
-    """An Iceberg table of a catalog, read by snapshot sequence number."""
+    """An Iceberg table of a catalog, read by snapshot sequence number.
+
+    Pass it to `Pipeline.source`. `refresh` reads the files that appends
+    added since the recorded version; after row-level deletes or overwrites
+    it diffs the data files that changed. Tables with equality deletes
+    cannot be read.
+
+    Args:
+        catalog: A pyiceberg catalog.
+        identifier: The table's identifier in it, e.g. `"db.readings"`.
+    """
 
     def __init__(self, catalog: Catalog, identifier: str):
         self.catalog, self.identifier = catalog, identifier
 
     def table(self) -> Table:
+        """The table as the catalog loads it now (a `pyiceberg.table.Table`)."""
         return self.catalog.load_table(self.identifier)
 
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
@@ -198,6 +209,21 @@ class IcebergSource:
         return contract_facts(t) + stats_facts(stats, schema, source)
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table's rows at a snapshot, with what its metadata says about
+        every row (`required` fields, file statistics, and the contract of
+        an `IcebergSink` that wrote every snapshot).
+
+        Args:
+            version: A snapshot sequence number of the current snapshot's
+                ancestry; 0 is the empty table before the first snapshot.
+                Default: the current snapshot.
+
+        Returns:
+            The version, the rows and the facts.
+
+        Raises:
+            ValueError: No ancestor has that sequence number.
+        """
         t = self.table()
         s = t.current_snapshot() if version is None else _at(t, version)
         if version is not None and s is None and version != 0:
@@ -207,12 +233,20 @@ class IcebergSource:
         return Snapshot(v, _read(t, s), self._facts(t, files, f"file stats @v{v}"))
 
     def contract(self) -> Contract | None:
+        """The contract the table property `sverify.contract` records, or
+        None if it has none."""
         text = self.table().properties.get(KEY)
         return None if text is None else Contract.from_json(text)
 
     def stored(self) -> Stored | None:
         """The view state the current snapshot stored, if an `IcebergSink`
-        wrote it under the table's contract (to resume a pipeline from)."""
+        wrote it under the table's contract (to resume a pipeline from).
+
+        Returns:
+            The stored state, to pass to `Pipeline.view(..., resume=...)`,
+            or None if the current snapshot was not written under the
+            contract.
+        """
         t = self.table()
         s, text = t.current_snapshot(), t.properties.get(KEY)
         if s is None or s.summary is None or text is None:
@@ -224,6 +258,17 @@ class IcebergSource:
         return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
 
     def changes(self, since: int) -> SourceBatch:
+        """The change from sequence number `since` to the current snapshot,
+        as `Pipeline.refresh` reads it.
+
+        Args:
+            since: The version the pipeline recorded.
+
+        Returns:
+            The rows of the files appends added (trusted), or the diff of
+            the data files that changed (exact); or, where snapshot `since`
+            is gone or unreadable, the current snapshot and the reason.
+        """
         t = self.table()
         current = t.current_snapshot()
         end = _version(current)
@@ -303,6 +348,19 @@ class IcebergSource:
 
 @dataclass
 class IcebergWrite:
+    """What one `IcebergSink.write` did. `print` it for a one-line summary.
+
+    Attributes:
+        mode: `"created"` (the first write made the table), `"append"` (the
+            change only added rows), `"row-level"` (position deletes and new
+            rows in one snapshot), `"overwrite"` (the table's rows replaced)
+            or `"skipped"` (this app's last snapshot has this state's epoch).
+        version: The table's snapshot sequence number afterwards.
+        contract: What the snapshot recorded.
+        inserted: Rows written.
+        deleted: Rows deleted.
+    """
+
     mode: Literal["created", "append", "row-level", "overwrite", "skipped"]
     version: int
     contract: Contract
@@ -486,7 +544,18 @@ class IcebergSink:
     the epoch (sum of source versions) and the app id; a state whose epoch
     the last snapshot of this app already has is skipped. The contract is
     also the table property `sverify.contract`, and columns the view proves
-    NOT NULL are `required`."""
+    NOT NULL are `required`.
+
+    The view must read only sources (`Pipeline.source`), so each state has
+    source versions to key its snapshot by.
+
+    Args:
+        catalog: A pyiceberg catalog.
+        identifier: The sink table's identifier; the first write creates it.
+        view: The view to write.
+        app_id: The application id recorded in each snapshot. Default:
+            `"sverify:<view name>"`.
+    """
 
     def __init__(
         self,
@@ -503,6 +572,16 @@ class IcebergSink:
             self._written = view.stored[1]
 
     def write(self) -> IcebergWrite:
+        """Write the view's current state, unless this app's last snapshot
+        has its epoch.
+
+        Returns:
+            What was written.
+
+        Raises:
+            ValueError: The view reads a table that is not a source, or the
+                table has this epoch from other contents of a static table.
+        """
         contract = view_contract_record(self.view)
         schema = sink_schema(self.view, contract.not_null)
         props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}

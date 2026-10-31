@@ -142,7 +142,25 @@ def _cdf_on(dt: DeltaTable) -> bool:
 
 
 class DeltaSource:
-    """A Delta table read by version; see the module docstring."""
+    """A Delta table read by version; see the module docstring.
+
+    Pass it to `Pipeline.source`. `refresh` then reads the Change Data Feed
+    (`delta.enableChangeDataFeed`) between the recorded version and the
+    latest; where the feed is off or its files are gone, the new snapshot is
+    diffed instead.
+
+    Args:
+        uri: The table's location: a path, or a URI such as `s3://...`.
+        storage_options: Options for delta-rs's object store (credentials,
+            region). Default: None.
+        where: A SQL condition on the columns. The source is the rows on
+            which it is TRUE; files are skipped only where Lean proves from
+            their statistics that it is TRUE on none of their rows. Default:
+            None, every row.
+
+    Attributes:
+        skipped: The files the last snapshot did not read.
+    """
 
     def __init__(
         self,
@@ -183,19 +201,45 @@ class DeltaSource:
         return rows, {p: s for p, s in files.items() if p in keep}
 
     def table(self, version: int | None = None) -> DeltaTable:
+        """The table as delta-rs opens it.
+
+        Args:
+            version: The version to load. Default: the latest.
+
+        Returns:
+            A `deltalake.DeltaTable`.
+        """
         dt = DeltaTable(self.uri, storage_options=self.storage_options)
         if version is not None:
             dt.load_as_version(version)
         return dt
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table's rows at a version, with what its metadata says about
+        every row (schema nullability, CHECK constraints, file statistics).
+
+        Args:
+            version: The version to read. Default: the latest.
+
+        Returns:
+            The version, the rows (those passing `where`, if given) and the
+            facts.
+        """
         dt = self.table(version)
         v = dt.version()
         rows, files = self._rows(dt)
         return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
-        """The contract the last sverify commit up to `version` recorded."""
+        """The contract the last sverify commit up to `version` recorded.
+
+        Args:
+            version: The latest version to look at. Default: the latest.
+
+        Returns:
+            The contract a `DeltaSink` stored in the commit metadata, or None
+            if no commit has one.
+        """
         dt = self.table(version)
         for commit in dt.history():
             if METADATA_KEY in commit:
@@ -204,7 +248,22 @@ class DeltaSource:
 
     def stored(self) -> Stored | None:
         """The view state the table's last commit stored, if a `DeltaSink`
-        made that commit (to resume a pipeline from)."""
+        made that commit (to resume a pipeline from).
+
+        Returns:
+            The stored state, to pass to `Pipeline.view(..., resume=...)`,
+            or None if another writer made the last commit.
+
+        Examples:
+            ```python
+            stored = DeltaSource("data/big").stored()
+            pipe = sv.Pipeline(sv.connect())
+            orders = pipe.source("orders", DeltaSource("data/orders"),
+                                 version=stored.sources["orders"])
+            big = pipe.view("big", big_orders(orders), resume=stored)
+            print(big.resumed)  # resumed from data/big@v3
+            ```
+        """
         dt = self.table()
         last = dt.history(1)
         if not last or METADATA_KEY not in last[0]:
@@ -229,6 +288,17 @@ class DeltaSource:
             raise ValueError(f"{CDF_KEY} is not set for every commit")
 
     def changes(self, since: int) -> SourceBatch:
+        """The change from version `since` to the latest, as
+        `Pipeline.refresh` reads it.
+
+        Args:
+            since: The version the pipeline recorded.
+
+        Returns:
+            The net change from the Change Data Feed, with facts from the
+            statistics of the files added since; or, where the feed is
+            unavailable for some commit, the latest snapshot and the reason.
+        """
         dt = self.table()
         end = dt.version()
         files = file_stats(dt)
@@ -281,7 +351,19 @@ class DeltaSource:
 
 @dataclass
 class SinkWrite:
-    """What one `write` did."""
+    """What one `DeltaSink.write` did. `print` it for a one-line summary.
+
+    Attributes:
+        mode: `"created"` (the first write made the table), `"overwrite"`
+            (a new sink replaced the table's rows), `"merge"` (the view's
+            change in one MERGE commit) or `"skipped"` (the table already
+            has this state's epoch).
+        contract: What the commit recorded.
+        inserted: Rows written.
+        deleted: Rows deleted.
+        constraints: The table's CHECK constraints from the view's
+            guarantees, by name.
+    """
 
     mode: Literal["created", "overwrite", "merge", "skipped"]
     version: int
@@ -313,7 +395,26 @@ class DeltaSink:
     Change Data Feed enabled, NOT NULL columns and CHECK constraints for the
     view's proved guarantees; later writes MERGE the view's change (each
     changed row deleted and re-inserted with its new multiplicity) in one
-    commit. A new sink on an existing table first overwrites it."""
+    commit. A new sink on an existing table first overwrites it.
+
+    The view must read only sources (`Pipeline.source`), so each state has
+    source versions to key its commit by.
+
+    Args:
+        uri: The sink table's location: a path, or a URI such as `s3://...`.
+        view: The view to write.
+        app_id: The transaction's application id. Default:
+            `"sverify:<view name>"`.
+        storage_options: Options for delta-rs's object store. Default: None.
+
+    Examples:
+        ```python
+        sink = DeltaSink("data/big", big)
+        sink.write()     # creates the table, with the contract's constraints
+        pipe.refresh()
+        sink.write()     # one MERGE commit with the change
+        ```
+    """
 
     def __init__(
         self,
@@ -335,6 +436,16 @@ class DeltaSink:
         return DeltaTable(self.uri, storage_options=self.storage_options)
 
     def write(self) -> SinkWrite:
+        """Write the view's current state, unless the table has its epoch.
+
+        Returns:
+            What was written.
+
+        Raises:
+            ValueError: The view reads a table that is not a source, the
+                table has CHECK constraints the view does not guarantee, or
+                it has this epoch from other contents of a static table.
+        """
         contract = view_contract_record(self.view)
         commit = CommitProperties(
             custom_metadata={METADATA_KEY: contract.to_json()},

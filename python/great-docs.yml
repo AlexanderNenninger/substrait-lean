@@ -1,0 +1,119 @@
+# Great Docs configuration for the sverify API reference (`uv run poe docs`).
+# See https://posit-dev.github.io/great-docs/user-guide/03-configuration.html
+#
+# The landing page is this directory's README.md (the PyPI page). The notebook
+# tour is linked on molab, not embedded: the notebooks call the native Lean
+# checker, so they can't run in the browser.
+
+module: sverify
+
+display_name: "sverify"
+
+navbar_style: "sky"
+
+parser: google
+
+# Static analysis (griffe reads the source). Runtime introspection resolves
+# `io.DeltaSource` as an attribute of `sverify`, and `import sverify` doesn't
+# import its submodules (`sverify.io` loads delta-rs and pyiceberg lazily).
+dynamic: false
+
+# Sections in the order a data engineer looks for things: what a pipeline
+# promises, how it is kept up to date, where its tables live, where it runs.
+# Internals (coverage, catalogue, fuzz, testing, ibis_substrait,
+# coverage_cases) are left out. `Unique` and `References` are described under
+# `unique` and `references`: their pages would collide with those functions'
+# on case-insensitive file systems.
+reference:
+  - title: Contracts and verification
+    desc: >
+      State what a transformation assumes and promises, and have it proved
+      before any data runs.
+    contents:
+      - transform
+      - verify
+      - unique
+      - references
+      - Report
+      - Issue
+      - VerificationError
+      - PreconditionError
+      - PostconditionError
+      - CompositionError
+
+  - title: Incremental views and pipelines
+    desc: >
+      Keep results up to date from inserts and deletes, with update plans
+      proved equal to a full recompute.
+    contents:
+      - IncrementalView
+      - Pipeline
+      - Changes
+      - StaticSource
+      - incremental.RefreshReport
+      - NotIncremental
+
+  - title: Table formats
+    desc: >
+      Delta Lake and Iceberg tables as change sources, sources of
+      preconditions, and sinks that carry the contract (`sverify.io`).
+    contents:
+      - io.DeltaSource
+      - io.DeltaSink
+      - io.IcebergSource
+      - io.IcebergSink
+      - io.Contract
+      - io.Stored
+      - io.SinkWrite
+      - io.IcebergWrite
+
+  - title: Engines and SQL
+    desc: >
+      Run a checked plan on DuckDB, Polars or DataFusion, or write it as
+      DuckDB, Snowflake or Spark SQL.
+    contents:
+      - connect
+      - Connection
+      - create_table
+      - table_rows
+      - run_plan
+      - ENGINES
+      - SQL_PRODUCERS
+      - sql.to_sql
+      - sql.Dialect
+      - sql.Unsupported
+      - SqlError
+
+  - title: Spark
+    desc: >
+      Run a checked plan's Spark SQL on a local or existing Spark session
+      (`sverify.spark_engine`, the `spark` extra).
+    contents:
+      - spark_engine.run
+
+  - title: Sharding
+    desc: >
+      Run a plan shard by shard and combine the results, with a proof that
+      the result is the same (`sverify.partition`).
+    contents:
+      - partition.run_sharded
+      - partition.split
+      - partition.NotShardable
+
+  - title: ASOF joins
+    desc: Align two time series, each row with the latest earlier row of the other.
+    contents:
+      - asof_join
+
+  - title: Plans
+    desc: >
+      The low-level layer: Substrait plans, Lean's written form of them, and
+      the update plans of incremental views.
+    contents:
+      - substrait_json
+      - isthmus_json
+      - written_plan
+      - run_substrait_json
+      - delta_plans
+
+jupyter: python3

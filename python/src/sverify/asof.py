@@ -43,6 +43,23 @@ def asof_join(
     with NULLs. The output has the left columns, then the right ones except
     `by`, with clashing names suffixed `_right` (so `on_right` is the time
     of the match).
+
+    Args:
+        left: The table whose rows are matched; one output row per left row.
+        right: The table to take the latest earlier row from. For the result
+            to be determined, `requires` must give it a key on `(*by, on)`.
+        on: The time column, of the same name in both tables.
+        by: Columns that must be equal for rows to match, as one name or a
+            sequence. Default: none.
+        tolerance: How much earlier than the left row a match may be (an
+            Ibis interval, or a number for numeric time columns). Default
+            None: no limit.
+        key: Columns that identify left rows. Default: `by` and `on`.
+        how: `"left"` (the default) keeps left rows without a match, with
+            NULLs; `"inner"` drops them.
+
+    Returns:
+        An Ibis table expression, built from a range join and `ROW_NUMBER`.
     """
     by = [by] if isinstance(by, str) else list(by)
     key = list(key) if key is not None else [*by, on]

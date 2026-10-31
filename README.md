@@ -218,7 +218,10 @@ the Lean checker as a small native binary, so you need no Lean toolchain;
 they exist for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
 3.12 and later.
 
-The [tour](#the-tour) explains each feature in a chapter of its own
+The [API reference](https://alexandernenninger.github.io/substrait-lean/)
+documents every public function and class, for the released version (built
+from `python/great-docs.yml` with `uv run poe docs`). The [tour](#the-tour)
+explains each feature in a chapter of its own
 (chapters 4 to 12).
 
 ### Contracts
@@ -612,6 +615,7 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe test` | Python tests, including the randomized engine tests, on every core |
 | `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
+| `poe docs`, `poe docs_preview` | Builds the API reference site into `python/great-docs/_site` (or serves it locally). Needs [Quarto](https://quarto.org) and `uv sync --group docs`; not part of `qa` |
 
 From the project root, use `uv run --project python poe -C python qa`. The Lean
 tasks need `lake` on your PATH.

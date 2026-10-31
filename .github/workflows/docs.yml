@@ -1,0 +1,66 @@
+name: Docs
+
+# The API reference site (Great Docs, from python/great-docs.yml). Every pull
+# request and push to main builds it, so broken docs show up in review. The
+# site is deployed to GitHub Pages only for a release tag (`v*`, the same tags
+# that publish the wheels) or by hand, so it matches the version on PyPI. To
+# deploy on every push to main instead, add `github.ref == 'refs/heads/main'`
+# to the deploy job's condition.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # page timestamps come from the history
+      # Installing sverify builds substrait-check (the build hook runs lake).
+      - uses: ./.github/actions/setup-lean
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
+      - run: uv sync --locked --project python --group docs
+      - run: uv run --locked --project python poe -C python docs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-html
+          path: python/great-docs/_site
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docs-html
+          path: site
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+          include-hidden-files: true
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

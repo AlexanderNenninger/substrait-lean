@@ -83,12 +83,36 @@ WEIGHT = "__weight"
 
 
 class NotIncremental(Exception):
-    """The plan is outside the fragment with verified delta rules."""
+    """The plan is outside the fragment with verified delta rules.
+
+    Raised by `delta_plans` and by a standalone `IncrementalView` whose query
+    has an operator without a delta rule (a left join, aggregate, window,
+    `DISTINCT` or `LIMIT`). In a `Pipeline` such a view is recomputed and diffed instead
+    (`Pipeline.fallbacks`). The message is the checker's reason.
+    """
 
 
 def delta_plans(plan_json: str) -> list[str]:
     """Ask Lean for the weighted delta plans of a Substrait JSON plan; the
-    change to the view is the concatenation of their outputs."""
+    change to the view is the concatenation of their outputs.
+
+    Each delta plan reads the view's input tables `t` at their old contents
+    and their changes as tables `t$delta`, which have the columns of `t` and
+    an extra `__weight` column (+1 for an inserted row, -1 for a deleted
+    one). Its output has the view's columns and a weight column likewise.
+
+    Args:
+        plan_json: A Substrait plan as protobuf JSON, as `substrait_json`,
+            `isthmus_json` or the vendored Ibis producer write it.
+
+    Returns:
+        The delta plans, each a Substrait JSON plan in Lean's written form.
+
+    Raises:
+        NotIncremental: The plan has an operator without a verified delta
+            rule.
+        ValueError: The checker rejects the plan.
+    """
     code, out, err = run_checker(("--delta",), plan_json)
     if code == 3:
         raise NotIncremental(err.strip())
@@ -117,7 +141,16 @@ def arrow_rows(table: pa.Table) -> list[Row]:
 @dataclass
 class Changes:
     """Rows to insert into and delete from one table (bag semantics: each
-    deleted row removes one occurrence)."""
+    deleted row removes one occurrence).
+
+    Rows are tuples in the table's column order. An update is a delete of the
+    old row plus an insert of the new one.
+
+    Attributes:
+        inserts: Rows to add. Default: none.
+        deletes: Rows to remove, one occurrence each; every one must be in
+            the table, or `apply` raises `ValueError`. Default: none.
+    """
 
     inserts: Sequence[Row] = field(default_factory=list)
     deletes: Sequence[Row] = field(default_factory=list)
@@ -315,7 +348,16 @@ class Stored:
     """A view's state as a sink stored it, to resume a restarted pipeline
     from (`Pipeline.view(..., resume=...)`). Trusted: the sink's table holds
     exactly the view's rows at `sources`; it does while the sink is the only
-    writer, and the sources check that the last commit is the sink's."""
+    writer, and the sources check that the last commit is the sink's.
+
+    `DeltaSource.stored` and `IcebergSource.stored` make one; there is no
+    need to build it by hand.
+
+    Attributes:
+        sources: The version of every source table the stored state was
+            computed from, e.g. `{"orders": 41}`.
+        table: The stored rows.
+    """
 
     where: str
     """E.g. "data/big@v7"."""
@@ -334,22 +376,65 @@ class StaticSource:
     as a pipeline source: its `version` is the caller's (a release number, a
     batch id), and its `digest` is recorded next to it, so a sink can write
     a pipeline reading it exactly once. `replace` swaps the table; the next
-    `refresh` diffs the two."""
+    `refresh` diffs the two.
+
+    Args:
+        table: The table's contents.
+        version: The version of these contents. Default: 0.
+
+    Attributes:
+        table: The current contents.
+        version: Their version.
+        digest: sha256 of their schema and bag of rows.
+    """
 
     def __init__(self, table: pa.Table, version: int = 0):
         self.replace(table, version)
 
     def replace(self, table: pa.Table, version: int) -> None:
+        """Swap in new contents at a higher version. The next
+        `Pipeline.refresh` diffs them against the old ones and recomputes the
+        views that read the table.
+
+        Args:
+            table: The new contents.
+            version: Their version, above the current one.
+
+        Raises:
+            ValueError: `version` is not above the current version.
+        """
         if hasattr(self, "version") and version <= self.version:
             raise ValueError(f"a new table needs a version above {self.version}")
         self.table, self.version, self.digest = table, version, table_digest(table)
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table at its current version, as `Pipeline.source` loads it.
+
+        Args:
+            version: The version to read; None (the default) or the current
+                version.
+
+        Returns:
+            The current table and version, with no facts about its rows.
+
+        Raises:
+            ValueError: `version` is another version, which a static table
+                does not keep.
+        """
         if version not in (None, self.version):
             raise ValueError(f"a static table only has version {self.version}")
         return Snapshot(self.version, self.table, [])
 
     def changes(self, since: int) -> SourceBatch:
+        """What changed since version `since`, as `Pipeline.refresh` reads it.
+
+        Args:
+            since: The version the pipeline recorded.
+
+        Returns:
+            An empty batch if the version is the same; otherwise the current
+            table as a snapshot to diff against (there is no change feed).
+        """
         if since == self.version:
             return SourceBatch(since, since, [])
         return SourceBatch(
@@ -384,6 +469,16 @@ class SourceRefresh:
 
 @dataclass
 class RefreshReport:
+    """What `Pipeline.refresh` did, and what it trusted. `print` it for one
+    line per source, precondition and view.
+
+    Attributes:
+        sources: Per source table: its versions before and after, whether it
+            was unchanged, read from its change feed, diffed or recomputed,
+            the assumption that rests on, and the numbers of rows inserted
+            and deleted.
+    """
+
     sources: list[SourceRefresh]
     preconditions: list[Discharged]
     """How each precondition on the batch was established."""
@@ -395,6 +490,9 @@ class RefreshReport:
 
     @property
     def recomputed(self) -> list[str]:
+        """The source tables whose views were recomputed: their change feed
+        was unavailable and the new snapshot was diffed, or their schema
+        changed in a way the old one cannot hold."""
         return [s.table for s in self.sources if s.mode == "recomputed"]
 
     def __str__(self) -> str:
@@ -425,6 +523,47 @@ class IncrementalView:
     every batch is checked against the preconditions on the base tables
     (`requires`). A standalone view refuses a query without delta rules
     (`NotIncremental`); in a `Pipeline` such a view is recomputed instead.
+
+    Args:
+        con: The connection whose tables the query reads.
+        query: An Ibis expression over tables of `con`, or a SQL string
+            (compiled by the connection's SQL producer).
+        name: The name the view is registered under in `con`; it must not be
+            a table the query reads.
+        engine: `"duckdb"`, `"polars"` or `"datafusion"`. Default: the
+            connection's engine.
+        pipeline: The pipeline the view belongs to; `Pipeline.view` passes
+            it. Default: a new pipeline of its own.
+        resume: A state a sink stored, to start from instead of computing
+            the view; see `Pipeline.view`.
+
+    Attributes:
+        name: The view's table name in `con`.
+        plan: The view's Substrait plan as Lean read and wrote it back
+            (`written_plan`), as JSON. Pass it to `run_plan` or
+            `sverify.sql.to_sql`.
+        deltas: The delta plans (`delta_plans`); empty for a view that is
+            recomputed.
+        tables: The tables the plan reads.
+        schema: The view's Arrow schema.
+        requires: Preconditions on base tables, by table, from the
+            transformation's contract.
+        guarantees: The contract's proved postconditions.
+        table: The view as an Ibis table, for other queries to read.
+        fallback: Why the view has no delta plans and is recomputed, or
+            None.
+        resumed: How the view got its first state from `resume`, or None
+            without one.
+
+    Raises:
+        NotIncremental: The view is standalone and its query has no delta
+            rules.
+        ValueError: `name` is a table the query reads, the checker rejects
+            the plan, or a contract has a precondition on a view or a
+            foreign key (`references`), which incremental views do not
+            support yet.
+        PreconditionError: The base tables violate a precondition of the
+            view's contract.
     """
 
     def __init__(
@@ -548,21 +687,42 @@ class IncrementalView:
     @property
     def versions(self) -> dict[str, int]:
         """The version of every source the view reads, e.g. `{"orders": 41}`
-        (shown as `orders@v41`)."""
+        (shown as `orders@v41`). Empty if it reads no `Pipeline.source`."""
         return self.pipeline.lineage(self.name)
 
     def rows(self) -> list[Row]:
-        """The view's contents as a bag of rows, in a canonical order."""
+        """The view's contents as a bag of rows, in a canonical order.
+
+        Returns:
+            One tuple per row (repeated rows appear as often as they occur),
+            sorted so that two equal bags give equal lists.
+        """
         out = [self.examples[k] for k, n in self.counts.items() for _ in range(n)]
         return sorted(out, key=lambda r: repr(row_key(r)))
 
     def recompute(self) -> list[Row]:
-        """The view computed from scratch, for checking."""
+        """The view computed from scratch, for checking.
+
+        Returns:
+            The rows of a full run of `plan` on the current tables, in the
+            order `rows` uses, so `view.rows() == view.recompute()` holds.
+        """
         rows = arrow_rows(run_plan(self.con, self.plan, self.engine))
         return sorted(rows, key=lambda r: repr(row_key(r)))
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
-        """Apply changes to base tables, and to every view of the pipeline."""
+        """Apply changes to base tables, and to every view of the pipeline.
+
+        The same as `Pipeline.apply` on the view's pipeline.
+
+        Args:
+            changes: The change of each base table, by name.
+
+        Raises:
+            ValueError: See `Pipeline.apply`.
+            PreconditionError: The batch violates a precondition of a
+                contracted view.
+        """
         self.pipeline.apply(changes)
 
     def _delta(self, deltas: Mapping[str, ZRows]) -> tuple[Counter[tuple], dict[tuple, Row]]:
@@ -638,6 +798,54 @@ class Pipeline:
 
     Base tables may instead come from a table format (`source`), and then
     change only through `refresh`.
+
+    Args:
+        con: The connection holding the base tables and views.
+        engine: `"duckdb"`, `"polars"` or `"datafusion"`, for every view's
+            plans and precondition checks. Default: the connection's engine
+            for plans, Ibis on the connection for checks.
+
+    Attributes:
+        sources: The table-format sources, by base table name.
+        requires: Preconditions on base tables, of every contracted view.
+
+    Examples:
+        Two views, the second reading the first. The aggregate has no delta
+        rule, so it is recomputed from its input's change:
+
+        ```python
+        import ibis
+        import sverify as sv
+
+        con = sv.connect()
+        sv.create_table(con, "orders", ibis.schema({"id": "int64", "amount": "int64"}),
+                        [(1, 30), (2, 5)])
+        orders = con.table("orders")
+
+        pipe = sv.Pipeline(con)
+        big = pipe.view("big", orders.filter(orders.amount > 10))
+        total = pipe.view("total", big.table.aggregate(total=big.table.amount.sum()))
+        pipe.apply({"orders": sv.Changes(inserts=[(3, 50)], deletes=[(1, 30)])})
+        assert big.rows() == [(3, 50)] == big.recompute()
+        assert total.rows() == [(50,)]
+        print(pipe.fallbacks)  # {'total': 'not incrementally maintainable ...'}
+        ```
+
+        With a Delta table as the source, refreshed from its Change Data
+        Feed and written to a sink:
+
+        ```python
+        from sverify.io import DeltaSink, DeltaSource
+
+        pipe = sv.Pipeline(sv.connect())
+        orders = pipe.source("orders", DeltaSource("data/orders"))
+        big = pipe.view("big", orders.filter(orders.amount > 10))
+        sink = DeltaSink("data/big", big)
+        sink.write()
+        ...  # new commits to data/orders
+        print(pipe.refresh())  # orders@v3→v5: ...; Δ trusted as coming from Delta CDF v3→v5
+        sink.write()
+        ```
     """
 
     def __init__(self, con: Connection, engine: Engine | None = None):
@@ -658,7 +866,21 @@ class Pipeline:
     def source(self, name: str, source: Source, *, version: int | None = None) -> ir.Table:
         """Load the snapshot of `source` at `version` (default: the latest)
         as base table `name`, record its version and what its metadata says
-        about it."""
+        about it.
+
+        Args:
+            name: The base table's name in the pipeline's connection.
+            source: A `DeltaSource`, `IcebergSource` or `StaticSource`.
+            version: The version to load. Default: the latest. To resume a
+                view from a sink, pass the version it stored
+                (`stored.sources[name]`).
+
+        Returns:
+            The base table, to build views on.
+
+        Raises:
+            ValueError: The pipeline already has a table or view `name`.
+        """
         if name in self.sources or name in self.views:
             raise ValueError(f"the pipeline already has a table {name!r}")
         snap = source.snapshot(version)
@@ -675,13 +897,31 @@ class Pipeline:
         `DeltaSource(uri).stored()`), its first state is the stored one
         instead of a computation, if the plan is the same and the pipeline
         holds the view's sources at the stored versions (`pipe.source(...,
-        version=stored.sources[name])`); `view.resumed` says which."""
+        version=stored.sources[name])`); `view.resumed` says which.
+
+        Args:
+            name: The view's table name.
+            query: An Ibis expression or SQL string over the pipeline's base
+                tables and earlier views (`view.table`).
+            resume: A stored state to start from. Default: compute the view.
+
+        Returns:
+            The view. A view without delta rules is recomputed on every
+            batch, and is listed in `fallbacks`.
+
+        Raises:
+            ValueError: The pipeline already has a table or view `name`, or
+                see `IncrementalView`.
+            PreconditionError: The base tables violate a precondition of the
+                view's contract.
+        """
         if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
         return IncrementalView(self.con, query, name, self.engine, pipeline=self, resume=resume)
 
     @property
     def views(self) -> dict[str, IncrementalView]:
+        """The pipeline's views by name, in the order they were added."""
         return {v.name: v for v in self._views}
 
     @property
@@ -691,7 +931,15 @@ class Pipeline:
 
     def lineage(self, name: str) -> dict[str, int]:
         """The version of every source table that `name` (a view or table)
-        is computed from."""
+        is computed from.
+
+        Args:
+            name: A view, or a base table.
+
+        Returns:
+            Source table name to version; empty for a table that is not a
+            source.
+        """
         if name in self.versions:
             return {name: self.versions[name]}
         out: dict[str, int] = {}
@@ -702,7 +950,14 @@ class Pipeline:
 
     def digests(self, name: str) -> dict[str, str]:
         """The content digest of every static table (`StaticSource`) that
-        `name` is computed from."""
+        `name` is computed from.
+
+        Args:
+            name: A view, or a base table.
+
+        Returns:
+            Static table name to `StaticSource.digest`.
+        """
         if isinstance(src := self.sources.get(name), StaticSource):
             return {name: src.digest}
         out: dict[str, str] = {}
@@ -778,7 +1033,21 @@ class Pipeline:
         return indexes, found
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
-        """Apply changes to base tables and bring every view up to date."""
+        """Apply changes to base tables and bring every view up to date.
+
+        All or nothing: every view's new state is computed before anything
+        is replaced, so a failing batch changes nothing.
+
+        Args:
+            changes: The change of each base table, by name.
+
+        Raises:
+            ValueError: A table changes through its source (use `refresh`),
+                a name is a view or a table no view reads, or a deleted row
+                is not in its table.
+            PreconditionError: The batch violates a precondition of a
+                contracted view.
+        """
         sourced = set(changes) & set(self.sources)
         if sourced:
             raise ValueError(f"{sorted(sourced)} change through their source; call refresh()")
@@ -801,7 +1070,24 @@ class Pipeline:
 
         With `audit`, the batch is compared with the new snapshots and every
         view with its recomputation on the new tables, before anything is
-        committed (`AuditError`): a mismatch changes nothing."""
+        committed (`AuditError`): a mismatch changes nothing.
+
+        Args:
+            audit: Compare the batch and the views with recomputation before
+                committing. Default: False.
+
+        Returns:
+            What happened to each source, how each precondition on the batch
+            was established, and the source versions of every view.
+
+        Raises:
+            AuditError: With `audit`, the change feed or a view disagrees
+                with recomputation.
+            SchemaError: A source's schema changed incompatibly and a view
+                with a contract reads it.
+            PreconditionError: The batch violates a precondition of a
+                contracted view.
+        """
         changes: dict[str, Changes] = {}
         facts: dict[str, list[Fact]] = {}
         versions: dict[str, int] = {}

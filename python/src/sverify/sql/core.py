@@ -59,7 +59,12 @@ between integer and double arithmetic by it, so this module tracks it too."""
 
 
 class Unsupported(ValueError):
-    """The plan is outside the Lean model, or the dialect cannot express it."""
+    """The plan is outside the Lean model, or the dialect cannot express it.
+
+    Raised by `to_sql` and `parse_plan`; the message says which construct,
+    and for a dialect, why (e.g. Snowflake tables have no row order, so a
+    `FETCH` cannot follow the model's).
+    """
 
 
 # --------------------------------------------------------------------------
@@ -74,6 +79,13 @@ class Dialect:
     e.g. parenthesised) and returns SQL text. The defaults are ANSI SQL;
     subclasses override what their engine writes differently and raise
     `Unsupported` for what it cannot do.
+
+    Use one of the dialect objects rather than building one:
+    `sverify.sql.duckdb.DUCKDB`, `sverify.sql.snowflake.SNOWFLAKE` and
+    `sverify.sql.spark.SPARK`.
+
+    Attributes:
+        name: The engine's name, used in `Unsupported` messages.
     """
 
     name: str
@@ -3515,6 +3527,34 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the
     SQL on data that meets the contract's preconditions.
+
+    Args:
+        plan: A Substrait JSON plan, parsed (`json.loads`), such as
+            `IncrementalView.plan` or `written_plan`'s output.
+        dialect: The engine to write SQL for:
+            `sverify.sql.duckdb.DUCKDB`, `sverify.sql.snowflake.SNOWFLAKE`
+            or `sverify.sql.spark.SPARK`.
+        tie_free: Promise that windows have no ties on their PARTITION BY
+            and ORDER BY columns. Default: False.
+        guards: Write the run-time checks. Default: True.
+
+    Returns:
+        One SQL query in the dialect. It reads the plan's tables by their
+        names, quoted.
+
+    Raises:
+        Unsupported: The plan is outside the Lean model, its root names do
+            not match its columns, or the dialect cannot express it.
+
+    Examples:
+        ```python
+        import json
+
+        from sverify.sql import to_sql
+        from sverify.sql.snowflake import SNOWFLAKE
+
+        sql = to_sql(json.loads(view.plan), SNOWFLAKE)  # view: an IncrementalView
+        ```
     """
     if not guards:
         dialect = replace(dialect, guards=False)

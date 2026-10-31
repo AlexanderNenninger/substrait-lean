@@ -86,7 +86,29 @@ def run(
     *,
     tie_free: bool = False,
 ) -> pa.Table:
-    """Run a Substrait JSON plan on Spark over `tables` (temporary views)."""
+    """Run a Substrait JSON plan on Spark over `tables` (temporary views).
+
+    Args:
+        plan: A Substrait JSON plan, as a string or parsed.
+        tables: The tables the plan reads, by name. Each is registered as a
+            temporary view of that name, replacing any view of the same name.
+        spark: The Spark session to run on. Default: `session()`, a local
+            session.
+        tie_free: Promise that no two rows tie on any window's
+            `PARTITION BY` and `ORDER BY` columns (what a contract report's
+            `deterministic` says), so windows run without a row-order
+            tiebreak (see `sverify.sql.to_sql`). Default False.
+
+    Returns:
+        The plan's result, as an Arrow table.
+
+    Raises:
+        sverify.sql.Unsupported: Spark SQL cannot express the plan with
+            Lean's meaning, for example a plan that needs a table's row order
+            without `tie_free=True`.
+        TypeError: A column has a type Spark cannot hold here, such as a
+            timestamp with a time zone.
+    """
     spark = spark or session()
     sql = to_sql(json.loads(plan) if isinstance(plan, str) else plan, SPARK, tie_free=tie_free)
     put_tables(tables, spark)

@@ -36,6 +36,9 @@ native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
 3.12 and later; elsewhere pip builds from the sdist, which needs
 [elan](https://github.com/leanprover/elan).
 
+The [API reference](https://alexandernenninger.github.io/substrait-lean/)
+documents every public function and class, for the released version.
+
 ## In thirty lines
 
 ```python

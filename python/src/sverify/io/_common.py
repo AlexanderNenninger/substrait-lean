@@ -207,7 +207,17 @@ def not_null_column(sql: str) -> str | None:
 @dataclass
 class Contract:
     """What a sink records with each commit: which plan produced the data,
-    from which source versions, and what it proved about every row."""
+    from which source versions, and what it proved about every row.
+
+    `DeltaSource.contract` and `IcebergSource.contract` read it back.
+
+    Attributes:
+        view: The view's name.
+        sources: The version of every source table the state was computed
+            from.
+        not_null: Columns the view proves NOT NULL.
+        unique: Column sets the view proves unique.
+    """
 
     view: str
     plan: str
@@ -224,10 +234,12 @@ class Contract:
     """Content digest of each static table (`StaticSource`) the view read."""
 
     def to_json(self) -> str:
+        """The contract as JSON, as sinks store it."""
         return json.dumps(self.__dict__, sort_keys=True)
 
     @staticmethod
     def from_json(text: str) -> Contract:
+        """A contract from what `to_json` wrote."""
         return Contract(**json.loads(text))
 
 
