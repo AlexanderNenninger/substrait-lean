@@ -40,7 +40,7 @@ def UnFn.anchor : UnFn → Nat
   | .fround | .froundTo _ => 17
   | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .itos | .regexMatch _ => 0
+  | .itof | .ftoi | .itos | .toDate | .regexMatch _ => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
@@ -114,6 +114,8 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       ("directReference", obj [("structField", obj [("field", toJson i)])]),
       ("rootReference", obj [])])]
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
+  | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
+      ("input", writeExpr cols .time a)])]
   | .un .fneg a => call 3 [writeExpr cols .float a]
   | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]

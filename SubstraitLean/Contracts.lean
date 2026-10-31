@@ -421,6 +421,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .regexMatch _, a => ⟨true, if a.str then some (.ge 1) else none, false, false, false⟩
   | .datePart p, a => datePartAbs p a
   | .dateTrunc u, a => monoAbs (Time.trunc u) a
+  | .toDate, a => monoAbs Time.days a
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -592,6 +593,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case datePart p => exact datePartAbs_sound p h
   case dateTrunc u => exact monoAbs_sound (Time.trunc_mono u) (fun v => by cases v <;> rfl) h
+  case toDate => exact monoAbs_sound Time.days_mono (fun v => by cases v <;> rfl) h
   case upper | lower | length =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
