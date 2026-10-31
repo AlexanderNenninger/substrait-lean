@@ -19,12 +19,9 @@ documentation they rest on:
 * **Three-valued logic**: `AND`/`OR`/`NOT` are Kleene, as in Lean. There is
   no `IS TRUE`, so it is `COALESCE(x, FALSE)`.
 * **Floats** are IEEE doubles; all NaNs are equal and NaN is above `'inf'`
-  (documented), which is Lean's order for a positive NaN. Snowflake has one
-  NaN, read as Lean's +NaN: a negative-NaN literal is refused and negating a
-  NaN raises. Whether the sign of a zero is visible to `=`, `<`, `ORDER BY`
-  or `PARTITION BY` is not documented, so where Lean's −0.0 < +0.0 could
-  matter the SQL raises: comparing two zeros, or sorting or partitioning on
-  a double column that holds a zero.
+  (documented), as in the model, which has one NaN and one zero. `canon`
+  turns a `-0.0` into `0.0` wherever one could arise, so whether Snowflake
+  shows the sign of a zero does not matter.
 * **Timestamps** are `TIMESTAMP_NTZ(6)`: wall-clock microseconds like Lean.
   Plain `TIMESTAMP` follows `TIMESTAMP_TYPE_MAPPING` and defaults to
   nanoseconds; `LTZ` would depend on the session time zone. There is no
@@ -100,14 +97,10 @@ class SnowflakeDialect(Dialect):
 
     def float_lit(self, f: float) -> str:
         if math.isnan(f):
-            if math.copysign(1.0, f) < 0:
-                raise Unsupported("Snowflake has a single NaN; a negative NaN cannot be written")
             return NAN
         if math.isinf(f):
             return "CAST('inf' AS FLOAT)" if f > 0 else "CAST('-inf' AS FLOAT)"
-        if f == 0 and math.copysign(1.0, f) < 0:
-            return "(- CAST('0' AS FLOAT))"  # IEEE negation; '-0' parsing is undocumented
-        return f"CAST('{f!r}' AS FLOAT)"
+        return f"CAST('{f + 0.0!r}' AS FLOAT)"  # `+ 0.0`: the one zero
 
     def int_lit(self, i: int) -> str:
         return str(i)
@@ -178,33 +171,14 @@ class SnowflakeDialect(Dialect):
     def int_to_float(self, a: str) -> str:
         return f"CAST({a} AS FLOAT)"
 
-    def float_neg(self, a: str) -> str:
-        fail = self.raise_("negating NaN gives a negative NaN, which Snowflake lacks", a, "float")
-        return f"IFF({a} = {NAN}, {fail}, (- {a}))"
-
     def is_nan(self, x: str) -> str:
         return f"({x} = {NAN})"
 
-    def sign_bit(self, x: str) -> str:
-        """Known except for a zero: NaN is +NaN, other values have the sign
-        `x < 0` says. The core asks for it to sort and partition doubles."""
-        fail = self.raise_("the sign of a float zero is not visible on Snowflake", x, "bool")
-        return f"(CASE WHEN {x} = 0 THEN {fail} WHEN {self.is_nan(x)} THEN FALSE ELSE {x} < 0 END)"
-
-    def float_rank(self, x: str) -> str:
-        return f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN 1 ELSE 0 END)"
-
-    def zeros_guard(self, a: str, b: str, cmp: str) -> str:
-        """`cmp` (Snowflake's `a = b` or `a < b`) agrees with Lean's total
-        order except between −0.0 and +0.0, which only the sign tells apart."""
-        fail = self.raise_("comparing float zeros, whose sign Snowflake does not expose", a, "bool")
-        return f"IFF({a} = 0 AND {b} = 0, {fail}, {cmp})"
-
     def float_eq(self, a: str, b: str) -> str:
-        return self.zeros_guard(a, b, f"({a} = {b})")
+        return f"({a} = {b})"
 
     def float_lt(self, a: str, b: str) -> str:
-        return self.zeros_guard(a, b, f"({a} < {b})")
+        return f"({a} < {b})"
 
     # Temporal
 

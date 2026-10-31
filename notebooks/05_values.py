@@ -39,19 +39,23 @@ def _(mo):
 
     Integers are the easy case. Real pipelines are full of floating-point
     measurements, timestamps and strings, each with traps of its own. The
-    Lean model follows **DataFusion's** behaviour for all three, bit for
-    bit where it matters, because a proof about the wrong semantics proves
-    nothing.
+    Lean model pins each of them down, bit for bit where it matters, because
+    a proof about the wrong semantics proves nothing.
 
-    ## Doubles: NaN, infinities and two zeros
+    ## Doubles: NaN, infinities and one zero
 
     In Python (and in IEEE 754 comparisons) `NaN` is not equal to anything,
-    not even itself, and every comparison with it is false. DataFusion does
-    something else: it orders doubles **totally**,
+    not even itself, and every comparison with it is false. SQL engines
+    (PostgreSQL, DuckDB, Spark, Snowflake) do something else, and so does the
+    model: doubles are ordered
 
-    > −NaN < −∞ < … < −0.0 < +0.0 < … < +∞ < NaN
+    > −∞ < … < 0.0 < … < +∞ < NaN
 
-    so NaN equals itself and is *larger than every number*. Here it is, live:
+    with **one NaN**, equal to itself and *larger than every number*, and
+    **one zero**: IEEE's −0.0 *is* 0.0, so `-0.0 >= 0` holds and −0.0 never
+    shows in a result. (DataFusion's own order, `f64::total_cmp`, splits
+    both; `sverify` stores DataFusion's tables the model's way, see
+    [chapter 14](?file=14_datafusion_semantics.py).) Here it is, live:
     """)
     return
 
@@ -84,7 +88,7 @@ def _(con, display, run_sql):
             "select v, v > 0 as positive, v = 'NaN'::double as equals_nan,"
             " v < 'Infinity'::double as below_inf from m order by v",
         ),
-        title="DataFusion's answers",
+        title="the table's doubles, as the model has them",
     )
     return
 
@@ -96,8 +100,9 @@ def _(mo):
 
     * **`v > 0` keeps NaN rows.** A filter you meant as "positive readings"
       lets glitches through. Only an upper bound (`v < 1e9`, say) removes NaN.
-    * **−0.0 and +0.0 are different values**: `-0.0 < 0.0` is TRUE, and
-      `DISTINCT` keeps both. (The table above has both zeros.)
+    * **−0.0 is 0.0**: the table was given both zeros and holds one, so
+      `-0.0 >= 0` is TRUE, `DISTINCT` keeps one zero, and `-1 * 0.0` is
+      `0.0`, on every engine.
 
     Lean models doubles exactly, as integer codes in the same order
     (`SubstraitLean/Float.lean`), so the proofs know all of this. Build a

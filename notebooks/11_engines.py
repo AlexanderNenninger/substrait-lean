@@ -169,8 +169,8 @@ def _(mo):
     * **Integer division truncates** toward zero, as in DataFusion and Lean
       (`-7 / 2 = -3`). Polars' own `//` floors (`-4`); the translator uses
       truncation instead.
-    * **NaN** compares by DataFusion's total order everywhere: it is above
-      every number, so `NaN > 0` is TRUE.
+    * **NaN** is one value, equal to itself and above every number, so
+      `NaN > 0` is TRUE; and −0.0 is 0.0 (chapter 5), on every engine.
     * **`qty + 1` on the largest integer** is where engines really differ:
       DataFusion silently wraps around to the smallest integer, while the
       Polars and DuckDB translators **raise**, because Lean's integers are
@@ -254,9 +254,8 @@ def _(mo):
     Snowflake-specific choices: integers are `NUMBER(38,0)` checked against
     the 64-bit range, timestamps `TIMESTAMP_NTZ(6)`, every identifier quoted.
     Where Snowflake can't match the model, the query raises or is refused
-    instead of answering differently: interval-valued expressions, a
-    negative NaN, comparisons between two zeros (Snowflake doesn't document
-    whether the sign of zero is visible).
+    instead of answering differently, as for interval-valued expressions
+    (Snowflake has no interval type).
 
     ## Spark and Databricks
 
@@ -270,16 +269,12 @@ def _(mo):
     * `/` of integers is a double, so division is `div`; `/` of doubles
       raises on a zero divisor in ANSI mode, so `x / 0.0` is written as the
       IEEE ±inf or NaN.
-    * `CAST(9.3e18 AS BIGINT)` saturates instead of raising, `FLOOR` and
-      `CEIL` return integers, and `ROUND(-0.4)` is +0.0: each is checked or
-      repaired.
+    * `CAST(9.3e18 AS BIGINT)` saturates instead of raising, and `FLOOR`
+      and `CEIL` return integers: each is checked or repaired.
     * `SUM` of `BIGINT` raises on an overflowing partial sum, though Lean's
       total may fit: it adds `DECIMAL(38,0)` instead.
     * `TIMESTAMP` is the session time zone's (`TIMESTAMP_LTZ`), and so is
       what `date_trunc` returns: the SQL stays in `TIMESTAMP_NTZ`.
-    * `GROUP BY` turns -0.0 into +0.0, and the optimizer takes the literals
-      -0.0 and +0.0 for equal, folding `CASE WHEN c THEN -0.0 ELSE 0.0 END`
-      to `0.0`. The sign is read from a zero's text (`'-0.0'`) and kept.
     * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's), so it
       is refused, as are sorts and windows over a table without
       `tie_free=True`. Over `VALUES`, a `SUM` of doubles adds in Lean's

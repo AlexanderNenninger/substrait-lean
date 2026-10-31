@@ -149,9 +149,9 @@ def _(mo):
 
     One tiny table per topic, put into DataFusion (through `sverify`), DuckDB
     and Polars, and given to Ibis as a memtable. Lean gets the same rows,
-    inlined into the plan as a Substrait virtual table. Substrait JSON
-    literals cannot hold `-0.0`, so for the table `f0` there are no Lean rows,
-    only the translators' output.
+    inlined into the plan as a Substrait virtual table. DataFusion gets the
+    tables as they are (`put_table` would store them the model's way, with
+    one zero and one NaN), so its native answers show its own order.
     """)
     return
 
@@ -196,7 +196,7 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(dt, tables):
+def _(dt, pa, tables):
     import json
     import re
     import warnings
@@ -219,6 +219,10 @@ def _(dt, tables):
     duck = duckdb.connect()
     for _name, _t in tables.items():
         put_table(con, _name, _t)
+        # DataFusion gets the table as it is, to show its own order.
+        _batches = _t.to_batches() or [pa.RecordBatch.from_pylist([], schema=_t.schema)]
+        con.datafusion.deregister_table(_name)
+        con.datafusion.register_record_batches(_name, [_batches])
         duck.register(_name, _t)
     P = {k: pl.from_arrow(t) for k, t in tables.items()}
     MEM = {k: ibis.memtable(t) for k, t in tables.items()}
@@ -261,10 +265,7 @@ def _(dt, tables):
     def lean_rows(plan: str) -> str:
         """`Rel.eval` of the plan on the same rows, as `substrait-check` prints it."""
         rows = {n: arrow_rows(tables[n]) for n in read_tables(json.loads(plan))}
-        try:
-            inlined = inline_tables(json.loads(plan), rows)
-        except ValueError:
-            return "(no Lean rows: a JSON literal cannot hold -0.0)"
+        inlined = inline_tables(json.loads(plan), rows)
         _, out, _ = run_checker((), json.dumps(inlined))
         got = [ln.strip() for ln in out.split("rows (")[1].splitlines()[1:] if ln.startswith("  (")]
         text = ", ".join(r[1:-1] if "," not in r else r for r in got) or "(no rows)"
@@ -880,9 +881,9 @@ def _(E, render):
             snowflake="not documented",
             engines="split",
             why="DataFusion compares doubles by their total order, where −0.0 < +0.0. "
-            "DuckDB and Polars follow IEEE (equal). sverify's Snowflake SQL raises when two "
-            "zeros meet in a comparison, since the docs do not say.",
-            picks="the total order: −0.0 < +0.0",
+            "DuckDB, Polars and Spark follow IEEE (equal), and so does the model, which "
+            "has one zero: the least surprise.",
+            picks="one zero: −0.0 = 0.0",
         ).run(),
         E(
             "F2",
@@ -896,8 +897,8 @@ def _(E, render):
             snowflake="not documented",
             engines="split",
             why="It follows from F1: DataFusion keeps both zeros, DuckDB and Polars "
-            "merge them. Ibis inherits each backend's answer.",
-            picks="two distinct values",
+            "merge them, as the model does. Ibis inherits each backend's answer.",
+            picks="one value, 0.0",
         ).run(),
         E(
             "F3",
@@ -911,7 +912,7 @@ def _(E, render):
             why="Every engine here departs from IEEE in the same way: NaN equals NaN "
             "and is the largest double, so `ORDER BY` and `GROUP BY` work. Uniform, but "
             "not IEEE.",
-            picks="the total order (`Float.lean`)",
+            picks="one NaN, above +∞ (`Float.lean`)",
         ).run(),
         E(
             "F4",

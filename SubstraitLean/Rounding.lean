@@ -9,8 +9,8 @@ native floats, so that their monotonicity, and the range of a cast, can be
 proved.
 
 A finite double is `±m · 2⁻¹⁰⁷⁴`, so rounding it to an integer rounds the
-magnitude `m` to a multiple of `K = 2¹⁰⁷⁴`. The sign is kept (`CEIL(-0.5)` is
-`-0.0`); NaN and ±∞ are left alone. Every multiple of `K` up to `maxMag` is a
+magnitude `m` to a multiple of `K = 2¹⁰⁷⁴`. The sign is kept, except that a
+zero result is the one zero (`CEIL(-0.5)` is `0.0`); NaN and ±∞ are left alone. Every multiple of `K` up to `maxMag` is a
 double, so the results are doubles.
 -/
 
@@ -29,11 +29,14 @@ def roundMag (m : Nat) : Nat := (m + K / 2) / K * K
 /-- The magnitude of a code (for finite codes, `|x| · 2¹⁰⁷⁴`). -/
 def mag (c : Int) : Nat := (c.natAbs - 1) / 2
 
+/-- The non-negative code of magnitude `m` (`0` for zero). -/
+def code (m : Nat) : Int := if m = 0 then 0 else 2 * (m : Int) + 1
+
 /-- Apply `pos` to the magnitude of a non-negative finite code and `neg` to
 that of a negative one; NaN and ±∞ stay. -/
 def onMag (pos neg : Nat → Nat) (c : Int) : Int :=
   if maxMag < mag c then c
-  else if c < 0 then -(2 * (neg (mag c) : Int) + 1) else 2 * (pos (mag c) : Int) + 1
+  else if c < 0 then -code (neg (mag c)) else code (pos (mag c))
 
 def floor : Int → Int := onMag floorMag ceilMag
 def ceil : Int → Int := onMag ceilMag floorMag
@@ -95,6 +98,13 @@ theorem mag_le_of_nonneg {c d : Int} (hc : 0 ≤ c) (h : c ≤ d) : mag c ≤ ma
 theorem mag_le_of_neg {c d : Int} (hd : d < 0) (h : c ≤ d) : mag d ≤ mag c :=
   Nat.div_le_div_right (by omega)
 
+theorem code_mono {m n : Nat} (h : m ≤ n) : code m ≤ code n := by
+  unfold code; split <;> split <;> omega
+
+theorem code_nonneg (m : Nat) : 0 ≤ code m := by unfold code; split <;> omega
+
+theorem code_le (m : Nat) : code m ≤ 2 * (m : Int) + 1 := by unfold code; split <;> omega
+
 /-- `onMag` is monotone when both magnitude maps are, and keep finite
 magnitudes finite. -/
 theorem onMag_mono {pos neg : Nat → Nat}
@@ -104,17 +114,18 @@ theorem onMag_mono {pos neg : Nat → Nat}
   unfold onMag
   have hmc : mag c = (c.natAbs - 1) / 2 := rfl
   have hmd : mag d = (d.natAbs - 1) / 2 := rfl
+  have := code_nonneg (pos (mag c)); have := code_nonneg (pos (mag d))
+  have := code_nonneg (neg (mag c)); have := code_nonneg (neg (mag d))
+  have := code_le (pos (mag c)); have := code_le (neg (mag d))
   by_cases hd : d < 0
   · have hc : c < 0 := by omega
-    have hm := mag_le_of_neg hd h
-    have := hn hm
+    have := code_mono (hn (mag_le_of_neg hd h))
     by_cases h₁ : maxMag < mag c <;> by_cases h₂ : maxMag < mag d <;> simp only [h₁, h₂, hc, hd,
       ite_true, ite_false] <;> first | omega | (have := hnb _ (Nat.not_lt.mp h₂); omega)
   · by_cases hc : c < 0
     · by_cases h₁ : maxMag < mag c <;> by_cases h₂ : maxMag < mag d <;> simp only [h₁, h₂, hc, hd,
         ite_true, ite_false] <;> omega
-    · have hm := mag_le_of_nonneg (by omega) h
-      have := hp hm
+    · have := code_mono (hp (mag_le_of_nonneg (by omega) h))
       by_cases h₁ : maxMag < mag c <;> by_cases h₂ : maxMag < mag d <;> simp only [h₁, h₂, hc, hd,
         ite_true, ite_false] <;> first | omega | (have := hpb _ (Nat.not_lt.mp h₁); omega)
 
@@ -195,9 +206,9 @@ attribute [irreducible] floor ceil round toInt?
 
 #guard floor (ofFloat 2.5) == ofFloat 2.0 && floor (ofFloat (-2.5)) == ofFloat (-3.0)
 #guard ceil (ofFloat 2.5) == ofFloat 3.0 && ceil (ofFloat (-2.5)) == ofFloat (-2.0)
-#guard ceil (ofFloat (-0.5)) == ofMag true 0
+#guard ceil (ofFloat (-0.5)) == 0 && floor (ofFloat 0.5) == 0
 #guard round (ofFloat 2.5) == ofFloat 3.0 && round (ofFloat (-2.5)) == ofFloat (-3.0)
-#guard round (ofFloat 2.4) == ofFloat 2.0 && round (ofFloat (-0.4)) == ofMag true 0
+#guard round (ofFloat 2.4) == ofFloat 2.0 && round (ofFloat (-0.4)) == 0
 #guard floor posInf == posInf && round nan == nan
 #guard floor (ofFloat 1e300) == ofFloat 1e300
 #guard toInt? (ofFloat 2.7) == some 2 && toInt? (ofFloat (-2.7)) == some (-2)

@@ -21,10 +21,10 @@ and the others are NULL. Checked against DataFusion 51:
   `AVG` of their conversions to double, which the parser makes explicit.
 * `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`). The parser
   refuses them on doubles: DataFusion's grouped `MIN` of a group of +∞ is
-  the largest finite double, it skips NaN next to other values, and between
-  -0.0 and 0.0 the row order decides.
-* Grouping compares values exactly, so -0.0 and 0.0 (and the NaNs) are
-  different groups, and NULLs group together.
+  the largest finite double, and it skips NaN next to other values.
+* Grouping compares values exactly; doubles have one zero and one NaN
+  (`SubstraitLean/Float.lean`), so -0.0 and 0.0 are one group, and NULLs
+  group together.
 -/
 
 namespace Substrait
