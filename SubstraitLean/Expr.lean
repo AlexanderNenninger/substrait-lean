@@ -186,6 +186,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .lt, .int a, .int b => .bool (decide (a < b))
   -- Strings by code point, which is UTF-8 byte order (as `Value.le`).
   | .lt, .str a, .str b => .bool (decide (a < b))
+  -- FALSE < TRUE, as in DataFusion.
+  | .lt, .bool a, .bool b => .bool (!a && b)
   | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
