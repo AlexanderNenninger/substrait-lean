@@ -90,12 +90,22 @@ def tables(draw) -> dict[str, pa.Table]:
     }
 
 
+def plain(v: object) -> object:
+    """DataFusion types `ROW_NUMBER()` as a decimal, the model has one integer
+    type, and intervals (day to second in the model) come as durations or
+    DuckDB's month-day-nanosecond intervals."""
+    if isinstance(v, Decimal):
+        return int(v)
+    if isinstance(v, pa.MonthDayNano):
+        assert v.months == 0, v
+        return v.days * 86_400_000_000 + v.nanoseconds // 1_000
+    if isinstance(v, dt.timedelta):
+        return v // dt.timedelta(microseconds=1)
+    return v
+
+
 def rows(table: pa.Table) -> list[tuple]:
-    """DataFusion types `ROW_NUMBER()` as a decimal; the model has one integer type."""
-    return [
-        tuple(int(v) if isinstance(v, Decimal) else v for v in r.values())
-        for r in table.to_pylist()
-    ]
+    return [tuple(plain(v) for v in r.values()) for r in table.to_pylist()]
 
 
 def same(a: list[tuple], b: list[tuple]) -> bool:
@@ -213,7 +223,7 @@ def test_spark_agrees_with_duckdb(con, data):
             with pytest.raises(Exception, match="(?i)sverify|overflow|cast"):
                 query(sql)
             continue
-        got = query(sql)
+        got = [tuple(plain(v) for v in r) for r in query(sql)]
         root = parse_plan(json.loads(plan)).root
         ordered = order_matters(root) and case.label not in TIE_FREE
         assert same(got, duck) if ordered else canonical(got) == canonical(duck), case.label

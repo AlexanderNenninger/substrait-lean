@@ -31,6 +31,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
+from ibis.common.exceptions import IbisTypeError
 
 __all__ = ["Unsupported", "to_substrait", "to_substrait_json"]
 
@@ -228,7 +229,11 @@ class Exprs:
 
 
 def _common(*types: Any) -> Any:
-    return dt.highest_precedence([t for t in types if not t.is_null()] or [dt.null])
+    try:
+        return dt.highest_precedence([t for t in types if not t.is_null()] or [dt.null])
+    except IbisTypeError as e:
+        # Ibis compares timestamps with strings, say, by SQL's implicit casts.
+        raise Unsupported(f"comparing {', '.join(map(str, types))} is not supported") from e
 
 
 def _field(x: Exprs, op: Any) -> Json:
@@ -504,18 +509,20 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
 def measure(x: Exprs, op: Any) -> Json:
     distinct = False
     args: list[Json]
-    if isinstance(op, ops.CountStar):
+    # Exact classes: subclasses such as `ApproxCountDistinct` mean something else.
+    kind = type(op)
+    if kind is ops.CountStar:
         name, args = "count", []
-    elif isinstance(op, ops.Count | ops.CountDistinct):
+    elif kind in (ops.Count, ops.CountDistinct):
         name, args = "count", [x(op.arg)]
-        distinct = isinstance(op, ops.CountDistinct)
-    elif isinstance(op, ops.Sum | ops.Mean):
-        name = "sum" if isinstance(op, ops.Sum) else "avg"
+        distinct = kind is ops.CountDistinct
+    elif kind in (ops.Sum, ops.Mean):
+        name = "sum" if kind is ops.Sum else "avg"
         # Ibis sums and averages booleans as integers.
         args = [x(op.arg, dt.int32) if op.arg.dtype.is_boolean() else x(op.arg)]
-    elif isinstance(op, ops.Min | ops.Max):
+    elif kind in (ops.Min, ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
-        name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+        name, args = ("min" if kind is ops.Min else "max"), [x(op.arg)]
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {

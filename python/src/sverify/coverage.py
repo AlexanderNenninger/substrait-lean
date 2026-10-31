@@ -15,8 +15,11 @@ of DuckDB, Snowflake and Spark translate the plan Lean writes back out. `REFUSED
 lists the cases an engine refuses, and why; `tests/test_backends.py` runs the
 rest on random tables and compares the engines.
 
-`tests/test_coverage.py` pins every case to its `expected` status and its
-refusals, so a change in coverage is a deliberate edit here. Regenerate the
+The cases probe every Ibis operation: each concrete class of
+`ibis.expr.operations` (geospatial aside) occurs in some case's expression, or
+`OUT_OF_SCOPE` says why not. `tests/test_coverage.py` checks that, and pins
+every case to its `expected` status and its refusals, so a change in coverage
+is a deliberate edit here. Regenerate the
 README tables with
 
     uv run python -m sverify.coverage --write-readme
@@ -53,7 +56,17 @@ T = ibis.table(
     name="t",
 )
 U = ibis.table({"name": "string", "region": "string"}, name="u")
-t, u = T, U
+#: Nested types, for the operations on them.
+N = ibis.table(
+    {
+        "xs": "array<int64>",
+        "m": "map<string, int64>",
+        "s": "struct<a: int64, b: string>",
+        "j": "json",
+    },
+    name="n",
+)
+t, u, n = T, U, N
 
 
 @dataclass(frozen=True)
@@ -132,15 +145,7 @@ CASES: list[Case] = [
     case("aggregation", "value_counts", V, lambda: t.name.value_counts()),
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
-    case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
-    case("aggregation", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
-    case("aggregation", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
-    case(
-        "aggregation",
-        "unnest",
-        R,
-        lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs"),
-    ),
+    case("statistics", "std", R, lambda: t.aggregate(s=t.amount.std())),
     # Window functions
     case(
         "windows",
@@ -225,7 +230,388 @@ CASES: list[Case] = [
     case("time", "year", V, lambda: t.select(x=t.ts.year())),
     case("time", "date", V, lambda: t.select(x=t.ts.date())),
     case("time", "truncate", V, lambda: t.select(x=t.ts.truncate("h"))),
+    # Logic
+    case("logic", "comparisons", V, lambda: t.filter((t.qty != 1) & (t.qty <= 5) | (t.id >= 2))),
+    case("logic", "xor", R, lambda: t.filter(t.flag ^ (t.qty > 1))),
+    case("logic", "identical_to", V, lambda: t.filter(t.qty.identical_to(t.id))),
+    case("logic", "notnull", V, lambda: t.filter(t.qty.notnull())),
+    case("logic", "simple case", V, lambda: t.select(x=t.qty.cases((1, "one"), else_="many"))),
+    # Relations
+    case("relations", "table fill_null", R, lambda: t.fill_null({"qty": 0})),
+    case("relations", "self join", V, lambda: t.join(t.view(), "id")),
+    case("relations", "memtable", R, lambda: ibis.memtable({"a": [1, 2]})),
+    case("relations", "literal as table", R, lambda: ibis.literal(1).as_table()),
+    case("relations", "database table", R, lambda: ibis.table(T.schema(), name="t").alias("x")),
+    case("relations", "rowid", R, lambda: t.select(r=t.rowid())),
+    # Subqueries
+    case("subqueries", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
+    case("subqueries", "exists", R, lambda: t.filter((u.name == t.name).any())),
+    # Statistics
+    case("statistics", "median", R, lambda: t.aggregate(m=t.amount.median())),
+    case("statistics", "quantile", R, lambda: t.aggregate(q=t.amount.quantile(0.9))),
+    case("statistics", "multi quantile", R, lambda: t.aggregate(q=t.amount.quantile([0.1, 0.9]))),
+    case("statistics", "var", R, lambda: t.aggregate(v=t.amount.var())),
+    case("statistics", "corr", R, lambda: t.aggregate(c=t.amount.corr(t.qty))),
+    case("statistics", "cov", R, lambda: t.aggregate(c=t.amount.cov(t.qty))),
+    case("statistics", "kurtosis", R, lambda: t.aggregate(k=t.amount.kurtosis())),
+    case("statistics", "approx_nunique", R, lambda: t.aggregate(n=t.qty.approx_nunique())),
+    case("statistics", "approx_median", R, lambda: t.aggregate(m=t.amount.approx_median())),
+    case("statistics", "approx_quantile", R, lambda: t.aggregate(q=t.amount.approx_quantile(0.5))),
+    case(
+        "statistics",
+        "approx multi quantile",
+        R,
+        lambda: t.aggregate(q=t.amount.approx_quantile([0.1, 0.9])),
+    ),
+    case("statistics", "histogram bucket", R, lambda: t.select(b=t.qty.bucket([0, 10, 100]))),
+    # Numbers
+    case("numbers", "negate", V, lambda: t.select(x=-t.qty)),
+    case("numbers", "sign", R, lambda: t.select(x=t.amount.sign())),
+    case("numbers", "sqrt", R, lambda: t.select(x=t.amount.sqrt())),
+    case("numbers", "exp", R, lambda: t.select(x=t.amount.exp())),
+    case(
+        "numbers",
+        "ln, log10, log2",
+        R,
+        lambda: t.select(a=t.amount.ln(), b=t.amount.log10(), c=t.amount.log2()),
+    ),
+    case("numbers", "log(base)", R, lambda: t.select(x=t.amount.log(3))),
+    case(
+        "numbers",
+        "trigonometry",
+        R,
+        lambda: t.select(
+            a=t.amount.sin(),
+            b=t.amount.cos(),
+            c=t.amount.tan(),
+            d=t.amount.cot(),
+            e=t.amount.asin(),
+            f=t.amount.acos(),
+            g=t.amount.atan(),
+            h=t.amount.atan2(t.amount),
+        ),
+    ),
+    case(
+        "numbers",
+        "degrees, radians",
+        R,
+        lambda: t.select(x=t.amount.degrees(), y=t.amount.radians()),
+    ),
+    case("numbers", "pi, e", R, lambda: t.select(x=t.amount * ibis.pi + ibis.e)),
+    case("numbers", "isnan", V, lambda: t.filter(t.amount.isnan())),
+    case("numbers", "isinf", R, lambda: t.filter(t.amount.isinf())),
+    case(
+        "numbers",
+        "bitwise",
+        R,
+        lambda: t.select(a=t.qty & 3, b=t.qty | 3, c=t.qty ^ 3, d=~t.qty),
+    ),
+    case("numbers", "shifts", R, lambda: t.select(a=t.qty << 1, b=t.qty >> 1)),
+    case("numbers", "convert_base", R, lambda: t.select(x=t.name.convert_base(16, 10))),
+    case("numbers", "random", R, lambda: t.select(x=ibis.random())),
+    # Strings
+    case("strings", "lower", V, lambda: t.select(x=t.name.lower())),
+    case("strings", "capitalize", R, lambda: t.select(x=t.name.capitalize())),
+    case("strings", "endswith", V, lambda: t.filter(t.name.endswith("a"))),
+    case("strings", "lstrip, rstrip", V, lambda: t.select(x=t.name.lstrip(), y=t.name.rstrip())),
+    case("strings", "find", V, lambda: t.select(x=t.name.find("a"))),
+    case(
+        "strings", "lpad, rpad", R, lambda: t.select(x=t.name.lpad(5, "-"), y=t.name.rpad(5, "-"))
+    ),
+    case("strings", "slice", R, lambda: t.select(x=t.name[1:3])),
+    case("strings", "repeat", R, lambda: t.select(x=t.name.repeat(2))),
+    case("strings", "reverse", R, lambda: t.select(x=t.name.reverse())),
+    case("strings", "right", R, lambda: t.select(x=t.name.right(2))),
+    case("strings", "replace", R, lambda: t.select(x=t.name.replace("a", "b"))),
+    case("strings", "translate", R, lambda: t.select(x=t.name.translate("ab", "ba"))),
+    case("strings", "ilike", R, lambda: t.filter(t.name.ilike("a%"))),
+    case("strings", "join", R, lambda: t.select(x=ibis.literal("-").join([t.name, t.name]))),
+    case("strings", "ascii_str", R, lambda: t.select(x=t.name.ascii_str())),
+    case("strings", "find_in_set", R, lambda: t.select(x=t.name.find_in_set(["a", "b"]))),
+    case("strings", "levenshtein", R, lambda: t.select(x=t.name.levenshtein("abc"))),
+    case("strings", "re_extract", R, lambda: t.select(x=t.name.re_extract("a(b)", 1))),
+    case("strings", "re_replace", R, lambda: t.select(x=t.name.re_replace("a+", "b"))),
+    case("strings", "re_split", R, lambda: t.select(x=t.name.re_split(",").length())),
+    case("strings", "split", R, lambda: t.select(x=t.name.split(",").length())),
+    case(
+        "strings",
+        "URL parts",
+        R,
+        lambda: t.select(
+            a=t.name.authority(),
+            b=t.name.file(),
+            c=t.name.fragment(),
+            d=t.name.host(),
+            e=t.name.path(),
+            f=t.name.protocol(),
+            g=t.name.query(),
+            h=t.name.userinfo(),
+        ),
+    ),
+    case("strings", "hash", R, lambda: t.select(x=t.name.hash())),
+    case("strings", "hashbytes", R, lambda: t.select(x=t.name.hashbytes())),
+    case("strings", "hexdigest", R, lambda: t.select(x=t.name.hexdigest())),
+    case("strings", "uuid", R, lambda: t.select(x=ibis.uuid())),
+    # Types
+    case("types", "try_cast", R, lambda: t.select(x=t.name.try_cast("int64"))),
+    case("types", "typeof", R, lambda: t.select(x=t.qty.typeof())),
+    case("types", "param", R, lambda: t.filter(t.qty > ibis.param("int64"))),
+    # Aggregation (more)
+    case("aggregation", "count(col), min", V, lambda: t.aggregate(n=t.qty.count(), m=t.qty.min())),
+    case("aggregation", "any, all", R, lambda: t.aggregate(a=t.flag.any(), b=t.flag.all())),
+    case("aggregation", "arbitrary", R, lambda: t.aggregate(a=t.qty.arbitrary())),
+    case(
+        "aggregation",
+        "argmin, argmax",
+        R,
+        lambda: t.aggregate(a=t.name.argmin(t.qty), b=t.name.argmax(t.qty)),
+    ),
+    case(
+        "aggregation",
+        "bit_and, bit_or, bit_xor",
+        R,
+        lambda: t.aggregate(a=t.qty.bit_and(), b=t.qty.bit_or(), c=t.qty.bit_xor()),
+    ),
+    case("aggregation", "first, last", R, lambda: t.aggregate(a=t.qty.first(), b=t.qty.last())),
+    case("aggregation", "group_concat", R, lambda: t.aggregate(s=t.name.group_concat(","))),
+    case("aggregation", "mode", R, lambda: t.aggregate(m=t.qty.mode())),
+    case("aggregation", "table nunique", R, lambda: t.aggregate(n=t.nunique())),
+    # Windows (more)
+    case(
+        "windows", "lead", V, lambda: t.mutate(p=t.qty.lead().over(group_by="name", order_by="ts"))
+    ),
+    case("windows", "percent_rank", R, lambda: t.mutate(r=ibis.percent_rank().over(order_by="ts"))),
+    case("windows", "cume_dist", R, lambda: t.mutate(r=ibis.cume_dist().over(order_by="ts"))),
+    case("windows", "nth", R, lambda: t.mutate(n=t.qty.nth(1).over(order_by="ts"))),
+    case(
+        "windows",
+        "window_by tumble",
+        R,
+        lambda: t.window_by(t.ts).tumble(size=ibis.interval(minutes=5)).aggregate(n=t.qty.sum()),
+    ),
+    # Dates and times (more)
+    case(
+        "time",
+        "day, hour, minute, ...",
+        V,
+        lambda: t.select(
+            a=t.ts.quarter(),
+            b=t.ts.month(),
+            c=t.ts.day(),
+            d=t.ts.day_of_year(),
+            e=t.ts.week_of_year(),
+            f=t.ts.hour(),
+            g=t.ts.minute(),
+            h=t.ts.second(),
+        ),
+    ),
+    case(
+        "time",
+        "millisecond, microsecond",
+        R,
+        lambda: t.select(a=t.ts.millisecond(), b=t.ts.microsecond()),
+    ),
+    case("time", "epoch_seconds", R, lambda: t.select(x=t.ts.epoch_seconds())),
+    case("time", "iso_year", R, lambda: t.select(x=t.ts.iso_year())),
+    case(
+        "time",
+        "day_of_week",
+        R,
+        lambda: t.select(a=t.ts.day_of_week.index(), b=t.ts.day_of_week.full_name()),
+    ),
+    case("time", "timestamp - interval", V, lambda: t.select(x=t.ts - ibis.interval(hours=1))),
+    case("time", "timestamp - timestamp", V, lambda: t.select(x=t.ts - t.ts)),
+    case("time", "timestamp delta", R, lambda: t.select(x=t.ts.delta(t.ts, unit="hour"))),
+    case("time", "timestamp bucket", R, lambda: t.select(x=t.ts.bucket(minutes=5))),
+    case("time", "date + interval", R, lambda: t.select(x=t.ts.date() + ibis.interval(days=1))),
+    case("time", "date - interval", R, lambda: t.select(x=t.ts.date() - ibis.interval(days=1))),
+    case("time", "date - date", R, lambda: t.select(x=t.ts.date() - t.ts.date())),
+    case("time", "date delta", R, lambda: t.select(x=t.ts.date().delta(t.ts.date(), unit="day"))),
+    case("time", "date truncate", R, lambda: t.select(x=t.ts.date().truncate("M"))),
+    case(
+        "time",
+        "interval arithmetic",
+        R,
+        lambda: t.select(
+            a=t.ts + (ibis.interval(days=1) + ibis.interval(hours=1)),
+            b=t.ts + (ibis.interval(days=1) - ibis.interval(hours=1)),
+            c=t.ts + ibis.interval(days=1) * 2,
+            d=t.ts + ibis.interval(days=4) // 2,
+        ),
+    ),
+    case("time", "as_interval", R, lambda: t.select(x=t.ts + t.qty.as_interval("D"))),
+    case("time", "as_timestamp (unix)", R, lambda: t.select(x=t.qty.as_timestamp("s"))),
+    case("time", "date(y, m, d)", R, lambda: t.select(x=ibis.date(t.qty, 1, 1))),
+    case(
+        "time", "timestamp(y, ..., s)", R, lambda: t.select(x=ibis.timestamp(t.qty, 1, 1, 0, 0, 0))
+    ),
+    case("time", "time(h, m, s)", R, lambda: t.select(x=ibis.time(t.qty, 0, 0))),
+    case("time", "strftime", R, lambda: t.select(x=t.ts.strftime("%Y-%m"))),
+    case("time", "string as_date", R, lambda: t.select(x=t.name.as_date("%Y-%m-%d"))),
+    case("time", "string as_time", R, lambda: t.select(x=t.name.as_time("%H:%M"))),
+    case("time", "string as_timestamp", R, lambda: t.select(x=t.name.as_timestamp("%Y-%m-%d"))),
+    case("time", "time", R, lambda: t.select(x=t.ts.time())),
+    case(
+        "time",
+        "time arithmetic",
+        R,
+        lambda: t.select(
+            a=t.ts.time() + ibis.interval(hours=1),
+            b=t.ts.time() - ibis.interval(hours=1),
+            c=t.ts.time() - t.ts.time(),
+            d=t.ts.time().delta(t.ts.time(), unit="hour"),
+        ),
+    ),
+    case("time", "time truncate", R, lambda: t.select(x=t.ts.time().truncate("h"))),
+    case(
+        "time",
+        "between times",
+        R,
+        lambda: t.filter(t.ts.time().between("01:00", "02:00")),
+    ),
+    case("time", "today, now", R, lambda: t.select(a=ibis.today(), b=ibis.now())),
+    case(
+        "time",
+        "range of timestamps",
+        R,
+        lambda: t.select(
+            x=ibis.range(t.ts, t.ts + ibis.interval(days=2), ibis.interval(days=1)).length()
+        ),
+    ),
+    # Nested types
+    case("nested", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
+    case(
+        "nested", "unnest", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs")
+    ),
+    case("nested", "array", R, lambda: t.select(x=ibis.array([t.qty, t.id]))),
+    case("nested", "range", R, lambda: t.select(x=ibis.range(0, t.qty))),
+    case(
+        "nested",
+        "array length, index, slice",
+        R,
+        lambda: n.select(a=n.xs.length(), b=n.xs[0], c=n.xs[1:2]),
+    ),
+    case(
+        "nested",
+        "array aggregates",
+        R,
+        lambda: n.select(
+            a=n.xs.sums(), b=n.xs.mins(), c=n.xs.maxs(), d=n.xs.means(), e=n.xs.modes()
+        ),
+    ),
+    case(
+        "nested",
+        "array predicates",
+        R,
+        lambda: n.select(
+            a=n.xs.contains(1),
+            b=n.xs.index(1),
+            c=n.xs.map(lambda x: x > 1).anys(),
+            d=n.xs.map(lambda x: x > 1).alls(),
+        ),
+    ),
+    case(
+        "nested",
+        "array transforms",
+        R,
+        lambda: n.select(
+            a=n.xs.map(lambda x: x + 1),
+            b=n.xs.filter(lambda x: x > 1),
+            c=n.xs.sort(),
+            d=n.xs.unique(),
+            e=n.xs.remove(1),
+            f=ibis.array([n.xs]).flatten(),
+            g=n.xs * 2,
+        ),
+    ),
+    case(
+        "nested",
+        "array set operations",
+        R,
+        lambda: n.select(
+            a=n.xs.concat(n.xs), b=n.xs.union(n.xs), c=n.xs.intersect(n.xs), d=n.xs.zip(n.xs)
+        ),
+    ),
+    case("nested", "array unnest", R, lambda: n.select(x=n.xs.unnest())),
+    case(
+        "nested",
+        "array join",
+        R,
+        lambda: n.select(x=n.xs.map(lambda x: x.cast("string")).join(",")),
+    ),
+    case("nested", "map", R, lambda: t.select(x=ibis.map(ibis.array(["a"]), ibis.array([t.qty])))),
+    case(
+        "nested",
+        "map access",
+        R,
+        lambda: n.select(
+            a=n.m.contains("a"),
+            b=n.m.get("a"),
+            c=n.m.keys(),
+            d=n.m.values(),
+            e=n.m.length(),
+            f=n.m + n.m,
+        ),
+    ),
+    case("nested", "struct", R, lambda: t.select(x=ibis.struct({"a": t.qty}))),
+    case("nested", "struct field", R, lambda: n.select(x=n.s.a)),
+    case("nested", "json get", R, lambda: n.select(x=n.j["a"])),
+    case(
+        "nested",
+        "json unwrap",
+        R,
+        lambda: n.select(a=n.j.bool, b=n.j.float, c=n.j.int, d=n.j.str, e=n.j.array, f=n.j.map),
+    ),
 ]
+
+
+#: The Ibis operations no case probes, with the reason. Geospatial operations
+#: (`ibis.expr.operations.geospatial`) are out of scope as a whole.
+OUT_OF_SCOPE: dict[str, str] = {
+    **dict.fromkeys(
+        [
+            "ScalarUDF",
+            "AggUDF",
+            "ElementWiseVectorizedUDF",
+            "ReductionVectorizedUDF",
+            "AnalyticVectorizedUDF",
+        ],
+        "user-defined functions run code the checker cannot see",
+    ),
+    **dict.fromkeys(
+        ["SQLQueryResult", "SQLStringView"],
+        "SQL text needs a connected backend and is not an Ibis expression",
+    ),
+    "DatabaseTable": "a connected backend's table; the producer reads it like an unbound one",
+    "Alias": "Ibis's SQL compilers name values with it; table expressions never contain it",
+}
+
+
+def ibis_operations() -> set[str]:
+    """The concrete Ibis operations: the leaves of `ibis.expr.operations`'
+    class tree (the bases are abstract), without geospatial ones."""
+    import inspect
+
+    import ibis.expr.operations as ops
+
+    nodes = {c for c in vars(ops).values() if inspect.isclass(c) and issubclass(c, ops.Node)}
+    return {
+        c.__name__
+        for c in nodes
+        if not any(d is not c and issubclass(d, c) for d in nodes)
+        and not c.__module__.endswith("geospatial")
+    }
+
+
+def probed_operations(c: Case) -> set[str]:
+    """The Ibis operations in the expression of `c` (none if Ibis fails)."""
+    import ibis.expr.operations as ops
+
+    try:
+        expr = c.build()
+    except Exception:  # noqa: BLE001 - an upstream case probes nothing
+        return set()
+    return {type(node).__name__ for node in expr.op().find(ops.Node)}
 
 
 #: The engines besides DataFusion, which runs Ibis's own plans.
@@ -255,9 +641,11 @@ REFUSED: dict[str, dict[str, str]] = {
     "order_by + limit": NO_ROW_ORDER,
     "row_number": NO_ROW_ORDER,
     "lag": NO_ROW_ORDER,
+    "lead": NO_ROW_ORDER,
+    "timestamp - timestamp": {"snowflake": "no interval values"},
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
-TIE_FREE = {"order_by", "row_number", "lag"}
+TIE_FREE = {"order_by", "row_number", "lag", "lead"}
 
 
 def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
@@ -321,21 +709,29 @@ NAMES = {"polars": "Polars", "duckdb": "DuckDB", "snowflake": "Snowflake", "spar
 
 def table(rs: list[Result]) -> str:
     n = sum(r.status == "verified" for r in rs)
+    # An operation in a verified case is translated: any other fails the case.
+    in_scope = ibis_operations() - set(OUT_OF_SCOPE)
+    translated = in_scope & set().union(
+        *(probed_operations(r.case) for r in rs if r.status == "verified")
+    )
     lines = [
-        f"{n} of {len(rs)} probed Ibis operations reach the checker "
-        "(✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; "
-        "*inc.* marks incremental maintenance).",
+        f"{n} of {len(rs)} probes reach the checker; they use {len(translated)} of the "
+        f"{len(in_scope)} Ibis operations (`ibis.expr.operations`, without geospatial "
+        "ones and the few `OUT_OF_SCOPE` lists). "
+        "✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; "
+        "*inc.* marks incremental maintenance.",
         "",
-        "| Area | Operations |",
-        "|---|---|",
+        "| Area | Verified | Probes |",
+        "|---|---|---|",
     ]
     for area in dict.fromkeys(r.case.area for r in rs):
+        here = [r for r in rs if r.case.area == area]
         ops = [
             f"{SYMBOL[r.status]} {r.case.label}" + (" *inc.*" if r.incremental else "")
-            for r in rs
-            if r.case.area == area
+            for r in here
         ]
-        lines.append(f"| {area} | {' · '.join(ops)} |")
+        ok = sum(r.status == "verified" for r in here)
+        lines.append(f"| {area} | {ok} / {len(here)} | {' · '.join(ops)} |")
     verified = [r for r in rs if r.status == "verified"]
     lines += [
         "",

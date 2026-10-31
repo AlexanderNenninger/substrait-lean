@@ -280,27 +280,33 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-68 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+84 of 209 probes reach the checker; they use 91 of the 274 Ibis operations (`ibis.expr.operations`, without geospatial ones and the few `OUT_OF_SCOPE` lists). ✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance.
 
-| Area | Operations |
-|---|---|
-| rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
-| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
-| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
-| numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
-| nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
-| strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
-| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* |
+| Area | Verified | Probes |
+|---|---|---|
+| rows | 14 / 15 | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
+| joins | 13 / 13 | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
+| aggregation | 9 / 18 | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✓ count(col), min · ✗ any, all · ✗ arbitrary · ✗ argmin, argmax · ✗ bit_and, bit_or, bit_xor · ✗ first, last · ✗ group_concat · ✗ mode · ✗ table nunique |
+| statistics | 0 / 13 | ✗ std · ✗ median · ✗ quantile · ✗ multi quantile · ✗ var · ✗ corr · ✗ cov · ✗ kurtosis · ✗ approx_nunique · ✗ approx_median · ✗ approx_quantile · ✗ approx multi quantile · ✗ histogram bucket |
+| windows | 3 / 15 | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first · ✓ lead · ✗ percent_rank · ✗ cume_dist · ✗ nth · ✗ window_by tumble |
+| numbers | 16 / 29 | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* · ✓ negate *inc.* · ✗ sign · ✗ sqrt · ✗ exp · ✗ ln, log10, log2 · ✗ log(base) · ✗ trigonometry · ✗ degrees, radians · ✗ pi, e · ✓ isnan *inc.* · ✗ isinf · ✗ bitwise · ✗ shifts · ✗ convert_base · ✗ random |
+| nulls | 3 / 3 | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
+| strings | 13 / 35 | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lower *inc.* · ✗ capitalize · ✓ endswith *inc.* · ✓ lstrip, rstrip *inc.* · ✓ find *inc.* · ✗ lpad, rpad · ✗ slice · ✗ repeat · ✗ reverse · ✗ right · ✗ replace · ✗ translate · ✗ ilike · ✗ join · ✗ ascii_str · ✗ find_in_set · ✗ levenshtein · ✗ re_extract · ✗ re_replace · ✗ re_split · ✗ split · ✗ URL parts · ✗ hash · ✗ hashbytes · ✗ hexdigest · ✗ uuid |
+| time | 8 / 35 | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ day, hour, minute, ... *inc.* · ✗ millisecond, microsecond · ✗ epoch_seconds · ✗ iso_year · ✗ day_of_week · ✓ timestamp - interval *inc.* · ✓ timestamp - timestamp *inc.* · ✗ timestamp delta · ✗ timestamp bucket · ✗ date + interval · ✗ date - interval · ✗ date - date · ✗ date delta · ✗ date truncate · ✗ interval arithmetic · ✗ as_interval · ✗ as_timestamp (unix) · ✗ date(y, m, d) · ✗ timestamp(y, ..., s) · ✗ time(h, m, s) · ✗ strftime · ✗ string as_date · ✗ string as_time · ✗ string as_timestamp · ✗ time · ✗ time arithmetic · ✗ time truncate · ✗ between times · ✗ today, now · ✗ range of timestamps |
+| logic | 4 / 5 | ✓ comparisons *inc.* · ✗ xor · ✓ identical_to *inc.* · ✓ notnull *inc.* · ✓ simple case *inc.* |
+| relations | 1 / 6 | ✗ table fill_null · ✓ self join *inc.* · ✗ memtable · ✗ literal as table · ✗ database table · ✗ rowid |
+| subqueries | 0 / 2 | ✗ scalar subquery · ✗ exists |
+| types | 0 / 3 | ✗ try_cast · ✗ typeof · ✗ param |
+| nested | 0 / 17 | ✗ collect · ✗ unnest · ✗ array · ✗ range · ✗ array length, index, slice · ✗ array aggregates · ✗ array predicates · ✗ array transforms · ✗ array set operations · ✗ array unnest · ✗ array join · ✗ map · ✗ map access · ✗ struct · ✗ struct field · ✗ json get · ✗ json unwrap |
 
-Every engine runs the plans of the 68 verified operations, except:
+Every engine runs the plans of the 84 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 67 | non-equi join |
-| DuckDB | 67 | non-equi join |
-| Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
-| Spark | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Polars | 83 | non-equi join |
+| DuckDB | 83 | non-equi join |
+| Snowflake | 74 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · lead (with `tie_free=True` it runs) · timestamp - timestamp |
+| Spark | 75 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · lead (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
