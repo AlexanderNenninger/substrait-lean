@@ -950,8 +950,14 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         return "int", "int"
     if any(k in ty for k in ("fp32", "fp64")):
         return "float", "float"
-    if "precisionTimestamp" in ty or "timestamp" in ty:
+    if "timestamp" in ty:
         return "time", "time"
+    if "precisionTimestamp" in ty:
+        # Times are microseconds; another precision is not modelled.
+        pts = ty["precisionTimestamp"]
+        if isinstance(pts, dict) and pts.get("precision") == 6:
+            return "time", "time"
+        return "other", None
     if "date" in ty:
         return "date", "date"
     if any(k in ty for k in ("string", "varchar", "fixedChar")):
@@ -1746,6 +1752,9 @@ class _Parser:
         else:
             raise Unsupported(f"{name} takes one argument")
         k = lean_expr_kind(arg, cols.lean)
+        # `AVG` is a double; Calcite's `AVG` of integers (`avg:i64`) is not.
+        if name == "avg" and "outputType" in m and _lean_type_kind(m["outputType"]) != "float":
+            raise Unsupported("avg with a non-double result is not supported")
         fn: Literal["count", "sum", "fsum", "avg", "min", "max"]
         match name, k:
             case "count", _:

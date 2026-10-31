@@ -1,0 +1,11 @@
+Emit [10, 11, 12, 9]
+  Project +[$3, ($7 - 1), ($3 - $8)]
+    Window +[ROW_NUMBER(), LAG($3, 1, NULL), ROW_NUMBER()] PARTITION BY [$4] ORDER BY [$3]
+      Read events
+tables: events(7)
+arity: 4
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

@@ -16,9 +16,12 @@ from sverify.contracts import (
 )
 from sverify.engine import (
     ENGINES,
+    SQL_PRODUCERS,
     Connection,
+    SqlError,
     connect,
     create_table,
+    isthmus_json,
     run_plan,
     run_substrait_json,
     substrait_json,
@@ -52,5 +55,8 @@ __all__ = [
     "run_plan",
     "written_plan",
     "ENGINES",
+    "SQL_PRODUCERS",
+    "SqlError",
+    "isthmus_json",
     "substrait_json",
 ]

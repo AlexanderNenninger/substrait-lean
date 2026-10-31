@@ -20,7 +20,7 @@ neither Lean nor any other toolchain to use it.
 
 ```bash
 pip install sverify                # or: uv add sverify
-pip install 'sverify[datafusion]'  # with DataFusion as an engine, and for SQL strings
+pip install 'sverify[datafusion]'  # with DataFusion as an engine and SQL producer
 ```
 
 Wheels are available for Linux (x86_64, aarch64) and macOS (arm64, x86_64),
@@ -88,7 +88,12 @@ assert view.rows() == view.recompute()
   batch, such as one that deletes a row that doesn't exist, changes nothing.
 * The view is registered as a table, so you can query it with `con.table("big_orders")`.
 * Plain SQL works too: `sv.IncrementalView(con, "select ... from ...", "name")`.
-  DataFusion compiles SQL strings, so they need the `datafusion` extra.
+  SQL strings are compiled by DataFusion (the `datafusion` extra) or by
+  [Isthmus](https://github.com/substrait-io/substrait-java/releases), whose
+  native binary sverify runs from `$SVERIFY_ISTHMUS` or as `isthmus` on `PATH`.
+  `sv.connect(sql_producer="isthmus")` picks it; by default it is used when
+  DataFusion is not installed. Isthmus reads standard SQL (Calcite's), not
+  DataFusion's dialect.
 * Every engine runs exactly the plans Lean checked, translated by `sverify`
   rather than recompiled: DuckDB by default, or `sv.connect(engine="polars")`,
   `engine="datafusion"`, or `engine=` on a single view.
@@ -198,8 +203,11 @@ full list of proven theorems, and explains what is trusted and what is proved.
   bundled one, for example your own `lake build`.
 * DataFusion is optional (`sverify[datafusion]`), and pinned to `51.0.0`,
   because Ibis 12's DataFusion backend doesn't connect to later versions. It
-  runs plans with `engine="datafusion"` and compiles SQL strings; nothing else
-  needs it.
+  runs plans with `engine="datafusion"` and compiles SQL strings unless Isthmus
+  does; nothing else needs it.
+* `SVERIFY_ISTHMUS`: path to an Isthmus binary (otherwise `isthmus` on `PATH`).
+  sverify doesn't ship it (it is ~120 MB); `scripts/fetch_isthmus.sh <dir>`
+  downloads the pinned release and checks its SHA-256.
 
 ## Development
 

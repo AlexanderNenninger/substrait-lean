@@ -65,6 +65,24 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - run: uv run --locked --project python poe -C python test-${{ matrix.backend }}
 
+  # Isthmus as the SQL producer: its tests, and every SQL string the suite
+  # compiles, compiled by Isthmus too and compared with DataFusion's plan.
+  isthmus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-lean
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      # Pinned by version and SHA-256 in the script.
+      - run: echo "SVERIFY_ISTHMUS=$(python/scripts/fetch_isthmus.sh "$RUNNER_TEMP/isthmus")" >> "$GITHUB_ENV"
+      - run: uv run --locked --project python poe -C python test-isthmus
+      - run: uv run --locked --project python poe -C python compare-sql
+
   notebooks:
     runs-on: ubuntu-latest
     steps:
@@ -80,7 +98,7 @@ jobs:
 
   # The check the `main` ruleset requires: green only if every job above is.
   qa:
-    needs: [lean, static, test, notebooks]
+    needs: [lean, static, test, isthmus, notebooks]
     if: always()
     runs-on: ubuntu-latest
     steps:

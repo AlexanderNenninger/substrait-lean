@@ -57,7 +57,13 @@ needs_fixtures = pytest.mark.skipif(
 
 
 def fixture(name: str) -> dict:
-    return json.loads((FIXTURES / f"{name}.json").read_text())
+    """A fixture's plan. Isthmus's plans use encodings only Lean reads
+    (`varChar`, nested windows, `is_true`); the engines get what Lean writes
+    of them, so the accepted ones are given in that form."""
+    plan = (FIXTURES / f"{name}.json").read_text()
+    if name.startswith("isthmus_") and name in ACCEPTED:
+        plan = written(plan)
+    return json.loads(plan)
 
 
 def golden(name: str) -> str:
@@ -90,6 +96,7 @@ ARROW = {
     "string": pa.string(),
     "fp64": pa.float64(),
     "precisionTimestamp": pa.timestamp("us"),
+    "date": pa.date32(),
     "bool": pa.bool_(),
 }
 
@@ -101,6 +108,9 @@ def values_of(ty: str) -> st.SearchStrategy:
         "fp64": st.sampled_from(DOUBLES),
         "precisionTimestamp": st.sampled_from(
             [None] + [T0 + dt.timedelta(minutes=k) for k in range(4)]
+        ),
+        "date": st.sampled_from(
+            [None] + [dt.date(2023, 12, 31) + dt.timedelta(days=k) for k in range(4)]
         ),
         "bool": st.sampled_from([True, False, None]),
     }[ty]
@@ -184,16 +194,20 @@ def lean_printable(plan: dict) -> bool:
 
 
 def from_lean(plan: dict, rows: list[tuple]) -> list[tuple]:
-    """Lean's integers as the values they stand for (timestamps)."""
+    """Lean's integers as the values they stand for (timestamps, dates)."""
     ks = kinds(parse_plan(plan).root)
     us = dt.timedelta(microseconds=1)
-    return [
-        tuple(
-            EPOCH + v * us if k == "time" and v is not None else v
-            for v, k in zip(r, ks, strict=True)
-        )
-        for r in rows
-    ]
+
+    def value(v: object, k: str | None) -> object:
+        if v is None or not isinstance(v, int):
+            return v
+        if k == "time":
+            return EPOCH + v * us
+        if k == "date":
+            return EPOCH.date() + dt.timedelta(days=v)
+        return v
+
+    return [tuple(value(v, k) for v, k in zip(r, ks, strict=True)) for r in rows]
 
 
 def lean_on(plan: dict, tables: dict[str, pa.Table]) -> list[tuple]:
@@ -228,7 +242,13 @@ def agree(plan: dict, df: list[tuple] | None, duck: list[tuple], lean: list[tupl
 @needs_fixtures
 def test_fixture_lists_are_complete():
     assert {"filter_project", "virtual_left_join", "union_fetch", "df_window"} <= set(ACCEPTED)
-    assert set(REFUSED) == {"bad_field_ref"}
+    assert set(REFUSED) == {
+        "bad_field_ref",
+        "isthmus_avg_integer",
+        "isthmus_char_padding",
+        "isthmus_date_iday",
+        "isthmus_timestamp_seconds",
+    }
 
 
 @pytest.mark.parametrize("name", REFUSED)

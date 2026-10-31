@@ -1,0 +1,2 @@
+error: only microsecond timestamp columns are supported
+[exit 1]

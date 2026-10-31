@@ -1,0 +1,11 @@
+Emit [7, 8]
+  Project +[IF $5 THEN true ELSE false, IF NOT($5) THEN false ELSE true]
+    Filter IF (3 < $3) THEN true ELSE false
+      Read events
+tables: events(7)
+arity: 2
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

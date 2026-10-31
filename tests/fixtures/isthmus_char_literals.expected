@@ -1,0 +1,11 @@
+Emit [7, 8]
+  Project +[IF (1 < $3) THEN "big" ELSE "small", ($4 || "z")]
+    Filter (1704067200000000 < $2)
+      Read events
+tables: events(7)
+arity: 2
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

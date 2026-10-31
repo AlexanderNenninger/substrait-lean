@@ -1,0 +1,11 @@
+Emit [7]
+  Project +[$0]
+    Filter (($0 < $1) AND (19723 < $0))
+      Read events
+tables: events(7)
+arity: 1
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

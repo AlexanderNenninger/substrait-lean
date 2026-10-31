@@ -88,6 +88,13 @@ def parseExtensions (plan : Json) : J (List (Nat × String)) := do
 /-- `"lt:i64_i64"` ↦ `"lt"` -/
 def baseName (name : String) : String := (name.splitOn ":").head!
 
+/-- The argument types of a signature, `"add:date_iday"` ↦ `["date", "iday"]`;
+empty for a bare name (DataFusion's producer and sverify's write those). -/
+def sigTokens (name : String) : List String :=
+  match name.splitOn ":" with
+  | [_, sig] => if sig.isEmpty then [] else sig.splitOn "_"
+  | _ => []
+
 /-! ## Column kinds
 
 Doubles, timestamps and dates all become integers in the model (see
@@ -101,7 +108,10 @@ def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if ["i8", "i16", "i32", "i64"].any has then .int
   else if ["fp32", "fp64"].any has then .float
-  else if ["precisionTimestamp", "timestamp"].any has then .time
+  -- Times are microseconds; a column of another precision is not modelled.
+  else if has "timestamp" then .time
+  else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
+    if (t.getObjValAs? Nat "precision").toOption == some 6 then .time else .other
   else if has "date" then .date
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
@@ -111,6 +121,25 @@ def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
   | some tys => tys.toList.map typeKind
   | none => []
+
+/-- An argument type of a function signature (Substrait's short type names). -/
+inductive ArgSig where
+  | kind (k : Kind)
+  /-- A day/second interval; the parser folds interval literals to microseconds. -/
+  | interval
+  | any
+  | unknown (t : String)
+
+def argSig : String → ArgSig
+  | "i8" | "i16" | "i32" | "i64" => .kind .int
+  | "fp32" | "fp64" => .kind .float
+  | "ts" | "pts" => .kind .time
+  | "date" => .kind .date
+  | "str" | "vchar" | "fchar" => .kind .str
+  | "bool" => .kind .bool
+  | "iday" => .interval
+  | "any" | "any1" | "any2" => .any
+  | t => .unknown t
 
 def litKind : Value → Kind
   | .int _ => .int
@@ -313,11 +342,25 @@ def intervalMicros (d : Json) : J Int := do
   return (days * 86400 + secs) * 1_000_000 + subUs
 
 def parseConstLiteral (j : Json) : J Const := do
-  let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "null", "decimal",
+  let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
+    "varChar", "null", "decimal",
     "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalCompound"]
   match ← oneof "literal" j keys with
   | ("boolean", b) => return .bool (← b.getBool?)
   | ("string", s) => return .str (← s.getStr?)
+  -- `CHAR(n)` literals (Calcite types `'abc'` as `CHAR(3)`) hold exactly their
+  -- `n` characters. Engines disagree on what trailing blanks mean (PAD SPACE
+  -- comparisons, casts that strip them), so those are refused; without them a
+  -- CHAR literal is its string. Comparisons with one are refused in
+  -- `parseExpr`, since PAD SPACE also ignores the other side's trailing blanks.
+  | ("fixedChar", s) =>
+    let s ← s.getStr?
+    if s.endsWith " " then throw "CHAR literals with trailing blanks are not supported (blank padding)"
+    return .str s
+  | ("varChar", v) =>
+    let s ← (← field v "value").getStr?
+    if s.length > (← natD v "length") then throw "VARCHAR literal longer than its type"
+    return .str s
   | ("null", _) => return .null
   | ("fp32", n) | ("fp64", n) =>
     match n with
@@ -336,9 +379,13 @@ def parseConstLiteral (j : Json) : J Const := do
       if (← natD ym "years") != 0 || (← natD ym "months") != 0 then
         throw "month and year intervals are not supported"
     return .int (← (field? c "intervalDayToSecond").elim (pure 0) intervalMicros)
+  -- Precision `p` counts units of 10⁻ᵖ s (Isthmus writes `TIMESTAMP '…'` at 0).
   | ("precisionTimestamp", t) =>
-    if (← natD t "precision") != 6 then throw "only microsecond timestamps are supported"
-    return .int (← getInt (← field t "value"))
+    let p ← natD t "precision"
+    let v ← getInt (← field t "value")
+    if p ≤ 6 then return .int (v * 10 ^ (6 - p))
+    else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
+    else throw "timestamps finer than microseconds are not supported"
   | (_, n) => return .int (← getInt n)
 
 /-- `arrow_cast(value, '<Arrow type>')`, as Ibis writes casts for DataFusion. -/
@@ -392,6 +439,64 @@ def constExpr : Const → J Expr
   | .null => pure (.lit .null)
   | .dec _ _ => throw "DECIMAL values are not supported; cast them to DOUBLE"
 
+/-! ## Argument kinds
+
+The parser dispatches on a function's base name, and the model has one
+integer type for integers, doubles (as codes), timestamps (µs), dates (days)
+and intervals (µs). So the arguments' kinds must be checked: `add:date_iday`
+would otherwise add days and microseconds. A signature suffix (`date_iday`, as
+Isthmus writes) is checked against the arguments the parser sees; a literal
+argument has no kind of its own (a timestamp literal is an integer), so only
+the signature speaks for it. -/
+
+/-- Functions whose arguments are numbers, timestamps or intervals. -/
+def arithmeticFns : List String :=
+  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"]
+
+/-- Functions that compare their arguments: these must have one kind. -/
+def comparisonFns : List String :=
+  ["equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from"]
+
+def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
+  let base := baseName name
+  let sigs := (sigTokens name).map argSig
+  -- `none` for literals.
+  let ks := args.map fun e => if e matches .lit _ then none else some (e.kind cols)
+  let strict := arithmeticFns.contains base || comparisonFns.contains base
+  if strict then
+    if let some t := sigs.findSome? (fun | .unknown t => some t | _ => none) then
+      throw s!"{name}: argument type '{t}' is not supported"
+  if arithmeticFns.contains base then
+    if sigs.any (· matches .kind .date) || ks.any (· == some .date) then
+      throw s!"{name}: date arithmetic is not in the Lean model (dates are days, intervals microseconds)"
+  if comparisonFns.contains base then
+    let known := ((ks.filterMap id).filter (· != .other)) ++
+      sigs.filterMap (fun | .kind k => some k | _ => none)
+    if let k :: rest := known then
+      if rest.any (· != k) then throw s!"{name}: compares values of different types"
+  -- A variadic signature (`and:bool`) names the type of every argument once.
+  let sigs := match sigs.getLast? with
+    | some s => sigs ++ List.replicate (args.length - sigs.length) s
+    | none => sigs
+  for (s, k) in sigs.zip ks do
+    match s, k with
+    | .kind want, some k =>
+      if k != .other && k != want then
+        throw s!"{name}: argument of kind {repr k} where the signature says {repr want}"
+    | .interval, some k =>
+      if k != .other && k != .int && k != .time then
+        throw s!"{name}: argument of kind {repr k} where the signature says an interval"
+    | _, _ => pure ()
+
+#guard (checkArgKinds "add:date_iday" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard (checkArgKinds "add" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
+#guard (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false
+#guard (checkArgKinds "lt" [.date, .time] [.field 0, .field 1]).toBool == false
+#guard (checkArgKinds "add:pts_iday" [.time] [.field 0, .lit (.int 1)]).toBool
+#guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
+#guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -399,6 +504,11 @@ def mkCall : String → List Expr → J Expr
   | "not", [a] => pure (.un .not a)
   | "is_null", [a] => pure (.un .isNull a)
   | "is_not_null", [a] => pure (.un .not (.un .isNull a))
+  -- `x IS TRUE`, `x IS NOT FALSE`, …: never `NULL`.
+  | "is_true", [a] => pure (.ifThen a (.lit (.bool true)) (.lit (.bool false)))
+  | "is_not_true", [a] => pure (.ifThen a (.lit (.bool false)) (.lit (.bool true)))
+  | "is_false", [a] => pure (.ifThen (.un .not a) (.lit (.bool true)) (.lit (.bool false)))
+  | "is_not_false", [a] => pure (.ifThen (.un .not a) (.lit (.bool false)) (.lit (.bool true)))
   | "negate", [a] => pure (.un .neg a)
   -- Some producers write unary minus as a one-argument `subtract`.
   | "subtract", [a] => pure (.un .neg a)
@@ -438,6 +548,7 @@ def mkCall : String → List Expr → J Expr
   | "lower", [a] => pure (.un .lower a)
   | "character_length", [a] | "char_length", [a] | "length", [a] => pure (.un .length a)
   | "str_concat", [a, b] => pure (.bin .concat a b)
+  | "concat", a :: as => pure (as.foldl (.bin .concat) a)
   | "strpos", [a, b] => pure (.bin .strpos a b)
   | "starts_with", [a, b] => pure (.bin .startsWith a b)
   | "ends_with", [a, b] => pure (.bin .endsWith a b)
@@ -528,24 +639,39 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols sj)
     let parsed ← argJs.mapM (parseExpr fns cols)
+    checkArgKinds name cols parsed
+    if (comparisonFns ++ ["like", "starts_with", "ends_with"]).contains (baseName name) &&
+        argJs.any (fun j => ((field? j "literal").bind (field? · "fixedChar")).isSome) then
+      throw s!"{baseName name} with a CHAR literal is not supported (blank-padded comparison)"
+    -- Substrait's `concat` is `NULL` if any argument is, unless it is asked to
+    -- skip them (as DataFusion's `concat` does): only the former is modelled.
+    if baseName name == "concat" then
+      let opts ← arrD f "options"
+      let accepts ← opts.anyM fun o => do
+        if (field? o "name") != some (.str "null_handling") then return false
+        return (← arrD o "preference").head? == some (.str "ACCEPT_NULLS")
+      if !accepts then throw "concat is only supported with null_handling ACCEPT_NULLS"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
       if (parsed.getD 1 (.lit .null)).kind cols != .time then
         throw s!"{baseName name} is only supported on timestamps"
-    -- An integer constant next to a double stands for that double (DataFusion
-    -- leaves `bpm >= 30` uncast); give it the double's code.
-    let hasFloat := parsed.any (·.kind cols == .float)
-    -- `ROUND(x, d)`: the digits stay an integer.
-    let keepInt (k : Nat) : Bool := baseName name == "round" && k == 1
-    let args ← ((argJs.zip parsed).zipIdx).mapM fun ((j, e), k) => do
-      if hasFloat && !keepInt k then
-        if let some (.int i) ← constOf? fns j then return Expr.lit (.int (FloatCode.ofInt i))
-      return e
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
-    -- arguments of a double function are converted, as DataFusion does.
+    -- arguments of a double function are converted, as DataFusion does
+    -- (Isthmus types `POWER` of integers as a double).
     let out := typeKind ((field? f "outputType").getD .null)
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
       "ceil", "round"]
-    if floats.contains (baseName name) && (out == .float || args.any (·.kind cols == .float)) then
+    let hasFloat := parsed.any (·.kind cols == .float)
+    let floatCall := floats.contains (baseName name) && (out == .float || hasFloat)
+    -- An integer constant next to a double, or in a double function, stands
+    -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
+    -- double's code.
+    -- `ROUND(x, d)`: the digits stay an integer.
+    let keepInt (k : Nat) : Bool := baseName name == "round" && k == 1
+    let args ← ((argJs.zip parsed).zipIdx).mapM fun ((j, e), k) => do
+      if (hasFloat || floatCall) && !keepInt k then
+        if let some (.int i) ← constOf? fns j then return Expr.lit (.int (FloatCode.ofInt i))
+      return e
+    if floatCall then
       let args := args.zipIdx.map fun (e, k) =>
         if e.kind cols == .int && !keepInt k && !(e matches .lit _) then Expr.un .itof e else e
       mkFloatCall (baseName name) args
@@ -638,43 +764,71 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
     | n => throw s!"unsupported window function: {n}"
   return (part, sort, f)
 
-/-- A `ProjectRel` whose expressions include window functions. Windows with the
-same `PARTITION BY` and `ORDER BY` share a `Rel.window` (stacked in order of
-first use); an emit then restores Substrait's column order: input columns,
-then each expression. -/
+/-- The window functions inside an expression, in the order `replaceWindows`
+visits them. A window function's own arguments are not searched. -/
+partial def windowsIn : Json → List Json
+  | .arr a => a.toList.flatMap windowsIn
+  | j@(.obj kvs) => match field? j "windowFunction" with
+    | some w => [w]
+    | none => kvs.toList.flatMap (windowsIn ·.2)
+  | _ => []
+
+/-- Replace the `k`-th window function (from `k₀`) by `col k`. -/
+partial def replaceWindows (col : Nat → Json) : Json → StateM Nat Json
+  | .arr a => return .arr (← a.mapM (replaceWindows col))
+  | j@(.obj kvs) => do
+    if (field? j "windowFunction").isSome then
+      let k ← get
+      set (k + 1)
+      return col k
+    let kvs' ← kvs.toList.mapM fun (k, v) => do return (k, ← replaceWindows col v)
+    return Json.mkObj kvs'
+  | j => return j
+
+/-- A `ProjectRel` whose expressions use window functions, at the top or
+nested (`ROW_NUMBER() OVER (…) - 1`). The windows are hoisted into
+`Rel.window`s: those with the same `PARTITION BY` and `ORDER BY` share one
+(stacked in order of first use), each use getting its own column. The
+expressions then read those columns; an emit restores Substrait's column
+order: input columns, then each expression. -/
 def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kind)
     (es : List Json) : J Rel := do
   let n := cols.length
-  let parsed ← es.mapM fun e => do
-    match field? e "windowFunction" with
-    | some w => return Sum.inl (← parseWindow fns cols w)
-    | none => return Sum.inr (← parseExpr fns cols e)
-  -- Group the windows: (partition, sort, functions), in order of first use.
-  let groups := parsed.foldl (init := ([] : List (List Nat × List SortKey × List WinFn)))
-    fun gs p => match p with
-    | .inl (part, sort, f) =>
+  let uses ← (es.flatMap windowsIn).mapM (parseWindow fns cols)
+  -- Group the uses: (partition, sort, functions), in order of first use.
+  let groups := uses.foldl (init := ([] : List (List Nat × List SortKey × List WinFn)))
+    fun gs (part, sort, f) =>
       if gs.any (fun (p', s', _) => p' == part && s' == sort) then
         gs.map fun (p', s', fs) => if p' == part && s' == sort then (p', s', fs ++ [f]) else (p', s', fs)
       else gs ++ [(part, sort, [f])]
-    | .inr _ => gs
   let windowed := groups.foldl (fun r (part, sort, fs) => Rel.window r part sort fs) inp
   let width := (groups.map (·.2.2.length)).sum
-  -- Where each window function's column ends up: the offset of its group plus
-  -- its position (the n-th use of the same function in a group is its n-th copy).
-  let column (part : List Nat) (sort : List SortKey) (f : WinFn) (seen : Nat) : Nat := Id.run do
+  -- The column of the k-th use: its group's offset plus its position there
+  -- (the uses of a group come in order).
+  let column (k : Nat) : Nat := Id.run do
+    let some (part, sort, _) := uses[k]? | return 0
+    let before := ((uses.take k).filter fun (p', s', _) => p' == part && s' == sort).length
     let mut off := n
     for (p', s', fs) in groups do
-      if p' == part && s' == sort then
-        let idxs := (fs.zipIdx.filter (·.1 == f)).map (·.2)
-        return off + idxs.getD seen 0
+      if p' == part && s' == sort then return off + before
       off := off + fs.length
     return off
+  let field (i : Nat) : Json :=
+    Json.mkObj [("selection", Json.mkObj [("directReference", Json.mkObj
+      [("structField", Json.mkObj [("field", (i : Int))])])])]
+  let (rewritten, _) := (es.mapM (replaceWindows (field ∘ column))).run 0
+  let wcols := cols ++ (windowed.kinds []).drop n
+  -- Bare window functions are their columns; other expressions are computed
+  -- after the windows.
+  let parsed ← rewritten.mapM fun e => do
+    match ← parseExpr fns wcols e with
+    | .field i => if n ≤ i then pure (Sum.inl i) else pure (Sum.inr (Expr.field i))
+    | e => pure (Sum.inr e)
   let scalars := parsed.filterMap fun p => match p with | .inr e => some e | .inl _ => none
-  let (mapping, _, _) := parsed.foldl (init := (([] : List Nat), ([] : List (List Nat × List SortKey × WinFn)), 0))
-    fun (m, seen, j) p => match p with
-    | .inl w@(part, sort, f) =>
-      (m ++ [column part sort f (seen.count w)], seen ++ [w], j)
-    | .inr _ => (m ++ [n + width + j], seen, j + 1)
+  let (mapping, _) := parsed.foldl (init := (([] : List Nat), 0))
+    fun (m, j) p => match p with
+    | .inl i => (m ++ [i], j)
+    | .inr _ => (m ++ [n + width + j], j + 1)
   let full := List.range n ++ mapping
   if scalars.isEmpty && full == List.range (n + width) then return windowed
   let core := if scalars.isEmpty then windowed else Rel.project windowed scalars
@@ -696,6 +850,11 @@ def parseMask (mask : Json) : J (List Nat) := do
 
 def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   let arity ← schemaArity r
+  -- The model's times are microseconds (`typeKind`).
+  for ty in ← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types" do
+    if let some t := field? ty "precisionTimestamp" then
+      if (← natD t "precision") != 6 then
+        throw "only microsecond timestamp columns are supported"
   let base ← match ← oneof "read type" r ["namedTable", "virtualTable"] with
     | ("namedTable", t) =>
       let names ← (← arrD t "names").mapM (·.getStr?)
@@ -710,7 +869,19 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
         | none => (← arrD v "values").mapM fun row => do
             (← arrD row "fields").mapM fun e => do
               return (← constExpr (← parseConstLiteral e)).eval []
-      modify ((valuesKey arity rows, arity, ← field r "baseSchema") :: ·)
+      -- Virtual tables with the same rows share an entry (`Rel.values` has no
+      -- schema): where their kinds differ, the column's kind is unknown.
+      let key := valuesKey arity rows
+      let schema ← field r "baseSchema"
+      let schema := match (← get).lookup key with
+        | some (_, prev) =>
+          let types := ((schema.getObjVal? "struct").bind (·.getObjValAs? (Array Json) "types")).toOption.getD #[]
+          let prevKinds := schemaKinds prev
+          let merged := types.toList.zipIdx.map fun (ty, i) =>
+            if prevKinds[i]? == some (typeKind ty) then ty else Json.mkObj []
+          Json.mkObj [("struct", Json.mkObj [("types", Json.arr merged.toArray)])]
+        | none => schema
+      modify ((key, arity, schema) :: ·)
       pure (Rel.values arity rows)
   -- `ReadRel.filter` must be applied exactly (`bestEffortFilter` may be
   -- ignored). It refers to the base schema, so it comes before the mask.
@@ -742,6 +913,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
   let k := arg.kind cols
+  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
+  -- (`avg:i64` with an `i64` result), which it is not.
+  if name == "avg" then
+    if let some ty := field? m "outputType" then
+      if typeKind ty != .float then throw "avg with a non-double result is not supported"
   let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
   let (fn, arg) ← match name, k with
     | "count", _ => pure (AggFn.count, arg)
@@ -795,7 +971,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       let inp ← input "input"
       let cols := inp.kinds (← get)
       let ejs ← arrD r "expressions"
-      if ejs.any (fun e => (field? e "windowFunction").isSome) then
+      if !(ejs.flatMap windowsIn).isEmpty then
         parseWindowProject fns inp cols ejs
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols e)

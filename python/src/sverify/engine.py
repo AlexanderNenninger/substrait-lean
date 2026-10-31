@@ -4,12 +4,16 @@
 plans over them (DuckDB by default), and Ibis tables bound to them
 (`con.table(name)`). `plan_json` compiles Ibis expressions with the vendored
 producer (`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings
-with DataFusion's. `run_plan` runs a plan in Lean's written form
-(`substrait-check --write`, `--delta`) on the connection's engine or the one a
-call names.
+with the connection's SQL producer: DataFusion's, or Isthmus (substrait-java's
+Calcite-based compiler, as its native binary). `run_plan` runs a plan in Lean's
+written form (`substrait-check --write`, `--delta`) on the connection's engine
+or the one a call names.
 
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it is needed
-only to run plans with `engine="datafusion"` and to compile SQL strings.
+only to run plans with `engine="datafusion"` and, unless Isthmus compiles them,
+SQL strings. sverify does not ship Isthmus: it runs the binary named by
+`$SVERIFY_ISTHMUS`, or `isthmus` on `PATH` (`isthmus-<os>-<version>` from
+https://github.com/substrait-io/substrait-java/releases).
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ import atexit
 import functools
 import json
 import os
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -36,6 +41,8 @@ from sverify.ibis_substrait import to_substrait_json
 
 Engine = Literal["duckdb", "polars", "datafusion"]
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
+SqlProducer = Literal["datafusion", "isthmus"]
+SQL_PRODUCERS: tuple[SqlProducer, ...] = ("datafusion", "isthmus")
 
 _literal = DataFusionCompiler.visit_NonNullLiteral
 
@@ -91,6 +98,32 @@ def _datafusion() -> Any:
     return datafusion
 
 
+def has_datafusion() -> bool:
+    try:
+        _datafusion()
+    except ImportError:
+        return False
+    return True
+
+
+def isthmus_path() -> str | None:
+    """The Isthmus binary: `$SVERIFY_ISTHMUS`, or `isthmus` on `PATH`."""
+    return os.environ.get("SVERIFY_ISTHMUS") or shutil.which("isthmus")
+
+
+def default_sql_producer() -> SqlProducer:
+    """DataFusion's producer if DataFusion is installed, else Isthmus."""
+    if has_datafusion():
+        return "datafusion"
+    if isthmus_path() is not None:
+        return "isthmus"
+    raise ImportError(
+        "compiling SQL strings needs a SQL producer: pip install 'sverify[datafusion]', "
+        "or put an Isthmus binary (https://github.com/substrait-io/substrait-java/releases) "
+        "on PATH as `isthmus` or in $SVERIFY_ISTHMUS"
+    )
+
+
 def _register(ctx: Any, name: str, table: pa.Table) -> None:
     """Register (or replace) a table in a DataFusion session, as record
     batches rather than a PyArrow dataset: DataFusion pushes filters into
@@ -110,15 +143,22 @@ class Connection:
       backend that views the Arrow tables (`ibis`). Contracts find a table's
       data and metadata through it, and Ibis's own `execute` works on it.
     * `engine` runs plans (`run_plan`) unless a call names another.
+    * `sql_producer` compiles SQL strings: `"datafusion"` or `"isthmus"`;
+      `None` picks DataFusion if it is installed, else Isthmus.
     * `datafusion` is a DataFusion session holding the same tables (with the
       functions Ibis's DataFusion SQL calls), created on first use; only the
-      DataFusion engine and SQL strings need it.
+      DataFusion engine and DataFusion's SQL producer need it.
     """
 
-    def __init__(self, engine: Engine = "duckdb"):
+    def __init__(self, engine: Engine = "duckdb", sql_producer: SqlProducer | None = None):
         if engine not in ENGINES:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+        if sql_producer is not None and sql_producer not in SQL_PRODUCERS:
+            raise ValueError(
+                f"unknown SQL producer {sql_producer!r}; expected one of {SQL_PRODUCERS}"
+            )
         self.engine: Engine = engine
+        self.sql_producer: SqlProducer | None = sql_producer
         self.arrow: dict[str, pa.Table] = {}
         self.ibis: Any = ibis.duckdb.connect()
         # A bound table keeps its backend alive, and the backend its connection.
@@ -165,9 +205,11 @@ class Connection:
         return self._datafusion
 
 
-def connect(engine: Engine = "duckdb") -> Connection:
-    """A new, empty connection whose plans run on `engine`."""
-    return Connection(engine)
+def connect(engine: Engine = "duckdb", sql_producer: SqlProducer | None = None) -> Connection:
+    """A new, empty connection whose plans run on `engine` and whose SQL
+    strings `sql_producer` compiles (default: DataFusion if installed, else
+    Isthmus)."""
+    return Connection(engine, sql_producer)
 
 
 def connection_of(table: ir.Table) -> Connection | None:
@@ -186,8 +228,11 @@ def to_sql(expr: ir.Table) -> str:
 
 def plan_json(con: Connection, query: ir.Table | str) -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
-    through the vendored producer, SQL through DataFusion's (`substrait_json`)."""
+    through the vendored producer, SQL through the connection's SQL producer
+    (`substrait_json` or `isthmus_json`)."""
     if isinstance(query, str):
+        if (con.sql_producer or default_sql_producer()) == "isthmus":
+            return isthmus_json(con, query)
         return substrait_json(con, query)
     return to_substrait_json(query)
 
@@ -200,6 +245,83 @@ def substrait_json(con: Connection, sql: str) -> str:
     proto = Plan()
     proto.ParseFromString(plan.encode())
     return json_format.MessageToJson(proto)
+
+
+def quote(name: str) -> str:
+    """A quoted SQL identifier."""
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _sql_type(t: pa.DataType) -> str | None:
+    """The SQL type Isthmus should see for an Arrow type; `None` if it has none
+    (the plan could not be checked anyway). Timestamps are microseconds, as in
+    the Lean model; the engines read any unit."""
+    if pa.types.is_timestamp(t):
+        return None if t.tz is not None else "TIMESTAMP(6)"
+    if pa.types.is_decimal(t):
+        return f"DECIMAL({t.precision}, {t.scale})"
+    simple = {
+        pa.int8(): "TINYINT", pa.int16(): "SMALLINT", pa.int32(): "INTEGER",
+        pa.int64(): "BIGINT", pa.float32(): "REAL", pa.float64(): "DOUBLE",
+        pa.string(): "VARCHAR", pa.bool_(): "BOOLEAN", pa.date32(): "DATE",
+    }  # fmt: skip
+    return simple.get(t)
+
+
+def create_statements(con: Connection) -> tuple[list[str], list[str]]:
+    """`CREATE TABLE` statements for the connection's tables, with quoted
+    identifiers, and the tables left out for a column type SQL can't name."""
+    ddl, skipped = [], []
+    for name, table in con.arrow.items():
+        cols = []
+        for f in table.schema:
+            ty = _sql_type(f.type)
+            if ty is None:
+                skipped.append(f"{name} ({f.name}: {f.type})")
+                break
+            cols.append(f"{quote(f.name)} {ty}{'' if f.nullable else ' NOT NULL'}")
+        else:
+            ddl.append(f"CREATE TABLE {quote(name)} ({', '.join(cols)})")
+    return ddl, skipped
+
+
+class SqlError(ValueError):
+    """A SQL producer refused a query."""
+
+
+@functools.lru_cache(maxsize=256)
+def _isthmus(binary: str, ddl: tuple[str, ...], sql: str) -> str:
+    # Calcite's default conformance; unquoted identifiers keep their case.
+    args = [binary, "--unquotedcasing=UNCHANGED"]
+    for c in ddl:
+        args += ["-c", c]
+    p = subprocess.run([*args, sql], capture_output=True, text=True, timeout=120)
+    if p.returncode != 0:
+        lines = [ln.strip() for ln in (p.stderr + p.stdout).splitlines() if ln.strip()]
+        msg = next((ln for ln in lines if not ln.startswith("at ")), "Isthmus failed")
+        raise SqlError(f"Isthmus: {msg.removeprefix('Error: ')}")
+    return p.stdout
+
+
+def isthmus_json(con: Connection, sql: str) -> str:
+    """Compile SQL to a Substrait plan with Isthmus, as protobuf JSON. Isthmus
+    reads standard SQL (Calcite's default conformance), not DataFusion's or
+    Postgres's dialect: `FLOOR(ts TO DAY)` rather than `DATE_TRUNC`, no
+    `GROUP BY` ordinals."""
+    binary = isthmus_path()
+    if binary is None:
+        raise ImportError(
+            "sql_producer='isthmus' needs the Isthmus binary "
+            "(https://github.com/substrait-io/substrait-java/releases) "
+            "on PATH as `isthmus` or in $SVERIFY_ISTHMUS"
+        )
+    ddl, skipped = create_statements(con)
+    try:
+        return _isthmus(binary, tuple(ddl), sql)
+    except SqlError as e:
+        if skipped:
+            raise SqlError(f"{e} (tables Isthmus can't see: {', '.join(skipped)})") from None
+        raise
 
 
 def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
