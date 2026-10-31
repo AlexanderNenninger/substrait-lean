@@ -102,6 +102,9 @@ Doubles, timestamps and dates all become integers in the model (see
 
 inductive Kind where
   | int | float | time | date | str | bool | other
+  /-- A timestamp with a time zone: an instant, whose calendar arithmetic is
+  daylight-saving-aware in DataFusion, so it is refused. -/
+  | timeTz
   deriving Repr, BEq, DecidableEq
 
 def typeKind (ty : Json) : Kind :=
@@ -113,6 +116,7 @@ def typeKind (ty : Json) : Kind :=
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
     if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
+  else if has "precisionTimestampTz" || has "timestampTz" then .timeTz
   else if has "date" then .date
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
@@ -494,6 +498,10 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
   if arithmeticFns.contains base then
     if sigs.any (· matches .kind .date) || ks.any (· == some .date) then
       throw s!"{name}: date arithmetic is not in the Lean model (dates are days, intervals microseconds)"
+    -- A day of a zoned timestamp is 23 or 25 hours across a switch to or from
+    -- daylight saving time.
+    if ks.any (· == some .timeTz) then
+      throw s!"{name}: arithmetic on timestamps with a time zone is not in the Lean model (daylight saving time)"
   if comparisonFns.contains base then
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
@@ -514,6 +522,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     | _, _ => pure ()
 
 #guard (checkArgKinds "add:date_iday" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard (checkArgKinds "add" [.timeTz] [.field 0, .lit (.int 86400000000)]).toBool == false
 #guard (checkArgKinds "add" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
 #guard (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
 #guard (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false

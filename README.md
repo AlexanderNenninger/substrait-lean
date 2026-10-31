@@ -830,7 +830,8 @@ engine is made to agree:
   first), so connections store canonical tables (`sverify.engine.canonical`),
   its results are canonicalized, and the plans Lean writes wrap every double
   operation in `nanvl(x + 0.0, 'NaN')`, which DataFusion evaluates and every
-  parser reads back as `x`. Two gaps remain: a `SUM` or `AVG` of doubles
+  parser reads back as `x`. This also gives every NaN the same payload, which
+  `total_cmp` would tell apart. Two gaps remain: a `SUM` or `AVG` of doubles
   inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
   `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
   in the same plan, follows DataFusion's order; and so does SQL run on

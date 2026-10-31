@@ -13,6 +13,7 @@ the run until the marker is removed.
 
 import datetime as dt
 import json
+import subprocess
 
 import numpy as np
 import pyarrow as pa
@@ -296,10 +297,19 @@ def test_gap_power_of_null_to_zero(con):
     assert lean == rows(con, "SELECT power(a, 0) AS p FROM pn")
 
 
-@gap
-def test_gap_zoned_day_is_not_24_hours(con):
-    """T3: Lean adds 86 400 s to a zoned timestamp; DataFusion adds a local day."""
+def test_zoned_timestamp_arithmetic_is_refused(con):
+    """T3: a day of a zoned timestamp is 23 hours across the switch to daylight
+    saving time in DataFusion; the model would add 86 400 s, so it refuses."""
     sql = "SELECT t + INTERVAL '1 day' >= t + INTERVAL '24 hours' AS ok FROM z"
     plan = json.loads(substrait_json(con, sql))
-    lean = lean_rows(json.dumps(inline_tables(plan, {"z": [(dt.datetime(2024, 3, 30, 12),)]})))
-    assert lean == rows(con, sql)
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        lean_rows(json.dumps(inline_tables(plan, {"z": [(dt.datetime(2024, 3, 30, 12),)]})))
+    assert "time zone" in str(e.value.stderr)
+
+
+def test_nan_payloads_are_canonical_on_a_connection():
+    """F7: DataFusion's order tells NaN payloads apart, the model has one NaN.
+    A connection stores every NaN as the same one (`engine.canonical`)."""
+    c = connect()
+    put_table(c, "nanp", TABLES["nanp"])
+    assert rows(c, "SELECT count(DISTINCT v) FROM nanp") == [(1,)]
