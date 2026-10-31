@@ -7,8 +7,9 @@ producer's plan. The results agree as bags with
 DataFusion's, and Polars and DuckDB, which both follow `Rel.eval`'s list
 order, agree row for row where the order is part of the result (below a
 FETCH, a window or a sort). Where a FETCH takes "the first rows" of an unsorted
-input DataFusion may take others, so there only Polars and DuckDB are
-compared. The Snowflake SQL is generated for every case too (and parsed).
+input DataFusion may take others, and it adds the doubles of a SUM or AVG in
+an order of its own, so there only Polars and DuckDB are compared. The
+Snowflake SQL is generated for every case too (and parsed).
 """
 
 import datetime as dt
@@ -36,7 +37,7 @@ from sverify.engine import (
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import Unsupported, parse_plan
 from sverify.sql import to_sql as plan_sql
-from sverify.sql.core import Fetch, Rel, order_matters
+from sverify.sql.core import Aggregate, Fetch, Rel, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import canonical
 
@@ -95,10 +96,15 @@ def same(a: list[tuple], b: list[tuple]) -> bool:
     return repr(a) == repr(b)
 
 
-def has_fetch(r: Rel) -> bool:
+def order_dependent(r: Rel) -> bool:
+    """A FETCH of "the first rows", or a SUM or AVG of doubles, whose rounding
+    depends on the order of the additions: there DataFusion, with an order of
+    its own, may give other values."""
     if isinstance(r, Fetch):
         return True
-    return any(has_fetch(getattr(r, k)) for k in ("input", "left", "right") if hasattr(r, k))
+    if isinstance(r, Aggregate) and any(m.fn in ("fsum", "avg") for m in r.measures):
+        return True
+    return any(order_dependent(getattr(r, k)) for k in ("input", "left", "right") if hasattr(r, k))
 
 
 @pytest.fixture(scope="module")
@@ -141,7 +147,7 @@ def test_engines_agree(con, case, data):
     if "polars" in results and "duckdb" in results:
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
-    if not has_fetch(root):
+    if not order_dependent(root):
         # As Ibis returns it: DataFusion's SQL result in the expression's
         # types (`POW` of integers is an integer there, a double in Ibis).
         df = canonical(rows(run_sql(con, sql).cast(expr.schema().to_pyarrow())))

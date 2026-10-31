@@ -238,15 +238,9 @@ ENGINES = ("polars", "duckdb", "snowflake")
 #:   it, so it is NULL, where SQL compares), so no engine may run it.
 #: * Snowflake tables have no row order, which FETCH and a stable sort's or a
 #:   window's ties follow. Sorts and windows run with `tie_free=True`.
-#: * Aggregates with measures (`Rel.aggregate`) are verified, but not
-#:   translated to any engine yet.
-AGGREGATES = ["count()", "group_by sum", "count, max, mean", "nunique", "sum(where=)",
-              "having", "value_counts"]  # fmt: skip
+#:   A `SUM` or `AVG` of doubles adds in that order too (rounding depends on it).
 REFUSED: dict[str, dict[str, str]] = {
-    **{
-        a: dict.fromkeys(("polars", "duckdb", "snowflake"), "aggregate functions")
-        for a in AGGREGATES
-    },
+    "count, max, mean": {"snowflake": "no row order"},
     "non-equi join": {
         "polars": "lt of String",
         "duckdb": "ordering comparisons of str values",
