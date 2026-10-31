@@ -1,10 +1,9 @@
 # sverify
 
 **Data pipelines with proofs: incremental views and pre/postconditions,
-checked in [Lean](https://lean-lang.org), run on
-[DataFusion](https://datafusion.apache.org), [Polars](https://pola.rs),
-[DuckDB](https://duckdb.org) or [Spark](https://spark.apache.org), or written as
-Snowflake SQL.**
+checked in [Lean](https://lean-lang.org), run on [DuckDB](https://duckdb.org),
+[Polars](https://pola.rs), [DataFusion](https://datafusion.apache.org) or
+[Spark](https://spark.apache.org), or written as Snowflake SQL.**
 
 You write a query once, in [Ibis](https://ibis-project.org) or SQL. `sverify`
 then does two things with it:
@@ -24,13 +23,14 @@ repository. The wheel ships the checker as a small native binary, so you need
 neither Lean nor any other toolchain to use it.
 
 ```bash
-pip install sverify          # or: uv add sverify
+pip install sverify                # or: uv add sverify
+pip install 'sverify[datafusion]'  # with DataFusion as an engine, and for SQL strings
 ```
 
-The core runs on DataFusion. Other engines and table formats are extras:
-`polars`, `duckdb`, `spark` (needs Java 17 or 21), `delta`, `iceberg`, or
-`all`, as in `pip install 'sverify[polars,delta]'`. SQL for DuckDB, Snowflake
-and Spark is generated without any of them.
+The core runs on DuckDB. Other engines and table formats are extras:
+`datafusion` (also needed for SQL strings), `polars`, `spark` (needs Java 17
+or 21), `delta`, `iceberg`, or `all`, as in `pip install 'sverify[polars,delta]'`.
+SQL for DuckDB, Snowflake and Spark is generated without any of them.
 
 Wheels are available for Linux (x86_64, aarch64) and macOS (arm64, x86_64),
 on Python 3.12 and later. Elsewhere pip builds from the sdist, which needs
@@ -59,7 +59,7 @@ runs locally with `uvx marimo edit --sandbox notebooks` from a clone.
 import ibis
 import sverify as sv
 
-con = sv.connect()  # an Ibis DataFusion backend
+con = sv.connect()  # tables in memory; plans run on DuckDB (engine="polars" or "datafusion")
 sv.create_table(
     con,
     "orders",
@@ -97,8 +97,10 @@ assert view.rows() == view.recompute()
   batch, such as one that deletes a row that doesn't exist, changes nothing.
 * The view is registered as a table, so you can query it with `con.table("big_orders")`.
 * Plain SQL works too: `sv.IncrementalView(con, "select ... from ...", "name")`.
-* `engine="polars"` runs the view's plans on Polars instead of DataFusion:
-  exactly the plans Lean checked, translated by `sverify` rather than recompiled.
+  DataFusion compiles SQL strings, so they need the `datafusion` extra.
+* Every engine runs exactly the plans Lean checked, translated by `sverify`
+  rather than recompiled: DuckDB by default, or `sv.connect(engine="polars")`,
+  `engine="datafusion"`, or `engine=` on a single view.
 
 **Supported:** filters, computed columns, inner joins (including self-joins and
 non-equi joins), cross joins and `UNION ALL`. Anything else is refused up
@@ -188,7 +190,7 @@ See the main README for the full example and what is trusted versus proved.
 ## Engines
 
 ```python
-sv.run_plan(con, plan, "polars")              # or "duckdb"; DataFusion by default (extras: polars, duckdb)
+sv.run_plan(con, plan, "polars")              # or "datafusion"; DuckDB by default (extras: polars, datafusion)
 from sverify.sql import to_sql
 from sverify.sql.snowflake import SNOWFLAKE   # also sverify.sql.duckdb, sverify.sql.spark
 to_sql(plan, SNOWFLAKE)                       # or sverify.sql.Unsupported, saying why
@@ -221,8 +223,8 @@ phases; anything else raises `NotShardable` with the reason.
   three-valued NULL logic.
 * **Randomized tests.** Random tables and batches of changes, including NULLs
   and duplicates, check the parts the proofs don't cover: the translation of
-  the plans, the Python glue and the engines themselves. Each engine is
-  compared row for row with Lean's own evaluation.
+  the producers' plans, the Python glue and the engines themselves. Each
+  engine is compared row for row with Lean's own evaluation.
 
 The repository's
 [README](https://github.com/AlexanderNenninger/substrait-lean#readme) has the
@@ -232,8 +234,10 @@ full list of proven theorems, and explains what is trusted and what is proved.
 
 * `SVERIFY_CHECK`: path to a `substrait-check` binary to use instead of the
   bundled one, for example your own `lake build`.
-* `sverify` pins `datafusion==51.0.0`, because Ibis 12's DataFusion backend
-  doesn't connect to later versions.
+* DataFusion is optional (`sverify[datafusion]`), and pinned to `51.0.0`,
+  because Ibis 12's DataFusion backend doesn't connect to later versions. It
+  runs plans with `engine="datafusion"` and compiles SQL strings; nothing else
+  needs it.
 
 ## Development
 

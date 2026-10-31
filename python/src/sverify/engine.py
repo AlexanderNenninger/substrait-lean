@@ -1,13 +1,18 @@
-"""Substrait producers, and DataFusion, Polars or DuckDB as consumer.
+"""Substrait producers, and DuckDB, Polars or DataFusion as consumer.
 
-`plan_json` compiles Ibis expressions with the vendored producer
-(`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings with
-DataFusion's. Pipelines are Ibis expressions on an Ibis
-DataFusion backend (`connect()`); `con.con` is the underlying
-`datafusion.SessionContext`, which also holds the tables. `run_plan` runs a
-plan in Lean's written form (`substrait-check --write`, `--delta`) on the
-engine a call names, reading the tables from `con`.
+`connect()` gives a `Connection`: named Arrow tables, the engine that runs
+plans over them (DuckDB by default), and Ibis tables bound to them
+(`con.table(name)`). `plan_json` compiles Ibis expressions with the vendored
+producer (`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings
+with DataFusion's. `run_plan` runs a plan in Lean's written form
+(`substrait-check --write`, `--delta`) on the connection's engine or the one a
+call names.
+
+DataFusion is optional (`pip install 'sverify[datafusion]'`): it is needed
+only to run plans with `engine="datafusion"` and to compile SQL strings.
 """
+
+from __future__ import annotations
 
 import atexit
 import functools
@@ -19,19 +24,18 @@ from pathlib import Path
 from typing import Any, Literal
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
-from datafusion import substrait as ss
 from google.protobuf import json_format
 from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
 from sverify.ibis_substrait import to_substrait_json
 
-Backend = Any  # ibis.backends.datafusion.Backend
-Engine = Literal["datafusion", "polars", "duckdb"]
-ENGINES: tuple[Engine, ...] = ("datafusion", "polars", "duckdb")
+Engine = Literal["duckdb", "polars", "datafusion"]
+ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
 
 _literal = DataFusionCompiler.visit_NonNullLiteral
 
@@ -74,15 +78,113 @@ def _int_floor_divide(self: Any, op: Any, *, left: Any, right: Any) -> Any:
 DataFusionCompiler.visit_FloorDivide = _int_floor_divide
 
 
-def connect() -> Backend:
-    return ibis.datafusion.connect()
+def _datafusion() -> Any:
+    """The `datafusion` module, or an error saying how to install it."""
+    try:
+        import datafusion
+        import datafusion.substrait
+    except ImportError as e:
+        raise ImportError(
+            "this needs DataFusion: pip install 'sverify[datafusion]' "
+            "(it runs plans with engine='datafusion' and compiles SQL strings)"
+        ) from e
+    return datafusion
+
+
+def _register(ctx: Any, name: str, table: pa.Table) -> None:
+    """Register (or replace) a table in a DataFusion session, as record
+    batches rather than a PyArrow dataset: DataFusion pushes filters into
+    datasets, where PyArrow compares doubles by IEEE rules instead of
+    DataFusion's total order (NaN = NaN)."""
+    if ctx.table_exist(name):
+        ctx.deregister_table(name)
+    batches = table.to_batches() or [pa.RecordBatch.from_pylist([], schema=table.schema)]
+    ctx.register_record_batches(name, [batches])
+
+
+class Connection:
+    """Named Arrow tables, and the engine that runs plans over them.
+
+    * `arrow[name]` is the table as given (`put`), the input of every engine.
+    * `table(name)` is an Ibis table bound to it, through an Ibis DuckDB
+      backend that views the Arrow tables (`ibis`). Contracts find a table's
+      data and metadata through it, and Ibis's own `execute` works on it.
+    * `engine` runs plans (`run_plan`) unless a call names another.
+    * `datafusion` is a DataFusion session holding the same tables (with the
+      functions Ibis's DataFusion SQL calls), created on first use; only the
+      DataFusion engine and SQL strings need it.
+    """
+
+    def __init__(self, engine: Engine = "duckdb"):
+        if engine not in ENGINES:
+            raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+        self.engine: Engine = engine
+        self.arrow: dict[str, pa.Table] = {}
+        self.ibis: Any = ibis.duckdb.connect()
+        # A bound table keeps its backend alive, and the backend its connection.
+        self.ibis._sverify_connection = self
+        self._datafusion: Any = None
+
+    def table(self, name: str) -> ir.Table:
+        """Table `name` as an Ibis table bound to the connection. Its schema is
+        the Arrow table's, nullability included (DuckDB's view of it drops
+        NOT NULL, which contracts read)."""
+        schema = ibis.Schema.from_pyarrow(self.arrow[name].schema)
+        return ops.DatabaseTable(name, schema=schema, source=self.ibis).to_expr()
+
+    def has(self, name: str) -> bool:
+        return name in self.arrow
+
+    def put(self, name: str, table: pa.Table) -> None:
+        """Add or replace table `name`."""
+        table = table.cast(plain_schema(table.schema))
+        self.drop(name)
+        self.arrow[name] = table
+        self.ibis.con.register(name, table)
+        if self._datafusion is not None:
+            _register(self._datafusion, name, table)
+
+    def drop(self, name: str) -> None:
+        if self.arrow.pop(name, None) is None:
+            return
+        self.ibis.con.unregister(name)
+        if self._datafusion is not None and self._datafusion.table_exist(name):
+            self._datafusion.deregister_table(name)
+
+    @property
+    def datafusion(self) -> Any:
+        """A `datafusion.SessionContext` with the connection's tables."""
+        if self._datafusion is None:
+            _datafusion()
+            # Ibis's DataFusion backend registers the UDFs its SQL calls
+            # (`extract_epoch_seconds_timestamp`, …).
+            ctx = ibis.datafusion.connect().con
+            for name, table in self.arrow.items():
+                _register(ctx, name, table)
+            self._datafusion = ctx
+        return self._datafusion
+
+
+def connect(engine: Engine = "duckdb") -> Connection:
+    """A new, empty connection whose plans run on `engine`."""
+    return Connection(engine)
+
+
+def connection_of(table: ir.Table) -> Connection | None:
+    """The connection a bound Ibis table reads from, if any."""
+    try:
+        backend = ibis.get_backend(table)
+    except Exception:  # noqa: BLE001 - unbound
+        return None
+    return getattr(backend, "_sverify_connection", None)
 
 
 def to_sql(expr: ir.Table) -> str:
+    """Ibis's own DataFusion SQL for an expression (needs no DataFusion)."""
     return ibis.to_sql(expr, dialect="datafusion")
 
 
-def plan_json(con: Backend, query: ir.Table | str) -> str:
+def plan_json(con: Connection, query: ir.Table | str) -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through DataFusion's (`substrait_json`)."""
     if isinstance(query, str):
@@ -90,21 +192,26 @@ def plan_json(con: Backend, query: ir.Table | str) -> str:
     return to_substrait_json(query)
 
 
-def substrait_json(con: Backend, sql: str) -> str:
+def substrait_json(con: Connection, sql: str) -> str:
     """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON."""
-    plan = ss.Producer.to_substrait_plan(con.con.sql(sql).logical_plan(), con.con)
+    ss = _datafusion().substrait
+    ctx = con.datafusion
+    plan = ss.Producer.to_substrait_plan(ctx.sql(sql).logical_plan(), ctx)
     proto = Plan()
     proto.ParseFromString(plan.encode())
     return json_format.MessageToJson(proto)
 
 
-def run_substrait_json(con: Backend, plan_json: str) -> pa.Table:
+def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
+    """Run a Substrait plan on DataFusion."""
+    ss = _datafusion().substrait
+    ctx = con.datafusion
     proto = Plan()
     json_format.Parse(plan_json, proto)
     logical = ss.Consumer.from_substrait_plan(
-        con.con, ss.Serde.deserialize_bytes(proto.SerializeToString())
+        ctx, ss.Serde.deserialize_bytes(proto.SerializeToString())
     )
-    return con.con.create_dataframe_from_logical_plan(logical).to_arrow_table()
+    return ctx.create_dataframe_from_logical_plan(logical).to_arrow_table()
 
 
 def checker_path() -> Path:
@@ -209,40 +316,32 @@ def written_plan(plan_json: str) -> str:
     return check("--write")
 
 
-def run_plan(con: Backend, plan_json: str, engine: Engine = "datafusion") -> pa.Table:
-    """Run a plan in Lean's written form on `engine`, over the tables of `con`."""
+def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> pa.Table:
+    """Run a plan in Lean's written form on `engine` (default: the
+    connection's), over the tables of `con`."""
+    engine = engine or con.engine
     if engine == "datafusion":
         return run_substrait_json(con, plan_json)
+    tables = {t: con.arrow[t] for t in read_tables(json.loads(plan_json))}
     if engine == "polars":
         from sverify import polars_engine
 
-        names = read_tables(json.loads(plan_json))
-        return polars_engine.run(plan_json, {t: con.con.table(t).to_arrow_table() for t in names})
+        return polars_engine.run(plan_json, tables)
     if engine == "duckdb":
         from sverify import duckdb_engine
 
-        names = read_tables(json.loads(plan_json))
-        return duckdb_engine.run(plan_json, {t: con.con.table(t).to_arrow_table() for t in names})
+        return duckdb_engine.run(plan_json, tables)
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 
-def run_sql(con: Backend, sql: str) -> pa.Table:
-    return con.con.sql(sql).to_arrow_table()
+def run_sql(con: Connection, sql: str) -> pa.Table:
+    """Run SQL on DataFusion."""
+    return con.datafusion.sql(sql).to_arrow_table()
 
 
-def put_table(con: Backend, name: str, table: pa.Table) -> None:
-    """Register (or replace) an in-memory table.
-
-    Ibis 12's `create_table` is broken on DataFusion (it issues an empty
-    `DROP TABLE`). Tables are registered as record batches rather than PyArrow
-    datasets: DataFusion pushes filters into datasets, where PyArrow compares
-    doubles by IEEE rules instead of DataFusion's total order (NaN = NaN).
-    """
-    if con.con.table_exist(name):
-        con.con.deregister_table(name)
-    table = table.cast(plain_schema(table.schema))
-    batches = table.to_batches() or [pa.RecordBatch.from_pylist([], schema=table.schema)]
-    con.con.register_record_batches(name, [batches])
+def put_table(con: Connection, name: str, table: pa.Table) -> None:
+    """Register (or replace) an in-memory table."""
+    con.put(name, table)
 
 
 def plain_schema(schema: pa.Schema) -> pa.Schema:
@@ -261,13 +360,13 @@ def to_arrow(rows, schema: pa.Schema) -> pa.Table:
     return pa.Table.from_pylist([dict(zip(names, r, strict=True)) for r in rows], schema=schema)
 
 
-def create_table(con: Backend, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
+def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
     arrow_schema = schema if isinstance(schema, pa.Schema) else schema.to_pyarrow()
     put_table(con, name, to_arrow(rows, arrow_schema))
 
 
-def table_rows(con: Backend, name: str) -> list[tuple]:
-    t = con.con.table(name).to_arrow_table()
+def table_rows(con: Connection, name: str) -> list[tuple]:
+    t = con.arrow[name]
     return [tuple(r.values()) for r in t.to_pylist()]
 
 

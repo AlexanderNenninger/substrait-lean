@@ -233,7 +233,7 @@ def _(mo):
 
 @app.cell
 def _(display, ibis, sv):
-    con = sv.connect()  # an Ibis DataFusion backend
+    con = sv.connect()  # plans run on DuckDB by default
     _schema = ibis.schema({"id": "int64", "customer": "string", "amount": "int64"})
     sv.create_table(con, "orders", _schema, [(1, "ada", 30), (2, "bob", 5), (3, "cy", None)])
     display.table(sv.table_rows(con, "orders"), ["id", "customer", "amount"], title="orders")

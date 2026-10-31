@@ -9,7 +9,7 @@ newer than…") is fast, but it tends to go wrong silently: deletes are missed,
 late rows are skipped, a join gets a new match.
 
 This project gives you a third option. You write the query once, in Ibis or SQL,
-and `sverify` maintains the result in DataFusion from the inserts and deletes alone.
+and `sverify` maintains the result from the inserts and deletes alone.
 The update logic comes from a delta plan that is **mathematically proven to give
 the same result as a full recompute**. The proof is in [Lean](https://lean-lang.org),
 a proof assistant: a program that checks every step of a proof, so you don't
@@ -22,9 +22,9 @@ view.apply({"orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 3
 ```
 
 Underneath, queries travel as [Substrait](https://substrait.io), an open,
-engine-neutral format for query plans. [DataFusion](https://datafusion.apache.org)
-writes your query as a Substrait plan, Lean checks it and computes the proven
-update plan, and DataFusion runs that plan.
+engine-neutral format for query plans. `sverify` writes your query as a
+Substrait plan, Lean checks it and computes the proven update plan, and
+[DuckDB](https://duckdb.org) runs that plan (or Polars, DataFusion or Spark).
 
 The same checker does more than incremental views:
 
@@ -33,8 +33,8 @@ The same checker does more than incremental views:
   pipeline runs, including that no division by zero, overflow or bad cast can
   happen. Contracts compose across steps and travel with Delta Lake and
   Iceberg tables.
-* **Several engines, one semantics.** A checked plan runs on DataFusion,
-  Polars, DuckDB or Spark, or is written as Snowflake SQL. Each translation
+* **Several engines, one semantics.** A checked plan runs on DuckDB,
+  Polars, DataFusion or Spark, or is written as Snowflake SQL. Each translation
   either keeps the Lean semantics (NULLs, integer division, NaN, ties) or
   refuses the plan, and differential tests compare every engine with Lean.
 * **Proved optimizations.** A plan can be split across shards (Delta or
@@ -95,14 +95,15 @@ different binary, set `SVERIFY_CHECK` to its path.
 
 ### Extras
 
-The core of `sverify` runs on DataFusion: contracts, incremental views and the
-SQL dialects (DuckDB, Snowflake and Spark SQL are generated without any of
-them installed). The other engines and the table formats are extras:
+The core of `sverify` runs on DuckDB: contracts, incremental views, the table
+store behind `sverify.connect()`, and the SQL dialects (DuckDB, Snowflake and
+Spark SQL are generated without any extra). The other engines and the table
+formats are extras:
 
 | Extra | Adds |
 |---|---|
+| `datafusion` | `engine="datafusion"`, and compiling SQL strings (DataFusion's Substrait producer) |
 | `polars` | `engine="polars"` (`sverify.polars_engine`) |
-| `duckdb` | `engine="duckdb"` (`sverify.duckdb_engine`) and `sverify.testing` |
 | `spark` | `sverify.spark_engine`, which runs plans on a Spark session (needs Java 17 or 21) |
 | `delta` | `sverify.io.DeltaSource`, `DeltaSink` |
 | `iceberg` | `sverify.io.IcebergSource`, `IcebergSink` |
@@ -214,7 +215,7 @@ marimo.
 import ibis
 import sverify as sv
 
-con = sv.connect()  # an Ibis DataFusion backend
+con = sv.connect()  # tables in memory; plans run on DuckDB by default
 sv.create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
                 [(1, "ada", 30), (2, "bob", 5)])
 sv.create_table(con, "customers", ibis.schema({"name": "string", "city": "string"}),
@@ -754,13 +755,13 @@ The golden tests in `tests/fixtures` are the guard against that. The
 ## Incremental views in Python
 
 `python/` holds `sverify`, which maintains query results incrementally on
-DataFusion, using delta plans from Lean:
+DuckDB (by default), Polars or DataFusion, using delta plans from Lean:
 
 ```python
 import sverify as sv
 from sverify.examples import PIPELINES, create_tables
 
-con = sv.connect()          # an Ibis DataFusion backend
+con = sv.connect()          # Arrow tables; plans run on DuckDB
 create_tables(con, orders_rows=[(1, "ada", 30)], customers_rows=[("ada", "Paris")])
 view = sv.IncrementalView(con, PIPELINES["inner_join"], "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
@@ -781,8 +782,9 @@ How it works:
    DataFusion's Substrait consumer loses table qualifiers at a `UNION ALL`,
    and the duplicate column names then break a later join.
 3. For each change batch, `sverify` registers the change tables `t$delta` (rows
-   plus `__weight` = ±1), runs every term with DataFusion's Substrait consumer,
-   sums the weights per row, and merges the result into the view.
+   plus `__weight` = ±1), runs every term on the connection's engine (DuckDB by
+   default; on DataFusion with its Substrait consumer), sums the weights per
+   row, and merges the result into the view.
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
@@ -791,12 +793,21 @@ filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
 and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
 
-**Engine notes.** DataFusion 51 is pinned: Ibis 12's DataFusion backend can't
-connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
-`sverify` registers Arrow tables directly (`sv.create_table`). They are
-registered as record batches, not datasets: DataFusion pushes filters into
-datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
-total order, which would make filters and projections disagree on NaN.
+**Connections.** `sv.connect(engine=...)` gives a `Connection`: the Arrow
+tables (`sv.create_table`, `con.arrow`), the engine plans run on, and Ibis
+tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
+backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
+contracts find a table's data). `con.datafusion` is a DataFusion session with
+the same tables, created on first use.
+
+**DataFusion is optional** (`pip install 'sverify[datafusion]'`): it runs plans
+with `engine="datafusion"` and compiles SQL strings, and nothing else needs it
+(`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
+51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
+registered there as record batches, not datasets: DataFusion pushes filters
+into datasets, where PyArrow compares doubles by IEEE rules instead of
+DataFusion's total order, which would make filters and projections disagree on
+NaN.
 
 ### The Ibis producer
 
@@ -819,9 +830,10 @@ SQL strings still go through DataFusion's producer.
 ### Engines
 
 Plans come from the Ibis producer or DataFusion's Substrait producer, and they can run on
-DataFusion, [Polars](https://pola.rs) or DuckDB (below). Pass `engine="polars"` to
-`IncrementalView` or `sv.run_plan(con, plan, "polars")`. The tables stay in
-`con` and are handed to Polars as Arrow. The point is differential testing,
+DuckDB (the default, below), [Polars](https://pola.rs) or DataFusion. Pass
+`engine="polars"` to `sv.connect`, `IncrementalView` or
+`sv.run_plan(con, plan, "polars")`. The tables stay in `con` and are handed to
+the engine as Arrow. The point is differential testing,
 with the Lean semantics as the spec.
 
 Polars runs Lean's own serialisation of the checked plan: the plan as
@@ -1081,7 +1093,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
-| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DataFusion, Polars, DuckDB and Spark runners and the Snowflake SQL; differential tests |
+| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
 | `notebooks/` | The tour: 16 marimo chapters |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |

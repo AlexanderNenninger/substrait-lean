@@ -166,12 +166,12 @@ def test_duckdb_overflow_raises(duck):
     ],
 )
 def test_datafusion_native(con, sql, expected):
-    assert positional(con.con.sql(sql).to_arrow_table()) == expected
+    assert positional(con.datafusion.sql(sql).to_arrow_table()) == expected
 
 
 def test_datafusion_rejects_spaces_in_an_integer(con):
     with pytest.raises(Exception, match="Cannot cast string ' 12'"):
-        con.con.sql("SELECT CAST(' 12' AS BIGINT) AS c").to_arrow_table()
+        con.datafusion.sql("SELECT CAST(' 12' AS BIGINT) AS c").to_arrow_table()
 
 
 # --- Ibis: one expression, a backend-dependent meaning -------------------------
@@ -379,7 +379,7 @@ def test_constant_casts_truncate_like_datafusion(con):
     """F9: constant casts fold as DataFusion casts (truncating), not rounded."""
     for value, truncated in [("2.7", 2), ("-2.5", -2), ("CAST(2.5 AS DOUBLE)", 2)]:
         sql = f"SELECT CAST({value} AS BIGINT) AS c FROM j"
-        assert positional(con.con.sql(sql).to_arrow_table()) == [(truncated,), (truncated,)]
+        assert positional(con.datafusion.sql(sql).to_arrow_table()) == [(truncated,), (truncated,)]
         assert proves(sql, f"c = {truncated}")
         assert not proves(sql, f"c = {truncated + (1 if truncated > 0 else -1)}")
 
@@ -399,6 +399,6 @@ def test_constant_strings_datafusion_cannot_cast_are_refused(con, value, kind):
     the checker refuses them instead of reading them its own way."""
     sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"
     with pytest.raises(Exception, match="Cannot cast|Error parsing|cast"):
-        con.con.sql(sql).to_arrow_table()
+        con.datafusion.sql(sql).to_arrow_table()
     with pytest.raises(ValueError, match="cannot (cast|parse)"):
         sv.verify(sql, tables={"j": {"a": "int64"}})

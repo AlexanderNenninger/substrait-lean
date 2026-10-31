@@ -65,10 +65,29 @@ jobs:
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
           uv run --isolated --no-project \
-            --with "sverify[polars,duckdb,spark,delta,iceberg] @ file://$wheel" \
+            --with "sverify[all] @ file://$wheel" \
             --with pytest --with hypothesis \
             --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
+
+      # Without extras the wheel has no DataFusion, and needs none on DuckDB.
+      - name: Run the installed wheel without DataFusion
+        run: |
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --with "$wheel" python - <<'PY'
+          import importlib.util
+          import ibis
+          import sverify as sv
+
+          assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
+          con = sv.connect()
+          sv.create_table(con, "t", ibis.schema({"a": "int64"}), [(1,), (5,)])
+          t = con.table("t")
+          view = sv.IncrementalView(con, t.filter(t.a > 2), "big")
+          view.apply({"t": sv.Changes(inserts=[(7,)])})
+          assert view.rows() == [(5,), (7,)], view.rows()
+          PY
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
