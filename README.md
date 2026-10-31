@@ -1049,7 +1049,8 @@ round trips and the differential tests instead.
 * `emit_project_identity`: emitting only the input columns of a `ProjectRel` removes the projection.
 * `Rel.eval_sharded`, `twoPhase_correct`, `Rel.shardSplit_sound`: a plan linear in the sharded
   tables is the union of its results on the shards (with split keys, also aggregates grouped by
-  the key and `DISTINCT` over it), and decomposable aggregates combine in two phases
+  the key, `DISTINCT` over it, co-partitioned joins and tie-free windows partitioned by it), and
+  decomposable aggregates combine in two phases
   ([docs/optimizations.md](docs/optimizations.md)).
 * `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
   runs correctly without per-row checks.
