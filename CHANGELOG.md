@@ -44,11 +44,32 @@ r.to_arrow(); r.to_polars(); r.to_pandas(); r.table
   on each.
 - `node.plan` is the plan Lean checked, for `sverify.engines`.
 
+### SQL models
+
+A transform's body can be SQL over its inputs, by keyword name:
+
+```python
+@sv.transform(requires={"orders": ["amount_cents >= 0"]}, ensures=["revenue_cents >= 0"])
+def revenue(orders):
+    return sv.sql("""
+        SELECT region, coalesce(sum(amount_cents), 0) AS revenue_cents
+        FROM orders GROUP BY region
+    """, orders=orders)
+```
+
+`sv.sql(query, **tables)` returns an Ibis table, so a SQL model is an
+ordinary node. It fuses with its neighbours, can be stored with `.write`,
+composes with Ibis transforms on either side and reads several inputs. Its
+schema and plan come from DataFusion's SQL producer, or Isthmus's without
+DataFusion, and work on the placeholder tables nodes are built from. A query
+the producer can't plan, or a plan Lean refuses, raises `Unsupported` saying
+which part; without either producer the error names the `datafusion` extra.
+
 ### A small namespace
 
-`import sverify as sv` holds ten names: `transform`, `verify`, `unique`,
-`references`, `Report`, `Changes`, `group`, `connect`, `asof_join` and
-`Node`. Three submodules hold the rest:
+`import sverify as sv` holds eleven names: `transform`, `sql`, `verify`,
+`unique`, `references`, `Report`, `Changes`, `group`, `connect`, `asof_join`
+and `Node`. Three submodules hold the rest:
 
 - `sverify.io`: `DeltaSource`, `DeltaSink`, `IcebergSource`, `IcebergSink`,
   `SinkWrite`, `Contract`, `StaticSource`.
@@ -77,8 +98,8 @@ Every other module (`sverify.incremental`, `sverify.contracts`,
   `LIMIT`) is recomputed and diffed, as views were inside a `Pipeline`. The
   standalone `IncrementalView`'s refusal (`NotIncremental`) is no longer on
   the public path.
-- Incremental views over SQL strings have no public replacement yet: nodes
-  come from Ibis transforms.
+- Incremental views over SQL strings become transforms whose body is
+  `sv.sql(...)`.
 ### Fixes
 
 - Arithmetic on double literals (`3.0 / 2.0`, a `CASE` of double literals

@@ -601,11 +601,12 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
-        return (
-            backend.sql(f'SELECT * FROM ({sql}) AS "t" WHERE NOT coalesce(({cond}), FALSE)')
-            .count()
-            .execute()
-        )
+        query = f'SELECT count(*) FROM ({sql}) AS "t" WHERE NOT coalesce(({cond}), FALSE)'
+        # On the backend's own connection: Ibis 12's `backend.sql` asks DuckDB 2
+        # for the query's schema with a method it no longer has.
+        # `raw_sql` returns the connection itself: fetch every row, so that it
+        # is free for the next query, and leave it open.
+        return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return int(count.execute())
 
