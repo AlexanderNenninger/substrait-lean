@@ -45,6 +45,8 @@ from test_rewrites import R, S
 from test_windows import QUERIES as WINDOW_QUERIES
 from test_windows import SCHEMA as WINDOW_SCHEMA
 
+pytestmark = pytest.mark.backend("polars")
+
 #: The repository's golden fixtures; absent when the tests run against a wheel.
 FIXTURES = sorted((Path(__file__).parents[2] / "tests" / "fixtures").glob("*.json"))
 SETTINGS = settings(

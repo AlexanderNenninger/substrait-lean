@@ -66,19 +66,19 @@ BLACK_BOXES = [
 ]
 
 
+@pytest.mark.parametrize("engine", ["polars", "duckdb"])
 @pytest.mark.parametrize("sql", QUERIES + BLACK_BOXES)
 @settings(
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
-def test_engines_match_datafusion(sql, rows):
+def test_engines_match_datafusion(engine, sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
     expected = canonical(tuple(x.values()) for x in run_sql(con, sql).to_pylist())
     plan = written_plan(substrait_json(con, sql))
-    for engine in ("polars", "duckdb"):
-        got = run_plan(con, plan, engine)
-        assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected, engine
+    got = run_plan(con, plan, engine)
+    assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
 
 
 T = ibis.table({"name": "string", "n": "int64"}, name="t")

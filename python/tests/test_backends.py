@@ -155,6 +155,7 @@ def test_engines_agree(con, case, data):
             assert canonical(got) == df
 
 
+@pytest.mark.backend("snowflake")
 @pytest.mark.parametrize("case", VERIFIED, ids=lambda c: c.label)
 def test_snowflake_sql(case):
     plan = json.loads(written_plan(to_substrait_json(case.build())))

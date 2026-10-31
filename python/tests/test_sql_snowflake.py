@@ -32,6 +32,8 @@ from sverify.incremental import delta_plans
 from sverify.sql import Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
 
+pytestmark = pytest.mark.backend("snowflake")
+
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
 SNAPSHOTS = Path(__file__).parent / "sql_snapshots"

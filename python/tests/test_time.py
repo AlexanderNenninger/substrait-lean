@@ -216,6 +216,7 @@ PIPELINES = [
 ]
 
 
+@pytest.mark.backend("datafusion")
 @pytest.mark.parametrize("i", range(len(PIPELINES)))
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
