@@ -84,6 +84,11 @@ AGREE = {
         "FROM orders WHERE customer LIKE 'a%'"
     ),
     "timestamp_literal": "SELECT id FROM orders WHERE ts >= TIMESTAMP '2024-01-02 00:00:00'",
+    # Calcite types `DATE + INTERVAL` as a timestamp, under a cast to DATE.
+    "date_arithmetic": (
+        "SELECT id, CAST(ts AS DATE) + INTERVAL '1' DAY AS a,"
+        " CAST(ts AS DATE) + INTERVAL '1' MONTH AS b FROM orders"
+    ),
     "in_list": "SELECT id FROM orders WHERE customer IN ('ada', 'cy') OR qty IN (1)",
     "is_true": "SELECT id, paid IS TRUE AS p, paid IS NOT FALSE AS q FROM orders",
     "coalesce": "SELECT id, COALESCE(qty, 0) AS q, NULLIF(customer, 'ada') AS c FROM orders",
@@ -128,9 +133,6 @@ def test_isthmus_agrees_with_datafusion(con, name):
 @pytest.mark.parametrize(
     ("sql", "error"),
     [
-        # Calcite types `DATE + INTERVAL` as a timestamp: a date only under
-        # a cast to DATE, and only for whole days.
-        ("SELECT CAST(ts AS DATE) + INTERVAL '1' HOUR AS d FROM orders", "a date plus"),
         # Calcite types `'ab '` as CHAR(3): its trailing blank is padding.
         ("SELECT CHAR_LENGTH('ab ') AS n FROM orders", "trailing blanks"),
     ],
@@ -139,6 +141,19 @@ def test_isthmus_plans_lean_refuses(con, sql, error):
     code, out, err = run_checker((), isthmus_json(con, sql))
     assert code != 0
     assert error in out + err
+
+
+@needs_isthmus
+def test_isthmus_folds_hours_added_to_a_date(con):
+    """Calcite drops the hour of `DATE + INTERVAL '1' HOUR` (zero days), so
+    Lean accepts Isthmus' plan and gives the date, as DataFusion does; through
+    DataFusion's own plan, which keeps the hour, the checker refuses it."""
+    sql = "SELECT id, CAST(ts AS DATE) AS d, CAST(ts AS DATE) + INTERVAL '1' HOUR AS e FROM orders"
+    out = run_plan(con, checked(isthmus_json(con, sql)), "duckdb")
+    assert all(r["d"] == r["e"] for r in out.to_pylist())
+    assert rows(run_sql(con, sql)) == rows(out)
+    code, out, err = run_checker((), substrait_json(con, sql))
+    assert code != 0 and "a part of a day" in out + err
 
 
 @needs_isthmus
