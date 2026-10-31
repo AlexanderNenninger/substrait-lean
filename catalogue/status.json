@@ -1045,10 +1045,14 @@
   "detail": "type decimal(38, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "window function Mean is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   }
   }
  },
  "tpcds-q98": {

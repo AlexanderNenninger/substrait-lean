@@ -29,7 +29,7 @@ union_distinct = { lean = "yes", description = "UNION (distinct)" }
 intersect_except = { lean = "yes", description = "INTERSECT / EXCEPT" }
 distinct = { lean = "yes", description = "SELECT DISTINCT" }
 values = { lean = "yes", description = "inline VALUES table" }
-sort_by_expression = { lean = "no", description = "ORDER BY an expression rather than a column", note = "the Ibis producer refuses it (\"sort by a column\")" }
+sort_by_expression = { lean = "yes", description = "ORDER BY an expression rather than a column", note = "the Ibis producer projects the expression, sorts by it and drops it" }
 order_by = { lean = "yes", description = "ORDER BY in the result" }
 limit = { lean = "yes", description = "LIMIT / top-N after a sort" }
 offset = { lean = "yes", description = "OFFSET (pagination)" }
