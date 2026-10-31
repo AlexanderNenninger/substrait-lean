@@ -36,13 +36,24 @@ assumed. See [The tour](#the-tour) for how to open it.
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/) for Python and
+You need [uv](https://docs.astral.sh/uv/) for Python,
 [elan](https://github.com/leanprover/elan) for Lean (elan is to Lean what
-rustup is to Rust, or uv to Python):
+rustup is to Rust, or uv to Python), and Java 17 or 21 for the Spark tests:
 
 ```bash
 brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+```bash
+brew install openjdk@21  # or: sudo apt install openjdk-21-jre-headless
+```
+
+Homebrew's JDK is not on the `PATH`; point `JAVA_HOME` at it (in `~/.zshrc`):
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+```
+
+Without a JVM the Spark tests are skipped and everything else runs.
 ```bash
 curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 ```
@@ -54,16 +65,38 @@ the project root:
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
-cd python && uv sync             # DataFusion 51, DuckDB, Ibis, pyarrow, substrait, pytest, hypothesis
+cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
 uv run pytest                    # should end with "161 passed"
 ```
 
-`uv sync` installs `sverify` in editable mode. Its build hook runs
+`uv sync` installs `sverify` in editable mode, with every extra (below). Its build hook runs
 `lake build substrait-check` and links `sverify/_bin/substrait-check` to the
 result, so later `lake build`s take effect without reinstalling. To use a
 different binary, set `SVERIFY_CHECK` to its path.
+
+### Extras
+
+The core of `sverify` runs on DuckDB: contracts, incremental views, the table
+store behind `sverify.connect()`, and the SQL dialects (DuckDB, Snowflake and
+Spark SQL are generated without any extra). The other engines and the table
+formats are extras:
+
+| Extra | Adds |
+|---|---|
+| `datafusion` | `engine="datafusion"`, and compiling SQL strings (DataFusion's Substrait producer) |
+| `polars` | `engine="polars"` (`sverify.polars_engine`) |
+| `spark` | `sverify.spark_engine`, which runs plans on a Spark session (needs Java 17 or 21) |
+| `delta` | `sverify.io.DeltaSource`, `DeltaSink` |
+| `iceberg` | `sverify.io.IcebergSource`, `IcebergSink` |
+| `all` | all of the above |
+
+```bash
+pip install 'sverify[polars,spark]'
+```
+
+Using a feature without its extra raises an `ImportError` that names it.
 
 ### Wheels
 
@@ -101,7 +134,7 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe typecheck` | Type-checks the Python code with pyrefly |
 | `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
 | `poe test` | Python tests, including the randomized engine tests, on every core |
-| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
+| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
 
 From the project root, use `uv run --project python poe -C python qa`. The Lean
@@ -936,7 +969,9 @@ behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 #### Spark
 
 `to_sql(plan, SPARK)` (from `sverify.sql.spark`) writes checked plans and
-Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. Run it in a
+Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. With the
+`spark` extra, `sverify.spark_engine.run(plan, tables)` runs a plan over Arrow
+tables on a local session (or on the session you pass). Run it in a
 session with the settings of `SPARK_CONF`: ANSI mode
 (`spark.sql.ansi.enabled`), without which an overflow wraps around and a bad
 cast gives NULL, plus a pinned time zone, NTZ timestamps, case-sensitive
@@ -1000,7 +1035,10 @@ round trips and the differential tests instead.
 | `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
+| `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
+| `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
+| `SubstraitLean/ShardCheck.lean` | `--shard`: splitting a plan into per-shard and combining plans (trusted) |
 | `SubstraitLean/Check.lean` | Executable `checkWF`, proven equivalent to `Rel.WF`; `Decidable` instance |
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
@@ -1021,6 +1059,11 @@ round trips and the differential tests instead.
 * `filter_project_pushdown`: a filter that only reads input columns can be moved below a `ProjectRel`.
 * `filter_cross_pushdown_left`: a filter that only reads left columns can be pushed into the left side of a `CrossRel`.
 * `emit_project_identity`: emitting only the input columns of a `ProjectRel` removes the projection.
+* `Rel.eval_sharded`, `twoPhase_correct`, `Rel.shardSplit_sound`: a plan linear in the sharded
+  tables is the union of its results on the shards, and decomposable aggregates combine in two
+  phases ([docs/optimizations.md](docs/optimizations.md)).
+* `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
+  runs correctly without per-row checks.
 
 ### Contracts
 

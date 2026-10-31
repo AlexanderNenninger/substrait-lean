@@ -14,6 +14,10 @@ trailing `__weight` column. Each plan is union-free (see `Rel.terms`).
 preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
 and print a JSON report.
 
+`substrait-check --shard request.json`: split a plan for evaluation on
+shards of some of its tables (see `SubstraitLean/ShardCheck.lean`), or say
+why it cannot be split.
+
 `substrait-check --write plan.json`: print the plan in Lean's written form
 (the plan `Rel.eval` runs, as Substrait JSON).
 
@@ -22,7 +26,7 @@ process for many plans (see `serve`).
 
 Exit codes: 0 ok (for `--contract`: every postcondition proved), 1
 parse/unsupported error, 2 ill-formed plan, 3 not incrementally maintainable,
-4 some postcondition not proved.
+4 some postcondition not proved, 5 the plan cannot be split into shards.
 -/
 
 open Substrait Parse
@@ -88,6 +92,12 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
       | .ok report =>
         IO.println report.json.compress
         return if report.allProved then 0 else 4
+  if flag == "--shard" then
+    match Lean.Json.parse input with
+    | .error e => IO.eprintln s!"error: {e}"; return 1
+    | .ok j => match ShardCheck.check j with
+      | .error e => IO.eprintln e; return 5
+      | .ok out => IO.println out.compress; return 0
   let mode ← match flag with
     | "" => pure check
     | "--delta" => pure delta
@@ -141,11 +151,11 @@ def main (args : List String) : IO UInt32 := do
   | ["--serve"] => serve
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write"].contains flag then
+    if ["--delta", "--contract", "--write", "--shard"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write] <file.json> | --serve"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard] <file.json> | --serve"
     return 1

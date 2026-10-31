@@ -23,6 +23,11 @@ pip install sverify                # or: uv add sverify
 pip install 'sverify[datafusion]'  # with DataFusion as an engine, and for SQL strings
 ```
 
+The core runs on DuckDB. Other engines and table formats are extras:
+`datafusion` (also needed for SQL strings), `polars`, `spark` (needs Java 17
+or 21), `delta`, `iceberg`, or `all`, as in `pip install 'sverify[polars,delta]'`.
+SQL for DuckDB, Snowflake and Spark is generated without any of them.
+
 Wheels are available for Linux (x86_64, aarch64) and macOS (arm64, x86_64),
 on Python 3.12 and later. Elsewhere pip builds from the sdist, which needs
 [elan](https://github.com/leanprover/elan) to compile the checker.
