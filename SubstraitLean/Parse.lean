@@ -126,6 +126,16 @@ partial def typeKind (ty : Json) : Kind :=
     .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
   else .other
 
+/-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
+exactly, and adding, subtracting or multiplying such decimals is exact, so the
+model keeps their values as integers. DataFusion casts to `DECIMAL(20, 0)` to
+mix signed and unsigned integers (`ROW_NUMBER() - 1`). -/
+def wideIntDecimal (ty : Json) : Bool :=
+  match (ty.getObjVal? "decimal").toOption with
+  | some d => (d.getObjValAs? Nat "scale").toOption.getD 0 == 0 &&
+      19 ≤ (d.getObjValAs? Nat "precision").toOption.getD 0
+  | none => false
+
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
   | some tys => tys.toList.map typeKind
@@ -389,6 +399,10 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
+  if wideIntDecimal ty then
+    match c with
+    | .int i | .dec i 0 => return .int i
+    | _ => throw "cannot cast this value to an integer decimal"
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
@@ -909,7 +923,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
     -- (Isthmus types `POWER` of integers as a double).
-    let out := typeKind ((field? f "outputType").getD .null)
+    let outTy := (field? f "outputType").getD .null
+    -- Decimals other than integers (`wideIntDecimal`) are not modelled:
+    -- DataFusion's decimal division has a scale, for one.
+    if (outTy.getObjVal? "decimal").toOption.isSome && !wideIntDecimal outTy then
+      throw s!"{name}: decimal results are not supported"
+    let out := typeKind outTy
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
       "ceil", "round"]
     let hasFloat := parsed.any (·.kind cols == .float)
@@ -961,6 +980,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if unsignedType (← field c "type") then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
+    if k == .int && wideIntDecimal (← field c "type") then return e
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
     if target == .int && k == .float then return .un .ftoi e
