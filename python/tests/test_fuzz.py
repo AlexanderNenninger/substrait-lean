@@ -74,11 +74,18 @@ def test_written_bare_double_literal():
     assert not finding("SELECT 1.5 AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
 
 
-@pytest.mark.xfail(strict=True, reason="#96: a typed NULL is written as an i64 NULL")
 def test_written_typed_null():
+    """#96: a NULL under NOT is written as a boolean NULL."""
     assert not finding(
         "SELECT NOT CAST(NULL AS BOOLEAN) AS c0 FROM t AS q", "engines", {"t": [T_ROW]}
     )
+
+
+@pytest.mark.parametrize("fn", ["upper", "lower"])
+def test_written_string_null(fn):
+    """#96: a NULL under a string function is written as a string NULL."""
+    sql = f"SELECT {fn}(CAST(NULL AS VARCHAR)) AS c0 FROM t AS q"
+    assert not finding(sql, "engines", {"t": [T_ROW]})
 
 
 def test_written_timestamp_literal_in_case():
@@ -103,8 +110,8 @@ def test_double_literal_arithmetic_proofs():
     assert not check_contract(q, {"t": [T_ROW]}, None, "c0 <> 3.0")
 
 
-@pytest.mark.xfail(strict=True, reason="#98: DataFusion's consumer fails on t.i = t.j in a join")
 def test_join_condition_over_one_side():
+    """#98: the DataFusion plan moves `t.i = t.j` out of the join's keys."""
     sql = "SELECT COUNT(*) AS c0 FROM t JOIN u ON t.i = u.k AND t.i = t.j"
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(1, "x")]})
 
@@ -114,14 +121,14 @@ def test_limit_on_datafusion():
     assert not finding("SELECT i AS c0 FROM t AS q ORDER BY c0 LIMIT 1", "engines", {"t": [T_ROW]})
 
 
-@pytest.mark.xfail(strict=True, reason="#96: a FULL JOIN's NULL padding is written as i64")
 def test_full_join_on_datafusion():
+    """#96: a FULL JOIN's NULL padding takes the other branch's types."""
     sql = "SELECT COUNT(i) AS c0 FROM (SELECT t.i, u.k FROM t FULL JOIN u ON t.i = u.k) AS q"
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(2, "x")]})
 
 
-@pytest.mark.xfail(strict=True, reason="#111: the DuckDB guard raises on NULL / 0")
 def test_null_divided_by_zero_on_duckdb():
+    """#111: `NULL / 0` is NULL; the DuckDB guard raises only on a number."""
     row = (0, None, None, None, None, None)
     assert not finding("SELECT j / i AS c0 FROM t AS q", "engines", {"t": [row]})
 

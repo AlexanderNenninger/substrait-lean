@@ -344,10 +344,6 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
             and any(t in f.detail.splitlines()[-1] for t in ("int64", "'?'"))
         ),
     ),
-    # DataFusion's consumer takes `a = b` over one join input for a join key.
-    (98, lambda f: f.oracle == "rows:datafusion" and "FieldNotFound" in f.detail),
-    # The DuckDB guard raises on `NULL / 0` (DataFusion, which ran fine, gives NULL).
-    (111, lambda f: f.oracle == "rows:duckdb" and "sverify: division by zero" in f.detail),
     # One integer kind in the model: a widening cast of an `int32` is dropped.
     (
         18,
