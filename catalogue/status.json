@@ -612,7 +612,7 @@
  "dbt-union-sources": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "error: Schema at index 1 was different: ",
+  "datafusion": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -633,7 +633,7 @@
   "checker": "upstream",
   "stage": "substrait",
   "detail": "NotImplemented(\"Unsupported plan type: RecursiveQuery { name: \\\"chain\\\", static_term: Projection(Projection { expr: [Column(Column { relation: Some(Bare { table: \\\"employees\\\" }), name: \\\"emp_id\\\" }),",
-  "datafusion": "error: Schema at index 1 was different: "
+  "datafusion": "runs"
  },
  "dbt-generate-date-spine": {
   "checker": "upstream",

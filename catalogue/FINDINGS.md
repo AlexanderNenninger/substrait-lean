@@ -114,10 +114,11 @@ practitioner idioms:
      compiles `pivot_longer` to UNNEST and `pivot_wider`'s default to
      `first_value`, has no ROLLUP and no recursion, and refuses three tables
      that each have an `id` column.
-   * DataFusion fails at run time on a UNION whose branches differ only in
-     nullability ("Schema at index 1 was different"): dbt-style unions of
-     sources and the recursive hierarchy query. The plan verifies, Polars and
-     DuckDB run it, DataFusion does not (#64). It also rejects the RANGE frame
+   * DataFusion's Python bindings failed to collect a UNION whose branches
+     differ only in nullability ("Schema at index 1 was different"): dbt-style
+     unions of sources and the recursive hierarchy query. DataFusion computes
+     the rows; `engine.collect` now gives the batches one schema (#64,
+     quirk R8 of chapter 14). DataFusion also rejects the RANGE frame
      Ibis writes for an interval, and recursive CTEs with a column list.
    * The engine translations refused `ts - lag(ts) > INTERVAL …` and `ts <
      now - INTERVAL …`, which Lean verifies (session starts, dormant accounts,
@@ -205,8 +206,8 @@ semi-structured data.
 
 * **DataFusion (reference).** For SQL input, produce Substrait from the
   *analysed* plan, so implicit coercions are explicit casts (quirks F6, I10,
-  I11), and decorrelate subqueries before Substrait; unify branch nullability
-  in unions; guard against the eager CASE/COALESCE rewrite where a branch can
+  I11), and decorrelate subqueries before Substrait; collect union results
+  with one schema (done, #64); guard against the eager CASE/COALESCE rewrite where a branch can
   fail (E4, E5). It has no ASOF join, so `sverify.asof_join`'s
   range join + ROW_NUMBER is the portable form.
 * **Polars.** Read DECIMAL columns; always pass `nulls_last` explicitly; never
@@ -235,9 +236,9 @@ semi-structured data.
    `date_part`/`date_trunc` on DATE (#51).
 4. Window aggregates with frames, then RANK/DENSE_RANK/NTILE/FIRST_VALUE
    (#28): 20 more on top of the above.
-5. Front-end and engine fixes: union nullability on DataFusion (#64), the
-   timestamp and interval kinds in the engine translations (#65), SQL from
-   the analysed plan for SQL queries (#16).
+5. Front-end and engine fixes: the timestamp and interval kinds in the
+   engine translations (#65), SQL from the analysed plan for SQL queries
+   (#16).
 
 ## Caveats
 
@@ -266,14 +267,14 @@ semi-structured data.
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 9 | 0 | 3 | 0 | 12 | 9 | 9 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 10 | 0 | 2 | 2 | 11 | 10 | 10 | 9 |
+| modelling | 14 | 10 | 0 | 2 | 2 | 13 | 10 | 10 | 9 |
 | product | 13 | 10 | 0 | 3 | 0 | 12 | 10 | 10 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
+| timeseries | 15 | 11 | 0 | 4 | 0 | 13 | 11 | 11 | 8 |
 | tpcds | 8 | 0 | 4 | 4 | 0 | 8 | 4 | 4 | 0 |
 | tpch | 22 | 0 | 15 | 7 | 0 | 22 | 15 | 15 | 4 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 74 | 29 | 34 | 2 | 132 | 102 | 102 | 66 |
+| **all** | 139 | 73 | 29 | 35 | 2 | 134 | 101 | 101 | 66 |
 
 ### Feature frequency
 
@@ -359,7 +360,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `recursive_cte` | relational | 1 | 1% | no |
 | `generate_series` | relational | 1 | 1% | partial |
 | `string_agg` | aggregation | 1 | 1% | no |
-| `time_bucket` | expressions | 1 | 1% | partial |
+| `time_bucket` | expressions | 1 | 1% | no |
 | `range_frame` | windows | 1 | 1% | partial |
 | `timezone` | expressions | 1 | 1% | no |
 | `sort_by_expression` | relational | 1 | 1% | no |
@@ -390,6 +391,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
 | `regex_replace` | 1 | 1 | no |  |
 | `string_agg` | 1 | 1 | no |  |
+| `time_bucket` | 1 | 1 | no | refused by the Ibis producer (TimestampBucket), which Ibis cannot compile to DataFusion SQL either; DATE_BIN is refused by the checker |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 | `corr` | 1 | 0 | no |  |
@@ -398,11 +400,11 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 103 queries that verify (some only as DOUBLE):
+Over the 102 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 32 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 31 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 4 |
 | duckdb: differs | 1 |
 | polars: differs | 1 |

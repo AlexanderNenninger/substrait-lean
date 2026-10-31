@@ -90,9 +90,9 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | dbt-scd2-from-updates | [Build a type-2 history from updates](https://docs.getdbt.com/docs/build/snapshots) | ✓ | FPDS |  |
 | dbt-scd2-point-in-time | [Point-in-time join to a type-2 dimension](https://docs.getdbt.com/docs/build/snapshots) | ✓ | FPDS |  |
 | dbt-surrogate-key | [Surrogate key from several columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/generate_surrogate_key.sql) | ✗ | — | `hash` |
-| dbt-union-sources | [Union of sources with aligned columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/union.sql) | ✓ | PDS |  |
+| dbt-union-sources | [Union of sources with aligned columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/union.sql) | ✓ | FPDS |  |
 | dbt-mrr-movements | [MRR movements per customer and month](https://github.com/dbt-labs/mrr-playbook) | ✓ | FPDS |  |
-| dbt-org-hierarchy | [Reporting chain depth (recursive hierarchy)](https://www.postgresql.org/docs/current/queries-with.html) | – | — | `recursive_cte` |
+| dbt-org-hierarchy | [Reporting chain depth (recursive hierarchy)](https://www.postgresql.org/docs/current/queries-with.html) | – | F | `recursive_cte` |
 | dbt-generate-date-spine | [Generate a daily date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | – | F | `generate_series` |
 | dbt-accepted-values-test | [Data test: accepted values](https://docs.getdbt.com/docs/build/data-tests) | ✓ | FPDS |  |
 | dbt-unique-test | [Data test: uniqueness](https://docs.getdbt.com/docs/build/data-tests) | ✓ | FPDS |  |
