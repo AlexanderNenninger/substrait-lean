@@ -101,7 +101,8 @@ Doubles, timestamps and dates all become integers in the model (see
 `SubstraitLean/Float.lean`); the parser and the writer track which is which. -/
 
 inductive Kind where
-  | int | float | time | date | str | bool | other
+  /-- `tod`: a time of day (`TIME`), in microseconds since midnight. -/
+  | int | float | time | date | str | bool | tod | other
   deriving Repr, BEq, DecidableEq
 
 def typeKind (ty : Json) : Kind :=
@@ -114,6 +115,9 @@ def typeKind (ty : Json) : Kind :=
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
     if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
   else if has "date" then .date
+  else if has "time" then .tod
+  else if let some t := (ty.getObjVal? "precisionTime").toOption then
+    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .tod else .other
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else .other
@@ -159,7 +163,9 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
-  | .un (.addMonths _ true) _ => .time
+  | .un (.addMonths _ true) _ | .un .asTime _ => .time
+  | .un .timeOfDay _ => .tod
+  | .un (.strftime _) _ => .str
   | .un (.addMonths _ false) _ => .date
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
@@ -334,6 +340,12 @@ def castConst (ty : Json) (c : Const) : J Const := do
     match c with
     | .str s => return .str s
     | _ => throw "casts to strings are not supported"
+  | .tod =>
+    match c with
+    | .int us =>
+      if 0 ≤ us ∧ us < Time.usPerDay then return .int us
+      else throw "a time of day outside 00:00 to 24:00"
+    | _ => throw "cannot cast this value to a time of day"
   | _ =>
     -- A constant cast to a timestamp coarser than microseconds: only where it
     -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
@@ -391,7 +403,8 @@ def calendarInterval (l : Json) : J Bool := do
 def parseConstLiteral (j : Json) : J Const := do
   let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
     "varChar", "null", "decimal",
-    "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalYearToMonth",
+    "precisionTimestamp", "timestamp", "date", "precisionTime", "time", "intervalDayToSecond",
+    "intervalYearToMonth",
     "intervalCompound"]
   match ← oneof "literal" j keys with
   | ("boolean", b) => return .bool (← b.getBool?)
@@ -431,6 +444,13 @@ def parseConstLiteral (j : Json) : J Const := do
     if (← yearMonths ym) != 0 then
       throw "month and year intervals are only supported added to a date or timestamp"
     return .int 0
+  -- A time of day, in units of 10⁻ᵖ s since midnight.
+  | ("precisionTime", t) =>
+    let p ← natD t "precision"
+    let v ← getInt (← field t "value")
+    if p ≤ 6 then return .int (v * 10 ^ (6 - p))
+    else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
+    else throw "times finer than microseconds are not supported"
   -- Precision `p` counts units of 10⁻ᵖ s (Isthmus writes `TIMESTAMP '…'` at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
@@ -727,6 +747,12 @@ def mkCall : String → List Expr → J Expr
     match Time.TimeUnit.ofName? u with
     | some u => pure (.un (.dateTrunc u) a)
     | none => throw s!"unsupported date_trunc unit '{u}'"
+  -- chrono's formats; DataFusion's `to_char`.
+  | "strftime", [a, .lit (.str fmt)] | "to_char", [a, .lit (.str fmt)]
+  | "date_format", [a, .lit (.str fmt)] =>
+    match Time.parseFormat fmt.toList with
+    | some _ => pure (.un (.strftime fmt) a)
+    | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
   -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
   | "date_diff", [d, e] => pure (.bin .dateDiff d e)
   | name, args => throw s!"unsupported function {name}/{args.length}"
@@ -821,9 +847,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
         if (field? o "name") != some (.str "null_handling") then return false
         return (← arrD o "preference").head? == some (.str "ACCEPT_NULLS")
       if !accepts then throw "concat is only supported with null_handling ACCEPT_NULLS"
+    if ["strftime", "to_char", "date_format"].contains (baseName name) then
+      if (parsed.getD 0 (.lit .null)).kind cols != .time then
+        throw s!"{baseName name} is only supported on timestamps"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
       match (parsed.getD 1 (.lit .null)).kind cols with
       | .time => pure ()
+      | .tod =>
+        -- A time of day is a timestamp on 1970-01-01, for its clock parts.
+        match ← mkCall (baseName name) parsed with
+        | e@(.un (.datePart p) _) =>
+          if [.hour, .minute, .second, .millisecond, .microsecond].contains p then return e
+          throw s!"date_part '{p.name}' of a time of day is not supported"
+        | _ => throw s!"{baseName name} of a time of day is not supported"
       | .date =>
         -- The same function of a DATE (days).
         match ← mkCall (baseName name) parsed with
@@ -884,6 +920,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     if target == .int && k == .float then return .un .ftoi e
     if target == .str && k == .int then return .un .itos e
     if target == .date && k == .time then return .un .toDate e
+    if target == .tod && k == .time then return .un .timeOfDay e
+    -- Microseconds since 1970-01-01 (arrow's cast of an integer).
+    if target == .time && k == .int then return .un .asTime e
     -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
     if target == .int && k == .int then
       let bits := intBits (← field c "type")

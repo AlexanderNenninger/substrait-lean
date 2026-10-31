@@ -80,6 +80,8 @@ def _type_json(dtype: Any) -> Json:
         if dtype.scale not in (None, 6):
             raise Unsupported("only microsecond timestamps are supported")
         return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
+    if dtype.is_time():
+        return {"precisionTime": {"precision": 6, **NULLABLE}}
     if dtype.is_null():
         return {"i64": NULLABLE}
     raise Unsupported(f"type {dtype} is not supported")
@@ -110,6 +112,12 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if dtype.is_date():
         return {"literal": {"date": (value - EPOCH.date()).days}}
+    if dtype.is_time():
+        if value.tzinfo is not None:
+            raise Unsupported("times with a time zone are not supported")
+        micros = ((value.hour * 60 + value.minute) * 60 + value.second) * 1_000_000
+        micros += value.microsecond
+        return {"literal": {"precisionTime": {"precision": 6, "value": str(micros)}}}
     if dtype.is_interval():
         return interval_literal(value, dtype)
     raise Unsupported(f"literal of type {dtype} is not supported")
@@ -581,6 +589,64 @@ def _date_truncate(x: Exprs, op: Any) -> Json:
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
+# Constructors, formatting and times of day.
+
+
+def _constants(*args: Any) -> list[int] | None:
+    """The values of integer literals, or None if one is not a constant."""
+    values: list[int] = []
+    for a in args:
+        v = a.value if isinstance(a, ops.Literal) else None
+        if not isinstance(v, int) or isinstance(v, bool):
+            return None
+        values.append(v)
+    return values
+
+
+def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[Exprs, Any], Json]:
+    """`DateFromYMD` and friends: constants only (Lean has no functions of
+    three arguments); a bad date is an error, as in DataFusion."""
+
+    def rule(x: Exprs, op: Any) -> Json:
+        values = _constants(*op.args)
+        if values is None:
+            raise Unsupported(f"{what} of columns is not supported, only of constants")
+        try:
+            value = build(*values)
+        except (ValueError, OverflowError) as e:
+            raise Unsupported(f"{what} of {values}: {e}") from e
+        return literal(value, dtype)
+
+    return rule
+
+
+_UNIX_MICROS = {"s": 1_000_000, "ms": 1_000, "us": 1}
+
+
+def _from_unix(x: Exprs, op: Any) -> Json:
+    k = _UNIX_MICROS.get(op.unit.short)
+    if k is None:
+        raise Unsupported(f"timestamps from {op.unit.plural} are not supported")
+    us = x(op.arg, dt.int64)
+    if k != 1:
+        us = call("multiply", [us, literal(k, dt.int64)])
+    return cast_json(us, dt.timestamp)
+
+
+def _strftime(x: Exprs, op: Any) -> Json:
+    if not op.arg.dtype.is_timestamp():
+        raise Unsupported("strftime is only supported of timestamps")
+    if not isinstance(op.format_str, ops.Literal):
+        raise Unsupported("strftime formats must be constants")
+    return call("strftime", [x(op.arg), literal(op.format_str.value, dt.string)])
+
+
+def _between_time(x: Exprs, op: Any) -> Json:
+    t = cast_json(x(op.arg), dt.time)
+    lo, hi = x(op.lower_bound, dt.time), x(op.upper_bound, dt.time)
+    return call("and", [call("gte", [t, lo]), call("lte", [t, hi])])
+
+
 def _is_nan(x: Exprs, op: Any) -> Json:
     # FALSE for NULL, as Ibis's DataFusion SQL writes it.
     arg = x(op.arg)
@@ -673,6 +739,13 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.IntervalAdd: _interval_value,
     ops.IntervalSubtract: _interval_value,
     ops.IntervalMultiply: _interval_value,
+    ops.DateFromYMD: _from_parts(dt_.date, dt.date, "DateFromYMD"),
+    ops.TimestampFromYMDHMS: _from_parts(dt_.datetime, dt.timestamp, "TimestampFromYMDHMS"),
+    ops.TimeFromHMS: _from_parts(dt_.time, dt.time, "TimeFromHMS"),
+    ops.TimestampFromUNIX: _from_unix,
+    ops.Strftime: _strftime,
+    ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
+    ops.BetweenTime: _between_time,
     ops.IsNan: _is_nan,
     ops.StringFind: _string_find,
     ops.ExtractWeekOfYear: _date_part("week"),

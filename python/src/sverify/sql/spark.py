@@ -97,7 +97,12 @@ class SparkDialect(Dialect):
         return "`" + ident.replace("`", "``") + "`"
 
     def type_name(self, kind: Kind) -> str:
+        if kind not in _TYPES:
+            raise Unsupported(f"spark has no {kind} type (TIME needs Spark 4.1)")
         return _TYPES[kind]
+
+    def time_of_day_lit(self, micros: int) -> str:
+        raise Unsupported("spark has no tod type (TIME needs Spark 4.1)")
 
     def raise_(self, message: str, dep: str, kind: Kind) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
@@ -228,6 +233,10 @@ class SparkDialect(Dialect):
         if kind == "time":
             return f"({x} + make_ym_interval(0, {months}))"
         return f"add_months({x}, {months})"
+
+    def as_time(self, us: str) -> str:
+        # The session time zone is UTC, so the NTZ cast keeps the instant's clock.
+        return f"CAST(timestamp_micros({us}) AS TIMESTAMP_NTZ)"
 
     def time_micros(self, ts: str) -> str:
         # The session time zone is UTC, so the LTZ cast keeps the wall clock.

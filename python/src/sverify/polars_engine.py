@@ -185,6 +185,8 @@ def null_type(t: dict) -> DType:
         return US
     if "date" in t:
         return pl.Date
+    if "precisionTime" in t:
+        return pl.Time
     if "i64" in t:
         return pl.Null
     raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
@@ -214,10 +216,17 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return _int(v), pl.Date
     if kind == "intervalDayToSecond":
         return _int(interval_micros(v)), INTERVAL
+    if kind == "precisionTime":
+        if int(v.get("precision", 0)) != 6:
+            raise Unsupported("only microsecond times are supported")
+        return _int(v["value"]), pl.Time
     raise Unsupported(f"unsupported literal {json.dumps(lit)}")
 
 
 def lit_expr(value: Any, dtype: DType) -> pl.Expr:
+    if value is not None and dtype == pl.Time:
+        # Polars' times are nanoseconds.
+        return pl.lit(value * 1000, pl.Int64).cast(pl.Time)
     if value is not None and dtype in (US, INTERVAL, pl.Date):
         # Temporal literals are given as their integer encoding.
         return pl.lit(value, pl.Int64 if dtype != pl.Date else pl.Int32).cast(dtype)
@@ -475,7 +484,14 @@ CALENDAR_UNITS = {"month": "1mo", "quarter": "1q", "year": "1y"}
 
 
 def date_part(part: str, v: Val) -> Val:
-    """`Time.datePart`: NULL outside the dates chrono represents."""
+    """`Time.datePart`: NULL outside the dates chrono represents. A time of
+    day is a timestamp on 1970-01-01, for its clock parts."""
+    if v.dtype == pl.Time:
+        if part not in CLOCK_PARTS:
+            raise Unsupported(f"date_part {part!r} of a time of day")
+        m, d = CLOCK_PARTS[part]
+        tod = v.expr.to_physical().cast(pl.Int64) // 1000
+        return Val((tod % m // d).cast(pl.Int64), pl.Int64, v.issues)
     us = v.expr.dt.epoch("us")
     if part in CLOCK_PARTS:
         m, d = CLOCK_PARTS[part]
@@ -602,6 +618,23 @@ def add_months(m: int, v: Val) -> Val:
     return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
 
 
+def chrono_only(v: Val, value: pl.Expr, dtype: DType, what: str) -> Val:
+    """`value`, an error (`Overflow`) where the timestamp `v` is outside the
+    years chrono represents."""
+    us = wide(v)
+    bad = (us < PART_MIN) | (us > PART_MAX)
+    message = f"{what} outside the years chrono represents"
+    safe = pl.when(bad).then(None).otherwise(value)
+    return Val(safe, dtype, (*v.issues, issue(bad, Overflow, message)))
+
+
+def strftime(fmt: str, v: Val) -> Val:
+    """`Time.strftime`: chrono's formatting, as DataFusion's."""
+    inside = (wide(v) >= PART_MIN) & (wide(v) <= PART_MAX)
+    safe = pl.when(inside).then(v.expr)
+    return chrono_only(v, safe.dt.strftime(fmt), pl.String, "strftime")
+
+
 def ftoi(v: Val) -> Val:
     """`CAST(double AS BIGINT)`: truncation toward zero (`FloatCode.toInt?`);
     NaN, ±∞ and results outside 64 bits are errors."""
@@ -666,8 +699,12 @@ class Exprs:
                 return self.regex_match(arg_js[0])
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:
                 which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
-                if not isinstance(which, str) or ts.dtype not in (US, pl.Date):
+                if not isinstance(which, str) or ts.dtype not in (US, pl.Date, pl.Time):
                     raise Unsupported(f"{name} of {ts.dtype} by {which!r}")
+                if ts.dtype == pl.Time and name == "date_part":
+                    return date_part(which.lower(), ts)
+                if ts.dtype == pl.Time:
+                    raise Unsupported("date_trunc of a time of day")
                 if ts.dtype == pl.Date:
                     if name == "date_part":
                         return day_part(which.lower(), ts)
@@ -680,6 +717,11 @@ class Exprs:
                 months = self.months(arg_js[1])
                 if months is not None:
                     return add_months(months, self(arg_js[0]))
+            if name == "strftime" and len(arg_js) == 2:
+                ts, fmt = self(arg_js[0]), self.constant(arg_js[1], "a strftime format")
+                if ts.dtype != US or not isinstance(fmt, str):
+                    raise Unsupported(f"strftime of {ts.dtype} by {fmt!r}")
+                return strftime(fmt, ts)
             if name == "date_diff" and len(arg_js) == 2:
                 a, b = self(arg_js[0]), self(arg_js[1])
                 if a.dtype != pl.Date or b.dtype not in (pl.Date, pl.Null):
@@ -750,6 +792,13 @@ class Exprs:
             return narrow_int(v, bits)
         if "string" in target and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.String), pl.String, v.issues)
+        if "precisionTime" in target and v.dtype == US:
+            # `UnFn.timeOfDay`; Polars' times are nanoseconds.
+            tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
+            return chrono_only(v, tod, pl.Time, "CAST to TIME")
+        if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
+            # `UnFn.asTime`: microseconds since 1970-01-01.
+            return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
         if "date" in target and v.dtype == US:
             # `UnFn.toDate`: days since 1970-01-01, rounding down.
             days = v.expr.dt.epoch("us") // US_PER_DAY
@@ -879,7 +928,7 @@ class Exprs:
             return self.string(name, a, b)
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
-            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Float64, pl.Null):
+            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
                 # `BinFn.lt` is only defined on integers (and the codes of
                 # doubles and times); strings would differ from SQL.
                 raise Unsupported(f"lt of {t}")
@@ -968,6 +1017,8 @@ def type_of(t: dict) -> DType:
         return US
     if "date" in t:
         return pl.Date
+    if "precisionTime" in t or "time" in t:
+        return pl.Time
     if "intervalDayToSecond" in t:
         return INTERVAL
     raise Unsupported(f"unsupported column type {json.dumps(t)}")

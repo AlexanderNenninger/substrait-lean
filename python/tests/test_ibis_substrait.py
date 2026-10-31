@@ -78,6 +78,8 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
             return "nan" if math.isnan(x) else round(x, 4) + 0.0
         if t.is_timestamp() and isinstance(v, int):
             return EPOCH + dt.timedelta(microseconds=v)
+        if t.is_time() and isinstance(v, int):
+            return (EPOCH + dt.timedelta(microseconds=v)).time()
         if t.is_date():
             if isinstance(v, int):
                 return EPOCH.date() + dt.timedelta(days=v)

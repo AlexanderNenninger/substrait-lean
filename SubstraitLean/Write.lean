@@ -31,7 +31,7 @@ def functions : List (Nat × String) :=
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
    (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
-   (60, "date_diff")]
+   (60, "date_diff"), (61, "strftime")]
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
@@ -40,9 +40,9 @@ def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
   | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ | .dayPart _ => 25
-  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
+  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4 | .strftime _ => 61
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
+  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
@@ -86,6 +86,9 @@ def writeLit (k : Parse.Kind) (v : Value) : Json :=
   | .time, .int us =>
     lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .date, .int d => lit [("date", toJson d)]
+  | .tod, .int us =>
+    lit [("precisionTime", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .tod, .null => lit [("null", obj [("precisionTime", obj [("precision", toJson 6)])])]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
   | .float, .null => lit [("null", fp64Type)]
   | .str, .null => lit [("null", obj [("string", obj [])])]
@@ -146,7 +149,14 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
-  | .un (.datePart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .time a]
+  | .un (.datePart p) a =>
+    let k := if a.kind cols == .tod then .tod else .time
+    call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols k a]
+  | .un .timeOfDay a => obj [("cast", obj [("type", obj [("precisionTime", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .time a)])]
+  | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
+  | .un (.strftime fmt) a => call 61 [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
   | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
   | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
   | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]

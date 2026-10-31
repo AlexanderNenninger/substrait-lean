@@ -404,6 +404,68 @@ theorem truncDay_mono (u : TimeUnit) {d e : Int} (h : d ≤ e) : truncDay u d �
 #guard datePartDay .year dayMin == some (-262143) && datePartDay .year (dayMin - 1) == none
 #guard [TimeUnit.day, .week, .month, .quarter, .year].map (truncDay · 19782) == [19782, 19779, 19754, 19723, 19723]
 
+/-! ## Formatting (`strftime`, chrono's)
+
+The directives chrono formats the same way as DuckDB, Polars and the other
+engines: `%Y` (the year, padded to four digits, with a sign outside 0 to
+9999), `%m`, `%d`, `%H`, `%M`, `%S`, `%j` (day of the year), `%F`
+(`%Y-%m-%d`), `%T` (`%H:%M:%S`) and `%%`. -/
+
+/-- `x ≥ 0` in decimal, padded with zeros to `n` digits. -/
+def pad (n : Nat) (x : Int) : String :=
+  let s := toString x.toNat
+  String.mk (List.replicate (n - s.length) '0') ++ s
+
+def yearText (y : Int) : String :=
+  if 0 ≤ y ∧ y ≤ 9999 then pad 4 y else if 9999 < y then "+" ++ toString y else "-" ++ pad 4 (-y)
+
+/-- A piece of a format: text, or a directive (its letter). -/
+inductive FmtPiece where
+  | text (c : Char)
+  | dir (c : Char)
+  deriving Repr, DecidableEq
+
+def fmtDirectives : List Char := ['Y', 'm', 'd', 'H', 'M', 'S', 'j', 'F', 'T', '%']
+
+/-- The pieces of a format string, or `none` if it has a directive outside
+`fmtDirectives` (or ends in `%`). -/
+def parseFormat : List Char → Option (List FmtPiece)
+  | [] => some []
+  | '%' :: c :: rest =>
+    if fmtDirectives.contains c then (parseFormat rest).map (.dir c :: ·) else none
+  | ['%'] => none
+  | c :: rest => (parseFormat rest).map (.text c :: ·)
+
+def FmtPiece.render (ts : Int) : FmtPiece → String
+  | .text c => c.toString
+  | .dir 'Y' => yearText (partOf .year ts)
+  | .dir 'm' => pad 2 (partOf .month ts)
+  | .dir 'd' => pad 2 (partOf .day ts)
+  | .dir 'H' => pad 2 (partOf .hour ts)
+  | .dir 'M' => pad 2 (partOf .minute ts)
+  | .dir 'S' => pad 2 (partOf .second ts)
+  | .dir 'j' => pad 3 (partOf .doy ts)
+  | .dir 'F' => yearText (partOf .year ts) ++ "-" ++ pad 2 (partOf .month ts) ++ "-" ++ pad 2 (partOf .day ts)
+  | .dir 'T' => pad 2 (partOf .hour ts) ++ ":" ++ pad 2 (partOf .minute ts) ++ ":" ++ pad 2 (partOf .second ts)
+  | .dir _ => "%"
+
+/-- `strftime(ts, fmt)` for a format `parseFormat` accepts. -/
+def strftime (fmt : String) (ts : Int) : String :=
+  String.join (((parseFormat fmt.toList).getD []).map (·.render ts))
+
+/-- The time of day of a timestamp (`CAST(ts AS TIME)`), in microseconds. -/
+def timeOfDay (ts : Int) : Int := ts % usPerDay
+
+theorem timeOfDay_range (ts : Int) : 0 ≤ timeOfDay ts ∧ timeOfDay ts < usPerDay := by
+  simp only [timeOfDay, usPerDay]; omega
+
+#guard strftime "%Y-%m-%d %H:%M:%S" 1700000000123456 == "2023-11-14 22:13:20"
+#guard strftime "%Y-%m-%d %H:%M:%S" (-62135596800000001) == "0000-12-31 23:59:59"
+#guard strftime "%F %T" 253402300800000000 == "+10000-01-01 00:00:00"
+#guard strftime "%Y" partMin == "-262143" && strftime "%j %%" (-1) == "365 %"
+#guard (parseFormat "%Y %q".toList).isNone && (parseFormat "50%".toList).isNone
+#guard timeOfDay (-1) == usPerDay - 1
+
 /-! Values DataFusion gives (`python/tests/test_time.py` checks many more). -/
 
 #guard DatePart.all.map (partOf · 1700000000123456) == [2023, 4, 11, 46, 14, 22, 13, 20, 20123, 20123456, 2, 318]

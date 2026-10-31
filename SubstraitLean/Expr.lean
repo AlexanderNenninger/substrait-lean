@@ -69,6 +69,12 @@ inductive UnFn where
   /-- `x + INTERVAL 'm' MONTH` of a DATE, or of a timestamp (`time`): the same
   day of the month, clamped to the month's end (`Time.addMonths`). -/
   | addMonths (m : Int) (time : Bool)
+  /-- `CAST(ts AS TIME)`: the time of day, in microseconds since midnight. -/
+  | timeOfDay
+  /-- `CAST(n AS TIMESTAMP)` of microseconds since 1970-01-01: the same number. -/
+  | asTime
+  /-- `strftime(ts, fmt)` for a format `Time.parseFormat` accepts. -/
+  | strftime (fmt : String)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -136,6 +142,9 @@ def UnFn.apply : UnFn → Value → Value
   | .dayTrunc u, .int d => .int (Time.truncDay u d)
   | .addMonths m false, .int d => .int (Time.addMonths m d)
   | .addMonths m true, .int ts => .int (Time.addMonthsUs m ts)
+  | .timeOfDay, .int ts => .int (Time.timeOfDay ts)
+  | .asTime, .int n => .int n
+  | .strftime fmt, .int ts => .str (Time.strftime fmt ts)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/

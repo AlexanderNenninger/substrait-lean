@@ -108,6 +108,7 @@ interval_month = { lean = "yes", description = "x ± INTERVAL in months or years
 date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps, and Ibis's DateDiff/delta of dates (`BinFn.dateDiff`); DataFusion's DATE - DATE is refused: a duration it compares wrongly with intervals" }
 interval_to_number = { lean = "partial", description = "a duration as a number of seconds (time weighting, rates per second)", note = "Ibis epoch_seconds() differences and delta(unit=\"day\") of dates work; casting an interval to a number is refused" }
 math_transcendental = { lean = "no", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "unsupported function ln/1" }
-epoch = { lean = "partial", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "Ibis epoch_seconds() works (built from date parts); date_part('EPOCH') and to_char are refused" }
+epoch = { lean = "partial", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "Ibis epoch_seconds() works (built from date parts), and so do to_char/strftime with %Y %m %d %H %M %S %j %F %T; date_part('EPOCH') and other directives are refused" }
+time_of_day = { lean = "yes", description = "TIME values: CAST(ts AS TIME), clock parts, comparisons", note = "microseconds since midnight (`Kind.tod`); time + interval and truncating a time are refused (DataFusion cannot add intervals to times)" }
 timezone = { lean = "no", description = "time zones (AT TIME ZONE, tz-aware timestamps)" }
 json = { lean = "no", description = "JSON / semi-structured extraction" }

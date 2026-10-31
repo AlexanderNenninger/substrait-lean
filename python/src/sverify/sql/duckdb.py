@@ -126,6 +126,9 @@ class DuckDBDialect(Dialect):
     def time_micros(self, ts: str) -> str:
         return f"epoch_us({ts})"
 
+    def as_time(self, us: str) -> str:
+        return f"make_timestamp({us})"
+
     def date_add_days(self, d: str, n: str) -> str:
         # DATE + INTEGER is a DATE; a count beyond 32 bits leaves chrono's
         # dates anyway (and the cast raises).

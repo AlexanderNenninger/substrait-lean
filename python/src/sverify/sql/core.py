@@ -47,12 +47,13 @@ from typing import Any, Literal
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 
-Kind = Literal["int", "float", "time", "date", "interval", "str", "bool"]
+Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"]
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
-zone, `interval` a day/second interval of microseconds. `None` (unknown) is
+zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
+microseconds. `None` (unknown) is
 used for columns whose Substrait type the model does not know."""
 
-LeanKind = Literal["int", "float", "time", "date", "str", "bool", "other"]
+LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"]
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
 
@@ -94,6 +95,7 @@ class Dialect:
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
             "date": "DATE",
+            "tod": "TIME",
             "interval": "INTERVAL",
             "str": "VARCHAR",
             "bool": "BOOLEAN",
@@ -132,6 +134,10 @@ class Dialect:
 
     def date_lit(self, days: int) -> str:
         return f"DATE '{_date_text(days)}'"
+
+    def time_of_day_lit(self, micros: int) -> str:
+        s, us = divmod(micros, 1_000_000)
+        return f"TIME '{s // 3600:02}:{s // 60 % 60:02}:{s % 60:02}.{us:06}'"
 
     def interval_lit(self, micros: int) -> str:
         sign = "-" if micros < 0 else ""
@@ -345,6 +351,26 @@ class Dialect:
         """`UnFn.toDate`: the calendar day of a timestamp (rounding down)."""
         return self.cast(ts, "date")
 
+    def time_part(self, part: str, t: str) -> str:
+        """`Time.partOf` of a time of day, for its clock parts (`millisecond`
+        and `microsecond` within the minute)."""
+        return self.date_part(part, f"(DATE '1970-01-01' + {t})")
+
+    def time_of_day(self, ts: str) -> str:
+        """`Time.timeOfDay`: the TIME of a timestamp."""
+        return self.cast(ts, "tod")
+
+    def as_time(self, us: str) -> str:
+        """`UnFn.asTime`: the timestamp `us` microseconds after 1970-01-01."""
+        raise Unsupported(f"{self.name}: timestamps from microseconds are not implemented")
+
+    def zero_pad(self, n: str, width: int) -> str:
+        """The integer `n ≥ 0` in decimal, padded with zeros to `width` digits
+        (`lpad` would cut a longer one)."""
+        s = self.int_to_str(n)
+        pad = f"lpad({s}, {width}, '0')"
+        return f"(CASE WHEN {self.char_length(s)} >= {width} THEN {s} ELSE {pad} END)"
+
     def time_micros(self, ts: str) -> str:
         """A timestamp as microseconds since 1970-01-01 (a BIGINT)."""
         raise Unsupported(f"{self.name}: timestamps as microseconds are not implemented")
@@ -554,7 +580,8 @@ class Un:
     op: Literal[
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
-        "date_trunc", "to_date", "day_part", "day_trunc", "add_months",
+        "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
+        "strftime",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -831,6 +858,12 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "date"
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
+        case Un(op="time_of_day"):
+            return "tod"
+        case Un(op="as_time"):
+            return "time"
+        case Un(op="strftime"):
+            return "str"
         case Un():
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
@@ -871,6 +904,12 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return "date"
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
+        case Un(op="time_of_day"):
+            return "tod"
+        case Un(op="as_time"):
+            return "time"
+        case Un(op="strftime"):
+            return "str"
         case Un():
             return "bool"
         case Bin(op="date_diff"):
@@ -979,6 +1018,13 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         return "other", None
     if "date" in ty:
         return "date", "date"
+    if "time" in ty:
+        return "tod", "tod"
+    if "precisionTime" in ty:
+        pt = ty["precisionTime"]
+        if isinstance(pt, dict) and pt.get("precision", 0) >= 6:
+            return "tod", "tod"
+        return "other", None
     if any(k in ty for k in ("string", "varchar", "fixedChar")):
         return "str", "str"
     if "bool" in ty:
@@ -1154,8 +1200,8 @@ def _decode_decimal(s: str) -> int:
 
 _LITERAL_KEYS = (
     "boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "null", "decimal",
-    "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalYearToMonth",
-    "intervalCompound",
+    "precisionTimestamp", "timestamp", "date", "precisionTime", "time", "intervalDayToSecond",
+    "intervalYearToMonth", "intervalCompound",
 )  # fmt: skip
 
 
@@ -1246,6 +1292,15 @@ def _const_literal(j: dict) -> Const:
             return Const("int", _int(v), kind="time")
         case "date":
             return Const("int", _int(v), kind="date")
+        case "precisionTime":
+            p, value = _nat_d(v, "precision"), _int(_req(v, "value"))
+            if p <= 6:
+                return Const("int", value * 10 ** (6 - p), kind="tod")
+            if value % 10 ** (p - 6):
+                raise Unsupported("times finer than microseconds are not supported")
+            return Const("int", value // 10 ** (p - 6), kind="tod")
+        case "time":
+            return Const("int", _int(v), kind="tod")
     return Const("int", _int(v), kind="int")
 
 
@@ -1410,9 +1465,21 @@ class _Parser:
                     for a, e in zip(arg_js, parsed, strict=True)
                 ):
                     raise Unsupported("date_diff takes two dates")
+                if name in ("strftime", "to_char", "date_format"):
+                    first = parsed[0] if parsed else Lit(None, None)
+                    if lean_expr_kind(first, cols.lean) != "time":
+                        raise Unsupported(f"{name} is only supported on timestamps")
                 if name in ("date_part", "datepart", "date_trunc", "datetrunc"):
                     second = parsed[1] if len(parsed) > 1 else Lit(None, None)
                     k = lean_expr_kind(second, cols.lean)
+                    if k == "tod":
+                        call = _call(name, parsed)
+                        clock = ("hour", "minute", "second", "millisecond", "microsecond")
+                        if isinstance(call, Un) and call.op == "date_part" and call.param in clock:
+                            return call
+                        raise Unsupported(
+                            f"{name} of a time of day is only supported for its clock"
+                        )
                     if k == "date":
                         # The same function of a DATE (days).
                         call = _call(name, parsed)
@@ -1494,6 +1561,11 @@ class _Parser:
                     return Un("itos", e)
                 if target == "date" and k == "time":
                     return Un("to_date", e)
+                if target == "tod" and k == "time":
+                    return Un("time_of_day", e)
+                # Microseconds since 1970-01-01 (arrow's cast of an integer).
+                if target == "time" and k == "int":
+                    return Un("as_time", e)
                 # Fails where the value does not fit (`UnFn.narrow`).
                 if target == "int" and k == "int":
                     bits = _int_bits(_req(v, "type"))
@@ -2136,10 +2208,29 @@ def _call(name: str, args: list[Expr]) -> Expr:
             if unit.lower() not in TIME_UNITS:
                 raise Unsupported(f"unsupported date_trunc unit '{unit}'")
             return Un("date_trunc", a, param=unit.lower())
+        case (("strftime" | "to_char" | "date_format"), [a, Lit(value=str(fmt))]):
+            if parse_format(fmt) is None:
+                raise Unsupported(f"strftime format '{fmt}' is not supported")
+            return Un("strftime", a, param=fmt)
         # sverify's own: the days from `e` to `d`.
         case "date_diff", [d, e]:
             return Bin("date_diff", d, e)
     raise Unsupported(f"unsupported function {name}/{len(args)}")
+
+
+def parse_format(fmt: str) -> list[str] | None:
+    """`Time.parseFormat`: text characters and `%` directives (`%Y`, …)."""
+    out, i = [], 0
+    while i < len(fmt):
+        if fmt[i] != "%":
+            out.append(fmt[i])
+            i += 1
+        elif i + 1 < len(fmt) and fmt[i + 1] in "YmdHMSjFT%":
+            out.append(fmt[i : i + 2])
+            i += 2
+        else:
+            return None
+    return out
 
 
 #: `Time.DatePart.name` and `Time.TimeUnit.name`.
@@ -2663,6 +2754,8 @@ class _Writer:
                 return d.timestamp_lit(v)
             case "date":
                 return d.date_lit(v)
+            case "tod":
+                return d.time_of_day_lit(v)
             case "interval":
                 return d.interval_lit(v)
         return d.int_lit(v)
@@ -2763,8 +2856,18 @@ class _Writer:
                 groups = regex_groups(pattern)
                 x = self.operand(a, "str", ref, cols, "regexp_match")
                 return d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
+            case Un(op="date_part", arg=a, param=part) if kind(a) == "tod":
+                return d.time_part(part, self.operand(a, "tod", ref, cols, "date_part"))
             case Un(op="date_part", arg=a, param=part):
                 return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
+            case Un(op="time_of_day", arg=a):
+                x = self.operand(a, "time", ref, cols, "CAST to TIME")
+                return self.chrono_only(x, d.time_of_day(x), "CAST to TIME", "tod")
+            case Un(op="as_time", arg=a):
+                return d.as_time(self.int_operand(a, ref, cols, "CAST to TIMESTAMP"))
+            case Un(op="strftime", arg=a, param=fmt):
+                x = self.operand(a, "time", ref, cols, "strftime")
+                return self.chrono_only(x, self.strftime(x, fmt), "strftime", "str")
             case Un(op="date_trunc", arg=a, param=unit):
                 return self.date_trunc(unit, self.operand(a, "time", ref, cols, "date_trunc"))
             case Un(op="to_date", arg=a):
@@ -2879,6 +2982,40 @@ class _Writer:
         lo, hi = d.timestamp_lit(NS_MIN), d.timestamp_lit(NS_MAX)
         fail = d.raise_(f"date_trunc to a {unit} outside ±2^63 ns", ts, "time")
         return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
+
+    def chrono_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
+        """`r`, raising where the timestamp `ts` is outside the years chrono
+        represents (DataFusion fails there)."""
+        d = self.d
+        if not d.guards:
+            return r
+        lo, hi = d.int_lit(PART_MIN), d.int_lit(PART_MAX)
+        fail = d.raise_(f"{what} outside the years chrono represents", ts, kind)
+        return d.case_when(f"({d.time_micros(ts)} NOT BETWEEN {lo} AND {hi})", fail, r)
+
+    def strftime(self, ts: str, fmt: str) -> str:
+        """`Time.strftime`, from `date_part`s: `%Y` padded to four digits,
+        with a sign outside 0 to 9999, as chrono writes it."""
+        d = self.d
+
+        def part(p: str, width: int) -> str:
+            return d.zero_pad(d.date_part(p, ts), width)
+
+        y = d.date_part("year", ts)
+        year = (
+            f"(CASE WHEN {y} BETWEEN 0 AND 9999 THEN {d.zero_pad(y, 4)} "
+            f"WHEN {y} > 9999 THEN {d.concat(d.str_lit('+'), d.int_to_str(y))} "
+            f"ELSE {d.concat(d.str_lit('-'), d.zero_pad(f'(- {y})', 4))} END)"
+        )
+        pieces = {
+            "%Y": year, "%m": part("month", 2), "%d": part("day", 2), "%H": part("hour", 2),
+            "%M": part("minute", 2), "%S": part("second", 2), "%j": part("doy", 3),
+        }  # fmt: skip
+        pieces["%F"] = f"{year} || '-' || {pieces['%m']} || '-' || {pieces['%d']}"
+        pieces["%T"] = f"{pieces['%H']} || ':' || {pieces['%M']} || ':' || {pieces['%S']}"
+        tokens = parse_format(fmt) or []
+        out = [pieces.get(t, d.str_lit("%" if t == "%%" else t)) for t in tokens]
+        return "(" + " || ".join(out or [d.str_lit("")]) + ")"
 
     def date_range(self, x: str, f: Callable[[str], str], lo: int, hi: int, what: str) -> str:
         """`rangeIssue`: the DATE `f(x)`, raising unless `x` and it are within

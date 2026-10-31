@@ -277,6 +277,31 @@ CASES: list[Case] = [
     ),
     case("time", "timestamp delta", R, lambda: t.select(x=t.ts.delta(t.ts, unit="hour"))),
     case("time", "bucket", R, lambda: t.select(x=t.ts.bucket(minutes=15))),
+    case("time", "time of day", V, lambda: t.select(x=t.ts.time())),
+    case("time", "time parts", V, lambda: t.select(h=t.ts.time().hour(), m=t.ts.time().minute())),
+    case("time", "compare times", V, lambda: t.filter(t.ts.time() > dt.time(9, 30))),
+    case("time", "strftime", V, lambda: t.select(x=t.ts.strftime("%Y-%m-%d %H:%M:%S"))),
+    case("time", "timestamp from unix", V, lambda: t.select(x=t.qty.as_timestamp("ms"))),
+    case(
+        "time", "date from constants", V, lambda: t.select(x=t.ts.date() < ibis.date(2024, 2, 29))
+    ),
+    case(
+        "time",
+        "timestamp from constants",
+        V,
+        lambda: t.filter(t.ts < ibis.timestamp(2024, 1, 2, 3, 4, 5)),
+    ),
+    case("time", "date from columns", R, lambda: t.select(x=ibis.date(t.qty, 1, 1))),
+    case("time", "string to timestamp", R, lambda: t.select(x=t.name.as_timestamp("%Y-%m-%d"))),
+    case("time", "time + interval", R, lambda: t.select(x=t.ts.time() + ibis.interval(hours=1))),
+    case("time", "time truncate", R, lambda: t.select(x=t.ts.time().truncate("h"))),
+    case("time", "strftime other directives", R, lambda: t.select(x=t.ts.strftime("%A"))),
+    case(
+        "time",
+        "between_time",
+        X,
+        lambda: t.filter(t.ts.time().between(dt.time(9), dt.time(17))),
+    ),
 ]
 
 
@@ -307,6 +332,7 @@ ENGINES = ("polars", "duckdb", "snowflake", "spark")
 #:   sort's or a window's ties follow. Sorts and windows run with
 #:   `tie_free=True`. A `SUM` or `AVG` of doubles adds in that order too
 #:   (rounding depends on it).
+#: * Spark has no TIME type before 4.1.
 NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
 REFUSED: dict[str, dict[str, str]] = {
     "count, max, mean": NO_ROW_ORDER,
@@ -322,6 +348,9 @@ REFUSED: dict[str, dict[str, str]] = {
     "order_by + limit": NO_ROW_ORDER,
     "row_number": NO_ROW_ORDER,
     "lag": NO_ROW_ORDER,
+    "time of day": {"spark": "no tod type"},
+    "time parts": {"spark": "no tod type"},
+    "compare times": {"spark": "no tod type"},
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
 TIE_FREE = {"order_by", "row_number", "lag"}

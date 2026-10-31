@@ -12,6 +12,8 @@
   parts and truncation agree with DataFusion within the dates it computes,
   and fail where it does; Ibis's date operations its DataFusion SQL cannot
   run agree with Python's calendar.
+* Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` agree with
+  DataFusion within the years chrono represents, and fail outside them.
 """
 
 import json
@@ -37,7 +39,7 @@ from sverify.engine import (
     to_sql,
     written_plan,
 )
-from sverify.ibis_substrait import to_substrait
+from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.testing import canonical, inline_tables, lean_values
 
 MIN, MAX = -(2**63), 2**63 - 1
@@ -431,3 +433,90 @@ def test_date_differences_are_refused():
         run_sql(con, sql)
     code, out, err = run_checker((), substrait_json(con, sql))
     assert code != 0 and "date - date" in out + err
+
+
+# --------------------------------------------------------------------------
+# Times of day, formatting, timestamps from numbers
+
+TOD_SQL = (
+    "SELECT CAST(ts AS TIME) AS t, to_char(ts, '%Y-%m-%d %H:%M:%S') AS s, "
+    "to_char(ts, '%F %T %j %%') AS f, date_part('hour', CAST(ts AS TIME)) AS h, "
+    "date_part('microsecond', CAST(ts AS TIME)) AS us FROM r"
+)
+
+
+def tod_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
+    """As `date_runs`, over a timestamp column `ts`; times as microseconds."""
+
+    def plain(out: pa.Table) -> list[tuple]:
+        columns = []
+        for c in out.columns:
+            if pa.types.is_time(c.type):
+                c = c.cast(pa.time64("us")).cast(pa.int64())
+            columns.append(c)
+        return [tuple(x.values()) for x in pa.table(columns, names=out.column_names).to_pylist()]
+
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
+    plan = json.loads(substrait_json(con, sql))
+    written = written_plan(json.dumps(plan))
+    inline_tables(plan, {"r": [(v,) for v in values]})
+    return {
+        "datafusion": plain(run_sql(con, sql)),
+        "lean": lean_values(json.dumps(plan)),
+        "polars": plain(run_plan(con, written, "polars")),
+        "duckdb": plain(run_plan(con, written, "duckdb")),
+    }
+
+
+#: Within chrono's years, and DuckDB's.
+chrono = st.one_of(
+    edges.filter(lambda v: PART_MIN <= v <= PART_MAX), st.integers(PART_MIN, PART_MAX)
+)
+
+
+@settings(max_examples=40, deadline=None)
+@given(values=st.lists(st.one_of(st.none(), chrono), max_size=8))
+def test_times_of_day_and_formats_match_datafusion(values):
+    """`CAST(ts AS TIME)`, `to_char` (chrono's `%Y`: four digits, a sign
+    outside 0 to 9999) and clock parts of a time agree with DataFusion."""
+    runs = tod_runs(TOD_SQL, values)
+    expected = canonical(runs.pop("datafusion"))
+    for engine, rows in runs.items():
+        assert canonical(rows) == expected, engine
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT CAST(ts AS TIME) AS t FROM r", "SELECT to_char(ts, '%Y') AS t FROM r"]
+)
+def test_times_outside_chrono_fail(sql):
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array([PART_MIN - 1], pa.timestamp("us"))}))
+    with pytest.raises(BaseException, match="(?i)convert|naive|datetime"):
+        run_sql(con, sql)
+    report = sv.verify(sql, tables={"r": ibis.schema({"ts": "timestamp"})})
+    assert "overflow" in [i.kind for i in report.errors]
+    with pytest.raises(polars_engine.Overflow):
+        run_plan(con, written_plan(substrait_json(con, sql)), "polars")
+
+
+def test_unsupported_formats_are_refused():
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array([0], pa.timestamp("us"))}))
+    code, out, err = run_checker((), substrait_json(con, "SELECT to_char(ts, '%A %e') AS s FROM r"))
+    assert code != 0 and "format" in out + err
+
+
+def test_constructors_of_constants():
+    """`ibis.date(2024, 2, 29)` and friends are constants; a bad date is
+    refused (DataFusion's `make_date` fails), and so are columns."""
+    expr = D.select(
+        a=ibis.date(2024, 2, 29), b=ibis.timestamp(2024, 1, 2, 3, 4, 5), c=ibis.time(9, 30, 0)
+    )
+    plan = inline_tables(to_substrait(expr), {"t": [(None, None, None)]})
+    got = lean_values(json.dumps(plan))
+    assert got == [(19782, 1704164645000000, 34200000000)]
+    with pytest.raises(Unsupported, match="day is out of range"):
+        to_substrait(D.select(a=ibis.date(2024, 2, 30)))
+    with pytest.raises(Unsupported, match="of columns"):
+        to_substrait(D.select(a=ibis.date(D.n, 1, 1)))

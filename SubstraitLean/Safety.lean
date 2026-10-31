@@ -99,6 +99,8 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .dayTrunc u, .int d => rangeIssue Time.nsDayMin Time.nsDayMax d (Time.truncDay u d)
   | .addMonths m false, .int d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
   | .addMonths m true, .int ts => rangeIssue Time.partMin Time.partMax ts (Time.addMonthsUs m ts)
+  -- chrono's calendar, which fails outside its years.
+  | .timeOfDay, .int ts | .strftime _, .int ts => rangeIssue Time.partMin Time.partMax ts ts
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
@@ -188,6 +190,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .dayTrunc _, aa, ar => rangeMay Time.nsDayMin Time.nsDayMax aa ar
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
+  | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -369,6 +372,8 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         cases bh <;> cases bl' <;> simp_all <;> constructor <;> omega
       · simp
   case dayTrunc.int u d => exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
+  case timeOfDay.int ts => exact rangeIssue_sound ha ha hk
+  case strftime.int fmt ts => exact rangeIssue_sound ha ha hk
   case addMonths.int m t x =>
     cases t
     · exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk

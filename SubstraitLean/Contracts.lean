@@ -446,6 +446,10 @@ def UnFn.abs : UnFn → AVal → AVal
   | .dayTrunc u, a => monoAbs (Time.truncDay u) a
   | .addMonths m false, a => monoAbs (Time.addMonths m) a
   | .addMonths _ true, a => ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  | .timeOfDay, a =>
+      ⟨a.nonInt, a.int.map fun _ => ⟨some 0, some (Time.usPerDay - 1)⟩, false, false, false⟩
+  | .asTime, a => monoAbs id a
+  | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -654,6 +658,17 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     cases t
     · exact monoAbs_sound (Time.addMonths_mono m) (fun v => by cases v <;> rfl) h
     · exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case asTime => exact monoAbs_sound (fun h => h) (fun v => by cases v <;> rfl) h
+  case timeOfDay =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+    · simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
+    · have := Time.timeOfDay_range i
+      refine ⟨⟨some 0, some (Time.usPerDay - 1)⟩, by simp [UnFn.abs, hb], ?_⟩
+      exact ⟨fun l hl => by simp at hl; omega, fun u hu => by simp at hu; omega⟩
+    all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case strftime fmt =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case upper | lower | length =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
