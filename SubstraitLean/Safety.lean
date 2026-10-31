@@ -79,12 +79,12 @@ def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)
 
 def wrapIf (i : Int) : Option Issue := if inI64 i then none else some .wraps
 
-def inRange (lo hi i : Int) : Bool := decide (lo ≤ i) && decide (i ≤ hi)
+def withinRange (lo hi i : Int) : Bool := decide (lo ≤ i) && decide (i ≤ hi)
 
 /-- `overflow` unless the argument `x` and the result `y` are in `[lo, hi]`:
 the dates and timestamps `chrono` represents, or DataFusion's nanoseconds. -/
 def rangeIssue (lo hi x y : Int) : Option Issue :=
-  if inRange lo hi x && inRange lo hi y then none else some .overflow
+  if withinRange lo hi x && withinRange lo hi y then none else some .overflow
 
 /-! ## What goes wrong on a row -/
 
@@ -151,8 +151,8 @@ theorem AVal.inI64_of_fits {a : AVal} {i : Int} (h : a.intFits = true) (hm : a.M
 def AVal.within (lo hi : Int) (a : AVal) : Bool :=
   a.int.all fun b => b.lo.any (lo ≤ ·) && b.hi.any (· ≤ hi)
 
-theorem AVal.inRange_of_within {a : AVal} {lo hi i : Int} (h : a.within lo hi = true)
-    (hm : a.Mem (.int i)) : inRange lo hi i = true := by
+theorem AVal.withinRange_of_within {a : AVal} {lo hi i : Int} (h : a.within lo hi = true)
+    (hm : a.Mem (.int i)) : withinRange lo hi i = true := by
   obtain ⟨b, hb, hi⟩ := hm
   obtain ⟨bl, bh⟩ := b
   simp only [AVal.within, hb, Option.all_some, Bool.and_eq_true, Option.any_eq_true,
@@ -160,7 +160,7 @@ theorem AVal.inRange_of_within {a : AVal} {lo hi i : Int} (h : a.within lo hi = 
   obtain ⟨⟨l, rfl, hl⟩, ⟨u, rfl, hu⟩⟩ := h
   have := hi.1 l rfl
   have := hi.2 u rfl
-  simp only [inRange, Bool.and_eq_true, decide_eq_true_eq]; omega
+  simp only [withinRange, Bool.and_eq_true, decide_eq_true_eq]; omega
 
 def rangeMay (lo hi : Int) (aa ar : AVal) : List Issue :=
   if aa.within lo hi && ar.within lo hi then [] else [.overflow]
@@ -174,7 +174,7 @@ theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} (ha : aa.M
   split
   · rename_i hn hw
     simp only [Bool.and_eq_true] at hw
-    simp [AVal.inRange_of_within hw.1 ha, AVal.inRange_of_within hw.2 hr] at hn
+    simp [AVal.withinRange_of_within hw.1 ha, AVal.withinRange_of_within hw.2 hr] at hn
   · simp
 
 /-- Every double code `a` describes casts to a `BIGINT`. -/

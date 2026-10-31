@@ -22,6 +22,7 @@ from datetime import timedelta
 from typing import Literal
 
 import pyarrow as pa
+import pyarrow.dataset as ds
 
 try:
     from deltalake import (
@@ -46,9 +47,12 @@ from sverify.incremental import (
     first_line,
 )
 from sverify.io._common import (
+    FILTER,
     ColumnStats,
     Contract,
     check_same_state,
+    filter_rows,
+    prune,
     q,
     sink_schema,
     stats_facts,
@@ -140,8 +144,43 @@ def _cdf_on(dt: DeltaTable) -> bool:
 class DeltaSource:
     """A Delta table read by version; see the module docstring."""
 
-    def __init__(self, uri: str, *, storage_options: dict[str, str] | None = None):
-        self.uri, self.storage_options = str(uri), storage_options
+    def __init__(
+        self,
+        uri: str,
+        *,
+        storage_options: dict[str, str] | None = None,
+        where: str | None = None,
+    ):
+        """With `where` (a SQL condition on the columns), the source is the
+        rows on which it is TRUE: snapshots read only the files whose
+        statistics do not rule it out (`prune`), and changes are filtered."""
+        self.uri, self.storage_options, self.where = str(uri), storage_options, where
+        self.skipped: list[str] = []
+        """The files the last snapshot did not read."""
+
+    def _facts(
+        self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
+    ) -> list[Fact]:
+        filtered = [] if self.where is None else [Fact(self.where, FILTER)]
+        return _facts(dt, files, source) + filtered
+
+    def _rows(self, dt: DeltaTable) -> tuple[pa.Table, dict[str, dict[str, ColumnStats]]]:
+        """The source's rows at `dt`'s version, and the files they come from."""
+        files = file_stats(dt)
+        if self.where is None:
+            return _read(dt), files
+        keep = prune(files, _arrow_schema(dt), self.where, hi_slack=TIMESTAMP_SLACK)
+        self.skipped = sorted(set(files) - keep)
+        if _deletion_vectors(dt):
+            table = _read(dt)  # delta-rs reads deletion vectors only whole
+        else:
+            dataset = dt.to_pyarrow_dataset()
+            frags = [f for f in dataset.get_fragments() if any(f.path.endswith(p) for p in keep)]
+            table = ds.FileSystemDataset(
+                frags, dataset.schema, dataset.format, dataset.filesystem
+            ).to_table()
+        rows = filter_rows(table.cast(_arrow_schema(dt)), self.where)
+        return rows, {p: s for p, s in files.items() if p in keep}
 
     def table(self, version: int | None = None) -> DeltaTable:
         dt = DeltaTable(self.uri, storage_options=self.storage_options)
@@ -152,7 +191,8 @@ class DeltaSource:
     def snapshot(self, version: int | None = None) -> Snapshot:
         dt = self.table(version)
         v = dt.version()
-        return Snapshot(v, _read(dt), _facts(dt, file_stats(dt), f"file stats @v{v}"))
+        rows, files = self._rows(dt)
+        return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
         """The contract the last sverify commit up to `version` recorded."""
@@ -192,7 +232,7 @@ class DeltaSource:
         dt = self.table()
         end = dt.version()
         files = file_stats(dt)
-        snapshot_facts = _facts(dt, files, f"file stats @v{end}")
+        snapshot_facts = self._facts(dt, files, f"file stats @v{end}")
         schema = _arrow_schema(dt)
         if end == since:
             return SourceBatch(since, end, snapshot_facts, schema=schema)
@@ -208,10 +248,12 @@ class DeltaSource:
                 since,
                 end,
                 snapshot_facts,
-                snapshot=_read(dt),
+                snapshot=self._rows(dt)[0],
                 fallback=f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
                 schema=schema,
             )
+        if self.where is not None:
+            cdf = filter_rows(cdf, self.where)
         kinds = cdf.column("_change_type").to_pylist()
         rows = arrow_rows(cdf.select(schema.names).cast(schema))
         changes = Changes(
@@ -223,9 +265,9 @@ class DeltaSource:
         if old is not None:
             before = file_stats(old)
             new_files = {p: s for p, s in files.items() if p not in before}
-            facts = _facts(dt, new_files, f"file stats @v{end} (new files)")
+            facts = self._facts(dt, new_files, f"file stats @v{end} (new files)")
         else:
-            facts = constraint_facts(dt)
+            facts = self._facts(dt, {}, "")
         return SourceBatch(
             since,
             end,

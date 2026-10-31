@@ -54,12 +54,20 @@ def Bound.point (b : Bound) : Option Int :=
   | some l, some h => if l = h then some l else none
   | _, _ => none
 
-/-- Multiplication is only tracked when one side is a constant. -/
+/-- The products of the corners of two finite intervals. -/
+def Bound.corners (al ah bl bh : Int) : Bound :=
+  ⟨some (min (min (al * bl) (al * bh)) (min (ah * bl) (ah * bh))),
+   some (max (max (al * bl) (al * bh)) (max (ah * bl) (ah * bh)))⟩
+
+/-- Multiplication: exact scaling by a constant, the corner products of two
+finite intervals, and otherwise unbounded. -/
 def Bound.mul (a b : Bound) : Bound :=
   match a.point, b.point with
   | some k, _ => b.scale k
   | none, some k => a.scale k
-  | none, none => Bound.top
+  | none, none => match a.lo, a.hi, b.lo, b.hi with
+    | some al, some ah, some bl, some bh => Bound.corners al ah bl bh
+    | _, _, _, _ => Bound.top
 
 def Bound.atMost (b : Bound) (k : Int) : Bound :=
   ⟨b.lo, some (match b.hi with | some h => min h k | none => k)⟩
@@ -131,6 +139,29 @@ theorem Bound.point_mem {b : Bound} {k x : Int} (hp : b.point = some k) (hb : b.
   simp [Bound.Mem] at hb
   omega
 
+/-- `x * y` lies between the products of `x`'s bounds with `y`. -/
+theorem mul_between {l h x : Int} (hl : l ≤ x) (hh : x ≤ h) (y : Int) :
+    min (l * y) (h * y) ≤ x * y ∧ x * y ≤ max (l * y) (h * y) := by
+  rcases Int.le_total 0 y with hy | hy
+  · have := Int.mul_le_mul_of_nonneg_right hl hy
+    have := Int.mul_le_mul_of_nonneg_right hh hy
+    omega
+  · have := Int.mul_le_mul_of_nonpos_right hl hy
+    have := Int.mul_le_mul_of_nonpos_right hh hy
+    omega
+
+theorem Bound.mem_corners {al ah bl bh x y : Int} (hx : al ≤ x ∧ x ≤ ah) (hy : bl ≤ y ∧ y ≤ bh) :
+    (Bound.corners al ah bl bh).Mem (x * y) := by
+  have h1 := mul_between hx.1 hx.2 y
+  have h2 := mul_between hy.1 hy.2 al
+  have h3 := mul_between hy.1 hy.2 ah
+  rw [Int.mul_comm y al, Int.mul_comm bl al, Int.mul_comm bh al] at h2
+  rw [Int.mul_comm y ah, Int.mul_comm bl ah, Int.mul_comm bh ah] at h3
+  simp only [Bound.Mem, Bound.corners, Option.some.injEq]
+  constructor
+  · rintro _ rfl; omega
+  · rintro _ rfl; omega
+
 theorem Bound.mem_mul {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.mul b).Mem (x * y) := by
   unfold Bound.mul
@@ -138,7 +169,14 @@ theorem Bound.mem_mul {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
   | some k, _ => simp only []; rw [Bound.point_mem hpa ha]; exact Bound.mem_scale k hb
   | none, some k =>
     simp only []; rw [Bound.point_mem hpb hb, Int.mul_comm]; exact Bound.mem_scale k ha
-  | none, none => exact Bound.mem_top _
+  | none, none =>
+    simp only []
+    obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
+    match al, ah, bl, bh with
+    | some al, some ah, some bl, some bh =>
+      exact Bound.mem_corners ⟨ha.1 al rfl, ha.2 ah rfl⟩ ⟨hb.1 bl rfl, hb.2 bh rfl⟩
+    | none, _, _, _ | some _, none, _, _ | some _, some _, none, _ | some _, some _, some _, none =>
+      exact Bound.mem_top _
 
 theorem Bound.mem_atMost {b : Bound} {x k : Int} (hb : b.Mem x) (hk : x ≤ k) :
     (b.atMost k).Mem x := by

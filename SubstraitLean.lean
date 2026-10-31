@@ -18,6 +18,7 @@ import SubstraitLean.Safety
 import SubstraitLean.Partition
 import SubstraitLean.Guards
 import SubstraitLean.Keys
+import SubstraitLean.Semantic
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Completeness

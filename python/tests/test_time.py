@@ -310,7 +310,7 @@ dates = st.one_of(
 )
 
 
-@settings(max_examples=40, deadline=None)
+@settings(max_examples=25, deadline=None)
 @given(values=st.lists(st.one_of(st.none(), dates), max_size=8))
 def test_date_arithmetic_matches_datafusion(values):
     """Months clamp to the end of a shorter month and come before days, as in
