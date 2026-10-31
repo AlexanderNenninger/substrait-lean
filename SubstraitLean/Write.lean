@@ -19,39 +19,99 @@ namespace Substrait.Write
 
 open Lean (Json toJson)
 
-/-- `(anchor, Substrait name)` for every function the writer can emit.
+/-! ## Function anchors
+
+Every function the writer can emit has a fixed anchor, declared in one list
+per area. A new function goes at the end of its area's list, with the next
+free anchor of that area's range, so pull requests for different areas
+touch different lines. Anchors below 100 predate the ranges and stay as they
+are. The checks after `functions` reject a duplicate anchor or name, and an
+anchor outside its area's range.
+
 DataFusion resolves functions by name and argument types, so the same `add`
-serves integers, doubles and timestamps. -/
-def functions : List (Nat × String) :=
-  [(1, "not"), (2, "is_null"), (3, "negate"), (4, "add"), (5, "subtract"), (6, "multiply"),
-   (7, "equal"), (8, "lt"), (9, "and"), (10, "or"), (11, "divide"),
-   (12, "row_number"), (13, "lag"), (14, "lead"), (15, "floor"), (16, "ceil"), (17, "round"),
-   (18, "modulus"), (19, "power"), (20, "upper"), (21, "lower"), (22, "character_length"),
-   (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
-   (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
-   (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
-   (42, "array_agg"), (60, "date_diff"), (61, "strftime"), (62, "date_bin"),
-   (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
-   (75, "first_value"), (76, "last_value"), (77, "nth_value")]
+serves integers, doubles, dates and timestamps. -/
+
+/-- Logic, comparison and arithmetic: new anchors 100–199. -/
+def coreFns : List (Nat × String) := [
+  (1, "not"), (2, "is_null"), (3, "negate"), (4, "add"), (5, "subtract"), (6, "multiply"),
+  (7, "equal"), (8, "lt"), (9, "and"), (10, "or"), (11, "divide"),
+  (15, "floor"), (16, "ceil"), (17, "round"), (18, "modulus"), (19, "power"), (41, "nanvl")]
+
+/-- Strings: new anchors 200–299. -/
+def stringFns : List (Nat × String) := [
+  (20, "upper"), (21, "lower"), (22, "character_length"), (23, "regexp_match"),
+  (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
+  (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim")]
+
+/-- Dates and times: new anchors 300–399. -/
+def temporalFns : List (Nat × String) := [
+  (25, "date_part"), (26, "date_trunc"), (60, "date_diff"), (61, "strftime"), (62, "date_bin")]
+
+/-- Lists and structs: new anchors 400–499. -/
+def nestedFns : List (Nat × String) := [
+  (24, "array_length")]
+
+/-- Aggregate functions: new anchors 500–599. -/
+def aggregateFns : List (Nat × String) := [
+  (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (42, "array_agg")]
+
+/-- Window functions: new anchors 600–699. -/
+def windowFns : List (Nat × String) := [
+  (12, "row_number"), (13, "lag"), (14, "lead"),
+  (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
+  (75, "first_value"), (76, "last_value"), (77, "nth_value")]
+
+/-- Each area's functions and the range its new anchors come from. -/
+def areas : List (List (Nat × String) × Nat) :=
+  [(coreFns, 100), (stringFns, 200), (temporalFns, 300), (nestedFns, 400),
+   (aggregateFns, 500), (windowFns, 600)]
+
+/-- Every declared `(anchor, Substrait name)`, area by area. -/
+def declared : List (Nat × String) := areas.flatMap (·.1)
+
+/-- `(anchor, Substrait name)` for every function the writer can emit, by anchor. -/
+def functions : List (Nat × String) := declared.mergeSort fun a b => a.1 ≤ b.1
+
+example : (declared.map (·.1)).Nodup := by decide
+example : (declared.map (·.2)).Nodup := by decide
+example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
+  decide
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40 | .collect => 42
 
 def UnFn.anchor : UnFn → Nat
+  -- Core
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
-  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ | .dayPart _ => 25
-  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4 | .strftime _ => 61 | .bucket _ _ => 62
+  -- Strings
+  | .upper => 20 | .lower => 21 | .length => 22
+  -- Dates and times
+  | .datePart _ | .dayPart _ => 25 | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
+  | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
 
 def BinFn.anchor : BinFn → Nat
+  -- Core
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
+  -- Strings
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
-  | .substr _ => 32 | .dateAdd => 4 | .dateDiff => 60
-  | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
+  | .substr _ => 32 | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
+  -- Dates and times
+  | .dateAdd => 4 | .dateDiff => 60
+
+/-- Every anchor a function is written with is declared (0 marks no call). -/
+theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.1) := by
+  cases f <;> decide
+
+theorem UnFn.anchor_declared (f : UnFn) :
+    UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
+  cases f <;> exact of_decide_eq_true rfl
+
+theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
+  cases f <;> first | exact of_decide_eq_true rfl | (rename_i a b; cases a <;> cases b <;> decide)
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
