@@ -17,6 +17,13 @@ on:
       - .github/workflows/wheels.yml
       - .github/actions/setup-lean/**
   workflow_dispatch:
+    inputs:
+      pythons:
+        description: Python versions to test the installed wheel on, as a JSON list
+        default: '["3.13", "3.14", "3.15"]'
+  # Weekly, to notice a newer Python breaking the wheel before a release does.
+  schedule:
+    - cron: "17 4 * * 1"
 
 concurrency:
   group: wheels-${{ github.ref }}
@@ -99,9 +106,66 @@ jobs:
           name: dist-sdist
           path: dist/*.tar.gz
 
+  # The wheel is tagged `py3-none-<platform>`, so it installs on every Python
+  # from 3.12 on. Test the very wheel `build` made (no rebuild) on the newer
+  # ones: on releases, by hand and weekly, not on pull requests.
+  test-pythons:
+    if: github.event_name != 'pull_request'
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
+        python: ${{ fromJSON(inputs.pythons || '["3.13", "3.14", "3.15"]') }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A prerelease Python (3.15 before October 2026) is used while it is the
+      # only one of its version.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-${{ matrix.os }}
+          path: wheelhouse
+
+      - name: Test installed wheel
+        run: |
+          cp -r python/tests "$RUNNER_TEMP/tests"
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --python ${{ matrix.python }} \
+            --with "sverify[all] @ file://$wheel" \
+            --with pytest --with hypothesis \
+            --with "pyiceberg[sql-sqlite]" \
+            pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
+
+      - name: Run the installed wheel without DataFusion
+        run: |
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          cd "$RUNNER_TEMP"
+          uv run --isolated --no-project --python ${{ matrix.python }} --with "$wheel" python - <<'PY'
+          import importlib.util
+          import ibis
+          import sverify as sv
+
+          assert importlib.util.find_spec("datafusion") is None, "datafusion is installed"
+          con = sv.connect()
+          sv.create_table(con, "t", ibis.schema({"a": "int64"}), [(1,), (5,)])
+          t = con.table("t")
+          view = sv.IncrementalView(con, t.filter(t.a > 2), "big")
+          view.apply({"t": sv.Changes(inserts=[(7,)])})
+          assert view.rows() == [(5,), (7,)], view.rows()
+          PY
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    # A release that breaks on a newer Python is not published.
+    needs: [build, test-pythons]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
