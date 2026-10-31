@@ -150,6 +150,11 @@ cmd = "pytest -n auto --dist worksteal -m spark"
 help = "Python tests of Isthmus as the SQL producer (needs $SVERIFY_ISTHMUS or isthmus on PATH)"
 cmd = "pytest -n auto --dist worksteal tests/test_isthmus.py tests/test_without_datafusion.py"
 
+[tool.poe.tasks.fuzz]
+help = "Random queries with Lean as the oracle for $BUDGET seconds (default 600); prints new findings"
+cmd = "python -m sverify.fuzz --budget ${BUDGET}"
+env = { BUDGET.default = "600" }
+
 [tool.poe.tasks.compare-sql]
 help = "Compile the tests' SQL with Isthmus as well as DataFusion and compare (see tests/conftest.py)"
 shell = """
