@@ -34,6 +34,19 @@ exclude = ["src/sverify/_bin"]
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"
 
+# The sdist carries the Lean project under `lean/`, so building a wheel from it
+# only needs elan.
+[tool.hatch.build.targets.sdist]
+exclude = ["build", "src/sverify/_bin"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../lakefile.toml" = "lean/lakefile.toml"
+"../lake-manifest.json" = "lean/lake-manifest.json"
+"../lean-toolchain" = "lean/lean-toolchain"
+"../Main.lean" = "lean/Main.lean"
+"../SubstraitLean.lean" = "lean/SubstraitLean.lean"
+"../SubstraitLean" = "lean/SubstraitLean"
+
 [dependency-groups]
 dev = [
     "fakesnow>=0.12.1",

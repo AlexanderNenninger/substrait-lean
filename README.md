@@ -72,6 +72,11 @@ stripped `substrait-check`, so installing it needs neither Lean nor elan. The
 (x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
 version in `python/pyproject.toml` also publishes them to PyPI.
 
+`uv build python` also builds the sdist. It carries the Lean project under
+`lean/`, and `uv build` makes the wheel from it, so the sdist is checked on
+every build. Installing from the sdist (on a platform without a wheel) needs
+elan; the build hook runs `lake build` there.
+
 To run your own scripts with the package available, from the project root:
 
 ```bash
