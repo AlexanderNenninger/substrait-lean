@@ -7,9 +7,9 @@ to have it compiled), names the constructs, and prints, for each source:
 
   features   catalogue/features.toml: is the construct in the Lean model?
   pitfalls   catalogue/pitfalls.toml: what each engine does, with quirk ids
-  nb15       notebooks/15_backend_semantics.py: the question per engine, Ibis
+  nb15       notebooks/17_backend_semantics.py: the question per engine, Ibis
              backend, standard SQL and Snowflake, and the Lean model's pick
-  nb14       notebooks/14_datafusion_semantics.py: DataFusion's quirks
+  nb14       notebooks/16_datafusion_semantics.py: DataFusion's quirks
   parser     SubstraitLean/Parse.lean: how the Substrait function is read
              (or refused), and the Lean operator it becomes
   backends   the docstrings of sverify/sql/{duckdb,snowflake,spark,core}.py and
@@ -257,8 +257,8 @@ def main() -> int:
             if p.get("quirks"):
                 print(f"      DataFusion quirks: {', '.join(p['quirks'])}")
 
-    nb15 = ROOT / "notebooks/15_backend_semantics.py"
-    print("\n== notebooks/15_backend_semantics.py (per engine; the Lean model's pick)")
+    nb15 = ROOT / "notebooks/17_backend_semantics.py"
+    print("\n== notebooks/17_backend_semantics.py (per engine; the Lean model's pick)")
     for _, x in ranked(calls(nb15, "E"), lambda x: x["args"][3] if len(x["args"]) > 3 else None,
                        mine, words)[:6]:  # fmt: skip
         a = x["args"]
@@ -269,11 +269,11 @@ def main() -> int:
         print(f"      why: {x.get('why', '')}")
         print(f"      Lean picks: {x.get('picks', '')}")
 
-    nb14 = ROOT / "notebooks/14_datafusion_semantics.py"
+    nb14 = ROOT / "notebooks/16_datafusion_semantics.py"
     entries = calls(nb14, "Q")
     hits = ranked(entries, lambda x: x["args"][2] if len(x["args"]) > 2 else None, mine, words)
     chosen = [x for _, x in hits[:5]] + [x for x in entries if x["args"][0] in quirks]
-    print("\n== notebooks/14_datafusion_semantics.py (DataFusion's quirks)")
+    print("\n== notebooks/16_datafusion_semantics.py (DataFusion's quirks)")
     seen = set()
     for x in chosen:
         a = x["args"]

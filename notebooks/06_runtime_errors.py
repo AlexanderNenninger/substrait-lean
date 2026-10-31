@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 5. [Doubles, time and text](?file=05_values.py) · [Contents](?file=00_start_here.py) · 7. [Windows and ASOF joins](?file=07_windows_and_asof.py) →
+    ← 5. [Keys and relations](?file=05_keys_and_relations.py) · [Contents](?file=00_start_here.py) · 7. [Windows and ASOF joins](?file=07_windows_and_asof.py) →
     """)
     return
 
@@ -221,7 +221,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 5. [Doubles, time and text](?file=05_values.py) · [Contents](?file=00_start_here.py) · 7. [Windows and ASOF joins](?file=07_windows_and_asof.py) →
+    ← 5. [Keys and relations](?file=05_keys_and_relations.py) · [Contents](?file=00_start_here.py) · 7. [Windows and ASOF joins](?file=07_windows_and_asof.py) →
     """)
     return
 

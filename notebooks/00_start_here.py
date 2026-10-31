@@ -19,46 +19,59 @@ app = marimo.App(width="medium", app_title="sverify: a guided tour")
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
-    from sverify import display
 
-    return display, mo
+    return (mo,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Verified data pipelines: a guided tour
+    # sverify: a guided tour
 
-    This project lets you **prove things about data pipelines** instead of
-    only testing them. You write a pipeline in [Ibis](https://ibis-project.org)
-    or SQL, as usual. Then you can:
+    `sverify` checks a data pipeline **before it runs**. You write the
+    transformation in [Ibis](https://ibis-project.org) or SQL, as usual,
+    and say what it may assume about its inputs and what it guarantees
+    about its output. A checker written in [Lean](https://lean-lang.org)
+    proves the guarantees for every possible input, or tells you why it
+    can't. Then you get:
 
-    * state what the pipeline **guarantees** about its output ("no NULL
-      prices", "one row per user and day", "every reading is from the past")
-      and have it **proved** for every possible input, not just your test data;
-    * keep its result **up to date from the changes alone** (inserts and
-      deletes), with update rules that are proved to give the same answer as
-      recomputing from scratch.
-
-    The proofs are written in [Lean](https://lean-lang.org), a *proof
-    assistant*: a program that checks every step of a mathematical proof, so
-    nobody has to take the maths on trust. The Python package `sverify` puts
-    them behind a small API.
+    1. **Contracts proved, not tested.** "No NULL city", "one row per
+       device and minute", "no amount below zero" hold on every input that
+       meets the preconditions, not just on yesterday's data: the checks you
+       would write as dbt tests or expectations, done once, at definition
+       time. Division by zero, integer overflow and bad casts are ruled out
+       the same way.
+    2. **One plan, the same answer on every engine.** The checked plan runs
+       on DuckDB, Polars or DataFusion, or is written as Snowflake or Spark
+       SQL, and means the same thing on each: NULLs, integer division, NaN,
+       ties and overflow are spelled out, or the plan is refused where an
+       engine can't match.
+    3. **Results kept up to date from the changes.** Read the change feed
+       of a Delta or Iceberg table, and update the result with plans proved
+       to equal a full recompute, instead of a hand-written watermark job.
+       Sinks write each state exactly once and carry the contract to the
+       next job.
     """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.callout(
-        mo.md(
-            "**Tests vs. proofs, in one sentence.** A test checks that your "
-            "pipeline is right *on the data you tried*. A proof checks that it is "
-            "right *on every possible dataset*, including ones with NULLs, "
-            "duplicates, empty tables and values you never thought of."
-        ),
-        kind="info",
-    )
+    mo.md(r"""
+    ## Start with a workflow
+
+    The first three chapters are complete jobs, condensed from the
+    [query catalogue](../catalogue/INDEX.md) of 139 real analytical queries.
+    Each starts from source tables, states and proves a contract, runs on
+    every engine, keeps up with new data and writes a sink, and each shows
+    what goes wrong without the checker:
+
+    | | workflow | sources and sinks | what it catches |
+    |---:|:---|:---|:---|
+    | 1 | [Duplicate card payments](?file=01_duplicate_payments.py) | Delta, Change Data Feed | a self-join matching rows with themselves; a watermark job missing a late duplicate and keeping a reversed one |
+    | 2 | [Sensor alerts](?file=02_sensor_alerts.py) | Iceberg | `LAG` over ties; a NaN reading raising an alert; Snowflake and Spark tables without row order |
+    | 3 | [An orders mart](?file=03_orders_mart.py) | Delta, a type-2 dimension | `not_null(city)` failing after a left join; `/` meaning three things on three engines |
+    """)
     return
 
 
@@ -67,10 +80,10 @@ def _(mo):
     mo.md(r"""
     ## Thirty seconds of it
 
-    A pipeline that keeps orders above 10 and doubles their amount, with a
-    contract: the input has no negative amounts (`requires`), so the output
-    has no negative and no NULL `doubled` (`ensures`). Calling the function
-    asks Lean for a proof before the result is handed back:
+    A transformation with a contract: the input has no negative amounts
+    (`requires`), so the output has no negative and no NULL `doubled`
+    (`ensures`). Calling the function asks Lean for a proof before the
+    expression is handed back:
     """)
     return
 
@@ -100,15 +113,40 @@ def _(mo):
     mo.md(r"""
     Both postconditions are ✅ **proved**, and the bottom table is what Lean
     worked out about every output column on its own: `doubled` is at least
-    22, because the filter keeps amounts of at least 11. Chapter 3 explains
-    how.
+    22, because the filter keeps amounts of at least 11.
+    [Contracts](?file=04_contracts.py) explains how.
 
-    ## How to use the tour
+    ## The rest of the tour
 
-    Each chapter covers one feature, with runnable examples and sliders or
-    switches to break things and watch the proofs react. They build on each
-    other, so read them in order the first time. Open the whole folder, so
-    the links between chapters work:
+    **Features**, one per chapter, with examples to change and break:
+
+    | | chapter | what it covers |
+    |---:|:---|:---|
+    | 4 | [Contracts](?file=04_contracts.py) | `requires`/`ensures`, what Lean tracks, `on_unproved`, contracts on real data |
+    | 5 | [Keys and relations](?file=05_keys_and_relations.py) | `sv.unique`, facts between columns, joins |
+    | 6 | [Runtime errors](?file=06_runtime_errors.py) | division by zero, overflow, casts; proving they can't happen |
+    | 7 | [Windows and ASOF joins](?file=07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
+    | 8 | [Composing contracts](?file=08_composition.py) | proving one step's preconditions from the previous step |
+    | 9 | [Incremental views](?file=09_incremental_views.py) | `IncrementalView`, what is refused, and how the update rules work |
+    | 10 | [Pipelines](?file=10_pipelines.py) | views over views, fallbacks, contracts that hold in every state |
+    | 11 | [Engines and SQL](?file=11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
+    | 12 | [Doubles, time and text](?file=12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
+
+    **Under the hood**, for when you want to know why the ✅ can be trusted:
+
+    | | chapter | what it covers |
+    |---:|:---|:---|
+    | 13 | [Plans, meaning and proofs](?file=13_plans_and_proofs.py) | Substrait plans, Lean's interpreter, theorems, NULL |
+    | 14 | [The checker](?file=14_the_checker.py) | `substrait-check`: well-formedness, Lean as a reference engine, Ibis coverage |
+    | 15 | [What is proved, what is trusted](?file=15_trust.py) | the trusted boundary, a glossary and a map of the code |
+    | 16 | [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
+    | 17 | [One expression, many engines](?file=17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
+
+    No knowledge of formal verification is needed for any of it.
+
+    ## Opening the tour
+
+    Open the whole folder, so the links between chapters work:
 
     ```bash
     uvx marimo edit --sandbox notebooks      # from the project root
@@ -116,44 +154,9 @@ def _(mo):
 
     `--sandbox` gives each notebook its own environment with `sverify`
     installed from `python/` (the first start takes a minute). The Lean
-    checker must be built once with `lake build` (see the README's Setup).
-    `uvx marimo run --sandbox --include-code notebooks` shows the same
-    chapters as read-only apps, with the code one click away.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    | | chapter | what it covers |
-    |---:|:---|:---|
-    | 1 | [Plans, meaning and proofs](?file=01_plans_and_proofs.py) | Substrait plans, Lean's interpreter, theorems, NULL |
-    | 2 | [The checker](?file=02_the_checker.py) | `substrait-check`: well-formedness, Lean as a reference engine, Ibis coverage |
-    | 3 | [Contracts](?file=03_contracts.py) | `requires`/`ensures`, abstract interpretation, `on_unproved` |
-    | 4 | [Keys and relations](?file=04_keys_and_relations.py) | `sv.unique`, facts between columns, joins |
-    | 5 | [Doubles, time and text](?file=05_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
-    | 6 | [Runtime errors](?file=06_runtime_errors.py) | division by zero, overflow, casts; proving they can't happen |
-    | 7 | [Windows and ASOF joins](?file=07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
-    | 8 | [Composing contracts](?file=08_composition.py) | proving one step's preconditions from the previous step |
-    | 9 | [Incremental views](?file=09_incremental_views.py) | Z-sets, delta rules, `IncrementalView` |
-    | 10 | [Pipelines](?file=10_pipelines.py) | views over views, fallbacks, contracts that hold in every state |
-    | 11 | [Engines and SQL](?file=11_engines.py) | DataFusion, Polars, DuckDB; SQL for DuckDB, Snowflake and Spark |
-    | 12 | [A complete pipeline](?file=12_fitness.py) | heart rate during workouts, end to end |
-    | 13 | [What is proved, what is trusted](?file=13_trust.py) | the trusted boundary, a glossary and a map of the code |
-    | 14 | [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
-    | 15 | [One expression, many engines](?file=15_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    **Short on time?** Chapters 3, 9 and 12 give the gist: contracts,
-    incremental views, and one realistic pipeline with both.
-    **Curious about the formal side?** Chapters 1, 2 and 13 are about the
-    Lean model, the checker, and exactly what is proved.
+    checker must be built once with `lake build` (see the README's
+    Development section). `uvx marimo run --sandbox --include-code
+    notebooks` shows the same chapters as read-only apps.
 
     ## Is everything set up?
     """)
@@ -177,7 +180,7 @@ def _(mo):
     mo.callout(
         mo.md(
             "The Lean checker `substrait-check` is installed. You're ready to go: "
-            "start with chapter 1."
+            "start with the first workflow."
             if _ok
             else "The Lean checker `substrait-check` is missing. Run `lake build` in the "
             "project root, then restart this notebook."
