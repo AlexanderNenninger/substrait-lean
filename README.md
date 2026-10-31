@@ -395,23 +395,58 @@ tables. A table format plays three roles:
   for Iceberg, the files that appends added) from that version to the latest,
   applies it, and records the new version. A failed refresh changes nothing,
   so a retry never applies a batch twice. Where the history is gone (CDF off,
-  files vacuumed, row-level deletes in Iceberg), the new snapshot is diffed
-  against the old, and the report says so. `refresh(audit=True)` also
-  compares every view with a recompute before committing.
+  files vacuumed, row-level deletes in Iceberg), the data files that changed
+  are diffed, and the report says so. `refresh(audit=True)` also compares
+  the batch with the new snapshot and every view with a recompute, before
+  committing anything (`AuditError`).
 * **A source of preconditions.** `requires` conditions are proved from
-  schema nullability, Delta CHECK constraints and per-file statistics
-  (min/max, NULL counts); a batch only uses the statistics of the files it
-  added. Keys are always checked on the data.
+  schema nullability, Delta CHECK constraints and per-file statistics:
+  min/max of integers, doubles (only where the files count no NaN), dates
+  and timestamps, and NULL counts, so a nullable column still proves
+  `amount >= 0 OR amount IS NULL`. A batch only uses the statistics of the
+  files it added. Strings, decimals and zoned timestamps get no bounds, and
+  keys are always checked on the data, since neither format enforces them.
 * **A sink that carries the contract.** `DeltaSink` and `IcebergSink` write a
   view in one commit per state, exactly once (keyed by the source versions).
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg), and the commit records the plan hash, the
   source versions and the contract. A job that reads the table gets its
-  preconditions from them.
+  preconditions from them. After the first write, `DeltaSink` MERGEs each
+  change in one commit, and `IcebergSink` writes it as one snapshot of
+  position delete files and a data file of the new rows.
+
+**Schema changes.** A batch whose data fits the old schema (added columns,
+widened types whose values still fit) is read in it, and the report names
+the change. Otherwise the views reading the source are planned again and
+recomputed, except a view with a contract, whose proof was for the old
+schema: `refresh` then raises `SchemaError` and changes nothing.
+
+**Tables outside a table format**, such as a small lookup table, become
+sources with `pipe.source("regions", sv.StaticSource(table, version=1))`, so
+that sinks still have a version for every input; `regions.replace(new_table,
+version=2)` and a `refresh` recompute the views that read it.
+
+**A restarted job resumes from its sink** instead of recomputing. The view
+takes the stored rows only if its plan and source versions match what the
+sink recorded; otherwise it is computed, and `resumed` says why:
+
+```python
+stored = DeltaSource(str(lake / "duplicate_payments")).stored()
+restarted = sv.Pipeline(sv.connect())
+txns_again = restarted.source("transactions", DeltaSource(str(lake / "transactions")),
+                              version=stored.sources["transactions"])
+dups_again = restarted.view("duplicate_payments", duplicate_payments(txns_again),
+                            resume=stored)
+print(dups_again.resumed)
+# resumed from .../duplicate_payments@v3
+```
 
 Each refresh report names what it trusted: that the change feed turns the
 old snapshot into the new one, and that writers and file statistics are
-correct. What is proved is listed under [Table formats](#table-formats).
+correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
+deletion vectors the statistics cover deleted rows too, which still bounds
+the live ones). Iceberg tables with equality deletes can't be read. What is
+proved is listed under [Table formats](#table-formats).
 
 ### Engines and SQL
 
@@ -1157,8 +1192,11 @@ interval, possible booleans, and whether it can be a string.
   `IS NULL` and comparisons with constants into constraints on the tested
   expression (or its negation), and `Expr.refineNeg_sound` refines columns
   where a condition is not TRUE. This is how `clip`, `abs`, `greatest` and
-  `least` get their bounds. `Expr.refine_sound` also covers `OR`, so a filter
-  `x IN (1, 2, 3)` gives `x ∈ [1, 3]`.
+  `least` get their bounds. `Expr.refine_sound` also covers `OR` and
+  `IS NULL`, so a filter `x IN (1, 2, 3)` gives `x ∈ [1, 3]` and
+  `x IS NULL OR x >= 0` gives "NULL or ≥ 0". `p OR q` is evaluated with `q`
+  refined where `p` is not TRUE, also when `p` may be NULL (`orSplitNull`),
+  which proves `x >= 0 OR x IS NULL` for a nullable `x`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
@@ -1295,11 +1333,14 @@ hypotheses:
   `Rel.delta_correct`), the old view plus the delta plan's output has the
   weights of the view on the new snapshot. `ChangeFeed.of_diff`: the diff of
   two snapshots is such a feed, so the fallback needs no trust in the feed.
+  `ChangeFeed.of_changed_files`: so is the diff of only the files that
+  changed, if the unchanged files are the same rows in both snapshots.
 * `stats_table`: with correct per-file statistics (`ColStats.Correct`,
   trusted), every row of the table lies in the join of the files' bounds;
   `stats_append`: the files an append added bound its rows; `stats_bounds`:
   that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
-  contract checker.
+  contract checker; `stats_fact`: with NULLs or a missing side it is
+  `c IS NULL OR (…)`; `stats_all_null`: files that are all NULL give `c IS NULL`.
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 

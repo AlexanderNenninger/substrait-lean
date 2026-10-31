@@ -3,7 +3,7 @@
 Each README's ```python blocks are run in order, in one namespace and in a
 fresh working directory, so an example may build on the ones before it. A
 block that fails, or a printed line that its `# ...` comment does not
-show, fails the test; a comment ending in "..." shows the start of a line.
+show, fails the test; "..." in a comment elides part of the line.
 The tour's notebooks are checked by `poe notebooks`.
 """
 
@@ -48,7 +48,8 @@ def test_readme_examples_run(readme, tmp_path, monkeypatch):
             expected = expected.removesuffix("...").rstrip()  # "..." elides the rest
             if not expected:
                 continue
-            assert any(line.startswith(expected) for line in lines), (
+            head, _, tail = expected.partition("...")  # "..." inside elides a part too
+            assert any(line.startswith(head) and tail in line for line in lines), (
                 f"{readme.name} block {k + 1}: no printed line starts with {expected!r}; "
                 f"printed:\n{printed.getvalue()}"
             )
