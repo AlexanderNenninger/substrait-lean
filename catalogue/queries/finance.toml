@@ -139,7 +139,7 @@ intent = "Total each customer's unpaid invoices by how overdue they are at month
 domain = "finance"
 source = { name = "Metabase: accounts receivable aging", url = "https://www.metabase.com/metrics/accounts-receivable-aging", licence = "no licence stated; paraphrased" }
 features = ["filter", "date_diff", "date_literal", "interval_day_time", "group_by", "sum", "agg_filter", "decimal"]
-pitfalls = ["empty_aggregate: a customer with nothing in a bucket gets NULL, not 0", "gap_threshold: is day 30 in the first or the second bucket?"]
+pitfalls = ["empty_aggregate: a customer with nothing in a bucket gets NULL, not 0", "gap_threshold: is day 30 in the first or the second bucket?", "duration_vs_interval: DataFusion running Ibis's SQL puts every invoice in the wrong bucket (late > INTERVAL '0 days' is always false), so the engines differ from it"]
 ibis = '''
 asof = D("2024-05-31")
 open_ = invoices.filter(~invoices.paid)

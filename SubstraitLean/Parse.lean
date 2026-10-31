@@ -101,7 +101,8 @@ Doubles, timestamps and dates all become integers in the model (see
 `SubstraitLean/Float.lean`); the parser and the writer track which is which. -/
 
 inductive Kind where
-  | int | float | time | date | str | bool | other
+  /-- `tod`: a time of day (`TIME`), in microseconds since midnight. -/
+  | int | float | time | date | str | bool | tod | other
   /-- A timestamp with a time zone: an instant, whose calendar arithmetic is
   daylight-saving-aware in DataFusion, so it is refused. -/
   | timeTz
@@ -120,6 +121,9 @@ partial def typeKind (ty : Json) : Kind :=
     if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
   else if has "precisionTimestampTz" || has "timestampTz" then .timeTz
   else if has "date" then .date
+  else if has "time" then .tod
+  else if let some t := (ty.getObjVal? "precisionTime").toOption then
+    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .tod else .other
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
@@ -167,16 +171,21 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .ftoi _ | .un (.narrow _) _ => .int
   | .un (.wrap _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ => .str
-  | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
+  | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
-  | .un .toDate _ => .date
+  | .un .toDate _ | .un (.dayTrunc _) _ => .date
+  | .un (.addMonths _ true) _ | .un .asTime _ | .un (.bucket _ _) _ => .time
+  | .un .timeOfDay _ => .tod
+  | .un (.strftime _) _ => .str
+  | .un (.addMonths _ false) _ => .date
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
   | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
-  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ => .int
+  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _ => .int
+  | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ => .str
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
@@ -194,16 +203,19 @@ def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
   | .bin g a b => .bin g (a.mapFields f) (b.mapFields f)
   | .ifThen c t e => .ifThen (c.mapFields f) (t.mapFields f) (e.mapFields f)
 
-def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
-  | .rowNumber => .int
-  | .lag c _ _ | .lead c _ _ => cols.getD c .other
-
 def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   match m.fn with
   | .count | .sum => .int
   | .fsum | .avg => .float
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
+
+def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => .int
+  | .percentRank _ | .cumeDist _ => .float
+  | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+    cols.getD c .other
+  | .agg m _ _ => m.kind cols
 
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
@@ -369,7 +381,13 @@ def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
   | .unionAll a _ => a.bits tables
   | .window r _ _ fns =>
       let bs := r.bits tables
-      bs ++ fns.map fun | .lag c _ _ | .lead c _ _ => bs.getD c 64 | .rowNumber => 64
+      bs ++ fns.map fun
+        | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+          bs.getD c 64
+        | .agg m _ _ => match m.fn with
+          | .min | .max => m.arg.bits bs
+          | _ => 64
+        | _ => 64
   | .semi a _ _ _ => a.bits tables
   | .orderBy r _ | .distinct r => r.bits tables
   -- A list element's width is not tracked.
@@ -416,6 +434,12 @@ def castConst (ty : Json) (c : Const) : J Const := do
     match c with
     | .str s => return .str s
     | _ => throw "casts to strings are not supported"
+  | .tod =>
+    match c with
+    | .int us =>
+      if 0 ≤ us ∧ us < Time.usPerDay then return .int us
+      else throw "a time of day outside 00:00 to 24:00"
+    | _ => throw "cannot cast this value to a time of day"
   | _ =>
     -- A constant cast to a timestamp coarser than microseconds: only where it
     -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
@@ -439,13 +463,46 @@ def intervalMicros (d : Json) : J Int := do
   let subUs : Int := if p ≥ 6 then sub / 10 ^ (p - 6) else sub * 10 ^ (6 - p)
   return (days * 86400 + secs) * 1_000_000 + subUs
 
+/-- The months of a year/month interval. -/
+def yearMonths (ym : Json) : J Int := do
+  let years ← (field? ym "years").elim (pure 0) getInt
+  let months ← (field? ym "months").elim (pure 0) getInt
+  return 12 * years + months
+
+/-- An interval literal as months and microseconds; `none` for other
+expressions. -/
+def intervalLit? (j : Json) : J (Option (Int × Int)) := do
+  let some l := field? j "literal" | return none
+  if let some d := field? l "intervalDayToSecond" then return some (0, ← intervalMicros d)
+  if let some ym := field? l "intervalYearToMonth" then return some (← yearMonths ym, 0)
+  if let some c := field? l "intervalCompound" then
+    let m ← (field? c "intervalYearToMonth").elim (pure 0) yearMonths
+    let us ← (field? c "intervalDayToSecond").elim (pure 0) intervalMicros
+    return some (m, us)
+  return none
+
+/-- An interval literal with days or months. DataFusion compares a duration
+(`ts - ts`, `d - d`) with an interval as `(months, days, nanoseconds)`, so
+`d - e > INTERVAL '3 days'` is false for any `d - e`: comparisons with these
+are refused. Written in hours or seconds, it compares as a number. -/
+def calendarInterval (l : Json) : J Bool := do
+  let days (d : Json) : J Bool := do return (← (field? d "days").elim (pure 0) getInt) != 0
+  if let some d := field? l "intervalDayToSecond" then return ← days d
+  if let some ym := field? l "intervalYearToMonth" then return (← yearMonths ym) != 0
+  if let some c := field? l "intervalCompound" then
+    let m ← (field? c "intervalYearToMonth").elim (pure 0) yearMonths
+    return m != 0 || (← (field? c "intervalDayToSecond").elim (pure false) days)
+  return false
+
 def parseConstLiteral (j : Json) : J Const := do
   if ["i8", "i16", "i32", "i64"].any (fun k => (field? j k).isSome) &&
       (field? j "typeVariationReference").any (·.getNat?.toOption != some 0) then
     throw "unsigned integers are not supported"
   let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
     "varChar", "null", "decimal",
-    "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalCompound"]
+    "precisionTimestamp", "timestamp", "date", "precisionTime", "time", "intervalDayToSecond",
+    "intervalYearToMonth",
+    "intervalCompound"]
   match ← oneof "literal" j keys with
   | ("boolean", b) => return .bool (← b.getBool?)
   | ("string", s) => return .str (← s.getStr?)
@@ -477,9 +534,20 @@ def parseConstLiteral (j : Json) : J Const := do
   | ("intervalDayToSecond", d) => return .int (← intervalMicros d)
   | ("intervalCompound", c) =>
     if let some ym := field? c "intervalYearToMonth" then
-      if (← natD ym "years") != 0 || (← natD ym "months") != 0 then
-        throw "month and year intervals are not supported"
+      if (← yearMonths ym) != 0 then
+        throw "month and year intervals are only supported added to a date or timestamp"
     return .int (← (field? c "intervalDayToSecond").elim (pure 0) intervalMicros)
+  | ("intervalYearToMonth", ym) =>
+    if (← yearMonths ym) != 0 then
+      throw "month and year intervals are only supported added to a date or timestamp"
+    return .int 0
+  -- A time of day, in units of 10⁻ᵖ s since midnight.
+  | ("precisionTime", t) =>
+    let p ← natD t "precision"
+    let v ← getInt (← field t "value")
+    if p ≤ 6 then return .int (v * 10 ^ (6 - p))
+    else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
+    else throw "times finer than microseconds are not supported"
   -- Precision `p` counts units of 10⁻ᵖ s (Isthmus writes `TIMESTAMP '…'` at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
@@ -522,6 +590,9 @@ def foldCall : String → List Const → Option Const
 
 partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) := do
   if let some l := field? j "literal" then
+    -- Months are not microseconds: `temporalArith` reads these.
+    if let some (m, _) ← intervalLit? j then
+      if m != 0 then return none
     return some (← parseConstLiteral l)
   if let some c := field? j "cast" then
     let some x ← constOf? fns (← field c "input") | return none
@@ -736,6 +807,82 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
 #guard (checkOptions "upper:str" false [Json.mkObj [("name", "char_set"),
   ("preference", Json.arr #["ASCII_ONLY"])]]).toBool == false
 
+/-! ## Dates and intervals
+
+Intervals of days and seconds are microseconds in the model, so they add to
+timestamps as integers. Month intervals, and anything added to a DATE (which
+is days), are read here instead: `x + INTERVAL '1 month 2 days'` adds the
+months first, then the days, as DataFusion does. -/
+
+/-- The kind of an argument: its expression's, or for a literal, its type's
+(a date or timestamp literal is an integer in the model). -/
+def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
+  if e.readsField then e.kind cols else
+  match field? j "literal", field? j "cast" with
+  | some l, _ =>
+    if (field? l "date").isSome then .date
+    else if (field? l "precisionTimestamp").isSome || (field? l "timestamp").isSome then .time
+    else if (field? l "precisionTime").isSome || (field? l "time").isSome then .tod
+    else .other
+  -- A constant cast (`DATE '2024-01-31'` is a cast of a string).
+  | none, some c => match typeKind ((field? c "type").getD .null) with
+    | .date => .date
+    | .time => .time
+    | _ => .other
+  | none, none => .other
+
+/-- `x ± interval` where `x` is a DATE, or a timestamp and the interval has
+months. `none` for other calls, which `mkCall` reads. -/
+def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (argJs : List Json)
+    (out : Kind) : J (Option Expr) := do
+  let [aj, bj] := argJs | return none
+  if name != "add" && name != "subtract" then return none
+  let sub := name == "subtract"
+  let a ← parse aj
+  let ka := argKind cols aj a
+  if ka != .date && ka != .time then return none
+  -- Calcite types `DATE + INTERVAL` as a timestamp; under a cast to DATE
+  -- (`parseExpr` retypes it) that is the date.
+  if ka == .date && out == .time then
+    throw "a date plus an interval typed as a timestamp is not supported"
+  let iv ← intervalLit? bj
+  -- A month interval literal is not an expression of its own.
+  let b ← match iv with
+    | some (_, us) => pure (Expr.lit (.int us))
+    | none => parse bj
+  -- DataFusion's `d - e` is a duration, which it compares with intervals as
+  -- `(months, days, nanoseconds)` and fails to beyond ±2⁶³ ns; `date_diff`
+  -- is the number of days.
+  if ka == .date && argKind cols bj b == .date then
+    throw "date - date is not supported (DataFusion compares the duration wrongly); use date_diff"
+  let (months, rest) := match iv with
+    | some (m, us) => (if sub then -m else m, if us == 0 then none else some (Expr.lit (.int us)))
+    | none => (0, some b)
+  if ka == .time then
+    if months == 0 then return none
+    let x := Expr.un (.addMonths months true) a
+    return some (match rest with
+      | none => x
+      | some r => .bin (if sub then .sub else .add) x r)
+  let x := if months == 0 then a else Expr.un (.addMonths months false) a
+  let some r := rest | return some x
+  -- The days: a constant, or a count times a constant interval of whole days.
+  let days ← match r with
+    | .lit (.int us) =>
+      if us % Time.usPerDay != 0 then throw "a date plus a part of a day is not supported"
+      pure (Expr.lit (.int (us / Time.usPerDay)))
+    | .bin .mul n (.lit (.int us)) =>
+      if us % Time.usPerDay != 0 || us == 0 then
+        throw "a date plus a part of a day is not supported"
+      if n.kind cols != .int && n.readsField then
+        throw "a date plus an interval is only supported with an integer count of days"
+      pure (if us == Time.usPerDay then n else .bin .mul n (.lit (.int (us / Time.usPerDay))))
+    | _ => throw "a date plus an interval is only supported for constants, or a count of days"
+  let days := if !sub then days else match days with
+    | .lit (.int k) => .lit (.int (-k))
+    | e => .un .neg e
+  return some (.bin .dateAdd x days)
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -827,6 +974,14 @@ def mkCall : String → List Expr → J Expr
     match Time.TimeUnit.ofName? u with
     | some u => pure (.un (.dateTrunc u) a)
     | none => throw s!"unsupported date_trunc unit '{u}'"
+  -- chrono's formats; DataFusion's `to_char`.
+  | "strftime", [a, .lit (.str fmt)] | "to_char", [a, .lit (.str fmt)]
+  | "date_format", [a, .lit (.str fmt)] =>
+    match Time.parseFormat fmt.toList with
+    | some _ => pure (.un (.strftime fmt) a)
+    | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
+  -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
+  | "date_diff", [d, e] => pure (.bin .dateDiff d e)
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
   notDistinct (a b : Expr) : Expr :=
@@ -873,6 +1028,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       return .lit (.list vs)
     if (field? l "emptyList").isSome then return .lit (.list [])
   if let some c ← constOf? fns j then return ← constExpr c
+  if (field? j "literal").isSome then
+    throw "month and year intervals are only supported added to a date or timestamp"
   match ← oneof "expression" j ["selection", "scalarFunction", "ifThen", "cast", "singularOrList"] with
   | ("selection", s) =>
     if (field? s "outerReference").isSome then
@@ -895,7 +1052,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols bits sj)
+    let out := typeKind ((field? f "outputType").getD .null)
+    if let some e ← temporalArith (parseExpr fns cols bits) cols (baseName name) argJs out then return e
+    if comparisonFns.contains (baseName name) then
+      for a in argJs do
+        if let some l := field? a "literal" then
+          if ← calendarInterval l then
+            throw s!"{baseName name} with an interval of days or months is not supported: \
+              DataFusion compares durations with it as (months, days, nanoseconds); \
+              write it in hours or seconds"
     let parsed ← argJs.mapM (parseExpr fns cols bits)
+    if baseName name == "date_diff" then
+      if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
+        throw "date_diff takes two dates"
     checkArgKinds name cols parsed
     let onFloats := parsed.any (·.kind cols == .float) ||
       typeKind ((field? f "outputType").getD .null) == .float
@@ -916,13 +1085,42 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if (field? o "name") != some (.str "null_handling") then return false
         return (← arrD o "preference").head? == some (.str "ACCEPT_NULLS")
       if !accepts then throw "concat is only supported with null_handling ACCEPT_NULLS"
-    if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
-      if (parsed.getD 1 (.lit .null)).kind cols != .time then
+    -- `date_bin(INTERVAL k, ts, origin)` of a timestamp, `k` days or less.
+    if baseName name == "date_bin" then
+      let [kj, tj, oj] := argJs | throw "date_bin takes an interval, a timestamp and an origin"
+      let some (0, k) ← intervalLit? kj | throw "date_bin needs a constant interval of days or less"
+      if k ≤ 0 then throw "date_bin needs a positive interval"
+      let some (.int o) ← constOf? fns oj | throw "date_bin needs a constant origin"
+      let ts ← parseExpr fns cols bits tj
+      if ts.kind cols != .time then throw "date_bin is only supported on timestamps"
+      return .un (.bucket k.toNat o) ts
+    if ["strftime", "to_char", "date_format"].contains (baseName name) then
+      if (parsed.getD 0 (.lit .null)).kind cols != .time then
         throw s!"{baseName name} is only supported on timestamps"
+    if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
+      -- A timestamp or date literal has its type's kind (`argKind`).
+      match argKind cols (argJs.getD 1 .null) (parsed.getD 1 (.lit .null)) with
+      | .time => pure ()
+      | .tod =>
+        -- A time of day is a timestamp on 1970-01-01, for its clock parts.
+        match ← mkCall (baseName name) parsed with
+        | e@(.un (.datePart p) _) =>
+          if [.hour, .minute, .second, .millisecond, .microsecond].contains p then return e
+          throw s!"date_part '{p.name}' of a time of day is not supported"
+        | _ => throw s!"{baseName name} of a time of day is not supported"
+      | .date =>
+        -- The same function of a DATE (days).
+        match ← mkCall (baseName name) parsed with
+        | .un (.datePart p) a => return .un (.dayPart p) a
+        | .un (.dateTrunc u) a =>
+          if !([.day, .week, .month, .quarter, .year].contains u) then
+            throw s!"date_trunc of a date to a {u.name} is not supported"
+          return .un (.dayTrunc u) a
+        | e => return e
+      | _ => throw s!"{baseName name} is only supported on timestamps and dates"
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
     -- (Isthmus types `POWER` of integers as a double).
-    let out := typeKind ((field? f "outputType").getD .null)
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
       "ceil", "round"]
     let hasFloat := parsed.any (·.kind cols == .float)
@@ -970,8 +1168,20 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return .ifThen (eagerly c (thens ++ rest.map (·.1))) x rest'
       return .ifThen c x rest'
   | ("cast", c) =>
-    let e ← parseExpr fns cols bits (← field c "input")
-    if unsignedType (← field c "type") then throw "unsigned integers are not supported"
+    let input ← field c "input"
+    -- `CAST(d + INTERVAL '1' DAY AS DATE)` (Calcite types the sum as a
+    -- timestamp, at midnight): the date arithmetic itself.
+    let dateType := Json.mkObj [("date", Json.mkObj [])]
+    let target ← field c "type"
+    let input := match field? input "scalarFunction" with
+      | some f =>
+        if typeKind target == .date &&
+            typeKind ((field? f "outputType").getD .null) == .time then
+          Json.mkObj [("scalarFunction", f.setObjVal! "outputType" dateType)]
+        else input
+      | none => input
+    let e ← parseExpr fns cols bits input
+    if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
     if target == .float && k == .int then return .un .itof e
@@ -979,6 +1189,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if target == .int && k == .float then return .un .ftoi e
     if target == .str && k == .int then return .un .itos e
     if target == .date && k == .time then return .un .toDate e
+    if target == .tod && k == .time then return .un .timeOfDay e
+    -- Microseconds since 1970-01-01 (arrow's cast of an integer).
+    if target == .time && k == .int then return .un .asTime e
     -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
     if target == .int && k == .int then
       let bits := intBits (← field c "type")
@@ -997,8 +1210,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     | e :: es => return es.foldl (.bin .or) e
   | (k, _) => throw s!"unsupported expression: {k}"
 
-/-! ## Window functions -/
-
 def parseColumn (fns : List (Nat × String)) (cols : List Kind) (what : String) (j : Json) : J Nat := do
   match ← parseExpr fns cols [] j with
   | .field i => pure i
@@ -1014,9 +1225,108 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J 
     | d => throw s!"unsupported sort direction: {(d.map (·.compress)).getD "unspecified"}"
   return { col, desc, nullsFirst }
 
+/-- One `AggregateRel` measure. `AVG` of integers averages their conversions
+to double; `COUNT(*)` may come with no argument. -/
+def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
+    J Measure := do
+  let m ← field mj "measure"
+  let anchor ← natD m "functionReference"
+  let some name := fns.lookup anchor
+    | throw s!"function reference {anchor} is not declared in extensions"
+  let name := baseName name
+  -- Only `ARRAY_AGG` depends on the order of its rows.
+  let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
+  if !sort.isEmpty && name != "array_agg" then
+    throw s!"ordered aggregates are not supported: {name}"
+  let distinct ← match field? m "invocation" with
+    | none | some (.str "AGGREGATION_INVOCATION_ALL")
+    | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
+    | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
+    | some i => throw s!"unsupported aggregate invocation: {i.compress}"
+  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols bits c : J Expr)
+  let args ← (← arrD m "arguments").mapM fun a => field a "value"
+  let arg ← match args with
+    | [a] => parseExpr fns cols bits a
+    | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
+    | _ => throw s!"{name} takes one argument"
+  let k := arg.kind cols
+  checkOptions name (k == .float || name == "avg") (← arrD m "options")
+  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
+  -- (`avg:i64` with an `i64` result), which it is not.
+  if name == "avg" then
+    if let some ty := field? m "outputType" then
+      if typeKind ty != .float then throw "avg with a non-double result is not supported"
+  let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
+  let (fn, arg) ← match name, k with
+    | "count", _ => pure (AggFn.count, arg)
+    | "sum", .int => pure (.sum, arg)
+    | "sum", .float => pure (.fsum, arg)
+    | "avg", .int => pure (.avg, .un .itof arg)
+    | "avg", .float => pure (.avg, arg)
+    -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
+    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
+    -- to other values.
+    | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
+    | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
+    | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
+    | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
+    -- NULLs are skipped (`Measure.inputs`), as with Ibis's
+    -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
+    | "array_agg", _ => pure (.collect, arg)
+    | n, _ => throw s!"unsupported aggregate function: {n}"
+  if fn == .collect then
+    if distinct then throw "array_agg(DISTINCT …) is not supported"
+    let skipsNull := match filter with
+      | some f => f == .un .not (.un .isNull arg) ||
+          (match f with | .bin .and _ (.un .not (.un .isNull a)) => a == arg | _ => false)
+      | none => false
+    if !skipsNull then
+      throw "array_agg keeps NULLs; only array_agg(x) FILTER (WHERE x IS NOT NULL) is supported"
+  return { fn, arg, distinct, filter, sort }
+
+/-! ## Window functions -/
+
+/-- A frame bound (Substrait's `WindowFunction.Bound`); `CURRENT ROW` is
+`preceding 0`. -/
+def parseBound (lower : Bool) (b : Option Json) : J FrameBound := do
+  let unbounded : FrameBound := if lower then .unboundedPreceding else .unboundedFollowing
+  let some b := b | return unbounded
+  let offset (j : Json) : J Nat := do
+    let k ← (field? j "offset").elim (pure 0) getInt
+    if k < 0 then throw "negative frame offsets are not supported" else return k.toNat
+  match ← oneof "frame bound" b ["unbounded", "currentRow", "preceding", "following"] with
+  | ("unbounded", _) => return unbounded
+  | ("currentRow", _) => return .preceding 0
+  | ("preceding", j) => return .preceding (← offset j)
+  | (_, j) => return .following (← offset j)
+
+/-- A window's frame. Offsets of a `RANGE` frame are in the unit of its one
+sort key, an integer, timestamp (microseconds) or date (days). -/
+def parseFrame (cols : List Kind) (sort : List SortKey) (w : Json) : J Frame := do
+  let range ← match field? w "boundsType" with
+    | some (.str "BOUNDS_TYPE_ROWS") => pure false
+    | none | some (.str "BOUNDS_TYPE_RANGE") | some (.str "BOUNDS_TYPE_UNSPECIFIED") => pure true
+    | some b => throw s!"unsupported window bounds type: {b.compress}"
+  let fr : Frame := ⟨range, ← parseBound true (field? w "lowerBound"),
+    ← parseBound false (field? w "upperBound")⟩
+  if range && ([fr.lo.offset, fr.hi.offset].any fun o => o.any (· != 0)) then
+    let [k] := sort | throw "RANGE frames with offsets need exactly one sort key"
+    if ![Kind.int, .time, .date].contains (cols.getD k.col .other) then
+      throw "RANGE frames with offsets need an integer, timestamp or date sort key"
+  return fr
+
+/-- An expression evaluating it cannot fail: columns, constants and their
+conversions to doubles. Window aggregates only take these, so their rows
+raise nothing (`Safety.lean` counts only sums wrapping around). -/
+def issueFree : Expr → Bool
+  | .lit _ | .field _ => true
+  | .un .itof a => issueFree a
+  | _ => false
+
 /-- A `windowFunction` expression: its `PARTITION BY`, `ORDER BY` and function.
-The frame is ignored: it doesn't affect `ROW_NUMBER`, `LAG` or `LEAD`. -/
-def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
+The frame matters to aggregates and `FIRST_VALUE`/`LAST_VALUE`/`NTH_VALUE`
+only; ranks and `ROW_NUMBER`, `LAG`, `LEAD` ignore it. -/
+def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (w : Json) :
     J (List Nat × List SortKey × WinFn) := do
   let anchor ← natD w "functionReference"
   let some name := fns.lookup anchor
@@ -1042,12 +1352,46 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
           | _ => throw s!"{name} defaults must be constants"
         | none => throw s!"{name} defaults must be constants"
     return (c, offset, dflt)
-  let f ← match baseName name with
-    | "row_number" =>
-      if args.isEmpty then pure WinFn.rowNumber else throw "row_number takes no arguments"
-    | "lag" => do let (c, k, d) ← shifted args; pure (.lag c k d)
-    | "lead" => do let (c, k, d) ← shifted args; pure (.lead c k d)
-    | n => throw s!"unsupported window function: {n}"
+  let positive (j : Json) : J Nat := do
+    match ← constOf? fns j with
+    | some (.int k) => if 0 < k then pure k.toNat else throw s!"{name} needs a positive constant"
+    | _ => throw s!"{name} needs a positive constant"
+  let noArgs (f : WinFn) : J WinFn :=
+    if args.isEmpty then pure f else throw s!"{baseName name} takes no arguments"
+  let f ← match baseName name, args with
+    | "row_number", _ => noArgs .rowNumber
+    | "rank", _ => noArgs (.rank sort)
+    | "dense_rank", _ => noArgs (.denseRank sort)
+    | "percent_rank", _ => noArgs (.percentRank sort)
+    | "cume_dist", _ => noArgs (.cumeDist sort)
+    | "ntile", [k] => pure (.ntile (← positive k))
+    | "lag", _ => do let (c, k, d) ← shifted args; pure (.lag c k d)
+    | "lead", _ => do let (c, k, d) ← shifted args; pure (.lead c k d)
+    | "first_value", [c] =>
+      pure (.firstValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w))
+    | "last_value", [c] =>
+      pure (.lastValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w))
+    | "nth_value", [c, n] =>
+      pure (.nthValue (← parseColumn fns cols "function arguments" c) (← positive n) sort
+        (← parseFrame cols sort w))
+    | n, _ =>
+      if !["count", "sum", "avg", "min", "max"].contains n then
+        throw s!"unsupported window function: {n}"
+      -- The window's own sort keys order the frame, not the aggregate.
+      let m ← parseMeasure fns cols bits (Json.mkObj [("measure", Json.mkObj [
+        ("functionReference", (field? w "functionReference").getD .null),
+        ("arguments", (field? w "arguments").getD (.arr #[])),
+        ("outputType", (field? w "outputType").getD .null)])])
+      if m.distinct then throw "DISTINCT window aggregates are not supported"
+      if !issueFree m.arg then throw "window aggregates of expressions are not supported; use a column"
+      let fr ← parseFrame cols sort w
+      -- DataFusion slides a frame by retracting the rows that leave it: a
+      -- sum of doubles then rounds differently from adding up the frame, an
+      -- average of a frame that has become empty is NaN, and a `MIN` of one
+      -- with only NULLs left is the last minimum.
+      if (m.fn == .fsum || m.fn == .avg || m.fn == .min) && fr.lo != .unboundedPreceding then
+        throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
+      pure (.agg m sort fr)
   return (part, sort, f)
 
 /-- The nodes under `key` inside an expression, in the order `replaceNodes`
@@ -1090,7 +1434,7 @@ order: input columns, then each expression. -/
 def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kind) (bits : List Nat)
     (es : List Json) : J Rel := do
   let n := cols.length
-  let uses ← (es.flatMap windowsIn).mapM (parseWindow fns cols)
+  let uses ← (es.flatMap windowsIn).mapM (parseWindow fns cols bits)
   -- Group the uses: (partition, sort, functions), in order of first use.
   let groups := uses.foldl (init := ([] : List (List Nat × List SortKey × List WinFn)))
     fun gs (part, sort, f) =>
@@ -1188,65 +1532,6 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   match field? r "projection" with
   | some m => return .emit filtered (← parseMask m)
   | none => return filtered
-
-/-- One `AggregateRel` measure. `AVG` of integers averages their conversions
-to double; `COUNT(*)` may come with no argument. -/
-def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
-    J Measure := do
-  let m ← field mj "measure"
-  let anchor ← natD m "functionReference"
-  let some name := fns.lookup anchor
-    | throw s!"function reference {anchor} is not declared in extensions"
-  let name := baseName name
-  -- Only `ARRAY_AGG` depends on the order of its rows.
-  let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
-  if !sort.isEmpty && name != "array_agg" then
-    throw s!"ordered aggregates are not supported: {name}"
-  let distinct ← match field? m "invocation" with
-    | none | some (.str "AGGREGATION_INVOCATION_ALL")
-    | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
-    | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
-    | some i => throw s!"unsupported aggregate invocation: {i.compress}"
-  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols bits c : J Expr)
-  let args ← (← arrD m "arguments").mapM fun a => field a "value"
-  let arg ← match args with
-    | [a] => parseExpr fns cols bits a
-    | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
-    | _ => throw s!"{name} takes one argument"
-  let k := arg.kind cols
-  checkOptions name (k == .float || name == "avg") (← arrD m "options")
-  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
-  -- (`avg:i64` with an `i64` result), which it is not.
-  if name == "avg" then
-    if let some ty := field? m "outputType" then
-      if typeKind ty != .float then throw "avg with a non-double result is not supported"
-  let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
-  let (fn, arg) ← match name, k with
-    | "count", _ => pure (AggFn.count, arg)
-    | "sum", .int => pure (.sum, arg)
-    | "sum", .float => pure (.fsum, arg)
-    | "avg", .int => pure (.avg, .un .itof arg)
-    | "avg", .float => pure (.avg, arg)
-    -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
-    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
-    -- to other values.
-    | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
-    | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
-    | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
-    | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
-    -- NULLs are skipped (`Measure.inputs`), as with Ibis's
-    -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
-    | "array_agg", _ => pure (.collect, arg)
-    | n, _ => throw s!"unsupported aggregate function: {n}"
-  if fn == .collect then
-    if distinct then throw "array_agg(DISTINCT …) is not supported"
-    let skipsNull := match filter with
-      | some f => f == .un .not (.un .isNull arg) ||
-          (match f with | .bin .and _ (.un .not (.un .isNull a)) => a == arg | _ => false)
-      | none => false
-    if !skipsNull then
-      throw "array_agg keeps NULLs; only array_agg(x) FILTER (WHERE x IS NOT NULL) is supported"
-  return { fn, arg, distinct, filter, sort }
 
 /-! ## Subqueries
 

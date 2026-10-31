@@ -325,6 +325,166 @@ theorem trunc_mono (u : TimeUnit) {s t : Int} (h : s ≤ t) : trunc u s ≤ trun
   case quarter => exact Int.mul_le_mul_of_nonneg_right (monthStart_mono (by omega)) hu
   case year => exact Int.mul_le_mul_of_nonneg_right (monthStart_mono (by omega)) hu
 
+/-! ## Dates
+
+A DATE is the number of days since 1970-01-01. DataFusion computes date
+arithmetic with `chrono`, which fails (panics) outside the years it
+represents; `date_trunc` of a DATE goes through nanoseconds, like the
+calendar truncations above. -/
+
+/-- The days `chrono` represents: -262143-01-01 (`partMin`) to 262142-12-31
+(`partMax`). -/
+def dayMin : Int := -96465292
+def dayMax : Int := 95026236
+
+/-- The days whose midnight is within DataFusion's nanosecond range. -/
+def nsDayMin : Int := -106751
+def nsDayMax : Int := 106751
+
+/-- `date_part(p, d)` of a date: the part of its midnight (`NULL` outside
+the dates `chrono` represents, as for timestamps). -/
+def datePartDay (p : DatePart) (d : Int) : Option Int := datePart p (d * usPerDay)
+
+/-- `date_trunc(u, d)` of a date, as a date. -/
+def truncDay (u : TimeUnit) (d : Int) : Int := days (trunc u (d * usPerDay))
+
+/-- Adding `m` months to day `d`: the same day of month `monthIndex d + m`,
+or that month's last day if it is shorter (2024-01-31 + 1 month is
+2024-02-29), as DataFusion, DuckDB and Polars do. -/
+def addMonths (m d : Int) : Int :=
+  min (monthStart (monthIndex d + m) + (d - monthStart (monthIndex d)))
+    (monthStart (monthIndex d + m + 1) - 1)
+
+/-- Adding `m` months to a timestamp: to its day, keeping the time of day. -/
+def addMonthsUs (m ts : Int) : Int := addMonths m (days ts) * usPerDay + ts % usPerDay
+
+/-- Day `x` of month `j` (between its first day and the next month's) is in
+month `j`. -/
+theorem monthIndex_eq {j x : Int} (h₁ : monthStart j ≤ x) (h₂ : x < monthStart (j + 1)) :
+    monthIndex x = j := by
+  have hs := monthIndex_spec x
+  rcases Int.lt_trichotomy (monthIndex x) j with hlt | heq | hgt
+  · have := monthStart_mono (show monthIndex x + 1 ≤ j by omega); omega
+  · exact heq
+  · have := monthStart_mono (show j + 1 ≤ monthIndex x by omega); omega
+
+/-- Adding `m` months lands in the month `m` months later … -/
+theorem addMonths_month (m d : Int) : monthIndex (addMonths m d) = monthIndex d + m := by
+  have hs := monthIndex_spec d
+  have hstep := monthStart_step (monthIndex d + m)
+  apply monthIndex_eq <;> simp only [addMonths] <;> omega
+
+/-- … on the same day of the month, unless that month is shorter: then on its
+last day. -/
+theorem addMonths_day (m d : Int) :
+    addMonths m d - monthStart (monthIndex d + m) =
+      min (d - monthStart (monthIndex d)) (monthStart (monthIndex d + m + 1) - 1 - monthStart (monthIndex d + m)) := by
+  simp only [addMonths]; omega
+
+theorem addMonths_mono (m : Int) {d e : Int} (h : d ≤ e) : addMonths m d ≤ addMonths m e := by
+  have hd := monthIndex_spec d
+  have he := monthIndex_spec e
+  have hi := monthIndex_mono h
+  have hstep := monthStart_step (monthIndex e + m)
+  simp only [addMonths]
+  rcases Int.lt_or_eq_of_le hi with hlt | heq
+  · have := monthStart_mono (show monthIndex d + m + 1 ≤ monthIndex e + m by omega)
+    omega
+  · rw [heq]; omega
+
+theorem truncDay_mono (u : TimeUnit) {d e : Int} (h : d ≤ e) : truncDay u d ≤ truncDay u e :=
+  days_mono (trunc_mono u (Int.mul_le_mul_of_nonneg_right h (by decide)))
+
+#guard addMonths 1 19753 == 19782 && addMonths 1 19782 == 19811 && addMonths (-1) 19813 == 19782
+#guard addMonths 12 19782 == 20147 && addMonths (-13) 19813 == 19416
+#guard addMonthsUs 1 (19753 * usPerDay + 36000000000) == 19782 * usPerDay + 36000000000
+#guard addMonthsUs 1 (-1) == 2678400000000 - 1
+#guard [DatePart.year, .month, .day, .dow].map (datePartDay · 19782) == [some 2024, some 2, some 29, some 4]
+#guard datePartDay .year dayMax == some 262142 && datePartDay .year (dayMax + 1) == none
+#guard datePartDay .year dayMin == some (-262143) && datePartDay .year (dayMin - 1) == none
+#guard [TimeUnit.day, .week, .month, .quarter, .year].map (truncDay · 19782) == [19782, 19779, 19754, 19723, 19723]
+
+/-! ## Formatting (`strftime`, chrono's)
+
+The directives chrono formats the same way as DuckDB, Polars and the other
+engines: `%Y` (the year, padded to four digits, with a sign outside 0 to
+9999), `%m`, `%d`, `%H`, `%M`, `%S`, `%j` (day of the year), `%F`
+(`%Y-%m-%d`), `%T` (`%H:%M:%S`) and `%%`. -/
+
+/-- `x ≥ 0` in decimal, padded with zeros to `n` digits. -/
+def pad (n : Nat) (x : Int) : String :=
+  let s := toString x.toNat
+  String.ofList (List.replicate (n - s.length) '0') ++ s
+
+def yearText (y : Int) : String :=
+  if 0 ≤ y ∧ y ≤ 9999 then pad 4 y else if 9999 < y then "+" ++ toString y else "-" ++ pad 4 (-y)
+
+/-- A piece of a format: text, or a directive (its letter). -/
+inductive FmtPiece where
+  | text (c : Char)
+  | dir (c : Char)
+  deriving Repr, DecidableEq
+
+def fmtDirectives : List Char := ['Y', 'm', 'd', 'H', 'M', 'S', 'j', 'F', 'T', '%']
+
+/-- The pieces of a format string, or `none` if it has a directive outside
+`fmtDirectives` (or ends in `%`). -/
+def parseFormat : List Char → Option (List FmtPiece)
+  | [] => some []
+  | '%' :: c :: rest =>
+    if fmtDirectives.contains c then (parseFormat rest).map (.dir c :: ·) else none
+  | ['%'] => none
+  | c :: rest => (parseFormat rest).map (.text c :: ·)
+
+def FmtPiece.render (ts : Int) : FmtPiece → String
+  | .text c => c.toString
+  | .dir 'Y' => yearText (partOf .year ts)
+  | .dir 'm' => pad 2 (partOf .month ts)
+  | .dir 'd' => pad 2 (partOf .day ts)
+  | .dir 'H' => pad 2 (partOf .hour ts)
+  | .dir 'M' => pad 2 (partOf .minute ts)
+  | .dir 'S' => pad 2 (partOf .second ts)
+  | .dir 'j' => pad 3 (partOf .doy ts)
+  | .dir 'F' => yearText (partOf .year ts) ++ "-" ++ pad 2 (partOf .month ts) ++ "-" ++ pad 2 (partOf .day ts)
+  | .dir 'T' => pad 2 (partOf .hour ts) ++ ":" ++ pad 2 (partOf .minute ts) ++ ":" ++ pad 2 (partOf .second ts)
+  | .dir _ => "%"
+
+/-- `strftime(ts, fmt)` for a format `parseFormat` accepts. -/
+def strftime (fmt : String) (ts : Int) : String :=
+  String.join (((parseFormat fmt.toList).getD []).map (·.render ts))
+
+/-- The time of day of a timestamp (`CAST(ts AS TIME)`), in microseconds. -/
+def timeOfDay (ts : Int) : Int := ts % usPerDay
+
+theorem timeOfDay_range (ts : Int) : 0 ≤ timeOfDay ts ∧ timeOfDay ts < usPerDay := by
+  simp only [timeOfDay, usPerDay]; omega
+
+#guard strftime "%Y-%m-%d %H:%M:%S" 1700000000123456 == "2023-11-14 22:13:20"
+#guard strftime "%Y-%m-%d %H:%M:%S" (-62135596800000001) == "0000-12-31 23:59:59"
+#guard strftime "%F %T" 253402300800000000 == "+10000-01-01 00:00:00"
+#guard strftime "%Y" partMin == "-262143" && strftime "%j %%" (-1) == "365 %"
+#guard (parseFormat "%Y %q".toList).isNone && (parseFormat "50%".toList).isNone
+#guard timeOfDay (-1) == usPerDay - 1
+
+/-! ## Buckets
+
+`date_bin(k, ts, origin)` (Ibis's `bucket`, Polars' `group_by_dynamic` without
+overlap): the start of the `k`-microsecond bucket, counted from `origin`,
+that `ts` falls in. -/
+
+def bucket (k : Nat) (origin ts : Int) : Int := floorTo k (ts - origin) + origin
+
+theorem bucket_mono (k : Nat) (origin : Int) {s t : Int} (h : s ≤ t) :
+    bucket k origin s ≤ bucket k origin t := by
+  simp only [bucket]
+  rcases Nat.eq_zero_or_pos k with rfl | hk
+  · simp [floorTo]
+  · have := floorTo_mono (k := (k : Int)) (by omega) (show s - origin ≤ t - origin by omega)
+    omega
+
+#guard bucket 900000000 0 (-1) == -900000000 && bucket 900000000 300000000 0 == -600000000
+#guard bucket 900000000 0 899999999 == 0 && bucket 900000000 0 900000000 == 900000000
+
 /-! Values DataFusion gives (`python/tests/test_time.py` checks many more). -/
 
 #guard DatePart.all.map (partOf · 1700000000123456) == [2023, 4, 11, 46, 14, 22, 13, 20, 20123, 20123456, 2, 318]

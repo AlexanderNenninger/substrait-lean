@@ -19,7 +19,7 @@ verifies it, and which engines run it.
 | `pitfalls.toml` | Cross-engine correctness pitfalls, each linked to the DataFusion quirks of [chapter 16 of the tour](../notebooks/16_datafusion_semantics.py) |
 | `schemas.toml` | The tables of each dataset (only the columns the queries use), with value pools for synthetic data |
 | `status.json` | What the probes found for every query (generated) |
-| `INDEX.md`, `FINDINGS.md` tables | Generated from the above |
+| `INDEX.md`, `FINDINGS.md` tables | Generated from the above, on `main` only (see below) |
 
 A query looks like this:
 
@@ -64,7 +64,8 @@ are paraphrased only, never quoted.
 cd python
 uv run python -m sverify.catalogue                 # validate the TOML
 uv run python -m sverify.catalogue tpch win-dedup-latest   # probe a suite or query
-uv run python -m sverify.catalogue --write         # probe all; rewrite status.json, INDEX.md, FINDINGS.md tables
+uv run python -m sverify.catalogue --write         # probe all; rewrite status.json
+uv run python -m sverify.catalogue --write-tables  # rewrite INDEX.md and FINDINGS.md's tables from status.json
 ```
 
 A probe compiles the query as `sverify` compiles everything (an Ibis
@@ -83,7 +84,14 @@ place (`as_double`), to separate DECIMAL from the other gaps.
 when a recorded status no longer holds, and checks the annotations against the
 probes: no verified query may need a feature marked `no`, and every failure
 message must point at a feature the query lists as not fully supported. After
-a change in coverage, run `--write` and review the diff.
+a change in coverage, run `--write` and review the diff of `status.json`.
+
+`INDEX.md` and the tables in `FINDINGS.md` are not committed on feature
+branches: commit `status.json` and the TOML, and leave the generated tables
+to the `Generated files` workflow
+([`.github/workflows/generated.yml`](../.github/workflows/generated.yml)),
+which runs `--write-tables` after every push to `main` and pushes the result.
+Run `--write-tables` locally to look at them, then `git checkout` them again.
 
 Date literals are written `D("1994-01-01")`, a cast of a string. Through
 Ibis's DataFusion SQL, `ibis.date("…")` compiled to `DATE_TRUNC('DAY', '…')`,
