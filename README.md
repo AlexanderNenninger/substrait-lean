@@ -1255,6 +1255,8 @@ interval, possible booleans, and whether it can be a string.
   right side's columns (for an inner join, given a NOT NULL foreign key).
   A `GROUP BY` column that the other grouping columns determine (functional
   dependencies from keys and equalities, `Rel.fds_sound`) moves into a `MIN`.
+  A `GROUP BY` of left columns over a join on a key of the right side is
+  computed before the join (eager aggregation).
   `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
