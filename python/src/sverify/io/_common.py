@@ -11,11 +11,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
+import duckdb
 import ibis
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify.contracts import Condition, Fact, Unique, resolve
+from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.engine import to_sql
 from sverify.incremental import IncrementalView, plan_digest
 
@@ -130,10 +131,46 @@ def _sides(t: pa.DataType, files: Sequence[ColumnStats], hi_slack: timedelta) ->
     return out
 
 
+FILTER = "source filter"
+
+
+def not_true(where: str) -> str:
+    """SQL that is TRUE exactly where `where` is not (FALSE or NULL)."""
+    return f"CASE WHEN ({where}) THEN FALSE ELSE TRUE END"
+
+
+def prune(
+    files: Mapping[str, Mapping[str, ColumnStats]],
+    schema: pa.Schema,
+    where: str,
+    *,
+    hi_slack: timedelta = timedelta(0),
+) -> set[str]:
+    """The files that may hold rows passing `where`. A file is skipped only
+    if Lean proves from the facts its statistics give that `where` is not
+    TRUE on any of its rows (`contract_sound`); then filtering the table
+    reads the same rows as filtering the other files (`prune_sound` in
+    `SubstraitLean/TableFormat.lean`)."""
+    table = ibis.table(ibis.Schema.from_pyarrow(schema), name="file")
+    keep = set()
+    for path, stats in files.items():
+        facts = [f.condition for f in stats_facts([stats], schema, "file", hi_slack=hi_slack)]
+        if not facts or not _prove_from(table, facts, [not_true(where)]):
+            keep.add(path)
+    return keep
+
+
+def filter_rows(table: pa.Table, where: str) -> pa.Table:
+    """The rows of `table` on which `where` is TRUE (DuckDB)."""
+    con = duckdb.connect()
+    con.register("t", table)
+    return con.sql(f"SELECT * FROM t WHERE {where}").fetch_arrow_table().cast(table.schema)
+
+
 def condition_sql(cond: Condition, schema: ibis.Schema) -> str | None:
     """A row condition as a standalone SQL expression over the columns, or
-    None if it has none (`unique`)."""
-    if isinstance(cond, Unique):
+    None if it has none (`unique`, `references`)."""
+    if isinstance(cond, TableCondition):
         return None
     if isinstance(cond, str):
         return cond

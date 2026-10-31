@@ -57,6 +57,7 @@ from sverify.contracts import (
     Discharged,
     Fact,
     PreconditionError,
+    References,
     Unique,
     discharge,
     label,
@@ -716,6 +717,8 @@ class Pipeline:
         for t, conds in requires.items():
             if t in self.views:
                 raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
+            if refs := [label(c) for c in conds if isinstance(c, References)]:
+                raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
             for c in new:

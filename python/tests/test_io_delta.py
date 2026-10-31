@@ -8,6 +8,7 @@ from pathlib import Path
 
 import ibis
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from deltalake import DeltaTable, write_deltalake
 from ibis import _
@@ -765,3 +766,30 @@ def test_deletion_vectors(tmp_path):
     [s] = pipe.refresh(audit=True).sources
     assert (s.mode, s.inserts, s.deletes) == ("change feed", 0, 2)
     assert sorted(view.rows()) == [(1, 5), (3, 1)]
+
+
+# -- Pruning files with a proved criterion -------------------------------------
+
+
+def test_where_skips_files_the_reader_would_scan(tmp_path):
+    path = tmp_path / "orders"
+    make_orders(path, [(1, "ada", 5), (2, "bob", 50)])
+    write_deltalake(path, orders_table([(3, "cy", 60), (4, "dan", 80)]), mode="append")
+    src = DeltaSource(str(path), where="amount * 2 > 100")
+    snap = src.snapshot()
+    # Lean proves amount * 2 > 100 is not TRUE in the file with amounts in [5, 50].
+    assert len(src.skipped) == 1
+    assert sorted(arrow_rows(snap.table)) == [(3, "cy", 60), (4, "dan", 80)]
+    assert ("amount * 2 > 100", "source filter") in [(f.condition, f.source) for f in snap.facts]
+    # pyarrow's statistics pushdown keeps both files for this filter.
+    dataset = DeltaTable(str(path)).to_pyarrow_dataset()
+    expr = pc.field("amount") * 2 > 100
+    assert len([f for f in dataset.get_fragments() if f.subset(filter=expr).row_groups]) == 2
+    # As a pipeline source, changes are filtered the same way.
+    pipe = sv.Pipeline(sv.connect())
+    orders = pipe.source("orders", src)
+    view = pipe.view("ids", orders.select(orders.id, orders.amount))
+    write_deltalake(path, orders_table([(5, "eve", 10), (6, "fay", 70)]), mode="append")
+    DeltaTable(str(path)).delete("id = 3")
+    pipe.refresh(audit=True)
+    assert sorted(view.rows()) == [(4, 80), (6, 70)]
