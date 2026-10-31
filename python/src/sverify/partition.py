@@ -28,12 +28,19 @@ partition column guarantees. `run_sharded` checks it on the data. With them:
   columns do, run on each shard and are concatenated, whatever their
   measures (except `SUM`/`AVG` of doubles, which add in row order);
 * `COUNT(DISTINCT k)` and `SUM(DISTINCT k)` of the key itself run in two
-  phases.
+  phases;
+* a join of two sharded tables whose condition equates their keys
+  (co-partitioned: `ON r.k = s.k`, inner, left, semi or anti) runs on each
+  shard;
+* a window whose `PARTITION BY` contains the key runs on each shard, when
+  `unique=` columns show that its `PARTITION BY` and `ORDER BY` columns have
+  no ties (Lean breaks ties by row order, which sharding does not keep).
+  `run_sharded` checks `unique` on the data too.
 
 Refused, with the reason: `SUM`/`AVG` of doubles (floating-point addition is
 not associative, so the rounding would depend on the split), other
-`DISTINCT` aggregates, `DISTINCT` without the key, windows, `FETCH`, and
-joins of two sharded tables. `float_order="any"` splits `SUM`/`AVG` of
+`DISTINCT` aggregates, `DISTINCT` without the key, other windows, `FETCH`,
+and joins of sharded tables that are not co-partitioned. `float_order="any"` splits `SUM`/`AVG` of
 doubles anyway: the result is then `Split.proved = False`, the sums of
 doubles round as the split makes them, and the rest of the plan is still
 what Lean computes.
@@ -106,23 +113,36 @@ def split(
     sharded: Sequence[str],
     *,
     keys: Mapping[str, Sequence[str]] | None = None,
+    unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
     float_order: FloatOrder = "exact",
 ) -> Split:
     """Split a Substrait plan for evaluation on shards of the tables `sharded`,
-    each split on the columns `keys[t]` (if given)."""
+    each split on the columns `keys[t]` (if given). `unique[t]` lists column
+    sets with no two equal rows in the whole table `t`."""
     p = json.loads(plan) if isinstance(plan, str) else plan
     cols = _columns(p)
+
+    def index(t: str, names: Sequence[str]) -> list[int]:
+        missing = [n for n in names if n not in cols.get(t, [])]
+        if missing:
+            raise ValueError(f"the plan's table {t} has no columns {missing}")
+        return [cols[t].index(n) for n in names]
+
     positions: dict[str, list[int]] = {}
     for t, names in (keys or {}).items():
         if t not in sharded:
             raise ValueError(f"split key for {t}, which is not sharded")
         if not names:
             raise ValueError(f"the split key of {t} names no columns")
-        missing = [n for n in names if n not in cols.get(t, [])]
-        if missing:
-            raise ValueError(f"the plan's table {t} has no columns {missing}")
-        positions[t] = [cols[t].index(n) for n in names]
-    request = {"plan": p, "sharded": list(sharded), "keys": positions, "float_order": float_order}
+        positions[t] = index(t, names)
+    uniques = {t: [index(t, names) for names in sets] for t, sets in (unique or {}).items()}
+    request = {
+        "plan": p,
+        "sharded": list(sharded),
+        "keys": positions,
+        "unique": uniques,
+        "float_order": float_order,
+    }
     code, out, err = run_checker(("--shard",), json.dumps(request))
     if code == 5:
         raise NotShardable(err.strip())
@@ -154,6 +174,23 @@ def check_keys(shards: Sequence[Mapping[str, pa.Table]], keys: Mapping[str, Sequ
                     )
 
 
+def check_unique(
+    tables: Mapping[str, Sequence[pa.Table]], unique: Mapping[str, Sequence[Sequence[str]]]
+) -> None:
+    """Raise unless no two rows of a table (all its pieces together) agree
+    on any of its `unique` column sets."""
+    for t, sets in unique.items():
+        for names in sets:
+            seen: set[tuple] = set()
+            for piece in tables[t]:
+                columns = [piece.column(n).to_pylist() for n in names]
+                for key in zip(*columns, strict=True):
+                    k = tuple(map(_key_value, key))
+                    if k in seen:
+                        raise ValueError(f"{t} has two rows with {list(names)} = {key}")
+                    seen.add(k)
+
+
 def run_sharded(
     plan: str | dict,
     shards: Sequence[Mapping[str, pa.Table]],
@@ -161,6 +198,7 @@ def run_sharded(
     sharded: Sequence[str],
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
+    unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
     float_order: FloatOrder = "exact",
     max_workers: int | None = None,
 ) -> pa.Table:
@@ -177,10 +215,15 @@ def run_sharded(
     for k, shard in enumerate(shards):
         if set(shard) != set(sharded):
             raise ValueError(f"shard {k} has tables {sorted(shard)}, expected {sorted(sharded)}")
-    s = split(plan, sharded, keys=keys, float_order=float_order)
+    s = split(plan, sharded, keys=keys, unique=unique, float_order=float_order)
+    common = dict(broadcast or {})
     if keys:
         check_keys(shards, keys)
-    common = dict(broadcast or {})
+    if unique:
+        pieces = {
+            t: [shard[t] for shard in shards] if t in sharded else [common[t]] for t in unique
+        }
+        check_unique(pieces, unique)
 
     def run(shard: Mapping[str, pa.Table]) -> pa.Table:
         return polars_engine.run(s.partial, {**common, **shard})
