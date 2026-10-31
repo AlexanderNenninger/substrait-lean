@@ -274,11 +274,11 @@ semi-structured data.
 | modelling | 14 | 10 | 0 | 2 | 2 | 13 | 10 | 10 | 9 |
 | product | 13 | 10 | 0 | 3 | 0 | 12 | 10 | 10 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 11 | 0 | 4 | 0 | 13 | 11 | 11 | 8 |
+| timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
 | tpcds | 8 | 0 | 5 | 3 | 0 | 8 | 5 | 5 | 0 |
 | tpch | 22 | 0 | 17 | 5 | 0 | 22 | 17 | 17 | 5 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 73 | 32 | 32 | 2 | 134 | 104 | 104 | 67 |
+| **all** | 139 | 74 | 32 | 31 | 2 | 134 | 105 | 105 | 67 |
 
 ### Feature frequency
 
@@ -364,7 +364,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `recursive_cte` | relational | 1 | 1% | no |
 | `generate_series` | relational | 1 | 1% | partial |
 | `string_agg` | aggregation | 1 | 1% | no |
-| `time_bucket` | expressions | 1 | 1% | no |
+| `time_bucket` | expressions | 1 | 1% | partial |
 | `range_frame` | windows | 1 | 1% | partial |
 | `timezone` | expressions | 1 | 1% | no |
 | `sort_by_expression` | relational | 1 | 1% | yes |
@@ -393,7 +393,6 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
 | `regex_replace` | 1 | 1 | no |  |
 | `string_agg` | 1 | 1 | no |  |
-| `time_bucket` | 1 | 1 | no | refused by the Ibis producer (TimestampBucket), which Ibis cannot compile to DataFusion SQL either; DATE_BIN is refused by the checker |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 | `corr` | 1 | 0 | no |  |
@@ -401,11 +400,11 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 105 queries that verify (some only as DOUBLE):
+Over the 106 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 32 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 33 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 5 |
 | duckdb: differs | 1 |
 | polars: differs | 1 |
