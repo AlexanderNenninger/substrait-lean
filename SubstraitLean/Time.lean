@@ -414,7 +414,7 @@ engines: `%Y` (the year, padded to four digits, with a sign outside 0 to
 /-- `x ≥ 0` in decimal, padded with zeros to `n` digits. -/
 def pad (n : Nat) (x : Int) : String :=
   let s := toString x.toNat
-  String.mk (List.replicate (n - s.length) '0') ++ s
+  String.ofList (List.replicate (n - s.length) '0') ++ s
 
 def yearText (y : Int) : String :=
   if 0 ≤ y ∧ y ≤ 9999 then pad 4 y else if 9999 < y then "+" ++ toString y else "-" ++ pad 4 (-y)
