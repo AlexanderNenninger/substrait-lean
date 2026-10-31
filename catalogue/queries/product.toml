@@ -1,0 +1,209 @@
+# Product and marketing analytics: funnels, cohorts, retention, attribution,
+# basket analysis and distribution summaries. Re-written in our own words
+# over the `app` data.
+dataset = "app"
+
+[[query]]
+id = "pa-funnel-ordered"
+title = "Ordered conversion funnel"
+intent = "Count the users who viewed, then added to cart, then purchased, each step after the previous one."
+domain = "product-analytics"
+source = { name = "Cube blog: SQL queries for funnel analysis", url = "https://cube.dev/blog/sql-queries-for-funnel-analysis", licence = "no licence stated; paraphrased" }
+features = ["group_by", "min_max", "agg_filter", "global_aggregate", "count", "case_when"]
+pitfalls = ["null_aggregate: users without a step have NULL step times, and NULL >= t is not true, so they drop out", "tie_order: none, but view and cart at the same instant count as ordered (>=)"]
+ibis = '''
+steps = events.group_by("user_id").aggregate(
+    viewed=_.event_ts.min(where=_.event_name == "view"),
+    carted=_.event_ts.min(where=_.event_name == "add_to_cart"),
+    bought=_.event_ts.min(where=_.event_name == "purchase"),
+)
+carted = steps.viewed.notnull() & (steps.carted >= steps.viewed)
+q = steps.aggregate(
+    step1=steps.viewed.count(),
+    step2=steps.user_id.count(where=carted),
+    step3=steps.user_id.count(where=carted & (steps.bought >= steps.carted)),
+)
+'''
+
+[[query]]
+id = "pa-cohort-retention"
+title = "Monthly cohort retention matrix"
+intent = "For each signup-month cohort, count the users active in each month since signup, next to the cohort size."
+domain = "product-analytics"
+source = { name = "Holistics blog: cohort retention analysis with SQL", url = "https://www.holistics.io/blog/calculate-cohort-retention-analysis-with-sql/", licence = "no licence stated; paraphrased" }
+features = ["inner_join", "date_trunc", "date_part", "arithmetic_int", "group_by", "count_distinct", "order_by"]
+pitfalls = ["timezone_dst: month boundaries in local time", "count_distinct_null: users without events are not in the activity counts, only in the cohort size"]
+ibis = '''
+def month_index(ts):
+    return ts.year() * 12 + ts.month()
+j = users.join(events, "user_id")
+activity = j.mutate(
+    cohort=j.signup_ts.truncate("M"),
+    months_since=month_index(j.event_ts) - month_index(j.signup_ts),
+)
+active = activity.group_by(["cohort", "months_since"]).aggregate(active_users=_.user_id.nunique())
+sizes = users.group_by(cohort=_.signup_ts.truncate("M")).aggregate(cohort_size=_.user_id.nunique())
+q = active.join(sizes, "cohort").order_by(["cohort", "months_since"])
+'''
+
+[[query]]
+id = "pa-day-n-retention"
+title = "Day-1 and day-7 retention"
+intent = "Share of each signup day's users who came back exactly one and seven days later."
+domain = "product-analytics"
+source = { name = "Mode (ThoughtSpot) analytics training: a drop in user engagement", url = "https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement", licence = "no licence stated; paraphrased" }
+features = ["left_join", "cast_date", "interval_day_time", "group_by", "count_distinct", "agg_filter", "arithmetic_float", "cast_numeric"]
+pitfalls = ["integer_division: retained / cohort on integer counts truncates to 0; cast to double", "timezone_dst: 'day' boundaries"]
+ibis = '''
+e = events.mutate(day=events.event_ts.date())
+u = users.mutate(signup_day=users.signup_ts.date())
+j = u.left_join(e, u.user_id == e.user_id)
+q = j.group_by("signup_day").aggregate(
+    users=j.user_id.nunique(),
+    d1=j.user_id.nunique(where=j.day == j.signup_day + ibis.interval(days=1)),
+    d7=j.user_id.nunique(where=j.day == j.signup_day + ibis.interval(days=7)),
+).mutate(d1_rate=_.d1.cast("float64") / _.users, d7_rate=_.d7.cast("float64") / _.users)
+'''
+
+[[query]]
+id = "pa-first-touch"
+title = "First-touch attribution of purchases"
+intent = "Credit each purchasing user to the channel of their first event and count purchasers per channel."
+domain = "marketing"
+source = { name = "dbt-labs segment package (sessions and first touch)", url = "https://github.com/dbt-labs/segment", licence = "Apache-2.0" }
+features = ["row_number", "dedup_latest", "qualify", "semi_join", "group_by", "count_distinct"]
+pitfalls = ["tie_order: two first events at the same instant with different channels", "null_ordering: a NULL event_ts sorts last ascending in DataFusion, first in Polars by default"]
+ibis = '''
+w = ibis.window(group_by="user_id", order_by="event_ts")
+first = events.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0)
+buyers = events.filter(events.event_name == "purchase")
+q = (
+    first.semi_join(buyers, first.user_id == buyers.user_id)
+    .group_by("channel")
+    .aggregate(purchasers=_.user_id.nunique())
+)
+'''
+
+[[query]]
+id = "pa-repeat-purchase-rate"
+title = "Repeat purchase rate"
+intent = "Share of customers who placed two or more orders."
+domain = "retail"
+source = { name = "Mode (ThoughtSpot) SQL tutorial: business analytics training", url = "https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training", licence = "no licence stated; paraphrased" }
+features = ["group_by", "count", "global_aggregate", "agg_filter", "arithmetic_float", "cast_numeric"]
+pitfalls = ["integer_division: COUNT / COUNT truncates", "empty_aggregate: no customers gives 0 / 0"]
+ibis = '''
+per = orders.group_by("customer_id").aggregate(n=_.count())
+q = per.aggregate(repeat=per.customer_id.count(where=per.n >= 2), customers=per.customer_id.count()).mutate(
+    rate=_.repeat.cast("float64") / _.customers
+)
+'''
+
+[[query]]
+id = "pa-users-without-orders"
+title = "Users who never ordered"
+intent = "List the users with no order."
+domain = "retail"
+source = { name = "PostgreSQL docs: subquery expressions (NOT EXISTS)", url = "https://www.postgresql.org/docs/current/functions-subquery.html", licence = "PostgreSQL" }
+features = ["anti_join"]
+rewrites = ["exists_subquery -> anti join"]
+pitfalls = ["not_in_null: NOT IN (SELECT customer_id …) returns nothing if a customer_id is NULL; the anti join does not"]
+ibis = '''
+q = users.anti_join(orders, users.user_id == orders.customer_id)
+'''
+
+[[query]]
+id = "pa-market-basket"
+title = "Products bought together"
+intent = "List the product pairs that appear together in the most orders."
+domain = "retail"
+source = { name = "OneUptime blog: market basket analysis in ClickHouse", url = "https://oneuptime.com/blog/post/2026-03-31-clickhouse-market-basket-analysis/view", licence = "no licence stated; paraphrased" }
+features = ["self_join", "non_equi_join", "group_by", "count_distinct", "order_by", "limit"]
+pitfalls = ["tie_order: top 10 pairs by count", "null_join_keys: items with a NULL order_id pair with nothing"]
+ibis = '''
+a, b = order_items, order_items.view()
+pairs = a.join(b, (a.order_id == b.order_id) & (a.product_id < b.product_id)).select(
+    order_id=a.order_id, p1=a.product_id, p2=b.product_id
+)
+q = pairs.group_by(["p1", "p2"]).aggregate(orders=_.order_id.nunique()).order_by(ibis.desc("orders")).limit(10)
+'''
+
+[[query]]
+id = "pa-median-order-value"
+title = "Median order value per status"
+intent = "Compute the median and 90th percentile of order amounts per order status."
+domain = "retail"
+source = { name = "DuckDB docs: aggregate functions (median, quantile)", url = "https://duckdb.org/docs/stable/sql/functions/aggregates", licence = "MIT" }
+features = ["group_by", "percentile"]
+pitfalls = ["percentile_method: continuous vs discrete quantiles"]
+ibis = '''
+q = orders.group_by("status").aggregate(median=_.amount.median(), p90=_.amount.quantile(0.9))
+'''
+
+[[query]]
+id = "pa-zscore-outliers"
+title = "Outlier readings by z-score"
+intent = "Flag readings more than three standard deviations from their sensor's mean."
+domain = "iot"
+source = { name = "Polars user guide: window functions over groups", url = "https://docs.pola.rs/user-guide/expressions/window-functions/", licence = "MIT" }
+features = ["window_partition_agg", "avg", "stddev_var", "math_funcs", "filter", "arithmetic_float"]
+pitfalls = ["division_by_zero: a sensor with constant readings has stddev 0", "float_nan: NaN readings"]
+ibis = '''
+w = ibis.window(group_by="sensor_id")
+z = (readings.value - readings.value.mean().over(w)) / readings.value.std().over(w)
+q = readings.mutate(z=z).filter(_.z.abs() > 3)
+'''
+
+[[query]]
+id = "pa-histogram"
+title = "Histogram of order amounts"
+intent = "Count orders in amount bins of width 10."
+domain = "retail"
+source = { name = "Mode (ThoughtSpot) SQL tutorial: business analytics training", url = "https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training", licence = "no licence stated; paraphrased" }
+features = ["math_funcs", "arithmetic_float", "cast_numeric", "group_by", "count", "order_by"]
+pitfalls = ["integer_division: FLOOR(amount / 10) vs amount / 10 on integers truncates toward zero for negatives", "float_nan: NaN amounts land in their own bin"]
+ibis = '''
+q = (
+    orders.group_by(bin=(orders.amount / 10).floor().cast("int64") * 10)
+    .aggregate(n=_.count())
+    .order_by("bin")
+)
+'''
+
+[[query]]
+id = "pa-string-agg"
+title = "Products of each order as a list"
+intent = "List each order's product names as one comma-separated string."
+domain = "retail"
+source = { name = "modern-sql.com: listagg", url = "https://modern-sql.com/feature/listagg", licence = "all rights reserved (Markus Winand); paraphrased" }
+features = ["inner_join", "group_by", "string_agg"]
+pitfalls = ["tie_order: the order inside the list is unspecified without WITHIN GROUP (ORDER BY …)"]
+ibis = '''
+q = order_items.join(products, "product_id").group_by("order_id").aggregate(items=_.name.group_concat(","))
+'''
+
+[[query]]
+id = "pa-ntile-free-spenders"
+title = "Spend deciles with percent rank"
+intent = "Place each customer's total spend on a 0-1 percent-rank scale."
+domain = "marketing"
+source = { name = "PostgreSQL docs: window functions (percent_rank)", url = "https://www.postgresql.org/docs/current/functions-window.html", licence = "PostgreSQL" }
+features = ["group_by", "sum", "ntile"]
+pitfalls = ["rank_semantics: PERCENT_RANK of tied spends is equal"]
+ibis = '''
+spend = orders.group_by("customer_id").aggregate(total=_.amount.sum())
+q = spend.mutate(pr=ibis.percent_rank().over(order_by="total"))
+'''
+
+[[query]]
+id = "pa-cumulative-signups"
+title = "Cumulative signups per day"
+intent = "Show new signups per day and the running total of users."
+domain = "saas"
+source = { name = "PostgreSQL tutorial: window functions", url = "https://www.postgresql.org/docs/current/tutorial-window.html", licence = "PostgreSQL" }
+features = ["cast_date", "group_by", "count", "running_agg", "window_over_aggregate", "sum"]
+pitfalls = ["window_default_frame: none (days are unique after grouping)"]
+ibis = '''
+daily = users.group_by(day=_.signup_ts.date()).aggregate(signups=_.count())
+q = daily.mutate(total=daily.signups.sum().over(ibis.cumulative_window(order_by="day")))
+'''

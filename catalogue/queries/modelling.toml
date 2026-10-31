@@ -1,0 +1,229 @@
+# Data-modelling patterns from dbt projects and packages: pivots, unpivots,
+# slowly changing dimensions, surrogate keys, unions of sources, subscription
+# revenue, hierarchies. Re-written in our own words over the `app` data.
+dataset = "app"
+
+[[query]]
+id = "dbt-pivot-conditional"
+title = "Pivot revenue by category (conditional sums)"
+intent = "Show each customer's revenue per product category as one column per category."
+domain = "retail"
+source = { name = "dbt-utils pivot macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/pivot.sql", licence = "Apache-2.0" }
+features = ["inner_join", "group_by", "sum", "agg_filter", "pivot", "arithmetic_float"]
+pitfalls = ["empty_aggregate: a customer without games purchases gets NULL in that column, not 0", "float_sum_order: double sums"]
+ibis = '''
+j = orders.join(order_items, "order_id").join(products, "product_id")
+rev = j.qty * j.price
+q = j.group_by("customer_id").aggregate(
+    books=rev.sum(where=j.category == "books"),
+    games=rev.sum(where=j.category == "games"),
+    garden=rev.sum(where=j.category == "garden"),
+)
+'''
+
+[[query]]
+id = "dbt-pivot-wider"
+title = "Pivot with Ibis pivot_wider"
+intent = "Show each customer's order count per status as one column per status, with the dataframe-style pivot."
+domain = "retail"
+source = { name = "Polars user guide: pivots", url = "https://docs.pola.rs/user-guide/transformations/pivot/", licence = "MIT" }
+features = ["pivot", "group_by", "count", "agg_filter"]
+pitfalls = ["empty_aggregate: COUNT gives 0 for a missing status where the dataframe pivot gives null"]
+ibis = '''
+q = orders.pivot_wider(
+    id_cols="customer_id",
+    names_from="status",
+    names=["placed", "shipped", "returned", "cancelled"],
+    values_from="order_id",
+    values_agg="count",
+)
+'''
+notes = "With values_agg='sum' or 'count' this is conditional aggregation; Ibis's default (first value) compiles to first_value, which the checker refuses."
+
+[[query]]
+id = "dbt-unpivot-longer"
+title = "Unpivot quarterly columns (pivot_longer)"
+intent = "Turn one row per region with four quarter columns into one row per region and quarter."
+domain = "generic"
+source = { name = "dbt-utils unpivot macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/unpivot.sql", licence = "Apache-2.0" }
+features = ["unpivot", "unnest"]
+ibis = '''
+q = sales_wide.pivot_longer(["q1", "q2", "q3", "q4"], names_to="quarter", values_to="sales")
+'''
+notes = "Ibis compiles pivot_longer to UNNEST of arrays, which DataFusion's Substrait producer cannot convert."
+
+[[query]]
+id = "dbt-unpivot-union"
+title = "Unpivot quarterly columns (UNION ALL)"
+intent = "Turn quarter columns into rows by stacking one projection per column, as dbt-utils does."
+domain = "generic"
+source = { name = "dbt-utils unpivot macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/unpivot.sql", licence = "Apache-2.0" }
+features = ["unpivot", "union_all", "project"]
+pitfalls = ["null_aggregate: NULL cells stay as rows with NULL sales; pandas melt keeps them too, Polars unpivot as well"]
+ibis = '''
+parts = [
+    sales_wide.select("region", quarter=ibis.literal(c), sales=sales_wide[c])
+    for c in ["q1", "q2", "q3", "q4"]
+]
+q = ibis.union(*parts)
+'''
+
+[[query]]
+id = "dbt-scd2-from-updates"
+title = "Build a type-2 history from updates"
+intent = "Turn customer updates into validity ranges, each version valid until the next update."
+domain = "generic"
+source = { name = "dbt docs: snapshots", url = "https://docs.getdbt.com/docs/build/snapshots", licence = "Apache-2.0" }
+features = ["lag_lead", "project"]
+pitfalls = ["tie_order: two updates at the same instant give a zero-length version, in either order", "null_ordering: a NULL updated_at"]
+ibis = '''
+w = ibis.window(group_by="customer_id", order_by="updated_at")
+q = customer_updates.select(
+    "customer_id", "city", "plan",
+    valid_from=customer_updates.updated_at,
+    valid_to=customer_updates.updated_at.lead().over(w),
+)
+'''
+
+[[query]]
+id = "dbt-scd2-point-in-time"
+title = "Point-in-time join to a type-2 dimension"
+intent = "Attach to each order the customer's city as it was when the order was placed."
+domain = "retail"
+source = { name = "dbt docs: snapshots", url = "https://docs.getdbt.com/docs/build/snapshots", licence = "Apache-2.0" }
+features = ["left_join", "range_join", "non_equi_join"]
+pitfalls = ["null_join_keys: the current version has valid_to NULL, which the join must treat as open-ended", "gap_threshold: half-open [valid_from, valid_to) ranges, so an order at the change instant gets the new version"]
+ibis = '''
+h = customer_history
+q = orders.left_join(
+    h,
+    (orders.customer_id == h.customer_id)
+    & (h.valid_from <= orders.order_ts)
+    & (h.valid_to.isnull() | (orders.order_ts < h.valid_to)),
+).select(orders.order_id, orders.order_ts, h.city)
+'''
+
+[[query]]
+id = "dbt-surrogate-key"
+title = "Surrogate key from several columns"
+intent = "Derive a stable hash key for each order item from its natural key columns."
+domain = "generic"
+source = { name = "dbt-utils generate_surrogate_key macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/generate_surrogate_key.sql", licence = "Apache-2.0" }
+features = ["hash", "string_basic", "cast_numeric", "coalesce_nullif"]
+pitfalls = ["null_aggregate: NULL parts must be replaced by a sentinel, or the concatenation is NULL"]
+ibis = '''
+oi = order_items
+key = (
+    oi.order_id.cast("string").fill_null("_null_") + "-" + oi.product_id.cast("string").fill_null("_null_")
+).hash()
+q = oi.mutate(item_key=key)
+'''
+
+[[query]]
+id = "dbt-union-sources"
+title = "Union of sources with aligned columns"
+intent = "Stack two event sources into one table, filling columns a source lacks with NULL and tagging each row with its source."
+domain = "generic"
+source = { name = "dbt-utils union_relations macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/union.sql", licence = "Apache-2.0" }
+features = ["union_all", "project", "cast_numeric"]
+ibis = '''
+a = events.select("user_id", ts=events.event_ts, name=events.event_name, amount=ibis.null("float64"), source=ibis.literal("events"))
+b = orders.select(user_id=orders.customer_id, ts=orders.order_ts, name=ibis.literal("order"), amount=orders.amount, source=ibis.literal("orders"))
+q = a.union(b)
+'''
+
+[[query]]
+id = "dbt-mrr-movements"
+title = "MRR movements per customer and month"
+intent = "Classify each customer's monthly recurring revenue change as new, expansion, contraction or flat."
+domain = "saas"
+source = { name = "dbt-labs mrr-playbook", url = "https://github.com/dbt-labs/mrr-playbook", licence = "no licence stated; paraphrased" }
+features = ["range_join", "inner_join", "group_by", "sum", "lag_lead", "case_when", "window_over_aggregate"]
+pitfalls = ["empty_aggregate: churn (a month with no revenue) needs every customer-month on a spine, not only months with revenue", "null_aggregate: the first month's previous MRR is NULL, which marks it new"]
+ibis = '''
+# `calendar` holds the first day of each month here.
+cm = (
+    calendar.join(subscriptions, (subscriptions.start_date <= calendar.day) & (calendar.day <= subscriptions.end_date))
+    .group_by(["customer_id", "day"])
+    .aggregate(mrr=_.mrr.sum())
+)
+prev = cm.mrr.lag().over(group_by="customer_id", order_by="day")
+q = cm.mutate(
+    prev_mrr=prev,
+    change=ibis.cases(
+        (prev.isnull(), "new"),
+        (cm.mrr > prev, "expansion"),
+        (cm.mrr < prev, "contraction"),
+        else_="flat",
+    ),
+)
+'''
+
+[[query]]
+id = "dbt-org-hierarchy"
+title = "Reporting chain depth (recursive hierarchy)"
+intent = "Find every employee's depth below the top of the management hierarchy."
+domain = "hr"
+source = { name = "PostgreSQL docs: WITH queries (recursive)", url = "https://www.postgresql.org/docs/current/queries-with.html", licence = "PostgreSQL" }
+features = ["recursive_cte", "inner_join", "union_all"]
+pitfalls = ["null_join_keys: the top has a NULL manager_id", "tie_order: none; a cycle in the data makes the recursion run forever without a depth limit"]
+sql = '''
+WITH RECURSIVE chain AS (
+  SELECT emp_id, 0 AS depth FROM employees WHERE manager_id IS NULL
+  UNION ALL
+  SELECT e.emp_id, c.depth + 1
+  FROM employees e JOIN chain c ON e.manager_id = c.emp_id
+  WHERE c.depth < 10
+)
+SELECT emp_id, depth FROM chain
+'''
+notes = "Ibis has no recursive queries, so this is DataFusion SQL. DataFusion 51 cannot plan the standard column list `chain (emp_id, depth)`, so the columns are named in the anchor."
+
+[[query]]
+id = "dbt-generate-date-spine"
+title = "Generate a daily date spine"
+intent = "Generate every day of January 2024 without a calendar table."
+domain = "generic"
+source = { name = "dbt-utils date_spine macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql", licence = "Apache-2.0" }
+features = ["generate_series", "interval_day_time", "date_literal"]
+sql = '''
+SELECT CAST(d AS DATE) AS day
+FROM UNNEST(generate_series(TIMESTAMP '2024-01-01', TIMESTAMP '2024-01-31', INTERVAL '1 day')) AS t(d)
+'''
+
+[[query]]
+id = "dbt-accepted-values-test"
+title = "Data test: accepted values"
+intent = "Return the orders whose status is not one of the accepted values (a failing-rows data test)."
+domain = "generic"
+source = { name = "dbt docs: data tests (accepted_values)", url = "https://docs.getdbt.com/docs/build/data-tests", licence = "Apache-2.0" }
+features = ["filter", "in_list", "coalesce_nullif"]
+pitfalls = ["not_in_null: status NOT IN (…) is NULL, so not returned, for a NULL status; dbt checks NULLs separately"]
+ibis = '''
+q = orders.filter(~orders.status.isin(["placed", "shipped", "returned", "cancelled"]))
+'''
+
+[[query]]
+id = "dbt-unique-test"
+title = "Data test: uniqueness"
+intent = "Return the key values that occur more than once (a failing-rows uniqueness test)."
+domain = "generic"
+source = { name = "dbt docs: data tests (unique)", url = "https://docs.getdbt.com/docs/build/data-tests", licence = "Apache-2.0" }
+features = ["filter", "group_by", "count", "having"]
+pitfalls = ["null_join_keys: NULL keys group together, so two NULLs count as a duplicate here, unlike a UNIQUE constraint"]
+ibis = '''
+q = orders.filter(orders.order_id.notnull()).group_by("order_id").aggregate(n=_.count()).filter(_.n > 1)
+'''
+
+[[query]]
+id = "dbt-relationships-test"
+title = "Data test: referential integrity"
+intent = "Return the order items whose order does not exist (a failing-rows relationships test)."
+domain = "generic"
+source = { name = "dbt docs: data tests (relationships)", url = "https://docs.getdbt.com/docs/build/data-tests", licence = "Apache-2.0" }
+features = ["anti_join", "filter"]
+pitfalls = ["null_join_keys: items with a NULL order_id are excluded first, as dbt does"]
+ibis = '''
+oi = order_items.filter(order_items.order_id.notnull())
+q = oi.anti_join(orders, oi.order_id == orders.order_id)
+'''

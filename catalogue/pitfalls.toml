@@ -1,0 +1,148 @@
+# Correctness pitfalls across engines. A query lists them as "tag: what it
+# means for this query". `quirks` are entries of the DataFusion quirks
+# catalogue in notebooks/14_datafusion_semantics.py (chapter 14 of the tour).
+
+[tie_order]
+description = "The result depends on how ties are broken: ROW_NUMBER, LIMIT or first/last over non-unique sort keys."
+engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake tables have no row order, so sverify refuses such plans there unless tie_free=True."
+quirks = ["O2", "O3", "O5"]
+
+[null_ordering]
+description = "Where NULLs sort when the query does not say NULLS FIRST/LAST."
+engines = "DataFusion, PostgreSQL and Snowflake: NULLS LAST for ASC, NULLS FIRST for DESC. DuckDB: NULLS LAST both ways. Polars sort: nulls first unless nulls_last=True. Spark: NULLS FIRST for ASC."
+quirks = ["O1"]
+
+[integer_division]
+description = "Integer / integer: truncating, floor (Ibis //) or exact?"
+engines = "DataFusion and PostgreSQL truncate; DuckDB's / gives a double (// truncates); Snowflake's / gives a NUMBER with extra scale; Polars / gives a float. Ibis // is floor division, which sverify compiles exactly."
+quirks = ["I3"]
+
+[division_by_zero]
+description = "x / 0 or x % 0 on data that can hold a zero."
+engines = "DataFusion, Snowflake, PostgreSQL raise on integers; DuckDB returns NULL; Polars returns null (int) or inf (float). Doubles give ±inf/NaN in DataFusion. Lean models it as a runtime error and proves it absent."
+quirks = ["I2", "F4"]
+
+[decimal_scale]
+description = "DECIMAL result precision and scale of *, / and AVG, and overflow."
+engines = "Snowflake adds scale on division (up to +6), DataFusion and DuckDB follow their own (p, s) rules and can overflow DECIMAL(38); Polars decimals are limited. Results round differently from DOUBLE."
+quirks = []
+
+[float_sum_order]
+description = "Floating-point SUM and AVG depend on the summation order, which parallel engines do not fix."
+engines = "Results differ in the last bits between runs and engines; compare with a tolerance."
+quirks = ["F9"]
+
+[float_nan]
+description = "NaN and -0.0 in comparisons, sorting, grouping and MAX."
+engines = "DataFusion and DuckDB order NaN above +inf and treat NaN = NaN in grouping; IEEE comparison says NaN != NaN."
+quirks = ["F1", "F2", "F3", "F7", "F8"]
+
+[empty_aggregate]
+description = "Aggregates over no rows: SUM, AVG, MIN, MAX give NULL, COUNT gives 0; a global aggregate still returns one row."
+engines = "Consistent in SQL engines; dataframe APIs (pandas sum of empty = 0) differ."
+quirks = ["N4"]
+
+[null_aggregate]
+description = "COUNT(x) and AVG skip NULLs; COUNT(*) does not."
+engines = "Consistent in SQL; pandas mean skips NaN, sum of all-NaN is 0."
+quirks = []
+
+[null_join_keys]
+description = "NULL keys never match in an equi-join (but group together in GROUP BY and DISTINCT)."
+engines = "SQL engines agree; Polars joins match nulls only with nulls_equal=True; pandas merge matches NaN with NaN."
+quirks = ["N5", "N6"]
+
+[not_in_null]
+description = "NOT IN (subquery) is empty when the subquery yields a NULL."
+engines = "Standard SQL; DataFusion gets it wrong, so sverify refuses NOT IN subqueries. Write an anti join instead."
+quirks = ["N2", "N3"]
+
+[count_distinct_null]
+description = "COUNT(DISTINCT x) ignores NULL, while SELECT DISTINCT keeps one NULL row."
+engines = "Consistent in SQL; easy to get wrong in a dataframe rewrite (nunique counts NaN with dropna=False)."
+quirks = ["N6"]
+
+[eager_evaluation]
+description = "A CASE or COALESCE guard against an error (division, cast) may not protect, because the engine evaluates both branches."
+engines = "DataFusion rewrites boolean CASE into AND/OR and evaluates COALESCE eagerly; filters may be pushed past guards."
+quirks = ["E1", "E2", "E4", "E5"]
+
+[int_overflow]
+description = "Sums and products of integers can overflow 64 (or 32) bits."
+engines = "DataFusion wraps silently on +; INT32 arithmetic wraps at 32 bits; Snowflake NUMBER(38) does not overflow; DuckDB raises."
+quirks = ["I1", "I6"]
+
+[implicit_coercion]
+description = "Comparing columns of different types (int vs double, string vs number) relies on implicit casts."
+engines = "Coercion rules differ: DataFusion compares string = number as strings; Snowflake casts the string to a number."
+quirks = ["F6", "I10", "I11"]
+
+[string_collation]
+description = "String order and case: < on strings, MIN/MAX, ORDER BY, LIKE case sensitivity."
+engines = "DataFusion and DuckDB compare bytes; Snowflake uses a collation if set; LIKE is case-sensitive except ILIKE."
+quirks = ["S1", "S4", "S6"]
+
+[substr_index]
+description = "Substring positions: 1-based in SQL, 0-based in Ibis and Polars; negative starts differ."
+engines = "Ibis translates its 0-based substr; hand-written SQL is 1-based."
+quirks = ["S3"]
+
+[like_escape]
+description = "Data with % or _ in a LIKE pattern, and the default escape character."
+engines = "PostgreSQL escapes with \\ by default, Snowflake has no default escape."
+quirks = []
+
+[regex_dialect]
+description = "Regular expression flavour: RE2 (Snowflake), Rust regex (DataFusion, Polars), RE2 (DuckDB)."
+engines = "Look-around and back-references are not portable."
+quirks = []
+
+[timezone_dst]
+description = "Local time zones: day boundaries, DATE_TRUNC and interval arithmetic across DST."
+engines = "DataFusion adds 1 day DST-aware on zoned timestamps; Snowflake TIMESTAMP_LTZ depends on the session time zone; DuckDB TIMESTAMPTZ likewise."
+quirks = ["T2", "T3", "T4", "T5"]
+
+[week_definition]
+description = "Week start and numbering: DATE_TRUNC('week'), day-of-week numbers, ISO weeks."
+engines = "DataFusion and PostgreSQL truncate weeks to Monday; Snowflake follows WEEK_START (default Monday in recent accounts, Sunday in old ones); DOW is Sunday=0 in PostgreSQL/DataFusion, configurable in Snowflake; Ibis day_of_week.index() is Monday=0."
+quirks = []
+
+[month_arithmetic]
+description = "Adding months to the 29th-31st clamps to the month's end; date + n months is not n * 30 days."
+engines = "Engines clamp alike; the Lean model has no month intervals yet."
+quirks = ["T1"]
+
+[window_default_frame]
+description = "An ORDER BY in OVER implies RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW, which includes peers: running totals jump on ties and LAST_VALUE returns the current row."
+engines = "Standard in all SQL engines; dataframe cumsum is ROWS-based, so it differs on ties."
+quirks = ["O4"]
+
+[rank_semantics]
+description = "RANK vs DENSE_RANK vs ROW_NUMBER on ties decide how many rows a top-N keeps."
+engines = "Consistent, but Ibis ranks are 0-based where SQL is 1-based."
+quirks = []
+
+[percentile_method]
+description = "Median and quantiles: continuous (interpolated) or discrete, and which interpolation."
+engines = "PERCENTILE_CONT / DISC are standard; DuckDB quantile is discrete by default unless quantile_cont; Polars defaults to 'nearest'; pandas to 'linear'."
+quirks = []
+
+[approximate]
+description = "Approximate aggregates give engine-specific, sometimes non-deterministic results."
+engines = "HyperLogLog sketches differ between engines; never compare them exactly."
+quirks = []
+
+[round_half]
+description = "ROUND of halves: away from zero (SQL engines) or to even (numpy, Python)."
+engines = "DataFusion and DuckDB round half away from zero; Polars rounds half away too; Python round() is half-even."
+quirks = ["F5"]
+
+[limit_without_order]
+description = "LIMIT or OFFSET without a total order returns arbitrary rows."
+engines = "Every engine may return different rows; pagination over ties can skip or repeat rows."
+quirks = ["O3"]
+
+[gap_threshold]
+description = "Session and island boundaries: is a gap of exactly the threshold a new session?"
+engines = "A semantic choice, but > vs >= on timestamps of different precision (ns in DataFusion literals, µs columns) can flip it."
+quirks = ["T5"]
