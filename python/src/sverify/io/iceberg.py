@@ -491,7 +491,6 @@ class IcebergSink:
         self,
         catalog: Catalog,
         identifier: str,
-        view: IncrementalView | None = None,
         *,
         app_id: str | None = None,
         name: str | None = None,
@@ -501,14 +500,6 @@ class IcebergSink:
         self.app_id = app_id
         self.view: IncrementalView | None = None
         self._written: Counter[tuple] | None = None
-        # Until every caller writes through `node.write(sink)`: a view given
-        # here, written by `write()`.
-        if view is not None:
-            self._attach(view)
-
-    def write(self) -> SinkWrite:
-        """Write the view given to the constructor (until callers use `node.write`)."""
-        return self._commit()
 
     def _attach(self, view: IncrementalView) -> None:
         """Write `view` from now on."""
