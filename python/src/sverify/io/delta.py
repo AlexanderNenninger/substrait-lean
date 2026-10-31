@@ -24,7 +24,13 @@ from typing import Literal
 import pyarrow as pa
 
 try:
-    from deltalake import CommitProperties, DeltaTable, Transaction, write_deltalake
+    from deltalake import (
+        CommitProperties,
+        DeltaTable,
+        QueryBuilder,
+        Transaction,
+        write_deltalake,
+    )
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
@@ -61,7 +67,16 @@ def _arrow_schema(dt: DeltaTable) -> pa.Schema:
     return pa.schema(dt.schema().to_arrow())
 
 
+def _deletion_vectors(dt: DeltaTable) -> bool:
+    return "deletionVectors" in (dt.protocol().reader_features or [])
+
+
 def _read(dt: DeltaTable) -> pa.Table:
+    if _deletion_vectors(dt):
+        # delta-rs's Arrow reader refuses deletion vectors; its DataFusion
+        # reader applies them.
+        reader = QueryBuilder().register("t", dt).execute("SELECT * FROM t")
+        return pa.table(reader.read_all()).cast(_arrow_schema(dt))
     return pa.table(dt.to_pyarrow_table()).cast(_arrow_schema(dt))
 
 
@@ -72,12 +87,24 @@ def constraint_facts(dt: DeltaTable) -> list[Fact]:
 
 
 def file_stats(dt: DeltaTable) -> dict[str, dict[str, ColumnStats]]:
-    """Per data file (by path), the statistics of each top-level column."""
+    """Per data file (by path), the statistics of each top-level column.
+
+    With deletion vectors, a file's statistics describe all its physical
+    rows, deleted ones included (`tightBounds: false`): bounds and NULL
+    counts of a superset are still correct, but the row count is left out,
+    as the protocol does not say that it counts the same rows as the NULL
+    count."""
     actions = pa.table(dt.get_add_actions(flatten=True)).to_pylist()
     names = _arrow_schema(dt).names
+    exact = not _deletion_vectors(dt)
     return {
         a["path"]: {
-            c: ColumnStats(a.get(f"min.{c}"), a.get(f"max.{c}"), a.get(f"null_count.{c}"))
+            c: ColumnStats(
+                a.get(f"min.{c}"),
+                a.get(f"max.{c}"),
+                a.get(f"null_count.{c}"),
+                a.get("num_records") if exact else None,
+            )
             for c in names
         }
         for a in actions

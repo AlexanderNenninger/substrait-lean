@@ -539,10 +539,18 @@ table format plays three roles:
   reading it are recomputed, and the report says so.
 * **A source of preconditions.** `requires` conditions are proved from
   metadata where possible: schema nullability (`nullable=false`, Iceberg
-  `required`), Delta CHECK constraints, and per-file statistics (min/max for
-  integers, dates and timestamps; NULL counts for every column). A batch only
+  `required`), Delta CHECK constraints, and per-file statistics: min/max for
+  integers, doubles, dates and timestamps, NULL counts for every column. A
+  column with NULLs gets the fact `c IS NULL OR (c >= lo AND c <= hi)`, so
+  conditions such as `amount >= 0 OR amount IS NULL` are proved from it. A
+  double's maximum is used only where the files count no NaN (NaN sorts above
+  every number; Delta has no NaN count). Strings (truncated bounds, no string
+  order in the model), decimals and zoned timestamps get no bounds. A batch only
   uses the statistics of the files it added. Keys are always checked on the
-  data, since neither format enforces them.
+  data, since neither format enforces them. Delta tables with deletion vectors
+  are read through delta-rs's DataFusion reader. Their statistics describe
+  all physical rows, deleted ones included; bounds of a superset of the rows
+  still hold.
 * **A sink that carries the contract.** `DeltaSink` writes a view in one
   commit per state, exactly once (Delta's transaction identifiers, keyed by
   the sum of the source versions). The proved guarantees become NOT NULL
@@ -660,8 +668,9 @@ nullability and constraints, and that file statistics are correct (Delta's
 millisecond timestamp maxima are widened by 999 µs). What is proved: given a
 correct feed, the views are maintained correctly (`Rel.cdf_sound`); a
 snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
-the table and an append's rows (`stats_table`, `stats_append`); and each
-precondition follows from the metadata facts (`contract_sound`).
+the table and an append's rows (`stats_table`, `stats_append`), and the facts
+stated from them follow (`stats_bounds`, `stats_fact`, `stats_all_null`); and
+each precondition follows from the metadata facts (`contract_sound`).
 
 ### Sharded evaluation
 
@@ -1210,8 +1219,11 @@ interval, possible booleans, and whether it can be a string.
   `IS NULL` and comparisons with constants into constraints on the tested
   expression (or its negation), and `Expr.refineNeg_sound` refines columns
   where a condition is not TRUE. This is how `clip`, `abs`, `greatest` and
-  `least` get their bounds. `Expr.refine_sound` also covers `OR`, so a filter
-  `x IN (1, 2, 3)` gives `x ∈ [1, 3]`.
+  `least` get their bounds. `Expr.refine_sound` also covers `OR` and
+  `IS NULL`, so a filter `x IN (1, 2, 3)` gives `x ∈ [1, 3]` and
+  `x IS NULL OR x >= 0` gives "NULL or ≥ 0". `p OR q` is evaluated with `q`
+  refined where `p` is not TRUE, also when `p` may be NULL (`orSplitNull`),
+  which proves `x >= 0 OR x IS NULL` for a nullable `x`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
@@ -1352,7 +1364,8 @@ hypotheses:
   trusted), every row of the table lies in the join of the files' bounds;
   `stats_append`: the files an append added bound its rows; `stats_bounds`:
   that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
-  contract checker.
+  contract checker; `stats_fact`: with NULLs or a missing side it is
+  `c IS NULL OR (…)`; `stats_all_null`: files that are all NULL give `c IS NULL`.
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 

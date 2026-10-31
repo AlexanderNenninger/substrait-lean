@@ -4,6 +4,7 @@ contracts as SQL, and the record a sink stores with each commit."""
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -21,19 +22,29 @@ from sverify.incremental import IncrementalView, plan_digest
 
 @dataclass(frozen=True)
 class ColumnStats:
-    """One file's statistics for one column; None is unknown."""
+    """One file's statistics for one column; None is unknown (`ColStats` in
+    `SubstraitLean/TableFormat.lean`)."""
 
     lo: Any
     hi: Any
     nulls: int | None
+    rows: int | None = None
+    """The file's row count, to tell a file of NULLs."""
+    nans: int | None = None
+    """NaN count of a double column (Iceberg); writers leave NaN out of the
+    minimum and maximum."""
 
 
 def _bounded(t: pa.DataType) -> bool:
-    """Types whose min/max statistics become bounds: integers, dates and
-    microsecond timestamps without a time zone. Not doubles (minimum and
-    maximum leave out NaN) nor strings (writers may truncate them)."""
+    """Types whose minimum and maximum statistics become bounds: integers,
+    doubles, dates and microsecond timestamps without a time zone.
+
+    Not strings (writers truncate their bounds, and the checker has no string
+    order: #17), decimals (not modelled: #27), timestamps with a time zone
+    (not modelled: #20), nor other units and floats."""
     return (
         pa.types.is_integer(t)
+        or pa.types.is_float64(t)
         or pa.types.is_date32(t)
         or (pa.types.is_timestamp(t) and t.unit == "us" and t.tz is None)
     )
@@ -43,9 +54,13 @@ def q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _literal(t: pa.DataType, v: Any) -> str:
+def _literal(t: pa.DataType, v: Any) -> str | None:
+    """`v` as a SQL literal of type `t`, or None for a double that is not
+    finite (no bound)."""
     if pa.types.is_integer(t):
         return str(int(v))
+    if pa.types.is_floating(t):
+        return repr(float(v)) if math.isfinite(v) else None
     if pa.types.is_date32(t):
         return f"DATE '{v.isoformat()}'"
     return f"TIMESTAMP '{v.isoformat(sep=' ', timespec='microseconds')}'"
@@ -58,11 +73,14 @@ def stats_facts(
     *,
     hi_slack: timedelta = timedelta(0),
 ) -> list[Fact]:
-    """Facts about every row of a table made of `files`: a column without
-    NULLs in any file is NOT NULL, and a bounded column lies between the least
-    minimum and the greatest maximum (the join of the files' bounds,
-    `stats_table` in `SubstraitLean/TableFormat.lean`). A file missing a
-    statistic makes it unknown for the whole table. `hi_slack` widens
+    """Facts about every row of a table made of `files`, from the join of
+    the files' statistics (`stats_table` in `SubstraitLean/TableFormat.lean`):
+    a column without NULLs is NOT NULL; a bounded column lies between the
+    least minimum and the greatest maximum, or is NULL if some file has NULLs
+    (`stats_fact`); a column of files of NULLs is NULL (`stats_all_null`).
+    A file missing a NULL count makes the column unknown, one missing a
+    minimum or maximum drops that side. A double's maximum is used only if
+    every file counts no NaN (NaN is above every bound). `hi_slack` widens
     timestamp maxima that the format truncates."""
     if not files:
         return []
@@ -72,19 +90,43 @@ def stats_facts(
         if any(s is None or s.nulls is None for s in stats):
             continue
         known = [s for s in stats if s is not None]
-        if sum(s.nulls or 0 for s in known):
+        nulls = sum(s.nulls or 0 for s in known)
+        col = q(f.name)
+        # A file of NULLs bounds nothing (`ColStats.aval`).
+        valued = [s for s in known if s.rows is None or s.nulls != s.rows]
+        if not valued:
+            out.append(Fact(f"{col} IS NULL", source))
             continue
-        conds = [f"{q(f.name)} IS NOT NULL"]
-        if _bounded(f.type) and all(s.lo is not None and s.hi is not None for s in known):
-            lo = min(s.lo for s in known)
-            hi = max(s.hi for s in known)
-            if isinstance(hi, datetime):
-                hi += hi_slack
-            conds += [
-                f"{q(f.name)} >= {_literal(f.type, lo)}",
-                f"{q(f.name)} <= {_literal(f.type, hi)}",
-            ]
-        out.append(Fact(" AND ".join(conds), source))
+        sides = []
+        if _bounded(f.type):
+            sides = _sides(f.type, valued, hi_slack)
+        bounds = [f"{col} {op} {v}" for op, v in sides]
+        if nulls == 0:
+            out.append(Fact(" AND ".join([f"{col} IS NOT NULL", *bounds]), source))
+        elif bounds:
+            out.append(Fact(f"{col} IS NULL OR ({' AND '.join(bounds)})", source))
+    return out
+
+
+def _sides(t: pa.DataType, files: Sequence[ColumnStats], hi_slack: timedelta) -> list[tuple]:
+    """The bounds of the join of `files`, as (operator, literal) pairs."""
+    double = pa.types.is_floating(t)
+
+    def usable(v: Any) -> bool:
+        return v is not None and not (double and math.isnan(v))
+
+    out = []
+    if all(usable(s.lo) for s in files):
+        lo = _literal(t, min(s.lo for s in files))
+        if lo is not None:
+            out.append((">=", lo))
+    if all(usable(s.hi) for s in files) and not (double and any(s.nans != 0 for s in files)):
+        hi = max(s.hi for s in files)
+        if isinstance(hi, datetime):
+            hi += hi_slack
+        lit = _literal(t, hi)
+        if lit is not None:
+            out.append(("<=", lit))
     return out
 
 

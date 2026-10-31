@@ -11,7 +11,7 @@ from pyiceberg.catalog.sql import SqlCatalog
 
 import sverify as sv
 from sverify.contracts import ON_DATA, SCHEMA
-from sverify.io import IcebergSink, IcebergSource
+from sverify.io import ColumnStats, IcebergSink, IcebergSource, stats_facts
 from sverify.io.iceberg import CONTRACT
 
 SCHEMA_ORDERS = pa.schema(
@@ -200,3 +200,26 @@ def test_restarted_pipeline_resumes_from_its_iceberg_sink(catalog):
     assert sink2.write().mode == "append"
     got = catalog.load_table("db.big").scan().to_arrow().to_pylist()
     assert sorted(tuple(r.values()) for r in got) == big2.rows() == big2.recompute()
+
+
+def test_double_statistics_use_the_nan_count(catalog):
+    schema = pa.schema(
+        [pa.field("id", pa.int64(), nullable=False), pa.field("price", pa.float64())]
+    )
+    t = catalog.create_table("db.prices", schema=schema)
+    t.append(
+        pa.Table.from_pylist([{"id": 1, "price": 0.5}, {"id": 2, "price": None}], schema=schema)
+    )
+    # pyiceberg records no NaN counts, so the maximum is unknown.
+    facts = [f.condition for f in IcebergSource(catalog, "db.prices").snapshot().facts]
+    assert '"price" IS NULL OR ("price" >= 0.5)' in facts
+    # Writers that count NaNs (Spark, Java) give the maximum where there are none.
+    price = pa.schema([schema.field("price")])
+    no_nan = {"price": ColumnStats(0.5, 2.5, 1, 4, nans=0)}
+    some_nan = {"price": ColumnStats(-1.0, 3.0, 0, 2, nans=1)}
+    assert [f.condition for f in stats_facts([no_nan], price, "s")] == [
+        '"price" IS NULL OR ("price" >= 0.5 AND "price" <= 2.5)'
+    ]
+    assert [f.condition for f in stats_facts([no_nan, some_nan], price, "s")] == [
+        '"price" IS NULL OR ("price" >= -1.0)'
+    ]
