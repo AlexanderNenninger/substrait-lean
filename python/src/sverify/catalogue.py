@@ -27,6 +27,7 @@ every recorded status still holds.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import math
@@ -413,10 +414,8 @@ def probe_profile(
         out = run_sql(con, sql)
         if not isinstance(query, str):
             # In the expression's types: DataFusion makes `ts.date()` a timestamp.
-            try:
+            with contextlib.suppress(pa.ArrowInvalid, pa.ArrowNotImplementedError):
                 out = out.cast(query.schema().to_pyarrow())
-            except (pa.ArrowInvalid, pa.ArrowNotImplementedError):
-                pass
         reference: list[tuple] | None = _rows(out)
         ran = "runs"
     except Exception as e:  # noqa: BLE001 - DataFusion's own failures are findings
