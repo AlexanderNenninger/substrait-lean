@@ -29,7 +29,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py)
+    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py) · 15. [One expression, many engines](?file=15_backend_semantics.py) →
     """)
     return
 
@@ -1436,7 +1436,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py)
+    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py) · 15. [One expression, many engines](?file=15_backend_semantics.py) →
     """)
     return
 
