@@ -248,6 +248,7 @@ def test_fixture_lists_are_complete():
         "isthmus_char_padding",
         "isthmus_date_iday",
         "isthmus_timestamp_seconds",
+        "option_overflow_saturate",
     }
 
 

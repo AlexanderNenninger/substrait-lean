@@ -523,6 +523,61 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
 #guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
 
+/-! ## Function options
+
+Substrait lets a plan choose some behaviours (`overflow`, `rounding`, …); a
+consumer takes the first preference it supports. An option is accepted when
+the model's behaviour is one of its preferences, or when the behaviours differ
+only on rows where `SubstraitLean/Safety.lean` reports an error anyway (what
+`MIN / -1` gives); anything else is refused. -/
+
+/-- The preferences an option of `base` may list (`none`: any), and whether
+the option is known at all. `float` says the call is on doubles. -/
+def optionAccepts (base : String) (float : Bool) : String → Option (Option (List String))
+  -- Integer `+`, `-`, `*` and `SUM` wrap around silently (a `wraps` warning).
+  | "overflow" =>
+    if float then none
+    else if ["add", "subtract", "multiply", "negate", "sum"].contains base then some (some ["SILENT"])
+    else if ["divide", "modulus", "abs", "power"].contains base then some none
+    else none
+  | "rounding" =>
+    if !float then none
+    -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
+    else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
+    -- Native doubles round to nearest, ties to even.
+    else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
+      some (some ["TIE_TO_EVEN"])
+    else none
+  | "on_division_by_zero" =>
+    if base != "divide" && base != "modulus" then none
+    else if float then some (some ["IEEE"]) else some none
+  | "on_domain_error" =>
+    if base != "power" then none else if float then some (some ["NAN"]) else some none
+  | _ => none
+
+def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
+  let base := baseName name
+  for o in opts do
+    let opt ← (← field o "name").getStr?
+    -- `concat`'s `null_handling` is checked where it is parsed.
+    if base == "concat" && opt == "null_handling" then continue
+    let prefs ← (← arrD o "preference").mapM (·.getStr?)
+    match optionAccepts base float opt with
+    | none => throw s!"{name}: option {opt} is not supported"
+    | some none => pure ()
+    | some (some ok) =>
+      unless prefs.isEmpty || prefs.any ok.contains do
+        throw s!"{name}: option {opt} = {prefs} is not supported (the model does {ok})"
+
+#guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["ERROR", "SILENT"])]]).toBool
+#guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["SATURATE"])]]).toBool == false
+#guard (checkOptions "divide" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["SATURATE"])]]).toBool
+#guard (checkOptions "add" true [Json.mkObj [("name", "rounding"),
+  ("preference", Json.arr #["TIE_AWAY_FROM_ZERO"])]]).toBool == false
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -672,6 +727,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
             return .un (.regexMatch p) (← parseExpr fns cols sj)
     let parsed ← argJs.mapM (parseExpr fns cols)
     checkArgKinds name cols parsed
+    let onFloats := parsed.any (·.kind cols == .float) ||
+      typeKind ((field? f "outputType").getD .null) == .float
+    checkOptions name onFloats (← arrD f "options")
     -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
     -- writes its `NULL`-skipping ones untyped (`mkCall`).
     if ["greatest", "least"].contains (baseName name) && !(sigTokens name).isEmpty then
@@ -950,6 +1008,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
   let k := arg.kind cols
+  checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
   -- (`avg:i64` with an `i64` result), which it is not.
   if name == "avg" then
