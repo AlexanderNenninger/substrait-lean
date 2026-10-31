@@ -121,6 +121,8 @@ def con():
     con = connect()
     for table in (coverage.T, coverage.U):
         create_table(con, table.get_name(), table.schema())
+    for name, table in coverage.MEMTABLES.items():
+        put_table(con, name, table)
     return con
 
 

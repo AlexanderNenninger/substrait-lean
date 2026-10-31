@@ -15,7 +15,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", app_title="15. One expression, many engines")
+app = marimo.App(width="full", app_title="17. One expression, many engines")
 
 
 @app.cell(hide_code=True)
@@ -28,7 +28,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
+    ← 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
     """)
     return
 
@@ -36,13 +36,13 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 15. One expression, many engines
+    # 17. One expression, many engines
 
     A query or an Ibis expression has no single meaning: each engine gives it
     its own. This notebook collects the questions that a semantics written
     *from first principles* (instead of read off one implementation) has to
     answer, and shows how each engine answers them today. It is the companion
-    of [chapter 14](?file=14_datafusion_semantics.py), which compares
+    of [chapter 16](?file=16_datafusion_semantics.py), which compares
     DataFusion alone with the Lean model.
 
     Every entry is one small question, such as "what is `-7 % 2`?" or "where do
@@ -841,7 +841,7 @@ def _(E, render):
             snowflake="no 32-bit type: INT is NUMBER(38,0)",
             engines="split",
             why="DataFusion and DuckDB raise; Polars' non-strict cast gives NULL. Lean "
-            "used to read the cast as the identity (chapter 14, I8). It is now "
+            "used to read the cast as the identity (chapter 16, I8). It is now "
             "`UnFn.narrow`: NULL plus a `badCast` issue where the value does not fit, so "
             "`verify` reports the possible error and both translators raise.",
             picks="an error where the value does not fit (`badCast`)",
@@ -1131,8 +1131,8 @@ def _(E, render):
             sverify="refused",
             why="Every engine compares bytewise ('' and 'S' come before 'b'). Lean's `<` "
             "has no string case, so `Rel.eval` keeps nothing; every translator refuses the "
-            "plan. `verify` itself still accepts it (chapter 14, gap S6).",
-            picks="NULL (wrong; see chapter 14)",
+            "plan. `verify` itself still accepts it (chapter 16, gap S6).",
+            picks="NULL (wrong; see chapter 16)",
         ).run(),
         E(
             "S8",
@@ -1333,7 +1333,7 @@ def _(mo):
       to trim spaces from strings (`' 12'` was proved to be 12; DataFusion
       fails, S8); constants now fold by the same rules as columns, and strings
       DataFusion cannot parse are refused. Narrowing casts were the identity
-      (I10, chapter 14's I8); they are now range-checked and may raise
+      (I10, chapter 16's I8); they are now range-checked and may raise
       `badCast`. The Polars translator crashed on duplicate output column
       names (N4); it now keeps them.
 
@@ -1349,7 +1349,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
+    ← 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
     """)
     return
 

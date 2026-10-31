@@ -21,8 +21,8 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.coverage import CASES, DATAFUSION_SQL, T, U
-from sverify.engine import connect, create_table, run_sql, to_sql
+from sverify.coverage import CASES, DATAFUSION_SQL, MEMTABLES, T, U
+from sverify.engine import connect, create_table, put_table, run_sql, to_sql
 from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.testing import EPOCH, canonical, inline_tables, lean_values
 
@@ -111,6 +111,8 @@ def test_plans_mean_what_ibis_means(case, t, u):
     con = connect()
     create_table(con, "t", T.schema(), t)
     create_table(con, "u", U.schema(), u)
+    for name, table in MEMTABLES.items():
+        put_table(con, name, table)
     if case.label in DATAFUSION_SQL:
         # DataFusion means something else: SQL's meaning, as DuckDB computes it.
         out = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
