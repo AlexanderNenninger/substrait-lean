@@ -379,18 +379,30 @@ def proves(sql: str, ensures: str) -> bool:
     return r.proved and r.ensures[0].proved
 
 
-@gap
-def test_gap_constant_cast_rounds():
-    """F9: Lean folds `CAST(2.7 AS BIGINT)` to 3; DataFusion gives 2."""
-    assert not proves("SELECT CAST(2.7 AS BIGINT) AS c FROM j", "c = 3")
+def test_constant_casts_truncate_like_datafusion(con):
+    """F9: constant casts fold as DataFusion casts (truncating), not rounded."""
+    for value, truncated in [("2.7", 2), ("-2.5", -2), ("CAST(2.5 AS DOUBLE)", 2)]:
+        sql = f"SELECT CAST({value} AS BIGINT) AS c FROM j"
+        assert positional(con.con.sql(sql).to_arrow_table()) == [(truncated,), (truncated,)]
+        assert proves(sql, f"c = {truncated}")
+        assert not proves(sql, f"c = {truncated + (1 if truncated > 0 else -1)}")
 
 
-def test_constant_cast_is_proved_rounded_today():
-    assert proves("SELECT CAST(2.7 AS BIGINT) AS c FROM j", "c = 3")
-    assert proves("SELECT CAST(-2.5 AS BIGINT) AS c FROM j", "c = -3")
-
-
-@gap
-def test_gap_constant_string_cast_trims():
-    """S8: Lean reads `' 12'` as 12; DataFusion raises a CastError at run time."""
-    assert not proves("SELECT CAST(' 12' AS BIGINT) AS c FROM j", "c = 12")
+@pytest.mark.parametrize(
+    ("value", "kind"),
+    [
+        ("' 12'", "BIGINT"),
+        ("'1_000'", "BIGINT"),
+        ("' 1.5'", "DOUBLE"),
+        ("' 2024-01-01'", "TIMESTAMP"),
+        ("'2024-01-01 '", "DATE"),
+    ],
+)
+def test_constant_strings_datafusion_cannot_cast_are_refused(con, value, kind):
+    """S8: strings with spaces or `_` fail DataFusion's cast at run time, so
+    the checker refuses them instead of reading them its own way."""
+    sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"
+    with pytest.raises(Exception, match="Cannot cast|Error parsing|cast"):
+        con.con.sql(sql).to_arrow_table()
+    with pytest.raises(ValueError, match="cannot (cast|parse)"):
+        sv.verify(sql, tables={"j": {"a": "int64"}})

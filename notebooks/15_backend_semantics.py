@@ -996,13 +996,11 @@ def _(E, render):
             std="implementation-defined: truncate or round",
             snowflake="rounds",
             engines="split",
-            sverify="GAP",
-            why="DataFusion truncates constants as it truncates columns (F6): 2. Lean's "
-            "parser folds a constant cast with `Const.toInt?`, which *rounds* (decimal "
-            "constants half up, doubles with `Float.round`), so `Rel.eval` and both "
-            "translators give 3, and `verify` proves `c = 3`. The same cast of a column "
-            "truncates, so Lean disagrees with itself.",
-            picks="round for constants, truncate for columns (inconsistent)",
+            why="DataFusion truncates constants as it truncates columns (F6): 2. DuckDB "
+            "rounds the decimal 2.7 to 3. Lean's parser folds a constant cast itself "
+            "(`Const.toInt?`); it used to round, so `verify` proved `c = 3`. It now "
+            "truncates, as for a column.",
+            picks="truncate, for constants as for columns",
         ).run(),
     ]
     render(floats)
@@ -1145,13 +1143,13 @@ def _(E, render):
             polars="t.select(c=pl.lit(' 12').cast(pl.Int64, strict=False))",
             std="leading and trailing spaces are allowed",
             engines="split",
-            sverify="GAP",
             why="The standard and DuckDB strip the spaces; DataFusion raises; Polars' "
             "strict cast raises and its non-strict cast gives NULL. Lean folds a cast of a "
-            "string constant itself (`Const.toInt?`, which trims), so it gives 12, and "
-            "`verify` proves `c = 12` with no runtime issue while DataFusion fails. Lean "
-            "refuses casts of string columns.",
-            picks="12 (the standard's answer, not DataFusion's)",
+            "string constant itself. It used to trim the spaces (and accept `1_000`), so "
+            "`verify` proved `c = 12` where DataFusion fails. It now reads integers, "
+            "doubles, timestamps and dates as DataFusion does and refuses the rest, so "
+            "the plan is refused. Casts of string columns are refused too.",
+            picks="refused (DataFusion fails)",
         ).run(),
     ]
     render(strings)
@@ -1328,16 +1326,14 @@ def _(mo):
       tables (S4, S6). Pinning them (to Rust's `str::to_uppercase` and the
       `regex` crate, say) or refusing non-ASCII input would make "the same
       plan, the same rows" true across engines.
-    * **sverify gaps found here.** Lean's parser folds casts of constants
-      with rules of its own: it rounds a double or decimal constant
-      (`CAST(2.7 AS BIGINT)` is proved to be 3; DataFusion gives 2, F9) and
-      trims spaces from a string constant before reading it as an integer
-      (proved 12; DataFusion fails, S8). The Polars translator crashes on
+    * **sverify gaps found here.** The Polars translator crashes on
       duplicate output column names (N4). Narrowing casts are the identity on
       every translator, because Lean reads them that way (I10, chapter 14's
-      I8). Each translator reproduces Lean faithfully in these cases, so the
-      fix belongs in the parser: fold constants with the same rules as
-      columns (truncate), and refuse strings that DataFusion would not parse.
+      I8). Two more were fixed in the parser while writing this chapter:
+      constant casts used to round (`CAST(2.7 AS BIGINT)` was proved to be 3;
+      DataFusion gives 2, F9) and to trim spaces from strings (`' 12'` was
+      proved to be 12; DataFusion fails, S8). Constants now fold by the same
+      rules as columns, and strings DataFusion cannot parse are refused.
 
     `python/tests/test_backend_semantics.py` pins the native behaviours that
     sverify's translators work around (Polars' floor `%`, NULL on division by
