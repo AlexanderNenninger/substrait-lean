@@ -197,8 +197,9 @@ class Report:
             f"| `{c.label}` | {'✅ proved' if c.proved else '❌ ' + c.value} |"
             for c in self.ensures
         ]
-        rows += [f"| runtime | ❌ may fail: {i} |" for i in self.errors]
-        rows += [f"| runtime | ⚠️ {i} |" for i in self.warnings]
+        # Issues quote expressions, which may contain `|` (a regex, an OR).
+        rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
+        rows += [f"| runtime | ⚠️ {str(i).replace('|', '\\|')} |" for i in self.warnings]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         return "\n".join(

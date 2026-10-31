@@ -1,3 +1,6 @@
-# marimo cells end with a bare `return`, and show their last expression.
+line-length = 100
+
 [lint]
-ignore = ["PLR1711", "B018"]
+# marimo cells end with a bare `return`, and show their last expression.
+# Interactive cells catch any exception, to show what the reader's input broke.
+ignore = ["PLR1711", "B018", "BLE001"]
