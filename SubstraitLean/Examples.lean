@@ -10,6 +10,7 @@ import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Partition
 import SubstraitLean.Guards
+import SubstraitLean.Semantic
 
 /-!
 # Examples
@@ -194,3 +195,4 @@ end Substrait.Examples
 #print axioms Substrait.inI64_partial
 #print axioms Substrait.Rel.evalI_eq
 #print axioms Substrait.Rel.guardFree_sound
+#print axioms Substrait.Rel.optimize_sound

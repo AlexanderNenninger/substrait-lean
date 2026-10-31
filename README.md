@@ -1124,6 +1124,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
+| `SubstraitLean/Semantic.lean` | Rewrites from contract facts and keys (`DISTINCT` on a key, …); `Rel.optimize_sound` |
 | `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/ShardCheck.lean` | `--shard`: splitting a plan into per-shard and combining plans (trusted) |
@@ -1181,6 +1182,11 @@ interval, possible booleans, and whether it can be a string.
   `x IN (1, 2, 3)` gives `x ∈ [1, 3]`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
+* `Rel.optimize_sound` ([Semantic.lean](SubstraitLean/Semantic.lean)): the
+  rewrites a contract's keys and facts allow keep a plan's rows, on data that
+  meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
+  goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
+  `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
   integer column can stand in for it in a key; a filter `$i = k` drops `i` from

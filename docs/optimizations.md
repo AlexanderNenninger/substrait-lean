@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | #75–#80 |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76); #75, #77–#80 open |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -244,9 +244,23 @@ hold:
   needs no column of `S`. Then the join is `R`. A left join on a key needs no
   FK at all. Proof obligation: a bag equation stating that each left row has
   exactly one match.
-* **DISTINCT elimination** (#76). If `Rel.keys` proves a key among the output
-  columns, then `DISTINCT r ~ r`. The ingredients exist already: `KeyOn` and
-  `dedup` of a `Pairwise ≠` list.
+* **DISTINCT elimination** (#76, done). If `Rel.keys` proves any key of
+  `r`, its rows are pairwise distinct and `DISTINCT r` is `r`
+  (`dedup_of_nodup`). The same goes for a `GROUP BY` without measures whose
+  grouping expressions contain a key's columns (it becomes a projection), and
+  for `fn(DISTINCT x)` when `x` alone is a key (`COUNT(DISTINCT id)` becomes
+  `COUNT(id)`).
+
+**Wiring.** `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
+rewrites bottom-up, deciding each from the analyses of the already rewritten
+inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
+is well-formed, has the same arity and gives the same list of rows (not just
+the same bag). `substrait-check --contract` reports the rewritten plan as
+`optimized`, in Lean's written form, with the names of the rewrites applied
+(`rewrites`); `sverify.Report.optimized` and `Report.rewrites` expose them.
+Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
+`polars_engine.run`) only on data that meets the preconditions, as with
+`guards=False`.
 * **Outer-to-inner join conversion** (#77). A filter above a left join that
   rejects NULLs on a right column turns it into an inner join. With an FK and
   NOT NULL, every left row matches, so the conversion holds without a filter.

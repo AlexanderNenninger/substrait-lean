@@ -164,6 +164,15 @@ class Report:
     the preconditions, the transformation's SQL (`sverify.sql.to_sql`) and
     Polars plan (`polars_engine.run`) give the same result with
     `guards=False`, without per-row checks (`Rel.guardFree_sound`)."""
+    optimized: dict | None = None
+    """The transformation as a Substrait JSON plan, rewritten with the facts
+    and keys of the preconditions (`Rel.optimize` in
+    `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
+    gone. On data that meets the preconditions it gives the same rows
+    (`Rel.optimize_sound`); pass it to `sverify.sql.to_sql` or an engine's
+    `run` instead of the transformation."""
+    rewrites: list[str] = field(default_factory=list)
+    """The rewrites in `optimized`, such as "DISTINCT on a key"."""
 
     @property
     def proved(self) -> bool:
@@ -474,6 +483,8 @@ def verify(
         deterministic=out["deterministic"],
         issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
         guard_free=out["guard_free"],
+        optimized=out["optimized"],
+        rewrites=out["rewrites"],
     )
 
 

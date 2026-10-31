@@ -5,6 +5,8 @@ import SubstraitLean.Keys
 import SubstraitLean.Check
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
+import SubstraitLean.Semantic
+import SubstraitLean.Write
 
 /-!
 # Checking a contract
@@ -18,6 +20,12 @@ Input (JSON):
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
   "ensures_keys": [[<col>, ...], ...] }       -- keys to prove on the output
 ```
+
+Output: a JSON report (`Report.json`). Besides what is proved, it carries
+`optimized`, the transformation rewritten with the facts and keys of the
+preconditions (`Rel.optimize`, sound by `Rel.optimize_sound` on data meeting
+them), in Lean's written form, and `rewrites`, the names of the rewrites
+applied.
 
 A postcondition is **proved** when its column of `ensures` is certainly TRUE
 under `Rel.aeval` with each table described by its schema refined by its
@@ -102,6 +110,10 @@ structure Report where
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
+  /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
+  optimized : Json := .null
+  /-- The rewrites `Rel.optimize` applied. -/
+  rewrites : List String := []
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
@@ -116,7 +128,9 @@ def Report.json (r : Report) : Json :=
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
         ("expr", Lean.toJson e.render)]).toArray),
-    ("guard_free", Lean.toJson r.guardFree)]
+    ("guard_free", Lean.toJson r.guardFree),
+    ("optimized", r.optimized),
+    ("rewrites", Lean.toJson r.rewrites)]
 
 def Report.allProved (r : Report) : Bool :=
   r.ensures.all (·.2.1) && r.keys.all (·.2) && !r.issues.any (·.1.isError)
@@ -192,7 +206,16 @@ def check (input : Json) : Except String Report := do
   let guardFree := match transform with
     | some p => p.root.checkWF cat && p.root.looseSub && issues.all (·.1 == .sumWraps)
     | none => false
+  let (optimized, rewrites) := match transform with
+    | some p =>
+      if !p.root.checkWF cat then (.null, [])
+      else
+        let (q, log) := p.root.optimize cat A F inputKeys
+        (Write.writePlan (Write.planSchemas p) cat q p.names, log)
+    | none => (.null, [])
   return {
+    optimized
+    rewrites
     ensures := results
     facts
     keys
