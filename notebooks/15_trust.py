@@ -13,7 +13,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="13. What is proved, what is trusted")
+app = marimo.App(width="medium", app_title="15. What is proved, what is trusted")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 12. [A complete pipeline](?file=12_fitness.py) · [Contents](?file=00_start_here.py) · 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) →
+    ← 14. [The checker](?file=14_the_checker.py) · [Contents](?file=00_start_here.py) · 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) →
     """)
     return
 
@@ -35,7 +35,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 13. What is proved, what is trusted
+    # 15. What is proved, what is trusted
 
     A proof is only as good as what it is about. Every ✅ in this tour is a
     theorem about the Lean model `Rel`. Between your Ibis code and the
@@ -50,10 +50,10 @@ def _(mo):
     mo.mermaid(
         """
         graph LR
-          I["Ibis or SQL"] -->|"Ibis producer, or DataFusion's<br/>for SQL"| J["Substrait JSON"]
+          I["Ibis or SQL"] -->|"Ibis producer, or DataFusion's<br/>or Isthmus for SQL"| J["Substrait JSON"]
           J -->|"parser<br/>TRUSTED · golden tests, round trips"| M["Lean model: Rel"]
           M -->|"PROVED<br/>contracts, keys, runtime errors,<br/>rewrites, update plans"| M2["verdicts,<br/>update plans"]
-          M2 -->|"writer, translators, SQL generator<br/>TRUSTED · differential tests"| D["DataFusion · Polars ·<br/>DuckDB · Snowflake"]
+          M2 -->|"writer, translators, SQL generator<br/>TRUSTED · differential tests"| D["DuckDB · Polars · DataFusion ·<br/>Spark · Snowflake"]
           style M fill:#d4f4dd,stroke:#2e8b57
           style M2 fill:#d4f4dd,stroke:#2e8b57
         """
@@ -82,6 +82,10 @@ def _(mo):
     * **when** DataFusion evaluates an expression (lazy `CASE`, eager `AND`,
       merged filters), which the runtime-error analysis relies on;
     * the `sverify` **glue**: change tables, consolidation, merging;
+    * Delta and Iceberg: that a **change feed** turns the old snapshot into
+      the new one, that writers enforce nullability and constraints, and
+      that **file statistics** are correct (each refresh report names what
+      it trusted);
     * the **Polars translator**, the **SQL generator**, and each **engine**
       itself.
 
@@ -98,9 +102,10 @@ def _(mo):
 
     ## What the model doesn't cover yet
 
-    * aggregates (`GROUP BY`, `SUM`, `COUNT`) and framed window aggregates;
-    * incremental maintenance of left, semi and anti joins, `DISTINCT`,
-      `LIMIT` and windows (pipelines recompute those);
+    * framed window aggregates (running totals, moving averages), ranks and
+      `NTILE`;
+    * incremental maintenance of aggregates, left, semi and anti joins,
+      `DISTINCT`, `LIMIT` and windows (pipelines recompute those);
     * relations needing more than "column plus constant", string contents,
       DECIMAL columns, counts across rows;
     * *completeness*: contracts say what every output row satisfies, not
@@ -171,8 +176,9 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    That's the display. The README has the full reference: every proved
-    theorem, the modelling choices, and the engine notes.
+    That's the tour, apart from the two appendices. The README has the full
+    reference: every proved theorem, the modelling choices, and the engine
+    notes.
     """)
     return
 
@@ -180,7 +186,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 12. [A complete pipeline](?file=12_fitness.py) · [Contents](?file=00_start_here.py) · 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) →
+    ← 14. [The checker](?file=14_the_checker.py) · [Contents](?file=00_start_here.py) · 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) →
     """)
     return
 
