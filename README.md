@@ -245,16 +245,16 @@ Every engine runs the plans of the 68 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 60 | non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts |
-| DuckDB | 60 | non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts |
-| Snowflake | 54 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Polars | 67 | non-equi join |
+| DuckDB | 67 | non-equi join |
+| Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
 undefined in the model (it is NULL there, while SQL compares), and Snowflake
 tables have no row order for FETCH, or for the ties of a sort or a window, to
-follow. See [Engines](#engines). Aggregates with measures are verified but not
-translated to the engines yet.
+follow, nor for the order a `SUM` or `AVG` of doubles adds in. See
+[Engines](#engines).
 
 ### Pre- and postconditions on a transformation
 
@@ -746,6 +746,12 @@ translator pins the semantics instead of taking Polars defaults:
   (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
   Sorts place NULLs as each key says. `DISTINCT` compares rows as `Value`s:
   NULLs are equal, and -0.0 and +0.0 (or -NaN and NaN) are not.
+* Aggregates (`aggregateEval`): one row per group, in order of first
+  occurrence (or exactly one without `GROUP BY`), grouping as `DISTINCT`
+  compares. Each measure skips NULLs and the rows its `FILTER` drops;
+  `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
+  and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
+  and `AVG` of doubles add one by one in Lean's list order.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, not bytes, and `substring` with
   a start below 1 keeps only the positions that exist. `LIKE` escapes with a
@@ -823,6 +829,10 @@ the engine:
   the rows where the condition is TRUE;
 * `DISTINCT` groups by the same keys as a window partition (doubles also by
   the sign bit), so equal means equal as `Value`s;
+* aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
+  counts the first row of each value, integer `SUM` raises outside 64 bits,
+  and doubles are added in Lean's order (`list_reduce` over a list ordered
+  by the ordinal), so the result has Lean's bits, not DataFusion's;
 * strings: lengths and positions count characters, a `substring` start below
   1 is handled before it reaches the engine (which would count it from the
   end), and `LIKE` names its escape character;
@@ -866,6 +876,8 @@ Where Snowflake can't match, the plan is refused (`Unsupported`) or the query
 raises instead of answering differently:
 
 * FETCH over a named table is refused: Snowflake tables have no row order.
+  So is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
+  the additions.
   Windows and sorts are refused too, unless you pass `tie_free=True` to
   promise there are no ties on their keys (a contract report's
   `deterministic` says so for windows).
@@ -881,7 +893,8 @@ Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
 collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
 fixture and delta plan, parses it with sqlglot's Snowflake parser, and runs it
 on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`,
-along with sorts, `DISTINCT`, semi, anti and outer joins and string functions.
+along with sorts, `DISTINCT`, aggregates, semi, anti and outer joins and
+string functions.
 fakesnow emulates Snowflake on DuckDB, so this checks the SQL, not Snowflake's
 behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 `SNOWFLAKE_USER`, a credential (`SNOWFLAKE_PASSWORD`,
