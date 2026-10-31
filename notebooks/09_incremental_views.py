@@ -44,11 +44,186 @@ def _(mo):
     missed, late rows are skipped, a join gets a new match.
 
     *Incremental view maintenance* computes only the **change** to the
-    result from the **changes** to the inputs. This chapter builds the idea
-    from scratch, then shows `sv.IncrementalView`, which does it on
-    DataFusion with update rules proved correct in Lean.
+    result from the **changes** to the inputs. `sv.IncrementalView` does it
+    with update rules proved correct in Lean, on DuckDB, Polars or
+    DataFusion. This chapter shows how to use it, what it refuses, and then
+    how it works.
 
-    ## Rows with weights: Z-sets
+    ## Keeping a join up to date
+
+    You write the query once, as Ibis or SQL. `IncrementalView` stores its
+    result as a table and keeps it up to date from the inserts and deletes
+    alone:
+    """)
+    return
+
+
+@app.cell
+def _():
+    import ibis
+    import sverify as sv
+    from sverify.examples import create_tables
+
+    con = sv.connect()  # plans run on DuckDB by default
+    create_tables(
+        con,
+        orders_rows=[(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
+        customers_rows=[("ada", "Paris"), ("bob", "Oslo")],
+    )
+    o, c = con.table("orders"), con.table("customers")
+    with_city = o.join(c, o.customer == c.name).select(o.id, c.city)
+
+    view = sv.IncrementalView(con, with_city, "orders_with_city")
+    view.rows()
+    return c, con, ibis, o, sv, view
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    `view.apply({...})` takes a batch of changes per table, as
+    `sv.Changes(inserts=[...], deletes=[...])`. It updates the base tables
+    *and* the view. `view.recompute()` computes the view from scratch, for
+    checking. Press the button to change both tables at once, at random:
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    apply_batch = mo.ui.button(
+        value=0, on_click=lambda n: n + 1, label="Apply a random batch of changes", kind="success"
+    )
+    apply_batch
+    return (apply_batch,)
+
+
+@app.cell(hide_code=True)
+def _(apply_batch, display, mo, sv, view):
+    import random as _random
+
+    def _batch(rng, table, make_row):
+        current = sv.table_rows(view.con, table)
+        deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
+        return sv.Changes(
+            inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes
+        )
+
+    def _changes_table(ch, cols, title):
+        rows = [list(r) for r in [*ch.inserts, *ch.deletes]]
+        return display.table(rows, cols, [1] * len(ch.inserts) + [-1] * len(ch.deletes), title)
+
+    _names = ["ada", "bob", "cy", None]
+    _last = None
+    if apply_batch.value:
+        _rng = _random.Random(apply_batch.value)
+        _last = {
+            "orders": _batch(
+                _rng,
+                "orders",
+                lambda r: (r.randint(1, 9), r.choice(_names), r.choice([None, 5, 30, 50])),
+            ),
+            "customers": _batch(
+                _rng, "customers", lambda r: (r.choice(_names), r.choice(["Paris", "Oslo", "Lima"]))
+            ),
+        }
+        view.apply(_last)
+
+    _equal = view.rows() == view.recompute()
+    mo.vstack(
+        [
+            mo.md("*Press the button to change both tables at once.*")
+            if _last is None
+            else display.side_by_side(
+                _changes_table(_last["orders"], ["id", "customer", "amount"], "changes to orders"),
+                _changes_table(_last["customers"], ["name", "city"], "changes to customers"),
+            ),
+            display.side_by_side(
+                display.table(
+                    sorted(view.rows(), key=lambda r: r[0]), ["id", "city"], title="maintained view"
+                ),
+                display.table(
+                    sorted(view.recompute(), key=lambda r: r[0]),
+                    ["id", "city"],
+                    title="recomputed from scratch",
+                ),
+            ),
+            mo.callout(
+                mo.md(
+                    f"After {apply_batch.value} batch(es): the maintained view "
+                    + ("**equals** full recomputation ✓" if _equal else "**differs** ✗")
+                    + f". Each batch runs {len(view.deltas)} Lean-generated update plans on DuckDB."
+                ),
+                kind="success" if _equal else "danger",
+            ),
+        ],
+        gap=1,
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## What can be maintained
+
+    Filters, computed columns, inner joins (self-joins too), cross joins,
+    `UNION ALL` and `ORDER BY`. Everything else is **refused up front**
+    instead of being maintained wrongly: left, semi and anti joins (a left
+    join's NULL-padded rows must be *retracted* when a match turns up
+    later), `DISTINCT`, `LIMIT` (it depends on row order), windows, and
+    aggregates (contracts work on them, but their update rules aren't proved
+    yet). Pick one:
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(c, mo, o):
+    REFUSED = {
+        "orders.limit(2)": o.limit(2),
+        "a left join": o.left_join(c, o.customer == c.name).select(o.id, c.city),
+        "orders.distinct()": o.distinct(),
+        "total amount per customer": o.group_by("customer").aggregate(total=o.amount.sum()),
+    }
+    refused = mo.ui.dropdown(list(REFUSED), value="a left join", label="query")
+    refused
+    return REFUSED, refused
+
+
+@app.cell(hide_code=True)
+def _(REFUSED, con, mo, refused, sv):
+    try:
+        sv.IncrementalView(con, REFUSED[refused.value], "refused_view")
+        _out = mo.callout(mo.md("Accepted?!"), kind="danger")
+    except sv.NotIncremental as _e:
+        _out = mo.callout(mo.md(f"**NotIncremental**: {_e}"), kind="info")
+    except ValueError as _e:
+        _out = mo.callout(mo.md(f"**ValueError**: {str(_e).splitlines()[-1]}"), kind="info")
+    _out
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    In a *pipeline* (next chapter), views without update rules are
+    recomputed and diffed instead, and their changes still flow to the
+    views downstream; that is how chapters 2 and 3 maintain a window and an
+    aggregate.
+
+    Plain SQL works too: `sv.IncrementalView(con, "select ... from ...",
+    "name")`. And the view is a table like any other:
+    `con.table("orders_with_city")`.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## How it works: rows with weights
+
 
     The trick that makes it tractable is to give every row a **weight**:
 
@@ -264,117 +439,7 @@ def _(mo):
     `Rel.delta_correct` proves the generated plan computes exactly the
     change. Since the update plan is an ordinary plan, any engine can run
     it.
-
-    ## On a real engine: `sv.IncrementalView`
-
-    You write the query once, as Ibis or SQL. `IncrementalView` stores its
-    result as a table and keeps it up to date from the inserts and deletes
-    alone:
     """)
-    return
-
-
-@app.cell
-def _():
-    import ibis
-    import sverify as sv
-    from sverify.examples import create_tables
-
-    con = sv.connect()  # plans run on DuckDB by default
-    create_tables(
-        con,
-        orders_rows=[(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
-        customers_rows=[("ada", "Paris"), ("bob", "Oslo")],
-    )
-    o, c = con.table("orders"), con.table("customers")
-    with_city = o.join(c, o.customer == c.name).select(o.id, c.city)
-
-    view = sv.IncrementalView(con, with_city, "orders_with_city")
-    view.rows()
-    return c, con, ibis, o, sv, view
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    `view.apply({...})` takes a batch of changes per table, as
-    `sv.Changes(inserts=[...], deletes=[...])`. It updates the base tables
-    *and* the view. `view.recompute()` computes the view from scratch, for
-    checking. Press the button to change both tables at once, at random:
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    apply_batch = mo.ui.button(
-        value=0, on_click=lambda n: n + 1, label="Apply a random batch of changes", kind="success"
-    )
-    apply_batch
-    return (apply_batch,)
-
-
-@app.cell(hide_code=True)
-def _(apply_batch, display, mo, sv, view):
-    import random as _random
-
-    def _batch(rng, table, make_row):
-        current = sv.table_rows(view.con, table)
-        deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
-        return sv.Changes(
-            inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes
-        )
-
-    def _changes_table(ch, cols, title):
-        rows = [list(r) for r in [*ch.inserts, *ch.deletes]]
-        return display.table(rows, cols, [1] * len(ch.inserts) + [-1] * len(ch.deletes), title)
-
-    _names = ["ada", "bob", "cy", None]
-    _last = None
-    if apply_batch.value:
-        _rng = _random.Random(apply_batch.value)
-        _last = {
-            "orders": _batch(
-                _rng,
-                "orders",
-                lambda r: (r.randint(1, 9), r.choice(_names), r.choice([None, 5, 30, 50])),
-            ),
-            "customers": _batch(
-                _rng, "customers", lambda r: (r.choice(_names), r.choice(["Paris", "Oslo", "Lima"]))
-            ),
-        }
-        view.apply(_last)
-
-    _equal = view.rows() == view.recompute()
-    mo.vstack(
-        [
-            mo.md("*Press the button to change both tables at once.*")
-            if _last is None
-            else display.side_by_side(
-                _changes_table(_last["orders"], ["id", "customer", "amount"], "changes to orders"),
-                _changes_table(_last["customers"], ["name", "city"], "changes to customers"),
-            ),
-            display.side_by_side(
-                display.table(
-                    sorted(view.rows(), key=lambda r: r[0]), ["id", "city"], title="maintained view"
-                ),
-                display.table(
-                    sorted(view.recompute(), key=lambda r: r[0]),
-                    ["id", "city"],
-                    title="recomputed from scratch",
-                ),
-            ),
-            mo.callout(
-                mo.md(
-                    f"After {apply_batch.value} batch(es): the maintained view "
-                    + ("**equals** full recomputation ✓" if _equal else "**differs** ✗")
-                    + f". Each batch runs {len(view.deltas)} Lean-generated update plans on DataFusion."
-                ),
-                kind="success" if _equal else "danger",
-            ),
-        ],
-        gap=1,
-    )
     return
 
 
@@ -417,7 +482,8 @@ def _(mo):
     mo.md(r"""
     Step by step:
 
-    1. DataFusion turns the query into a Substrait plan.
+    1. The query becomes a Substrait plan (sverify's Ibis producer, or the
+       connection's SQL producer for a SQL string).
     2. `substrait-check --delta` builds the update plan (`Rel.delta`),
        splits it into pieces without `UNION ALL` (`Rel.terms`), and encodes
        each row's weight as the `__weight` column (`Rel.weighted`). Each step
@@ -449,55 +515,6 @@ def _(mo, sv, view):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## What can be maintained
-
-    Filters, computed columns, inner joins (self-joins too), cross joins,
-    `UNION ALL` and `ORDER BY`. Everything else is **refused up front**
-    instead of being maintained wrongly: left, semi and anti joins (a left
-    join's NULL-padded rows must be *retracted* when a match turns up
-    later), `DISTINCT`, `LIMIT` (it depends on row order), windows, and
-    aggregates. Pick one:
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(c, mo, o):
-    REFUSED = {
-        "orders.limit(2)": o.limit(2),
-        "a left join": o.left_join(c, o.customer == c.name).select(o.id, c.city),
-        "orders.distinct()": o.distinct(),
-        "total amount per customer": o.group_by("customer").aggregate(total=o.amount.sum()),
-    }
-    refused = mo.ui.dropdown(list(REFUSED), value="a left join", label="query")
-    refused
-    return REFUSED, refused
-
-
-@app.cell(hide_code=True)
-def _(REFUSED, con, mo, refused, sv):
-    try:
-        sv.IncrementalView(con, REFUSED[refused.value], "refused_view")
-        _out = mo.callout(mo.md("Accepted?!"), kind="danger")
-    except sv.NotIncremental as _e:
-        _out = mo.callout(mo.md(f"**NotIncremental**: {_e}"), kind="info")
-    except ValueError as _e:
-        _out = mo.callout(mo.md(f"**ValueError**: {str(_e).splitlines()[-1]}"), kind="info")
-    _out
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Aggregates aren't part of the Lean model yet, so the checker refuses them
-    before the question of maintenance even comes up. In a *pipeline*
-    (next chapter), views without update rules are recomputed instead, and
-    their changes still flow to the views downstream.
-
-    Plain SQL works too: `sv.IncrementalView(con, "select ... from ...",
-    "name")`. And the view is a table like any other: `con.table("orders_with_city")`.
-
     ### How do I know it's right?
 
     The theorems cover the Lean model. The rest (the JSON translation, the
