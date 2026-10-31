@@ -13,7 +13,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="1. Plans, meaning and proofs")
+app = marimo.App(width="medium", app_title="13. Plans, meaning and proofs")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [Contents](?file=00_start_here.py) · 2. [The checker](?file=02_the_checker.py) →
+    ← 12. [Doubles, time and text](?file=12_values.py) · [Contents](?file=00_start_here.py) · 14. [The checker](?file=14_the_checker.py) →
     """)
     return
 
@@ -35,10 +35,10 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 1. Plans, meaning and proofs
+    # 13. Plans, meaning and proofs
 
-    Before any library code, this chapter explains the three ideas everything
-    else rests on:
+    The chapters so far were about using the library. This one starts the
+    part about how it works, with the three ideas everything rests on:
 
     1. a query is a **plan**, a tree of small operators;
     2. a plan has a **meaning**, given by an interpreter that serves as the
@@ -368,7 +368,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [Contents](?file=00_start_here.py) · 2. [The checker](?file=02_the_checker.py) →
+    ← 12. [Doubles, time and text](?file=12_values.py) · [Contents](?file=00_start_here.py) · 14. [The checker](?file=14_the_checker.py) →
     """)
     return
 
