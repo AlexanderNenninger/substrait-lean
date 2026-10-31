@@ -839,7 +839,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
         return (← arrD o "preference").head? == some (.str "ACCEPT_NULLS")
       if !accepts then throw "concat is only supported with null_handling ACCEPT_NULLS"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
-      match (parsed.getD 1 (.lit .null)).kind cols with
+      -- A timestamp or date literal has its type's kind (`argKind`).
+      match argKind cols (argJs.getD 1 .null) (parsed.getD 1 (.lit .null)) with
       | .time => pure ()
       | .date =>
         -- The same function of a DATE (days).

@@ -1421,7 +1421,7 @@ class _Parser:
                     raise Unsupported("date_diff takes two dates")
                 if name in ("date_part", "datepart", "date_trunc", "datetrunc"):
                     second = parsed[1] if len(parsed) > 1 else Lit(None, None)
-                    k = lean_expr_kind(second, cols.lean)
+                    k = _arg_kind(cols.lean, arg_js[1], second) if len(arg_js) > 1 else "other"
                     if k == "date":
                         # The same function of a DATE (days).
                         call = _call(name, parsed)
