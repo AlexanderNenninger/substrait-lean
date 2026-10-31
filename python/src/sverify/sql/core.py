@@ -526,12 +526,12 @@ class Field:
 class Un:
     op: Literal[
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
-        "ftoi", "itos", "upper", "lower", "length", "regex_match", "date_part", "date_trunc",
-        "to_date",
+        "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
+        "date_trunc", "to_date",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
-    """The `d` of `froundTo d`."""
+    """The `d` of `froundTo d`, or the bits of `narrow`."""
     param: str = ""
     """The pattern of `regexMatch`, the part of `datePart`, the unit of `dateTrunc`."""
 
@@ -793,7 +793,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return lean_expr_kind(a, cols)
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
-        case Un(op="ftoi" | "length" | "regex_match" | "date_part"):
+        case Un(op="ftoi" | "narrow" | "length" | "regex_match" | "date_part"):
             return "int"
         case Un(op="itos" | "upper" | "lower"):
             return "str"
@@ -829,7 +829,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return expr_kind(a, cols)
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
-        case Un(op="ftoi" | "length" | "regex_match" | "date_part"):
+        case Un(op="ftoi" | "narrow" | "length" | "regex_match" | "date_part"):
             return "int"
         case Un(op="itos" | "upper" | "lower"):
             return "str"
@@ -940,6 +940,11 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
     if "bool" in ty:
         return "bool", "bool"
     return "other", None
+
+
+def _int_bits(ty: dict) -> int:
+    """`Parse.intBits`: the width of an integer type."""
+    return next((n for n in (8, 16, 32) if f"i{n}" in ty), 64)
 
 
 def _lean_type_kind(ty: Any) -> LeanKind:
@@ -1353,6 +1358,10 @@ class _Parser:
                     return Un("itos", e)
                 if target == "date" and k == "time":
                     return Un("to_date", e)
+                # Fails where the value does not fit (`UnFn.narrow`).
+                if target == "int" and k == "int":
+                    bits = _int_bits(_req(v, "type"))
+                    return Un("narrow", e, digits=bits) if bits < 64 else e
                 if target == k and target != "other":
                     return e
                 raise Unsupported(f"unsupported cast from {k} to {target}")
@@ -2462,6 +2471,11 @@ class _Writer:
                 return d.float_round_to(self.float_operand(a, ref, cols), digits)
             case Un(op="ftoi", arg=a):
                 return d.float_to_int(self.float_operand(a, ref, cols))
+            case Un(op="narrow", arg=a, digits=bits):
+                x = self.int_operand(a, ref, cols, "CAST to INT")
+                lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)
+                fail = d.raise_(f"CAST to a {bits}-bit integer out of range", x, "int")
+                return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} ELSE {fail} END)"
             case Un(op="itos", arg=a):
                 return d.int_to_str(self.int_operand(a, ref, cols, "CAST to VARCHAR"))
             case Bin(op="and" | "or" as op, left=a, right=b):

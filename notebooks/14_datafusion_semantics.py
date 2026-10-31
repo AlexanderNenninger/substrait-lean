@@ -91,7 +91,6 @@ def _(catalogue, mo, render):
         "E5",
         "I6",
         "I7",
-        "I8",
         "I4",
         "S6",
         "N7",
@@ -817,8 +816,8 @@ def _(P, Q, pl, prove, render):
             "I8",
             "narrowing CAST fails",
             "SELECT CAST(a AS INT) AS x FROM m",
-            "GAP",
-            "`CAST(bigint AS INT)` is parsed as the identity (both are `Kind.int`); DataFusion raises a CastError. Proved with no issue.",
+            "handled",
+            "`CAST(bigint AS INT)` raises a CastError in DataFusion. Lean models it as `UnFn.narrow` (it used to read it as the identity): NULL plus a `badCast` issue where the value does not fit, so `verify` reports the possible error.",
             std="error",
             duck="same",
             lean=lambda: prove("SELECT CAST(a AS INT) AS x FROM m", on="m"),
@@ -1410,10 +1409,10 @@ def _(mo):
       differ, instead of evaluating it to NULL.
     * **String comparisons (S6)**: define `BinFn.lt` on strings (by code
       point, like `Value.le`), or refuse `<`/`>` on strings.
-    * **Narrow and unsigned integers (I6–I8)**: track the bit width and the
-      unsigned type variation in the parser's `Kind`. Check wrap-around at
-      that width, and model narrowing casts as range-checked (`badCast`). Or
-      refuse non-64-bit integer arithmetic outright.
+    * **Narrow and unsigned integers (I6, I7)**: track the bit width and the
+      unsigned type variation in the parser's `Kind`, and check wrap-around
+      at that width, or refuse non-64-bit integer arithmetic outright.
+      Narrowing casts (I8) are already range-checked (`UnFn.narrow`).
     * **`abs` (I4)**: report `abs(MIN)` as an error, not a wrap.
     * **Boolean `CASE` and `COALESCE` (E4–E5)**: in `Expr.issues`, treat a
       boolean-valued `CASE`, and every `COALESCE`, as evaluating all of its

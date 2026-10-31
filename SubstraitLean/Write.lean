@@ -40,7 +40,7 @@ def UnFn.anchor : UnFn → Nat
   | .fround | .froundTo _ => 17
   | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .itos | .toDate | .regexMatch _ => 0
+  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
@@ -119,6 +119,10 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
   | .un .fneg a => call 3 [writeExpr cols .float a]
   | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | .un (.narrow n) a =>
+    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+    obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
+      ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a => call 17 [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]]

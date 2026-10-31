@@ -7,9 +7,8 @@ expressions whose meaning depends on the backend, so a new Ibis that changes
 them shows up too. Then the translators on the notebook's edge rows: Polars
 and DuckDB must agree with each other.
 
-Last, the sverify gaps the notebook found, each a strict `xfail` asserting
-the sound outcome: fixing one makes it pass and fails the run until the
-marker is removed.
+Last, the sverify gaps the notebook found, now fixed: constant casts fold as
+DataFusion casts, and the Polars translator keeps repeated output names.
 """
 
 import json
@@ -357,21 +356,18 @@ def test_translators_disagree_on_opaque_functions(con, sql, expected):
     assert translated(con, sql) == expected
 
 
-# --- sverify gaps ---------------------------------------------------------------
-
-gap = pytest.mark.xfail(strict=True, reason="sverify gap, see notebooks/15_backend_semantics.py")
+# --- sverify gaps, fixed ---------------------------------------------------------
 
 
-@gap
-def test_gap_polars_translator_duplicate_output_names(con):
+def test_polars_translator_keeps_duplicate_output_names(con):
     """N4: two output columns with one name are legal SQL and Substrait."""
-    by_polars, by_duckdb = translated(con, "SELECT a.a, b.a FROM j a JOIN j b ON a.a = b.a")
+    sql = "SELECT a.a, b.a FROM j a JOIN j b ON a.a = b.a"
+    by_polars, by_duckdb = translated(con, sql)
     assert by_polars == by_duckdb == [(1, 1)]
-
-
-def test_duplicate_output_names_crash_polars_today(con):
-    with pytest.raises(pl.exceptions.DuplicateError):
-        translated(con, "SELECT a.a, b.a FROM j a JOIN j b ON a.a = b.a")
+    plan = written_plan(substrait_json(con, sql))
+    assert polars_engine.run(plan, {"j": TABLES["j"]}).column_names == ["a", "a"]
+    with pytest.raises(polars_engine.Unsupported, match="repeat a name"):
+        polars_engine.to_lazy(plan, {"j": TABLES["j"]})
 
 
 def proves(sql: str, ensures: str) -> bool:
