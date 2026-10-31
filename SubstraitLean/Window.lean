@@ -85,38 +85,143 @@ theorem TotalPre.flip {α : Type} {le : α → α → Bool} (h : TotalPre le) :
 /-! ## Ordering values -/
 
 def Value.tag : Value → Nat
-  | .null => 0 | .bool _ => 1 | .int _ => 2 | .str _ => 3
-
-/-- A total order on values: each type's own order (`false < true`, integers
-and the float codes numerically, strings by code point, which is UTF-8 byte
-order), types ordered NULL < booleans < integers < strings. Within a column
-only one type and NULL occur. -/
-def Value.le : Value → Value → Bool
+  | .bool _ => 0 | .int _ => 1 | .str _ => 2 | .list _ => 3 | .null => 4
+/-- `Value.le` on values that are not both lists. -/
+def Value.leScalar : Value → Value → Bool
   | .bool a, .bool b => !a || b
   | .int a, .int b => decide (a ≤ b)
   | .str a, .str b => decide (a ≤ b)
   | a, b => decide (a.tag ≤ b.tag)
+mutual
+/-- A total order on values: each type's own order (`false < true`, integers
+and the float codes numerically, strings by code point, which is UTF-8 byte
+order, lists lexicographically with a prefix first), types ordered booleans
+< integers < strings < lists < NULL. Within a column only one type and NULL
+occur; NULL's place only matters inside lists (`ORDER BY` places top-level
+NULLs itself, and `MIN`/`MAX` skip them), where engines sort NULL elements
+last. -/
+def Value.le : Value → Value → Bool
+  | .list as, .list bs => Value.leList as bs
+  | a, b => Value.leScalar a b
+  termination_by a b => sizeOf a + sizeOf b
+/-- Lexicographic order on lists of values: the first element where they
+differ decides, and a prefix comes first. -/
+def Value.leList : List Value → List Value → Bool
+  | [], _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => Value.le a b && (!Value.le b a || Value.leList as bs)
+  termination_by as bs => sizeOf as + sizeOf bs
+end
+theorem Value.le_def (a b : Value) : a.le b = (match a, b with
+    | .list as, .list bs => Value.leList as bs
+    | a, b => Value.leScalar a b) := by
+  cases a <;> cases b <;> rw [Value.le] <;> simp
 
-theorem Value.le_totalPre : TotalPre Value.le where
-  trans a b c := by
-    cases a <;> cases b <;> cases c <;> simp [Value.le, Value.tag]
+theorem Value.leList_nil (bs : List Value) : Value.leList [] bs = true := by
+  cases bs <;> rw [Value.leList]
+
+theorem Value.leList_cons_nil (a : Value) (as : List Value) : Value.leList (a :: as) [] = false := by
+  rw [Value.leList]
+
+theorem Value.leList_cons (a b : Value) (as bs : List Value) :
+    Value.leList (a :: as) (b :: bs) = (a.le b && (!b.le a || Value.leList as bs)) := by
+  rw [Value.leList]
+
+mutual
+theorem Value.le_antisymm : ∀ {a b : Value}, a.le b = true → b.le a = true → a = b
+  | .list as, .list bs, hab, hba => by
+    simp only [Value.le_def] at hab hba
+    rw [Value.leList_antisymm hab hba]
+  | .null, b, hab, hba | .bool _, b, hab, hba | .int _, b, hab, hba | .str _, b, hab, hba
+  | .list _, .null, hab, hba | .list _, .bool _, hab, hba | .list _, .int _, hab, hba
+  | .list _, .str _, hab, hba => by
+    try cases b
+    all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
     all_goals first
       | omega
-      | (intro h₁ h₂; exact String.le_trans h₁ h₂)
-      | (rename_i x y z; cases x <;> cases y <;> cases z <;> simp)
-  total a b := by
-    cases a <;> cases b <;> simp [Value.le, Value.tag]
+      | exact String.le_antisymm hab hba
+      | (rename_i x y; cases x <;> cases y <;> simp_all)
+  termination_by a b => sizeOf a + sizeOf b
+
+theorem Value.leList_antisymm : ∀ {as bs : List Value},
+    Value.leList as bs = true → Value.leList bs as = true → as = bs
+  | [], [], _, _ => rfl
+  | [], _ :: _, _, h | _ :: _, [], h, _ => by simp [Value.leList_cons_nil] at h
+  | a :: as, b :: bs, hab, hba => by
+    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hab hba
+    have hb := Value.le_antisymm hab.1 hba.1
+    subst hb
+    have h₁ : Value.leList as bs = true := hab.2.resolve_left (by simp [hba.1])
+    have h₂ : Value.leList bs as = true := hba.2.resolve_left (by simp [hab.1])
+    rw [Value.leList_antisymm h₁ h₂]
+  termination_by as bs => sizeOf as + sizeOf bs
+end
+
+mutual
+theorem Value.le_total : ∀ a b : Value, a.le b = true ∨ b.le a = true
+  | .list as, .list bs => by simp only [Value.le_def]; exact Value.leList_total as bs
+  | .null, b | .bool _, b | .int _, b | .str _, b
+  | .list _, .null | .list _, .bool _ | .list _, .int _ | .list _, .str _ => by
+    try cases b
+    all_goals simp [Value.le_def, Value.leScalar, Value.tag]
     all_goals first
       | omega
       | exact String.le_total _ _
       | (rename_i x y; cases x <;> cases y <;> simp)
+  termination_by a b => sizeOf a + sizeOf b
 
-theorem Value.le_antisymm {a b : Value} (hab : a.le b = true) (hba : b.le a = true) : a = b := by
-  cases a <;> cases b <;> simp_all [Value.le, Value.tag]
-  all_goals first
-    | omega
-    | exact String.le_antisymm hab hba
-    | (rename_i x y; cases x <;> cases y <;> simp_all)
+theorem Value.leList_total : ∀ as bs : List Value,
+    Value.leList as bs = true ∨ Value.leList bs as = true
+  | [], _ => Or.inl (Value.leList_nil _)
+  | _ :: _, [] => Or.inr (Value.leList_nil _)
+  | a :: as, b :: bs => by
+    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true']
+    have := Value.leList_total as bs
+    rcases Value.le_total a b with h | h <;> by_cases h' : (b.le a = true) <;>
+      by_cases h'' : (a.le b = true) <;> simp_all
+  termination_by as bs => sizeOf as + sizeOf bs
+end
+
+mutual
+theorem Value.le_trans : ∀ a b c : Value, a.le b = true → b.le c = true → a.le c = true
+  | .list as, .list bs, .list cs, hab, hbc => by
+    simp only [Value.le_def] at *
+    exact Value.leList_trans as bs cs hab hbc
+  | .null, b, c, hab, hbc | .bool _, b, c, hab, hbc | .int _, b, c, hab, hbc
+  | .str _, b, c, hab, hbc | .list _, .null, c, hab, hbc | .list _, .bool _, c, hab, hbc
+  | .list _, .int _, c, hab, hbc | .list _, .str _, c, hab, hbc
+  | .list _, .list _, .null, hab, hbc | .list _, .list _, .bool _, hab, hbc
+  | .list _, .list _, .int _, hab, hbc | .list _, .list _, .str _, hab, hbc => by
+    try cases b
+    all_goals try cases c
+    all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
+    all_goals first
+      | omega
+      | exact String.le_trans hab hbc
+      | (rename_i x y z; cases x <;> cases y <;> cases z <;> simp_all)
+  termination_by a b c => sizeOf a + sizeOf b + sizeOf c
+
+theorem Value.leList_trans : ∀ as bs cs : List Value,
+    Value.leList as bs = true → Value.leList bs cs = true → Value.leList as cs = true
+  | [], _, _, _, _ => Value.leList_nil _
+  | _ :: _, [], _, h, _ | _ :: _, _ :: _, [], _, h => by simp [Value.leList_cons_nil] at h
+  | a :: as, b :: bs, c :: cs, hab, hbc => by
+    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at *
+    have hac := Value.le_trans a b c hab.1 hbc.1
+    refine ⟨hac, ?_⟩
+    by_cases hca : c.le a = true
+    · right
+      have hba := Value.le_trans b c a hbc.1 hca
+      have hcb := Value.le_trans c a b hca hab.1
+      exact Value.leList_trans as bs cs (hab.2.resolve_left (by simp [hba]))
+        (hbc.2.resolve_left (by simp [hcb]))
+    · left; simpa using hca
+  termination_by as bs cs => sizeOf as + sizeOf bs + sizeOf cs
+end
+
+theorem Value.le_totalPre : TotalPre Value.le where
+  trans := Value.le_trans
+  total a b := by rcases Value.le_total a b with h | h <;> simp [h]
 
 /-- One `ORDER BY` key: a column, ascending or descending, NULLs first or last. -/
 structure SortKey where
@@ -172,7 +277,7 @@ theorem SortKey.le_int {k : SortKey} {x y : Row} {u v : Int} (h : k.le y x = tru
   rcases h with ⟨_, h | h⟩
   · simp [hr, natLe] at h
   · unfold SortKey.valLe at h
-    cases hd : k.desc <;> simp_all [Value.le]
+    cases hd : k.desc <;> simp_all [Value.le_def, Value.leScalar]
 
 /-- Rows that sort both ways on a key agree on its column. -/
 theorem SortKey.le_antisymm {k : SortKey} {x y : Row} (hxy : k.le x y = true) (hyx : k.le y x = true) :

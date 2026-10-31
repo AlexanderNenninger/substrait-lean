@@ -145,6 +145,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .eq, .int a, .int b => .bool (a == b)
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
+  -- Lists are equal element by element, NULL elements equal (DataFusion, DuckDB).
+  | .eq, .list a, .list b => .bool (decide (a = b))
   | .lt, .int a, .int b => .bool (decide (a < b))
   | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)

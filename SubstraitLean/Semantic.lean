@@ -88,7 +88,7 @@ def keyCol (ks : List (List Nat)) : Expr → Bool
   | _ => false
 
 def Measure.dropDistinct (ks : List (List Nat)) (m : Measure) : Measure :=
-  if m.distinct && keyCol ks m.arg then { m with distinct := false } else m
+  if m.distinct && m.fn != .collect && keyCol ks m.arg then { m with distinct := false } else m
 
 /-- Do the grouping expressions include the columns of a key? -/
 def groupsKey (ks : List (List Nat)) (gs : List Expr) : Bool :=
@@ -123,6 +123,7 @@ def Rel.origin (cat : Catalog) : Rel → Nat → Option (String × Nat)
   | .aggregate r gs _, i => match gs[i]? with
     | some (.field j) => r.origin cat j
     | _ => none
+  | .unnest _ _, _ => none
 
 /-- A table column whose non-NULL values all occur in column `j`. -/
 def Rel.cover (cat : Catalog) : Rel → Nat → Option (String × Nat)
@@ -218,6 +219,7 @@ def Rel.fds (cat : Catalog) (K : String → List (List Nat)) : Rel → List (Lis
   | .aggregate _ gs ms => keyFds [List.range gs.length] (gs.length + ms.length)
   | .filter r c => r.fds cat K ++ eqFds c.eqCols
   | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => r.fds cat K
+  | .unnest _ _ => []
   | .project r es => (r.fds cat K).filter (inRange (r.arity cat)) ++ copyFds (r.arity cat) es
   | .window r _ _ _ => (r.fds cat K).filter (inRange (r.arity cat))
   | .emit r m => (r.fds cat K).flatMap (emitFd m)
@@ -395,6 +397,8 @@ def Rel.optimize (cat : Catalog) (A : String → List AVal) (F : String → List
       ((a.optimize cat A F K R).2 ++ (b.optimize cat A F K R).2)
   | .orderBy r keys => step cat A F K R (.orderBy (r.optimize cat A F K R).1 keys) (r.optimize cat A F K R).2
   | .distinct r => step cat A F K R (.distinct (r.optimize cat A F K R).1) (r.optimize cat A F K R).2
+  -- Not optimized through (`UNNEST` has no rewrites yet).
+  | .unnest r c => (.unnest r c, [])
   | .aggregate r gs ms =>
       step cat A F K R (.aggregate (r.optimize cat A F K R).1 gs ms) (r.optimize cat A F K R).2
 
@@ -419,8 +423,8 @@ theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
   unfold dropDistinct
   split
   · rename_i h
-    simp only [Bool.and_eq_true] at h
-    obtain ⟨hd, hc⟩ := h
+    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+    obtain ⟨⟨hd, hfc⟩, hc⟩ := h
     unfold keyCol at hc
     split at hc
     · rename_i c heq
@@ -434,7 +438,8 @@ theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
         simpa [heq, Expr.eval] using he
       have hnd : (((m.kept rows).map m.arg.eval).filter (· != .null)).Nodup :=
         ((hp.sublist ((m.kept_sublist rows).map _)).filter _)
-      simp only [Measure.eval, inputs, hd, ↓reduceIte, dedup_of_nodup hnd]
+      rw [Measure.eval_eq hfc, Measure.eval_eq (m := { m with distinct := false }) hfc]
+      simp only [inputs, hd, ↓reduceIte, dedup_of_nodup hnd]
       rfl
     · simp at hc
   · rfl
@@ -491,7 +496,7 @@ theorem Rel.origin_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF c
   | .read _, _ => fun h x hx _ => by
       simp only [origin, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h; exact ⟨x, hx, rfl⟩
-  | .values _ _, _ => fun h => by simp [origin] at h
+  | .values _ _, _ | .unnest _ _, _ => fun h => by simp [origin] at h
   | .filter r _, hwf => fun h x hx hn => by
       simp only [eval, List.mem_filter] at hx
       exact origin_sound hcat hwf.1 h x hx.1 hn
@@ -642,8 +647,8 @@ theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF ca
       obtain ⟨z, hz, he⟩ := cover_sound hcat (r := r) hwf h y hy hn
       exact ⟨z, by simpa [eval, mem_dedup] using hz, he⟩
   | .values _ _, _ | .filter _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .fetch _ _ _, _
-  | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _ =>
-      fun h => by simp [cover] at h
+  | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _
+  | .unnest _ _, _ => fun h => by simp [cover] at h
 
 theorem eq_self_isTrue {v : Value} (h : v ≠ .null) : (BinFn.apply .eq v v).isTrue = true := by
   cases v <;> simp_all [BinFn.apply, Value.isTrue]
@@ -738,21 +743,43 @@ theorem flatMap_single {A : Relation} {G : Row → Relation}
   · obtain ⟨w, hw⟩ := h x hx
     exact ⟨w, by simp [hw]⟩
 
+/-- Rows that agree on the sort columns sort alike. -/
+theorem sortLe_congr {ks : List SortKey} {x x' y y' : Row}
+    (hx : ∀ k ∈ ks, x'.getD k.col .null = x.getD k.col .null)
+    (hy : ∀ k ∈ ks, y'.getD k.col .null = y.getD k.col .null) : sortLe ks x' y' = sortLe ks x y := by
+  induction ks with
+  | nil => rfl
+  | cons k ks ih =>
+    simp only [List.mem_cons, forall_eq_or_imp] at hx hy
+    simp only [sortLe, lexLe, SortKey.le, hx.1, hy.1, ih hx.2 hy.2]
+
 theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
     (h : ∀ x ∈ grp, ∀ e ∈ m.exprs, e.eval (g x) = e.eval x) : m.eval (grp.map g) = m.eval grp := by
-  have hk : m.kept (grp.map g) = (m.kept grp).map g := by
-    unfold Measure.kept
-    split
-    · rfl
-    · rename_i c hc
-      rw [List.filter_map]
-      congr 1
-      exact List.filter_congr fun x hx => by
-        simp [h x hx c (by simp [Measure.exprs, hc])]
-  have ha : (m.kept grp).map (fun x => m.arg.eval (g x)) = (m.kept grp).map m.arg.eval :=
-    List.map_congr_left fun x hx =>
-      h x ((m.kept_sublist grp).subset hx) m.arg (by simp [Measure.exprs])
-  simp only [Measure.eval, Measure.inputs, hk, List.map_map, Function.comp_def, ha]
+  have hin : ∀ l : Relation, (∀ x ∈ l, x ∈ grp) → m.inputs (l.map g) = m.inputs l := by
+    intro l hl
+    have hk : m.kept (l.map g) = (m.kept l).map g := by
+      unfold Measure.kept
+      split
+      · rfl
+      · rename_i c hc
+        rw [List.filter_map]
+        congr 1
+        exact List.filter_congr fun x hx => by
+          simp [h x (hl x hx) c (by simp [Measure.exprs, hc])]
+    have ha : (m.kept l).map (fun x => m.arg.eval (g x)) = (m.kept l).map m.arg.eval :=
+      List.map_congr_left fun x hx =>
+        h x (hl x ((m.kept_sublist l).subset hx)) m.arg (by simp [Measure.exprs])
+    simp only [Measure.inputs, hk, List.map_map, Function.comp_def, ha]
+  unfold Measure.eval
+  split
+  · -- `collect` sorts first; `g` keeps the sort columns.
+    have hcol : ∀ x ∈ grp, ∀ k ∈ m.sort, (g x).getD k.col .null = x.getD k.col .null :=
+      fun x hx k hk => by
+        simpa [Expr.eval] using h x hx (.field k.col) (by simp [Measure.exprs]; exact .inr (.inr ⟨k, hk, rfl⟩))
+    have hs : (grp.map g).mergeSort (sortLe m.sort) = (grp.mergeSort (sortLe m.sort)).map g :=
+      (List.map_mergeSort fun a ha b hb => (sortLe_congr (hcol a ha) (hcol b hb)).symm).symm
+    rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hin grp fun _ h => h]
 
 theorem aggregateEval_map {gs : List Expr} {ms : List Measure} {A : Relation} {g : Row → Row}
     (hg : ∀ x ∈ A, ∀ e ∈ gs, e.eval (g x) = e.eval x)
@@ -1047,7 +1074,7 @@ theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD f
   | .read t, _ => keyFds_sound (hK t)
   | .aggregate _ gs ms, _ => keyFds_sound fun k hk => by
       simp only [List.mem_singleton] at hk; subst hk; exact aggregateEval_key gs ms _
-  | .values _ _, _ | .unionAll _ _, _ => fun _ h => by simp [fds] at h
+  | .values _ _, _ | .unionAll _ _, _ | .unnest _ _, _ => fun _ h => by simp [fds] at h
   | .filter r c, hwf => fun fd hfd => by
       simp only [fds, List.mem_append] at hfd
       rcases hfd with h | h
@@ -1705,7 +1732,8 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
             obtain ⟨hgs, hms⟩ := hc
             obtain ⟨ha, -, g, he, hg⟩ := joinElim_sound hcat hA hF hK hR hwf.1 hj
             refine ⟨⟨ha, hgs, fun m hm => ⟨hms m hm m.arg (by simp [Measure.exprs]),
-              fun c hc => hms m hm c (by simp [Measure.exprs]; exact .inr hc)⟩⟩, rfl, ?_⟩
+              fun c hc => hms m hm c (by simp [Measure.exprs]; exact .inr (.inl (by simpa using hc)))⟩⟩,
+              rfl, ?_⟩
             have hext : ∀ x ∈ a.eval cat, ∀ e : Expr, e.refsLt (a.arity cat) →
                 e.eval (g x) = e.eval x := fun x hx e hr => by
               obtain ⟨w, hw⟩ := hg x hx
@@ -1801,7 +1829,7 @@ theorem Rel.step_sound {r : Rel} {log : List String} (hwf : r.WF cat) :
 /-- **Soundness of the rewrites**: on data meeting the preconditions, the
 rewritten plan gives the same rows. -/
 theorem Rel.optimize_sound : ∀ {r : Rel}, r.WF cat → Same cat r (r.optimize cat A F K R).1
-  | .read _, hwf | .values _ _, hwf => ⟨hwf, rfl, rfl⟩
+  | .read _, hwf | .values _ _, hwf | .unnest _ _, hwf => ⟨hwf, rfl, rfl⟩
   | .filter r c, hwf => by
     have ih := optimize_sound hwf.1
     refine Same.trans ?_ (step_sound hcat hA hF hK hR ?_)

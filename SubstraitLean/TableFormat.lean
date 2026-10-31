@@ -333,7 +333,7 @@ theorem stats_bounds {a : AVal} {lo hi : Int} {v : Value}
       simp only [Bound.Mem] at hmem
       exact ⟨i, rfl, hmem.1 lo rfl, hmem.2 hi rfl⟩
   | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ => simp_all [AVal.Mem]
+  | str _ | list _ => simp_all [AVal.Mem]
 
 /-- The fact `sverify.io` states from a table's bound in general: a value is
 NULL (only if some file has NULLs) or a number within the bound `b`, each side
@@ -351,7 +351,7 @@ theorem stats_fact {a : AVal} {b : Bound} {v : Value}
       rw [hint] at hb'; cases hb'
       exact .inr ⟨i, rfl, hmem⟩
   | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ => simp_all [AVal.Mem]
+  | str _ | list _ => simp_all [AVal.Mem]
 
 /-- A column whose files are all entirely NULL (NULL count = row count) is
 NULL: the fact `c IS NULL`. -/
@@ -362,7 +362,7 @@ theorem stats_all_null {a : AVal} {v : Value}
   | null => rfl
   | int i => obtain ⟨_, h, _⟩ := hm; simp [hint] at h
   | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ => simp_all [AVal.Mem]
+  | str _ | list _ => simp_all [AVal.Mem]
 
 /-! ## Pruning files -/
 
