@@ -1000,12 +1000,12 @@
  "tpcds-q89": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "sorting by an expression is not supported; sort by a column",
+  "detail": "type decimal(38, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "sorting by an expression is not supported; sort by a column",
+   "detail": "window function Mean is not supported",
    "datafusion": "runs"
   }
  },

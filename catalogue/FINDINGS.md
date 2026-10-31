@@ -51,7 +51,8 @@ practitioner idioms:
    * arithmetic over aggregate results in one aggregation (`SUM(a) /
      SUM(b)`, `MAX − MIN`, `100 * SUM(x)`): 8 queries, among them VWAP, daily
      meter consumption and TPC-H Q14/Q17;
-   * sorting by an expression (TPC-DS Q89).
+   * sorting by an expression (TPC-DS Q89; the Ibis producer now projects the
+     key, so Q89 stops at its DECIMAL columns and window averages).
    Reading money as DOUBLE is no workaround for a correctness tool: TPC-H Q6's
    `discount BETWEEN 0.05 AND 0.07` and a ledger's debits = credits are exact
    only in DECIMAL. With DECIMAL and DATE arithmetic, 30 more queries verify;
