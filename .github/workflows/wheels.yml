@@ -64,8 +64,10 @@ jobs:
           cp -r python/tests "$RUNNER_TEMP/tests"
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
-          uv run --isolated --no-project --with "$wheel" --with pytest --with hypothesis \
-            --with "pyiceberg[sql-sqlite]" --with "datafusion==51.0.0" \
+          uv run --isolated --no-project \
+            --with "sverify[all] @ file://$wheel" \
+            --with pytest --with hypothesis \
+            --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
 
       # Without extras the wheel has no DataFusion, and needs none on DuckDB.

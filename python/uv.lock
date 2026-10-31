@@ -2149,67 +2149,84 @@ name = "sverify"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "deltalake" },
     { name = "duckdb" },
     { name = "ibis-framework", extra = ["duckdb"] },
-    { name = "numpy" },
-    { name = "polars" },
     { name = "pyarrow" },
-    { name = "pyiceberg", extra = ["pyarrow"] },
     { name = "substrait" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "datafusion" },
+    { name = "deltalake" },
+    { name = "numpy" },
+    { name = "polars" },
+    { name = "pyiceberg", extra = ["pyarrow"] },
+    { name = "pyspark" },
+]
 datafusion = [
     { name = "datafusion" },
+]
+delta = [
+    { name = "deltalake" },
+]
+iceberg = [
+    { name = "pyiceberg", extra = ["pyarrow"] },
+]
+polars = [
+    { name = "numpy" },
+    { name = "polars" },
+]
+spark = [
+    { name = "pyspark" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "datafusion" },
     { name = "fakesnow" },
     { name = "hypothesis" },
     { name = "marimo" },
     { name = "poethepoet" },
     { name = "pyiceberg", extra = ["sql-sqlite"] },
     { name = "pyrefly" },
-    { name = "pyspark" },
     { name = "pytest" },
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "snowflake-connector-python" },
     { name = "sqlglot" },
+    { name = "sverify", extra = ["all"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "datafusion", marker = "extra == 'datafusion'", specifier = "==51.0.0" },
-    { name = "deltalake", specifier = ">=1.6.6" },
+    { name = "deltalake", marker = "extra == 'delta'", specifier = ">=1.6.6" },
     { name = "duckdb", specifier = ">=2.0.0" },
     { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
-    { name = "numpy", specifier = ">=2.5.4" },
-    { name = "polars", specifier = ">=2.1.0" },
+    { name = "numpy", marker = "extra == 'polars'", specifier = ">=2.5.4" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
-    { name = "pyiceberg", extras = ["pyarrow"], specifier = ">=0.12.0" },
+    { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
+    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "substrait", specifier = ">=0.37.0" },
+    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg"], marker = "extra == 'all'" },
 ]
-provides-extras = ["datafusion"]
+provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "all"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "datafusion", specifier = "==51.0.0" },
     { name = "fakesnow", specifier = ">=0.12.1" },
     { name = "hypothesis", specifier = ">=6.170.14" },
     { name = "marimo", specifier = ">=0.25.2" },
     { name = "poethepoet", specifier = ">=0.49.0" },
     { name = "pyiceberg", extras = ["sql-sqlite"], specifier = ">=0.12.0" },
     { name = "pyrefly", specifier = ">=1.4.0" },
-    { name = "pyspark", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "snowflake-connector-python", specifier = "<5" },
     { name = "sqlglot", specifier = ">=30.22.0" },
+    { name = "sverify", extras = ["all"] },
 ]
 
 [[package]]

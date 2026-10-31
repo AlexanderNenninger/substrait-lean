@@ -21,12 +21,16 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import pyarrow as pa
-from pyiceberg.catalog import Catalog
-from pyiceberg.expressions import AlwaysTrue
-from pyiceberg.io.pyarrow import ArrowScan
-from pyiceberg.table import Table
-from pyiceberg.table.snapshots import Operation
-from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
+
+try:
+    from pyiceberg.catalog import Catalog
+    from pyiceberg.expressions import AlwaysTrue
+    from pyiceberg.io.pyarrow import ArrowScan
+    from pyiceberg.table import Table
+    from pyiceberg.table.snapshots import Operation
+    from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
+except ImportError as e:
+    raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
 from sverify.contracts import Fact
 from sverify.incremental import (

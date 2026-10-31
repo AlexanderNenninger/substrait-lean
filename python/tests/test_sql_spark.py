@@ -179,16 +179,16 @@ def test_floats(spark):
 
 
 def test_groups_keep_the_sign_of_zero(spark):
-    con = connect()
-    put_table(con, "z", pa.table({"x": pa.array([-0.0, 0.0, -0.0, None, math.nan], pa.float64())}))
-    plan = written_plan(substrait_json(con, "SELECT x, count(*) AS n FROM z GROUP BY x"))
-    from spark_session import put_tables
+    """Through `sverify.spark_engine.run`, Arrow in and out."""
+    from sverify import spark_engine
 
-    put_tables({"z": con.arrow["z"]})
-    got = query(to_sql(json.loads(plan), SPARK))
-    assert canonical(got) == canonical(
-        [tuple(r.values()) for r in run_plan(con, plan, "duckdb").to_pylist()]
-    )
+    con = connect()
+    z = pa.table({"x": pa.array([-0.0, 0.0, -0.0, None, math.nan], pa.float64())})
+    put_table(con, "z", z)
+    plan = written_plan(substrait_json(con, "SELECT x, count(*) AS n FROM z GROUP BY x"))
+    got = [tuple(r.values()) for r in spark_engine.run(plan, {"z": z}, spark).to_pylist()]
+    duck = [tuple(r.values()) for r in run_plan(con, plan, "duckdb").to_pylist()]
+    assert canonical(got) == canonical(duck)
     assert {repr(x) for x, _ in got} == {"-0.0", "0.0", "None", "nan"}
 
 
