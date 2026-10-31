@@ -37,6 +37,10 @@ def shown_output(block: str) -> list[str]:
 
 @pytest.mark.parametrize("readme", READMES, ids=lambda p: str(p.relative_to(ROOT)))
 def test_readme_examples_run(readme, tmp_path, monkeypatch):
+    # The Wheels workflow runs these tests against the installed wheel, with
+    # only `python/tests` copied out: there the READMEs are not here.
+    if not readme.is_file():
+        pytest.skip(f"{readme.relative_to(ROOT)} of the repository is not here")
     monkeypatch.chdir(tmp_path)
     namespace: dict = {"__name__": "__readme__"}
     for k, block in enumerate(python_blocks(readme.read_text())):

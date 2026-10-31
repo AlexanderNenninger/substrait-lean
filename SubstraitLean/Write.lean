@@ -196,6 +196,14 @@ def writeMonths (m : Int) : Json :=
     ("intervalYearToMonth", obj [("months", toJson m)]),
     ("intervalDayToSecond", obj [("precision", toJson 6)])])])]
 
+/-- A constant of a virtual table, as a literal of its column's type `ty`
+(integers of the column's width). -/
+def valuesLit (ty : Json) (v : Value) : Json :=
+  let narrow := ["i8", "i16", "i32"].find? fun k => (ty.getObjVal? k).toOption.isSome
+  match narrow, v with
+  | some k, .int i => obj [("literal", obj [(k, toJson i)])]
+  | _, _ => writeLit (.ofKind (Parse.typeKind ty)) v
+
 /-- A double the model has one zero and one NaN for, as IEEE engines compute
 it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
 Engines that compare by `f64::total_cmp` (DataFusion) need it after an
@@ -298,7 +306,7 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .read t => (Parse.schemaKinds (schemas t (cat t).arity)).map .ofKind
-  | .values n _ => List.replicate n .other
+  | .values n rows => (Parse.schemaKinds (schemas (Parse.valuesKey n rows) n)).map .ofKind
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
@@ -372,86 +380,122 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")])]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
-def writeMeasure (cols : List WKind) (m : Measure) : Json :=
+def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
+  let arg := writeExpr cols (wkind cols m.arg) m.arg
+  let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
+    ("nullability", "NULLABILITY_NULLABLE")])]
+  let arg := if df && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
+    else arg
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
-    ("arguments", Json.arr #[obj [("value", writeExpr cols (wkind cols m.arg) m.arg)]]),
+    ("arguments", Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 
-/-- Write a relation; `emit` is an output mapping to put on its `RelCommon`. -/
-def writeRel (schemas : Schemas) (cat : Catalog) : Rel → Option (List Nat) → Json
-  | .emit r m, out => writeRel schemas cat r (some (match out with
+/-- Write a relation; `emit` is an output mapping to put on its `RelCommon`.
+
+With `df`, write it for DataFusion to run (`--write-datafusion`), compensating
+for where DataFusion's semantics differ from `Rel.eval` (#24): an integer
+`SUM` wraps around in DataFusion, so it is summed as `DECIMAL(38,0)` and cast
+back, which fails outside 64 bits instead. Such a plan does not parse back to
+the same `Rel`. -/
+def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
+    Rel → Option (List Nat) → Json
+  | .emit r m, out => writeRel schemas cat df r (some (match out with
       | none => m
       | some o => o.map (m.getD · 0)))
   | .read t, out => withCommon "read" [
       ("baseSchema", schemas t (cat t).arity),
       ("namedTable", obj [("names", toJson (t.splitOn "."))])] out
-  | .values n rows, out => withCommon "read" [
-      ("baseSchema", placeholderSchema n),
+  | .values n rows, out =>
+    -- The parsed `baseSchema`, and literals of its types: DataFusion checks
+    -- the rows against the schema.
+    let s := schemas (Parse.valuesKey n rows) n
+    let tys := (s.getObjVal? "struct" >>= (·.getObjValAs? (Array Json) "types")).toOption.getD #[]
+    withCommon "read" [
+      ("baseSchema", s),
       ("virtualTable", obj [("expressions", Json.arr (rows.map fun row =>
-        obj [("fields", Json.arr (row.map fun v => obj [("literal", writeValue v)]).toArray)]).toArray)])] out
+        obj [("fields", Json.arr (row.zipIdx.map fun (v, i) =>
+          valuesLit (tys.getD i i64Type) v).toArray)]).toArray)])] out
   | .filter r c, out => withCommon "filter" [
-      ("input", writeRel schemas cat r none),
+      ("input", writeRel schemas cat df r none),
       ("condition", writeExpr (relKinds schemas cat r) .bool c)] out
   | .project r es, out => withCommon "project" [
-      ("input", writeRel schemas cat r none),
+      ("input", writeRel schemas cat df r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr (es.map fun e => writeExpr ks (wkind ks e) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
-      ("left", writeRel schemas cat a none), ("right", writeRel schemas cat b none)] out
+      ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none)] out
   | .join a b ty on, out => withCommon "join" [
-      ("left", writeRel schemas cat a none), ("right", writeRel schemas cat b none),
+      ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", match ty with | .inner => "JOIN_TYPE_INNER" | .left => "JOIN_TYPE_LEFT")] out
+  -- The current encoding, `offsetExpr`/`countExpr`: DataFusion's protobuf no
+  -- longer has the deprecated `offset`/`count`.
   | .fetch r off cnt, out => withCommon "fetch" ([
-      ("input", writeRel schemas cat r none), ("offset", toJson (toString off))] ++
-      (cnt.map fun c => [("count", toJson (toString c))]).getD []) out
+      ("input", writeRel schemas cat df r none),
+      ("offsetExpr", obj [("literal", writeValue (.int off))])] ++
+      (cnt.map fun c => [("countExpr", obj [("literal", writeValue (.int c))])]).getD []) out
   | .unionAll a b, out => withCommon "set" [
-      ("inputs", Json.arr #[writeRel schemas cat a none, writeRel schemas cat b none]),
+      ("inputs", Json.arr #[writeRel schemas cat df a none, writeRel schemas cat df b none]),
       ("op", "SET_OP_UNION_ALL")] out
   | .semi a b anti on, out => withCommon "join" [
-      ("left", writeRel schemas cat a none), ("right", writeRel schemas cat b none),
+      ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", if anti then "JOIN_TYPE_LEFT_ANTI" else "JOIN_TYPE_LEFT_SEMI")] out
   | .orderBy r keys, out => withCommon "sort" [
-      ("input", writeRel schemas cat r none),
+      ("input", writeRel schemas cat df r none),
       ("sorts", Json.arr (keys.map (writeSortKey (relKinds schemas cat r))).toArray)] out
   -- Grouping by every column, with no measures.
   | .distinct r, out =>
       let ks := relKinds schemas cat r
       withCommon "aggregate" [
-        ("input", writeRel schemas cat r none),
+        ("input", writeRel schemas cat df r none),
         ("groupingExpressions", Json.arr ((List.range ks.length).map fun i =>
           writeExpr ks .other (.field i)).toArray),
         ("groupings", Json.arr #[obj [("expressionReferences",
           Json.arr ((List.range ks.length).map toJson).toArray)]])] out
   | .aggregate r gs ms, out =>
       let ks := relKinds schemas cat r
-      withCommon "aggregate" [
-        ("input", writeRel schemas cat r none),
+      let agg := withCommon "aggregate" [
+        ("input", writeRel schemas cat df r none),
         ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
         ("groupings", if gs.isEmpty then Json.arr #[] else
           Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
-        ("measures", Json.arr (ms.map (writeMeasure ks)).toArray)] out
+        ("measures", Json.arr (ms.map (writeMeasure df ks)).toArray)]
+      -- The DECIMAL sums (`writeMeasure`), cast back to `i64` by a project.
+      let sums := (ms.zipIdx.filter fun (m, _) => df && m.fn matches .sum).map (gs.length + ·.2)
+      if sums.isEmpty then agg out else
+        let n := gs.length + ms.length
+        let back := sums.map fun i => obj [("cast", obj [("type", i64Type),
+          ("input", writeExpr [] .other (.field i)),
+          ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+        let cols := (List.range n).map fun j => match sums.idxOf? j with
+          | some k => n + k
+          | none => j
+        withCommon "project" [("input", agg none), ("expressions", Json.arr back.toArray)]
+          (some (match out with
+            | none => cols
+            | some o => o.map (cols.getD · 0)))
   | .unnest r c, out => withCommon "extensionSingle" [
-      ("input", writeRel schemas cat r none),
+      ("input", writeRel schemas cat df r none),
       ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out
   | .window r part sort fns, out => withCommon "project" [
-      ("input", writeRel schemas cat r none),
+      ("input", writeRel schemas cat df r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr (fns.map (writeWindow ks part sort)).toArray)] out
 
-def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String) : Json :=
+def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String)
+    (df : Bool := false) : Json :=
   obj [
     ("extensions", Json.arr (functions.map fun (a, n) => obj [("extensionFunction", obj [
       ("functionAnchor", toJson a), ("name", toJson n)])]).toArray),
     ("relations", Json.arr #[obj [("root", obj [
-      ("input", writeRel schemas cat root none), ("names", toJson names)])]])]
+      ("input", writeRel schemas cat df root none), ("names", toJson names)])]])]
 
 /-- Schemas recorded by the parser, falling back to placeholders. -/
 def planSchemas (p : Parse.Plan) : Schemas := fun t n =>

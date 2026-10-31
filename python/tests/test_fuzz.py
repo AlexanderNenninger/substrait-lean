@@ -113,8 +113,8 @@ def test_join_condition_over_one_side():
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(1, "x")]})
 
 
-@pytest.mark.xfail(strict=True, reason="#109: DataFusion can't read Lean's FetchRel.count")
 def test_limit_on_datafusion():
+    """#109: Lean writes `FetchRel.countExpr`, which DataFusion reads."""
     assert not finding("SELECT i AS c0 FROM t AS q ORDER BY c0 LIMIT 1", "engines", {"t": [T_ROW]})
 
 
