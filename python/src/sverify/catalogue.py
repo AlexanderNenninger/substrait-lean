@@ -13,10 +13,10 @@ The catalogue is hand-written TOML:
 `probe` runs a query the way `sverify` runs everything (an Ibis expression
 through `sverify`'s producer, SQL through DataFusion's, then `substrait-check`)
 and runs it on DataFusion over small synthetic tables. When the checker
-accepts the plan, it also runs Lean's written plan on Polars and DuckDB, compares their rows with DataFusion's, and
-writes Snowflake SQL for it. `catalogue/status.json` holds the results,
-`catalogue/INDEX.md` the readable index and `catalogue/FINDINGS.md` the
-summary tables (between its `stats` markers); regenerate all three with
+accepts the plan, it also runs Lean's written plan on Polars and DuckDB,
+compares their rows with DataFusion's, and writes Snowflake SQL for it.
+`catalogue/status.json` holds the results, `catalogue/INDEX.md` the readable
+index and `catalogue/FINDINGS.md` the summary tables (between its `stats` markers); regenerate all three with
 
     uv run python -m sverify.catalogue --write
 
