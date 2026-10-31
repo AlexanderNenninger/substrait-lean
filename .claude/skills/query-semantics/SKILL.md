@@ -41,8 +41,8 @@ It prints, per source:
 |---|---|---|
 | features | `catalogue/features.toml` | is the construct in the Lean model (`yes`/`partial`/`no`) |
 | pitfalls | `catalogue/pitfalls.toml` | what each engine does, plus DataFusion quirk ids |
-| nb15 | `notebooks/15_backend_semantics.py` (`E(...)` entries) | per engine, Ibis backend, standard SQL and Snowflake; `picks` is the Lean model's answer |
-| nb14 | `notebooks/14_datafusion_semantics.py` (`Q(...)` entries) | DataFusion quirks, tagged agree/handled/GAP |
+| nb15 | `notebooks/17_backend_semantics.py` (`E(...)` entries) | per engine, Ibis backend, standard SQL and Snowflake; `picks` is the Lean model's answer |
+| nb14 | `notebooks/16_datafusion_semantics.py` (`Q(...)` entries) | DataFusion quirks, tagged agree/handled/GAP |
 | parser | `SubstraitLean/Parse.lean` | how Lean reads the Substrait function, or that it refuses it |
 | backends | docstrings of `python/src/sverify/sql/{duckdb,snowflake,spark,core}.py` and `polars_engine.py` | how each backend is made to give Lean's value, and the divergences it works around |
 | catalogue | `catalogue/status.json` | real queries with the same features: verified? which engines run them? |

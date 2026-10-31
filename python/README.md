@@ -1,150 +1,76 @@
 # sverify
 
-**Data pipelines with proofs: incremental views and pre/postconditions,
-checked in [Lean](https://lean-lang.org), run on [DuckDB](https://duckdb.org),
-[Polars](https://pola.rs), [DataFusion](https://datafusion.apache.org) or
-[Spark](https://spark.apache.org), or written as Snowflake SQL.**
+**Prove a data pipeline's contracts before it runs, get the same result on
+[DuckDB](https://duckdb.org), [Polars](https://pola.rs),
+[DataFusion](https://datafusion.apache.org), [Spark](https://spark.apache.org)
+and Snowflake, and keep it up to date from Delta Lake and Iceberg change
+feeds.**
 
-You write a query once, in [Ibis](https://ibis-project.org) or SQL. `sverify`
-then does two things with it:
+You write a transformation in [Ibis](https://ibis-project.org) or SQL and say
+what it assumes about its inputs (`requires`) and what it guarantees about
+its output (`ensures`). A checker written in [Lean](https://lean-lang.org)
+proves the guarantees for every possible input, or says why it can't. Then:
 
-* **Incremental views.** It keeps the query's result up to date from inserts
-  and deletes alone, without recomputing it. The update logic is a delta plan
-  that is *proven* to give the same result as a full recompute.
-* **Contracts.** You state what you assume about the inputs (`requires`) and
-  what the output guarantees (`ensures`). The postconditions are *proved*
-  before your pipeline runs, not sampled in tests.
-
-Every engine runs the plan Lean checked, translated so that it keeps Lean's
-semantics (NULLs, integer division, NaN, ties) or refused where it cannot.
-
-The proofs live in the [substrait-lean](https://github.com/AlexanderNenninger/substrait-lean)
-repository. The wheel ships the checker as a small native binary, so you need
-neither Lean nor any other toolchain to use it.
+* **Contracts are proved, not tested.** `not_null`, `unique`, ranges and
+  relations between columns hold on every input that meets the
+  preconditions, and division by zero, overflow and bad casts are ruled out
+  before the job runs. Preconditions are checked on the data, or proved from
+  Delta and Iceberg metadata.
+* **One plan gives the same answer on every engine.** The checked plan runs
+  on DuckDB, Polars or DataFusion, or is written as Snowflake or Spark SQL,
+  with NULLs, integer division, NaN, ties and overflow spelled out, or it is
+  refused where an engine can't match.
+* **Results are kept up to date from the changes,** by delta plans proved
+  equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
+  appends, and written to sinks exactly once, with the contract attached.
 
 ```bash
 pip install sverify                # or: uv add sverify
-pip install 'sverify[datafusion]'  # with DataFusion as an engine and SQL producer
+pip install 'sverify[all]'         # with every engine and table format
 ```
 
-The core runs on DuckDB. Other engines and table formats are extras:
-`datafusion` (also needed for SQL strings), `polars`, `spark` (needs Java 17
-or 21), `delta`, `iceberg`, or `all`, as in `pip install 'sverify[polars,delta]'`.
-SQL for DuckDB, Snowflake and Spark is generated without any of them.
+The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
+`datafusion` (also compiles SQL strings), `polars`, `spark` (needs Java 17 or
+21), `delta`, `iceberg`, or `all`. Wheels bundle the checker as a small
+native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
+3.12 and later; elsewhere pip builds from the sdist, which needs
+[elan](https://github.com/leanprover/elan).
 
-Wheels are available for Linux (x86_64, aarch64) and macOS (arm64, x86_64),
-on Python 3.12 and later. Elsewhere pip builds from the sdist, which needs
-[elan](https://github.com/leanprover/elan) to compile the checker.
-
-## Try it in the browser
-
-A guided tour of [marimo](https://marimo.io) notebooks walks through every
-feature with live examples, one chapter each. No prior knowledge of formal
-verification is needed.
-
-* [Start here](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/00_start_here.py):
-  what the library does, and the list of chapters.
-* [Plans, meaning and proofs](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/01_plans_and_proofs.py):
-  plans, proofs and SQL's NULL pitfalls, explained from scratch.
-* [A complete pipeline](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/12_fitness.py):
-  heart-rate samples joined with workouts, a contract with proved and refused
-  postconditions, and a view you can stream samples into.
-
-The [whole tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks)
-runs locally with `uvx marimo edit --sandbox notebooks` from a clone.
-
-## Incremental views
+## In thirty lines
 
 ```python
 import ibis
 import sverify as sv
+from ibis import _
 
-con = sv.connect()  # tables in memory; plans run on DuckDB (engine="polars" or "datafusion")
+con = sv.connect()  # in-memory tables; plans run on DuckDB by default
 sv.create_table(
     con,
     "orders",
     ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
     [(1, "ada", 30), (2, "bob", 5)],
 )
-sv.create_table(
-    con, "customers", ibis.schema({"name": "string", "city": "string"}), [("ada", "Paris")]
-)
-
-orders, customers = con.table("orders"), con.table("customers")
-big_orders = (
-    orders.filter(orders.amount > 10)
-    .join(customers, orders.customer == customers.name)
-    .select(orders.id, customers.city, orders.amount)
-)
-
-view = sv.IncrementalView(con, big_orders, "big_orders")
-view.rows()  # [(1, 'Paris', 30)]
-
-# Both tables change at once: order 1 leaves, order 3 arrives,
-# and bob's new customer row makes his order match the join.
-view.apply(
-    {
-        "orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 30)]),
-        "customers": sv.Changes(inserts=[("bob", "Rome")]),
-    }
-)
-view.rows()  # [(3, 'Rome', 50)]
-assert view.rows() == view.recompute()
-```
-
-* An update is a delete plus an insert.
-* `apply` also updates the base tables, and it is all or nothing: a failing
-  batch, such as one that deletes a row that doesn't exist, changes nothing.
-* The view is registered as a table, so you can query it with `con.table("big_orders")`.
-* Plain SQL works too: `sv.IncrementalView(con, "select ... from ...", "name")`.
-  SQL strings are compiled by DataFusion (the `datafusion` extra) or by
-  [Isthmus](https://github.com/substrait-io/substrait-java/releases), whose
-  native binary sverify runs from `$SVERIFY_ISTHMUS` or as `isthmus` on `PATH`.
-  `sv.connect(sql_producer="isthmus")` picks it; by default it is used when
-  DataFusion is not installed. Isthmus reads standard SQL (Calcite's), not
-  DataFusion's dialect.
-* Every engine runs exactly the plans Lean checked, translated by `sverify`
-  rather than recompiled: DuckDB by default, or `sv.connect(engine="polars")`,
-  `engine="datafusion"`, or `engine=` on a single view.
-
-**Supported:** filters, computed columns, inner joins (including self-joins and
-non-equi joins), cross joins and `UNION ALL`. Anything else is refused up
-front, rather than maintained incorrectly:
-
-```python
-sv.IncrementalView(con, orders.limit(5), "top5")
-# NotIncremental: not incrementally maintainable (left join, fetch or window)
-```
-
-Aggregates (`GROUP BY` with `SUM` or `COUNT`) are not supported yet.
-
-## Contracts
-
-```python
-from ibis import _
+orders = con.table("orders")
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.id.notnull()]},
-    ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
+    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
 )
-def doubled(orders):
+def big_orders(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
 
-expr = doubled(orders)  # proves all three postconditions, then returns the expression
-print(doubled.last_report)
+view = sv.IncrementalView(con, big_orders(orders), "big_orders")  # proved, then computed
+view.apply({"orders": sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)])})
+assert view.rows() == [(3, 100)] == view.recompute()
+print(big_orders.last_report)
 # requires orders: (_.amount >= 0)
-# requires orders: _.id.notnull()
-# ensures (_.doubled >= 0): proved
-# ensures _.doubled.notnull(): proved
-# ensures id IS NOT NULL: proved
-# known about the output:
-#   id: any integer
-#   doubled: an integer ≥ 22
+# requires orders: unique(id)
+# ensures (_.doubled >= 22): proved
 ```
 
-A postcondition that doesn't follow is refused, along with what *is* known:
+A postcondition that doesn't follow is refused before anything runs:
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
@@ -152,102 +78,80 @@ def plus_one(orders):
     return orders.select(orders.id, total=orders.amount + 1)
 
 
-plus_one(orders)
-# VerificationError: could not prove: (_.total > 5) (it is TRUE or FALSE)
-#   known about the output: total: an integer ≥ 1
+try:
+    plus_one(orders)
+except sv.VerificationError as e:
+    print(e)
+# could not prove: (_.total > 5) (it is TRUE or FALSE)
 ```
 
-* **Conditions** are Ibis expressions (`_.amount >= 0`) or SQL snippets (`"amount >= 0"`).
-* **Preconditions** describe data that comes from outside. When the inputs are
-  real tables, they are checked on the data at call time and raise
-  `PreconditionError` if violated.
-* **Unproved postconditions** raise `VerificationError`. With
-  `on_unproved="runtime"` they are checked on the output data instead, and with
-  `on_unproved="warn"` you get a warning.
-* **Keys:** `sv.unique("user_id", "ts")` says there is at most one row per key.
-  In `requires` it is checked on the data; in `ensures` it is proved.
-* **Window functions:** `LAG`, `LEAD` and `ROW_NUMBER` are supported. Orderings
-  that can tie are refused, because the engine would be free to pick either order.
-* **ASOF joins:** `sv.asof_join` aligns sensors with different sampling rates,
-  matching each row with the latest earlier row of the other table.
-* **Not tracked yet:** string contents, DECIMAL columns, relations between columns
-  beyond "column plus constant", and counts across rows.
+## Workflows
 
-## Delta Lake and Iceberg
+Three complete jobs from a catalogue of 139 real analytical queries, each
+from source tables to a sink, with what goes wrong without the checker. Open
+them in the browser:
 
-`sverify.io` uses Delta Lake and Iceberg tables as change sources, as sources
-of preconditions, and as sinks that carry proved contracts between jobs:
+* [Duplicate card payments](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/01_duplicate_payments.py):
+  a self-join over a Delta table, refreshed from its Change Data Feed, where
+  a watermark job would miss a late duplicate and keep a reversed one.
+* [Sensor alerts](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/02_sensor_alerts.py):
+  `LAG` over an Iceberg table, where ties and a NaN reading change the alerts,
+  and Snowflake and Spark need proved tie-freedom.
+* [An orders mart](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/03_orders_mart.py):
+  dbt tests as a proved contract on a point-in-time join to a type-2
+  dimension, in Ibis and in SQL.
 
-```python
-from sverify.io import DeltaSink, DeltaSource
+The [whole tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks)
+explains every feature in a chapter of its own; it runs locally with
+`uvx marimo edit --sandbox notebooks` from a clone.
 
-pipe = sv.Pipeline(sv.connect())
-big = pipe.view("big", doubled(pipe.source("orders", DeltaSource("orders"))))
-pipe.preconditions  # each with its source: schema, Delta constraint, file stats @v1, ...
-sink = DeltaSink("big", big)
-sink.write()  # NOT NULL / CHECK constraints from `ensures`, contract in the commit
-pipe.refresh()  # orders@v1→v3: ...; Δ trusted as coming from Delta CDF v1→v3
-sink.write()  # one MERGE commit, exactly once
-```
-
-See the main README for the full example and what is trusted versus proved.
-
-## Engines
+## The API in brief
 
 ```python
+from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
 from sverify.sql import to_sql
 from sverify.sql.snowflake import SNOWFLAKE  # also sverify.sql.duckdb, sverify.sql.spark
+import json
 
-sv.run_plan(con, plan, "polars")  # or "datafusion"; DuckDB by default
-to_sql(plan, SNOWFLAKE)  # or sverify.sql.Unsupported, saying why
+sv.verify(
+    "select id, amount from orders where amount > 0",
+    tables={"orders": orders},
+    ensures=["amount > 0"],
+)  # SQL, checked; returns the report
+sv.run_plan(con, view.plan, "polars")  # the checked plan on another engine
+to_sql(json.loads(view.plan), SNOWFLAKE)  # or sverify.sql.Unsupported, saying why
+
+pipe = sv.Pipeline(sv.connect())  # views over views; sources with versions
+# big = pipe.view("big", big_orders(pipe.source("orders", DeltaSource("s3://.../orders"))))
+# DeltaSink("s3://.../big", big).write(); pipe.refresh(); ...
 ```
 
-Polars and DataFusion need their extras (`polars`, `datafusion`).
-`sverify.spark_engine.run(plan, tables)` runs the Spark SQL on a local
-session or on one you pass (extra: `spark`). Snowflake and Spark tables have
-no row order, so sorts, `LIMIT` and windows are refused there unless you pass
-`tie_free=True`. The coverage table in the main README lists what each engine
-runs.
+* `@sv.transform(requires=..., ensures=..., on_unproved="error" | "runtime" | "warn")`
+  proves a contract on each call; `.last_report` says what was proved and
+  what is known about every output column. `sv.unique(...)` states keys.
+* Contracted steps compose: a downstream precondition is proved from the
+  upstream contract (`CompositionError` names a broken link).
+* `sv.IncrementalView` maintains filters, projections, inner and cross joins
+  and `UNION ALL`, and refuses anything else up front (`NotIncremental`); in
+  a `sv.Pipeline` other views are recomputed and diffed instead.
+* `sverify.partition.run_sharded` runs a plan per shard and combines the
+  results, with a proof that the result is the same.
 
-## Sharded evaluation
-
-```python
-import sverify.partition as sp
-
-sp.run_sharded(plan, shards, sharded=["orders"], broadcast={"customers": customers})
-```
-
-Runs the plan on each shard (a partition, a file) and combines the results,
-with a Lean proof that this equals the result on all the data. Linear plans
-are concatenated; `COUNT`, integer `SUM`, `MIN` and `MAX` combine in two
-phases; anything else raises `NotShardable` with the reason.
-
-## How do I know it's right?
-
-* **Proofs.** The delta plan comes from a Lean function, with a theorem saying
-  it computes exactly the change to the result. Contracts are decided by an
-  analysis that is proven sound against the same semantics, which includes SQL's
-  three-valued NULL logic.
-* **Randomized tests.** Random tables and batches of changes, including NULLs
-  and duplicates, check the parts the proofs don't cover: the translation of
-  the producers' plans, the Python glue and the engines themselves. Each
-  engine is compared row for row with Lean's own evaluation.
-
-The repository's
-[README](https://github.com/AlexanderNenninger/substrait-lean#readme) has the
-full list of proven theorems, and explains what is trusted and what is proved.
+**Not supported yet:** DECIMAL columns (keep money as integer cents),
+framed window aggregates, `RANK` and `NTILE`. The repository's README has
+the coverage table, the full guide, and what is proved and what is trusted.
 
 ## Configuration
 
 * `SVERIFY_CHECK`: path to a `substrait-check` binary to use instead of the
   bundled one, for example your own `lake build`.
-* DataFusion is optional (`sverify[datafusion]`), and pinned to `51.0.0`,
-  because Ibis 12's DataFusion backend doesn't connect to later versions. It
-  runs plans with `engine="datafusion"` and compiles SQL strings unless Isthmus
-  does; nothing else needs it.
-* `SVERIFY_ISTHMUS`: path to an Isthmus binary (otherwise `isthmus` on `PATH`).
-  sverify doesn't ship it (it is ~120 MB); `scripts/fetch_isthmus.sh <dir>`
-  downloads the pinned release and checks its SHA-256.
+* `SVERIFY_ISTHMUS`: path to an [Isthmus](https://github.com/substrait-io/substrait-java/releases)
+  binary (otherwise `isthmus` on `PATH`), to compile SQL strings without
+  DataFusion; `sv.connect(sql_producer="isthmus")` picks it, and it is the
+  default when DataFusion is not installed. sverify doesn't ship it (~120 MB);
+  `scripts/fetch_isthmus.sh <dir>` downloads the pinned release.
+* DataFusion is pinned to 51, because Ibis 12's DataFusion backend doesn't
+  connect to later versions.
 
 ## Development
 
@@ -255,7 +159,7 @@ full list of proven theorems, and explains what is trusted and what is proved.
 git clone https://github.com/AlexanderNenninger/substrait-lean
 cd substrait-lean/python
 uv sync                          # builds substrait-check with lake (needs elan) and links it in
-uv run poe qa                    # proofs, lint, typecheck, golden and Python tests
+uv run poe qa                    # proofs, lint, typecheck, golden, Python tests, notebooks
 ```
 
 See the [repository](https://github.com/AlexanderNenninger/substrait-lean) for setup details.
