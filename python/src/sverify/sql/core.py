@@ -1602,8 +1602,8 @@ class _Parser:
                     ]
                 # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
                 # for a NULL `x` (as `Parse.parseExpr`).
-                zero = len(parsed) == 2 and isinstance(parsed[1], Lit)
-                if name == "power" and zero and repr(parsed[1].value) in ("0", "0.0"):
+                exponent = parsed[1] if name == "power" and len(parsed) == 2 else None
+                if isinstance(exponent, Lit) and repr(exponent.value) in ("0", "0.0"):
                     return Lit(1.0, "float") if float_call else Lit(1, "int")
                 # Substrait's typed `greatest`/`least` are NULL if any argument is.
                 if name in ("greatest", "least") and ":" in full_name:
