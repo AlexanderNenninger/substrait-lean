@@ -80,9 +80,12 @@ practitioner idioms:
    correlated, EXISTS or NOT IN subquery as originally written. An Ibis user
    writes 8 of them as semi, anti or cross joins with an aggregate, and none of
    those 8 is blocked by the rewritten part. TPC-H Q15 and Q22 keep a scalar
-   subquery and fail in DataFusion's Substrait producer ("Cannot convert
-   <subquery>"), not in Lean; NOT IN (TPC-H Q16) is refused on purpose
-   (DataFusion's NULL semantics are wrong).
+   subquery, which DataFusion's Substrait producer cannot convert ("Cannot
+   convert <subquery>"); through the Ibis producer the checker lifts it into a
+   join once it proves the subquery has at most one row, and Q22 verifies (as
+   DOUBLE). NOT IN (TPC-H Q16) verifies with SQL's NULL rule, where DataFusion
+   running the query is wrong: DuckDB and Polars agree with DuckDB's own
+   answer, not DataFusion's (`runs (DataFusion's SQL differs)`).
 6. **Statistical functions are a long tail, except in finance.** Median and
    quantiles, CORR, STRING_AGG, ROLLUP, regex replace, hashing, UNNEST and
    recursion each appear in one or two queries and belong in extensions. But
@@ -269,9 +272,9 @@ semi-structured data.
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 8 | 0 | 7 | 0 | 13 | 7 | 7 | 5 |
 | tpcds | 8 | 0 | 3 | 5 | 0 | 8 | 3 | 3 | 0 |
-| tpch | 22 | 0 | 5 | 17 | 0 | 22 | 5 | 5 | 2 |
+| tpch | 22 | 0 | 7 | 15 | 0 | 22 | 7 | 7 | 3 |
 | windows | 13 | 5 | 0 | 8 | 0 | 13 | 5 | 5 | 2 |
-| **all** | 139 | 57 | 15 | 65 | 2 | 132 | 69 | 69 | 52 |
+| **all** | 139 | 57 | 17 | 63 | 2 | 132 | 71 | 71 | 53 |
 
 ### Feature frequency
 
@@ -284,7 +287,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `sum` | aggregation | 57 | 41% | yes |
 | `inner_join` | relational | 44 | 32% | yes |
 | `order_by` | relational | 42 | 30% | yes |
-| `decimal` | expressions | 37 | 27% | no |
+| `decimal` | expressions | 38 | 27% | no |
 | `count` | aggregation | 28 | 20% | yes |
 | `arithmetic_float` | expressions | 26 | 19% | yes |
 | `limit` | relational | 20 | 14% | yes |
@@ -325,7 +328,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `stddev_var` | aggregation | 4 | 3% | no |
 | `anti_join` | relational | 4 | 3% | yes |
 | `date_part` | expressions | 4 | 3% | partial |
-| `exists_subquery` | relational | 4 | 3% | no |
+| `exists_subquery` | relational | 4 | 3% | yes |
 | `window_partition_agg` | windows | 4 | 3% | no |
 | `correlated_subquery` | relational | 4 | 3% | no |
 | `string_basic` | expressions | 3 | 2% | yes |
@@ -335,7 +338,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `union_all` | relational | 3 | 2% | yes |
 | `semi_join` | relational | 3 | 2% | yes |
 | `cte` | relational | 3 | 2% | yes |
-| `scalar_subquery` | relational | 3 | 2% | no |
+| `scalar_subquery` | relational | 3 | 2% | yes |
 | `full_join` | relational | 2 | 1% | yes |
 | `math_transcendental` | expressions | 2 | 1% | no |
 | `percentile` | aggregation | 2 | 1% | no |
@@ -361,7 +364,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `range_frame` | windows | 1 | 1% | no |
 | `timezone` | expressions | 1 | 1% | no |
 | `sort_by_expression` | relational | 1 | 1% | no |
-| `not_in_subquery` | relational | 1 | 1% | no |
+| `not_in_subquery` | relational | 1 | 1% | yes |
 | `distinct` | relational | 1 | 1% | yes |
 | `dynamic_interval` | expressions | 1 | 1% | no |
 
@@ -371,7 +374,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `decimal` | 37 | 15 | no | sverify's Ibis producer refuses any DECIMAL column ("type decimal(15, 2) is not supported"); through DataFusion's SQL producer, columns pass through and compare but SUM/AVG/MIN/MAX and literals are refused. The catalogue also probes each failing query with DOUBLE in their place |
+| `decimal` | 38 | 17 | no | sverify's Ibis producer refuses any DECIMAL column ("type decimal(15, 2) is not supported"); through DataFusion's SQL producer, columns pass through and compare but SUM/AVG/MIN/MAX and literals are refused. The catalogue also probes each failing query with DOUBLE in their place |
 | `running_agg` | 11 | 6 | no |  |
 | `agg_arithmetic` | 8 | 2 | no | the Ibis producer refuses it ("aggregate Divide is not supported"); DataFusion's SQL path, which projects after the aggregate, verified it |
 | `interval_month` | 8 | 2 | no | refused by the checker ("month and year intervals are not supported") and the Ibis producer ("intervals in months") |
@@ -389,11 +392,9 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `first_last_value` | 2 | 0 | no |  |
 | `grouping_sets` | 2 | 0 | no |  |
 | `interval_to_number` | 2 | 0 | no | casting an interval to a number is refused; Ibis delta() and epoch_seconds() do not compile or are refused |
-| `scalar_subquery` | 2 | 0 | no | DataFusion's Substrait producer cannot convert it; rewrite as a cross join with a one-row aggregate |
 | `dynamic_interval` | 1 | 1 | no | refused by the Ibis producer (IntervalFromInteger); through SQL, Ibis wrote CAST(CAST(n AS VARCHAR) \|\| ' day' AS INTERVAL), refused as a string cast |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `hash` | 1 | 1 | no |  |
-| `not_in_subquery` | 1 | 1 | no | refused: DataFusion gets NULLs in the subquery wrong |
 | `range_frame` | 1 | 1 | no |  |
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
 | `regex_replace` | 1 | 1 | no |  |
@@ -408,11 +409,11 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 72 queries that verify (some only as DOUBLE):
+Over the 74 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 16 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 17 |
 | duckdb: refused: comparison of time with interval; cast one side first | 2 |
 | polars: refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us') | 2 |
 | snowflake: refused: comparison of time with interval; cast one side first | 2 |

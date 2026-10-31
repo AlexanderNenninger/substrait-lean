@@ -632,8 +632,8 @@ def _filter(op: Any) -> Json:
     # decorrelates them.
     x = Exprs({op.parent: 0})
     n = len(op.parent.schema)
-    input = rel(op.parent)
     conds: list[Json] = []
+    joins: list[tuple[Any, Json, str]] = []
     for p in op.predicates:
         if (found := _exists(p)) is None:
             conds.append(x(p))
@@ -642,7 +642,9 @@ def _filter(op: Any) -> Json:
         inner, preds = (sub.parent, sub.predicates) if isinstance(sub, ops.Filter) else (sub, ())
         y = Exprs({op.parent: 0, inner: n})
         on = chain("and", [y(q) for q in preds] or [literal(True, dt.boolean)])
-        kind = "JOIN_TYPE_LEFT_ANTI" if anti else "JOIN_TYPE_LEFT_SEMI"
+        joins.append((inner, on, "JOIN_TYPE_LEFT_ANTI" if anti else "JOIN_TYPE_LEFT_SEMI"))
+    input = rel(op.parent)
+    for inner, on, kind in joins:
         input = {"join": {"left": input, "right": rel(inner), "expression": on, "type": kind}}
     if not conds:
         return input
