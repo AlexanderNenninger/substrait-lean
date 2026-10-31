@@ -1,8 +1,9 @@
 # sverify
 
-**Data pipelines with proofs: incremental views and pre/postconditions on
-[DuckDB](https://duckdb.org), [Polars](https://pola.rs) or
-[DataFusion](https://datafusion.apache.org), checked in [Lean](https://lean-lang.org).**
+**Data pipelines with proofs: incremental views and pre/postconditions,
+checked in [Lean](https://lean-lang.org), run on [DuckDB](https://duckdb.org),
+[Polars](https://pola.rs), [DataFusion](https://datafusion.apache.org) or
+[Spark](https://spark.apache.org), or written as Snowflake SQL.**
 
 You write a query once, in [Ibis](https://ibis-project.org) or SQL. `sverify`
 then does two things with it:
@@ -13,6 +14,9 @@ then does two things with it:
 * **Contracts.** You state what you assume about the inputs (`requires`) and
   what the output guarantees (`ensures`). The postconditions are *proved*
   before your pipeline runs, not sampled in tests.
+
+Every engine runs the plan Lean checked, translated so that it keeps Lean's
+semantics (NULLs, integer division, NaN, ties) or refused where it cannot.
 
 The proofs live in the [substrait-lean](https://github.com/AlexanderNenninger/substrait-lean)
 repository. The wheel ships the checker as a small native binary, so you need
@@ -183,6 +187,36 @@ sink.write()  # one MERGE commit, exactly once
 
 See the main README for the full example and what is trusted versus proved.
 
+## Engines
+
+```python
+from sverify.sql import to_sql
+from sverify.sql.snowflake import SNOWFLAKE  # also sverify.sql.duckdb, sverify.sql.spark
+
+sv.run_plan(con, plan, "polars")  # or "datafusion"; DuckDB by default
+to_sql(plan, SNOWFLAKE)  # or sverify.sql.Unsupported, saying why
+```
+
+Polars and DataFusion need their extras (`polars`, `datafusion`).
+`sverify.spark_engine.run(plan, tables)` runs the Spark SQL on a local
+session or on one you pass (extra: `spark`). Snowflake and Spark tables have
+no row order, so sorts, `LIMIT` and windows are refused there unless you pass
+`tie_free=True`. The coverage table in the main README lists what each engine
+runs.
+
+## Sharded evaluation
+
+```python
+import sverify.partition as sp
+
+sp.run_sharded(plan, shards, sharded=["orders"], broadcast={"customers": customers})
+```
+
+Runs the plan on each shard (a partition, a file) and combines the results,
+with a Lean proof that this equals the result on all the data. Linear plans
+are concatenated; `COUNT`, integer `SUM`, `MIN` and `MAX` combine in two
+phases; anything else raises `NotShardable` with the reason.
+
 ## How do I know it's right?
 
 * **Proofs.** The delta plan comes from a Lean function, with a theorem saying
@@ -191,7 +225,8 @@ See the main README for the full example and what is trusted versus proved.
   three-valued NULL logic.
 * **Randomized tests.** Random tables and batches of changes, including NULLs
   and duplicates, check the parts the proofs don't cover: the translation of
-  the producers' plans, the Python glue and the engines themselves.
+  the producers' plans, the Python glue and the engines themselves. Each
+  engine is compared row for row with Lean's own evaluation.
 
 The repository's
 [README](https://github.com/AlexanderNenninger/substrait-lean#readme) has the

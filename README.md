@@ -9,7 +9,7 @@ newer than…") is fast, but it tends to go wrong silently: deletes are missed,
 late rows are skipped, a join gets a new match.
 
 This project gives you a third option. You write the query once, in Ibis or SQL,
-and `sverify` maintains the result in DataFusion from the inserts and deletes alone.
+and `sverify` maintains the result from the inserts and deletes alone.
 The update logic comes from a delta plan that is **mathematically proven to give
 the same result as a full recompute**. The proof is in [Lean](https://lean-lang.org),
 a proof assistant: a program that checks every step of a proof, so you don't
@@ -22,16 +22,33 @@ view.apply({"orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 3
 ```
 
 Underneath, queries travel as [Substrait](https://substrait.io), an open,
-engine-neutral format for query plans. [DataFusion](https://datafusion.apache.org)
-writes your query as a Substrait plan, Lean checks it and computes the proven
-update plan, and DataFusion runs that plan.
+engine-neutral format for query plans. `sverify` writes your query as a
+Substrait plan, Lean checks it and computes the proven update plan, and
+[DuckDB](https://duckdb.org) runs that plan (or Polars, DataFusion or Spark).
+
+The same checker does more than incremental views:
+
+* **Contracts.** State what you assume about the inputs (`requires`) and what
+  the output guarantees (`ensures`); the postconditions are proved before the
+  pipeline runs, including that no division by zero, overflow or bad cast can
+  happen. Contracts compose across steps and travel with Delta Lake and
+  Iceberg tables.
+* **Several engines, one semantics.** A checked plan runs on DuckDB,
+  Polars, DataFusion or Spark, or is written as Snowflake SQL. Each translation
+  either keeps the Lean semantics (NULLs, integer division, NaN, ties) or
+  refuses the plan, and differential tests compare every engine with Lean.
+* **Proved optimizations.** A plan can be split across shards (Delta or
+  Iceberg partitions, files) and combined, with a proof that the result is the
+  same; run-time checks can be dropped where a contract proves them
+  unnecessary. See [docs/optimizations.md](docs/optimizations.md).
 
 **New here?** [The tour](notebooks/00_start_here.py) is a series of interactive
 [marimo](https://marimo.io) notebooks, one per feature, that you can work through
 in order: plans and proofs, the checker, contracts, keys, doubles and time,
 runtime errors, windows and ASOF joins, composition, incremental views,
 pipelines, engines, a complete pipeline end to end, and what exactly is
-proved. No prior knowledge of formal verification or data engineering is
+proved, with two appendices on how DataFusion and the other engines differ
+from the model. No prior knowledge of formal verification or data engineering is
 assumed. See [The tour](#the-tour) for how to open it.
 
 ## Setup
@@ -68,7 +85,7 @@ lake build                       # checks every proof and builds the substrait-c
 cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
-uv run pytest                    # should end with "161 passed"
+uv run pytest                    # all pass; the Spark tests skip without a JVM
 ```
 
 `uv sync` installs `sverify` in editable mode, with every extra (below). Its build hook runs
@@ -175,6 +192,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 12 | [A complete pipeline](notebooks/12_fitness.py) | heart rate during workouts, end to end |
 | 13 | [What is proved, what is trusted](notebooks/13_trust.py) | the trusted boundary, a glossary and a map of the code |
 | 14 | [DataFusion's surprising semantics](notebooks/14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
+| 15 | [One expression, many engines](notebooks/15_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
 
 `poe notebooks` (part of `poe qa`) checks every chapter with `marimo check` and
 runs it headless. The chapters' tables come from `sverify.display`, which needs
@@ -610,6 +628,35 @@ snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
 the table and an append's rows (`stats_table`, `stats_append`); and each
 precondition follows from the metadata facts (`contract_sound`).
 
+### Sharded evaluation
+
+`sverify.partition` runs a plan on each shard of its data (a Delta or Iceberg
+partition, a file, a worker's slice) and combines the results. Lean splits
+the plan and proves the combined result equals the plan's result on all the
+data (`Rel.shardSplit_sound`):
+
+```python
+import sverify.partition as sp
+
+sp.split(plan, sharded=["orders"])            # Split(mode='two_phase', ...) or NotShardable
+sp.run_sharded(plan, shards, sharded=["orders"], broadcast={"customers": customers})
+```
+
+Filters, projections, sorts, unions and joins with a broadcast table run on
+every shard and are concatenated. `COUNT`, integer `SUM`, `MIN` and `MAX` run
+in two phases: each shard aggregates, then the partial rows are combined.
+Refused, with the reason: `SUM`/`AVG` of doubles (the rounding would depend
+on the split; issue #85), `DISTINCT`, windows, `FETCH` and joins of two
+sharded tables. A partial integer sum that leaves 64 bits is an error, never a
+wrong answer. Shards run on Polars, in parallel threads.
+
+Run-time checks are the other proved optimization: the SQL and the Polars
+expressions guard every operation that could overflow or fail. When the
+contract report says `guard_free`, `to_sql(..., guards=False)` (and
+`guards=False` for the Polars and DuckDB runners) leaves them out
+(`Rel.guardFree_sound`). [docs/optimizations.md](docs/optimizations.md)
+compares these with what the engines already do, and ranks what is next.
+
 ### Checking a query plan
 
 `substrait-check` reads any Substrait JSON plan, shows it in readable form,
@@ -1019,6 +1066,7 @@ round trips and the differential tests instead.
 | File | Contents |
 |---|---|
 | `SubstraitLean/Value.lean` | Nullable values, rows, bag-semantics relations |
+| `SubstraitLean/Float.lean` | Doubles as exact integer codes (multiples of 2⁻¹⁰⁷⁴), NaN and −0.0 |
 | `SubstraitLean/Rounding.lean` | Exact `FLOOR`/`CEIL`/`ROUND` and casts to `BIGINT` on double codes; monotonicity |
 | `SubstraitLean/Text.lean` | String functions, `LIKE`; black-box `UPPER`/`LOWER`/regexes; patterns that certainly compile |
 | `SubstraitLean/Time.lean` | Exact `date_part` and `date_trunc` on the proleptic Gregorian calendar; monotonicity |
@@ -1032,6 +1080,8 @@ round trips and the differential tests instead.
 | `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
 | `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
+| `SubstraitLean/Keys.lean` | Derived keys (`Rel.keys_sound`), window tie-breaking (`Rel.window_deterministic`) |
+| `SubstraitLean/Completeness.lean` | The converse of contracts for the IoT example: no window is lost (`IoT.window_complete`) |
 | `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
@@ -1043,7 +1093,10 @@ round trips and the differential tests instead.
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
-| `python/` | `sverify`: contracts and incremental views on DuckDB, Polars or DataFusion, differential tests |
+| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
+| `notebooks/` | The tour: 16 marimo chapters |
+| `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
+| `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
@@ -1327,23 +1380,30 @@ No existing formal semantics for Substrait came up in my search. The closest wor
 
 ## Possible next steps
 
-0. **Completeness for ASOF and windows.** Contracts say what every output row
-   satisfies; the converse ("every accelerometer sample with a gyroscope sample
-   within 10 ms is matched") is a Lean theorem per plan today
-   (`IoT.window_complete`), not something the checker reports. Still missing for
-   windows: framed aggregates (`AVG(v) OVER (ROWS 5 PRECEDING)`) and
-   incremental maintenance.
-1. **Non-linear operators.** Incremental aggregates (SUM/COUNT per group are
-   linear over Z-sets), DISTINCT, semi and left joins; grouping sets, `STDDEV`
-   and `ARRAY_AGG`.
-2. **Translation validation.** Given a plan and its optimized form, have Lean
+The open work is tracked on GitHub:
+
+* [#29, the roadmap](https://github.com/AlexanderNenninger/substrait-lean/issues/29):
+  closing the gaps between the model and the engines, engine profiles, and the
+  optimizations of [docs/optimizations.md](docs/optimizations.md).
+* [#60, Ibis API coverage](https://github.com/AlexanderNenninger/substrait-lean/issues/60):
+  the operations the coverage table above marks ✗, ranked by how many queries
+  of the [catalogue](catalogue/FINDINGS.md) they block.
+* [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85): proved
+  error bounds, so that sharded `SUM` and `AVG` of doubles can be allowed.
+* [#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63): testing
+  the Snowflake SQL on a real account; today it only runs on an emulator.
+
+Longer-term directions:
+
+1. **Non-linear incremental operators.** Aggregates (SUM and COUNT per group
+   are linear over Z-sets), `DISTINCT`, semi and left joins, windows.
+2. **Completeness.** Contracts say what every output row satisfies; the
+   converse ("no window is lost") is a Lean theorem per plan today
+   (`IoT.window_complete`), not something the checker reports.
+3. **Translation validation.** Given a plan and its optimized form, have Lean
    check that they are equivalent. A decision procedure for the conjunctive
    fragment would mirror Cosette and HoTTSQL.
-3. **Real types.** Add a typing judgement over Substrait types (integer overflow,
-   decimals, nullability) and prove `eval` respects it.
-4. **Mathlib `Multiset` or K-relations.** Move bag equivalence to quotients, or
+4. **Real types.** A typing judgement over Substrait types (decimals, dates,
+   nullability), with `eval` proven to respect it.
+5. **Mathlib `Multiset` or K-relations.** Move bag equivalence to quotients, or
    generalize to semiring-annotated relations as HoTTSQL and provenance do.
-5. **Compare the Lean evaluator with the engine.** The differential tests
-   compare incremental and full evaluation, both on DataFusion. For windows and
-   ASOF joins, `sverify.testing` already runs Lean's `eval` against DataFusion on
-   generated tables; the other operators could get the same.

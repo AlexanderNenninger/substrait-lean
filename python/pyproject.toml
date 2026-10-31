@@ -1,7 +1,7 @@
 [project]
 name = "sverify"
 version = "0.1.0"
-description = "Contracts and incremental views on DuckDB, Polars or DataFusion, proven in Lean"
+description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, DataFusion, Snowflake and Spark"
 readme = "README.md"
 authors = [
     { name = "Alexander Nenninger", email = "alexander.nenninger@live.de" }
