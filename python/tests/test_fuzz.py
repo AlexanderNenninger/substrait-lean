@@ -94,12 +94,10 @@ def test_smallest_bigint_is_printed_as_an_integer():
     assert not finding("SELECT MIN(j) AS c0 FROM t AS q", "rows", {"t": [row]})
 
 
-@pytest.mark.xfail(strict=True, reason="#97: literal double arithmetic is integer arithmetic")
 def test_double_literal_arithmetic():
     assert not finding("SELECT 3.0 / 2.0 AS c0 FROM t AS q", "rows", {"t": [T_ROW]})
 
 
-@pytest.mark.xfail(strict=True, reason="#97: verify proves a false postcondition")
 def test_double_literal_arithmetic_proofs():
     q = Query("SELECT 1.5 * 2.0 AS c0 FROM t AS q", {"c0": fuzz.DOUBLE})
     assert not check_contract(q, {"t": [T_ROW]}, None, "c0 <> 3.0")
@@ -128,7 +126,6 @@ def test_null_divided_by_zero_on_duckdb():
     assert not finding("SELECT j / i AS c0 FROM t AS q", "engines", {"t": [row]})
 
 
-@pytest.mark.xfail(strict=True, reason="#17: ordering comparisons of booleans are NULL in Lean")
 def test_boolean_ordering():
     row = (1, 2, 0.5, "a", False, None)
     assert not finding("SELECT (b <= b) AS c0 FROM t AS q", "rows", {"t": [row]})
@@ -148,8 +145,6 @@ def test_known_findings_name_their_issue(f):
 
 def test_known_findings_need_the_symptom():
     assert known(Finding("rows", "q", {}, "Lean: [] DataFusion: [(1,)]")) is None
-    plan = {"Lean's plan": "Project +[(1.500000d * 2.000000d)]"}
-    assert known(Finding("rows", "q", {}, "", plan)) == 97
 
 
 def test_findings_print_a_reproduction():

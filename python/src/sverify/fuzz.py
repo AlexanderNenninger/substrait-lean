@@ -32,7 +32,6 @@ import datetime as dt
 import json
 import math
 import random
-import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -148,8 +147,8 @@ def expr(draw: st.DrawFn, scope: Scope, ty: str, depth: int = 2) -> str:
         case "cmp":
             t = draw(st.sampled_from([INT, INT, DOUBLE, STRING, BOOL, TS]))
             ops = ["=", "<>", "IS DISTINCT FROM"]
-            # Strings and booleans have no ordering in the model yet (#17).
-            ops += [] if t in (STRING, BOOL) else ["<", "<=", ">", ">="]
+            # String ordering is not fuzzed yet.
+            ops += [] if t == STRING else ["<", "<=", ">", ">="]
             op = draw(st.sampled_from(ops))
             return f"({sub(t)} {op} {sub(t)})"
         case "logic":
@@ -345,9 +344,6 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
             and any(t in f.detail.splitlines()[-1] for t in ("int64", "'?'"))
         ),
     ),
-    # Double arithmetic with only literal operands is integer arithmetic on
-    # the codes: an integer operator next to a printed double.
-    (97, lambda f: bool(_INT_OP_ON_DOUBLE.search(f.extra.get("Lean's plan", "")))),
     # DataFusion's consumer takes `a = b` over one join input for a join key.
     (98, lambda f: f.oracle == "rows:datafusion" and "FieldNotFound" in f.detail),
     # The DuckDB guard raises on `NULL / 0` (DataFusion, which ran fine, gives NULL).
@@ -363,9 +359,6 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
     ),
 ]
 """Open issues, by the findings they explain."""
-
-_DOUBLE = r"-?\d+\.\d{6}d"
-_INT_OP_ON_DOUBLE = re.compile(rf"{_DOUBLE} [-+*/%] |[-+*/%] {_DOUBLE}")
 
 
 def known(f: Finding) -> int | None:
