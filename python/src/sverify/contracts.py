@@ -522,7 +522,13 @@ def verify(
         if not counterexamples:
             return None
         return search_counterexample(
-            schemas, req_named, keys, transform_plan, target, budget=counterexamples
+            schemas,
+            req_named,
+            keys,
+            transform_plan,
+            target,
+            budget=counterexamples,
+            references=foreign_keys,
         )
 
     checked = []

@@ -123,8 +123,10 @@ class _Search:
         transform: dict,
         violated: Callable[[dict[str, list[tuple]]], bool],
         domains: dict[str, list[Domain]],
+        references: Mapping[str, Sequence[Sequence[Any]]],
     ):
         self.schemas = schemas
+        self.references = references
         self.requires = requires
         self.keys = keys
         self.transform = transform
@@ -137,6 +139,13 @@ class _Search:
             for cols in positions:
                 seen = [tuple(r[i] for i in cols) for r in tables.get(name, [])]
                 if len(set(seen)) < len(seen):
+                    return False
+        for name, fks in self.references.items():
+            for col, other_table, other in fks:
+                present = {repr(r[other]) for r in tables.get(other_table, [])}
+                if any(
+                    r[col] is not None and repr(r[col]) not in present for r in tables.get(name, [])
+                ):
                     return False
         return all(all(v is True for (v,) in evaluate(plan, tables)) for _, plan in self.requires)
 
@@ -187,9 +196,12 @@ def search(
     ensures: dict | Sequence[int],
     budget: int = 200,
     seed: int = 0,
+    references: Mapping[str, Sequence[Sequence[Any]]] | None = None,
 ) -> Counterexample | None:
-    """Small input tables meeting `requires` (condition plans per table) and
-    `keys` (unique column positions per table) on which `ensures` fails.
+    """Small input tables meeting `requires` (condition plans per table),
+    `keys` (unique column positions per table) and `references` (foreign keys
+    per table: column position, referenced table, its column position) on
+    which `ensures` fails.
 
     `ensures` is a condition plan over the transformation's output (it fails
     on a value that is not TRUE) or the column positions of a key of the
@@ -218,7 +230,7 @@ def search(
             seen = [tuple(r[i] for i in key) for r in evaluate(transform, tables)]
             return len(set(map(repr, seen))) < len(seen)
 
-    s = _Search(schemas, requires, keys, transform, violated, domains)
+    s = _Search(schemas, requires, keys, transform, violated, domains, references or {})
     rng = random.Random(seed)
     for n in (1, 2, 3):
         for _ in range(budget // 3):
