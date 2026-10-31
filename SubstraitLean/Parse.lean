@@ -124,7 +124,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .neg a => a.kind cols
   | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
   | .un (.froundTo _) _ => .float
-  | .un .ftoi _ => .int
+  | .un .ftoi _ | .un (.narrow _) _ => .int
   | .un .itos _ | .un .upper _ | .un .lower _ => .str
   | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
   | .un (.dateTrunc _) _ => .time
@@ -567,6 +567,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     if target == .int && k == .float then return .un .ftoi e
     if target == .str && k == .int then return .un .itos e
     if target == .date && k == .time then return .un .toDate e
+    -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
+    if target == .int && k == .int then
+      let bits := intBits (← field c "type")
+      return if bits < 64 then .un (.narrow bits) e else e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
   | ("singularOrList", l) =>

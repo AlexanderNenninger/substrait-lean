@@ -518,6 +518,16 @@ def ftoi(v: Val) -> Val:
     return Val(value, pl.Int64, (*v.issues, issue(bad, BadCast, "CAST to BIGINT out of range")))
 
 
+def narrow_int(v: Val, bits: int) -> Val:
+    """`CAST(x AS INT)` to `bits` bits (`UnFn.narrow`): values that do not fit
+    are errors."""
+    lo, hi = -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
+    bad = (v.expr < lo) | (v.expr > hi)
+    value = pl.when(bad).then(None).otherwise(v.expr).cast(pl.Int64)
+    message = f"CAST to a {bits}-bit integer out of range"
+    return Val(value, pl.Int64, (*v.issues, issue(bad, BadCast, message)))
+
+
 class Exprs:
     """Translates expressions over input columns of the given dtypes."""
 
@@ -611,6 +621,11 @@ class Exprs:
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
         if "i64" in target and v.dtype == pl.Float64:
             return ftoi(v)
+        if (bits := next((n for n in (8, 16, 32) if f"i{n}" in target), None)) and v.dtype in (
+            pl.Int64,
+            pl.Null,
+        ):
+            return narrow_int(v, bits)
         if "string" in target and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.String), pl.String, v.issues)
         if "date" in target and v.dtype == US:
@@ -1336,9 +1351,9 @@ class Translator:
         return pl.concat(frames, how="vertical"), out
 
 
-def to_lazy(plan: str | dict, tables: Tables) -> pl.LazyFrame:
-    """The `LazyFrame` for a plan in Lean's written form, over `tables`
-    (by name; columns in schema order). Columns are named by `RelRoot.names`."""
+def _translate(plan: str | dict, tables: Tables) -> tuple[pl.LazyFrame, list[str]]:
+    """The plan's `LazyFrame`, with its columns still positional (`c0`, `c1`,
+    …) and cast to their output types, and the root's column names."""
     p = json.loads(plan) if isinstance(plan, str) else plan
     roots = [r["root"] for r in p.get("relations", []) if "root" in r]
     if len(roots) != 1:
@@ -1347,12 +1362,19 @@ def to_lazy(plan: str | dict, tables: Tables) -> pl.LazyFrame:
     names = roots[0].get("names") or [col(i) for i in range(len(dtypes))]
     if len(names) != len(dtypes):
         raise Unsupported(f"root names {names} do not match arity {len(dtypes)}")
-    return lf.select(
-        [
-            pl.col(col(i)).cast(materialize(t)).alias(name)
-            for i, (t, name) in enumerate(zip(dtypes, names, strict=True))
-        ]
-    )
+    return lf.select([pl.col(col(i)).cast(materialize(t)) for i, t in enumerate(dtypes)]), names
+
+
+def to_lazy(plan: str | dict, tables: Tables) -> pl.LazyFrame:
+    """The `LazyFrame` for a plan in Lean's written form, over `tables`
+    (by name; columns in schema order). Columns are named by `RelRoot.names`;
+    a Polars frame cannot hold two columns of one name, so a plan whose root
+    repeats a name (legal in SQL and Substrait) is refused here, and `run`
+    names its Arrow result instead."""
+    lf, names = _translate(plan, tables)
+    if len(set(names)) != len(names):
+        raise Unsupported(f"root names {names} repeat a name; use `run`")
+    return lf.rename({col(i): name for i, name in enumerate(names)})
 
 
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:
@@ -1363,5 +1385,7 @@ def collect(lf: pl.LazyFrame) -> pl.DataFrame:
 
 
 def run(plan: str | dict, tables: Tables) -> pa.Table:
-    """Run a plan in Lean's written form on Polars."""
-    return collect(to_lazy(plan, tables)).to_arrow()
+    """Run a plan in Lean's written form on Polars. The columns are named
+    by `RelRoot.names`, repeats included."""
+    lf, names = _translate(plan, tables)
+    return collect(lf).to_arrow().rename_columns(names)

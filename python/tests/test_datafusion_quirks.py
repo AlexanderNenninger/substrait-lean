@@ -1,4 +1,4 @@
-"""DataFusion's surprising semantics, pinned (`notebooks/datafusion_semantics.py`).
+"""DataFusion's surprising semantics, pinned (`notebooks/14_datafusion_semantics.py`).
 
 The first half pins what DataFusion does where the Lean model relies on it
 (the total order on doubles, truncating division, which operations fail and
@@ -197,7 +197,9 @@ def test_reported_runtime_errors():
     assert report.proved and [i.kind for i in report.warnings] == ["may wrap around"]
 
 
-gap = pytest.mark.xfail(strict=True, reason="soundness gap, see notebooks/datafusion_semantics.py")
+gap = pytest.mark.xfail(
+    strict=True, reason="soundness gap, see notebooks/14_datafusion_semantics.py"
+)
 
 
 @gap
@@ -251,10 +253,14 @@ def test_gap_uint8_is_unsigned():
     assert not report.ensures[0].proved
 
 
-@gap
-def test_gap_narrowing_cast_fails():
-    """I8: `CAST(bigint AS INT)` raises out of range."""
-    assert verify("SELECT CAST(a AS INT) AS x FROM t", "t", I64).errors
+def test_narrowing_cast_may_fail():
+    """I8: `CAST(bigint AS INT)` raises out of range (`UnFn.narrow`), unless
+    the input is known to fit."""
+    assert [i.kind for i in verify("SELECT CAST(a AS INT) AS x FROM t", "t", I64).errors] == [
+        "cast out of range"
+    ]
+    fits = ["a >= -2147483648", "a <= 2147483647"]
+    assert verify("SELECT CAST(a AS INT) AS x FROM t", "t", I64, fits).proved
 
 
 @gap

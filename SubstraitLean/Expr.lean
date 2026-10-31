@@ -44,6 +44,10 @@ inductive UnFn where
   | froundTo (d : Int)
   /-- `CAST(x AS BIGINT)` of a double: truncation toward zero. -/
   | ftoi
+  /-- `CAST(x AS INT)` of an integer to `bits` bits (32, or 16 for `SMALLINT`
+  and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit and
+  DataFusion fails (`badCast` in `Safety.lean`). -/
+  | narrow (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
@@ -83,6 +87,10 @@ inductive Expr where
   | ifThen (c t e : Expr)
   deriving Repr, DecidableEq
 
+/-- Does `i` fit in a signed integer of `bits` bits? -/
+def fitsBits (bits : Nat) (i : Int) : Bool :=
+  decide (-(2 ^ (bits - 1) : Int) ≤ i) && decide (i < 2 ^ (bits - 1))
+
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
   | .isNull, .null => .bool true
@@ -97,6 +105,7 @@ def UnFn.apply : UnFn → Value → Value
   | .ftoi, .int c => match FloatCode.toInt? c with
     | some i => .int i
     | none => .null
+  | .narrow n, .int i => if fitsBits n i then .int i else .null
   | .itos, .int i => .str (toString i)
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)

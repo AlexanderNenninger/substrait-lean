@@ -288,6 +288,24 @@ def ftoiAbs (a : AVal) : AVal :=
   | some _ => ⟨true, some Bound.top, false, false, false⟩
   | none => ⟨a.nonInt, none, false, false, false⟩
 
+/-- Does every integer of the interval fit in `bits` bits? -/
+def Bound.fitsBits (n : Nat) (b : Bound) : Bool :=
+  b.lo.any (-(2 ^ (n - 1) : Int) ≤ ·) && b.hi.any (· < 2 ^ (n - 1))
+
+theorem Bound.fitsBits_mem {n : Nat} {b : Bound} {i : Int} (h : b.fitsBits n = true)
+    (hi : b.Mem i) : _root_.Substrait.fitsBits n i = true := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.fitsBits, Bool.and_eq_true, Option.any_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨lo, rfl, hlo⟩, ⟨hi', rfl, hhi⟩⟩ := h
+  have h1 := hi.1 lo rfl
+  have h2 := hi.2 hi' rfl
+  simp only [_root_.Substrait.fitsBits, Bool.and_eq_true, decide_eq_true_eq]
+  omega
+
+/-- `CAST(x AS INT)`: the integer itself, or NULL where it may not fit. -/
+def narrowAbs (n : Nat) (a : AVal) : AVal :=
+  ⟨a.nonInt || a.int.any (!·.fitsBits n), a.int, false, false, false⟩
+
 /-- Can the interval contain 0? -/
 def Bound.has0 (b : Bound) : Bool := b.lo.all (· ≤ 0) && b.hi.all (0 ≤ ·)
 
@@ -414,6 +432,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fceil, a => monoAbs FloatCode.ceil a
   | .fround, a => monoAbs FloatCode.round a
   | .ftoi, a => ftoiAbs a
+  | .narrow n, a => narrowAbs n a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .upper, a | .lower, a => ⟨a.nonStr, none, false, false, a.str⟩
   | .length, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
@@ -585,6 +604,17 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case fceil => exact monoAbs_sound FloatCode.ceil_mono (fun v => by cases v <;> rfl) h
   case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> rfl) h
   case ftoi => exact ftoiAbs_sound h
+  case narrow n =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+    · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+    · simp only [UnFn.apply, UnFn.abs]
+      split
+      · exact ⟨b, hb, hi⟩
+      · rename_i hfit
+        cases hfb : b.fitsBits n
+        · simp [AVal.Mem, narrowAbs, hb, hfb]
+        · exact absurd (Bound.fitsBits_mem hfb hi) hfit
+    all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fneg => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
