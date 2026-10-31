@@ -959,8 +959,8 @@ order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
 sqlglot's Spark parser, and runs the Snowflake suite's queries, the hooks
 and `date_part`/`date_trunc` at the calendar's edges on a local Spark session
 against `Rel.eval`; `test_backends.py` runs every coverage case there. The
-session needs a JVM: `JAVA_HOME`, a `java` on `PATH`, or the `jdk4py` JRE
-of the dev dependencies (`poe test-spark`).
+session needs a JVM (Java 17 or 21: `JAVA_HOME` or `java` on `PATH`), or the
+Spark tests are skipped (`poe test-spark` runs them).
 
 **Trusted components** (not covered by the proofs): the JSON parser and
 writer, the `sverify` glue (change tables, consolidation, merge), the Polars

@@ -1,10 +1,7 @@
 """One local Spark session for the tests, configured by `SPARK_CONF`.
 
-Spark needs a JVM. Without `JAVA_HOME` or a working `java` on `PATH`, the JRE of the
-`jdk4py` wheel is used. That runtime lacks the incubating vector module that
-Spark's launcher always asks for (`--add-modules=jdk.incubator.vector`), and
-plain SQL does not use it, so the launcher calls `java` through a shim that
-drops that one flag.
+Spark needs a JVM (Java 17 or 21): `JAVA_HOME`, or a working `java` on
+`PATH`. Without one the Spark tests are skipped.
 """
 
 from __future__ import annotations
@@ -13,9 +10,7 @@ import functools
 import os
 import shutil
 import subprocess
-import tempfile
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
@@ -23,37 +18,25 @@ import pytest
 
 from sverify.sql.spark import SPARK, SPARK_CONF
 
-SHIM = """#!/bin/sh
-for a; do shift; [ "$a" = --add-modules=jdk.incubator.vector ] || set -- "$@" "$a"; done
-exec "{java}" "$@"
-"""
 
-
-def java_home() -> str | None:
-    """A JAVA_HOME for Spark, or None when the environment already has one."""
+def has_java() -> bool:
     if os.environ.get("JAVA_HOME"):
-        return None
+        return True
     # macOS has a `java` stub on PATH that only says Java is missing.
     java = shutil.which("java")
-    if java and subprocess.run([java, "-version"], capture_output=True).returncode == 0:
-        return None
-    jdk4py = pytest.importorskip("jdk4py", reason="Spark needs a JVM")
-    home = Path(tempfile.mkdtemp(prefix="sverify-java-"))
-    (home / "bin").mkdir()
-    shim = home / "bin" / "java"
-    shim.write_text(SHIM.format(java=Path(jdk4py.JAVA_HOME) / "bin" / "java"))
-    shim.chmod(0o755)
-    return str(home)
+    return (
+        java is not None and subprocess.run([java, "-version"], capture_output=True).returncode == 0
+    )
 
 
 @functools.cache
 def session() -> Any:
     """The shared session: one JVM for every Spark test in this process."""
     pytest.importorskip("pyspark")
+    if not has_java():
+        pytest.skip("Spark needs a JVM: set JAVA_HOME or put java on PATH")
     from pyspark.sql import SparkSession
 
-    if home := java_home():
-        os.environ["JAVA_HOME"] = home
     builder = SparkSession.builder.master("local[2]").appName("sverify-tests")
     conf = SPARK_CONF | {
         "spark.ui.enabled": "false",
