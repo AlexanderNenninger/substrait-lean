@@ -18,9 +18,7 @@ in coverage is a deliberate edit here. Regenerate the README table with
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
-import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +28,14 @@ import ibis
 import ibis.expr.types as ir
 from ibis import _
 
-from sverify.engine import Backend, checker_path, connect, create_table, substrait_json, to_sql
+from sverify.engine import (
+    Backend,
+    connect,
+    create_table,
+    run_checker,
+    substrait_json,
+    to_sql,
+)
 
 Status = Literal["verified", "rejected", "upstream"]
 
@@ -241,12 +246,9 @@ def check(con: Backend, c: Case) -> Result:
         plan = substrait_json(con, to_sql(c.build()))
     except Exception as e:  # noqa: BLE001 - any producer failure counts
         return Result(c, "upstream", False, str(e).splitlines()[0])
-    with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
-        f.write(plan)
-        f.flush()
-        proc = subprocess.run([str(checker_path()), f.name], capture_output=True, text=True)
-    out = proc.stdout + proc.stderr
-    if proc.returncode == 0:
+    code, stdout, stderr = run_checker((), plan)
+    out = stdout + stderr
+    if code == 0:
         return Result(c, "verified", "incremental: yes" in out, "")
     lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
     return Result(c, "rejected", False, (lines or [out.strip()])[-1])
