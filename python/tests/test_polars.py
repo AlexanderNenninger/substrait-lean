@@ -161,8 +161,8 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
 
 
 #: Fixtures Lean accepts with relations the Polars translator does not have yet
-#: (`DISTINCT`): it must refuse them, not run them wrongly.
-NOT_IN_POLARS = {"group_by_without_measures"}
+#: (`DISTINCT`, aggregates): it must refuse them, not run them wrongly.
+NOT_IN_POLARS = {"group_by_without_measures", "df_aggregate"}
 
 
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
@@ -497,8 +497,9 @@ def test_unknown_function_is_refused():
 def test_aggregates_are_refused():
     con = connect()
     create_tables(con)
-    with pytest.raises(ValueError, match="aggregate functions are not supported"):
-        written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
+    plan = written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
+    with pytest.raises(polars_engine.Unsupported, match="unsupported relation"):
+        polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
 
 
 def test_checker_writes_what_polars_reads():

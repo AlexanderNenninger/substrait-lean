@@ -1577,6 +1577,7 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   -- Some of the left rows, or all of the rows in another order or once each.
   | .semi a _ _ _ => a.facts cat F T
   | .orderBy r _ | .distinct r => r.facts cat F T
+  | .aggregate _ _ _ => []
 
 theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
     (hσ : ∀ i, ∀ p ∈ σ i, row'.getD p .null = row.getD i .null) :
@@ -1977,6 +1978,7 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
   | .distinct r, hwf, row, h => by
       simp only [eval, mem_dedup] at h
       exact facts_sound hcat hF hT (r := r) hwf row h
+  | .aggregate _ _ _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       intro f hf
@@ -2319,6 +2321,26 @@ def WinFn.abs (env : List AVal) : WinFn → AVal
   | .rowNumber => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
   | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
+/-- Sums of integers in `b` keep their sign. -/
+def sumBound (b : Bound) : Bound :=
+  ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
+   b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
+
+/-- Some double, or NULL. -/
+def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
+
+/-- A measure over rows described by `env` and `fs`: a count is a natural
+number, a sum of integers keeps their sign, `MIN` and `MAX` are among the
+argument's values, and the other measures are doubles. All but `COUNT` may
+be NULL. -/
+def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) : AVal :=
+  let a := m.arg.absD env fs
+  match m.fn with
+  | .count => ⟨false, some (Bound.ge 0), false, false, false⟩
+  | .sum => ⟨true, some (match a.int with | some b => sumBound b | none => Bound.top), false, false, false⟩
+  | .fsum | .avg => AVal.double
+  | .min | .max => a.nullable
+
 /-- Abstract evaluation. `A t` describes the columns of table `t`; `F t` holds
 facts about its rows. Computed columns use the facts of their input. -/
 def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
@@ -2336,6 +2358,9 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .window r _ _ fns => r.aeval cat A F T ++ fns.map (WinFn.abs (r.aeval cat A F T))
   | .semi a _ _ _ => a.aeval cat A F T
   | .orderBy r _ | .distinct r => r.aeval cat A F T
+  | .aggregate r gs ms =>
+      gs.map (·.absD (r.aeval cat A F T) (r.facts cat F T)) ++
+        ms.map (Measure.abs (r.aeval cat A F T) (r.facts cat F T))
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} :
@@ -2357,6 +2382,7 @@ theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String 
   | .semi a _ _ _, h => by simp [aeval, arity, aeval_length (r := a) h.1]
   | .orderBy r _, h => by simp [aeval, arity, aeval_length (r := r) h.1]
   | .distinct r, h => by simp [aeval, arity, aeval_length (r := r) h]
+  | .aggregate _ _ _, _ => by simp [aeval, arity]
 
 theorem EnvMem.append {e₁ e₂ : List AVal} {r₁ r₂ : Row} (h₁ : EnvMem e₁ r₁) (h₂ : EnvMem e₂ r₂)
     (hl : e₁.length = r₁.length) : EnvMem (e₁ ++ e₂) (r₁ ++ r₂) := by
@@ -2421,6 +2447,81 @@ theorem EnvMem.nulls (env : List AVal) (m : Nat) :
   intro j
   simp only [List.getElem?_map, List.getD_eq_getElem?_getD, List.getElem?_replicate]
   cases env[j]? <;> split <;> simp [AVal.top, AVal.nullable, AVal.Mem]
+
+theorem intSum_nonneg : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → 0 ≤ i) → 0 ≤ intSum vs
+  | [], _ => by simp [intSum]
+  | .int i :: vs, h => by
+    have := intSum_nonneg (vs := vs) fun j hj => h j (List.mem_cons_of_mem _ hj)
+    have := h i (by simp); simp only [intSum]; omega
+  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h => by
+    simp only [intSum]; exact intSum_nonneg fun j hj => h j (List.mem_cons_of_mem _ hj)
+
+theorem intSum_nonpos : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → i ≤ 0) → intSum vs ≤ 0
+  | [], _ => by simp [intSum]
+  | .int i :: vs, h => by
+    have := intSum_nonpos (vs := vs) fun j hj => h j (List.mem_cons_of_mem _ hj)
+    have := h i (by simp); simp only [intSum]; omega
+  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h => by
+    simp only [intSum]; exact intSum_nonpos fun j hj => h j (List.mem_cons_of_mem _ hj)
+
+theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs → b.Mem i) :
+    (sumBound b).Mem (intSum vs) := by
+  constructor
+  · intro l hl
+    cases hb : b.lo with
+    | none => simp [sumBound, hb] at hl
+    | some l₀ =>
+      simp only [sumBound, hb, Option.bind_some] at hl
+      split at hl
+      · cases hl; exact intSum_nonneg fun i hi => by have := (h i hi).1 l₀ hb; omega
+      · cases hl
+  · intro u hu
+    cases hb : b.hi with
+    | none => simp [sumBound, hb] at hu
+    | some h₀ =>
+      simp only [sumBound, hb, Option.bind_some] at hu
+      split at hu
+      · cases hu; exact intSum_nonpos fun i hi => by have := (h i hi).2 h₀ hb; omega
+      · cases hu
+
+theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (m : Measure) :
+    (m.abs env fs).Mem (m.eval grp) := by
+  have hin : ∀ v ∈ m.inputs grp, (m.arg.absD env fs).Mem v := by
+    intro v hv
+    obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
+    exact Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) m.arg
+  unfold Measure.abs Measure.eval
+  cases hf : m.fn with
+  | count => exact ⟨_, rfl, by simp [Bound.Mem, Bound.ge]⟩
+  | sum =>
+    cases hvs : m.inputs grp with
+    | nil => rfl
+    | cons v vs =>
+      simp only [AggFn.apply]
+      refine ⟨_, rfl, ?_⟩
+      cases ha : (m.arg.absD env fs).int with
+      | none => exact Bound.mem_top _
+      | some b =>
+        refine sumBound_sound fun i hi => ?_
+        have := hin (.int i) (hvs ▸ hi)
+        obtain ⟨b', hb', hm⟩ := this
+        rw [ha] at hb'; cases hb'; exact hm
+  | fsum | avg =>
+    cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+  | min | max =>
+    have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
+    rw [hf] at hmm
+    rcases hmm with h | h
+    · rw [h]; rfl
+    · exact AVal.mem_nullable (hin _ h)
+
+theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) :
+    EnvMem (ms.map (Measure.abs env fs)) (ms.map (·.eval grp)) := by
+  intro j
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall]
 
 /-- **Soundness of abstract plan evaluation**: every row a well-formed plan
 produces is described by `Rel.aeval`, provided the tables are. -/
@@ -2510,6 +2611,16 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
   | .distinct r, hwf, row, h => by
       simp only [eval, mem_dedup] at h
       exact aeval_sound hcat hA hF hT (r := r) hwf row h
+  | .aggregate r gs ms, hwf, row, h => by
+      obtain ⟨k, grp, rfl, hgrp, hk⟩ := mem_aggregateEval h
+      have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T) y ∧ FactsHold (r.facts cat F T) y :=
+        fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 y (hgrp y hy),
+          Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
+      · exact EnvMem.append (by intro j; simp [AVal.mem_top]) (EnvMem.measures hall ms) (by simp)
+      · exact (EnvMem.mapD (aeval_sound hcat hA hF hT hwf.1 x hx)
+          (Rel.facts_sound hcat hF hT hwf.1 x hx) gs).append (EnvMem.measures hall ms)
+          (by simp)
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       rcases h with h | h

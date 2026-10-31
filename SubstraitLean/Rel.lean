@@ -1,4 +1,4 @@
-import SubstraitLean.Window
+import SubstraitLean.Aggregate
 
 /-!
 # Relational operators
@@ -17,6 +17,7 @@ Models a fragment of Substrait's `Rel` message:
 | `JoinRel` (`LEFT_SEMI`, `LEFT_ANTI`) | `Rel.semi`            |
 | `SortRel`                         | `Rel.orderBy`            |
 | `AggregateRel` without measures   | `Rel.distinct`           |
+| `AggregateRel` (one grouping set) | `Rel.aggregate`          |
 | `FetchRel`                        | `Rel.fetch`              |
 | `SetRel` (`UNION_ALL`)            | `Rel.unionAll`           |
 | `windowFunction` in a `ProjectRel`| `Rel.window`             |
@@ -63,6 +64,9 @@ inductive Rel where
   | orderBy (input : Rel) (keys : List SortKey)
   /-- `DISTINCT`: the first occurrence of every row. -/
   | distinct (input : Rel)
+  /-- `GROUP BY groups`, appending one column per measure (see
+  `SubstraitLean/Aggregate.lean`). -/
+  | aggregate (input : Rel) (groups : List Expr) (measures : List Measure)
   deriving Repr, BEq
 
 /-- Output arity (the length of the output schema). -/
@@ -79,6 +83,7 @@ def Rel.arity (cat : Catalog) : Rel → Nat
   | .window r _ _ fns => r.arity cat + fns.length
   | .semi a _ _ _ => a.arity cat
   | .orderBy r _ | .distinct r => r.arity cat
+  | .aggregate _ gs ms => gs.length + ms.length
 
 /-- Static well-formedness: every field reference is in range, literal
 tables are rectangular, and union inputs agree on arity. -/
@@ -97,6 +102,8 @@ def Rel.WF (cat : Catalog) : Rel → Prop
   | .semi a b _ on => a.WF cat ∧ b.WF cat ∧ on.refsLt (a.arity cat + b.arity cat)
   | .orderBy r keys => r.WF cat ∧ ∀ k ∈ keys, k.col < r.arity cat
   | .distinct r => r.WF cat
+  | .aggregate r gs ms => r.WF cat ∧ (∀ g ∈ gs, g.refsLt (r.arity cat)) ∧
+      ∀ m ∈ ms, m.refsLt (r.arity cat)
 
 def crossRows (xs ys : Relation) : Relation :=
   xs.flatMap fun x => ys.map (x ++ ·)
@@ -106,37 +113,6 @@ padded with nulls when nothing matches. -/
 def leftJoinRow (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row) : Relation :=
   let ms := (ys.map (x ++ ·)).filter fun row => (on.eval row).isTrue
   if ms.isEmpty then [x ++ List.replicate rightArity .null] else ms
-
-/-- The first occurrence of every row, in order (`n` bounds the length). -/
-def dedupN : Nat → Relation → Relation
-  | 0, _ | _, [] => []
-  | n + 1, x :: xs => x :: dedupN n (xs.filter (· != x))
-
-def dedup (l : Relation) : Relation := dedupN l.length l
-
-theorem dedupN_spec : ∀ (n : Nat) (l : Relation), l.length ≤ n →
-    (∀ y, y ∈ dedupN n l ↔ y ∈ l) ∧ (dedupN n l).Sublist l ∧ (dedupN n l).Pairwise (· ≠ ·)
-  | _, [], _ => by cases ‹Nat› <;> simp [dedupN]
-  | 0, _ :: _, h => by simp at h
-  | n + 1, x :: xs, h => by
-    have hf : (xs.filter (· != x)).length ≤ n := by
-      have := List.length_filter_le (· != x) xs; simp at h; omega
-    obtain ⟨hm, hs, hp⟩ := dedupN_spec n _ hf
-    simp only [dedupN]
-    refine ⟨fun y => ?_, ?_, ?_⟩
-    · simp only [List.mem_cons, hm, List.mem_filter, bne_iff_ne, ne_eq]
-      by_cases hy : y = x <;> simp [hy]
-    · exact (hs.trans List.filter_sublist).cons_cons x
-    · refine List.Pairwise.cons (fun y hy => ?_) hp
-      have := (hm y).mp hy
-      simp only [List.mem_filter, bne_iff_ne, ne_eq] at this
-      exact fun h => this.2 h.symm
-
-theorem mem_dedup {l : Relation} {y : Row} : y ∈ dedup l ↔ y ∈ l :=
-  (dedupN_spec _ l (Nat.le_refl _)).1 y
-theorem dedup_sublist (l : Relation) : (dedup l).Sublist l := (dedupN_spec _ l (Nat.le_refl _)).2.1
-theorem dedup_pairwise (l : Relation) : (dedup l).Pairwise (· ≠ ·) :=
-  (dedupN_spec _ l (Nat.le_refl _)).2.2
 
 /-- Does some row of `ys` satisfy `on` next to `x`? -/
 def hasMatch (on : Expr) (ys : Relation) (x : Row) : Bool :=
@@ -167,6 +143,7 @@ def Rel.eval (cat : Catalog) : Rel → Relation
   | .semi a b anti on => (a.eval cat).filter fun x => hasMatch on (b.eval cat) x != anti
   | .orderBy r keys => (r.eval cat).mergeSort (sortLe keys)
   | .distinct r => dedup (r.eval cat)
+  | .aggregate r gs ms => aggregateEval gs ms (r.eval cat)
 
 /-- Bag equivalence of plans: same rows with the same multiplicities, on
 every catalog. -/
@@ -263,5 +240,6 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
   | .distinct r, hwf, row, h => by
       simp only [eval, mem_dedup] at h
       exact eval_arity hcat (r := r) hwf row h
+  | .aggregate _ _ _, _, _, h => aggregateEval_length h
 
 end Substrait

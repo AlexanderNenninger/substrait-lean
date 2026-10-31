@@ -132,8 +132,8 @@ class Issue:
 
     kind: str
     """"division by zero", "overflow", "cast out of range", "negative exponent",
-    or "may wrap around" (64-bit overflow of `+`, `-`, `*`, which DataFusion
-    does not report)."""
+    or "may wrap around" (64-bit overflow of `+`, `-`, `*` or an integer
+    `SUM`, which DataFusion does not report)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
