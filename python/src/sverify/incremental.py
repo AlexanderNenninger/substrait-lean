@@ -21,6 +21,15 @@ the change table of the views that read it (the DBSP chain rule,
 `Rel.chain_sound`). A view without a delta rule (left join, fetch, window) is
 recomputed and diffed, which still yields its change for the views
 downstream (`ZSet.diff_correct`).
+
+A pipeline can read its base tables from a table format (`sverify.io`):
+`Pipeline.source` loads a snapshot and records its version, and `refresh`
+applies the format's change feed from the recorded version to the latest,
+advancing the version in the same commit. The feed is trusted to turn the
+old snapshot into the new one (`ChangeFeed`, `Rel.cdf_sound` in
+`SubstraitLean/TableFormat.lean`), and every `RefreshReport` says so; where
+the feed is unavailable, the new snapshot is diffed against the view's state
+instead and the views reading it are recomputed (`ChangeFeed.of_diff`).
 """
 
 from __future__ import annotations
@@ -31,18 +40,24 @@ import subprocess
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Literal, Protocol
 
 import ibis.expr.types as ir
 import pyarrow as pa
 
 from sverify.contracts import (
+    ON_DATA,
     Condition,
+    Discharged,
+    Fact,
     PreconditionError,
     Unique,
+    discharge,
     label,
+    register_facts,
     register_view,
+    table_facts,
     view_contract,
-    violations,
 )
 from sverify.engine import (
     Backend,
@@ -105,6 +120,117 @@ class Changes:
 
     inserts: Sequence[Row] = field(default_factory=list)
     deletes: Sequence[Row] = field(default_factory=list)
+
+
+def consolidate(ch: Changes) -> Changes:
+    """The net change: a row both inserted and deleted cancels out."""
+    net = Counter[tuple]()
+    examples: dict[tuple, Row] = {}
+    for rows, w in ((ch.inserts, 1), (ch.deletes, -1)):
+        for r in rows:
+            k = row_key(tuple(r))
+            net[k] += w
+            examples.setdefault(k, tuple(r))
+    return Changes(
+        inserts=[examples[k] for k, n in net.items() for _ in range(max(n, 0))],
+        deletes=[examples[k] for k, n in net.items() for _ in range(max(-n, 0))],
+    )
+
+
+def snapshot_diff(old: pa.Table, new: pa.Table) -> Changes:
+    """The change turning `old` into `new` (bag difference)."""
+    return consolidate(Changes(inserts=arrow_rows(new), deletes=arrow_rows(old)))
+
+
+@dataclass
+class Snapshot:
+    """A table at one version, as a source hands it to a pipeline."""
+
+    version: int
+    table: pa.Table
+    facts: list[Fact]
+    """What the metadata says about every row (schema nullability is in
+    `table.schema`)."""
+
+
+@dataclass
+class SourceBatch:
+    """What a source has between a recorded version and its latest one.
+
+    Either `changes` from the format's change feed (the net change, with
+    `facts` about the inserted rows and the `trusted` assumption it rests
+    on), or the new `snapshot` alone with the reason the feed is unavailable
+    (`fallback`)."""
+
+    start: int
+    end: int
+    snapshot_facts: list[Fact]
+    """What the metadata says about every row at `end`."""
+    changes: Changes | None = None
+    facts: list[Fact] = field(default_factory=list)
+    trusted: str = ""
+    """E.g. "Δ trusted as coming from Delta CDF v3→v5"."""
+    snapshot: pa.Table | None = None
+    fallback: str | None = None
+
+
+class Source(Protocol):
+    """A versioned table: a Delta table or an Iceberg table (`sverify.io`)."""
+
+    def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table at `version`, or at its latest version."""
+        ...
+
+    def changes(self, since: int) -> SourceBatch: ...
+
+
+@dataclass
+class SourceRefresh:
+    table: str
+    start: int
+    end: int
+    mode: Literal["unchanged", "change feed", "recomputed"]
+    detail: str = ""
+    inserts: int = 0
+    deletes: int = 0
+
+    def __str__(self) -> str:
+        if self.mode == "unchanged":
+            return f"{self.table}@v{self.start}: no new version"
+        span = f"{self.table}@v{self.start}→v{self.end}"
+        counts = f"{self.inserts} insert(s), {self.deletes} delete(s)"
+        if self.mode == "recomputed":
+            return f"{span}: recomputed from scratch ({self.detail}); {counts}"
+        return f"{span}: {counts}; {self.detail}"
+
+
+@dataclass
+class RefreshReport:
+    sources: list[SourceRefresh]
+    preconditions: list[Discharged]
+    """How each precondition on the batch was established."""
+    versions: dict[str, dict[str, int]]
+    """For each view, the version of every source it reads."""
+    audited: bool = False
+    """The batch was compared with the new snapshot, and each view with its
+    recomputation, and they agreed."""
+
+    @property
+    def recomputed(self) -> list[str]:
+        return [s.table for s in self.sources if s.mode == "recomputed"]
+
+    def __str__(self) -> str:
+        lines = [str(s) for s in self.sources]
+        lines += [f"requires {p}" for p in self.preconditions]
+        for v, vs in self.versions.items():
+            lines.append(f"view {v}: " + ", ".join(f"{t}@v{n}" for t, n in vs.items()))
+        if self.audited:
+            lines.append("audit: batch matches the new snapshots; views match recomputation")
+        return "\n".join(lines)
+
+
+class AuditError(Exception):
+    """In audit mode, the change feed or a view disagrees with recomputation."""
 
 
 class IncrementalView:
@@ -179,6 +305,12 @@ class IncrementalView:
 
     def _publish(self) -> None:
         put_table(self.con, self.name, self._arrow(self.counts))
+
+    @property
+    def versions(self) -> dict[str, int]:
+        """The version of every source the view reads, e.g. `{"orders": 41}`
+        (shown as `orders@v41`)."""
+        return self.pipeline.lineage(self.name)
 
     def rows(self) -> list[Row]:
         """The view's contents as a bag of rows, in a canonical order."""
@@ -258,6 +390,9 @@ class Pipeline:
     of the views that read it, so every intermediate result is materialized
     once and shared. Views without delta rules are recomputed and diffed
     (`fallbacks`). Preconditions of contracted views are checked per batch.
+
+    Base tables may instead come from a table format (`source`), and then
+    change only through `refresh`.
     """
 
     def __init__(self, con: Backend, engine: Engine = "datafusion"):
@@ -265,10 +400,27 @@ class Pipeline:
         self._views: list[IncrementalView] = []
         self.requires: dict[str, list[Condition]] = {}
         """Preconditions on base tables, of every contracted view."""
+        self.preconditions: list[Discharged] = []
+        """How each precondition was established on the full base tables."""
         self._keys: dict[tuple[str, tuple[str, ...]], Counter[tuple]] = {}
+        self.sources: dict[str, Source] = {}
+        self.versions: dict[str, int] = {}
+        """The version of each source table the pipeline's state reflects."""
+
+    def source(self, name: str, source: Source) -> ir.Table:
+        """Load the latest snapshot of `source` as base table `name`, record
+        its version and what its metadata says about it."""
+        if name in self.sources or name in self.views:
+            raise ValueError(f"the pipeline already has a table {name!r}")
+        snap = source.snapshot()
+        put_table(self.con, name, snap.table)
+        register_facts(self.con, name, snap.facts)
+        self.sources[name] = source
+        self.versions[name] = snap.version
+        return self.con.table(name)
 
     def view(self, name: str, query: ir.Table | str) -> IncrementalView:
-        if name in self.views:
+        if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
         return IncrementalView(self.con, query, name, self.engine, pipeline=self)
 
@@ -281,15 +433,26 @@ class Pipeline:
         """Views that are recomputed and diffed, with the reason."""
         return {v.name: v.fallback for v in self._views if v.fallback is not None}
 
+    def lineage(self, name: str) -> dict[str, int]:
+        """The version of every source table that `name` (a view or table)
+        is computed from."""
+        if name in self.versions:
+            return {name: self.versions[name]}
+        out: dict[str, int] = {}
+        if (v := self.views.get(name)) is not None:
+            for t in v.tables:
+                out.update(self.lineage(t))
+        return out
+
     def _check_new_requires(self, requires: Mapping[str, Sequence[Condition]]) -> None:
-        """Check a new view's preconditions on the full base tables, once."""
+        """Establish a new view's preconditions on the full base tables, once:
+        from metadata where possible, else on the data."""
         for t, conds in requires.items():
             if t in self.views:
                 raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
             known = {label(c) for c in self.requires.get(t, [])}
-            for c in conds:
-                if label(c) in known:
-                    continue
+            new = [c for c in conds if label(c) not in known]
+            for c in new:
                 if isinstance(c, Unique):
                     index = Counter(
                         _key_of(row, _positions(self.con, t, c)) for row in _rows(self.con, t)
@@ -297,17 +460,23 @@ class Pipeline:
                     if dup := sum(n - 1 for n in index.values() if n > 1):
                         raise PreconditionError(f"{dup} row(s) of {t} violate {label(c)}")
                     self._keys[(t, c.cols)] = index
-                elif n := violations(self.con.table(t), c, self.engine):
-                    raise PreconditionError(f"{n} row(s) of {t} violate {label(c)}")
-                self.requires.setdefault(t, []).append(c)
+                    self.preconditions.append(Discharged(t, label(c), ON_DATA))
+            table = self.con.table(t)
+            rowwise = [c for c in new if not isinstance(c, Unique)]
+            self.preconditions += discharge(
+                table, t, rowwise, self.engine, table_facts(table), f"row(s) of {t}"
+            )
+            self.requires.setdefault(t, []).extend(new)
 
     def _check_batch(
-        self, changes: Mapping[str, Changes]
-    ) -> dict[tuple[str, tuple[str, ...]], Counter[tuple]]:
-        """Check the base-table preconditions on a batch alone: row
-        conditions on the inserted rows, keys of the inserted rows against
-        each other and the keys the batch keeps. Returns the new key indexes."""
+        self, changes: Mapping[str, Changes], facts: Mapping[str, Sequence[Fact]]
+    ) -> tuple[dict[tuple[str, tuple[str, ...]], Counter[tuple]], list[Discharged]]:
+        """Establish the base-table preconditions on a batch alone: row
+        conditions on the inserted rows (from `facts` about them where
+        possible), keys of the inserted rows against each other and the keys
+        the batch keeps. Returns the new key indexes."""
         indexes = {}
+        found: list[Discharged] = []
         for t, ch in changes.items():
             conds = self.requires.get(t, [])
             rowwise = [c for c in conds if not isinstance(c, Unique)]
@@ -315,11 +484,14 @@ class Pipeline:
                 name = t + "$inserts"
                 put_table(self.con, name, to_arrow(ch.inserts, self.con.con.table(t).schema()))
                 try:
-                    for c in rowwise:
-                        if n := violations(self.con.table(name), c, self.engine):
-                            raise PreconditionError(
-                                f"{n} inserted row(s) of {t} violate {label(c)}"
-                            )
+                    found += discharge(
+                        self.con.table(name),
+                        t,
+                        rowwise,
+                        self.engine,
+                        facts.get(t),
+                        f"inserted row(s) of {t}",
+                    )
                 finally:
                     self.con.con.deregister_table(name)
             for c in conds:
@@ -333,10 +505,89 @@ class Pipeline:
                 if clash := sum(1 for k in set(inserted) if index[k] > 1):
                     raise PreconditionError(f"{clash} inserted key(s) of {t} violate {label(c)}")
                 indexes[(t, c.cols)] = +index
-        return indexes
+                found.append(Discharged(t, label(c), ON_DATA))
+        return indexes, found
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
         """Apply changes to base tables and bring every view up to date."""
+        sourced = set(changes) & set(self.sources)
+        if sourced:
+            raise ValueError(f"{sorted(sourced)} change through their source; call refresh()")
+        self._apply(changes)
+
+    def refresh(self, *, audit: bool = False) -> RefreshReport:
+        """Bring every source table to its latest version, and the views with it.
+
+        Each source's change since the recorded version comes from its change
+        feed (trusted, and the report says so) or, where the feed is
+        unavailable, from diffing the new snapshot against the current state,
+        in which case the views reading it are recomputed. The new versions
+        are recorded in the same commit as the new state, so a failed refresh
+        changes nothing and a retry does not apply a batch twice.
+
+        With `audit`, the batch is first compared with the new snapshots and,
+        after the commit, every view with its recomputation (`AuditError`)."""
+        changes: dict[str, Changes] = {}
+        facts: dict[str, list[Fact]] = {}
+        versions: dict[str, int] = {}
+        snapshot_facts: dict[str, list[Fact]] = {}
+        recompute: set[str] = set()
+        report: list[SourceRefresh] = []
+        for t, src in self.sources.items():
+            start = self.versions[t]
+            batch = src.changes(start)
+            if batch.end == start:
+                report.append(SourceRefresh(t, start, start, "unchanged"))
+                continue
+            current = self.con.con.table(t).to_arrow_table()
+            if batch.changes is None:
+                assert batch.snapshot is not None
+                ch = snapshot_diff(current, batch.snapshot)
+                recompute.add(t)
+                # The diff's inserts are rows of the new snapshot.
+                facts[t] = batch.snapshot_facts
+                mode, detail = "recomputed", f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
+            else:
+                ch = consolidate(batch.changes)
+                facts[t] = batch.facts
+                mode, detail = "change feed", batch.trusted
+            if audit and batch.changes is not None:
+                got = _apply_to_table(self.con, t, ch)
+                want = src.snapshot(batch.end).table
+                if Counter(map(row_key, arrow_rows(got))) != Counter(
+                    map(row_key, arrow_rows(want))
+                ):
+                    raise AuditError(
+                        f"{t}: the change feed v{start}→v{batch.end} does not turn the "
+                        f"state into snapshot v{batch.end}; nothing was applied"
+                    )
+            changes[t], versions[t] = ch, batch.end
+            snapshot_facts[t] = batch.snapshot_facts
+            report.append(
+                SourceRefresh(t, start, batch.end, mode, detail, len(ch.inserts), len(ch.deletes))
+            )
+        found = self._apply(changes, facts=facts, recompute=recompute, versions=versions)
+        for t, fs in snapshot_facts.items():
+            register_facts(self.con, t, fs)
+        if audit:
+            for v in self._views:
+                if v.rows() != v.recompute():
+                    raise AuditError(f"view {v.name} differs from its recomputation")
+        return RefreshReport(
+            report, found, {v.name: v.versions for v in self._views}, audited=audit
+        )
+
+    def _apply(
+        self,
+        changes: Mapping[str, Changes],
+        *,
+        facts: Mapping[str, Sequence[Fact]] | None = None,
+        recompute: set[str] | None = None,
+        versions: Mapping[str, int] | None = None,
+    ) -> list[Discharged]:
+        """Apply `changes` and bring every view up to date. Views reading a
+        table in `recompute` (directly or through other views) are recomputed
+        and diffed; `versions` are recorded with the commit."""
         con = self.con
         views = self.views
         bad = set(changes) & set(views)
@@ -348,18 +599,22 @@ class Pipeline:
             raise ValueError(f"no view reads {sorted(unknown)}")
         # New base tables first: this also checks that every delete exists.
         new_tables = {t: _apply_to_table(con, t, ch) for t, ch in changes.items()}
-        indexes = self._check_batch(changes)
+        indexes, found = self._check_batch(changes, facts or {})
         deltas: dict[str, ZRows] = {
             t: [(tuple(r), 1) for r in ch.inserts] + [(tuple(r), -1) for r in ch.deletes]
             for t, ch in changes.items()
         }
+        stale = set(recompute or ())
         updates: list[tuple[IncrementalView, Counter[tuple], dict[tuple, Row]]] = []
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
             if not any(deltas.get(t) for t in v.tables):
                 continue
-            delta, examples = v._diff(new_tables) if v.fallback else v._delta(deltas)
+            rerun = v.fallback is not None or any(t in stale for t in v.tables)
+            if rerun:
+                stale.add(v.name)
+            delta, examples = v._diff(new_tables) if rerun else v._delta(deltas)
             merged = v.counts.copy()
             merged.update(delta)
             if any(n < 0 for n in merged.values()):
@@ -370,13 +625,15 @@ class Pipeline:
             deltas[v.name] = [(v.examples[k], n) for k, n in delta.items() if n != 0]
             new_tables[v.name] = v._arrow(merged)
             updates.append((v, merged, examples))
-        # Commit: nothing above changed any table or view.
+        # Commit: nothing above changed any table, view or version.
         for t in changes:
             put_table(con, t, new_tables[t])
         self._keys.update(indexes)
+        self.versions.update(versions or {})
         for v, merged, _ in updates:
             v.counts = merged
             v._publish()
+        return found
 
 
 def _rows(con: Backend, t: str) -> list[Row]:

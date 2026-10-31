@@ -483,6 +483,109 @@ def violations(table: ir.Table, cond: Condition, engine: Engine = "datafusion") 
     return int(count.execute())
 
 
+@dataclass(frozen=True)
+class Fact:
+    """What table metadata says about every row of a table, as a SQL
+    condition, and where it comes from ("Delta constraint", "file stats @v3").
+    The metadata is trusted; facts only discharge preconditions through Lean
+    (`contract_sound` on the table itself), never by name."""
+
+    condition: str
+    source: str
+
+
+SCHEMA = "schema"
+ON_DATA = "checked on data"
+
+
+@dataclass(frozen=True)
+class Discharged:
+    """How a precondition on a table was established: proved from its
+    `SCHEMA`, proved from facts of one metadata source, or `ON_DATA`."""
+
+    table: str
+    condition: str
+    source: str
+
+    def __str__(self) -> str:
+        return f"{self.table}: {self.condition} ({self.source})"
+
+
+# Metadata facts of tables read from a table format (`sverify.io`), keyed
+# by backend identity and table name. Tables without an entry only have
+# their preconditions checked on the data: an in-memory schema is not enforced.
+_facts: dict[tuple[int, str], list[Fact]] = {}
+
+
+def register_facts(con: Any, name: str, facts: Sequence[Fact] | None) -> None:
+    """Record (or with None, forget) what metadata says about table `name`."""
+    if facts is None:
+        _facts.pop((id(con), name), None)
+    else:
+        _facts[(id(con), name)] = list(facts)
+
+
+def table_facts(table: ir.Table) -> list[Fact] | None:
+    """Metadata facts of a base table, if it was read from a table format."""
+    op = table.op()
+    if not isinstance(op, ops.DatabaseTable):
+        return None
+    return _facts.get((id(op.source), op.name))
+
+
+_proved_from: dict[tuple, frozenset[str]] = {}
+
+
+def _prove_from(table: ir.Table, facts: Sequence[str], conds: Sequence[Condition]) -> set[str]:
+    """Labels of `conds` that Lean proves about every row of `table` from its
+    schema and `facts`. A fact the checker cannot read proves nothing."""
+    name = table.op().name  # type: ignore[attr-defined]
+    key = (name, str(table.schema()), tuple(facts), tuple(label(c) for c in conds))
+    if key not in _proved_from:
+        try:
+            report = verify(table, requires={name: list(facts)}, ensures=conds)
+            _proved_from[key] = frozenset(c.label for c in report.ensures if c.proved)
+        except Exception:
+            _proved_from[key] = frozenset()
+    return set(_proved_from[key])
+
+
+def discharge(
+    table: ir.Table,
+    name: str,
+    conds: Sequence[Condition],
+    engine: Engine,
+    facts: Sequence[Fact] | None,
+    what: str,
+) -> list[Discharged]:
+    """Establish row conditions on a bound table, reported under `name`.
+
+    With metadata `facts`, each condition is proved from the schema alone if
+    possible, else from the schema and the facts of the first sources (in
+    order) that suffice. The rest are checked on the data, raising
+    `PreconditionError` with "<n> <what> violate <condition>"."""
+    out: list[Discharged] = []
+    todo = list(conds)
+    if facts is not None:
+        stages: dict[str, list[str]] = {SCHEMA: []}
+        for f in facts:
+            stages.setdefault(f.source, []).append(f.condition)
+        assumed: list[str] = []
+        for source, extra in stages.items():
+            rowwise = [c for c in todo if not isinstance(c, Unique)]
+            if not rowwise:
+                break
+            assumed += extra
+            proved = _prove_from(table, assumed, rowwise)
+            out += [Discharged(name, label(c), source) for c in rowwise if label(c) in proved]
+            todo = [c for c in todo if label(c) not in proved]
+    for c in todo:
+        if n := violations(table, c, engine):
+            raise PreconditionError(f"{n} {what} violate {label(c)}")
+        out.append(Discharged(name, label(c), ON_DATA))
+    return out
+
+
 def is_bound(table: ir.Table) -> bool:
     try:
         ibis.get_backend(table)
@@ -673,6 +776,9 @@ class ContractedTransform:
         if unknown:
             raise TypeError(f"requires names unknown parameters: {sorted(unknown)}")
         self.last_report: Report | None = None
+        self.last_preconditions: list[Discharged] = []
+        """How each precondition on a bound input was established, in the
+        last call: from metadata (`sverify.io` tables) or on the data."""
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
 
@@ -691,12 +797,13 @@ class ContractedTransform:
         return self._cache[key]
 
     def _check_on_data(self, table: ir.Table, param: str, conds: Sequence[Condition]) -> bool:
-        """Check preconditions on a bound input; False if it is not bound."""
+        """Establish preconditions on a bound input, from its metadata where
+        possible (`discharge`); False if it is not bound."""
         if not is_bound(table):
             return False
-        for c in conds:
-            if n := violations(table, c, self.engine):
-                raise PreconditionError(f"{n} row(s) of {param} violate {label(c)}")
+        self.last_preconditions += discharge(
+            table, param, conds, self.engine, table_facts(table), f"row(s) of {param}"
+        )
         return True
 
     def _link(self, param: str, value: ir.Table, conds: list[Condition]) -> _Abstraction:
@@ -739,6 +846,7 @@ class ContractedTransform:
 
     def __call__(self, *args, **kwargs) -> ir.Table:
         inputs = self.signature.bind(*args, **kwargs).arguments
+        self.last_preconditions = []
         result = self.fn(*args, **kwargs)
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}

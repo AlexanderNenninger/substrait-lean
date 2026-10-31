@@ -15,6 +15,7 @@ import SubstraitLean.Contracts
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Compose
+import SubstraitLean.TableFormat
 import SubstraitLean.Completeness
 import SubstraitLean.ContractCheck
 import SubstraitLean.Parse
