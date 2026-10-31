@@ -111,6 +111,23 @@ def test_join_condition_over_one_side():
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(1, "x")]})
 
 
+@pytest.mark.xfail(strict=True, reason="#109: DataFusion can't read Lean's FetchRel.count")
+def test_limit_on_datafusion():
+    assert not finding("SELECT i AS c0 FROM t AS q ORDER BY c0 LIMIT 1", "engines", {"t": [T_ROW]})
+
+
+@pytest.mark.xfail(strict=True, reason="#96: a FULL JOIN's NULL padding is written as i64")
+def test_full_join_on_datafusion():
+    sql = "SELECT COUNT(i) AS c0 FROM (SELECT t.i, u.k FROM t FULL JOIN u ON t.i = u.k) AS q"
+    assert not finding(sql, "engines", {"t": [T_ROW], "u": [(2, "x")]})
+
+
+@pytest.mark.xfail(strict=True, reason="#111: the DuckDB guard raises on NULL / 0")
+def test_null_divided_by_zero_on_duckdb():
+    row = (0, None, None, None, None, None)
+    assert not finding("SELECT j / i AS c0 FROM t AS q", "engines", {"t": [row]})
+
+
 @pytest.mark.xfail(strict=True, reason="#17: ordering comparisons of booleans are NULL in Lean")
 def test_boolean_ordering():
     row = (1, 2, 0.5, "a", False, None)

@@ -324,7 +324,9 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
                 m in f.detail
                 for m in (
                     "does not fit in 64 bits",
-                    "incompatible types",
+                    "incompatible type",
+                    "Expect TypeSignatureClass",
+                    "must be boolean type, but got Int64",
                     "dtype Null",
                     "got `null`",
                     "and BIGINT",
@@ -348,6 +350,22 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
     (97, lambda f: bool(_INT_OP_ON_DOUBLE.search(f.extra.get("Lean's plan", "")))),
     # DataFusion's consumer takes `a = b` over one join input for a join key.
     (98, lambda f: f.oracle == "rows:datafusion" and "FieldNotFound" in f.detail),
+    # Lean writes `FetchRel.count`/`offset`, which DataFusion 51 no longer reads.
+    (
+        109,
+        lambda f: f.oracle == "rows:datafusion" and '"substrait.FetchRel" has no field' in f.detail,
+    ),
+    # The DuckDB guard raises on `NULL / 0` (DataFusion, which ran fine, gives NULL).
+    (111, lambda f: f.oracle == "rows:duckdb" and "sverify: division by zero" in f.detail),
+    # One integer kind in the model: a widening cast of an `int32` is dropped.
+    (
+        18,
+        lambda f: (
+            f.oracle.startswith("types:")
+            and "int32" in f.detail.splitlines()[-1]
+            and "int64" in f.detail.splitlines()[-2]
+        ),
+    ),
 ]
 """Open issues, by the findings they explain."""
 
@@ -422,9 +440,18 @@ def lean_plan(plan: str) -> str:
 
 
 def _types(table: Any) -> list[str]:
-    """Column types, with Substrait's one string type; an all-NULL column of
-    Arrow's `null` type matches any."""
-    return ["?" if pa.types.is_null(f.type) else str(f.type) for f in plain_schema(table.schema)]
+    """Column types, with Substrait's one string type and timestamps of any
+    unit (DataFusion's SQL gives a timestamp literal nanoseconds, plans have
+    microseconds); an all-NULL column of Arrow's `null` type matches any."""
+
+    def name(t: pa.DataType) -> str:
+        if pa.types.is_null(t):
+            return "?"
+        if pa.types.is_timestamp(t):
+            return f"timestamp[{t.tz}]" if t.tz else "timestamp"
+        return str(t)
+
+    return [name(f.type) for f in plain_schema(table.schema)]
 
 
 class Session:
