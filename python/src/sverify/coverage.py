@@ -30,9 +30,10 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis import _
 
@@ -54,6 +55,34 @@ T = ibis.table(
 )
 U = ibis.table({"name": "string", "region": "string"}, name="u")
 t, u = T, U
+#: A memtable: its rows are part of the plan.
+M = ibis.memtable(
+    {"name": ["ada", "bob", None], "score": [1, None, 3]},
+    schema={"name": "string", "score": "int64"},
+)
+
+
+def sql_view(table: ir.Table, query: str) -> ir.Table:
+    """`table.alias("v").sql(query)` without a backend: `Table.sql` needs one
+    to infer the schema, which DataFusion does here. (Ibis 12's DuckDB backend
+    cannot: it calls a method DuckDB 2 no longer has.)"""
+    from sverify.ibis_substrait import sql_view_schema
+
+    parent: Any = table.alias("v").op()
+    schema = sql_view_schema(parent, query)
+    return ops.SQLStringView(parent=parent, query=query, schema=schema).to_expr()
+
+
+class _Tables:
+    """The schemas of `t` and `u`, as a backend gives them to `Backend.sql`."""
+
+    def get_schema(self, name: str) -> ibis.Schema:
+        return {"t": T, "u": U}[name].schema()
+
+
+def sql_query(query: str, schema: dict[str, str]) -> ir.Table:
+    """`backend.sql(query)` over `t` and `u`."""
+    return ops.SQLQueryResult(query, ibis.schema(schema), _Tables()).to_expr()
 
 
 @dataclass(frozen=True)
@@ -87,6 +116,25 @@ CASES: list[Case] = [
     case("rows", "limit with offset", V, lambda: t.limit(3, offset=1)),
     case("rows", "order_by + limit", V, lambda: t.order_by(ibis.desc("qty")).limit(3)),
     case("rows", "sample", R, lambda: t.sample(0.5)),
+    case("rows", "order_by expression", V, lambda: t.order_by(t.qty + 1)),
+    # Ibis's annotations are narrower than what it accepts.
+    case("rows", "limit expression", R, lambda: t.limit(ibis.literal(2) + 1)),  # pyrefly: ignore
+    case("rows", "limit count()", R, lambda: t.limit(t.count())),  # pyrefly: ignore
+    case("rows", "fill_null table", V, lambda: t.fill_null({"qty": 0, "name": "?"})),  # pyrefly: ignore
+    case("rows", "fill_null all", V, lambda: t.select("id", "qty").fill_null(0)),  # pyrefly: ignore
+    case("rows", "memtable", V, lambda: t.join(M, t.name == M.name)),
+    case("rows", "constant table", V, lambda: ibis.literal(1, "int64").name("one").as_table()),
+    case("rows", "alias", V, lambda: t.alias("v").filter(_.qty > 1)),
+    case("rows", "sql view", V, lambda: sql_view(t, "SELECT name, qty FROM v WHERE qty > 1")),
+    case(
+        "rows",
+        "sql query",
+        V,
+        lambda: sql_query(
+            "SELECT t.name, region FROM t JOIN u ON t.name = u.name",
+            {"name": "string", "region": "string"},
+        ),
+    ),
     # Joins and set operations
     case("joins", "inner join", V, lambda: t.join(u, "name")),
     case("joins", "non-equi join", V, lambda: t.join(u, t.name < u.name)),
@@ -106,6 +154,18 @@ CASES: list[Case] = [
     ),
     case("joins", "intersect", V, lambda: t.select("name").intersect(u.select("name"))),
     case("joins", "difference", V, lambda: t.select("name").difference(u.select("name"))),
+    case(
+        "joins",
+        "intersect all",
+        V,
+        lambda: t.select("name").intersect(u.select("name"), distinct=False),
+    ),
+    case(
+        "joins",
+        "difference all",
+        V,
+        lambda: t.select("name").difference(u.select("name"), distinct=False),
+    ),
     # Aggregation
     case("aggregation", "count()", V, lambda: t.aggregate(n=t.count())),
     case("aggregation", "group_by sum", V, lambda: t.group_by("name").aggregate(s=t.qty.sum())),
@@ -250,6 +310,7 @@ REFUSED: dict[str, dict[str, str]] = {
         "spark": "ordering comparisons of str values",
     },
     "order_by": NO_ROW_ORDER,
+    "order_by expression": NO_ROW_ORDER,
     "limit": NO_ROW_ORDER,
     "limit with offset": NO_ROW_ORDER,
     "order_by + limit": NO_ROW_ORDER,
@@ -257,7 +318,20 @@ REFUSED: dict[str, dict[str, str]] = {
     "lag": NO_ROW_ORDER,
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
-TIE_FREE = {"order_by", "row_number", "lag"}
+TIE_FREE = {"order_by", "order_by expression", "row_number", "lag"}
+
+#: Verified cases where DataFusion running Ibis's own SQL means something else
+#: than the plan (and SQL): the tests compare them with DuckDB running Ibis's
+#: DuckDB SQL instead.
+DATAFUSION_SQL = {
+    "intersect all": "DataFusion 51 plans INTERSECT ALL as a semi join: every left copy stays",
+    "difference all": "DataFusion 51 plans EXCEPT ALL as an anti join: every left copy goes",
+}
+
+#: The memtables of the cases, by name: engines that run Ibis's SQL need them
+#: as tables.
+_M: Any = M.op()
+MEMTABLES = {_M.name: _M.data.to_pyarrow(M.schema())}
 
 
 def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:

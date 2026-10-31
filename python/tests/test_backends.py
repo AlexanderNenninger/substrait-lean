@@ -24,6 +24,7 @@ import math
 from decimal import Decimal
 
 import duckdb
+import ibis
 import pyarrow as pa
 import pytest
 import sqlglot
@@ -31,6 +32,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify import coverage, polars_engine
+from sverify.engine import canonical as canonical_table
 from sverify.engine import (
     connect,
     create_table,
@@ -119,6 +121,8 @@ def con():
     con = connect()
     for table in (coverage.T, coverage.U):
         create_table(con, table.get_name(), table.schema())
+    for name, table in coverage.MEMTABLES.items():
+        put_table(con, name, table)
     return con
 
 
@@ -156,8 +160,14 @@ def test_engines_agree(con, case, data):
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
     if not order_dependent(root):
         # As Ibis returns it: DataFusion's SQL result in the expression's
-        # types (`POW` of integers is an integer there, a double in Ibis).
-        df = canonical(rows(run_sql(con, sql).cast(expr.schema().to_pyarrow())))
+        # types (`POW` of integers is an integer there, a double in Ibis),
+        # or DuckDB's where DataFusion means something else.
+        if case.label in coverage.DATAFUSION_SQL:
+            duck_sql = ibis.to_sql(expr, dialect="duckdb")
+            out = canonical_table(con.ibis.con.sql(duck_sql).to_arrow_table())
+        else:
+            out = run_sql(con, sql)
+        df = canonical(rows(out.cast(expr.schema().to_pyarrow())))
         for got in results.values():
             assert canonical(got) == df
 
