@@ -69,9 +69,19 @@ def finding(sql: str, oracle: str, tables: dict) -> list[Finding]:
     return check(Query(sql, {}), tables, oracles=(oracle,))
 
 
-@pytest.mark.xfail(strict=True, reason="#96: a bare double literal is written as an i64 code")
-def test_written_bare_double_literal():
-    assert not finding("SELECT 1.5 AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
+@pytest.mark.parametrize("value", ["1.5", "-2.0", "0.25"])
+def test_written_bare_double_literal(value):
+    """#96: a bare double is written as an `fp64` literal, not its code."""
+    assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
+
+
+@pytest.mark.xfail(strict=True, reason="#96: 0.0 and a double NULL are an integer and NULL")
+@pytest.mark.parametrize("value", ["0.0", "CAST(NULL AS DOUBLE)"])
+def test_written_bare_double_zero_or_null(value):
+    """The model has `0.0` as code 0 and a double NULL as NULL, so the writer
+    cannot tell them from an integer: the engines give the right value with
+    an integer type. Needs the parser to keep a literal's kind."""
+    assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
 
 
 def test_written_typed_null():
