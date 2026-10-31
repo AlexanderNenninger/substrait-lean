@@ -41,6 +41,7 @@ def Rel.checkWF (cat : Catalog) : Rel → Bool
   | .aggregate r gs ms =>
       r.checkWF cat && gs.all (·.refsLtb (r.arity cat)) &&
         ms.all fun m => m.arg.refsLtb (r.arity cat) && m.filter.all (·.refsLtb (r.arity cat))
+  | .unnest r c => r.checkWF cat && c < r.arity cat
 
 theorem Rel.checkWF_iff {cat : Catalog} {r : Rel} : r.checkWF cat = true ↔ r.WF cat := by
   induction r <;>

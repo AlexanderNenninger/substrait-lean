@@ -28,6 +28,7 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
+import ibis
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
@@ -84,6 +85,8 @@ def _type_json(dtype: Any) -> Json:
         return {"precisionTime": {"precision": 6, **NULLABLE}}
     if dtype.is_null():
         return {"i64": NULLABLE}
+    if dtype.is_array():
+        return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     raise Unsupported(f"type {dtype} is not supported")
 
 
@@ -120,6 +123,12 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"precisionTime": {"precision": 6, "value": str(micros)}}}
     if dtype.is_interval():
         return interval_literal(value, dtype)
+    if dtype.is_array():
+        # The elements of a list literal are literals without the `literal` key.
+        if not value:
+            return {"literal": {"emptyList": {"type": type_json(dtype.value_type)}}}
+        values = [literal(v, dtype.value_type)["literal"] for v in value]
+        return {"literal": {"list": {"values": values}}}
     raise Unsupported(f"literal of type {dtype} is not supported")
 
 
@@ -263,7 +272,10 @@ def _common(*types: Any) -> Any:
 
 def _field(x: Exprs, op: Any) -> Json:
     if op.rel not in x.offsets:
-        raise Unsupported(f"column {op.name} refers to a relation outside its input")
+        raise Unsupported(
+            f"column {op.name} refers to a relation outside its input "
+            "(correlated subqueries are only supported in EXISTS)"
+        )
     return field_ref(x.offsets[op.rel] + op.rel.schema.names.index(op.name))
 
 
@@ -660,6 +672,27 @@ def _string_find(x: Exprs, op: Any) -> Json:
     return call("subtract", [call("strpos", [x(op.arg), x(op.substr)]), literal(1, dt.int64)])
 
 
+# Subqueries are uncorrelated here (a column of the outer query is outside
+# their input); the checker lifts them into joins. A correlated EXISTS in a
+# filter becomes a semi or anti join (`_filter`).
+
+
+def _scalar_subquery(x: Exprs, op: Any) -> Json:
+    return {"subquery": {"scalar": {"input": rel(op.rel)}}}
+
+
+def _exists_subquery(x: Exprs, op: Any) -> Json:
+    tuples = rel(op.rel)
+    return {"subquery": {"setPredicate": {"predicateOp": "PREDICATE_OP_EXISTS", "tuples": tuples}}}
+
+
+def _in_subquery(x: Exprs, op: Any) -> Json:
+    (column,) = op.rel.schema.types
+    if not same_type(op.needle.dtype, column):
+        raise Unsupported(f"IN of {op.needle.dtype} in a subquery of {column}")
+    return {"subquery": {"inPredicate": {"needles": [x(op.needle)], "haystack": rel(op.rel)}}}
+
+
 _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Field: _field,
     ops.Literal: _literal,
@@ -749,6 +782,9 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.IsNan: _is_nan,
     ops.StringFind: _string_find,
     ops.ExtractWeekOfYear: _date_part("week"),
+    ops.ScalarSubquery: _scalar_subquery,
+    ops.ExistsSubquery: _exists_subquery,
+    ops.InSubquery: _in_subquery,
 }
 
 
@@ -771,6 +807,8 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.Min | ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
         name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.ArrayCollect):
+        return collect(x, op)
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
@@ -784,6 +822,33 @@ def measure(x: Exprs, op: Any) -> Json:
     if op.where is not None:
         out["filter"] = x(op.where)
     return out
+
+
+def collect(x: Exprs, op: Any) -> Json:
+    """`ARRAY_AGG(x ORDER BY …) FILTER (WHERE x IS NOT NULL [AND where])`, as
+    Ibis's DataFusion compiler writes `collect()`. Without `order_by` the order
+    of the elements is the engine's choice."""
+    if op.include_null:
+        raise Unsupported("collect(include_null=True) is not supported")
+    if op.distinct:
+        raise Unsupported("collect(distinct=True) is not supported")
+    arg = x(op.arg)
+    sorts = []
+    for k in op.order_by:
+        key = _sort_key(x, k)
+        if "selection" not in key["expr"]:
+            raise Unsupported("collect(order_by=) must order by columns")
+        sorts.append(key)
+    agg: Json = {
+        "functionReference": _anchor("array_agg"),
+        "arguments": [{"value": arg}],
+        "sorts": sorts,
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    keep = call("is_not_null", [arg])
+    if op.where is not None:
+        keep = call("and", [x(op.where), keep])
+    return {"measure": agg, "filter": keep}
 
 
 # --------------------------------------------------------------------------
@@ -845,16 +910,38 @@ def _read(op: Any) -> Json:
     return {"read": {"baseSchema": schema, "namedTable": {"names": [op.name]}}}
 
 
+def _exists(p: Any) -> tuple[Any, bool] | None:
+    """The subquery of `EXISTS (…)` or `NOT EXISTS (…)`, and whether it is negated."""
+    if isinstance(p, ops.ExistsSubquery):
+        return p.rel, False
+    if isinstance(p, ops.Not) and isinstance(p.arg, ops.ExistsSubquery):
+        return p.arg.rel, True
+    return None
+
+
 def _filter(op: Any) -> Json:
+    # `[NOT] EXISTS (SELECT … FROM s WHERE c)` conjuncts become semi (anti)
+    # joins with `s` on `c`, which may refer to the outer row, as DataFusion
+    # decorrelates them.
     x = Exprs({op.parent: 0})
+    n = len(op.parent.schema)
     conds: list[Json] = []
+    joins: list[tuple[Any, Json, str]] = []
     for p in op.predicates:
-        if isinstance(p, ops.InSubquery):
-            inside = {"needles": [x(p.needle)], "haystack": rel(p.rel)}
-            conds.append({"subquery": {"inPredicate": inside}})
-        else:
+        if (found := _exists(p)) is None:
             conds.append(x(p))
-    return {"filter": {"input": rel(op.parent), "condition": chain("and", conds)}}
+            continue
+        sub, anti = found
+        inner, preds = (sub.parent, sub.predicates) if isinstance(sub, ops.Filter) else (sub, ())
+        y = Exprs({op.parent: 0, inner: n})
+        on = chain("and", [y(q) for q in preds] or [literal(True, dt.boolean)])
+        joins.append((inner, on, "JOIN_TYPE_LEFT_ANTI" if anti else "JOIN_TYPE_LEFT_SEMI"))
+    input = rel(op.parent)
+    for inner, on, kind in joins:
+        input = {"join": {"left": input, "right": rel(inner), "expression": on, "type": kind}}
+    if not conds:
+        return input
+    return {"filter": {"input": input, "condition": chain("and", conds)}}
 
 
 def _window_functions(values: Iterable[Any]) -> list[Any]:
@@ -953,16 +1040,31 @@ def _sort_key(x: Exprs, k: Any) -> Json:
 
 
 def _sort(op: Any) -> Json:
+    # Sort keys that are expressions are projected first, and dropped after.
+    width = len(op.parent.schema)
     x = Exprs({op.parent: 0})
+    input = rel(op.parent)
+    extra: list[Json] = []
+    keys: list[Json] = []
     for k in op.keys:
-        if not isinstance(k.arg, ops.Field):
-            raise Unsupported("sorting by an expression is not supported; sort by a column")
-    return {"sort": {"input": rel(op.parent), "sorts": [_sort_key(x, k) for k in op.keys]}}
+        if isinstance(k.arg, ops.Field) and k.arg.rel == op.parent:
+            keys.append(_sort_key(x, k))
+            continue
+        extra.append(x(k.arg))
+        key = _sort_key(x, k)
+        key["expr"] = field_ref(width + len(extra) - 1)
+        keys.append(key)
+    if extra:
+        input = {"project": {"input": input, "expressions": extra}}
+    out: Json = {"sort": {"input": input, "sorts": keys}}
+    return emit_rel(out, list(range(width))) if extra else out
 
 
 def _limit(op: Any) -> Json:
+    # Ibis writes any other LIMIT as a subquery over the table (one row per
+    # row, NULL when it is empty), which DataFusion refuses to run.
     if not isinstance(op.offset, int) or not (op.n is None or isinstance(op.n, int)):
-        raise Unsupported("LIMIT and OFFSET must be constants")
+        raise Unsupported("LIMIT and OFFSET must be integers (Ibis writes a subquery otherwise)")
     body: Json = {"input": rel(op.parent), "offsetExpr": literal(op.offset, dt.int64)}
     if op.n is not None:
         body["countExpr"] = literal(op.n, dt.int64)
@@ -1042,21 +1144,225 @@ def _join_chain(op: Any) -> Json:
     return select(current, width, [x(v) for v in op.values.values()])
 
 
+def numbered(input: Json, width: int) -> Json:
+    """`input` with a column numbering the copies of each row from 1:
+    `ROW_NUMBER() OVER (PARTITION BY` every column`)`."""
+    win = {
+        "windowFunction": {
+            "functionReference": _anchor("row_number"),
+            "partitions": [field_ref(i) for i in range(width)],
+            "lowerBound": {"unbounded": {}},
+            "upperBound": {"unbounded": {}},
+            "boundsType": "BOUNDS_TYPE_ROWS",
+        }
+    }
+    return {"project": {"input": input, "expressions": [win]}}
+
+
 def _set_op(op: Any) -> Json:
     left, right = rel(op.left), rel(op.right)
     if isinstance(op, ops.Union):
         kind = "SET_OP_UNION_DISTINCT" if op.distinct else "SET_OP_UNION_ALL"
         return {"set": {"inputs": [left, right], "op": kind}}
-    if not op.distinct:
-        raise Unsupported(f"{type(op).__name__.upper()} ALL is not supported")
-    # INTERSECT and EXCEPT are DISTINCT of a semi or anti join on all
-    # columns, NULLs equal, as DataFusion plans them.
+    # INTERSECT and EXCEPT are a semi or anti join on all columns, NULLs
+    # equal: DISTINCT of it, as DataFusion plans them, or with ALL the k-th
+    # copy of a row matching the k-th copy on the right, which keeps
+    # min(m, n) or max(m - n, 0) copies (SQL's bag semantics, as DuckDB
+    # computes them; DataFusion 51 keeps or drops every copy: see
+    # `tests/test_datafusion_quirks.py`).
     n = len(op.schema)
-    same = [call("is_not_distinct_from", [field_ref(i), field_ref(n + i)]) for i in range(n)]
-    cond = chain("and", same)
+    width = n if op.distinct else n + 1
+    if not op.distinct:
+        left, right = numbered(left, n), numbered(right, n)
+    same = [call("is_not_distinct_from", [field_ref(i), field_ref(width + i)]) for i in range(n)]
+    if not op.distinct:
+        same.append(call("equal", [field_ref(n), field_ref(width + n)]))
     kind = "JOIN_TYPE_LEFT_SEMI" if isinstance(op, ops.Intersection) else "JOIN_TYPE_LEFT_ANTI"
-    join = {"join": {"left": left, "right": right, "expression": cond, "type": kind}}
-    return distinct_rel(join, n)
+    join = {"join": {"left": left, "right": right, "expression": chain("and", same), "type": kind}}
+    return distinct_rel(join, n) if op.distinct else emit_rel(join, list(range(n)))
+
+
+def _fill_null(op: Any) -> Json:
+    # Ibis's rewrite (`fill_null_to_select`): COALESCE each column with its
+    # replacement; a scalar replaces in every nullable column.
+    if isinstance(op.replacements, Mapping):
+        mapping = op.replacements
+    else:
+        mapping = {n: op.replacements for n, t in op.parent.schema.items() if t.nullable}
+    x = Exprs({op.parent: 0})
+    exprs = []
+    for name in op.parent.schema.names:
+        col = ops.Field(op.parent, name)
+        value = mapping.get(name)
+        exprs.append(x(col if value is None else ops.Coalesce((col, value))))
+    return select(rel(op.parent), len(op.parent.schema), exprs)
+
+
+def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
+    base = {
+        "names": list(schema.names),
+        "struct": {
+            "types": [type_json(t) for t in schema.types],
+            "nullability": "NULLABILITY_REQUIRED",
+        },
+    }
+    table = {"expressions": [{"fields": r} for r in rows]}
+    return {"read": {"baseSchema": base, "virtualTable": table}}
+
+
+def _memtable(op: Any) -> Json:
+    # A virtual table of literal rows, in the memtable's row order.
+    data = op.data.to_pyarrow(op.schema)
+    cols = [c.to_pylist() for c in data.columns]
+    rows = (
+        [
+            [literal(v, t) for v, t in zip(row, op.schema.types, strict=True)]
+            for row in zip(*cols, strict=True)
+        ]
+        if cols
+        else [[] for _ in range(data.num_rows)]
+    )
+    return values_rel(op.schema, rows)
+
+
+def _dummy_table(op: Any) -> Json:
+    # `SELECT <values>` without FROM: one row of the values, as literals, or
+    # computed over one row of no columns.
+    x = Exprs({})
+    exprs = [x(v) for v in op.values.values()]
+    if all("literal" in e for e in exprs):
+        return values_rel(op.schema, [exprs])
+    return project_rel(values_rel(ibis.schema({}), [[]]), 0, exprs)
+
+
+# SQL strings (`Table.sql`, `Backend.sql`) are compiled by DataFusion's
+# Substrait producer, over empty tables of the right schemas, and its plan is
+# spliced in: reads of the view's alias become the aliased relation's plan,
+# and function anchors are renumbered into this plan's.
+
+
+def _sql_context(tables: Mapping[str, Any]) -> Any:
+    try:
+        import datafusion
+    except ImportError as e:
+        raise Unsupported("SQL strings need DataFusion: pip install 'sverify[datafusion]'") from e
+    import pyarrow as pa
+
+    ctx = datafusion.SessionContext()
+    for name, schema in tables.items():
+        empty = pa.RecordBatch.from_pylist([], schema=schema.to_pyarrow())
+        ctx.register_record_batches(name, [[empty]])
+    return ctx
+
+
+def _physical_tables(op: Any) -> dict[str, Any]:
+    """The named tables below `op`, by name, and the views' aliases."""
+    found: dict[str, Any] = {}
+    for node in op.find((ops.PhysicalTable,)):
+        if isinstance(node, ops.InMemoryTable):
+            continue
+        found[node.name] = node.schema
+    return found
+
+
+def _sql_plan(query: str, tables: Mapping[str, Any]) -> Json:
+    from datafusion import substrait as ss
+    from google.protobuf import json_format
+    from substrait.plan_pb2 import Plan
+
+    ctx = _sql_context(tables)
+    try:
+        logical = ctx.sql(query).logical_plan()
+    except Exception as e:  # noqa: BLE001 - DataFusion raises plain exceptions
+        raise Unsupported(f"DataFusion cannot plan the SQL: {str(e).splitlines()[0]}") from e
+    proto = Plan()
+    proto.ParseFromString(ss.Producer.to_substrait_plan(logical, ctx).encode())
+    return json_format.MessageToDict(proto)
+
+
+def sql_view_schema(parent: Any, query: str) -> Any:
+    """The schema DataFusion gives `query` over `parent` (an aliased relation)."""
+    tables = {**_physical_tables(parent), parent.name: parent.schema}
+    ctx = _sql_context(tables)
+    return ibis.Schema.from_pyarrow(ctx.sql(query).schema())
+
+
+def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
+    """The root relation of a DataFusion plan, with its function anchors in
+    this plan's numbering and reads of `views` replaced by their plans."""
+    names = {
+        e["extensionFunction"].get("functionAnchor", 0): e["extensionFunction"]["name"]
+        for e in plan.get("extensions", [])
+        if "extensionFunction" in e
+    }
+
+    def walk(j: Any) -> Any:
+        if isinstance(j, list):
+            return [walk(v) for v in j]
+        if not isinstance(j, dict):
+            return j
+        if "read" in j and "namedTable" in j["read"]:
+            name = ".".join(j["read"]["namedTable"]["names"])
+            if name in views:
+                return walk_view(j["read"], views[name])
+        out = {}
+        for k, v in j.items():
+            if k in ("scalarFunction", "windowFunction", "measure"):
+                # Protobuf JSON leaves out anchor 0.
+                v = {**v, "functionReference": _anchor(names[v.get("functionReference", 0)])}
+                out[k] = {f: (a if f == "functionReference" else walk(a)) for f, a in v.items()}
+            else:
+                out[k] = walk(v)
+        return out
+
+    def walk_view(read: Json, view: Any) -> Json:
+        if "common" in read:
+            raise Unsupported("an emit on a read of a view is not supported")
+        out = rel(view)
+        if "filter" in read:
+            out = {"filter": {"input": out, "condition": walk(read["filter"])}}
+        if "projection" in read:
+            items = read["projection"]["select"].get("structItems", [])
+            out = emit_rel(out, [i.get("field", 0) for i in items])
+        return out
+
+    (root,) = [r["root"] for r in plan["relations"] if "root" in r]
+    return walk(root["input"])
+
+
+def _sql_string_view(op: Any) -> Json:
+    if not isinstance(op.parent, ops.AliasedRelation):
+        raise Unsupported("SQL over a table needs an alias to refer to it: use t.alias(name).sql")
+    parent = op.parent
+    tables = {**_physical_tables(parent), parent.name: parent.schema}
+    return _splice(_sql_plan(op.query, tables), {parent.name: parent.parent})
+
+
+def _sql_query_result(op: Any) -> Json:
+    import sqlglot as sg
+    import sqlglot.expressions as sge
+
+    tables = {}
+    for t in sg.parse_one(op.query, read="datafusion").find_all(sge.Table):
+        try:
+            tables[t.name] = op.source.get_schema(t.name)
+        except Exception:  # noqa: BLE001 - a CTE's name, say
+            continue
+    return _splice(_sql_plan(op.query, tables), {})
+
+
+def _table_unnest(op: Any) -> Json:
+    # No standard Substrait relation: an `ExtensionSingleRel` with our own
+    # detail (`docs/nested-values.md`). The column keeps its place.
+    if op.offset is not None:
+        raise Unsupported("unnest(offset=) is not supported")
+    if op.keep_empty:
+        raise Unsupported("unnest(keep_empty=True) is not supported")
+    if op.column_name != op.column.name or not isinstance(op.column, ops.Field):
+        raise Unsupported("unnest must unnest a column in place")
+    col = list(op.parent.schema.names).index(op.column.name)
+    detail = {"@type": "type.googleapis.com/sverify.Unnest", "column": col}
+    return {"extensionSingle": {"input": rel(op.parent), "detail": detail}}
 
 
 _RELS: dict[Any, Callable[[Any], Json]] = {
@@ -1076,6 +1382,13 @@ _RELS: dict[Any, Callable[[Any], Json]] = {
     ops.Difference: _set_op,
     ops.SelfReference: lambda op: rel(op.parent),
     ops.JoinReference: lambda op: rel(op.parent),
+    ops.AliasedRelation: lambda op: rel(op.parent),
+    ops.FillNull: _fill_null,
+    ops.InMemoryTable: _memtable,
+    ops.DummyTable: _dummy_table,
+    ops.SQLStringView: _sql_string_view,
+    ops.SQLQueryResult: _sql_query_result,
+    ops.TableUnnest: _table_unnest,
 }
 
 

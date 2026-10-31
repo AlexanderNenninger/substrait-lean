@@ -520,27 +520,28 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-90 of 114 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+107 of 128 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
-| rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
-| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
+| rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample · ✓ order_by expression *inc.* · ✗ limit expression · ✗ limit count() · ✓ fill_null table *inc.* · ✓ fill_null all *inc.* · ✓ memtable *inc.* · ✓ constant table *inc.* · ✓ alias *inc.* · ✓ sql view *inc.* · ✓ sql query *inc.* |
+| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ isin subquery in select · ✓ notin subquery · ✓ scalar subquery in select · ✓ scalar subquery, one row · ✗ scalar subquery, many rows · ✓ exists · ✓ not exists · ✓ exists, uncorrelated · ✗ correlated scalar subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference · ✓ intersect all · ✓ difference all |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✓ scalar subquery · ✓ unnest |
+| lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* |
 | windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
-| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✗ bucket · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✗ date from columns · ✗ string to timestamp · ✗ time + interval · ✗ time truncate · ✗ strftime other directives · – between_time |
+| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✗ bucket |
 
-Every engine runs the plans of the 90 verified operations, except:
+Every engine runs the plans of the 107 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 89 | non-equi join |
-| DuckDB | 89 | non-equi join |
-| Snowflake | 82 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
-| Spark | 79 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · time of day · time parts · compare times |
+| Polars | 106 | non-equi join |
+| DuckDB | 101 | non-equi join · collect · collect ordered · unnest · unnest column · list literal |
+| Snowflake | 91 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Spark | 91 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
@@ -876,6 +877,34 @@ left an integer next to a double's code (#16). Upstream's mistakes are fixed
 literals were read in local time), and anything outside the model raises
 `Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
 coverage case against DataFusion running Ibis's SQL on random tables.
+
+A few operations have no node of their own. Memtables and `ibis.literal(…).as_table()`
+become virtual tables, table-level `fill_null` a `COALESCE` per column (as Ibis
+rewrites it), and a sort by an expression projects the key, sorts and drops it.
+SQL strings (`t.alias("v").sql(…)`) are compiled by DataFusion's Substrait
+producer and spliced in, with reads of the alias replaced by its plan.
+`INTERSECT ALL` and `EXCEPT ALL` number the copies of each row
+(`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and semi- or anti-join on the
+rows and their numbers, which keeps min(m, n) or max(m − n, 0) copies: SQL's
+meaning, as DuckDB computes it. DataFusion 51 plans them as a plain semi and
+anti join, keeping or dropping every copy (`test_datafusion_quirks.py`), so
+those two cases are compared with DuckDB running Ibis's SQL instead
+(`coverage.DATAFUSION_SQL`). Ibis writes a `LIMIT` that is not an integer as a
+subquery over the table, which DataFusion cannot run, so it is refused.
+
+Subqueries: a correlated `[NOT] EXISTS` in a filter becomes a semi (anti) join
+on the subquery's condition, as DataFusion decorrelates it; other correlated
+subqueries are refused. Uncorrelated ones go into the plan as Substrait
+subquery expressions, which the checker lifts into joins (`liftSubquery` in
+`SubstraitLean/Parse.lean`): a scalar subquery is a left join on `TRUE`, and
+because DataFusion fails when one returns several rows, the checker accepts it
+only where `Rel.keys` proves at most one row (an aggregate without groups,
+`LIMIT 1`); `x IN (subquery)` outside a filter's conjuncts is a left join with
+the subquery's distinct values plus a count of its `NULL`s, which gives SQL's
+three-valued answer; `EXISTS` compares a `COUNT(*)` with 0. DataFusion 51
+cannot run `IN` or `EXISTS` subqueries in a projection, and its
+`NOT IN (subquery)` ignores the subquery's `NULL`s, so those cases are
+compared with DuckDB running Ibis's SQL (`coverage.DATAFUSION_SQL`).
 
 #### SQL producers
 
@@ -1232,6 +1261,8 @@ interval, possible booleans, and whether it can be a string.
   right side's columns (for an inner join, given a NOT NULL foreign key).
   A `GROUP BY` column that the other grouping columns determine (functional
   dependencies from keys and equalities, `Rel.fds_sound`) moves into a `MIN`.
+  A `GROUP BY` of left columns over a join on a key of the right side is
+  computed before the join (eager aggregation).
   `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL

@@ -42,18 +42,6 @@ open Parse Write
 
 def partials : String := "__partials"
 
-def kindType (k : Kind) : Json :=
-  let n := obj [("nullability", "NULLABILITY_NULLABLE")]
-  match k with
-  | .float => fp64Type
-  | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
-      ("nullability", "NULLABILITY_NULLABLE")])]
-  | .date => obj [("date", n)]
-  | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
-  | .str => obj [("string", n)]
-  | .bool => obj [("bool", n)]
-  | .int | .other => i64Type
-
 def colNames (n : Nat) : List String := (List.range n).map (s!"c{·}")
 
 def schemaOf (ks : List Kind) : Json :=
@@ -68,6 +56,7 @@ def why (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys
   | .values _ _ => "a literal table (VALUES) would be repeated on every shard"
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => why S K T cat r
   | .fetch _ _ _ => "FETCH (LIMIT/OFFSET) depends on the rows of all shards"
+  | .unnest _ _ => "UNNEST is not split into shards yet"
   | .window r _ _ _ =>
     if !r.linear S K T cat then why S K T cat r
     else "a window looks at rows of other shards; it splits when its PARTITION BY contains the split key (keys) and its PARTITION BY and ORDER BY columns are unique (unique), so that ties cannot fall differently"
