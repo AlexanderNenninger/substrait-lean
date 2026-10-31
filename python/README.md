@@ -28,14 +28,20 @@ on Python 3.12 and later. Elsewhere pip builds from the sdist, which needs
 
 ## Try it in the browser
 
-Two [marimo](https://marimo.io) notebooks walk through the ideas with live
-examples. No prior knowledge of formal verification is needed.
+A guided tour of [marimo](https://marimo.io) notebooks walks through every
+feature with live examples, one chapter each. No prior knowledge of formal
+verification is needed.
 
-* [A gentle introduction](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/intro.py):
-  plans, proofs, SQL's NULL pitfalls and incremental updates, explained from scratch.
-* [A verified fitness pipeline](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/fitness.py):
+* [Start here](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/00_start_here.py):
+  what the library does, and the list of chapters.
+* [Plans, meaning and proofs](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/01_plans_and_proofs.py):
+  plans, proofs and SQL's NULL pitfalls, explained from scratch.
+* [A complete pipeline](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/12_fitness.py):
   heart-rate samples joined with workouts, a contract with proved and refused
   postconditions, and a view you can stream samples into.
+
+The [whole tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks)
+runs locally with `uvx marimo edit --sandbox notebooks` from a clone.
 
 ## Incremental views
 

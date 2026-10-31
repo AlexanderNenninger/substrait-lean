@@ -92,13 +92,13 @@ cmd = "lake build substrait-check"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.lint]
-help = "Lint and check formatting of the Python code"
-sequence = ["ruff check", "ruff format --check"]
+help = "Lint and check formatting of the Python code and the notebooks"
+sequence = ["ruff check . ../notebooks", "ruff format --check . ../notebooks"]
 default_item_type = "cmd"
 
 [tool.poe.tasks.fmt]
-help = "Fix lint issues and format the Python code"
-sequence = ["ruff check --fix", "ruff format"]
+help = "Fix lint issues and format the Python code and the notebooks"
+sequence = ["ruff check --fix . ../notebooks", "ruff format . ../notebooks"]
 default_item_type = "cmd"
 
 [tool.poe.tasks.typecheck]
@@ -114,6 +114,19 @@ cwd = "${POE_ROOT}/.."
 help = "Python tests, including the randomized engine tests, on every core"
 cmd = "pytest -n auto --dist worksteal"
 
+[tool.poe.tasks.notebooks]
+help = "Check the tour notebooks with marimo and run each one headless"
+shell = """
+marimo check --strict [0-9]*.py || exit 1
+out=$(mktemp -d)
+for nb in [0-9]*.py; do
+  echo "running $nb"
+  marimo export html "$nb" -o "$out/${nb%.py}.html" > /dev/null || exit 1
+done
+rm -rf "$out"
+"""
+cwd = "${POE_ROOT}/../notebooks"
+
 [tool.poe.tasks.qa]
-help = "Run everything: prove, build, lint, typecheck, golden, test"
-sequence = ["prove", "build", "lint", "typecheck", "golden", "test"]
+help = "Run everything: prove, build, lint, typecheck, golden, test, notebooks"
+sequence = ["prove", "build", "lint", "typecheck", "golden", "test", "notebooks"]
