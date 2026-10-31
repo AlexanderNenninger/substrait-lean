@@ -118,7 +118,33 @@ def unique(*cols: str) -> Unique:
     return Unique(tuple(cols))
 
 
-Condition = Deferred | ir.BooleanValue | str | Unique | Callable[[ir.Table], ir.BooleanValue]
+@dataclass(frozen=True)
+class References:
+    """A foreign key: every non-NULL value of `col` occurs in column `other`
+    of table `table` (see `references`)."""
+
+    col: str
+    table: str
+    other: str
+
+
+def references(col: str, table: str, other: str) -> References:
+    """A foreign key: every non-NULL value of `col` occurs in `table.other`.
+
+    Only for `requires`, where it is checked on the data like `unique` (the
+    referenced table must be bound to the same backend). With a key on the
+    referenced column it lets `Rel.optimize` turn a left join on it into an
+    inner join (`Report.optimized`). Not supported by incremental views.
+    """
+    return References(col, table, other)
+
+
+TableCondition = (Unique, References)
+"""Conditions on a whole table, not on each row."""
+
+Condition = (
+    Deferred | ir.BooleanValue | str | Unique | References | Callable[[ir.Table], ir.BooleanValue]
+)
 Transform = ir.Table | str
 
 
@@ -169,6 +195,15 @@ class Report:
     the preconditions, the transformation's SQL (`sverify.sql.to_sql`) and
     Polars plan (`polars_engine.run`) give the same result with
     `guards=False`, without per-row checks (`Rel.guardFree_sound`)."""
+    optimized: dict | None = None
+    """The transformation as a Substrait JSON plan, rewritten with the facts
+    and keys of the preconditions (`Rel.optimize` in
+    `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
+    gone. On data that meets the preconditions it gives the same rows
+    (`Rel.optimize_sound`); pass it to `sverify.sql.to_sql` or an engine's
+    `run` instead of the transformation."""
+    rewrites: list[str] = field(default_factory=list)
+    """The rewrites in `optimized`, such as "DISTINCT on a key"."""
 
     @property
     def proved(self) -> bool:
@@ -352,6 +387,8 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
 def label(cond: Condition) -> str:
     if isinstance(cond, Unique):
         return f"unique({', '.join(cond.cols)})"
+    if isinstance(cond, References):
+        return f"references({cond.col}, {cond.table}.{cond.other})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
@@ -419,11 +456,13 @@ def verify(
     def table_ref(name: str) -> Transform:
         return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
 
-    req_conds = [(t, c) for t, cs in requires.items() for c in cs if not isinstance(c, Unique)]
+    req_conds = [
+        (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
+    ]
     req_plans = [plan(condition_query(table_ref(t), c)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
-        if isinstance(c, Unique):
+        if isinstance(c, TableCondition):
             continue
         p = plan(condition_query(transform, c))
         p["relations"][0]["root"]["names"] = [label(c)]
@@ -442,12 +481,25 @@ def verify(
         for t, cs in requires.items()
     }
     ensures_keys = [positions(c.cols, out_cols) for c in ensures if isinstance(c, Unique)]
+
+    def foreign_key(t: str, c: References) -> list:
+        if c.table not in schemas:
+            raise ValueError(f"references() names an unknown table: {c.table!r}")
+        [col] = positions([c.col], column_names(schemas[t]))
+        [other] = positions([c.other], column_names(schemas[c.table]))
+        return [col, c.table, other]
+
+    foreign_keys = {
+        t: [foreign_key(t, c) for c in cs if isinstance(c, References)]
+        for t, cs in requires.items()
+    }
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
         "transform": transform_plan,
         "keys": keys,
         "ensures_keys": ensures_keys,
+        "references": foreign_keys,
     }
 
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -487,6 +539,8 @@ def verify(
             cols = next(key_iter)
             cex = None if ok else find(cols)
             checked.append(CheckedCondition(label(c), ok, value, cex))
+        elif isinstance(c, References):
+            checked.append(CheckedCondition(label(c), False, "foreign keys are not proved"))
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -499,6 +553,8 @@ def verify(
         deterministic=out["deterministic"],
         issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
         guard_free=out["guard_free"],
+        optimized=out["optimized"],
+        rewrites=out["rewrites"],
     )
 
 
@@ -509,12 +565,17 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     With an engine named, the condition's plan runs there, over the tables of
     the connection `table` is bound to; otherwise Ibis counts on that
     connection."""
-    if not isinstance(cond, Unique) and engine is not None:
+    if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
             raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
         plan = written_plan(plan_json(con, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
+    if isinstance(cond, References):
+        other = ibis.get_backend(table).table(cond.table)
+        present = table.filter(table[cond.col].notnull())
+        missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
+        return int(missing.execute())
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
@@ -621,7 +682,7 @@ def discharge(
             stages.setdefault(f.source, []).append(f.condition)
         assumed: list[str] = []
         for source, extra in stages.items():
-            rowwise = [c for c in todo if not isinstance(c, Unique)]
+            rowwise = [c for c in todo if not isinstance(c, TableCondition)]
             if not rowwise:
                 break
             assumed += extra
