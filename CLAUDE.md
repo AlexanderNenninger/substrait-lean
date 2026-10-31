@@ -55,6 +55,25 @@ ssh homelab 'export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
 
 Run long QA commands there in the background, not in the foreground shell.
 
+## Generated files
+
+Don't commit regenerated tables on a feature branch. They are rewritten on
+`main` after every merge by the `Generated files` workflow
+(`.github/workflows/generated.yml`), so committing them only causes merge
+conflicts with other PRs:
+
+- `README.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
+  from `sverify.coverage --write-readme`;
+- `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
+  `sverify.catalogue --write-tables`.
+
+If you ran one of these commands locally, `git checkout` those files again
+before you commit. Edit the sources instead: the `CASES` of
+`python/src/sverify/coverage_cases/<area>.py`, the catalogue's TOML, and
+`catalogue/status.json`. `status.json` is not just output: it holds the results
+`tests/test_catalogue.py` expects. So a PR that adds a catalogue query or
+changes coverage commits it, after `sverify.catalogue --write`.
+
 ## Adding functions and coverage cases
 
 Parallel PRs used to conflict in two shared lists; both are now split by area.

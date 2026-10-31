@@ -33,10 +33,13 @@ case label:
   compared as bags.
 
 `tests/test_coverage.py` pins every case to its `expected` status and its
-refusals, so a change in coverage is a deliberate edit there. Regenerate the
-README tables with
+refusals, so a change in coverage is a deliberate edit there. The README
+tables are regenerated with
 
     uv run python -m sverify.coverage --write-readme
+
+by the `Generated files` workflow on `main` after every merge; feature branches
+leave them alone.
 """
 
 from __future__ import annotations
