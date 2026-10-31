@@ -74,6 +74,12 @@ class Dialect:
     """
 
     name: str
+    guards: bool = True
+    """Write the run-time checks of `SubstraitLean/Safety.lean`'s issues:
+    64-bit overflow, division by zero, `date_trunc` out of range. Without them
+    (`to_sql(..., guards=False)`) the SQL is only right for plans whose
+    contract report is `guard_free` (`Rel.guardFree_sound` in
+    `SubstraitLean/Guards.lean`). Integer `SUM` keeps its check."""
 
     # Identifiers and types
 
@@ -162,13 +168,20 @@ class Dialect:
 
     def int_div(self, a: str, b: str) -> str:
         """`BinFn.idiv`: truncating; division by zero raises (Lean: NULL)."""
+        if not self.guards:
+            return self.trunc_div(a, b)
         fail = self.raise_("division by zero", b, "int")
         return f"(CASE WHEN {b} = {self.int_lit(0)} THEN {fail} ELSE {self.trunc_div(a, b)} END)"
 
     def int_mod(self, a: str, b: str) -> str:
         """`BinFn.imod`: the sign of `a`; by zero raises (Lean: NULL), by -1 is 0."""
-        fail = self.raise_("division by zero", b, "int")
         zero = self.int_mul(a, self.int_lit(0))
+        if not self.guards:
+            # `MIN % -1` fails on some engines; that branch is semantics, not a check.
+            return (
+                f"(CASE WHEN {b} = {self.int_lit(-1)} THEN {zero} ELSE {self.trunc_mod(a, b)} END)"
+            )
+        fail = self.raise_("division by zero", b, "int")
         return (
             f"(CASE WHEN {b} = {self.int_lit(0)} THEN {fail} WHEN {b} = {self.int_lit(-1)} "
             f"THEN {zero} ELSE {self.trunc_mod(a, b)} END)"
@@ -2606,7 +2619,7 @@ class _Writer:
         or less it wraps below -2⁶³ µs, which no engine's timestamps reach."""
         d = self.d
         t = d.date_trunc(unit, ts)
-        if unit not in ("week", "month", "quarter", "year"):
+        if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
         lo, hi = d.timestamp_lit(NS_MIN), d.timestamp_lit(NS_MAX)
         fail = d.raise_(f"date_trunc to a {unit} outside ±2^63 ns", ts, "time")
@@ -2717,7 +2730,7 @@ def _no_fields() -> str:
     raise Unsupported("virtual table rows cannot refer to fields")
 
 
-def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False) -> str:
+def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool = True) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
     The result has the plan's output names (`RelRoot.names`, else `c0`, …),
@@ -2728,7 +2741,13 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False) -> str:
     and ORDER BY columns (what a contract report's `deterministic` says). Then
     windows need no ordinal tiebreak, so engines without a stable scan order
     can run them; FETCH still needs one.
+
+    `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
+    pass it for a plan whose contract report is `guard_free`, and run the
+    SQL on data that meets the contract's preconditions.
     """
+    if not guards:
+        dialect = replace(dialect, guards=False)
     p = parse_plan(plan)
     n = arity(p.root)
     names = p.names or [f"c{i}" for i in range(n)]

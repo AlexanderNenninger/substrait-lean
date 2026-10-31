@@ -25,23 +25,24 @@ from sverify.sql.duckdb import DUCKDB
 
 
 @functools.lru_cache(maxsize=4096)
-def _sql(plan: str) -> str:
+def _sql(plan: str, guards: bool = True) -> str:
     """`to_sql` of a JSON plan, memoized: an incremental view runs the same
     delta plans on every batch."""
-    return to_sql(json.loads(plan), DUCKDB)
+    return to_sql(json.loads(plan), DUCKDB, guards=guards)
 
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 
 
-def run(plan: str | dict, tables: Mapping[str, pa.Table]) -> pa.Table:
+def run(plan: str | dict, tables: Mapping[str, pa.Table], *, guards: bool = True) -> pa.Table:
     """Run a Substrait JSON plan on DuckDB over `tables`.
 
     One in-process database serves every call (opening one costs ~10 ms); the
-    tables are created for the call and dropped after it."""
+    tables are created for the call and dropped after it. `guards=False`:
+    see `sverify.sql.to_sql`."""
     global _DB
-    sql = _sql(plan) if isinstance(plan, str) else to_sql(plan, DUCKDB)
+    sql = _sql(plan, guards) if isinstance(plan, str) else to_sql(plan, DUCKDB, guards=guards)
     with _LOCK:
         if _DB is None:
             _DB = duckdb.connect()
