@@ -216,6 +216,23 @@ class SparkDialect(Dialect):
                 return f"CAST(date_sub({day}, (dayofweek({ts}) + 5) % 7) AS TIMESTAMP_NTZ)"
         return f"CAST(trunc({day}, {self.str_lit(unit.upper())}) AS TIMESTAMP_NTZ)"
 
+    def date_days(self, d: str) -> str:
+        return f"CAST(unix_date({d}) AS BIGINT)"
+
+    def date_add_days(self, d: str, n: str) -> str:
+        return f"date_add({d}, CAST({n} AS INT))"
+
+    def add_months(self, x: str, months: int, kind: Kind) -> str:
+        # `add_months` clamps to the end of a shorter month, as
+        # `Time.addMonths` (since Spark 3.0 also from a month's last day).
+        if kind == "time":
+            return f"({x} + make_ym_interval(0, {months}))"
+        return f"add_months({x}, {months})"
+
+    def time_micros(self, ts: str) -> str:
+        # The session time zone is UTC, so the LTZ cast keeps the wall clock.
+        return f"unix_micros(CAST({ts} AS TIMESTAMP_LTZ))"
+
     # Aggregates
 
     def int_sum(self, v: str) -> str:

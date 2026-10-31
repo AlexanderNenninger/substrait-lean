@@ -325,6 +325,85 @@ theorem trunc_mono (u : TimeUnit) {s t : Int} (h : s ≤ t) : trunc u s ≤ trun
   case quarter => exact Int.mul_le_mul_of_nonneg_right (monthStart_mono (by omega)) hu
   case year => exact Int.mul_le_mul_of_nonneg_right (monthStart_mono (by omega)) hu
 
+/-! ## Dates
+
+A DATE is the number of days since 1970-01-01. DataFusion computes date
+arithmetic with `chrono`, which fails (panics) outside the years it
+represents; `date_trunc` of a DATE goes through nanoseconds, like the
+calendar truncations above. -/
+
+/-- The days `chrono` represents: -262143-01-01 (`partMin`) to 262142-12-31
+(`partMax`). -/
+def dayMin : Int := -96465292
+def dayMax : Int := 95026236
+
+/-- The days whose midnight is within DataFusion's nanosecond range. -/
+def nsDayMin : Int := -106751
+def nsDayMax : Int := 106751
+
+/-- `date_part(p, d)` of a date: the part of its midnight (`NULL` outside
+the dates `chrono` represents, as for timestamps). -/
+def datePartDay (p : DatePart) (d : Int) : Option Int := datePart p (d * usPerDay)
+
+/-- `date_trunc(u, d)` of a date, as a date. -/
+def truncDay (u : TimeUnit) (d : Int) : Int := days (trunc u (d * usPerDay))
+
+/-- Adding `m` months to day `d`: the same day of month `monthIndex d + m`,
+or that month's last day if it is shorter (2024-01-31 + 1 month is
+2024-02-29), as DataFusion, DuckDB and Polars do. -/
+def addMonths (m d : Int) : Int :=
+  min (monthStart (monthIndex d + m) + (d - monthStart (monthIndex d)))
+    (monthStart (monthIndex d + m + 1) - 1)
+
+/-- Adding `m` months to a timestamp: to its day, keeping the time of day. -/
+def addMonthsUs (m ts : Int) : Int := addMonths m (days ts) * usPerDay + ts % usPerDay
+
+/-- Day `x` of month `j` (between its first day and the next month's) is in
+month `j`. -/
+theorem monthIndex_eq {j x : Int} (h₁ : monthStart j ≤ x) (h₂ : x < monthStart (j + 1)) :
+    monthIndex x = j := by
+  have hs := monthIndex_spec x
+  rcases Int.lt_trichotomy (monthIndex x) j with hlt | heq | hgt
+  · have := monthStart_mono (show monthIndex x + 1 ≤ j by omega); omega
+  · exact heq
+  · have := monthStart_mono (show j + 1 ≤ monthIndex x by omega); omega
+
+/-- Adding `m` months lands in the month `m` months later … -/
+theorem addMonths_month (m d : Int) : monthIndex (addMonths m d) = monthIndex d + m := by
+  have hs := monthIndex_spec d
+  have hstep := monthStart_step (monthIndex d + m)
+  apply monthIndex_eq <;> simp only [addMonths] <;> omega
+
+/-- … on the same day of the month, unless that month is shorter: then on its
+last day. -/
+theorem addMonths_day (m d : Int) :
+    addMonths m d - monthStart (monthIndex d + m) =
+      min (d - monthStart (monthIndex d)) (monthStart (monthIndex d + m + 1) - 1 - monthStart (monthIndex d + m)) := by
+  simp only [addMonths]; omega
+
+theorem addMonths_mono (m : Int) {d e : Int} (h : d ≤ e) : addMonths m d ≤ addMonths m e := by
+  have hd := monthIndex_spec d
+  have he := monthIndex_spec e
+  have hi := monthIndex_mono h
+  have hstep := monthStart_step (monthIndex e + m)
+  simp only [addMonths]
+  rcases Int.lt_or_eq_of_le hi with hlt | heq
+  · have := monthStart_mono (show monthIndex d + m + 1 ≤ monthIndex e + m by omega)
+    omega
+  · rw [heq]; omega
+
+theorem truncDay_mono (u : TimeUnit) {d e : Int} (h : d ≤ e) : truncDay u d ≤ truncDay u e :=
+  days_mono (trunc_mono u (Int.mul_le_mul_of_nonneg_right h (by decide)))
+
+#guard addMonths 1 19753 == 19782 && addMonths 1 19782 == 19811 && addMonths (-1) 19813 == 19782
+#guard addMonths 12 19782 == 20147 && addMonths (-13) 19813 == 19416
+#guard addMonthsUs 1 (19753 * usPerDay + 36000000000) == 19782 * usPerDay + 36000000000
+#guard addMonthsUs 1 (-1) == 2678400000000 - 1
+#guard [DatePart.year, .month, .day, .dow].map (datePartDay · 19782) == [some 2024, some 2, some 29, some 4]
+#guard datePartDay .year dayMax == some 262142 && datePartDay .year (dayMax + 1) == none
+#guard datePartDay .year dayMin == some (-262143) && datePartDay .year (dayMin - 1) == none
+#guard [TimeUnit.day, .week, .month, .quarter, .year].map (truncDay · 19782) == [19782, 19779, 19754, 19723, 19723]
+
 /-! Values DataFusion gives (`python/tests/test_time.py` checks many more). -/
 
 #guard DatePart.all.map (partOf · 1700000000123456) == [2023, 4, 11, 46, 14, 22, 13, 20, 20123, 20123456, 2, 318]

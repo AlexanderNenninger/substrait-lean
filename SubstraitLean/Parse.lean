@@ -156,16 +156,19 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ | .un (.narrow _) _ => .int
   | .un .itos _ | .un .upper _ | .un .lower _ => .str
-  | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
+  | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
-  | .un .toDate _ => .date
+  | .un .toDate _ | .un (.dayTrunc _) _ => .date
+  | .un (.addMonths _ true) _ => .time
+  | .un (.addMonths _ false) _ => .date
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
   | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
-  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ => .int
+  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _ => .int
+  | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ => .str
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
@@ -354,10 +357,42 @@ def intervalMicros (d : Json) : J Int := do
   let subUs : Int := if p ≥ 6 then sub / 10 ^ (p - 6) else sub * 10 ^ (6 - p)
   return (days * 86400 + secs) * 1_000_000 + subUs
 
+/-- The months of a year/month interval. -/
+def yearMonths (ym : Json) : J Int := do
+  let years ← (field? ym "years").elim (pure 0) getInt
+  let months ← (field? ym "months").elim (pure 0) getInt
+  return 12 * years + months
+
+/-- An interval literal as months and microseconds; `none` for other
+expressions. -/
+def intervalLit? (j : Json) : J (Option (Int × Int)) := do
+  let some l := field? j "literal" | return none
+  if let some d := field? l "intervalDayToSecond" then return some (0, ← intervalMicros d)
+  if let some ym := field? l "intervalYearToMonth" then return some (← yearMonths ym, 0)
+  if let some c := field? l "intervalCompound" then
+    let m ← (field? c "intervalYearToMonth").elim (pure 0) yearMonths
+    let us ← (field? c "intervalDayToSecond").elim (pure 0) intervalMicros
+    return some (m, us)
+  return none
+
+/-- An interval literal with days or months. DataFusion compares a duration
+(`ts - ts`, `d - d`) with an interval as `(months, days, nanoseconds)`, so
+`d - e > INTERVAL '3 days'` is false for any `d - e`: comparisons with these
+are refused. Written in hours or seconds, it compares as a number. -/
+def calendarInterval (l : Json) : J Bool := do
+  let days (d : Json) : J Bool := do return (← (field? d "days").elim (pure 0) getInt) != 0
+  if let some d := field? l "intervalDayToSecond" then return ← days d
+  if let some ym := field? l "intervalYearToMonth" then return (← yearMonths ym) != 0
+  if let some c := field? l "intervalCompound" then
+    let m ← (field? c "intervalYearToMonth").elim (pure 0) yearMonths
+    return m != 0 || (← (field? c "intervalDayToSecond").elim (pure false) days)
+  return false
+
 def parseConstLiteral (j : Json) : J Const := do
   let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
     "varChar", "null", "decimal",
-    "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalCompound"]
+    "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalYearToMonth",
+    "intervalCompound"]
   match ← oneof "literal" j keys with
   | ("boolean", b) => return .bool (← b.getBool?)
   | ("string", s) => return .str (← s.getStr?)
@@ -389,9 +424,13 @@ def parseConstLiteral (j : Json) : J Const := do
   | ("intervalDayToSecond", d) => return .int (← intervalMicros d)
   | ("intervalCompound", c) =>
     if let some ym := field? c "intervalYearToMonth" then
-      if (← natD ym "years") != 0 || (← natD ym "months") != 0 then
-        throw "month and year intervals are not supported"
+      if (← yearMonths ym) != 0 then
+        throw "month and year intervals are only supported added to a date or timestamp"
     return .int (← (field? c "intervalDayToSecond").elim (pure 0) intervalMicros)
+  | ("intervalYearToMonth", ym) =>
+    if (← yearMonths ym) != 0 then
+      throw "month and year intervals are only supported added to a date or timestamp"
+    return .int 0
   -- Precision `p` counts units of 10⁻ᵖ s (Isthmus writes `TIMESTAMP '…'` at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
@@ -434,6 +473,9 @@ def foldCall : String → List Const → Option Const
 
 partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) := do
   if let some l := field? j "literal" then
+    -- Months are not microseconds: `temporalArith` reads these.
+    if let some (m, _) ← intervalLit? j then
+      if m != 0 then return none
     return some (← parseConstLiteral l)
   if let some c := field? j "cast" then
     let some x ← constOf? fns (← field c "input") | return none
@@ -523,6 +565,77 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
 #guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
 
+/-! ## Dates and intervals
+
+Intervals of days and seconds are microseconds in the model, so they add to
+timestamps as integers. Month intervals, and anything added to a DATE (which
+is days), are read here instead: `x + INTERVAL '1 month 2 days'` adds the
+months first, then the days, as DataFusion does. -/
+
+/-- The kind of an argument: its expression's, or for a literal, its type's
+(a date or timestamp literal is an integer in the model). -/
+def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
+  if e.readsField then e.kind cols else
+  match field? j "literal", field? j "cast" with
+  | some l, _ =>
+    if (field? l "date").isSome then .date
+    else if (field? l "precisionTimestamp").isSome || (field? l "timestamp").isSome then .time
+    else .other
+  -- A constant cast (`DATE '2024-01-31'` is a cast of a string).
+  | none, some c => match typeKind ((field? c "type").getD .null) with
+    | .date => .date
+    | .time => .time
+    | _ => .other
+  | none, none => .other
+
+/-- `x ± interval` where `x` is a DATE, or a timestamp and the interval has
+months. `none` for other calls, which `mkCall` reads. -/
+def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (argJs : List Json) :
+    J (Option Expr) := do
+  let [aj, bj] := argJs | return none
+  if name != "add" && name != "subtract" then return none
+  let sub := name == "subtract"
+  let a ← parse aj
+  let ka := argKind cols aj a
+  if ka != .date && ka != .time then return none
+  let iv ← intervalLit? bj
+  -- A month interval literal is not an expression of its own.
+  let b ← match iv with
+    | some (_, us) => pure (Expr.lit (.int us))
+    | none => parse bj
+  -- DataFusion's `d - e` is a duration, which it compares with intervals as
+  -- `(months, days, nanoseconds)` and fails to beyond ±2⁶³ ns; `date_diff`
+  -- is the number of days.
+  if ka == .date && argKind cols bj b == .date then
+    throw "date - date is not supported (DataFusion compares the duration wrongly); use date_diff"
+  let (months, rest) := match iv with
+    | some (m, us) => (if sub then -m else m, if us == 0 then none else some (Expr.lit (.int us)))
+    | none => (0, some b)
+  if ka == .time then
+    if months == 0 then return none
+    let x := Expr.un (.addMonths months true) a
+    return some (match rest with
+      | none => x
+      | some r => .bin (if sub then .sub else .add) x r)
+  let x := if months == 0 then a else Expr.un (.addMonths months false) a
+  let some r := rest | return some x
+  -- The days: a constant, or a count times a constant interval of whole days.
+  let days ← match r with
+    | .lit (.int us) =>
+      if us % Time.usPerDay != 0 then throw "a date plus a part of a day is not supported"
+      pure (Expr.lit (.int (us / Time.usPerDay)))
+    | .bin .mul n (.lit (.int us)) =>
+      if us % Time.usPerDay != 0 || us == 0 then
+        throw "a date plus a part of a day is not supported"
+      if n.kind cols != .int && n.readsField then
+        throw "a date plus an interval is only supported with an integer count of days"
+      pure (if us == Time.usPerDay then n else .bin .mul n (.lit (.int (us / Time.usPerDay))))
+    | _ => throw "a date plus an interval is only supported for constants, or a count of days"
+  let days := if !sub then days else match days with
+    | .lit (.int k) => .lit (.int (-k))
+    | e => .un .neg e
+  return some (.bin .dateAdd x days)
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -610,6 +723,8 @@ def mkCall : String → List Expr → J Expr
     match Time.TimeUnit.ofName? u with
     | some u => pure (.un (.dateTrunc u) a)
     | none => throw s!"unsupported date_trunc unit '{u}'"
+  -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
+  | "date_diff", [d, e] => pure (.bin .dateDiff d e)
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
   notDistinct (a b : Expr) : Expr :=
@@ -648,6 +763,8 @@ def mkFloatCall : String → List Expr → J Expr
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json) : J Expr := do
   if let some c ← constOf? fns j then return ← constExpr c
+  if (field? j "literal").isSome then
+    throw "month and year intervals are only supported added to a date or timestamp"
   match ← oneof "expression" j ["selection", "scalarFunction", "ifThen", "cast", "singularOrList"] with
   | ("selection", s) =>
     if (field? s "outerReference").isSome then
@@ -670,7 +787,18 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols sj)
+    if let some e ← temporalArith (parseExpr fns cols) cols (baseName name) argJs then return e
+    if comparisonFns.contains (baseName name) then
+      for a in argJs do
+        if let some l := field? a "literal" then
+          if ← calendarInterval l then
+            throw s!"{baseName name} with an interval of days or months is not supported: \
+              DataFusion compares durations with it as (months, days, nanoseconds); \
+              write it in hours or seconds"
     let parsed ← argJs.mapM (parseExpr fns cols)
+    if baseName name == "date_diff" then
+      if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
+        throw "date_diff takes two dates"
     checkArgKinds name cols parsed
     -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
     -- writes its `NULL`-skipping ones untyped (`mkCall`).
@@ -689,8 +817,18 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
         return (← arrD o "preference").head? == some (.str "ACCEPT_NULLS")
       if !accepts then throw "concat is only supported with null_handling ACCEPT_NULLS"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
-      if (parsed.getD 1 (.lit .null)).kind cols != .time then
-        throw s!"{baseName name} is only supported on timestamps"
+      match (parsed.getD 1 (.lit .null)).kind cols with
+      | .time => pure ()
+      | .date =>
+        -- The same function of a DATE (days).
+        match ← mkCall (baseName name) parsed with
+        | .un (.datePart p) a => return .un (.dayPart p) a
+        | .un (.dateTrunc u) a =>
+          if !([.day, .week, .month, .quarter, .year].contains u) then
+            throw s!"date_trunc of a date to a {u.name} is not supported"
+          return .un (.dayTrunc u) a
+        | e => return e
+      | _ => throw s!"{baseName name} is only supported on timestamps and dates"
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
     -- (Isthmus types `POWER` of integers as a double).

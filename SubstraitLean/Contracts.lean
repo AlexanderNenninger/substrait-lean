@@ -442,6 +442,10 @@ def UnFn.abs : UnFn → AVal → AVal
   | .datePart p, a => datePartAbs p a
   | .dateTrunc u, a => monoAbs (Time.trunc u) a
   | .toDate, a => monoAbs Time.days a
+  | .dayPart p, a => datePartAbs p (monoAbs (· * Time.usPerDay) a)
+  | .dayTrunc u, a => monoAbs (Time.truncDay u) a
+  | .addMonths m false, a => monoAbs (Time.addMonths m) a
+  | .addMonths _ true, a => ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -479,8 +483,9 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       ⟨(a.nonBool && (b.ff || b.nonBool)) || (a.ff && b.nonBool), none, a.tt || b.tt,
        a.ff && b.ff, false⟩
   | .add, a, b => arith Bound.add a b
-  | .sub, a, b => arith Bound.sub a b
+  | .sub, a, b | .dateDiff, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
+  | .dateAdd, a, b => arith Bound.add a b
   | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
@@ -534,6 +539,18 @@ theorem monoAbs_sound {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y
   · simp [monoAbs, AVal.Mem, AVal.nonInt, hn]
   · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
   all_goals simp_all [monoAbs, AVal.Mem, AVal.nonInt]
+
+/-- `g` applied to an integer; anything else becomes `NULL`. -/
+def Value.mapInt (g : Int → Int) : Value → Value
+  | .int c => .int (g c)
+  | _ => .null
+
+theorem monoAbs_mem {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {a : AVal} {v : Value}
+    (h : a.Mem v) : (monoAbs g a).Mem (Value.mapInt g v) := by
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩
+  · simp [Value.mapInt, monoAbs, AVal.Mem, AVal.nonInt, hn]
+  · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
+  all_goals simp_all [Value.mapInt, monoAbs, AVal.Mem, AVal.nonInt]
 
 theorem ftoiAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
     (ftoiAbs a).Mem (UnFn.apply .ftoi v) := by
@@ -624,6 +641,19 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case datePart p => exact datePartAbs_sound p h
   case dateTrunc u => exact monoAbs_sound (Time.trunc_mono u) (fun v => by cases v <;> rfl) h
   case toDate => exact monoAbs_sound Time.days_mono (fun v => by cases v <;> rfl) h
+  case dayPart p =>
+    have hm := monoAbs_mem (g := (· * Time.usPerDay))
+      (fun hxy => Int.mul_le_mul_of_nonneg_right hxy (by decide)) h
+    have := datePartAbs_sound p hm
+    have he : UnFn.apply (.dayPart p) v = UnFn.apply (.datePart p)
+        (Value.mapInt (· * Time.usPerDay) v) := by
+      cases v <;> rfl
+    simp only [UnFn.abs]; rw [he]; exact this
+  case dayTrunc u => exact monoAbs_sound (Time.truncDay_mono u) (fun v => by cases v <;> rfl) h
+  case addMonths m t =>
+    cases t
+    · exact monoAbs_sound (Time.addMonths_mono m) (fun v => by cases v <;> rfl) h
+    · exact topAbs_sound (fun v => by cases v <;> rfl) h
   case upper | lower | length =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
@@ -784,6 +814,8 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   cases f
   case add => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case sub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dateAdd => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case mul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb

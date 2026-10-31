@@ -8,14 +8,19 @@
 * Polars and DuckDB, which run the plan Lean writes, agree with both, and
   fail where DataFusion does.
 * Contracts use that years and truncations grow with the timestamp.
+* Dates: adding days and months (clamped to the end of a shorter month),
+  parts and truncation agree with DataFusion within the dates it computes,
+  and fail where it does; Ibis's date operations its DataFusion SQL cannot
+  run agree with Python's calendar.
 """
 
 import json
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import duckdb
 import ibis
 import pyarrow as pa
+import pyarrow.compute
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -26,12 +31,14 @@ from sverify import polars_engine
 from sverify.engine import (
     connect,
     put_table,
+    run_checker,
     run_plan,
     run_sql,
     substrait_json,
     to_sql,
     written_plan,
 )
+from sverify.ibis_substrait import to_substrait
 from sverify.testing import canonical, inline_tables, lean_values
 
 MIN, MAX = -(2**63), 2**63 - 1
@@ -240,3 +247,187 @@ def test_datafusion_fails_only_where_reported(i, values):
         run_sql(con, to_sql(expr))
     except BaseException as e:  # noqa: BLE001 - DataFusion also panics here
         assert reported, f"DataFusion failed ({e}) but no error was reported"
+
+
+# --------------------------------------------------------------------------
+# Dates: arithmetic with days and months, parts and truncation
+
+#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
+#: within DataFusion's nanoseconds (`Time.nsDayMin`, `Time.nsDayMax`).
+DAY_MIN, DAY_MAX = -96465292, 95026236
+NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
+
+DATE_SQL = (
+    "SELECT d + INTERVAL '1 month' AS a, d - INTERVAL '13 months' AS b, "
+    "d + INTERVAL '3 days' AS c, d + INTERVAL '1 month 2 days' AS e, "
+    "d - INTERVAL '1 month 2 days' AS f, d + INTERVAL '2 years' AS g, "
+    "date_part('year', d) AS y, date_part('month', d) AS m, date_part('day', d) AS dd, "
+    "date_part('dow', d) AS w, date_part('doy', d) AS doy, date_part('week', d) AS wk FROM r"
+)
+TRUNC_SQL = (
+    "SELECT date_trunc('week', d) AS w, date_trunc('month', d) AS m, "
+    "date_trunc('quarter', d) AS q, date_trunc('year', d) AS y FROM r"
+)
+
+
+def days_of(out: pa.Table) -> list[tuple]:
+    """Rows, with dates as days and timestamps as whole days."""
+    columns = []
+    for c in out.columns:
+        if pa.types.is_date(c.type):
+            c = c.cast(pa.int32()).cast(pa.int64())
+        elif pa.types.is_timestamp(c.type):
+            c = pa.compute.divide(c.cast(pa.timestamp("us")).cast(pa.int64()), DAY)
+        columns.append(c)
+    return [tuple(x.values()) for x in pa.table(columns, names=out.column_names).to_pylist()]
+
+
+def date_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
+    """Rows from DataFusion running `sql`, from Lean's semantics of its plan
+    and from Polars and DuckDB running the plan Lean writes."""
+    con = connect()
+    put_table(con, "r", pa.table({"d": pa.array(values, pa.int32()).cast(pa.date32())}))
+    plan = json.loads(substrait_json(con, sql))
+    written = written_plan(json.dumps(plan))
+    inline_tables(plan, {"r": [(v,) for v in values]})
+    return {
+        "datafusion": days_of(run_sql(con, sql)),
+        "lean": lean_values(json.dumps(plan)),
+        "polars": days_of(run_plan(con, written, "polars")),
+        "duckdb": days_of(run_plan(con, written, "duckdb")),
+    }
+
+
+day_edges = st.sampled_from(
+    [0, -1, 19753, 19782, 19813, 11016, 10957, -719162, 2932896, DAY_MIN + 800, DAY_MAX - 800]
+)
+dates = st.one_of(
+    day_edges, st.integers(-800_000, 3_000_000), st.integers(DAY_MIN + 800, DAY_MAX - 800)
+)
+
+
+@settings(max_examples=40, deadline=None)
+@given(values=st.lists(st.one_of(st.none(), dates), max_size=8))
+def test_date_arithmetic_matches_datafusion(values):
+    """Months clamp to the end of a shorter month and come before days, as in
+    DataFusion; Polars and DuckDB agree."""
+    runs = date_runs(DATE_SQL, values)
+    expected = canonical(runs.pop("datafusion"))
+    for engine, rows in runs.items():
+        assert canonical(rows) == expected, engine
+
+
+@settings(max_examples=30, deadline=None)
+@given(values=st.lists(st.one_of(st.none(), st.integers(NS_DAY_MIN + 400, NS_DAY_MAX)), max_size=8))
+def test_date_trunc_of_dates_matches_datafusion(values):
+    """Within DataFusion's nanoseconds, where it truncates dates correctly."""
+    runs = date_runs(TRUNC_SQL, values)
+    expected = canonical(runs.pop("datafusion"))
+    for engine, rows in runs.items():
+        assert canonical(rows) == expected, engine
+
+
+@pytest.mark.parametrize(
+    ("sql", "d"),
+    [
+        ("SELECT d + INTERVAL '1 day' AS x FROM r", DAY_MAX),
+        ("SELECT d - INTERVAL '1 day' AS x FROM r", DAY_MIN),
+        ("SELECT d + INTERVAL '1 month' AS x FROM r", DAY_MAX - 10),
+        ("SELECT d + INTERVAL '1 day' AS x FROM r", DAY_MAX + 5),
+        ("SELECT date_trunc('month', d) AS x FROM r", NS_DAY_MAX + 1),
+        ("SELECT date_trunc('day', d) AS x FROM r", NS_DAY_MIN - 1),
+    ],
+)
+def test_dates_outside_chrono_fail(sql, d):
+    """`rangeIssue`: where DataFusion panics (or truncates in wrapped
+    nanoseconds), the checker reports an error and the engines raise."""
+    con = connect()
+    put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
+    report = sv.verify(sql, tables={"r": ibis.schema({"d": "date"})})
+    assert "overflow" in [i.kind for i in report.errors]
+    written = written_plan(substrait_json(con, sql))
+    with pytest.raises(polars_engine.Overflow):
+        run_plan(con, written, "polars")
+    with pytest.raises(duckdb.Error, match="sverify"):
+        run_plan(con, written, "duckdb")
+
+
+D = ibis.table({"d": "date", "ts": "timestamp", "n": "int64"}, name="t")
+
+
+@st.composite
+def d_rows(draw: st.DrawFn) -> list[tuple]:
+    n = draw(st.integers(0, 6))
+    day = st.one_of(st.none(), st.integers(-200_000, 200_000))
+    # Within Python's years 1 to 9999.
+    us = st.one_of(st.none(), st.integers(-(10**13), 10**13), st.integers(-6 * 10**16, 2 * 10**17))
+    count = st.one_of(st.none(), st.integers(-1000, 1000))
+    return [(draw(day), draw(us), draw(count)) for _ in range(n)]
+
+
+def python_date(days: int) -> date:
+    return date(1970, 1, 1) + timedelta(days=days)
+
+
+def reference(d: int | None, ts: int | None, n: int | None) -> tuple:
+    """What Ibis means by the operations its DataFusion SQL cannot run."""
+    if ts is None:
+        epoch = ms = us_ = iso_ts = None
+    else:
+        # Whole seconds, rounding toward zero.
+        epoch = ts // 10**6 + (1 if ts < 0 and ts % 10**6 else 0)
+        us_ = ts % 10**6
+        ms = us_ // 1000
+        iso_ts = python_date(ts // DAY).isocalendar().year
+    if d is None:
+        iso = delta = back = None
+    else:
+        iso = python_date(d).isocalendar().year
+        delta = d - 19727
+        back = None if n is None else d - n
+    return (epoch, ms, us_, iso_ts, iso, delta, back)
+
+
+@settings(max_examples=40, deadline=None)
+@given(rows=d_rows())
+def test_ibis_temporal_ops_match_python(rows):
+    """The operations Ibis's DataFusion SQL does not run
+    (`coverage.NO_DATAFUSION_SQL`), against Python's calendar."""
+    expr = D.select(
+        e=D.ts.epoch_seconds(),
+        ms=D.ts.millisecond(),
+        us=D.ts.microsecond(),
+        it=D.ts.iso_year(),
+        i=D.d.iso_year(),
+        k=D.d.delta(ibis.literal(date(2024, 1, 5)), unit="day"),
+        b=D.d - D.n.as_interval("D"),
+    )
+    plan = inline_tables(to_substrait(expr), {"t": rows})
+    assert lean_values(json.dumps(plan)) == [reference(*r) for r in rows]
+
+
+def test_comparing_durations_with_days_is_refused():
+    """DataFusion compares a duration with `INTERVAL '3 days'` as (months,
+    days, nanoseconds): four days are not more than three. In hours it
+    compares as a number."""
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array([0, 4 * DAY], pa.timestamp("us"))}))
+    sql = "SELECT ts FROM r WHERE ts - TIMESTAMP '1970-01-01 00:00:00' > INTERVAL '{}'"
+    assert run_sql(con, sql.format("3 days")).num_rows == 0
+    code, out, err = run_checker((), substrait_json(con, sql.format("3 days")))
+    assert code != 0 and "interval of days or months" in out + err
+    assert run_sql(con, sql.format("72 hours")).num_rows == 1
+    assert run_checker((), substrait_json(con, sql.format("72 hours")))[0] == 0
+
+
+def test_date_differences_are_refused():
+    """DataFusion's `d - e` of dates is a duration in seconds, which it
+    compares wrongly with days and fails to compare beyond ±2⁶³ ns; Ibis's
+    `DateDiff` is written as `date_diff` (days) instead."""
+    con = connect()
+    put_table(con, "r", pa.table({"d": pa.array([126505], pa.int32()).cast(pa.date32())}))
+    sql = "SELECT d FROM r WHERE d - DATE '1970-01-01' > INTERVAL '72 hours'"
+    with pytest.raises(Exception, match="Overflowing"):
+        run_sql(con, sql)
+    code, out, err = run_checker((), substrait_json(con, sql))
+    assert code != 0 and "date - date" in out + err

@@ -6,8 +6,11 @@ import SubstraitLean.Contracts
 DataFusion fails at run time on integer division or remainder by zero, on
 `MIN / -1`, on integer powers with a negative exponent or a result outside
 64 bits, on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, on
-an invalid regular expression and on `date_trunc` to a week, month, quarter or
-year outside ±2⁶³ nanoseconds. Integer `+`, `-`, `*` and negation do not fail:
+an invalid regular expression, on `date_trunc` to a week, month, quarter or
+year outside ±2⁶³ nanoseconds, and on date arithmetic (`DATE ± days`, adding
+months) outside the years `chrono` represents. `date_trunc` of a DATE goes
+through nanoseconds and gives garbage outside them (1677 to 2262), which is
+reported as an error too. Integer `+`, `-`, `*` and negation do not fail:
 they wrap around silently, so the result differs from `Rel.eval`'s
 (unbounded) integers; so does `date_trunc` to a day or less below `-2⁶³`. All of these are
 `Issue`s; wrapping is a warning, the rest are errors.
@@ -72,6 +75,13 @@ def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)
 
 def wrapIf (i : Int) : Option Issue := if inI64 i then none else some .wraps
 
+def inRange (lo hi i : Int) : Bool := decide (lo ≤ i) && decide (i ≤ hi)
+
+/-- `overflow` unless the argument `x` and the result `y` are in `[lo, hi]`:
+the dates and timestamps `chrono` represents, or DataFusion's nanoseconds. -/
+def rangeIssue (lo hi x y : Int) : Option Issue :=
+  if inRange lo hi x && inRange lo hi y then none else some .overflow
+
 /-! ## What goes wrong on a row -/
 
 def UnFn.issue : UnFn → Value → Option Issue
@@ -86,12 +96,16 @@ def UnFn.issue : UnFn → Value → Option Issue
     if u.calendar then
       if ts ≤ Time.nsMax ∧ Time.nsMin ≤ Time.trunc u ts then none else some .overflow
     else wrapIf (Time.trunc u ts)
+  | .dayTrunc u, .int d => rangeIssue Time.nsDayMin Time.nsDayMax d (Time.truncDay u d)
+  | .addMonths m false, .int d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
+  | .addMonths m true, .int ts => rangeIssue Time.partMin Time.partMax ts (Time.addMonthsUs m ts)
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
   | .add, .int a, .int b => wrapIf (a + b)
   | .sub, .int a, .int b => wrapIf (a - b)
   | .mul, .int a, .int b => wrapIf (a * b)
+  | .dateAdd, .int a, .int b => rangeIssue Time.dayMin Time.dayMax a (a + b)
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
   | .imod, .int _, .int b => if b = 0 then some .divByZero else none
@@ -125,6 +139,36 @@ theorem AVal.inI64_of_fits {a : AVal} {i : Int} (h : a.intFits = true) (hm : a.M
   simp only [Bound.Mem] at hi
   cases bl <;> cases bh <;> simp_all [inI64] <;> constructor <;> omega
 
+/-- Every integer `a` describes is in `[lo, hi]`. -/
+def AVal.within (lo hi : Int) (a : AVal) : Bool :=
+  a.int.all fun b => b.lo.any (lo ≤ ·) && b.hi.any (· ≤ hi)
+
+theorem AVal.inRange_of_within {a : AVal} {lo hi i : Int} (h : a.within lo hi = true)
+    (hm : a.Mem (.int i)) : inRange lo hi i = true := by
+  obtain ⟨b, hb, hi⟩ := hm
+  obtain ⟨bl, bh⟩ := b
+  simp only [AVal.within, hb, Option.all_some, Bool.and_eq_true, Option.any_eq_true,
+    decide_eq_true_eq] at h
+  obtain ⟨⟨l, rfl, hl⟩, ⟨u, rfl, hu⟩⟩ := h
+  have := hi.1 l rfl
+  have := hi.2 u rfl
+  simp only [inRange, Bool.and_eq_true, decide_eq_true_eq]; omega
+
+def rangeMay (lo hi : Int) (aa ar : AVal) : List Issue :=
+  if aa.within lo hi && ar.within lo hi then [] else [.overflow]
+
+theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} (ha : aa.Mem (.int x))
+    (hr : ar.Mem (.int y)) (hk : rangeIssue lo hi x y = some k) : k ∈ rangeMay lo hi aa ar := by
+  simp only [rangeIssue] at hk
+  split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+  subst hk
+  simp only [rangeMay]
+  split
+  · rename_i hn hw
+    simp only [Bool.and_eq_true] at hw
+    simp [AVal.inRange_of_within hw.1 ha, AVal.inRange_of_within hw.2 hr] at hn
+  · simp
+
 /-- Every double code `a` describes casts to a `BIGINT`. -/
 def AVal.castFits (a : AVal) : Bool := a.int.all fun b => b.lo.any (castLo ≤ ·) && b.hi.any (· ≤ castHi)
 
@@ -141,6 +185,9 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if nsFits aa ar then [] else [.overflow])
     else if ar.intFits then [] else [.wraps]
+  | .dayTrunc _, aa, ar => rangeMay Time.nsDayMin Time.nsDayMax aa ar
+  | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
+  | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -162,6 +209,7 @@ def powFits (aa ab : AVal) : Bool :=
 def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → List Issue
   | .add, _, _, ar, _ | .sub, _, _, ar, _ | .mul, _, _, ar, _ =>
     if ar.intFits then [] else [.wraps]
+  | .dateAdd, aa, _, ar, _ => rangeMay Time.dayMin Time.dayMax aa ar
   | .idiv, _, _, ar, nz => (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
   | .imod, _, _, _, nz => if nz then [] else [.divByZero]
   | .ipow, aa, ab, _, _ =>
@@ -320,6 +368,11 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         simp only [Bound.Mem] at hm hm'
         cases bh <;> cases bl' <;> simp_all <;> constructor <;> omega
       · simp
+  case dayTrunc.int u d => exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
+  case addMonths.int m t x =>
+    cases t
+    · exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
+    · exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
 
 theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : Bool} {k : Issue}
     (ha : aa.Mem v) (hb : ab.Mem w) (hr : ar.Mem (f.apply v w))
@@ -335,6 +388,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
     · rename_i hn hfits
       exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply] using hr)) hn
     · simp
+  case dateAdd.int.int i j => exact rangeIssue_sound ha (by simpa [BinFn.apply] using hr) hk
   case idiv.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     split at hk

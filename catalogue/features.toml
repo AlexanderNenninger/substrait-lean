@@ -99,15 +99,15 @@ string_compare = { lean = "partial", description = "<, > on strings (also MIN/MA
 math_funcs = { lean = "yes", description = "round, floor, ceil, abs, power, greatest, least" }
 hash = { lean = "no", description = "MD5 / hashing (surrogate keys)" }
 date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "with sverify's Ibis producer ibis.date(…) works; through Ibis's DataFusion SQL it compiled to DATE_TRUNC('DAY', …), which the checker refuses. The catalogue writes D(…), a cast, which works both ways" }
-date_part = { lean = "partial", description = "EXTRACT(year / month / dow … FROM x)", note = "timestamps only; EPOCH and DATE columns refused" }
+date_part = { lean = "partial", description = "EXTRACT(year / month / dow … FROM x)", note = "timestamps and dates (`UnFn.dayPart`); EPOCH refused (Ibis epoch_seconds() works)" }
 time_bucket = { lean = "no", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "refused by the Ibis producer (TimestampBucket), which Ibis cannot compile to DataFusion SQL either; DATE_BIN is refused by the checker" }
-date_trunc = { lean = "partial", description = "DATE_TRUNC / truncate", note = "timestamps only" }
-interval_day_time = { lean = "partial", description = "x ± INTERVAL in days, hours, minutes", note = "timestamps yes; DATE ± interval is refused by the Ibis producer (DateAdd/DateSub)" }
-dynamic_interval = { lean = "no", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "refused by the Ibis producer (IntervalFromInteger); through SQL, Ibis wrote CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), refused as a string cast" }
-interval_month = { lean = "no", description = "x ± INTERVAL in months or years", note = "refused by the checker (\"month and year intervals are not supported\") and the Ibis producer (\"intervals in months\")" }
-date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps yes; DATE - DATE is refused by the Ibis producer (DateDiff)" }
+date_trunc = { lean = "yes", description = "DATE_TRUNC / truncate", note = "timestamps, and dates to a day or longer (`UnFn.dayTrunc`; DataFusion goes through nanoseconds, so an error is reported outside 1677-2262)" }
+interval_day_time = { lean = "yes", description = "x ± INTERVAL in days, hours, minutes", note = "timestamps, and DATE ± whole days (`BinFn.dateAdd`). Comparing a duration with an interval of days is refused: DataFusion compares it as (months, days, ns)" }
+dynamic_interval = { lean = "partial", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "a column's count of days added to a DATE (the Ibis producer writes n * INTERVAL '1 day'); added to a timestamp, or of months, refused. Ibis's DataFusion SQL, CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), fails on NULL" }
+interval_month = { lean = "yes", description = "x ± INTERVAL in months or years", note = "constant months added to a date or timestamp, clamped to the end of a shorter month (`Time.addMonths`), before any days, as DataFusion does" }
+date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps, and Ibis's DateDiff/delta of dates (`BinFn.dateDiff`); DataFusion's DATE - DATE is refused: a duration it compares wrongly with intervals" }
 interval_to_number = { lean = "no", description = "a duration as a number of seconds (time weighting, rates per second)", note = "casting an interval to a number is refused; Ibis delta() and epoch_seconds() do not compile or are refused" }
 math_transcendental = { lean = "no", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "unsupported function ln/1" }
-epoch = { lean = "no", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "unsupported date part 'EPOCH'" }
+epoch = { lean = "partial", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "Ibis epoch_seconds() works (built from date parts); date_part('EPOCH') and to_char are refused" }
 timezone = { lean = "no", description = "time zones (AT TIME ZONE, tz-aware timestamps)" }
 json = { lean = "no", description = "JSON / semi-structured extraction" }

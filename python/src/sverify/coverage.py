@@ -24,6 +24,7 @@ README tables with
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 import sys
@@ -54,6 +55,8 @@ T = ibis.table(
 )
 U = ibis.table({"name": "string", "region": "string"}, name="u")
 t, u = T, U
+#: A date constant.
+DAY0 = ibis.literal(dt.date(1970, 1, 5))
 
 
 @dataclass(frozen=True)
@@ -225,8 +228,72 @@ CASES: list[Case] = [
     case("time", "year", V, lambda: t.select(x=t.ts.year())),
     case("time", "date", V, lambda: t.select(x=t.ts.date())),
     case("time", "truncate", V, lambda: t.select(x=t.ts.truncate("h"))),
+    case("time", "date + days", V, lambda: t.select(x=t.ts.date() + ibis.interval(days=3))),
+    case("time", "date - months", V, lambda: t.select(x=t.ts.date() - ibis.interval(months=1))),
+    case("time", "date + years", V, lambda: t.select(x=t.ts.date() + ibis.interval(years=1))),
+    case(
+        "time",
+        "date - column days",
+        V,
+        lambda: t.select(x=t.ts.date() - t.qty.as_interval("D")),
+    ),
+    case("time", "timestamp + months", V, lambda: t.select(x=t.ts + ibis.interval(months=13))),
+    case(
+        "time",
+        "constant interval arithmetic",
+        V,
+        lambda: t.select(x=t.ts + (ibis.interval(days=1) + ibis.interval(hours=2))),
+    ),
+    case(
+        "time",
+        "date - date",
+        V,
+        lambda: t.filter(t.ts.date() - DAY0 > ibis.interval(days=3)),
+    ),
+    case("time", "date delta", V, lambda: t.select(x=t.ts.date().delta(DAY0, unit="day"))),
+    case("time", "date parts", V, lambda: t.select(y=t.ts.date().year(), m=t.ts.date().month())),
+    case("time", "date truncate", V, lambda: t.select(x=t.ts.date().truncate("M"))),
+    case("time", "day_of_week", V, lambda: t.select(x=t.ts.day_of_week.index())),
+    case("time", "day_of_week name", V, lambda: t.select(x=t.ts.date().day_of_week.full_name())),
+    case("time", "iso_year", V, lambda: t.select(x=t.ts.iso_year())),
+    case("time", "epoch_seconds", V, lambda: t.select(x=t.ts.epoch_seconds())),
+    case(
+        "time",
+        "millisecond, microsecond",
+        V,
+        lambda: t.select(x=t.ts.millisecond(), y=t.ts.microsecond()),
+    ),
+    case(
+        "time",
+        "timestamp + column interval",
+        R,
+        lambda: t.select(x=t.ts + t.qty.as_interval("h")),
+    ),
+    case(
+        "time",
+        "date + column months",
+        R,
+        lambda: t.select(x=t.ts.date() + t.qty.as_interval("M")),
+    ),
+    case("time", "timestamp delta", R, lambda: t.select(x=t.ts.delta(t.ts, unit="hour"))),
+    case("time", "bucket", R, lambda: t.select(x=t.ts.bucket(minutes=15))),
 ]
 
+
+#: Verified cases whose Ibis SQL DataFusion does not run, or runs wrongly:
+#: the tests check them against the other engines and Python instead.
+NO_DATAFUSION_SQL = {
+    # `CAST(n || ' day' AS INTERVAL)` fails on a NULL count.
+    "date - column days": "fails on NULL",
+    # Python UDFs of Ibis's DataFusion backend.
+    "epoch_seconds": "Ibis UDF",
+    "millisecond, microsecond": "Ibis UDF",
+    # No compilation rule.
+    "iso_year": "no rule",
+    "date delta": "no rule",
+    # A duration is compared with `INTERVAL '3 DAYS'` as (months, days, ns).
+    "date - date": "compares durations with days wrongly",
+}
 
 #: The engines besides DataFusion, which runs Ibis's own plans.
 ENGINES = ("polars", "duckdb", "snowflake", "spark")

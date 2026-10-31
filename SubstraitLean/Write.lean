@@ -30,7 +30,8 @@ def functions : List (Nat × String) :=
    (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl")]
+   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
+   (60, "date_diff")]
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
@@ -38,7 +39,8 @@ def AggFn.anchor : AggFn → Nat
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
-  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
+  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ | .dayPart _ => 25
+  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
 
@@ -46,7 +48,7 @@ def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
-  | .substr _ => 32
+  | .substr _ => 32 | .dateAdd => 4 | .dateDiff => 60
   | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
@@ -98,6 +100,12 @@ def writeInterval (us : Int) : Json :=
     ("seconds", toJson (us / 1_000_000)), ("subseconds", toJson (toString (us % 1_000_000))),
     ("precision", toJson 6)])])]
 
+/-- An interval of `m` months. -/
+def writeMonths (m : Int) : Json :=
+  obj [("literal", obj [("intervalCompound", obj [
+    ("intervalYearToMonth", obj [("months", toJson m)]),
+    ("intervalDayToSecond", obj [("precision", toJson 6)])])])]
+
 /-- A double the model has one zero and one NaN for, as IEEE engines compute
 it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
 Engines that compare by `f64::total_cmp` (DataFusion) need it after an
@@ -140,6 +148,9 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
   | .un (.datePart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .time a]
   | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
+  | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
+  | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
+  | .un (.addMonths m t) a => call 4 [writeExpr cols (if t then .time else .date) a, writeMonths m]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (a.kind cols) a]
   | .bin f a b =>
     let ka := if isLit a then b.kind cols else a.kind cols
@@ -154,6 +165,11 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       match ka, b with
       | .time, .lit (.int us) => call (BinFn.anchor f) [writeExpr cols ka a, writeInterval us]
       | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+    -- Days added to a date: an interval of days, or a count of them.
+    | .dateAdd => match b with
+      | .lit (.int k) => call 4 [writeExpr cols .date a, writeInterval (k * Time.usPerDay)]
+      | _ => call 4 [writeExpr cols .date a, call 6 [writeExpr cols .int b, writeInterval Time.usPerDay]]
+    | .dateDiff => call 60 [writeExpr cols .date a, writeExpr cols .date b]
     | .substr (some n) =>
       call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
     | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]

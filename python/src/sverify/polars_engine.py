@@ -519,6 +519,89 @@ def date_trunc(unit: str, v: Val) -> Val:
     return Val(value, US, (*v.issues, issue(bad, Overflow, f"date_trunc to a {unit} overflows")))
 
 
+#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
+#: within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
+DAY_MIN, DAY_MAX = -96465292, 95026236
+NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
+
+
+def _days(v: Val) -> pl.Expr:
+    """A DATE as days since 1970-01-01 (`Int64`)."""
+    return v.expr.to_physical().cast(pl.Int64)
+
+
+def _month_index(d: pl.Expr) -> tuple[pl.Expr, pl.Expr]:
+    """`Time.monthIndex` of day `d` (`12 · year + month - 1`), and the day
+    of the month from 0: the civil calendar in integer arithmetic."""
+    z = d + 719468
+    era = z // 146097
+    doe = z - era * 146097
+    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    dom = doy - (153 * mp + 2) // 5
+    # March-based years: months from March, so January and February are 10, 11.
+    return 12 * (yoe + era * 400) + mp + 2, dom
+
+
+def _month_start(i: pl.Expr) -> pl.Expr:
+    """`Time.monthStart`: the first day of month `i`."""
+    y, mp = (i - 2) // 12, (i - 2) % 12
+    era = y // 400
+    yoe = y - era * 400
+    doe = yoe * 365 + yoe // 4 - yoe // 100 + (153 * mp + 2) // 5
+    return era * 146097 + doe - 719468
+
+
+def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
+    """`Time.addMonths`: the same day `m` months later, or that month's last."""
+    i, dom = _month_index(d)
+    return pl.min_horizontal(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
+
+
+def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
+    """`Time.truncDay`."""
+    if unit == "day":
+        return d
+    if unit == "week":
+        return d - (d + 3) % 7
+    i, _ = _month_index(d)
+    k = {"month": 1, "quarter": 3, "year": 12}.get(unit)
+    if k is None:
+        raise Unsupported(f"date_trunc of a date to a {unit} is not supported")
+    return _month_start(i // k * k)
+
+
+def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -> Val:
+    """`rangeIssue`: the DATE `days` computed from `v`, an error (`Overflow`)
+    unless both are within `[lo, hi]` days."""
+    x = _days(v)
+    bad = (x < lo) | (x > hi) | (days < lo) | (days > hi)
+    value = pl.when(bad).then(None).otherwise(days).cast(pl.Int32).cast(pl.Date)
+    message = f"{what} outside the dates DataFusion computes"
+    return Val(value, pl.Date, (*issues(v, *vals), issue(bad, Overflow, message)))
+
+
+def day_part(part: str, v: Val) -> Val:
+    """`UnFn.dayPart`: the part of the date's midnight."""
+    x = _days(v)
+    inside = (x >= DAY_MIN) & (x <= DAY_MAX)
+    ts = (pl.when(inside).then(x) * US_PER_DAY).cast(US)
+    return date_part(part, Val(ts, US, v.issues))
+
+
+def add_months(m: int, v: Val) -> Val:
+    """`UnFn.addMonths` of a date or a timestamp, with its `rangeIssue`."""
+    if v.dtype == pl.Date:
+        return date_range(v, add_months_days(m, _days(v)), DAY_MIN, DAY_MAX, "adding months")
+    us = wide(v)
+    r = add_months_days(m, us // US_PER_DAY) * US_PER_DAY + us % US_PER_DAY
+    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX)
+    value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
+    message = "adding months outside the years chrono represents"
+    return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
+
+
 def ftoi(v: Val) -> Val:
     """`CAST(double AS BIGINT)`: truncation toward zero (`FloatCode.toInt?`);
     NaN, ±∞ and results outside 64 bits are errors."""
@@ -583,9 +666,25 @@ class Exprs:
                 return self.regex_match(arg_js[0])
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:
                 which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
-                if not isinstance(which, str) or ts.dtype != US:
+                if not isinstance(which, str) or ts.dtype not in (US, pl.Date):
                     raise Unsupported(f"{name} of {ts.dtype} by {which!r}")
+                if ts.dtype == pl.Date:
+                    if name == "date_part":
+                        return day_part(which.lower(), ts)
+                    x = _days(ts)
+                    safe = pl.when((x >= NS_DAY_MIN) & (x <= NS_DAY_MAX)).then(x)
+                    t = trunc_days(which.lower(), safe)
+                    return date_range(ts, t, NS_DAY_MIN, NS_DAY_MAX, f"date_trunc to a {which}")
                 return (date_part if name == "date_part" else date_trunc)(which.lower(), ts)
+            if name == "add" and len(arg_js) == 2:
+                months = self.months(arg_js[1])
+                if months is not None:
+                    return add_months(months, self(arg_js[0]))
+            if name == "date_diff" and len(arg_js) == 2:
+                a, b = self(arg_js[0]), self(arg_js[1])
+                if a.dtype != pl.Date or b.dtype not in (pl.Date, pl.Null):
+                    raise Unsupported(f"date_diff of {a.dtype} and {b.dtype}")
+                return Val(_days(a) - _days(b), pl.Int64, issues(a, b))
             if name == "substring" and len(arg_js) == 3:
                 n = self.constant(arg_js[2], "substring length")
                 if not isinstance(n, int) or isinstance(n, bool) or n < 0:
@@ -593,6 +692,18 @@ class Exprs:
                 return self.substring(self(arg_js[0]), self(arg_js[1]), n)
             return self.call(name, [self(a) for a in arg_js])
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
+
+    @staticmethod
+    def months(j: dict) -> int | None:
+        """The months of a compound interval literal (Lean writes month
+        intervals only added to a date or timestamp)."""
+        c = j.get("literal", {}).get("intervalCompound")
+        if c is None:
+            return None
+        if interval_micros(c.get("intervalDayToSecond", {})) != 0:
+            raise Unsupported("an interval of months and days")
+        ym = c.get("intervalYearToMonth", {})
+        return 12 * int(ym.get("years", 0)) + int(ym.get("months", 0))
 
     @staticmethod
     def constant(j: dict, what: str) -> Any:
@@ -729,6 +840,18 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
             return Val(ops[name], pl.Float64, issues(a, b))
+        if name == "add" and ta == pl.Date:
+            # `BinFn.dateAdd`: days, as an interval or a count.
+            if tb == INTERVAL:
+                n = wide(b) // US_PER_DAY
+            elif tb in (pl.Int64, pl.Null):
+                n = wide(b)
+            else:
+                raise Unsupported(f"add of {ta} and {tb}")
+            return date_range(a, _days(a) + n, DAY_MIN, DAY_MAX, "date + days", b)
+        if name == "multiply" and tb == INTERVAL and ta in (pl.Int64, pl.Null):
+            # A count of days (`add(d, multiply(n, INTERVAL '1' DAY))`).
+            return narrow(wide(a) * wide(b), INTERVAL, name, a, b)
         if name in ("add", "subtract", "multiply"):
             out = arith_type(name, ta, tb)
             x, y = wide(a), wide(b)

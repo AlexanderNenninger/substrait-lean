@@ -20,7 +20,8 @@ def UnFn.render : UnFn → String
   | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
-  | .toDate => "DATE"
+  | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"
+  | .addMonths m _ => s!"ADD_MONTHS_{m}"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
@@ -30,6 +31,7 @@ def BinFn.render : BinFn → String
   | .endsWith => "ENDS_WITH" | .like => "LIKE"
   | .substr n => s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}"
   | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
+  | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
 
 def Expr.render : Expr → String
   | .lit v => v.render

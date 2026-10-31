@@ -20,7 +20,9 @@ Lean; `'ß'` stays one character, where DataFusion writes `'SS'`).
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
 proleptic calendar with a year 0. DuckDB's timestamps reach beyond the years
-chrono represents, so `date_part` is NULL outside them, as in Lean. The
+chrono represents, so `date_part` is NULL outside them, as in Lean, and date
+arithmetic raises outside them, where DataFusion fails. Adding months clamps
+to the end of the month, as `Time.addMonths` does. The
 timestamp 2⁶³ - 1 µs is DuckDB's `infinity` (and its range starts in 290309
 BC), which `date_trunc` leaves as it is.
 """
@@ -120,6 +122,18 @@ class DuckDBDialect(Dialect):
 
     def date_trunc(self, unit: str, ts: str) -> str:
         return ts if unit == "microsecond" else f"date_trunc({self.str_lit(unit)}, {ts})"
+
+    def time_micros(self, ts: str) -> str:
+        return f"epoch_us({ts})"
+
+    def date_add_days(self, d: str, n: str) -> str:
+        # DATE + INTEGER is a DATE; a count beyond 32 bits leaves chrono's
+        # dates anyway (and the cast raises).
+        return f"({d} + CAST({n} AS INTEGER))"
+
+    def add_months(self, x: str, months: int, kind: Kind) -> str:
+        # DuckDB clamps to the month's end; DATE + INTERVAL is a TIMESTAMP.
+        return self.cast(f"({x} + to_months({self.int_lit(months)}))", kind)
 
 
 DUCKDB: Dialect = DuckDBDialect("duckdb")

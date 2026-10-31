@@ -154,7 +154,7 @@ def test_engines_agree(con, case, data):
     if "polars" in results and "duckdb" in results:
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
-    if not order_dependent(root):
+    if not order_dependent(root) and case.label not in coverage.NO_DATAFUSION_SQL:
         # As Ibis returns it: DataFusion's SQL result in the expression's
         # types (`POW` of integers is an integer there, a double in Ibis).
         df = canonical(rows(run_sql(con, sql).cast(expr.schema().to_pyarrow())))
