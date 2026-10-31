@@ -13,7 +13,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="4. Keys and relations")
+app = marimo.App(width="medium", app_title="5. Keys and relations")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 3. [Contracts](?file=03_contracts.py) · [Contents](?file=00_start_here.py) · 5. [Doubles, time and text](?file=05_values.py) →
+    ← 4. [Contracts](?file=04_contracts.py) · [Contents](?file=00_start_here.py) · 6. [Runtime errors](?file=06_runtime_errors.py) →
     """)
     return
 
@@ -35,9 +35,9 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 4. Keys and relations
+    # 5. Keys and relations
 
-    The facts in chapter 3 were about one value at a time: "this column is
+    The facts in chapter 4 were about one value at a time: "this column is
     never NULL", "this one is at least 22". Two other kinds of facts matter
     just as much in practice:
 
@@ -269,7 +269,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 3. [Contracts](?file=03_contracts.py) · [Contents](?file=00_start_here.py) · 5. [Doubles, time and text](?file=05_values.py) →
+    ← 4. [Contracts](?file=04_contracts.py) · [Contents](?file=00_start_here.py) · 6. [Runtime errors](?file=06_runtime_errors.py) →
     """)
     return
 

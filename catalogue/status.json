@@ -207,9 +207,9 @@
    "incremental": false,
    "datafusion": "runs",
    "engines": {
-    "duckdb": "refused: comparison of time with interval; cast one side first",
-    "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
-    "snowflake": "refused: comparison of time with interval; cast one side first"
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql (tie_free)"
    }
   }
  },
@@ -412,9 +412,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "duckdb": "refused: comparison of time with int; cast one side first",
-   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Int64",
-   "snowflake": "refused: comparison of time with int; cast one side first"
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
   }
  },
  "iot-condition-duration": {
@@ -892,9 +892,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "duckdb": "refused: comparison of time with interval; cast one side first",
-   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
-   "snowflake": "refused: comparison of time with interval; cast one side first"
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
   }
  },
  "ts-local-day-revenue": {
@@ -1386,7 +1386,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake has no interval values, so timestamp - timestamp is refused"
+   "snowflake": "refused: Snowflake has no interval type, so an interval result column is refused"
   }
  },
  "win-keyset-pagination": {
