@@ -1,0 +1,238 @@
+# Time-series idioms: as-of joins, resampling, rolling windows over time,
+# calendars and date spines, sessionization, interval overlap and packing.
+# Re-written in our own words over the `app` data.
+dataset = "app"
+
+[[query]]
+id = "ts-asof-trades-quotes"
+title = "Trades with the prevailing quote (as-of join)"
+intent = "Attach to each trade the latest quote for its symbol at or before the trade time."
+domain = "finance"
+source = { name = "pandas merge_asof", url = "https://pandas.pydata.org/docs/reference/api/pandas.merge_asof.html", licence = "BSD-3-Clause" }
+features = ["asof_join", "range_join", "left_join", "row_number", "qualify"]
+pitfalls = ["tie_order: two quotes with the same timestamp: which is 'latest' is arbitrary (sverify requires a key on (symbol, ts) to prove anything)", "null_join_keys: trades with a NULL symbol get no quote"]
+ibis = '''
+q = sv.asof_join(trades, quotes, on="ts", by="symbol", key=["symbol", "ts", "price", "qty"])
+'''
+notes = "sverify.asof_join writes the as-of join as a range join plus ROW_NUMBER, which DataFusion runs and Lean checks; Ibis's own asof_join compiles only for DuckDB."
+
+[[query]]
+id = "ts-asof-fx-tolerance"
+title = "Currency conversion at the latest rate within a day"
+intent = "Convert each payment to the base currency at the latest exchange rate no older than one day."
+domain = "finance"
+source = { name = "Polars user guide: joins (join_asof with tolerance)", url = "https://docs.pola.rs/user-guide/transformations/joins/", licence = "MIT" }
+features = ["asof_join", "range_join", "left_join", "row_number", "qualify", "interval_day_time", "arithmetic_float"]
+pitfalls = ["tie_order: two rates at the same instant", "float_sum_order: none here, but converted amounts are doubles; money wants DECIMAL"]
+ibis = '''
+j = sv.asof_join(payments, fx_rates, on="ts", by="currency", tolerance=ibis.interval(days=1), key=["payment_id"])
+q = j.mutate(amount_base=j.amount * j.rate)
+'''
+
+[[query]]
+id = "ts-resample-15min"
+title = "Resample sensor readings to 15-minute means"
+intent = "Average each sensor's readings over fixed 15-minute buckets."
+domain = "iot"
+source = { name = "pandas DataFrame.resample", url = "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html", licence = "BSD-3-Clause" }
+features = ["time_bucket", "group_by", "avg"]
+pitfalls = ["timezone_dst: buckets of local time across a DST change", "float_sum_order: means of doubles"]
+ibis = '''
+q = readings.group_by(["sensor_id", _.ts.bucket(minutes=15).name("bucket")]).aggregate(mean=_.value.mean())
+'''
+
+[[query]]
+id = "ts-hourly-rollup"
+title = "Hourly rollup of sensor readings"
+intent = "Count and average each sensor's readings per hour."
+domain = "iot"
+source = { name = "Polars user guide: rolling and group_by_dynamic", url = "https://docs.pola.rs/user-guide/transformations/time-series/rolling/", licence = "MIT" }
+features = ["date_trunc", "group_by", "count", "avg"]
+pitfalls = ["timezone_dst: hours are truncated in UTC here; local hours differ", "empty_aggregate: hours without readings are absent, not zero (see the date spine)"]
+ibis = '''
+q = readings.group_by(["sensor_id", _.ts.truncate("h").name("hour")]).aggregate(n=_.count(), mean=_.value.mean())
+'''
+
+[[query]]
+id = "ts-rolling-time-window"
+title = "Rolling one-hour mean"
+intent = "Average each sensor's readings over the hour ending at each reading."
+domain = "iot"
+source = { name = "Polars user guide: rolling", url = "https://docs.pola.rs/user-guide/transformations/time-series/rolling/", licence = "MIT" }
+features = ["range_frame", "avg", "interval_day_time"]
+pitfalls = ["gap_threshold: is a reading exactly one hour earlier inside the window? RANGE frames include it", "timezone_dst: none in UTC"]
+ibis = '''
+w = ibis.range_window(group_by="sensor_id", order_by="ts", preceding=ibis.interval(hours=1), following=0)
+q = readings.mutate(mean_1h=readings.value.mean().over(w))
+'''
+notes = "DataFusion refuses the frame Ibis writes for an interval RANGE (\"frame offsets for RANGE must be …\"), so no plan exists."
+
+[[query]]
+id = "ts-rolling-7day-calendar"
+title = "Rolling seven-day revenue via a calendar join"
+intent = "Total the revenue of the seven days ending on each calendar day, with a range join instead of a window."
+domain = "retail"
+source = { name = "Skeptric: filling gaps in SQL with a date spine", url = "https://www.skeptric.com/sql-fill-gaps/index.html", licence = "no licence stated; paraphrased" }
+features = ["range_join", "left_join", "cast_date", "interval_day_time", "group_by", "sum", "count"]
+pitfalls = ["empty_aggregate: days without orders get SUM = NULL; COALESCE to 0 if wanted", "timezone_dst: the calendar day of a timestamp depends on the time zone"]
+ibis = '''
+o = orders.mutate(day=orders.order_ts.date())
+j = calendar.left_join(o, (o.day <= calendar.day) & (o.day > calendar.day - ibis.interval(days=7)))
+q = j.group_by(day=calendar.day).aggregate(revenue_7d=j.amount.sum(), orders_7d=j.order_id.count())
+'''
+
+[[query]]
+id = "ts-date-spine"
+title = "Daily order counts with a date spine"
+intent = "Count orders per calendar day, showing zero on days without orders."
+domain = "retail"
+source = { name = "dbt-utils date_spine macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql", licence = "Apache-2.0" }
+features = ["left_join", "cast_date", "group_by", "count", "order_by"]
+pitfalls = ["null_aggregate: COUNT(order_id) gives 0 on empty days; COUNT(*) would give 1"]
+ibis = '''
+o = orders.mutate(day=orders.order_ts.date())
+j = calendar.left_join(o, calendar.day == o.day)
+q = j.group_by(day=calendar.day).aggregate(n_orders=j.order_id.count()).order_by("day")
+'''
+notes = "The spine comes from a calendar table; generating it in the query needs generate_series over dates (month intervals for monthly spines)."
+
+[[query]]
+id = "ts-dau-rolling-7d"
+title = "Daily and seven-day active users"
+intent = "Count each day's distinct active users and the distinct users active in the seven days ending that day."
+domain = "product-analytics"
+source = { name = "Mode (ThoughtSpot) analytics training: a drop in user engagement", url = "https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement", licence = "no licence stated; paraphrased" }
+features = ["range_join", "inner_join", "cast_date", "interval_day_time", "group_by", "count_distinct", "agg_filter"]
+pitfalls = ["count_distinct_null: NULL user ids are not counted", "timezone_dst: day boundaries"]
+ibis = '''
+e = events.mutate(day=events.event_ts.date())
+j = calendar.join(e, (e.day <= calendar.day) & (e.day > calendar.day - ibis.interval(days=7)))
+q = j.group_by(day=calendar.day).aggregate(
+    dau=j.user_id.nunique(where=j.day == calendar.day),
+    wau=j.user_id.nunique(),
+)
+'''
+
+[[query]]
+id = "ts-weekly-active-users"
+title = "Weekly active users"
+intent = "Count distinct active users per calendar week."
+domain = "product-analytics"
+source = { name = "Ibis docs: basic analytics", url = "https://ibis-project.org/how-to/analytics/basics", licence = "Apache-2.0" }
+features = ["date_trunc", "group_by", "count_distinct", "order_by"]
+pitfalls = ["week_definition: weeks start on Monday in DataFusion and DuckDB, on the WEEK_START parameter in Snowflake"]
+ibis = '''
+q = events.group_by(week=_.event_ts.truncate("W")).aggregate(wau=_.user_id.nunique()).order_by("week")
+'''
+
+[[query]]
+id = "ts-mom-growth"
+title = "Month-over-month revenue growth"
+intent = "Show each month's revenue and its growth over the previous month."
+domain = "saas"
+source = { name = "PostgreSQL docs: window functions (lag)", url = "https://www.postgresql.org/docs/current/functions-window.html", licence = "PostgreSQL" }
+features = ["date_trunc", "group_by", "sum", "lag_lead", "window_over_aggregate", "arithmetic_float", "order_by"]
+pitfalls = ["division_by_zero: growth over a month with zero revenue", "empty_aggregate: a month without orders is missing, so LAG compares with the month before it"]
+ibis = '''
+monthly = orders.group_by(month=_.order_ts.truncate("M")).aggregate(revenue=_.amount.sum())
+prev = monthly.revenue.lag().over(order_by="month")
+q = monthly.mutate(prev_revenue=prev, growth=(monthly.revenue - prev) / prev).order_by("month")
+'''
+
+[[query]]
+id = "ts-sessionize"
+title = "Sessionize events with a 30-minute inactivity gap"
+intent = "Number each user's sessions, starting a new one after 30 minutes without events."
+domain = "web-analytics"
+source = { name = "dbt-labs segment package: sessionized page views", url = "https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql", licence = "Apache-2.0" }
+features = ["lag_lead", "date_diff", "interval_day_time", "case_when", "running_agg", "sum"]
+pitfalls = ["gap_threshold: is a gap of exactly 30 minutes a new session?", "tie_order: events with the same timestamp", "window_default_frame: the running sum of new-session flags must be ROWS-based"]
+ibis = '''
+w = ibis.window(group_by="user_id", order_by="event_ts")
+flagged = events.mutate(
+    new_session=ibis.ifelse(
+        events.event_ts.lag().over(w).isnull()
+        | (events.event_ts - events.event_ts.lag().over(w) > ibis.interval(seconds=30 * 60)),
+        1,
+        0,
+    )
+)
+cw = ibis.cumulative_window(group_by="user_id", order_by="event_ts")
+q = flagged.mutate(session_number=flagged.new_session.sum().over(cw))
+'''
+notes = "The threshold is in seconds: Ibis refuses to compare a timestamp difference with ibis.interval(minutes=30)."
+
+[[query]]
+id = "ts-session-starts"
+title = "Session starts (without numbering)"
+intent = "Mark the events that start a new session after 30 minutes of inactivity."
+domain = "web-analytics"
+source = { name = "dbt-labs segment package: sessionized page views", url = "https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql", licence = "Apache-2.0" }
+features = ["lag_lead", "date_diff", "interval_day_time", "case_when", "filter"]
+pitfalls = ["gap_threshold: exactly 30 minutes", "tie_order: events with the same timestamp"]
+ibis = '''
+w = ibis.window(group_by="user_id", order_by="event_ts")
+prev = events.event_ts.lag().over(w)
+q = events.mutate(prev_ts=prev).filter(
+    _.prev_ts.isnull() | (_.event_ts - _.prev_ts > ibis.interval(seconds=30 * 60))
+)
+'''
+notes = "Ibis types timestamp - timestamp as an interval in seconds and refuses to compare it with ibis.interval(minutes=30) (\"not comparable\"); the threshold has to be written in seconds."
+
+[[query]]
+id = "ts-local-day-revenue"
+title = "Daily revenue in a local time zone"
+intent = "Total revenue per calendar day in Berlin time."
+domain = "retail"
+source = { name = "PostgreSQL docs: AT TIME ZONE", url = "https://www.postgresql.org/docs/current/functions-datetime.html", licence = "PostgreSQL" }
+features = ["timezone", "date_trunc", "group_by", "sum"]
+pitfalls = ["timezone_dst: Berlin days are 23 or 25 hours long twice a year"]
+sql = '''
+SELECT date_trunc('day', order_ts AT TIME ZONE 'Europe/Berlin') AS local_day,
+       SUM(amount) AS revenue
+FROM orders
+GROUP BY 1
+'''
+notes = "Ibis has no portable time-zone conversion of naive timestamps; this is DataFusion SQL."
+
+[[query]]
+id = "ts-overlapping-bookings"
+title = "Overlapping bookings of a resource"
+intent = "Find pairs of bookings of the same resource whose time ranges overlap."
+domain = "logistics"
+source = { name = "Explain Extended: flattening timespans", url = "https://explainextended.com/2009/06/13/flattening-timespans-mysql/", licence = "no licence stated; paraphrased" }
+features = ["self_join", "non_equi_join", "inner_join", "filter"]
+pitfalls = ["gap_threshold: do [9:00, 10:00) and [10:00, 11:00) overlap? Half-open ranges say no", "null_join_keys: an open-ended booking (NULL end) never overlaps under this predicate"]
+ibis = '''
+a, b = bookings, bookings.view()
+q = a.join(
+    b,
+    (a.resource == b.resource) & (a.start_ts < b.end_ts) & (b.start_ts < a.end_ts) & (a.start_ts < b.start_ts),
+).select(resource=a.resource, first_start=a.start_ts, second_start=b.start_ts)
+'''
+
+[[query]]
+id = "ts-pack-intervals"
+title = "Merge overlapping bookings (packing intervals)"
+intent = "Merge each resource's overlapping bookings into maximal busy periods."
+domain = "logistics"
+source = { name = "Explain Extended: flattening timespans", url = "https://explainextended.com/2009/06/13/flattening-timespans-mysql/", licence = "no licence stated; paraphrased" }
+features = ["running_agg", "rows_frame", "min_max", "case_when", "sum", "group_by", "cte"]
+pitfalls = ["window_default_frame: the running maximum of end times must exclude the current row (ROWS … 1 PRECEDING)", "tie_order: bookings starting together"]
+sql = '''
+WITH marked AS (
+  SELECT resource, start_ts, end_ts,
+         MAX(end_ts) OVER (PARTITION BY resource ORDER BY start_ts, end_ts
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_end
+  FROM bookings
+), grouped AS (
+  SELECT *, SUM(CASE WHEN prev_end IS NULL OR start_ts > prev_end THEN 1 ELSE 0 END)
+              OVER (PARTITION BY resource ORDER BY start_ts, end_ts
+                    ROWS UNBOUNDED PRECEDING) AS grp
+  FROM marked
+)
+SELECT resource, grp, MIN(start_ts) AS busy_from, MAX(end_ts) AS busy_to
+FROM grouped
+GROUP BY resource, grp
+'''
+notes = "Ibis cannot write a frame ending at 1 PRECEDING (following=-1 is refused), so this is DataFusion SQL."

@@ -1,0 +1,79 @@
+# Star Schema Benchmark: one query from each of its four flights. Intent
+# paraphrased from O'Neil, O'Neil, Chen and Revilak, "Star Schema Benchmark",
+# revision 3 (no licence stated); the Ibis expressions are our own. The date
+# dimension is called `dwdate` here (the paper's `date`).
+dataset = "ssb"
+
+[[query]]
+id = "ssb-q1.1"
+title = "SSB Q1.1: revenue gain from eliminating discounts"
+intent = "Total the revenue a year's small, low-discount orders brought in through their discount."
+domain = "benchmark"
+source = { name = "Star Schema Benchmark rev. 3, Q1.1", url = "https://www.cs.umb.edu/~poneil/StarSchemaB.PDF", licence = "no licence stated (academic paper); paraphrased" }
+features = ["filter", "inner_join", "global_aggregate", "sum", "between", "arithmetic_int"]
+pitfalls = ["int_overflow: SUM(lo_extendedprice * lo_discount) over the full scale-factor data exceeds 32 bits; keep 64-bit integers", "empty_aggregate: one row with NULL when nothing qualifies"]
+ibis = '''
+q = (
+    lineorder.join(dwdate, lineorder.lo_orderdate == dwdate.d_datekey)
+    .filter((_.d_year == 1993) & _.lo_discount.between(1, 3) & (_.lo_quantity < 25))
+    .aggregate(revenue=(_.lo_extendedprice * _.lo_discount).sum())
+)
+'''
+
+[[query]]
+id = "ssb-q2.1"
+title = "SSB Q2.1: revenue per brand and year for one category and region"
+intent = "Show yearly revenue per brand for one part category sold by suppliers of one region."
+domain = "benchmark"
+source = { name = "Star Schema Benchmark rev. 3, Q2.1", url = "https://www.cs.umb.edu/~poneil/StarSchemaB.PDF", licence = "no licence stated (academic paper); paraphrased" }
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "order_by"]
+ibis = '''
+q = (
+    lineorder.join(dwdate, lineorder.lo_orderdate == dwdate.d_datekey)
+    .join(part, lineorder.lo_partkey == part.p_partkey)
+    .join(supplier, lineorder.lo_suppkey == supplier.s_suppkey)
+    .filter((_.p_category == "MFGR#12") & (_.s_region == "AMERICA"))
+    .group_by(["d_year", "p_brand1"])
+    .aggregate(revenue=_.lo_revenue.sum())
+    .order_by(["d_year", "p_brand1"])
+)
+'''
+
+[[query]]
+id = "ssb-q3.1"
+title = "SSB Q3.1: revenue between customer and supplier nations"
+intent = "Show yearly revenue between customer and supplier nations within one region over six years."
+domain = "benchmark"
+source = { name = "Star Schema Benchmark rev. 3, Q3.1", url = "https://www.cs.umb.edu/~poneil/StarSchemaB.PDF", licence = "no licence stated (academic paper); paraphrased" }
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "between", "order_by"]
+ibis = '''
+q = (
+    lineorder.join(customer, lineorder.lo_custkey == customer.c_custkey)
+    .join(supplier, lineorder.lo_suppkey == supplier.s_suppkey)
+    .join(dwdate, lineorder.lo_orderdate == dwdate.d_datekey)
+    .filter((_.c_region == "ASIA") & (_.s_region == "ASIA") & _.d_year.between(1992, 1997))
+    .group_by(["c_nation", "s_nation", "d_year"])
+    .aggregate(revenue=_.lo_revenue.sum())
+    .order_by(["d_year", ibis.desc("revenue")])
+)
+'''
+
+[[query]]
+id = "ssb-q4.1"
+title = "SSB Q4.1: profit per year and customer nation"
+intent = "Show yearly profit per customer nation for parts of two manufacturers traded within one region."
+domain = "benchmark"
+source = { name = "Star Schema Benchmark rev. 3, Q4.1", url = "https://www.cs.umb.edu/~poneil/StarSchemaB.PDF", licence = "no licence stated (academic paper); paraphrased" }
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "in_list", "order_by", "arithmetic_int"]
+ibis = '''
+q = (
+    lineorder.join(dwdate, lineorder.lo_orderdate == dwdate.d_datekey)
+    .join(customer, lineorder.lo_custkey == customer.c_custkey)
+    .join(supplier, lineorder.lo_suppkey == supplier.s_suppkey)
+    .join(part, lineorder.lo_partkey == part.p_partkey)
+    .filter((_.c_region == "AMERICA") & (_.s_region == "AMERICA") & _.p_mfgr.isin(["MFGR#1", "MFGR#2"]))
+    .group_by(["d_year", "c_nation"])
+    .aggregate(profit=(_.lo_revenue - _.lo_supplycost).sum())
+    .order_by(["d_year", "c_nation"])
+)
+'''

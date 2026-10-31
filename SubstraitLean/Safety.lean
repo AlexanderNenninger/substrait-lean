@@ -79,6 +79,7 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .ftoi, .int c => match FloatCode.toInt? c with
     | some x => if inI64 x then none else some .badCast
     | none => some .badCast
+  | .narrow n, .int i => if fitsBits n i then none else some .badCast
   -- The pattern is compiled whatever the input.
   | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
   | .dateTrunc u, .int ts =>
@@ -135,6 +136,7 @@ def nsFits (aa ar : AVal) : Bool :=
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.intFits then [] else [.wraps]
   | .ftoi, aa, _ => if aa.castFits then [] else [.badCast]
+  | .narrow n, aa, _ => if aa.int.all (·.fitsBits n) then [] else [.badCast]
   | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if nsFits aa ar then [] else [.overflow])
@@ -281,6 +283,15 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       rw [hx] at hk
       simp [inI64, hx₁, hx₂] at hk
     · cases hx : FloatCode.toInt? c <;> simp only [hx] at hk <;> (try split at hk) <;> simp_all
+  case narrow.int n i =>
+    simp only [UnFn.mayIssue]
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    split
+    · rename_i hn hfits
+      obtain ⟨b, hb, hi⟩ := ha
+      simp only [hb, Option.all_some] at hfits
+      exact absurd (Bound.fitsBits_mem hfits hi) hn
+    · simp_all
   case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp_all

@@ -138,7 +138,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 8 | [Composing contracts](notebooks/08_composition.py) | proving one step's preconditions from the previous step |
 | 9 | [Incremental views](notebooks/09_incremental_views.py) | Z-sets, delta rules, `IncrementalView` |
 | 10 | [Pipelines](notebooks/10_pipelines.py) | views over views, fallbacks, contracts that hold in every state |
-| 11 | [Engines and SQL](notebooks/11_engines.py) | DataFusion, Polars, DuckDB; SQL for DuckDB and Snowflake |
+| 11 | [Engines and SQL](notebooks/11_engines.py) | DataFusion, Polars, DuckDB; SQL for DuckDB, Snowflake and Spark |
 | 12 | [A complete pipeline](notebooks/12_fitness.py) | heart rate during workouts, end to end |
 | 13 | [What is proved, what is trusted](notebooks/13_trust.py) | the trusted boundary, a glossary and a map of the code |
 | 14 | [DataFusion's surprising semantics](notebooks/14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
@@ -249,11 +249,12 @@ Every engine runs the plans of the 68 verified operations, except:
 | Polars | 67 | non-equi join |
 | DuckDB | 67 | non-equi join |
 | Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Spark | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
 undefined in the model (it is NULL there, while SQL compares), and Snowflake
-tables have no row order for FETCH, or for the ties of a sort or a window, to
+and Spark tables have no row order for FETCH, or for the ties of a sort or a window, to
 follow, nor for the order a `SUM` or `AVG` of doubles adds in. See
 [Engines](#engines).
 
@@ -807,7 +808,7 @@ incremental-view tests run on both engines.
 
 `python/tests/test_backends.py` runs every Ibis operation the coverage
 harness verifies on random tables, on DataFusion, Polars and DuckDB, and
-generates its Snowflake SQL; `test_text.py` and `test_time.py` run their edge
+generates its Snowflake SQL and runs its Spark SQL on a local Spark session; `test_text.py` and `test_time.py` run their edge
 cases on all three engines.
 
 Known gaps: the writer gives virtual tables placeholder `i64` column types and
@@ -921,10 +922,50 @@ behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 `SNOWFLAKE_AUTHENTICATOR` or `SNOWFLAKE_PRIVATE_KEY_FILE`) and
 `SNOWFLAKE_WAREHOUSE`/`DATABASE`/`SCHEMA`.
 
+#### Spark
+
+`to_sql(plan, SPARK)` (from `sverify.sql.spark`) writes checked plans and
+Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. Run it in a
+session with the settings of `SPARK_CONF`: ANSI mode
+(`spark.sql.ansi.enabled`), without which an overflow wraps around and a bad
+cast gives NULL, plus a pinned time zone, NTZ timestamps, case-sensitive
+names and backslash escapes in string literals. The SQL matches Lean where
+Spark differs:
+
+* integers are `BIGINT`; division is `div` (`/` gives a double) and
+  remainder `%`, both truncating; a `SUM` adds `DECIMAL(38,0)` values, since
+  Spark raises when a partial sum overflows even if the total fits;
+* doubles divided by zero give ±inf or NaN (ANSI mode raises);
+  `CAST(double AS BIGINT)` is range-checked first (Spark saturates at 2⁶³);
+  `FLOOR`, `CEIL` and `ROUND` keep NaN, ±inf and the sign of a zero;
+* −0.0 sorts below +0.0: its sign is read from its text (`'-0.0'`).
+  `GROUP BY` turns −0.0 into +0.0, so the sign is put back, and a `CASE`
+  between the literals −0.0 and +0.0 (which Spark's optimizer takes for
+  equal) is written as arithmetic;
+* timestamps are `TIMESTAMP_NTZ` and intervals `INTERVAL DAY TO SECOND`;
+  `date_trunc` returns a time-zone timestamp, so truncation is computed on
+  `TIMESTAMP_NTZ` and `DATE` values;
+* backslashes and control characters in strings are escaped, and every
+  identifier is quoted with backticks.
+
+Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
+table without `tie_free=True` (tables have no row order), and so `SUM` or
+`AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
+`Math.pow` (within 1 ulp of C's), and negative-NaN literals (Spark has one
+NaN, read as Lean's +NaN; negating a NaN raises).
+
+String columns must use the default `UTF8_BINARY` collation (code point
+order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
+sqlglot's Spark parser, and runs the Snowflake suite's queries, the hooks
+and `date_part`/`date_trunc` at the calendar's edges on a local Spark session
+against `Rel.eval`; `test_backends.py` runs every coverage case there. The
+session needs a JVM (Java 17 or 21: `JAVA_HOME` or `java` on `PATH`), or the
+Spark tests are skipped (`poe test-spark` runs them).
+
 **Trusted components** (not covered by the proofs): the JSON parser and
 writer, the `sverify` glue (change tables, consolidation, merge), the Polars
 translator, the SQL generator, and each engine's execution (DataFusion's
-Substrait consumer, Polars, DuckDB's SQL). These are covered by golden tests,
+Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by golden tests,
 round trips and the differential tests instead.
 
 ## What's here
@@ -957,6 +998,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
 | `python/` | `sverify`: contracts and incremental views on DataFusion or Polars, differential tests |
+| `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
 ### Proven theorems

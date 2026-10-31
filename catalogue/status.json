@@ -1,0 +1,1402 @@
+{
+ "clickbench-q06": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "clickbench-q09": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "clickbench-q13": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "clickbench-q21": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "clickbench-q28": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "RegexReplace is not supported",
+  "datafusion": "runs"
+ },
+ "clickbench-q37": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "clickbench-q42": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "fin-running-balance": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window frames are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-velocity-check": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "fin-impossible-travel": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": true,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql"
+   }
+  }
+ },
+ "fin-duplicate-payments": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": true,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql"
+   }
+  }
+ },
+ "fin-structuring": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "fin-reconciliation": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql"
+   }
+  }
+ },
+ "fin-double-entry-check": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "fin-ar-aging": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateDiff is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-rfm": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window function NTile is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-dormant-reactivation": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(18, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: comparison of time with interval; cast one side first",
+    "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
+    "snowflake": "refused: comparison of time with interval; cast one side first"
+   }
+  }
+ },
+ "fin-vwap": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate Divide is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "aggregate Divide is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-ohlc": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate ArgMin is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "aggregate ArgMin is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-bollinger": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window frames are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-max-drawdown": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window frames are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-log-returns": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "Ln is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "Ln is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-fifo-pnl": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window frames are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-realized-volatility": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "Ln is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "Ln is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "fin-volume-spike": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window frames are not supported",
+   "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")"
+  }
+ },
+ "h2o-groupby-q1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "h2o-groupby-q3": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "h2o-groupby-q6": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate Median is not supported",
+  "datafusion": "runs"
+ },
+ "h2o-groupby-q7": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "h2o-groupby-q8": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "h2o-groupby-q9": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate Power is not supported",
+  "datafusion": "runs"
+ },
+ "h2o-groupby-q10": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "h2o-join-q1": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "h2o-join-q3": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "h2o-join-q5": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "iot-time-weighted-average": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "ExtractEpochSeconds is not supported",
+  "datafusion": "runs"
+ },
+ "iot-silent-devices": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: comparison of time with int; cast one side first",
+   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Int64",
+   "snowflake": "refused: comparison of time with int; cast one side first"
+  }
+ },
+ "iot-condition-duration": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "iot-time-in-state": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "ExtractEpochSeconds is not supported",
+  "datafusion": "runs"
+ },
+ "iot-counter-increase": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-gapfill-locf": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "iot-downsample": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate ArgMax is not supported",
+  "datafusion": "runs"
+ },
+ "iot-latest-reading": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-change-detection": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-consecutive-threshold": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "iot-daily-energy": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate Subtract is not supported",
+  "datafusion": "runs"
+ },
+ "iot-event-correlation": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "job-1a": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "job-2a": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "job-6a": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-pivot-conditional": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "dbt-pivot-wider": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-unpivot-longer": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "Unnest is not supported",
+  "datafusion": "runs"
+ },
+ "dbt-unpivot-union": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-scd2-from-updates": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "dbt-scd2-point-in-time": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-surrogate-key": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "Hash is not supported",
+  "datafusion": "error: Compilation rule for 'Hash' operation is not defined"
+ },
+ "dbt-union-sources": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "error: Schema at index 1 was different: ",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-mrr-movements": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "dbt-org-hierarchy": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Unsupported plan type: RecursiveQuery { name: \\\"chain\\\", static_term: Projection(Projection { expr: [Column(Column { relation: Some(Bare { table: \\\"employees\\\" }), name: \\\"emp_id\\\" }),",
+  "datafusion": "error: Schema at index 1 was different: "
+ },
+ "dbt-generate-date-spine": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Unsupported plan type: Unnest { input: Projection(Projection { expr: [Alias(Alias { expr: ScalarFunction(ScalarFunction { func: ScalarUDF { inner: Range { signature: Signature { type_s",
+  "datafusion": "runs"
+ },
+ "dbt-accepted-values-test": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-unique-test": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-relationships-test": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "pa-funnel-ordered": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "pa-cohort-retention": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "pa-day-n-retention": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs"
+ },
+ "pa-first-touch": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "pa-repeat-purchase-rate": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "pa-users-without-orders": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "pa-market-basket": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "pa-median-order-value": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate Median is not supported",
+  "datafusion": "error: Compilation rule for 'Quantile' operation is not defined"
+ },
+ "pa-zscore-outliers": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window function Mean is not supported",
+  "datafusion": "runs"
+ },
+ "pa-histogram": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "pa-string-agg": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate GroupConcat is not supported",
+  "datafusion": "runs"
+ },
+ "pa-ntile-free-spenders": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window function PercentRank is not supported",
+  "datafusion": "runs"
+ },
+ "pa-cumulative-signups": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "ssb-q1.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "ssb-q2.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ssb-q3.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ssb-q4.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-asof-trades-quotes": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-asof-fx-tolerance": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-resample-15min": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "TimestampBucket is not supported",
+  "datafusion": "error: Compilation rule for 'TimestampBucket' operation is not defined"
+ },
+ "ts-hourly-rollup": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "ts-rolling-time-window": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for RANGE must be either a numeric value, a string value or an interval\")"
+ },
+ "ts-rolling-7day-calendar": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateSub is not supported",
+  "datafusion": "runs"
+ },
+ "ts-date-spine": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-dau-rolling-7d": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateSub is not supported",
+  "datafusion": "runs"
+ },
+ "ts-weekly-active-users": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-mom-growth": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "ts-sessionize": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "ts-session-starts": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: comparison of time with interval; cast one side first",
+   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
+   "snowflake": "refused: comparison of time with interval; cast one side first"
+  }
+ },
+ "ts-local-day-revenue": {
+  "checker": "rejected",
+  "detail": "error: unsupported cast from Substrait.Parse.Kind.time to Substrait.Parse.Kind.other",
+  "datafusion": "runs"
+ },
+ "ts-overlapping-bookings": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "ts-pack-intervals": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: max",
+  "datafusion": "runs"
+ },
+ "tpcds-q03": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(7, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "tpcds-q07": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(7, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "tpcds-q27": {
+  "checker": "rejected",
+  "detail": "error: grouping sets are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: grouping sets are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q36": {
+  "checker": "rejected",
+  "detail": "error: grouping sets are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: grouping sets are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q42": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(7, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "tpcds-q51": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(7, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "window frames are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q89": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "sorting by an expression is not supported; sort by a column",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "sorting by an expression is not supported; sort by a column",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q98": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q01": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateSub is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateSub is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q02": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: min of doubles is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q03": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "tpch-q04": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q05": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q06": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q07": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: date_part is only supported on timestamps",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q08": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: date_part is only supported on timestamps",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q09": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: date_part is only supported on timestamps",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q10": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q11": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "aggregate Multiply is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q12": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q13": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql (tie_free)"
+   }
+  }
+ },
+ "tpch-q14": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateAdd is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q15": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "ScalarSubquery is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "ScalarSubquery is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q16": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "InSubquery is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "InSubquery is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q17": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "aggregate Divide is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q18": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(38, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "tpch-q19": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
+  }
+ },
+ "tpch-q20": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(38, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "DateAdd is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q21": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "type decimal(15, 2) is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql (tie_free)"
+   }
+  }
+ },
+ "tpch-q22": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "ScalarSubquery is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "stage": "producer",
+   "detail": "ScalarSubquery is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "win-dedup-latest": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "win-latest-argmax": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "aggregate ArgMax is not supported",
+  "datafusion": "runs"
+ },
+ "win-top-n-per-group": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "win-top-n-with-ties": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window function DenseRank is not supported",
+  "datafusion": "runs"
+ },
+ "win-running-total": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "win-moving-average": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "win-percent-of-total": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window function Mean is not supported",
+  "datafusion": "runs"
+ },
+ "win-above-group-average": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
+ },
+ "win-ntile-quartiles": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window function NTile is not supported",
+  "datafusion": "runs"
+ },
+ "win-gaps-and-islands": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "DateSub is not supported",
+  "datafusion": "runs"
+ },
+ "win-forward-fill": {
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "window frames are not supported",
+  "datafusion": "runs"
+ },
+ "win-lag-change": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake has no interval values, so timestamp - timestamp is refused"
+  }
+ },
+ "win-keyset-pagination": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ }
+}

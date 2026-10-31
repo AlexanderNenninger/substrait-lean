@@ -61,7 +61,8 @@ def _(mo):
       the SQL (Lean prints doubles with a `d`, ±0.0 as their codes ±1, and
       timestamps as microseconds). Then the plan Lean writes back out
       (`written_plan`), run by sverify's own translators to **Polars** and
-      **DuckDB**, plus whether the **Snowflake** SQL generator accepts it.
+      **DuckDB**, plus whether the **Snowflake** and **Spark** SQL generators
+      accept it (chapter 11 runs the Spark SQL on a real Spark session).
       These translators are meant to reproduce `Rel.eval` exactly, whatever
       the native engine would do.
 
@@ -211,6 +212,7 @@ def _(dt, tables):
     from sverify.sql import Unsupported
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.snowflake import SNOWFLAKE
+    from sverify.sql.spark import SPARK
     from sverify.testing import inline_tables
 
     con = sv.connect()
@@ -268,9 +270,9 @@ def _(dt, tables):
         text = ", ".join(r[1:-1] if "," not in r else r for r in got) or "(no rows)"
         return text if len(text) < 140 else text[:137] + "…"
 
-    def snowflake_sql(plan: str) -> str:
+    def generated(plan: str, dialect) -> str:
         try:
-            plan_sql(json.loads(plan), SNOWFLAKE)
+            plan_sql(json.loads(plan), dialect)
         except Unsupported as e:
             return "refused: " + str(e).split(" (")[0][:90]
         return "SQL generated"
@@ -350,7 +352,8 @@ def _(dt, tables):
                 attempt(lambda run=run: positional(run(wp, tabs)), self.unordered)
                 for run in (polars_engine.run, duckdb_engine.run)
             )
-            o["sv"] = [("Polars", pt), ("DuckDB", dt_), ("Snowflake", snowflake_sql(wp))]
+            o["sv"] = [("Polars", pt), ("DuckDB", dt_)]
+            o["sql"] = [("Snowflake", generated(wp, SNOWFLAKE)), ("Spark", generated(wp, SPARK))]
             # The translators agree when both fail or both give the same rows.
             o["sv_agree"] = pv == dv or (pv[:1] == dv[:1] == ("error",))
             return self
@@ -415,10 +418,8 @@ def _(mo):
                 )
             lean = f"<i>Lean</i>: {html.escape(o['lean'])}"
             if o["sv"]:
-                lean += "<br>" + _lines(
-                    [(f"sverify→{k}", v) for k, v in o["sv"] if k != "Snowflake"]
-                )
-                lean += f"<br><i>sverify→Snowflake</i>: {html.escape(o['sv'][2][1])}"
+                lean += "<br>" + _lines([(f"sverify→{k}", v) for k, v in o["sv"]])
+                lean += "<br>" + _lines([(f"sverify→{k}", v) for k, v in o["sql"]])
                 if not o["sv_agree"]:
                     lean += "<br><b>the two translators disagree</b>"
             tags = " · ".join(
@@ -521,12 +522,10 @@ def _(E, render):
             polars="t.join(t, on='a')",
             std="NULL = NULL is UNKNOWN, so NULL keys never match",
             snowflake="standard",
-            sverify="GAP",
-            why="Every engine drops the NULL key. But sverify's Polars translator crashes: "
-            "the query's two output columns are both called `a` (legal in SQL and in "
-            "Substrait's `RelRoot.names`), and the translator renames to the root names "
-            "with `alias`, which Polars refuses. DuckDB, which keeps duplicate names, "
-            "returns the right row.",
+            why="Every engine drops the NULL key. The query's two output columns are both "
+            "called `a`, legal in SQL and in Substrait's `RelRoot.names` but not in a "
+            "Polars frame. sverify's Polars translator used to crash on it; it now names "
+            "the Arrow result instead.",
             picks="NULL keys never match",
         ).run(),
         E(
@@ -807,10 +806,10 @@ def _(E, render):
             std="an exception",
             snowflake="exact (38 digits)",
             engines="split",
-            sverify="refused",
+            sverify="faithful",
             why="DuckDB sums BIGINT into a 128-bit HUGEINT and gets 2⁶³ exactly, which "
             "Ibis then cannot convert back to int64. DataFusion and Polars wrap. The "
-            "translators do not handle aggregates yet.",
+            "translators raise, since Lean's exact sum leaves 64 bits.",
             picks="unbounded (the `sum` of `Rel.eval` is exact)",
         ).run(),
         E(
@@ -823,11 +822,11 @@ def _(E, render):
             std="exact numeric, implementation-defined precision",
             snowflake="exact decimal: -0.5",
             engines="split",
-            sverify="refused",
+            sverify="faithful",
             why="The true mean of 2⁶³ − 1 and −2⁶³ is −0.5. DataFusion and Polars "
             "convert each value to a double first, where both round to ±2⁶³, so they "
             "sum to 0. DuckDB sums exactly. Lean gives +0.0 (code 1), DataFusion's "
-            "answer.",
+            "answer, and so do the translators.",
             picks="+0.0, DataFusion's double accumulation",
         ).run(),
         E(
@@ -840,11 +839,11 @@ def _(E, render):
             std="an exception",
             snowflake="no 32-bit type: INT is NUMBER(38,0)",
             engines="split",
-            sverify="GAP",
             why="DataFusion and DuckDB raise; Polars' non-strict cast gives NULL. Lean "
-            "reads the cast as the identity (chapter 14, gap I8), so it gives 2⁶³ − 1, "
-            "and so do both translators, faithfully reproducing Lean's mistake.",
-            picks="the identity (wrong; see chapter 14)",
+            "used to read the cast as the identity (chapter 14, I8). It is now "
+            "`UnFn.narrow`: NULL plus a `badCast` issue where the value does not fit, so "
+            "`verify` reports the possible error and both translators raise.",
+            picks="an error where the value does not fit (`badCast`)",
         ).run(),
     ]
     render(integers)
@@ -1164,7 +1163,9 @@ def _(mo):
     An aggregate folds a column into one value. Two conventions matter: SQL
     aggregates (except `COUNT`) skip NULLs and return NULL when nothing is
     left, and `COUNT(DISTINCT x)` does not count NULL as a value. Lean
-    verifies aggregates, but sverify's translators do not run them yet.
+    verifies aggregates, and sverify's translators run them with its
+    semantics. Snowflake's SQL refuses a double `SUM` or `AVG` over a named
+    table, whose result depends on the order rows are added in.
     """)
     return
 
@@ -1183,7 +1184,7 @@ def _(E, render):
             std="SUM, AVG, MIN are NULL; COUNT is 0",
             snowflake="standard",
             engines="split",
-            sverify="refused",
+            sverify="faithful",
             why="Polars' `sum` of nothing is 0, not NULL. Ibis-on-Polars corrects it.",
             picks="the standard",
         ).run(),
@@ -1197,7 +1198,7 @@ def _(E, render):
             std="NULL; NULL keys form one group",
             snowflake="standard",
             engines="split",
-            sverify="refused",
+            sverify="faithful",
             why="As A1, per group: Polars says 0 for the group of NULLs, and sorts the "
             "NULL group first. Everyone puts the NULL keys in one group.",
             picks="the standard",
@@ -1212,7 +1213,7 @@ def _(E, render):
             std="NULL is not counted",
             snowflake="NULL is not counted",
             engines="split",
-            sverify="refused",
+            sverify="faithful",
             why="Polars' `n_unique` counts NULL as a value, and Ibis's `nunique` on "
             "Polars passes that through (3 instead of 2).",
             picks="the standard",
@@ -1326,20 +1327,20 @@ def _(mo):
       tables (S4, S6). Pinning them (to Rust's `str::to_uppercase` and the
       `regex` crate, say) or refusing non-ASCII input would make "the same
       plan, the same rows" true across engines.
-    * **sverify gaps found here.** The Polars translator crashes on
-      duplicate output column names (N4). Narrowing casts are the identity on
-      every translator, because Lean reads them that way (I10, chapter 14's
-      I8). Two more were fixed in the parser while writing this chapter:
-      constant casts used to round (`CAST(2.7 AS BIGINT)` was proved to be 3;
-      DataFusion gives 2, F9) and to trim spaces from strings (`' 12'` was
-      proved to be 12; DataFusion fails, S8). Constants now fold by the same
-      rules as columns, and strings DataFusion cannot parse are refused.
+    * **sverify gaps found here, all fixed.** Constant casts used to round
+      (`CAST(2.7 AS BIGINT)` was proved to be 3; DataFusion gives 2, F9) and
+      to trim spaces from strings (`' 12'` was proved to be 12; DataFusion
+      fails, S8); constants now fold by the same rules as columns, and strings
+      DataFusion cannot parse are refused. Narrowing casts were the identity
+      (I10, chapter 14's I8); they are now range-checked and may raise
+      `badCast`. The Polars translator crashed on duplicate output column
+      names (N4); it now keeps them.
 
     `python/tests/test_backend_semantics.py` pins the native behaviours that
     sverify's translators work around (Polars' floor `%`, NULL on division by
     zero and NULLs-first sort, DuckDB's double `/`, IEEE zeros and
     half-to-even cast, and so on), so an upgrade that changes one of them shows
-    up. The gaps are recorded there as strict `xfail` tests.
+    up, and pins each fixed gap so that it stays fixed.
     """)
     return
 

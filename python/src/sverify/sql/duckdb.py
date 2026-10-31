@@ -4,8 +4,9 @@ DuckDB already raises on BIGINT overflow (`+`, `-`, `*` and negation), divides
 doubles by IEEE 754 rules, has `isnan` and `signbit`, and numbers a table's
 rows in insertion order with `rowid`. Its `=` and `<` on doubles treat NaN as
 equal to itself and largest, but -0.0 as equal to +0.0 and -NaN as NaN, so
-comparisons go through the core's total order. Its `//` floors, so integer
-division is built from `%`, which truncates; `error()` raises where
+comparisons go through the core's total order. Its `//` truncates BIGINTs
+(and is plain `/` on doubles), so integer division is built from `%`, which
+truncates, and is exact whichever way `//` rounds; `error()` raises where
 DataFusion fails at run time.
 
 Strings: `length`, `strpos` and `substring` count code points (DuckDB has
@@ -51,7 +52,7 @@ class DuckDBDialect(Dialect):
         return self.cast(f"error({text})", kind)
 
     def trunc_div(self, a: str, b: str) -> str:
-        # `//` floors; the dividend minus the remainder divides exactly. `%`
+        # The dividend minus the remainder divides exactly, however `//` rounds. `%`
         # raises on `MIN % -1`, which is where the quotient overflows.
         return f"(({a} - ({a} % {b})) // {b})"
 

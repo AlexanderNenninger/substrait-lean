@@ -1,0 +1,196 @@
+# Window-function idioms practitioners reach for daily: dedup, top-N per
+# group, running totals, moving averages, shares of a total, ranking,
+# quantile buckets, gaps and islands, forward fill. Sources are tutorials
+# and docs; the queries are re-written in our own words over the `app` data.
+dataset = "app"
+
+[[query]]
+id = "win-dedup-latest"
+title = "Latest row per key (dedup)"
+intent = "Keep only the most recent update of each customer."
+domain = "generic"
+source = { name = "dbt-utils deduplicate macro", url = "https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/deduplicate.sql", licence = "Apache-2.0" }
+features = ["row_number", "dedup_latest", "qualify", "filter"]
+pitfalls = ["tie_order: two updates with the same updated_at: which one survives is arbitrary unless a tie-breaker column is added", "null_ordering: a NULL updated_at sorts first under DESC in DataFusion and Snowflake, last in DuckDB, so it may win"]
+ibis = '''
+w = ibis.window(group_by="customer_id", order_by=ibis.desc("updated_at"))
+q = customer_updates.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop("rn")
+'''
+
+[[query]]
+id = "win-latest-argmax"
+title = "Latest value per key with ARG_MAX"
+intent = "Find each symbol's last traded price using an arg-max aggregate instead of a window."
+domain = "finance"
+source = { name = "DuckDB aggregate functions (arg_max)", url = "https://duckdb.org/docs/stable/sql/functions/aggregates", licence = "MIT" }
+features = ["group_by", "arg_max"]
+pitfalls = ["tie_order: two trades at the same timestamp: ARG_MAX picks either"]
+ibis = '''
+q = trades.group_by("symbol").aggregate(last_price=_.price.argmax(_.ts))
+'''
+
+[[query]]
+id = "win-top-n-per-group"
+title = "Top 3 products per category"
+intent = "List the three best-selling products of each category by revenue."
+domain = "retail"
+source = { name = "PostgreSQL tutorial: window functions", url = "https://www.postgresql.org/docs/current/tutorial-window.html", licence = "PostgreSQL" }
+features = ["inner_join", "group_by", "sum", "row_number", "qualify", "filter", "arithmetic_float"]
+pitfalls = ["tie_order: products with equal revenue around third place are cut arbitrarily", "rank_semantics: ROW_NUMBER keeps exactly three; RANK would keep all tied", "float_sum_order: revenue is a double sum"]
+ibis = '''
+rev = (
+    order_items.join(products, "product_id")
+    .group_by(["category", "product_id", "name"])
+    .aggregate(revenue=(_.qty * _.price).sum())
+)
+w = ibis.window(group_by="category", order_by=ibis.desc("revenue"))
+q = rev.mutate(rn=ibis.row_number().over(w)).filter(_.rn < 3)
+'''
+
+[[query]]
+id = "win-top-n-with-ties"
+title = "Top 3 salaries per department, ties included"
+intent = "List each department's employees whose salary ranks among the top three distinct salaries."
+domain = "hr"
+source = { name = "Neon docs: window rank functions", url = "https://neon.com/docs/functions/window-rank", licence = "no licence stated (vendor docs); paraphrased" }
+features = ["rank", "filter"]
+pitfalls = ["rank_semantics: DENSE_RANK keeps every employee with one of the top three salaries; Ibis ranks are 0-based"]
+ibis = '''
+w = ibis.window(group_by="dept", order_by=ibis.desc("salary"))
+q = employees.mutate(r=ibis.dense_rank().over(w)).filter(_.r < 3)
+'''
+
+[[query]]
+id = "win-running-total"
+title = "Running total per customer"
+intent = "Show each order with the customer's cumulative spend up to and including it."
+domain = "retail"
+source = { name = "PostgreSQL tutorial: window functions", url = "https://www.postgresql.org/docs/current/tutorial-window.html", licence = "PostgreSQL" }
+features = ["running_agg", "sum"]
+pitfalls = ["window_default_frame: with ORDER BY order_ts and the default RANGE frame, two orders at the same instant get the same running total; Ibis cumulative_window is ROWS-based", "float_sum_order: the running sum of doubles"]
+ibis = '''
+w = ibis.cumulative_window(group_by="customer_id", order_by=["order_ts", "order_id"])
+q = orders.mutate(running_spend=orders.amount.sum().over(w))
+'''
+
+[[query]]
+id = "win-moving-average"
+title = "Seven-reading moving average"
+intent = "Smooth each sensor's readings with the mean of the current and six previous readings."
+domain = "iot"
+source = { name = "Polars user guide: rolling", url = "https://docs.pola.rs/user-guide/transformations/time-series/rolling/", licence = "MIT" }
+features = ["rows_frame", "avg"]
+pitfalls = ["tie_order: readings with equal timestamps make the window's contents arbitrary", "float_nan: a NaN reading poisons seven averages"]
+ibis = '''
+w = ibis.window(group_by="sensor_id", order_by="ts", preceding=6, following=0)
+q = readings.mutate(ma7=readings.value.mean().over(w))
+'''
+
+[[query]]
+id = "win-percent-of-total"
+title = "Salary relative to the department"
+intent = "Show each employee's salary next to their department's average and their share of its payroll."
+domain = "hr"
+source = { name = "PostgreSQL tutorial: window functions", url = "https://www.postgresql.org/docs/current/tutorial-window.html", licence = "PostgreSQL" }
+features = ["window_partition_agg", "avg", "sum", "arithmetic_float", "cast_numeric"]
+pitfalls = ["integer_division: salary / SUM(salary) on integers truncates to 0 in DataFusion and PostgreSQL; cast first", "division_by_zero: a department whose salaries sum to 0"]
+ibis = '''
+w = ibis.window(group_by="dept")
+q = employees.mutate(
+    dept_avg=employees.salary.mean().over(w),
+    share=employees.salary.cast("float64") / employees.salary.sum().over(w),
+)
+'''
+
+[[query]]
+id = "win-above-group-average"
+title = "Employees paid above their department average"
+intent = "List employees whose salary exceeds their department's average salary."
+domain = "hr"
+source = { name = "PostgreSQL tutorial: window functions", url = "https://www.postgresql.org/docs/current/tutorial-window.html", licence = "PostgreSQL" }
+features = ["inner_join", "group_by", "avg", "filter"]
+rewrites = ["correlated_subquery -> join with the average per department"]
+pitfalls = ["implicit_coercion: comparing an integer salary with a double average", "null_aggregate: NULL salaries are left out of the average"]
+ibis = '''
+avg = employees.group_by(d="dept").aggregate(avg_salary=_.salary.mean())
+q = employees.join(avg, employees.dept == avg.d).filter(_.salary > _.avg_salary).drop("d")
+'''
+
+[[query]]
+id = "win-ntile-quartiles"
+title = "Customer spend quartiles"
+intent = "Assign each customer to a quartile of total spend."
+domain = "marketing"
+source = { name = "Mode (ThoughtSpot) SQL tutorial: window functions", url = "https://www.thoughtspot.com/sql-tutorial/sql-window-functions", licence = "no licence stated; paraphrased" }
+features = ["group_by", "sum", "ntile"]
+pitfalls = ["tie_order: customers with equal spend on a quartile boundary land in either", "rank_semantics: Ibis ntile is 0-based"]
+ibis = '''
+spend = orders.group_by("customer_id").aggregate(total=_.amount.sum())
+q = spend.mutate(quartile=ibis.ntile(4).over(order_by="total"))
+'''
+
+[[query]]
+id = "win-gaps-and-islands"
+title = "Login streaks (gaps and islands)"
+intent = "Find each user's runs of consecutive login days with their start, end and length."
+domain = "product-analytics"
+source = { name = "Simple Talk: introduction to gaps and islands analysis", url = "https://www.red-gate.com/simple-talk/databases/sql-server/t-sql-programming-sql-server/introduction-to-gaps-and-islands-analysis/", licence = "no licence stated; paraphrased" }
+features = ["distinct", "row_number", "dynamic_interval", "group_by", "min_max", "count"]
+pitfalls = ["null_join_keys: duplicate logins on one day must be removed first, or the island key breaks", "week_definition: none, but the day difference must be in whole days"]
+ibis = '''
+days = logins.select("user_id", "login_date").distinct()
+w = ibis.window(group_by="user_id", order_by="login_date")
+# Consecutive days minus their position in the run give the same date.
+numbered = days.mutate(rn=ibis.row_number().over(w))
+islands = numbered.mutate(island=_.login_date - _.rn.as_interval("D"))
+q = islands.group_by(["user_id", "island"]).aggregate(
+    start=_.login_date.min(), end=_.login_date.max(), days=_.count()
+)
+'''
+
+[[query]]
+id = "win-forward-fill"
+title = "Forward-fill missing readings"
+intent = "Replace each missing sensor value with the last value seen before it."
+domain = "iot"
+source = { name = "pandas DataFrame.ffill / resample", url = "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html", licence = "BSD-3-Clause" }
+features = ["running_agg", "count", "first_last_value"]
+pitfalls = ["window_default_frame: the count of non-NULL values must be ROWS-based, or rows with equal timestamps share a group", "tie_order: equal timestamps"]
+ibis = '''
+w = ibis.cumulative_window(group_by="sensor_id", order_by="ts")
+grp = readings.mutate(g=readings.value.count().over(w))
+q = grp.mutate(filled=grp.value.first().over(ibis.window(group_by=["sensor_id", "g"], order_by="ts")))
+'''
+
+[[query]]
+id = "win-lag-change"
+title = "Change since the previous order"
+intent = "Show each order with the days and amount change since the customer's previous order."
+domain = "retail"
+source = { name = "PostgreSQL docs: window functions (lag)", url = "https://www.postgresql.org/docs/current/functions-window.html", licence = "PostgreSQL" }
+features = ["lag_lead", "date_diff", "arithmetic_float"]
+pitfalls = ["tie_order: two orders at the same instant: which is 'previous' is arbitrary", "null_aggregate: the first order of each customer has NULL changes"]
+ibis = '''
+w = ibis.window(group_by="customer_id", order_by="order_ts")
+q = orders.mutate(
+    since_prev=orders.order_ts - orders.order_ts.lag().over(w),
+    amount_change=orders.amount - orders.amount.lag().over(w),
+)
+'''
+
+[[query]]
+id = "win-keyset-pagination"
+title = "Keyset pagination"
+intent = "Fetch the next page of 20 orders after a cursor of (order time, order id)."
+domain = "generic"
+source = { name = "Use The Index, Luke: paging through results", url = "https://use-the-index-luke.com/sql/partial-results/fetch-next-page", licence = "no licence stated; paraphrased" }
+features = ["filter", "order_by", "limit", "date_literal"]
+pitfalls = ["limit_without_order: OFFSET paging over a non-unique order skips or repeats rows; the (ts, id) cursor avoids it", "null_ordering: NULL order_ts rows never appear after any cursor"]
+ibis = '''
+ts0 = ibis.timestamp("2024-01-15 00:00:00")
+q = (
+    orders.filter((orders.order_ts > ts0) | ((orders.order_ts == ts0) & (orders.order_id > 3)))
+    .order_by(["order_ts", "order_id"])
+    .limit(20)
+)
+'''
