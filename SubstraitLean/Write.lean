@@ -188,9 +188,21 @@ def isConst : Expr → Bool
   | .bin _ a b => isConst a && isConst b
   | .ifThen c t e => isConst c && isConst t && isConst e
 
+/-- Is `i` a double's code rather than an integer? Integers are 64-bit, and
+every double but zero and the subnormals below 2⁻¹⁰¹¹ has a code outside
+that range (`FloatCode`); `Pretty` prints them as doubles by the same rule. -/
+def isDoubleCode (i : Int) : Bool := i < -(2 ^ 63) || 2 ^ 63 ≤ i
+
+/-- A literal's kind: a double's code is a double (#96), though `litKind`
+calls every code an integer. -/
+def litWKind : Value → WKind
+  | .int i => if isDoubleCode i then .float else .int
+  | v => .ofKind (Parse.litKind v)
+
 /-- `Expr.kind`, telling intervals from times: `ts - ts` and an interval
 column `± x` are intervals, `ts ± x` is a time. -/
 def wkind (cols : List WKind) : Expr → WKind
+  | .lit v => litWKind v
   | .field i => cols.getD i .other
   | .un .neg a => wkind cols a
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
@@ -200,7 +212,7 @@ def wkind (cols : List WKind) : Expr → WKind
       | _, kb, .lit _ => kb
       | ka, _, _ => ka
   | .ifThen _ (.lit v) e => match e with
-    | .lit _ => .ofKind (Parse.litKind v)
+    | .lit _ => litWKind v
     | _ => wkind cols e
   | .ifThen _ t _ => wkind cols t
   | e => .ofKind (e.kind (cols.map WKind.toKind))
@@ -252,6 +264,8 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | .list e, .list [] => obj [("emptyList", obj [("type", kindType e.toKind)])]
   | .list e, .list vs =>
     obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
+  -- A bare double, which no context types (#96).
+  | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
 
 def writeLit (k : WKind) (v : Value) : Json := obj [("literal", writeLitBody k v)]

@@ -1012,6 +1012,22 @@ where
   pick (better : Expr → Expr → Expr) (a b : Expr) : Expr :=
     .ifThen (.un .isNull a) b (.ifThen (.un .isNull b) a (.ifThen (better a b) b a))
 
+/-- Does the argument stand for a double though its expression may not say
+so? A literal double is just its code, which `Expr.kind` calls an integer:
+a double literal, a cast to a double, or a `CASE` with such branches (#97). -/
+partial def doubleJ (j : Json) : Bool :=
+  if let some l := field? j "literal" then
+    (field? l "fp64").isSome || (field? l "fp32").isSome
+  else if let some c := field? j "cast" then
+    typeKind ((field? c "type").getD .null) == .float
+  else if let some t := field? j "ifThen" then
+    let ifs := ((t.getObjValAs? (Array Json) "ifs").toOption.getD #[]).toList
+    (ifs.filterMap (field? · "then")).any doubleJ || ((field? t "else").map doubleJ).getD false
+  else false
+
+#guard doubleJ (Json.mkObj [("literal", Json.mkObj [("fp64", Json.num 2)])])
+#guard !doubleJ (Json.mkObj [("literal", Json.mkObj [("i64", "1")])])
+
 /-- Arithmetic whose result is a double. -/
 def mkFloatCall : String → List Expr → J Expr
   | "add", [a, b] => pure (.bin .fadd a b)
@@ -1089,7 +1105,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
         throw "date_diff takes two dates"
     checkArgKinds name cols parsed
-    let onFloats := parsed.any (·.kind cols == .float) ||
+    let onFloats := (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ j) ||
       typeKind ((field? f "outputType").getD .null) == .float
     checkOptions name onFloats (← arrD f "options")
     -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
@@ -1151,7 +1167,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       throw s!"{name}: decimal results are not supported"
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
       "ceil", "round"]
-    let hasFloat := parsed.any (·.kind cols == .float)
+    let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ j
     let floatCall := floats.contains (baseName name) && (out == .float || hasFloat)
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
@@ -1168,8 +1184,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if let [_, Expr.lit (.int 0)] := args then
         return .lit (.int (if floatCall then FloatCode.ofFloat 1.0 else 1))
     if floatCall then
-      let args := args.zipIdx.map fun (e, k) =>
-        if e.kind cols == .int && !keepInt k && !(e matches .lit _) then Expr.un .itof e else e
+      let args := (argJs.zip args).zipIdx.map fun ((j, e), k) =>
+        if e.kind cols == .int && !keepInt k && !(e matches .lit _) && !doubleJ j then
+          Expr.un .itof e
+        else e
       mkFloatCall (baseName name) args
     else
       let call ← mkCall (baseName name) args
