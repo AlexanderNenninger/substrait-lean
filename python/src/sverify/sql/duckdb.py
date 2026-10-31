@@ -7,6 +7,21 @@ equal to itself and largest, but -0.0 as equal to +0.0 and -NaN as NaN, so
 comparisons go through the core's total order. Its `//` floors, so integer
 division is built from `%`, which truncates; `error()` raises where
 DataFusion fails at run time.
+
+Strings: `length`, `strpos` and `substring` count code points (DuckDB has
+`*_grapheme` variants for grapheme clusters), and strings compare bytewise
+without a collation. `LIKE` has no escape character by default, so the SQL
+names one. Regular expressions are RE2's, DataFusion's Rust's: they agree on
+the simple patterns of `Text.simpleRegex`, but `\\d`, `\\w` and `\\s` are
+ASCII-only in RE2. `upper`/`lower` map case with utf8proc (black boxes in
+Lean; `'ß'` stays one character, where DataFusion writes `'SS'`).
+
+Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
+and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
+proleptic calendar with a year 0. DuckDB's timestamps reach beyond the years
+chrono represents, so `date_part` is NULL outside them, as in Lean. The
+timestamp 2⁶³ - 1 µs is DuckDB's `infinity` (and its range starts in 290309
+BC), which `date_trunc` leaves as it is.
 """
 
 from dataclasses import dataclass
