@@ -159,7 +159,13 @@ def test_engines_agree(con, case, data):
             continue
         try:
             results[engine] = rows(run_plan(con, plan, engine))
-        except (polars_engine.RuntimeIssue, duckdb.Error):
+        except duckdb.Error as e:
+            if "non-ASCII text differs between engines" in str(e):
+                # UPPER, LOWER, regex classes: DuckDB raises where its
+                # Unicode tables could differ from Rust's (#70).
+                continue
+            failed.add(engine)
+        except polars_engine.RuntimeIssue:
             # A runtime error of `SubstraitLean/Safety.lean` (the data has
             # NaN and ±inf to cast): both engines raise it.
             failed.add(engine)

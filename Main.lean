@@ -71,10 +71,18 @@ def check (plan : Plan) : IO UInt32 := do
   IO.println s!"roundtrip: {if Write.roundtrips plan then "ok" else "FAILED"}"
   -- Named tables have no data in the schema-only catalog, so only
   -- `VirtualTable` rows show up here.
-  let rows := plan.root.eval cat
+  -- Lean's evaluator panics at the black boxes it does not evaluate
+  -- (`Text.lean`: non-ASCII `UPPER`/`LOWER`, regular expressions) and goes
+  -- on with a placeholder; refuse such rows rather than print them (#70).
+  let (panics, rows) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
+    -- `lazyPure`: evaluated here, not hoisted out of the isolated streams.
+    IO.lazyPure fun _ => (plan.root.eval cat).map Row.render
+  if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
+    IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
+    return 1
   IO.println s!"rows ({rows.length}):"
   for row in rows do
-    IO.println s!"  {Row.render row}"
+    IO.println s!"  {row}"
   return 0
 
 def write (plan : Plan) : IO UInt32 := do
