@@ -615,6 +615,11 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if float then some (some ["IEEE"]) else some none
   | "on_domain_error" =>
     if base != "power" then none else if float then some (some ["NAN"]) else some none
+  -- The model's string matching is case-sensitive (`SubstraitLean/Text.lean`).
+  | "case_sensitivity" =>
+    if ["like", "contains", "starts_with", "ends_with", "strpos"].contains base then
+      some (some ["CASE_SENSITIVE"])
+    else none
   | _ => none
 
 def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
@@ -639,6 +644,10 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
   ("preference", Json.arr #["SATURATE"])]]).toBool
 #guard (checkOptions "add" true [Json.mkObj [("name", "rounding"),
   ("preference", Json.arr #["TIE_AWAY_FROM_ZERO"])]]).toBool == false
+#guard (checkOptions "like:str_str" false [Json.mkObj [("name", "case_sensitivity"),
+  ("preference", Json.arr #["CASE_SENSITIVE"])]]).toBool
+#guard (checkOptions "like:str_str" false [Json.mkObj [("name", "case_sensitivity"),
+  ("preference", Json.arr #["CASE_INSENSITIVE"])]]).toBool == false
 
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
