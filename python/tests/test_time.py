@@ -20,7 +20,6 @@ from datetime import date, datetime, timedelta
 import duckdb
 import ibis
 import pyarrow as pa
-import pyarrow.compute
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -277,7 +276,8 @@ def days_of(out: pa.Table) -> list[tuple]:
         if pa.types.is_date(c.type):
             c = c.cast(pa.int32()).cast(pa.int64())
         elif pa.types.is_timestamp(c.type):
-            c = pa.compute.divide(c.cast(pa.timestamp("us")).cast(pa.int64()), DAY)
+            us = c.cast(pa.timestamp("us")).cast(pa.int64()).to_pylist()
+            c = pa.array([None if v is None else v // DAY for v in us], pa.int64())
         columns.append(c)
     return [tuple(x.values()) for x in pa.table(columns, names=out.column_names).to_pylist()]
 

@@ -447,7 +447,7 @@ def _const_interval(op: Any) -> tuple[int, int] | None:
         case ops.Literal(value=v, dtype=t) if v is not None:
             return interval_parts(v, t)
         case ops.IntervalFromInteger(arg=ops.Literal(value=n), unit=u) if n is not None:
-            return interval_parts(n, dt.Interval(u))
+            return interval_parts(n, dt.Interval(unit=u))
         case ops.IntervalAdd() | ops.IntervalSubtract():
             a, b = _const_interval(op.left), _const_interval(op.right)
             if a is None or b is None:
@@ -470,7 +470,7 @@ def _interval(x: Exprs, op: Any) -> Json:
     if c is not None:
         return interval_json(*c)
     if isinstance(op, ops.IntervalFromInteger):
-        months, micros = interval_parts(1, dt.Interval(op.unit))
+        months, micros = interval_parts(1, dt.Interval(unit=op.unit))
         if months:
             raise Unsupported("a column's count of months or years is not supported")
         return call("multiply", [x(op.arg, dt.int64), interval_json(0, micros)])
