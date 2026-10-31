@@ -583,7 +583,7 @@ def test_time_windows_match_polars(rows):
             "x": pa.array([r[2] for r in rows], pa.int64()),
         }
     )
-    df = pl.from_arrow(table).sort("ts")
+    df = pl.DataFrame(table).sort("ts")
     rolling = df.with_columns(
         s=pl.col("x").rolling_sum_by("ts", "7d", closed="right", min_samples=0).over("g")
     )
