@@ -496,6 +496,15 @@ def UnFn.abs : UnFn → AVal → AVal
   | .datePart p, a => datePartAbs p a
   | .dateTrunc u, a => monoAbs (Time.trunc u) a
   | .toDate, a => monoAbs Time.days a
+  | .dayPart p, a => datePartAbs p (monoAbs (· * Time.usPerDay) a)
+  | .dayTrunc u, a => monoAbs (Time.truncDay u) a
+  | .addMonths m false, a => monoAbs (Time.addMonths m) a
+  | .addMonths _ true, a => ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  | .timeOfDay, a =>
+      ⟨a.nonInt, a.int.map fun _ => ⟨some 0, some (Time.usPerDay - 1)⟩, false, false, false⟩
+  | .asTime, a => monoAbs id a
+  | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
+  | .bucket k o, a => monoAbs (Time.bucket k o) a
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -533,8 +542,9 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       ⟨(a.nonBool && (b.ff || b.nonBool)) || (a.ff && b.nonBool), none, a.tt || b.tt,
        a.ff && b.ff, false⟩
   | .add, a, b => arith Bound.add a b
-  | .sub, a, b => arith Bound.sub a b
+  | .sub, a, b | .dateDiff, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
+  | .dateAdd, a, b => arith Bound.add a b
   | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
@@ -591,6 +601,19 @@ theorem monoAbs_sound {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y
   · simp [monoAbs, AVal.Mem, AVal.nonInt, hn]
   · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
   all_goals simp_all [monoAbs, AVal.Mem, AVal.nonInt]
+
+/-- `g` applied to an integer; anything else becomes `NULL`. -/
+def Value.mapInt (g : Int → Int) : Value → Value
+  | .int c => .int (g c)
+  | _ => .null
+
+theorem monoAbs_mem {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {a : AVal} {v : Value}
+    (h : a.Mem v) : (monoAbs g a).Mem (Value.mapInt g v) := by
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩ |
+    ⟨_, rfl, hs⟩
+  · simp [Value.mapInt, monoAbs, AVal.Mem, AVal.nonInt, hn]
+  · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
+  all_goals simp_all [Value.mapInt, monoAbs, AVal.Mem, AVal.nonInt]
 
 theorem ftoiAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
     (ftoiAbs a).Mem (UnFn.apply .ftoi v) := by
@@ -681,6 +704,33 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case datePart p => exact datePartAbs_sound p h
   case dateTrunc u => exact monoAbs_sound (Time.trunc_mono u) (fun v => by cases v <;> rfl) h
   case toDate => exact monoAbs_sound Time.days_mono (fun v => by cases v <;> rfl) h
+  case dayPart p =>
+    have hm := monoAbs_mem (g := (· * Time.usPerDay))
+      (fun hxy => Int.mul_le_mul_of_nonneg_right hxy (by decide)) h
+    have := datePartAbs_sound p hm
+    have he : UnFn.apply (.dayPart p) v = UnFn.apply (.datePart p)
+        (Value.mapInt (· * Time.usPerDay) v) := by
+      cases v <;> rfl
+    simp only [UnFn.abs]; rw [he]; exact this
+  case dayTrunc u => exact monoAbs_sound (Time.truncDay_mono u) (fun v => by cases v <;> rfl) h
+  case addMonths m t =>
+    cases t
+    · exact monoAbs_sound (Time.addMonths_mono m) (fun v => by cases v <;> rfl) h
+    · exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case asTime => exact monoAbs_sound (fun h => h) (fun v => by cases v <;> rfl) h
+  case bucket k o => exact monoAbs_sound (Time.bucket_mono k o) (fun v => by cases v <;> rfl) h
+  case timeOfDay =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ |
+      ⟨_, rfl, hs⟩
+    · simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
+    · have := Time.timeOfDay_range i
+      refine ⟨⟨some 0, some (Time.usPerDay - 1)⟩, by simp [UnFn.abs, hb], ?_⟩
+      exact ⟨fun l hl => by simp at hl; omega, fun u hu => by simp at hu; omega⟩
+    all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case strftime fmt =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ |
+      ⟨_, rfl, hs⟩ <;>
+      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case upper | lower | length =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
@@ -847,6 +897,8 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   cases f
   case add => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case sub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dateAdd => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case mul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
@@ -1668,6 +1720,7 @@ def winFact (part : List Nat) (sort : List SortKey) (strict : Bool) (w : Nat) : 
       if d = .null then orderFact sort c w true (strictGap strict sort k) ++ partFact part c w else []
   | .lead c k d =>
       if d = .null then orderFact sort c w false (strictGap strict sort k) ++ partFact part c w else []
+  | _ => []
 
 /-- Facts about the window columns appended after `n` input columns. -/
 def winFacts (part : List Nat) (sort : List SortKey) (strict : Bool) (n : Nat) (fns : List WinFn) :
@@ -1962,7 +2015,8 @@ theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n
       keyOf (part ++ sort.map (·.col)) y ≠ keyOf (part ++ sort.map (·.col)) x) :
     FactsHold (winFact part sort strict w f) row := by
   cases f with
-  | rowNumber => intro g hg; simp [winFact] at hg
+  | rowNumber | rank _ | denseRank _ | percentRank _ | cumeDist _ | ntile _ | agg _ _ _
+  | firstValue _ _ _ | lastValue _ _ _ | nthValue _ _ _ _ => intro g hg; simp [winFact] at hg
   | lag c k d =>
     simp only [winFact]
     split
@@ -2530,10 +2584,14 @@ def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD 
 
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
-/-- `ROW_NUMBER` is a positive integer; `LAG`/`LEAD` read a value of the same
-column of another input row, or give the default. -/
+/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
+value of the same column of another input row, or give the default;
+`PERCENT_RANK` and `CUME_DIST` are doubles. Aggregates over frames and
+`FIRST_VALUE` and friends may be anything. -/
 def WinFn.abs (env : List AVal) : WinFn → AVal
-  | .rowNumber => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
+  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
   | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Sums of integers in `b` keep their sign. -/
@@ -2758,7 +2816,20 @@ produces is described by `Rel.aeval`, provided the tables are. -/
 theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x : Row}
     (hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem env y) :
     ∀ f : WinFn, (f.abs env).Mem (f.value part b a x)
-  | .rowNumber => ⟨_, rfl, by simp [Bound.Mem]; omega⟩
+  | .rowNumber | .rank _ | .denseRank _ => ⟨_, rfl, by simp [Bound.Mem]; omega⟩
+  | .ntile k => ⟨_, rfl, by
+      simp only [Bound.Mem, Option.some.injEq, reduceCtorEq]
+      refine ⟨fun l hl => ?_, fun _ h => h.elim⟩
+      subst hl
+      have : 1 ≤ ntileOf (List.filter (samePart part x) b).length k
+        ((List.filter (samePart part x) b).length + 1 + (List.filter (samePart part x) a).length) :=
+        Nat.le_add_left 1 _
+      omega⟩
+  | .percentRank _ => by
+      simp only [WinFn.abs, WinFn.value, WinFn.valueIn, floatRatio]
+      split <;> exact ⟨_, rfl, Bound.mem_top _⟩
+  | .cumeDist _ => ⟨_, rfl, Bound.mem_top _⟩
+  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
   | .lag c k d => by
       simp only [WinFn.abs]
       rcases WinFn.value_lag (part := part) (b := b) (a := a) (x := x) (c := c) (k := k)

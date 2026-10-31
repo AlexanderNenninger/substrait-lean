@@ -1,0 +1,53 @@
+name: Generated files
+
+# The tables generated from the sources: README.md's coverage table,
+# catalogue/INDEX.md and catalogue/FINDINGS.md's stats tables. Feature branches
+# leave them alone, so two PRs never conflict over them; after every push to
+# main this job regenerates them and pushes the result straight to main.
+#
+# The push uses a deploy key with write access (secret GENERATED_DEPLOY_KEY),
+# which the main ruleset lists as a bypass actor: a push with GITHUB_TOKEN
+# would need a PR and a `qa` run. The commit says [skip ci], since it changes
+# no source.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to main supersedes an older run: its run regenerates everything.
+concurrency:
+  group: generated
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ssh-key: ${{ secrets.GENERATED_DEPLOY_KEY }}
+      - uses: ./.github/actions/setup-lean
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+      - working-directory: python
+        run: |
+          uv run --locked python -m sverify.catalogue --write-tables
+          uv run --locked python -m sverify.coverage --write-readme
+      - name: Push to main if anything changed
+        run: |
+          git status --short
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "Regenerate generated tables [skip ci]" -m "From $GITHUB_SHA by the Generated files workflow."
+          if ! git push origin HEAD:main; then
+            git fetch -q origin main
+            # Fine if main moved on meanwhile: the run for the newer push takes over.
+            test "$(git rev-parse origin/main)" != "$GITHUB_SHA" || exit 1
+            echo "main moved on since $GITHUB_SHA; the newer run regenerates"
+          fi

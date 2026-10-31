@@ -21,7 +21,9 @@ def UnFn.render : UnFn → String
   | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
-  | .toDate => "DATE"
+  | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"
+  | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
+  | .strftime fmt => s!"STRFTIME_{fmt.quote}" | .bucket k o => s!"BUCKET_{k}_{o}"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
@@ -31,6 +33,7 @@ def BinFn.render : BinFn → String
   | .endsWith => "ENDS_WITH" | .like => "LIKE"
   | .substr n => s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}"
   | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
+  | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
 
 def Expr.render : Expr → String
   | .lit v => v.render
@@ -38,11 +41,6 @@ def Expr.render : Expr → String
   | .un f a => s!"{f.render}({a.render})"
   | .bin f a b => s!"({a.render} {f.render} {b.render})"
   | .ifThen c t e => s!"IF {c.render} THEN {t.render} ELSE {e.render}"
-
-def WinFn.render : WinFn → String
-  | .rowNumber => "ROW_NUMBER()"
-  | .lag c k d => s!"LAG(${c}, {k}, {d.render})"
-  | .lead c k d => s!"LEAD(${c}, {k}, {d.render})"
 
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"
@@ -55,6 +53,24 @@ def Measure.render (m : Measure) : String :=
   let sort := if m.sort.isEmpty then "" else
     " ORDER BY " ++ ", ".intercalate (m.sort.map fun k => s!"${k.col}{if k.desc then " DESC" else ""}")
   s!"{m.fn.name}({if m.distinct then "DISTINCT " else ""}{m.arg.render}{sort}){filter}"
+
+def FrameBound.render : FrameBound → String
+  | .unboundedPreceding => "UNBOUNDED PRECEDING" | .unboundedFollowing => "UNBOUNDED FOLLOWING"
+  | .preceding 0 => "CURRENT ROW" | .preceding k => s!"{k} PRECEDING" | .following k => s!"{k} FOLLOWING"
+
+def Frame.render (fr : Frame) : String :=
+  s!"{if fr.range then "RANGE" else "ROWS"} BETWEEN {fr.lo.render} AND {fr.hi.render}"
+
+def WinFn.render : WinFn → String
+  | .rowNumber => "ROW_NUMBER()"
+  | .lag c k d => s!"LAG(${c}, {k}, {d.render})"
+  | .lead c k d => s!"LEAD(${c}, {k}, {d.render})"
+  | .rank _ => "RANK()" | .denseRank _ => "DENSE_RANK()" | .percentRank _ => "PERCENT_RANK()"
+  | .cumeDist _ => "CUME_DIST()" | .ntile k => s!"NTILE({k})"
+  | .agg m _ fr => s!"{m.render} {fr.render}"
+  | .firstValue c _ fr => s!"FIRST_VALUE(${c}) {fr.render}"
+  | .lastValue c _ fr => s!"LAST_VALUE(${c}) {fr.render}"
+  | .nthValue c n _ fr => s!"NTH_VALUE(${c}, {n}) {fr.render}"
 
 def Rel.renderLines : Rel → List String
   | .read t => [s!"Read {t}"]

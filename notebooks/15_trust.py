@@ -147,7 +147,7 @@ def _(mo):
     | Executable checker | `SubstraitLean/Check.lean` | `Rel.checkWF`, `checkWF_iff` |
     | Contracts | `SubstraitLean/Contracts.lean`, `ContractCheck.lean` | `Rel.aeval_sound`, `contract_sound` |
     | Keys, ties | `SubstraitLean/Keys.lean` | `Rel.keys_sound`, `window_tiebreak` |
-    | Windows | `SubstraitLean/Window.lean` | `ROW_NUMBER`, `LAG`, `LEAD` |
+    | Windows | `SubstraitLean/Window.lean` | `ROW_NUMBER`, `LAG`, `LEAD`, ranks, `NTILE`, aggregates and `FIRST_VALUE`/`LAST_VALUE`/`NTH_VALUE` over ROWS and RANGE frames |
     | Doubles, time, text | `Float.lean`, `Rounding.lean`, `Time.lean`, `Text.lean` | `round_mono`, `Time.trunc_mono` |
     | Runtime errors | `SubstraitLean/Safety.lean` | `Rel.mayIssues_sound` |
     | Composition, pipelines | `SubstraitLean/Compose.lean` | `Triple.compose`, `Triple.maintained`, `Rel.chain_sound` |

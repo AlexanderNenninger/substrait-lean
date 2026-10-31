@@ -1,4 +1,4 @@
-import SubstraitLean.Window
+import SubstraitLean.Order
 
 /-!
 # Aggregation
