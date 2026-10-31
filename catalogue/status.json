@@ -929,9 +929,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "duckdb": "refused: comparison of time with interval; cast one side first",
-   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
-   "snowflake": "refused: comparison of time with interval; cast one side first"
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
   }
  },
  "ts-session-starts": {

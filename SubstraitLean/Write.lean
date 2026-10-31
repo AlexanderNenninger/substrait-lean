@@ -289,8 +289,14 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .window r _ _ fns =>
       let ks := relKinds schemas cat r
       ks ++ fns.map fun
-        | .rowNumber => .int
-        | .lag c _ _ | .lead c _ _ => ks.getD c .other
+        | .rowNumber | .rank _ | .denseRank _ | .ntile _ => .int
+        | .percentRank _ | .cumeDist _ => .float
+        | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+          ks.getD c .other
+        | .agg m _ _ => match m.fn with
+          | .count | .sum => .int
+          | .fsum | .avg => .float
+          | .min | .max => wkind ks m.arg
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
@@ -326,7 +332,7 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     | .percentRank _ => (72, [], .all)
     | .cumeDist _ => (73, [], .all)
     | .ntile k => (74, [writeLit .int (.int k)], .all)
-    | .agg m _ fr => (Write.AggFn.anchor m.fn, [writeExpr cols (m.arg.kind cols) m.arg], fr)
+    | .agg m _ fr => (Write.AggFn.anchor m.fn, [writeExpr cols (wkind cols m.arg) m.arg], fr)
     | .firstValue c _ fr => (75, [col c], fr)
     | .lastValue c _ fr => (76, [col c], fr)
     | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
