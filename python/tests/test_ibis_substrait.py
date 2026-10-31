@@ -28,9 +28,7 @@ from sverify.testing import EPOCH, canonical, inline_tables, lean_values
 
 VERIFIED = [c for c in CASES if c.expected == "verified"]
 #: Known gaps between Lean and DataFusion, fixed elsewhere.
-KNOWN_GAPS = {
-    "non-equi join": "string < is undefined in Lean (#17)",
-}
+KNOWN_GAPS: dict[str, str] = {}
 #: Regular expressions are black boxes in Lean's semantics: not evaluated.
 OPAQUE = {"re_search"}
 #: LIMIT without a total order keeps whichever rows come first.

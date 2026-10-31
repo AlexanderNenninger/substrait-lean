@@ -473,6 +473,16 @@ def arithmeticFns : List String :=
 def comparisonFns : List String :=
   ["equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from"]
 
+/-- Functions on strings, with the positions of their arguments that are
+integers (`substring`'s start and length). -/
+def stringFns : List (String × List Nat) :=
+  [("upper", []), ("lower", []), ("character_length", []), ("char_length", []), ("length", []),
+   ("str_concat", []), ("concat", []), ("strpos", []), ("starts_with", []), ("ends_with", []),
+   ("like", []), ("substring", [1, 2]), ("btrim", []), ("ltrim", []), ("rtrim", [])]
+
+/-- Functions on booleans. -/
+def booleanFns : List String := ["and", "or", "not", "xor"]
+
 /-- Does the expression read a column? One that doesn't is built from
 literals, whose kinds say nothing (a timestamp literal is an integer). -/
 def _root_.Substrait.Expr.readsField : Expr → Bool
@@ -499,6 +509,17 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
       if rest.any (· != k) then throw s!"{name}: compares values of different types"
+  -- `Rel.eval` gives `NULL` for a string or boolean function of anything
+  -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
+  let want (k : Nat) : Option Kind :=
+    if booleanFns.contains base then some .bool
+    else match stringFns.lookup base with
+      | some ints => some (if ints.contains k then .int else .str)
+      | none => none
+  for (k, i) in ks.zipIdx do
+    if let (some w, some k) := (want i, k) then
+      if k != .other && k != w then
+        throw s!"{name}: argument {i + 1} is of kind {repr k}, not {repr w}"
   -- A variadic signature (`and:bool`) names the type of every argument once.
   let sigs := match sigs.getLast? with
     | some s => sigs ++ List.replicate (args.length - sigs.length) s
@@ -522,6 +543,9 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard (checkArgKinds "add:pts_iday" [.time] [.field 0, .lit (.int 1)]).toBool
 #guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
 #guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
+#guard (checkArgKinds "concat" [.int] [.field 0, .lit (.str "a")]).toBool == false
+#guard (checkArgKinds "substring" [.str, .int] [.field 0, .field 1]).toBool
+#guard (checkArgKinds "or" [.bool, .int] [.field 0, .field 1]).toBool == false
 
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under

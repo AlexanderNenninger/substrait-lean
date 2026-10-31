@@ -228,8 +228,20 @@ def test_gap_int_concat_string():
     assert not report.ensures[0].proved
 
 
-@gap
-def test_gap_string_order_comparison():
+def test_string_order_is_datafusions(con):
+    """Strings compare by code point (UTF-8 byte order), as in DataFusion."""
+    sql = "SELECT s, s < 'b' AS lt, s >= 'B' AS ge, s > 'é' AS gt FROM str"
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(s,) for s in ["b", "B", "a", "", "é", "z"]]
+    assert lean_rows(json.dumps(inline_tables(plan, {"str": rows_}))) == rows(con, sql)
+
+
+def test_int_compared_with_string_is_refused():
+    with pytest.raises(ValueError, match="compares values of different types"):
+        verify("SELECT a = s AS e FROM t", "t", {"a": "int64", "s": "string"})
+
+
+def test_string_order_comparison():
     """S6: `'z' > 'd'` is true; Lean's `lt` is only defined on integers."""
     report = verify(
         "SELECT s > 'd' AS gt FROM t", "t", {"s": "string"}, ["s = 'z'"], ["gt IS NULL"]

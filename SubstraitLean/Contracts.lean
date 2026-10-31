@@ -500,9 +500,11 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
        intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || (a.str && b.str),
        intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || (a.str && b.str), false⟩
   | .lt, a, b =>
+      -- Two strings may compare either way.
+      let s := a.str && b.str
       match a.int, b.int with
-      | some x, some y => ⟨a.nonInt || b.nonInt, none, canLt x y, canGe x y, false⟩
-      | _, _ => ⟨true, none, false, false, false⟩
+      | some x, some y => ⟨a.nonInt || b.nonInt, none, canLt x y || s, canGe x y || s, false⟩
+      | _, _ => ⟨true, none, s, s, false⟩
 
 def Expr.abs (env : List AVal) : Expr → AVal
   | .lit v => AVal.ofValue v
@@ -820,12 +822,14 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
       ⟨s', rfl, h'⟩ <;>
     simp_all [BinFn.abs, BinFn.apply, and3, or3, AVal.Mem, AVal.nonBool, AVal.nonInt]
   all_goals (split <;> simp_all [canLt, canGe])
-  -- What is left: comparisons of two integers against their intervals.
-  all_goals
-    obtain ⟨xl, xh⟩ := x
-    obtain ⟨yl, yh⟩ := y
-    simp only [Bound.Mem] at hi hj
-    cases xl <;> cases xh <;> cases yl <;> cases yh <;> simp_all <;> omega
+  -- What is left: comparisons of two integers against their intervals, and
+  -- of two strings.
+  all_goals first
+    | (obtain ⟨xl, xh⟩ := x
+       obtain ⟨yl, yh⟩ := y
+       simp only [Bound.Mem] at hi hj
+       cases xl <;> cases xh <;> cases yl <;> cases yh <;> simp_all <;> omega)
+    | (split <;> rfl)
 
 theorem Value.eq_true_of_isTrue {v : Value} (h : v.isTrue = true) : v = .bool true := by
   cases v with
@@ -869,6 +873,14 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
 /-- A column known to be a non-NULL integer, with its interval transformed. -/
 def AVal.nonNullInt (a : AVal) (f : Bound → Bound) : AVal := ⟨false, a.int.map f, false, false, false⟩
 
+/-- `a` without NULL and the booleans: what an operand of a TRUE `<` can be. -/
+def AVal.nonNullOrd (a : AVal) : AVal := ⟨false, a.int, false, false, a.str⟩
+
+/-- An integer or a string: what `<` compares. -/
+def Value.isOrd : Value → Bool
+  | .int _ | .str _ => true
+  | _ => false
+
 /-- What a value known to equal (SQL `=`, so non-NULL) a value in `b` can be. -/
 def AVal.meetEq (a b : AVal) : AVal :=
   ⟨false, (match a.int, b.int with | some x, some y => some (x.meet y) | _, _ => none),
@@ -902,9 +914,9 @@ def Expr.refine (env : List AVal) : Expr → List AVal
       refineCol (refineCol env i (·.meetEq aj)) j (·.meetEq ai)
   -- `x <> k` is TRUE only for a non-NULL integer `x`.
   | .un .not (.bin .eq (.field i) (.lit (.int _))) => refineCol env i (·.nonNullInt id)
-  -- Comparing two columns: TRUE only if both are non-NULL integers.
+  -- Comparing two columns: TRUE only if both are non-NULL integers or strings.
   | .bin .lt (.field i) (.field j) | .un .not (.bin .lt (.field i) (.field j)) =>
-      refineCol (refineCol env i (·.nonNullInt id)) j (·.nonNullInt id)
+      refineCol (refineCol env i AVal.nonNullOrd) j AVal.nonNullOrd
   -- Arithmetic is NULL-propagating: a non-NULL `a - b` has non-NULL operands
   -- (DataFusion inlines computed columns such as `gap = ts - prev_ts`).
   | .un .not (.un .isNull (.bin .add a b)) =>
@@ -995,14 +1007,18 @@ theorem eq_true_same {v w : Value} (h : (BinFn.apply .eq v w).isTrue = true) :
     · simp [hxy]
     · simp [hxy] at h
 
-theorem lt_fields_int {v w : Value} (h : (BinFn.apply .lt v w).isTrue = true) :
-    (∃ x, v = .int x) ∧ (∃ y, w = .int y) := by
-  cases v <;> cases w <;> simp_all [BinFn.apply, Value.isTrue]
+theorem lt_fields_ord {v w : Value} (h : (BinFn.apply .lt v w).isTrue = true) :
+    v.isOrd = true ∧ w.isOrd = true := by
+  cases v <;> cases w <;> simp_all [BinFn.apply, Value.isTrue, Value.isOrd]
 
-theorem not_lt_fields_int {v w : Value}
+theorem not_lt_fields_ord {v w : Value}
     (h : (UnFn.apply .not (BinFn.apply .lt v w)).isTrue = true) :
-    (∃ x, v = .int x) ∧ (∃ y, w = .int y) := by
-  cases v <;> cases w <;> simp_all [BinFn.apply, UnFn.apply, Value.isTrue]
+    v.isOrd = true ∧ w.isOrd = true := by
+  cases v <;> cases w <;> simp_all [BinFn.apply, UnFn.apply, Value.isTrue, Value.isOrd]
+
+theorem nonNullOrd_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : v.isOrd = true) :
+    a.nonNullOrd.Mem v := by
+  cases v <;> simp_all [Value.isOrd, AVal.nonNullOrd, AVal.Mem]
 
 theorem nonNullInt_mem {a : AVal} {x : Int} {f : Bound → Bound} (h : a.Mem (.int x))
     (hf : ∀ b, b.Mem x → (f b).Mem x) : (a.nonNullInt f).Mem (.int x) := by
@@ -1083,19 +1099,15 @@ theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem e
     rw [hx] at this ⊢
     exact nonNullInt_mem this fun _ hb => hb
   case case10 env i j =>
-    obtain ⟨⟨x, hx⟩, ⟨y, hy⟩⟩ := lt_fields_int (by simpa [eval] using ht)
+    obtain ⟨hx, hy⟩ := lt_fields_ord (by simpa [eval] using ht)
     rw [← List.getD_eq_getElem?_getD] at hx hy
-    have h₁ := refineCol_sound (f := (·.nonNullInt id)) h (by
-      have := h i; rw [hx] at this ⊢; exact nonNullInt_mem this fun _ hb => hb)
-    refine refineCol_sound h₁ ?_
-    have := h₁ j; rw [hy] at this ⊢; exact nonNullInt_mem this fun _ hb => hb
+    have h₁ := refineCol_sound (f := AVal.nonNullOrd) h (nonNullOrd_mem (h i) hx)
+    exact refineCol_sound h₁ (nonNullOrd_mem (h₁ j) hy)
   case case11 env i j =>
-    obtain ⟨⟨x, hx⟩, ⟨y, hy⟩⟩ := not_lt_fields_int (by simpa [eval] using ht)
+    obtain ⟨hx, hy⟩ := not_lt_fields_ord (by simpa [eval] using ht)
     rw [← List.getD_eq_getElem?_getD] at hx hy
-    have h₁ := refineCol_sound (f := (·.nonNullInt id)) h (by
-      have := h i; rw [hx] at this ⊢; exact nonNullInt_mem this fun _ hb => hb)
-    refine refineCol_sound h₁ ?_
-    have := h₁ j; rw [hy] at this ⊢; exact nonNullInt_mem this fun _ hb => hb
+    have h₁ := refineCol_sound (f := AVal.nonNullOrd) h (nonNullOrd_mem (h i) hx)
+    exact refineCol_sound h₁ (nonNullOrd_mem (h₁ j) hy)
   case case12 env a b iha ihb =>
     have ht' : (UnFn.apply .not (UnFn.apply .isNull
         (BinFn.apply .add (a.eval row) (b.eval row)))).isTrue = true := by simpa [eval] using ht
@@ -2080,7 +2092,8 @@ def neSharpen (fs : List Fact) (a b : Expr) (base : AVal) : AVal :=
 def sharpen (fs : List Fact) (f : BinFn) (a b : Expr) (aa base : AVal) : AVal :=
   match f with
   | .sub => subSharpen (termDiff fs a b) base
-  | .lt => ltSharpen (termDiff fs a b) base
+  -- Facts are about integers; strings compare by themselves.
+  | .lt => if aa.intOrNull then ltSharpen (termDiff fs a b) base else base
   | .eq =>
       match termDiff fs a b with
       | some d => if aa.intOrNull then eqSharpen d base else base
@@ -2200,16 +2213,19 @@ theorem subSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
     obtain ⟨b₀, hb₀, _⟩ := hbase
     exact ⟨d, by simp [hb₀], termDiff_sound hd hfs hva hvb⟩
 
-theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
-    (hfs : FactsHold fs row) (hbase : base.Mem (BinFn.apply .lt (a.eval row) (b.eval row))) :
+theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVal}
+    (hfs : FactsHold fs row) (hint : aa.intOrNull = true) (haa : aa.Mem (a.eval row))
+    (hbase : base.Mem (BinFn.apply .lt (a.eval row) (b.eval row))) :
     (ltSharpen (termDiff fs a b) base).Mem (BinFn.apply .lt (a.eval row) (b.eval row)) := by
   cases hd : termDiff fs a b with
   | none => exact hbase
   | some d =>
     simp only [ltSharpen]
-    generalize hva : a.eval row = va at hbase ⊢
+    generalize hva : a.eval row = va at hbase haa ⊢
     generalize hvb : b.eval row = vb at hbase ⊢
     cases va <;> cases vb <;> simp only [BinFn.apply] at hbase ⊢ <;> try exact hbase
+    -- Strings are ruled out by `hint`.
+    all_goals try (simp_all [AVal.intOrNull, AVal.Mem]; done)
     rename_i u w
     have hm := termDiff_sound hd hfs hva hvb
     by_cases hlt : u < w
@@ -2271,7 +2287,11 @@ theorem sharpen_sound {fs : List Fact} {row : Row} (f : BinFn) (a b : Expr) {aa 
     (sharpen fs f a b aa base).Mem (f.apply (a.eval row) (b.eval row)) := by
   cases f
   case sub => exact subSharpen_sound hfs hbase
-  case lt => exact ltSharpen_sound hfs hbase
+  case lt =>
+    simp only [sharpen]
+    split
+    · rename_i hint; exact ltSharpen_sound hfs hint haa hbase
+    · exact hbase
   case eq =>
     simp only [sharpen]
     cases hd : termDiff fs a b with
