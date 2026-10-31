@@ -30,10 +30,11 @@ def functions : List (Nat × String) :=
    (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl")]
+   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
+   (42, "array_agg")]
 
 def AggFn.anchor : AggFn → Nat
-  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
+  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40 | .collect => 42
 
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
@@ -56,6 +57,8 @@ def writeValue : Value → Json
   | .bool b => obj [("boolean", toJson b)]
   | .int i => obj [("i64", toJson (toString i))]
   | .str s => obj [("string", toJson s)]
+  | .list [] => obj [("emptyList", obj [("type", obj [("i64", obj [])])])]
+  | .list vs => obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeValue v).toArray)])]
 
 def fp64Type : Json := obj [("fp64", obj [("nullability", "NULLABILITY_NULLABLE")])]
 def i64Type : Json := obj [("i64", obj [("nullability", "NULLABILITY_NULLABLE")])]
@@ -76,6 +79,18 @@ def call (anchor : Nat) (args : List Json) : Json :=
     ("functionReference", toJson anchor),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray)])]
 
+/-- The (nullable) Substrait type of a kind, `i64` where it is unknown. -/
+def kindType : Parse.Kind → Json
+  | .float => fp64Type
+  | .str => obj [("string", nullable)]
+  | .bool => obj [("bool", nullable)]
+  | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]
+  | .date => obj [("date", nullable)]
+  | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
+  | .int | .other => i64Type
+where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
+
 /-- The kind of a column or expression as the writer sees it: the parser's
 `Kind`, and day/second intervals. The model has both timestamps and intervals
 as microseconds, and `Expr.kind` calls `ts - ts` a time; the writer must tell
@@ -83,16 +98,17 @@ them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
   | int | float | time | date | interval | str | bool | other
+  | list (elem : WKind)
   deriving BEq
 
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
-  | .str => .str | .bool => .bool | .other => .other
+  | .str => .str | .bool => .bool | .other => .other | .list k => .list (ofKind k)
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Parse.Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
-  | .str => .str | .bool => .bool | .other => .other
+  | .str => .str | .bool => .bool | .other => .other | .list k => .list (toKind k)
 
 /-- An expression without field references. -/
 def isConst : Expr → Bool
@@ -143,23 +159,29 @@ def writeInterval (us : Int) : Json :=
     ("seconds", toJson (us / 1_000_000)), ("subseconds", toJson (toString (us % 1_000_000))),
     ("precision", toJson 6)])])]
 
-/-- An integer literal, written as the kind of value it stands for. -/
-def writeLit (k : WKind) (v : Value) : Json :=
-  let lit (kvs : List (String × Json)) := obj [("literal", obj kvs)]
+/-- A literal (the body of `Expression.literal`) of kind `k`: an integer is
+written as the kind of value it stands for. -/
+def writeLitBody (k : WKind) (v : Value) : Json :=
   match k, v with
-  | .float, .int c => lit [("fp64", writeDouble c)]
+  | .float, .int c => obj [("fp64", writeDouble c)]
   | .time, .int us =>
-    lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
-  | .interval, .int us => writeInterval us
-  | .date, .int d => lit [("date", toJson d)]
+    obj [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .interval, .int us => (writeInterval us).getObjValD "literal"
+  | .date, .int d => obj [("date", toJson d)]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
-  | .float, .null => lit [("null", fp64Type)]
-  | .str, .null => lit [("null", obj [("string", obj [])])]
-  | .bool, .null => lit [("null", obj [("bool", obj [])])]
-  | .time, .null => lit [("null", obj [("precisionTimestamp", obj [("precision", toJson 6)])])]
-  | .date, .null => lit [("null", obj [("date", obj [])])]
-  | .interval, .null => lit [("null", obj [("intervalDayToSecond", obj [("precision", toJson 6)])])]
-  | _, v => obj [("literal", writeValue v)]
+  | .float, .null => obj [("null", fp64Type)]
+  | .str, .null => obj [("null", obj [("string", obj [])])]
+  | .bool, .null => obj [("null", obj [("bool", obj [])])]
+  | .time, .null => obj [("null", obj [("precisionTimestamp", obj [("precision", toJson 6)])])]
+  | .date, .null => obj [("null", obj [("date", obj [])])]
+  | .interval, .null => obj [("null", obj [("intervalDayToSecond", obj [("precision", toJson 6)])])]
+  | .list _, .null => obj [("null", kindType k.toKind)]
+  | .list e, .list [] => obj [("emptyList", obj [("type", kindType e.toKind)])]
+  | .list e, .list vs =>
+    obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
+  | _, v => writeValue v
+
+def writeLit (k : WKind) (v : Value) : Json := obj [("literal", writeLitBody k v)]
 
 /-- A constant of a virtual table, as a literal of its column's type `ty`
 (integers of the column's width). -/
@@ -276,6 +298,10 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .count | .sum => .int
         | .fsum | .avg => .float
         | .min | .max => wkind ks m.arg
+        | .collect => .list (wkind ks m.arg)
+  | .unnest r c =>
+      let ks := relKinds schemas cat r
+      ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
 
 def writeSortKey (cols : List WKind) (k : SortKey) : Json :=
   let dir : Json := match k.desc, k.nullsFirst with
@@ -312,7 +338,8 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
-    ("arguments", Json.arr #[obj [("value", arg)]])]
+    ("arguments", Json.arr #[obj [("value", arg)]]),
+    ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 
@@ -402,6 +429,9 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
           (some (match out with
             | none => cols
             | some o => o.map (cols.getD · 0)))
+  | .unnest r c, out => withCommon "extensionSingle" [
+      ("input", writeRel schemas cat df r none),
+      ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out
   | .window r part sort fns, out => withCommon "project" [
       ("input", writeRel schemas cat df r none),
       ("expressions",

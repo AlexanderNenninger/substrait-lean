@@ -176,14 +176,14 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `interval_month` |
 | tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month`, `agg_arithmetic` |
-| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal`, `interval_month` |
-| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `not_in_subquery` |
+| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month` |
+| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
 | tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month` |
 | tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal` |
+| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 
 ## windows
 

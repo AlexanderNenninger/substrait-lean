@@ -423,9 +423,10 @@ def _(mo):
       it returns rows for `x NOT IN (SELECT y …)` even when `y` contains a
       `NULL`. It runs the query as an ordinary anti join, without SQL's
       "null-aware" rule. DuckDB gives the standard answer, which is no rows.
-      Lean's parser does not accept `NOT IN (subquery)`, so no proof
-      depends on it. Positive `IN (subquery)` becomes a semi join, which is
-      correct.
+      Lean's parser lifts `NOT IN (subquery)` with SQL's rule (a left join
+      with the subquery's values and a count of its `NULL`s), so the checked
+      plan gives no rows; DataFusion running the SQL does not. Positive
+      `IN (subquery)` in a filter becomes a semi join, which is correct.
     * **N4**: aggregates over no rows: `COUNT` is 0, but `SUM`, `AVG` and
       `MIN` are `NULL`, not 0. The model has no aggregates yet, so it
       refuses these plans.
@@ -471,8 +472,8 @@ def _(P, Q, pl, prove, render):
             "NOT IN a subquery with NULL",
             "SELECT x FROM n WHERE x NOT IN (SELECT y FROM s)",
             "handled",
-            "DataFusion bug (no null-aware anti join). The checker refuses `NOT IN (subquery)`, "
-            "so nothing is proved. Use NOT EXISTS, which DataFusion gets right.",
+            "DataFusion bug (no null-aware anti join). The checker plans `NOT IN (subquery)` "
+            "with SQL's NULL rule, so the checked plan is right where DataFusion's SQL is not.",
             std="no rows (s contains NULL)",
             duck="same",
         ),

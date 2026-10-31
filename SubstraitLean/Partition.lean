@@ -189,7 +189,8 @@ theorem Rel.arity_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arit
     ∀ r : Rel, r.arity c = r.arity cat
   | .read t => h t
   | .values _ _ | .emit _ _ | .aggregate _ _ _ => rfl
-  | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unionAll r _ | .semi r _ _ _ => by
+  | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unionAll r _ | .semi r _ _ _
+  | .unnest r _ => by
       simp only [arity, arity_congr h r]
   | .project r _ | .window r _ _ _ => by simp only [arity, arity_congr h r]
   | .cross a b | .join a b _ _ => by simp only [arity, arity_congr h a, arity_congr h b]
@@ -199,7 +200,7 @@ theorem Rel.eval_congr {c cat : Catalog} (ha : ∀ t, (c t).arity = (cat t).arit
   | .read t, h => h t (by simp [tables])
   | .values _ _, _ => rfl
   | .filter r _, h | .project r _, h | .emit r _, h | .fetch r _ _, h | .window r _ _ _, h
-  | .orderBy r _, h | .distinct r, h | .aggregate r _ _, h => by
+  | .orderBy r _, h | .distinct r, h | .aggregate r _ _, h | .unnest r _, h => by
       simp only [eval, eval_congr ha (r := r) h]
   | .cross a b, h | .unionAll a b, h | .semi a b _ _, h => by
       simp only [tables, List.mem_append] at h
@@ -215,7 +216,7 @@ theorem Rel.eval_congr {c cat : Catalog} (ha : ∀ t, (c t).arity = (cat t).arit
 theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs + intSum ws
   | [], _ => by simp [intSum]
   | .int i :: vs, ws => by simp only [List.cons_append, intSum, intSum_append vs ws]; omega
-  | .null :: vs, ws | .bool _ :: vs, ws | .str _ :: vs, ws => by
+  | .null :: vs, ws | .bool _ :: vs, ws | .str _ :: vs, ws | .list _ :: vs, ws => by
       simp only [List.cons_append, intSum, intSum_append vs ws]
 
 theorem intSum_cons (v : Value) (vs : List Value) : intSum (v :: vs) = intSum [v] + intSum vs :=
@@ -290,7 +291,10 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
-  | .fsum | .avg => false
+  | .fsum | .avg | .collect => false
+
+theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f ≠ .collect := by
+  rintro rfl; simp [decomposable] at h
 
 theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) : f.apply [] = .null := by
   cases f <;> first | rfl | exact (hf rfl).elim
@@ -327,6 +331,7 @@ theorem AggFn.apply_perm {f : AggFn} (hf : f.decomposable = true) {vs ws : List 
   · simp [decomposable] at hf
   · exact apply_minMax_perm (max := false) rfl h
   · exact apply_minMax_perm (max := true) rfl h
+  · simp [decomposable] at hf
 
 theorem AggFn.apply_sum_cons (v : Value) (vs : List Value) :
     AggFn.sum.apply (v :: vs) = .int (intSum (v :: vs)) := rfl
@@ -425,6 +430,7 @@ theorem AggFn.combine_apply {f : AggFn} (hf : f.decomposable = true) {L : List (
   · simp [decomposable] at hf
   · exact minMax_combine (max := false) rfl hnn
   · exact minMax_combine (max := true) rfl hnn
+  · simp [decomposable] at hf
 
 /-! ## Measures that combine -/
 
@@ -480,7 +486,8 @@ theorem Measure.mem_vals {m : Measure} {rows : Relation} {v : Value} (h : v ∈ 
 
 theorem Measure.eval_perm {m : Measure} (hm : m.orderFree = true) {xs ys : Relation}
     (h : xs.Perm ys) : m.eval xs = m.eval ys := by
-  simp only [eval, inputs_eq]
+  rw [eval_eq (AggFn.ne_collect hm), eval_eq (AggFn.ne_collect hm)]
+  simp only [inputs_eq]
   refine AggFn.apply_perm hm ?_
   split
   · exact dedup_perm_of_mem fun _ => (m.vals_perm h).mem_iff
@@ -513,10 +520,11 @@ theorem Measure.combine_eval {m : Measure} (hm : m.orderFree = true) {ss : List 
   have hnn : ∀ vs ∈ ss.map m.inputs, ∀ v ∈ vs, v ≠ .null := fun vs hvs v hv => by
     obtain ⟨s, _, rfl⟩ := List.mem_map.mp hvs
     exact (mem_inputs hv).1
+  have hc := AggFn.ne_collect (f := m.fn) hm
   have hmap : ss.map m.eval = (ss.map m.inputs).map m.fn.apply := by
-    simp [eval, Function.comp_def]
+    simp [eval_eq hc, Function.comp_def]
   rw [hmap, AggFn.combine_apply hm hL hnn]
-  simp only [eval]
+  rw [eval_eq hc]
   by_cases hd : m.distinct = true
   · have hdd : ss.map m.inputs = (ss.map m.vals).map dedup := by
       simp [inputs_eq, hd, Function.comp_def]
@@ -651,7 +659,10 @@ theorem combineMeasures_eval {k : Nat} {ms : List Measure} {i : Nat} (hi : i < m
     (rows : Relation) :
     ((combineMeasures k ms)[i]'(by simpa [combineMeasures] using hi)).eval rows =
       ms[i].fn.combine.apply ((rows.map (·.getD (k + i) .null)).filter (· != .null)) := by
-  simp [combineMeasures, Measure.eval, Measure.inputs, Measure.kept, Expr.eval]
+  have hsort : rows.mergeSort (sortLe []) = rows :=
+    List.mergeSort_of_pairwise (List.pairwise_iff_forall_sublist.mpr fun _ => by simp [sortLe])
+  unfold Measure.eval
+  split <;> simp_all [combineMeasures, Measure.inputs, Measure.kept, Expr.eval]
 
 theorem filter_beq_nodup {α : Type} [BEq α] [LawfulBEq α] {l : List α} (h : l.Pairwise (· ≠ ·))
     (k : α) : l.filter (· == k) = if k ∈ l then [k] else [] := by
@@ -1070,7 +1081,7 @@ theorem Rel.wf_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arity) 
   | .values _ _, hw => hw
   | .fetch r _ _, hw | .distinct r, hw => wf_congr h (r := r) hw
   | .filter r _, hw | .project r _, hw | .emit r _, hw | .window r _ _ _, hw
-  | .orderBy r _, hw | .aggregate r _ _, hw =>
+  | .orderBy r _, hw | .aggregate r _ _, hw | .unnest r _, hw =>
     ⟨wf_congr h (r := r) hw.1, by rw [arity_congr h r]; exact hw.2⟩
   | .cross a b, hw => ⟨wf_congr h (r := a) hw.1, wf_congr h (r := b) hw.2⟩
   | .join a b _ _, hw | .semi a b _ _, hw | .unionAll a b, hw =>
@@ -1124,14 +1135,14 @@ def Rel.linear (S : String → Bool) (K : String → Option (List Nat)) (T : Win
       | some kc => kc.all fun c => gs.contains (.field c)
       | none => false
   -- A literal table would be repeated on every shard.
-  | .values _ _ | .fetch _ _ _ => false
+  | .values _ _ | .fetch _ _ _ | .unnest _ _ => false
 
 /-- Where the split key is in the output of a linear plan (`Rel.keyRows`). -/
 def Rel.keyCols (S : String → Bool) (K : String → Option (List Nat)) (T : WindowKeys) (cat : Catalog) :
     Rel → Option (List Nat)
   | .read t => if S t then K t else none
   | .filter r _ | .orderBy r _ | .distinct r | .semi r _ _ _ | .join r _ .left _
-  | .window r _ _ _ => r.keyCols S K T cat
+  | .window r _ _ _ | .unnest r _ => r.keyCols S K T cat
   -- A key column the projection copies: the copy (an emit may keep only it).
   | .project r es => (r.keyCols S K T cat).map (·.map (copyPos (r.arity cat) es))
   | .emit r m => (r.keyCols S K T cat).bind (posAll m)
