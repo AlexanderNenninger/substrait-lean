@@ -80,6 +80,8 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
+from sverify.counterexample import Counterexample
+from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
     Connection,
     Engine,
@@ -126,6 +128,9 @@ class CheckedCondition:
     proved: bool
     value: str
     """What Lean established about the condition, e.g. "TRUE or NULL"."""
+    counterexample: Counterexample | None = None
+    """For an unproved condition: inputs meeting the preconditions on which
+    it fails, if the search (`sverify.counterexample`) found one."""
 
 
 @dataclass(frozen=True)
@@ -189,6 +194,8 @@ class Report:
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
             lines.append(f"ensures {c.label}: {mark}")
+            if c.counterexample is not None:
+                lines.append(f"  counterexample: {c.counterexample}")
         lines += [f"may fail: {i}" for i in self.errors]
         lines += [f"warning: {i}" for i in self.warnings]
         if not self.deterministic:
@@ -199,10 +206,14 @@ class Report:
         return "\n".join(lines)
 
     def _repr_markdown_(self) -> str:
-        rows = [
-            f"| `{c.label}` | {'✅ proved' if c.proved else '❌ ' + c.value} |"
-            for c in self.ensures
-        ]
+        def status(c: CheckedCondition) -> str:
+            if c.proved:
+                return "✅ proved"
+            if c.counterexample is None:
+                return f"❌ {c.value}"
+            return f"❌ {c.value}; fails on `{c.counterexample}`".replace("|", "\\|")
+
+        rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
         rows += [f"| runtime | ⚠️ {str(i).replace('|', '\\|')} |" for i in self.warnings]
@@ -382,11 +393,14 @@ def verify(
     requires: Mapping[str, Sequence[Condition]] | None = None,
     ensures: Sequence[Condition] = (),
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
+    counterexamples: int = 200,
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
 
     `tables` gives the input schemas; it is only needed for SQL transforms.
+    For each unproved postcondition, up to `counterexamples` small inputs are
+    tried for one that breaks it (`sverify.counterexample`); 0 skips that.
     """
     schemas = {
         name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
@@ -405,12 +419,8 @@ def verify(
     def table_ref(name: str) -> Transform:
         return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
 
-    req_plans = [
-        plan(condition_query(table_ref(t), c))
-        for t, cs in requires.items()
-        for c in cs
-        if not isinstance(c, Unique)
-    ]
+    req_conds = [(t, c) for t, cs in requires.items() for c in cs if not isinstance(c, Unique)]
+    req_plans = [plan(condition_query(table_ref(t), c)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, Unique):
@@ -452,6 +462,17 @@ def verify(
 
     rows = iter(out["ensures"])
     key_results = iter(out["keys"])
+    req_named = [(t, p) for (t, _), p in zip(req_conds, req_plans, strict=True)]
+    ens_iter = iter(ens_plans)
+    key_iter = iter(ensures_keys)
+
+    def find(target: dict | Sequence[int]) -> Counterexample | None:
+        if not counterexamples:
+            return None
+        return search_counterexample(
+            schemas, req_named, keys, transform_plan, target, budget=counterexamples
+        )
+
     checked = []
     for c in ensures:
         if isinstance(c, Unique):
@@ -463,10 +484,14 @@ def verify(
                 if out["deterministic"]
                 else "undetermined: rows may tie in a window's ORDER BY"
             )
-            checked.append(CheckedCondition(label(c), ok, value))
+            cols = next(key_iter)
+            cex = None if ok else find(cols)
+            checked.append(CheckedCondition(label(c), ok, value, cex))
         else:
             e = next(rows)
-            checked.append(CheckedCondition(e["name"], e["proved"], e["value"]))
+            p = next(ens_iter)
+            cex = None if e["proved"] else find(p)
+            checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
     return Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
@@ -567,7 +592,7 @@ def _prove_from(table: ir.Table, facts: Sequence[str], conds: Sequence[Condition
     key = (name, str(table.schema()), tuple(facts), tuple(label(c) for c in conds))
     if key not in _proved_from:
         try:
-            report = verify(table, requires={name: list(facts)}, ensures=conds)
+            report = verify(table, requires={name: list(facts)}, ensures=conds, counterexamples=0)
             _proved_from[key] = frozenset(c.label for c in report.ensures if c.proved)
         except Exception:
             _proved_from[key] = frozenset()
