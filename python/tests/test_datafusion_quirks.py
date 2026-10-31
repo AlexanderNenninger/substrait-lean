@@ -209,6 +209,7 @@ def test_lean_writes_the_current_fetch_fields(con):
     assert arrow_rows(run_substrait_json(con, plan)) == [(1,)]
 
 
+@pytest.mark.skipif(not FIXTURES.is_dir(), reason="the repository's tests/fixtures is not here")
 def test_lean_writes_virtual_tables_with_their_types(con):
     """A VirtualTable's `baseSchema` used to be placeholder `i64` columns,
     which DataFusion checks the rows against."""
