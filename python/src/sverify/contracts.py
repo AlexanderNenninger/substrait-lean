@@ -86,8 +86,8 @@ from sverify.engine import (
     checker_path,
     connect,
     create_table,
+    plan_json,
     run_plan,
-    substrait_json,
     to_sql,
     written_plan,
 )
@@ -341,14 +341,15 @@ def resolve(cond: Condition, table: ir.Table) -> ir.BooleanValue:
     return cond  # type: ignore[return-value]
 
 
-def condition_sql(table: Transform, cond: Condition) -> str:
-    """SQL selecting one condition column from a table or transformation."""
+def condition_query(table: Transform, cond: Condition) -> Transform:
+    """A query selecting one condition column from a table or transformation:
+    SQL for SQL conditions, an Ibis expression otherwise."""
     if isinstance(cond, str):
         source = table if isinstance(table, str) else to_sql(table)
         return f'SELECT ({cond}) AS "c" FROM ({source}) AS "t"'
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
-    return to_sql(table.select(c=resolve(cond, table)))
+    return table.select(c=resolve(cond, table))
 
 
 def verify(
@@ -374,14 +375,14 @@ def verify(
     for name, schema in schemas.items():
         create_table(con, name, schema)
 
-    def plan(sql: str) -> Any:
-        return json.loads(substrait_json(con, sql))
+    def plan(query: Transform) -> Any:
+        return json.loads(plan_json(con, query))
 
     def table_ref(name: str) -> Transform:
         return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
 
     req_plans = [
-        plan(condition_sql(table_ref(t), c))
+        plan(condition_query(table_ref(t), c))
         for t, cs in requires.items()
         for c in cs
         if not isinstance(c, Unique)
@@ -390,11 +391,10 @@ def verify(
     for c in ensures:
         if isinstance(c, Unique):
             continue
-        p = plan(condition_sql(transform, c))
+        p = plan(condition_query(transform, c))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
-    transform_sql = transform if isinstance(transform, str) else to_sql(transform)
-    transform_plan = plan(transform_sql)
+    transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
 
     def positions(cols: Sequence[str], names: Sequence[str]) -> list[int]:
@@ -465,7 +465,7 @@ def violations(table: ir.Table, cond: Condition, engine: Engine = "datafusion") 
     copies of the tables it reads."""
     if not isinstance(cond, Unique) and engine != "datafusion":
         bound: Any = ibis.get_backend(table)
-        plan = written_plan(substrait_json(bound, condition_sql(table, cond)))
+        plan = written_plan(plan_json(bound, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(bound, plan, engine).column(0).to_pylist())
     if isinstance(cond, Unique):
         total: Any = table.count()

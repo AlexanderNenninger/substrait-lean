@@ -128,6 +128,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .itos _ | .un .upper _ | .un .lower _ => .str
   | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
   | .un (.dateTrunc _) _ => .time
+  | .un .toDate _ => .date
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
@@ -533,6 +534,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
     if target == .int && k == .float then return .un .ftoi e
     if target == .str && k == .int then return .un .itos e
+    if target == .date && k == .time then return .un .toDate e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
   | ("singularOrList", l) =>

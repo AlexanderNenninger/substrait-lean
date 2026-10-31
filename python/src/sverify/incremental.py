@@ -48,12 +48,11 @@ from sverify.engine import (
     Backend,
     Engine,
     checker_path,
+    plan_json,
     put_table,
     read_tables,
     run_plan,
-    substrait_json,
     to_arrow,
-    to_sql,
     written_plan,
 )
 
@@ -132,9 +131,8 @@ class IncrementalView:
         pipeline: Pipeline | None = None,
     ):
         self.con, self.name, self.engine = con, name, engine
-        self.sql = query if isinstance(query, str) else to_sql(query)
         contract = None if isinstance(query, str) else view_contract(query)
-        plan = json.loads(substrait_json(con, self.sql))
+        plan = json.loads(plan_json(con, query))
         self.columns: list[str] = plan["relations"][0]["root"]["names"]
         self.tables = read_tables(plan)
         # Publishing the view would replace the table it is computed from.

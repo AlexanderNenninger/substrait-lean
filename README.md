@@ -209,8 +209,8 @@ How much of the Ibis API gets through, from
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
-| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · – rolling mean (interval) · ✗ ntile · ✗ first |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
+| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
@@ -481,7 +481,8 @@ There are no dependencies beyond Lean core (no Mathlib yet), so the build takes 
 ## Checking real plans
 
 `substrait-check plan.json` reads a Substrait plan in protobuf-JSON form, as
-produced by DataFusion's Substrait producer (Substrait 0.77). It then:
+produced by `sverify`'s Ibis producer or DataFusion's Substrait producer
+(Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
 2. decides `Rel.WF` with `checkWF`, which is proven equivalent (`checkWF_iff`), and
@@ -544,8 +545,8 @@ The query can be an Ibis expression or a SQL string.
 
 How it works:
 
-1. Ibis writes the query as DataFusion SQL, and DataFusion's Substrait producer
-   turns it into a plan.
+1. The query becomes a Substrait plan: an Ibis expression through the vendored
+   Ibis producer (below), a SQL string through DataFusion's Substrait producer.
 2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
    union-free terms (`Rel.terms`) and applies the weight-column encoding
    (`Rel.weighted`). It prints one Substrait plan per term, after checking each
@@ -570,9 +571,27 @@ registered as record batches, not datasets: DataFusion pushes filters into
 datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
 total order, which would make filters and projections disagree on NaN.
 
+### The Ibis producer
+
+Ibis expressions become Substrait directly, without SQL:
+`sverify/ibis_substrait` is [ibis-substrait](https://github.com/ibis-project/ibis-substrait)
+(Apache 2.0, last released for Ibis 9), vendored and ported to Ibis 12. It
+writes the functions and encodings the Lean parser reads, and each operation
+means what Ibis's own DataFusion SQL compiler makes of it, with Ibis's type
+promotions written as explicit casts. That makes plans typed: `qty > amount`
+compares as doubles, where DataFusion's producer (from its unanalysed plan)
+left an integer next to a double's code (#16). Upstream's mistakes are fixed
+(integer `/` divided integers, `where=` filters were dropped, sorts were always
+`NULLS FIRST`, promotions could cast a double down to an integer, timestamp
+literals were read in local time), and anything outside the model raises
+`Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
+coverage case against DataFusion running Ibis's SQL on random tables.
+
+SQL strings still go through DataFusion's producer.
+
 ### Engines
 
-Plans always come from DataFusion's Substrait producer, but they can run on
+Plans come from the Ibis producer or DataFusion's Substrait producer, and they can run on
 DataFusion, [Polars](https://pola.rs) or DuckDB (below). Pass `engine="polars"` to
 `IncrementalView` or `sv.run_plan(con, plan, "polars")`. The tables stay in
 `con` and are handed to Polars as Arrow. The point is differential testing,
