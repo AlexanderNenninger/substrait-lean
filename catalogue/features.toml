@@ -1,0 +1,107 @@
+# The operators and features a catalogued query may need.
+#
+# `lean` is what the Lean model and `substrait-check` cover today, found by
+# probing (`sverify.coverage` and the catalogue's own probes), not by reading:
+#   yes      the checker parses it and `Rel.eval` gives it SQL's meaning;
+#   partial  some forms only (the note says which);
+#   no       the checker rejects it, or DataFusion cannot produce a plan.
+# `tests/test_catalogue.py` keeps these honest: a verified query may not need a
+# `no` feature, and a refused one must need some feature that is not `yes`.
+
+[relational]
+filter = { lean = "yes", description = "WHERE on base rows" }
+project = { lean = "yes", description = "computed columns, renames, column pruning" }
+inner_join = { lean = "yes", description = "equi inner join" }
+left_join = { lean = "yes", description = "left (or right) outer join" }
+full_join = { lean = "yes", description = "full outer join", note = "parsed as a union of left join and anti join" }
+semi_join = { lean = "yes", description = "semi join, IN (subquery), EXISTS as a join" }
+anti_join = { lean = "yes", description = "anti join, NOT EXISTS as a join" }
+cross_join = { lean = "yes", description = "cartesian product" }
+non_equi_join = { lean = "partial", description = "join on <, <=, BETWEEN of the two sides", note = "integers and timestamps only: string < is NULL in the model, so engines refuse it" }
+self_join = { lean = "yes", description = "a table joined with itself" }
+multi_join = { lean = "yes", description = "four or more tables joined (star or snowflake schema)" }
+asof_join = { lean = "yes", description = "latest right row at or before each left row", note = "sverify.asof_join: range join + ROW_NUMBER; DataFusion has no native ASOF" }
+range_join = { lean = "yes", description = "join on a value lying between two columns (SCD2 validity, intervals)" }
+union_all = { lean = "yes", description = "UNION ALL" }
+union_distinct = { lean = "yes", description = "UNION (distinct)" }
+intersect_except = { lean = "yes", description = "INTERSECT / EXCEPT" }
+distinct = { lean = "yes", description = "SELECT DISTINCT" }
+values = { lean = "yes", description = "inline VALUES table" }
+order_by = { lean = "yes", description = "ORDER BY in the result" }
+limit = { lean = "yes", description = "LIMIT / top-N after a sort" }
+offset = { lean = "yes", description = "OFFSET (pagination)" }
+cte = { lean = "yes", description = "non-recursive WITH (inlined)" }
+recursive_cte = { lean = "no", description = "WITH RECURSIVE", note = "DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model" }
+in_subquery = { lean = "yes", description = "x IN (SELECT …)" }
+not_in_subquery = { lean = "no", description = "x NOT IN (SELECT …), with its NULL semantics", note = "refused: DataFusion gets NULLs in the subquery wrong" }
+exists_subquery = { lean = "no", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "DataFusion's Substrait producer cannot convert Exists" }
+scalar_subquery = { lean = "no", description = "uncorrelated scalar subquery (x > (SELECT avg …))", note = "DataFusion's Substrait producer cannot convert it; rewrite as a cross join with a one-row aggregate" }
+correlated_subquery = { lean = "no", description = "correlated scalar subquery", note = "as scalar_subquery; rewrite as a join with a grouped aggregate" }
+unnest = { lean = "no", description = "UNNEST / explode of lists", note = "DataFusion's Substrait producer has no Unnest" }
+pivot = { lean = "yes", description = "pivot with a fixed list of values (conditional aggregates)", note = "Ibis pivot_wider compiles to first_value, which is refused; write it as sum/max with where=" }
+unpivot = { lean = "partial", description = "unpivot / melt", note = "as a UNION ALL of projections only; Ibis pivot_longer compiles to UNNEST" }
+generate_series = { lean = "partial", description = "generate a spine of numbers or dates", note = "constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table" }
+
+[aggregation]
+group_by = { lean = "yes", description = "GROUP BY with aggregates" }
+global_aggregate = { lean = "yes", description = "aggregate over the whole input (one row, also when empty)" }
+count = { lean = "yes", description = "COUNT(*) / COUNT(x)" }
+sum = { lean = "yes", description = "SUM of integers or doubles", note = "SUM of DECIMAL is refused, see decimal" }
+avg = { lean = "yes", description = "AVG" }
+min_max = { lean = "partial", description = "MIN / MAX", note = "integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused" }
+count_distinct = { lean = "yes", description = "COUNT(DISTINCT x)" }
+agg_filter = { lean = "yes", description = "conditional aggregate: FILTER (WHERE …) or SUM(CASE …)" }
+having = { lean = "yes", description = "HAVING" }
+grouping_sets = { lean = "no", description = "ROLLUP / CUBE / GROUPING SETS" }
+stddev_var = { lean = "no", description = "STDDEV / VARIANCE" }
+corr = { lean = "no", description = "CORR / COVAR / REGR_*" }
+percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "Ibis cannot even compile quantile for DataFusion" }
+approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }
+string_agg = { lean = "no", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect" }
+arg_max = { lean = "no", description = "ARG_MAX / first or last value of a group, ordered aggregates", note = "first_value aggregates are refused" }
+bool_agg = { lean = "no", description = "BOOL_AND / BOOL_OR / EVERY" }
+
+[windows]
+row_number = { lean = "yes", description = "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)" }
+lag_lead = { lean = "yes", description = "LAG / LEAD" }
+rank = { lean = "no", description = "RANK / DENSE_RANK" }
+ntile = { lean = "no", description = "NTILE / PERCENT_RANK / CUME_DIST" }
+first_last_value = { lean = "no", description = "FIRST_VALUE / LAST_VALUE / NTH_VALUE over a window" }
+window_partition_agg = { lean = "no", description = "aggregate over a whole partition (SUM(x) OVER (PARTITION BY g)), incl. percent of total" }
+running_agg = { lean = "no", description = "running aggregate (ROWS/RANGE UNBOUNDED PRECEDING to CURRENT ROW)" }
+rows_frame = { lean = "no", description = "bounded ROWS frame (moving average over n rows)" }
+range_frame = { lean = "no", description = "RANGE frame over an interval (last 7 days)" }
+window_over_aggregate = { lean = "yes", description = "window over a grouped result (LAG of a monthly sum, SUM(SUM(x)) OVER ())", note = "the plan shape is fine; the window function itself must be supported" }
+qualify = { lean = "yes", description = "filter on a window result (QUALIFY, or a subquery)" }
+dedup_latest = { lean = "yes", description = "keep one row per key, the latest (ROW_NUMBER = 1)" }
+
+[expressions]
+arithmetic_int = { lean = "yes", description = "+ - * on integers" }
+arithmetic_float = { lean = "yes", description = "+ - * / on doubles" }
+integer_division = { lean = "yes", description = "integer / or % (truncating), or Ibis floor //" }
+decimal = { lean = "no", description = "DECIMAL(p, s) columns and arithmetic", note = "Values are refused (\"cast them to DOUBLE\"), SUM of DECIMAL too; the catalogue also probes each such query with DOUBLE in their place" }
+case_when = { lean = "yes", description = "CASE WHEN / ifelse" }
+coalesce_nullif = { lean = "yes", description = "COALESCE / NULLIF / fill_null" }
+in_list = { lean = "yes", description = "x IN (literal list)" }
+between = { lean = "yes", description = "BETWEEN" }
+cast_numeric = { lean = "yes", description = "casts between integer, double and string" }
+cast_date = { lean = "partial", description = "casts of dates and timestamps", note = "string → date literal yes; date → string no" }
+like = { lean = "yes", description = "LIKE / NOT LIKE / contains / startswith" }
+regex_match = { lean = "yes", description = "regular-expression match" }
+regex_replace = { lean = "no", description = "REGEXP_REPLACE / REGEXP_EXTRACT" }
+string_basic = { lean = "yes", description = "substr, upper, lower, length, concat, trim, strpos" }
+string_split = { lean = "no", description = "SPLIT_PART / CONCAT_WS / string split" }
+string_compare = { lean = "partial", description = "<, > on strings (also MIN/MAX of strings)", note = "MIN/MAX yes; < and > are NULL in the model, and every engine refuses them" }
+math_funcs = { lean = "yes", description = "round, floor, ceil, abs, power, greatest, least" }
+hash = { lean = "no", description = "MD5 / hashing (surrogate keys)" }
+date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "Ibis's ibis.date('…') compiles to DATE_TRUNC('DAY', '…'), which the checker refuses; the catalogue writes ibis.literal('…').cast('date')" }
+date_part = { lean = "partial", description = "EXTRACT(year / month / dow … FROM x)", note = "timestamps only; EPOCH and DATE columns refused" }
+time_bucket = { lean = "no", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "Ibis cannot compile TimestampBucket for DataFusion; DATE_BIN is refused by the checker" }
+date_trunc = { lean = "partial", description = "DATE_TRUNC / truncate", note = "timestamps only" }
+interval_day_time = { lean = "yes", description = "x ± INTERVAL in days, hours, minutes" }
+dynamic_interval = { lean = "no", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "Ibis as_interval compiles to CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), refused as a string cast" }
+interval_month = { lean = "no", description = "x ± INTERVAL in months or years", note = "\"month and year intervals are not supported\"" }
+date_diff = { lean = "yes", description = "difference of two dates or timestamps" }
+epoch = { lean = "no", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "unsupported date part 'EPOCH'" }
+timezone = { lean = "no", description = "time zones (AT TIME ZONE, tz-aware timestamps)" }
+json = { lean = "no", description = "JSON / semi-structured extraction" }

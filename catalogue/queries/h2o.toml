@@ -1,0 +1,127 @@
+# H2O.ai db-benchmark (maintained as duckdblabs/db-benchmark): the groupby and
+# join questions dataframe libraries are compared on. Questions paraphrased
+# from the benchmark's scripts (MPL-2.0); the Ibis expressions are our own.
+dataset = "h2o"
+
+[[query]]
+id = "h2o-groupby-q1"
+title = "H2O groupby q1: sum v1 by id1"
+intent = "Sum a measure per value of a low-cardinality string key."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q1", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["group_by", "sum"]
+ibis = '''
+q = x.group_by("id1").aggregate(v1=_.v1.sum())
+'''
+
+[[query]]
+id = "h2o-groupby-q3"
+title = "H2O groupby q3: sum v1, mean v3 by id3"
+intent = "Sum one measure and average another per value of a high-cardinality string key."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q3", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["group_by", "sum", "avg"]
+pitfalls = ["float_sum_order: the mean of doubles depends on the summation order"]
+ibis = '''
+q = x.group_by("id3").aggregate(v1=_.v1.sum(), v3=_.v3.mean())
+'''
+
+[[query]]
+id = "h2o-groupby-q6"
+title = "H2O groupby q6: median and standard deviation of v3 by id4, id5"
+intent = "Compute the median and standard deviation of a measure per pair of integer keys."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q6", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["group_by", "percentile", "stddev_var"]
+pitfalls = ["percentile_method: median of an even count interpolates in SQL (PERCENTILE_CONT), not with Polars' default", "float_sum_order: stddev is order-sensitive"]
+ibis = '''
+q = x.group_by(["id4", "id5"]).aggregate(median_v3=_.v3.median(), sd_v3=_.v3.std())
+'''
+
+[[query]]
+id = "h2o-groupby-q7"
+title = "H2O groupby q7: max v1 minus min v2 by id3"
+intent = "Compute the range between one measure's maximum and another's minimum per key."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q7", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["group_by", "min_max", "project", "arithmetic_int"]
+ibis = '''
+q = x.group_by("id3").aggregate(mx=_.v1.max(), mn=_.v2.min()).select("id3", range_v1_v2=_.mx - _.mn)
+'''
+
+[[query]]
+id = "h2o-groupby-q8"
+title = "H2O groupby q8: largest two v3 by id6"
+intent = "Keep the two largest values of a measure per key."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q8", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["row_number", "qualify", "filter", "project"]
+pitfalls = ["tie_order: two equal largest values: which rows are kept is unspecified, though the values are not", "null_ordering: v3 DESC puts NULLs first in DataFusion; the benchmark drops NULLs first", "float_nan: NaN sorts above every number in DataFusion and DuckDB"]
+ibis = '''
+w = ibis.window(group_by="id6", order_by=ibis.desc("v3"))
+q = (
+    x.filter(x.v3.notnull())
+    .mutate(rn=ibis.row_number().over(w))
+    .filter(_.rn < 2)
+    .select("id6", largest2_v3=_.v3)
+)
+'''
+
+[[query]]
+id = "h2o-groupby-q9"
+title = "H2O groupby q9: squared correlation of v1 and v2 by id2, id4"
+intent = "Compute the squared Pearson correlation of two measures per pair of keys."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q9", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["group_by", "corr", "math_funcs"]
+pitfalls = ["division_by_zero: a group with constant v1 has no correlation (NULL or NaN by engine)"]
+ibis = '''
+q = x.group_by(["id2", "id4"]).aggregate(r2=_.v1.corr(_.v2) ** 2)
+'''
+
+[[query]]
+id = "h2o-groupby-q10"
+title = "H2O groupby q10: sum and count by six keys"
+intent = "Sum a measure and count rows per combination of all six keys (almost one group per row)."
+domain = "benchmark"
+source = { name = "db-benchmark groupby q10", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
+features = ["group_by", "sum", "count"]
+pitfalls = ["null_join_keys: NULL keys form their own group in GROUP BY"]
+ibis = '''
+q = x.group_by(["id1", "id2", "id3", "id4", "id5", "id6"]).aggregate(v3=_.v3.sum(), count=_.count())
+'''
+
+[[query]]
+id = "h2o-join-q1"
+title = "H2O join q1: inner join with a small table on an integer key"
+intent = "Attach a small dimension's measure to every matching fact row."
+domain = "benchmark"
+source = { name = "db-benchmark join q1", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py", licence = "MPL-2.0" }
+features = ["inner_join"]
+pitfalls = ["null_join_keys: NULL keys never match"]
+ibis = '''
+q = xj.join(small, "id1")
+'''
+
+[[query]]
+id = "h2o-join-q3"
+title = "H2O join q3: left join with a medium table"
+intent = "Attach a medium-sized dimension's measure to every fact row, keeping rows without a match."
+domain = "benchmark"
+source = { name = "db-benchmark join q3", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py", licence = "MPL-2.0" }
+features = ["left_join"]
+pitfalls = ["null_join_keys: Polars matches NULL keys only with nulls_equal=True; pandas merge matches NaN keys"]
+ibis = '''
+q = xj.left_join(medium, "id2")
+'''
+
+[[query]]
+id = "h2o-join-q5"
+title = "H2O join q5: inner join on a string key"
+intent = "Join the fact table with a dimension on a factor (string) key."
+domain = "benchmark"
+source = { name = "db-benchmark join q5", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py", licence = "MPL-2.0" }
+features = ["inner_join"]
+ibis = '''
+q = xj.join(medium, xj.id5 == medium.id5)
+'''

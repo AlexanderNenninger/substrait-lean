@@ -1,0 +1,575 @@
+# TPC-H: the 22 queries of the decision-support benchmark every engine reports.
+# Intent paraphrased from the TPC-H specification v3.0.1 (TPC EULA); the Ibis
+# expressions are our own, with the spec's validation parameters. Ibis's own
+# versions (Apache-2.0) are at
+# https://github.com/ibis-project/ibis/blob/main/ibis/backends/tests/tpc/h/test_queries.py
+dataset = "tpch"
+
+[[query]]
+id = "tpch-q01"
+title = "TPC-H Q1: pricing summary report"
+intent = "Summarise billed, shipped and returned business per return flag and line status up to a cut-off date."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q1", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "group_by", "sum", "avg", "count", "order_by", "decimal", "date_literal", "interval_day_time", "arithmetic_float"]
+pitfalls = ["decimal_scale: sum(price * (1 - discount) * (1 + tax)) needs DECIMAL(38, 6) and AVG's scale differs between engines", "float_sum_order: as DOUBLE the sums differ in the last digits"]
+ibis = '''
+li = lineitem
+q = (
+    li.filter(li.l_shipdate <= D("1998-12-01") - ibis.interval(days=90))
+    .group_by(["l_returnflag", "l_linestatus"])
+    .aggregate(
+        sum_qty=_.l_quantity.sum(),
+        sum_base_price=_.l_extendedprice.sum(),
+        sum_disc_price=(_.l_extendedprice * (1 - _.l_discount)).sum(),
+        sum_charge=(_.l_extendedprice * (1 - _.l_discount) * (1 + _.l_tax)).sum(),
+        avg_qty=_.l_quantity.mean(),
+        avg_price=_.l_extendedprice.mean(),
+        avg_disc=_.l_discount.mean(),
+        count_order=_.count(),
+    )
+    .order_by(["l_returnflag", "l_linestatus"])
+)
+'''
+
+[[query]]
+id = "tpch-q02"
+title = "TPC-H Q2: minimum cost supplier"
+intent = "For each brass part of a given size, find the European supplier offering it at the lowest supply cost."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q2", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "group_by", "min_max", "like", "order_by", "limit", "decimal"]
+rewrites = ["correlated_subquery -> join with the minimum cost per part"]
+pitfalls = ["tie_order: LIMIT 100 after ORDER BY s_acctbal DESC, n_name, s_name, p_partkey; ties are possible only on duplicate keys", "null_ordering: s_acctbal DESC puts NULLs first in DataFusion, last in DuckDB"]
+ibis = '''
+eu = (
+    partsupp.join(supplier, partsupp.ps_suppkey == supplier.s_suppkey)
+    .join(nation, supplier.s_nationkey == nation.n_nationkey)
+    .join(region, nation.n_regionkey == region.r_regionkey)
+    .filter(_.r_name == "EUROPE")
+)
+best = eu.group_by("ps_partkey").aggregate(min_cost=_.ps_supplycost.min())
+parts = part.filter((part.p_size == 15) & part.p_type.endswith("BRASS"))
+j = parts.join(eu, parts.p_partkey == eu.ps_partkey)
+j = j.join(best, (j.ps_partkey == best.ps_partkey) & (j.ps_supplycost == best.min_cost))
+q = (
+    j.select("s_acctbal", "s_name", "n_name", "p_partkey", "p_mfgr", "s_address", "s_phone", "s_comment")
+    .order_by([ibis.desc("s_acctbal"), "n_name", "s_name", "p_partkey"])
+    .limit(100)
+)
+'''
+
+[[query]]
+id = "tpch-q03"
+title = "TPC-H Q3: shipping priority"
+intent = "List the ten unshipped orders of a market segment with the highest revenue as of a date."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q3", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "group_by", "sum", "order_by", "limit", "decimal", "date_literal"]
+pitfalls = ["tie_order: top 10 by revenue DESC, o_orderdate; equal revenues on the same date tie"]
+ibis = '''
+j = (
+    customer.filter(customer.c_mktsegment == "BUILDING")
+    .join(orders, customer.c_custkey == orders.o_custkey)
+    .join(lineitem, orders.o_orderkey == lineitem.l_orderkey)
+    .filter((_.o_orderdate < D("1995-03-15")) & (_.l_shipdate > D("1995-03-15")))
+)
+q = (
+    j.group_by(["l_orderkey", "o_orderdate", "o_shippriority"])
+    .aggregate(revenue=(_.l_extendedprice * (1 - _.l_discount)).sum())
+    .order_by([ibis.desc("revenue"), "o_orderdate"])
+    .limit(10)
+)
+'''
+
+[[query]]
+id = "tpch-q04"
+title = "TPC-H Q4: order priority checking"
+intent = "Count, per order priority, the orders of a quarter in which some line arrived after its committed date."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q4", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "semi_join", "group_by", "count", "order_by", "date_literal", "interval_month"]
+rewrites = ["exists_subquery -> semi join"]
+ibis = '''
+late = lineitem.filter(lineitem.l_commitdate < lineitem.l_receiptdate)
+start = D("1993-07-01")
+o = orders.filter((orders.o_orderdate >= start) & (orders.o_orderdate < start + ibis.interval(months=3)))
+q = (
+    o.semi_join(late, o.o_orderkey == late.l_orderkey)
+    .group_by("o_orderpriority")
+    .aggregate(order_count=_.count())
+    .order_by("o_orderpriority")
+)
+'''
+
+[[query]]
+id = "tpch-q05"
+title = "TPC-H Q5: local supplier volume"
+intent = "Rank the nations of a region by revenue from orders where customer and supplier are in the same nation, over one year."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q5", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "order_by", "decimal", "date_literal", "interval_month"]
+ibis = '''
+start = D("1994-01-01")
+j = (
+    customer.join(orders, customer.c_custkey == orders.o_custkey)
+    .join(lineitem, orders.o_orderkey == lineitem.l_orderkey)
+    .join(supplier, (lineitem.l_suppkey == supplier.s_suppkey) & (customer.c_nationkey == supplier.s_nationkey))
+    .join(nation, supplier.s_nationkey == nation.n_nationkey)
+    .join(region, nation.n_regionkey == region.r_regionkey)
+    .filter(
+        (_.r_name == "ASIA")
+        & (_.o_orderdate >= start)
+        & (_.o_orderdate < start + ibis.interval(years=1))
+    )
+)
+q = (
+    j.group_by("n_name")
+    .aggregate(revenue=(_.l_extendedprice * (1 - _.l_discount)).sum())
+    .order_by(ibis.desc("revenue"))
+)
+'''
+
+[[query]]
+id = "tpch-q06"
+title = "TPC-H Q6: forecasting revenue change"
+intent = "Total the revenue a year of small, mid-discount shipments brought in through their discount."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q6", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "global_aggregate", "sum", "between", "decimal", "date_literal", "interval_month"]
+pitfalls = ["empty_aggregate: one row with NULL revenue when no line qualifies", "decimal_scale: 0.06 - 0.01 BETWEEN bounds are exact only as DECIMAL; as DOUBLE 0.05 and 0.07 may fall outside"]
+ibis = '''
+li = lineitem
+start = D("1994-01-01")
+q = li.filter(
+    (li.l_shipdate >= start)
+    & (li.l_shipdate < start + ibis.interval(years=1))
+    & li.l_discount.between(0.05, 0.07)
+    & (li.l_quantity < 24)
+).aggregate(revenue=(_.l_extendedprice * _.l_discount).sum())
+'''
+
+[[query]]
+id = "tpch-q07"
+title = "TPC-H Q7: volume shipping"
+intent = "Show the yearly value of goods shipped between two nations, in both directions."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q7", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "self_join", "group_by", "sum", "between", "order_by", "decimal", "date_literal", "date_part"]
+pitfalls = ["implicit_coercion: EXTRACT(YEAR FROM date) returns a double in some engines (DataFusion), an integer in others"]
+ibis = '''
+n1, n2 = nation, nation.view()
+j = (
+    supplier.join(lineitem, supplier.s_suppkey == lineitem.l_suppkey)
+    .join(orders, orders.o_orderkey == lineitem.l_orderkey)
+    .join(customer, customer.c_custkey == orders.o_custkey)
+    .join(n1, supplier.s_nationkey == n1.n_nationkey)
+    .join(n2, customer.c_nationkey == n2.n_nationkey)
+    .select(
+        supp_nation=n1.n_name,
+        cust_nation=n2.n_name,
+        l_shipdate=lineitem.l_shipdate,
+        volume=lineitem.l_extendedprice * (1 - lineitem.l_discount),
+    )
+)
+pairs = ((j.supp_nation == "FRANCE") & (j.cust_nation == "GERMANY")) | (
+    (j.supp_nation == "GERMANY") & (j.cust_nation == "FRANCE")
+)
+q = (
+    j.filter(pairs & j.l_shipdate.between(D("1995-01-01"), D("1996-12-31")))
+    .mutate(l_year=_.l_shipdate.year())
+    .group_by(["supp_nation", "cust_nation", "l_year"])
+    .aggregate(revenue=_.volume.sum())
+    .order_by(["supp_nation", "cust_nation", "l_year"])
+)
+'''
+
+[[query]]
+id = "tpch-q08"
+title = "TPC-H Q8: national market share"
+intent = "Compute a nation's yearly share of a region's revenue for one part type."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q8", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "self_join", "group_by", "sum", "agg_filter", "case_when", "between", "order_by", "decimal", "date_literal", "date_part", "arithmetic_float"]
+pitfalls = ["division_by_zero: the share divides by the year's total volume, which is non-zero only if the year has rows (it does, since grouping makes the group)", "decimal_scale: DECIMAL / DECIMAL scale differs between engines"]
+ibis = '''
+n1, n2 = nation, nation.view()
+j = (
+    part.join(lineitem, part.p_partkey == lineitem.l_partkey)
+    .join(supplier, supplier.s_suppkey == lineitem.l_suppkey)
+    .join(orders, lineitem.l_orderkey == orders.o_orderkey)
+    .join(customer, orders.o_custkey == customer.c_custkey)
+    .join(n1, customer.c_nationkey == n1.n_nationkey)
+    .join(region, n1.n_regionkey == region.r_regionkey)
+    .join(n2, supplier.s_nationkey == n2.n_nationkey)
+    .filter(
+        (region.r_name == "AMERICA")
+        & orders.o_orderdate.between(D("1995-01-01"), D("1996-12-31"))
+        & (part.p_type == "ECONOMY ANODIZED STEEL")
+    )
+    .select(
+        o_year=orders.o_orderdate.year(),
+        volume=lineitem.l_extendedprice * (1 - lineitem.l_discount),
+        nation=n2.n_name,
+    )
+)
+q = (
+    j.group_by("o_year")
+    .aggregate(
+        brazil=ibis.ifelse(j.nation == "BRAZIL", j.volume, 0).sum(),
+        total=j.volume.sum(),
+    )
+    .mutate(mkt_share=_.brazil / _.total)
+    .select("o_year", "mkt_share")
+    .order_by("o_year")
+)
+'''
+
+[[query]]
+id = "tpch-q09"
+title = "TPC-H Q9: product type profit measure"
+intent = "Compute profit per nation and year for parts whose name contains a colour."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q9", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "like", "order_by", "decimal", "date_part", "arithmetic_float"]
+ibis = '''
+j = (
+    lineitem.join(supplier, supplier.s_suppkey == lineitem.l_suppkey)
+    .join(partsupp, (partsupp.ps_suppkey == lineitem.l_suppkey) & (partsupp.ps_partkey == lineitem.l_partkey))
+    .join(part, part.p_partkey == lineitem.l_partkey)
+    .join(orders, orders.o_orderkey == lineitem.l_orderkey)
+    .join(nation, supplier.s_nationkey == nation.n_nationkey)
+    .filter(part.p_name.contains("green"))
+    .select(
+        nation=nation.n_name,
+        o_year=orders.o_orderdate.year(),
+        amount=lineitem.l_extendedprice * (1 - lineitem.l_discount)
+        - partsupp.ps_supplycost * lineitem.l_quantity,
+    )
+)
+q = (
+    j.group_by(["nation", "o_year"])
+    .aggregate(sum_profit=_.amount.sum())
+    .order_by(["nation", ibis.desc("o_year")])
+)
+'''
+
+[[query]]
+id = "tpch-q10"
+title = "TPC-H Q10: returned item reporting"
+intent = "List the 20 customers whose returned items in a quarter lost the most revenue."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q10", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "order_by", "limit", "decimal", "date_literal", "interval_month"]
+pitfalls = ["tie_order: top 20 by revenue only"]
+ibis = '''
+start = D("1993-10-01")
+j = (
+    customer.join(orders, customer.c_custkey == orders.o_custkey)
+    .join(lineitem, lineitem.l_orderkey == orders.o_orderkey)
+    .join(nation, customer.c_nationkey == nation.n_nationkey)
+    .filter(
+        (_.o_orderdate >= start)
+        & (_.o_orderdate < start + ibis.interval(months=3))
+        & (_.l_returnflag == "R")
+    )
+)
+q = (
+    j.group_by(["c_custkey", "c_name", "c_acctbal", "c_phone", "n_name", "c_address", "c_comment"])
+    .aggregate(revenue=(_.l_extendedprice * (1 - _.l_discount)).sum())
+    .order_by(ibis.desc("revenue"))
+    .limit(20)
+)
+'''
+
+[[query]]
+id = "tpch-q11"
+title = "TPC-H Q11: important stock identification"
+intent = "Find the parts whose stock value in one nation exceeds a fixed fraction of that nation's total stock value."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q11", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "cross_join", "group_by", "global_aggregate", "sum", "having", "order_by", "decimal"]
+rewrites = ["scalar_subquery -> cross join with the one-row total"]
+ibis = '''
+de = (
+    partsupp.join(supplier, partsupp.ps_suppkey == supplier.s_suppkey)
+    .join(nation, nation.n_nationkey == supplier.s_nationkey)
+    .filter(_.n_name == "GERMANY")
+    .mutate(value=_.ps_supplycost * _.ps_availqty)
+)
+total = de.aggregate(threshold=de.value.sum() * 0.0001)
+per_part = de.group_by("ps_partkey").aggregate(part_value=_.value.sum())
+q = (
+    per_part.cross_join(total)
+    .filter(_.part_value > _.threshold)
+    .select("ps_partkey", "part_value")
+    .order_by(ibis.desc("part_value"))
+)
+'''
+notes = "The natural Ibis formulation, `per_part.filter(_.part_value > de.value.sum() * 0.0001)`, is silently wrong: Ibis dereferences `de.value.sum()` to the aggregate's own `part_value` column (it is the same expression), so the filter compares each part with itself. The one-row total is cross-joined instead, which is also what a scalar subquery needs to become for the checker."
+
+[[query]]
+id = "tpch-q12"
+title = "TPC-H Q12: shipping modes and order priority"
+intent = "Count, per shipping mode, the late lines of high- and low-priority orders received in one year."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q12", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "group_by", "sum", "agg_filter", "case_when", "in_list", "order_by", "date_literal", "interval_month"]
+ibis = '''
+start = D("1994-01-01")
+j = orders.join(lineitem, orders.o_orderkey == lineitem.l_orderkey).filter(
+    _.l_shipmode.isin(["MAIL", "SHIP"])
+    & (_.l_commitdate < _.l_receiptdate)
+    & (_.l_shipdate < _.l_commitdate)
+    & (_.l_receiptdate >= start)
+    & (_.l_receiptdate < start + ibis.interval(years=1))
+)
+high = j.o_orderpriority.isin(["1-URGENT", "2-HIGH"])
+q = (
+    j.group_by("l_shipmode")
+    .aggregate(
+        high_line_count=ibis.ifelse(high, 1, 0).sum(),
+        low_line_count=ibis.ifelse(~high, 1, 0).sum(),
+    )
+    .order_by("l_shipmode")
+)
+'''
+
+[[query]]
+id = "tpch-q13"
+title = "TPC-H Q13: customer distribution"
+intent = "Show how many customers have placed each number of (non-complaint) orders, including customers with none."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q13", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["left_join", "like", "group_by", "count", "order_by"]
+pitfalls = ["null_aggregate: COUNT(o_orderkey) counts 0 for customers without orders; COUNT(*) would count 1", "like_escape: the pattern '%special%requests%' has no escapes but crosses word boundaries"]
+ibis = '''
+o = orders.filter(~orders.o_comment.like("%special%requests%"))
+counts = (
+    customer.left_join(o, customer.c_custkey == o.o_custkey)
+    .group_by("c_custkey")
+    .aggregate(c_count=_.o_orderkey.count())
+)
+q = (
+    counts.group_by("c_count")
+    .aggregate(custdist=_.count())
+    .order_by([ibis.desc("custdist"), ibis.desc("c_count")])
+)
+'''
+
+[[query]]
+id = "tpch-q14"
+title = "TPC-H Q14: promotion effect"
+intent = "Compute the percentage of a month's revenue that came from promotional parts."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q14", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "global_aggregate", "sum", "agg_filter", "case_when", "like", "decimal", "date_literal", "interval_month", "arithmetic_float"]
+pitfalls = ["division_by_zero: no qualifying line makes the denominator NULL, not zero, so the result is NULL", "empty_aggregate: one row even for an empty month"]
+ibis = '''
+start = D("1995-09-01")
+j = lineitem.join(part, lineitem.l_partkey == part.p_partkey).filter(
+    (_.l_shipdate >= start) & (_.l_shipdate < start + ibis.interval(months=1))
+)
+rev = j.l_extendedprice * (1 - j.l_discount)
+q = j.aggregate(
+    promo_revenue=100.0 * ibis.ifelse(j.p_type.startswith("PROMO"), rev, 0).sum() / rev.sum()
+)
+'''
+
+[[query]]
+id = "tpch-q15"
+title = "TPC-H Q15: top supplier"
+intent = "Find the supplier(s) with the highest revenue in a quarter, ties included."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q15", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "group_by", "sum", "cte", "scalar_subquery", "order_by", "decimal", "date_literal", "interval_month"]
+pitfalls = ["float_sum_order: as DOUBLE, equality with the maximum is fragile only if the two sums are computed differently"]
+ibis = '''
+start = D("1996-01-01")
+revenue = (
+    lineitem.filter((_.l_shipdate >= start) & (_.l_shipdate < start + ibis.interval(months=3)))
+    .group_by(supplier_no=_.l_suppkey)
+    .aggregate(total_revenue=(_.l_extendedprice * (1 - _.l_discount)).sum())
+)
+j = supplier.join(revenue, supplier.s_suppkey == revenue.supplier_no)
+q = (
+    j.filter(j.total_revenue == revenue.total_revenue.max())
+    .select("s_suppkey", "s_name", "s_address", "s_phone", "total_revenue")
+    .order_by("s_suppkey")
+)
+'''
+
+[[query]]
+id = "tpch-q16"
+title = "TPC-H Q16: parts/supplier relationship"
+intent = "Count the suppliers without complaints who can supply parts of given sizes, brands and types."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q16", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "not_in_subquery", "group_by", "count_distinct", "like", "in_list", "order_by"]
+pitfalls = ["not_in_null: a NULL s_suppkey among complaining suppliers would empty the result under SQL semantics"]
+ibis = '''
+complaints = supplier.filter(supplier.s_comment.like("%Customer%Complaints%"))
+q = (
+    partsupp.join(part, part.p_partkey == partsupp.ps_partkey)
+    .filter(
+        (_.p_brand != "Brand#45")
+        & ~_.p_type.like("MEDIUM POLISHED%")
+        & _.p_size.isin([49, 14, 23, 45, 19, 3, 36, 9])
+        & ~_.ps_suppkey.isin(complaints.s_suppkey)
+    )
+    .group_by(["p_brand", "p_type", "p_size"])
+    .aggregate(supplier_cnt=_.ps_suppkey.nunique())
+    .order_by([ibis.desc("supplier_cnt"), "p_brand", "p_type", "p_size"])
+)
+'''
+
+[[query]]
+id = "tpch-q17"
+title = "TPC-H Q17: small-quantity-order revenue"
+intent = "Estimate the yearly revenue lost if small orders (under a fifth of a part's average quantity) were no longer taken."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q17", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "group_by", "avg", "global_aggregate", "sum", "decimal", "arithmetic_float"]
+rewrites = ["correlated_subquery -> join with the average quantity per part"]
+ibis = '''
+avg_qty = lineitem.group_by(k=lineitem.l_partkey).aggregate(avg_qty=_.l_quantity.mean())
+p = part.filter((part.p_brand == "Brand#23") & (part.p_container == "MED BOX"))
+j = (
+    lineitem.join(p, lineitem.l_partkey == p.p_partkey)
+    .join(avg_qty, lineitem.l_partkey == avg_qty.k)
+    .filter(_.l_quantity < 0.2 * _.avg_qty)
+)
+q = j.aggregate(avg_yearly=j.l_extendedprice.sum() / 7.0)
+'''
+
+[[query]]
+id = "tpch-q18"
+title = "TPC-H Q18: large volume customer"
+intent = "List the top 100 customers' orders whose total quantity exceeds a threshold."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q18", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["inner_join", "in_subquery", "group_by", "having", "sum", "order_by", "limit", "decimal"]
+pitfalls = ["tie_order: top 100 by o_totalprice DESC, o_orderdate"]
+ibis = '''
+big = lineitem.group_by("l_orderkey").aggregate(qty=_.l_quantity.sum()).filter(_.qty > 30)
+j = (
+    customer.join(orders, customer.c_custkey == orders.o_custkey)
+    .join(lineitem, orders.o_orderkey == lineitem.l_orderkey)
+    .filter(_.o_orderkey.isin(big.l_orderkey))
+)
+q = (
+    j.group_by(["c_name", "c_custkey", "o_orderkey", "o_orderdate", "o_totalprice"])
+    .aggregate(sum_qty=_.l_quantity.sum())
+    .order_by([ibis.desc("o_totalprice"), "o_orderdate"])
+    .limit(100)
+)
+'''
+
+[[query]]
+id = "tpch-q19"
+title = "TPC-H Q19: discounted revenue"
+intent = "Total the revenue of air-shipped, hand-delivered lines matching one of three brand, container, size and quantity profiles."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q19", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "global_aggregate", "sum", "in_list", "between", "decimal"]
+ibis = '''
+j = lineitem.join(part, lineitem.l_partkey == part.p_partkey)
+common = j.l_shipmode.isin(["AIR", "AIR REG"]) & (j.l_shipinstruct == "DELIVER IN PERSON")
+def profile(brand, containers, lo, size):
+    return (
+        (j.p_brand == brand)
+        & j.p_container.isin(containers)
+        & j.l_quantity.between(lo, lo + 10)
+        & j.p_size.between(1, size)
+    )
+q = j.filter(
+    common
+    & (
+        profile("Brand#12", ["SM CASE", "SM BOX", "SM PACK", "SM PKG"], 1, 5)
+        | profile("Brand#23", ["MED BAG", "MED BOX", "MED PKG", "MED PACK"], 10, 10)
+        | profile("Brand#34", ["LG CASE", "LG BOX", "LG PACK", "LG PKG"], 20, 15)
+    )
+).aggregate(revenue=(_.l_extendedprice * (1 - _.l_discount)).sum())
+'''
+
+[[query]]
+id = "tpch-q20"
+title = "TPC-H Q20: potential part promotion"
+intent = "Find the suppliers of one nation holding more than half a year's shipped quantity of parts with a given name prefix."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q20", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "in_subquery", "group_by", "sum", "like", "order_by", "decimal", "date_literal", "interval_month"]
+rewrites = ["correlated_subquery -> join with the shipped quantity per part and supplier"]
+ibis = '''
+start = D("1994-01-01")
+shipped = (
+    lineitem.filter((_.l_shipdate >= start) & (_.l_shipdate < start + ibis.interval(years=1)))
+    .group_by(["l_partkey", "l_suppkey"])
+    .aggregate(qty=_.l_quantity.sum())
+)
+forest = part.filter(part.p_name.startswith("forest"))
+ps = (
+    partsupp.filter(partsupp.ps_partkey.isin(forest.p_partkey))
+    .join(shipped, (_.ps_partkey == shipped.l_partkey) & (_.ps_suppkey == shipped.l_suppkey))
+    .filter(_.ps_availqty > 0.5 * _.qty)
+)
+q = (
+    supplier.join(nation, supplier.s_nationkey == nation.n_nationkey)
+    .filter((_.n_name == "CANADA") & _.s_suppkey.isin(ps.ps_suppkey))
+    .select("s_name", "s_address")
+    .order_by("s_name")
+)
+'''
+
+[[query]]
+id = "tpch-q21"
+title = "TPC-H Q21: suppliers who kept orders waiting"
+intent = "Find the suppliers of one nation who were the only late supplier on multi-supplier orders."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q21", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "inner_join", "multi_join", "semi_join", "anti_join", "non_equi_join", "self_join", "group_by", "count", "order_by", "limit"]
+rewrites = ["exists_subquery -> semi and anti joins with a <> predicate"]
+pitfalls = ["tie_order: top 100 by numwait DESC, s_name"]
+ibis = '''
+l1 = lineitem.filter(lineitem.l_receiptdate > lineitem.l_commitdate)
+l2 = lineitem.view()
+l3 = lineitem.filter(lineitem.l_receiptdate > lineitem.l_commitdate).view()
+waiting = (
+    l1.semi_join(l2, (l1.l_orderkey == l2.l_orderkey) & (l1.l_suppkey != l2.l_suppkey))
+    .anti_join(l3, (l1.l_orderkey == l3.l_orderkey) & (l1.l_suppkey != l3.l_suppkey))
+)
+j = (
+    supplier.join(waiting, supplier.s_suppkey == waiting.l_suppkey)
+    .join(orders, orders.o_orderkey == waiting.l_orderkey)
+    .join(nation, supplier.s_nationkey == nation.n_nationkey)
+    .filter((_.o_orderstatus == "F") & (_.n_name == "SAUDI ARABIA"))
+)
+q = (
+    j.group_by("s_name")
+    .aggregate(numwait=_.count())
+    .order_by([ibis.desc("numwait"), "s_name"])
+    .limit(100)
+)
+'''
+
+[[query]]
+id = "tpch-q22"
+title = "TPC-H Q22: global sales opportunity"
+intent = "Count and total the balances of above-average customers from given country codes who have never ordered."
+domain = "benchmark"
+source = { name = "TPC-H v3.0.1, Q22", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
+features = ["filter", "anti_join", "scalar_subquery", "group_by", "count", "sum", "avg", "string_basic", "in_list", "order_by", "decimal"]
+rewrites = ["exists_subquery -> anti join"]
+pitfalls = ["substr_index: SUBSTRING(c_phone FROM 1 FOR 2) is 1-based; Ibis substr(0, 2) is 0-based"]
+ibis = '''
+codes = ["13", "31", "23", "29", "30", "18", "17"]
+c = customer.mutate(cntrycode=customer.c_phone.substr(0, 2)).filter(_.cntrycode.isin(codes))
+avg_bal = c.filter(c.c_acctbal > 0).c_acctbal.mean()
+q = (
+    c.filter(c.c_acctbal > avg_bal)
+    .anti_join(orders, c.c_custkey == orders.o_custkey)
+    .group_by("cntrycode")
+    .aggregate(numcust=_.count(), totacctbal=_.c_acctbal.sum())
+    .order_by("cntrycode")
+)
+'''

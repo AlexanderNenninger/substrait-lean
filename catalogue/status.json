@@ -1,0 +1,1019 @@
+{
+ "clickbench-q06": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "clickbench-q09": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "clickbench-q13": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "clickbench-q21": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "clickbench-q28": {
+  "checker": "rejected",
+  "detail": "error: unsupported function regexp_replace/4",
+  "datafusion": "runs"
+ },
+ "clickbench-q37": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "clickbench-q42": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "h2o-groupby-q1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "h2o-groupby-q3": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "h2o-groupby-q6": {
+  "checker": "rejected",
+  "detail": "error: unsupported aggregate function: median",
+  "datafusion": "runs"
+ },
+ "h2o-groupby-q7": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "h2o-groupby-q8": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "h2o-groupby-q9": {
+  "checker": "rejected",
+  "detail": "error: corr takes one argument",
+  "datafusion": "runs"
+ },
+ "h2o-groupby-q10": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "h2o-join-q1": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "h2o-join-q3": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "h2o-join-q5": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "job-1a": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "job-2a": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "job-6a": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "dbt-pivot-conditional": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "dbt-pivot-wider": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "dbt-unpivot-longer": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Unsupported plan type: Unnest { input: Projection(Projection { expr: [Column(Column { relation: Some(Bare { table: \\\"t0\\\" }), name: \\\"region\\\" }), Alias(Alias { expr: ScalarFunction(Sc",
+  "datafusion": "runs"
+ },
+ "dbt-unpivot-union": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-scd2-from-updates": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "dbt-scd2-point-in-time": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-surrogate-key": {
+  "checker": "upstream",
+  "stage": "ibis",
+  "detail": "Compilation rule for 'Hash' operation is not defined"
+ },
+ "dbt-union-sources": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "error: Schema at index 1 was different: ",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-mrr-movements": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "dbt-org-hierarchy": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Unsupported plan type: RecursiveQuery { name: \\\"chain\\\", static_term: Projection(Projection { expr: [Column(Column { relation: Some(Bare { table: \\\"employees\\\" }), name: \\\"emp_id\\\" }),",
+  "datafusion": "error: Schema at index 1 was different: "
+ },
+ "dbt-generate-date-spine": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Unsupported plan type: Unnest { input: Projection(Projection { expr: [Alias(Alias { expr: ScalarFunction(ScalarFunction { func: ScalarUDF { inner: Range { signature: Signature { type_s",
+  "datafusion": "runs"
+ },
+ "dbt-accepted-values-test": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "dbt-unique-test": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "dbt-relationships-test": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "pa-funnel-ordered": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-cohort-retention": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-day-n-retention": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-first-touch": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-repeat-purchase-rate": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-users-without-orders": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "pa-market-basket": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-median-order-value": {
+  "checker": "upstream",
+  "stage": "ibis",
+  "detail": "Compilation rule for 'Quantile' operation is not defined"
+ },
+ "pa-zscore-outliers": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: avg",
+  "datafusion": "runs"
+ },
+ "pa-histogram": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "pa-string-agg": {
+  "checker": "rejected",
+  "detail": "error: string_agg takes one argument",
+  "datafusion": "runs"
+ },
+ "pa-ntile-free-spenders": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: percent_rank",
+  "datafusion": "runs"
+ },
+ "pa-cumulative-signups": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: sum",
+  "datafusion": "runs"
+ },
+ "ssb-q1.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ssb-q2.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ssb-q3.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ssb-q4.1": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-asof-trades-quotes": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-asof-fx-tolerance": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "ts-resample-15min": {
+  "checker": "upstream",
+  "stage": "ibis",
+  "detail": "Compilation rule for 'TimestampBucket' operation is not defined"
+ },
+ "ts-hourly-rollup": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-rolling-time-window": {
+  "checker": "upstream",
+  "stage": "datafusion",
+  "detail": "DataFusion error: Plan(\"Invalid window frame: frame offsets for RANGE must be either a numeric value, a string value or an interval\")"
+ },
+ "ts-rolling-7day-calendar": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-date-spine": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-dau-rolling-7d": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-weekly-active-users": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-mom-growth": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "ts-sessionize": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: sum",
+  "datafusion": "runs"
+ },
+ "ts-session-starts": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: comparison of time with interval; cast one side first",
+   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
+   "snowflake": "refused: comparison of time with interval; cast one side first"
+  }
+ },
+ "ts-local-day-revenue": {
+  "checker": "rejected",
+  "detail": "error: unsupported cast from Substrait.Parse.Kind.time to Substrait.Parse.Kind.other",
+  "datafusion": "runs"
+ },
+ "ts-overlapping-bookings": {
+  "checker": "verified",
+  "incremental": true,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
+ },
+ "ts-pack-intervals": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: max",
+  "datafusion": "runs"
+ },
+ "tpcds-q03": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpcds-q07": {
+  "checker": "rejected",
+  "detail": "error: avg of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpcds-q27": {
+  "checker": "rejected",
+  "detail": "error: grouping sets are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: grouping sets are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q36": {
+  "checker": "rejected",
+  "detail": "error: grouping sets are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: grouping sets are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q42": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpcds-q51": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: sum",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q89": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: avg",
+   "datafusion": "runs"
+  }
+ },
+ "tpcds-q98": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported window function: sum",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q01": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpch-q02": {
+  "checker": "rejected",
+  "detail": "error: min of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: min of doubles is not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q03": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpch-q04": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q05": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q06": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q07": {
+  "checker": "rejected",
+  "detail": "error: date_part is only supported on timestamps",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: date_part is only supported on timestamps",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q08": {
+  "checker": "rejected",
+  "detail": "error: date_part is only supported on timestamps",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: date_part is only supported on timestamps",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q09": {
+  "checker": "rejected",
+  "detail": "error: date_part is only supported on timestamps",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: date_part is only supported on timestamps",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q10": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q11": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpch-q12": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q13": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "tpch-q14": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q15": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Cannot convert <subquery> to Substrait\")",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "upstream",
+   "stage": "substrait",
+   "detail": "NotImplemented(\"Cannot convert <subquery> to Substrait\")",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q16": {
+  "checker": "rejected",
+  "detail": "error: unsupported expression: {\"subquery\":{\"inPredicate\":{\"haystack\":{\"project\":{\"common\":{\"emit\":{\"outputMapp…",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: unsupported expression: {\"subquery\":{\"inPredicate\":{\"haystack\":{\"project\":{\"common\":{\"emit\":{\"outputMapp…",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q17": {
+  "checker": "rejected",
+  "detail": "error: avg of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpch-q18": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpch-q19": {
+  "checker": "rejected",
+  "detail": "error: sum of this type is not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+    "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+    "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+   }
+  }
+ },
+ "tpch-q20": {
+  "checker": "rejected",
+  "detail": "error: month and year intervals are not supported",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "rejected",
+   "detail": "error: month and year intervals are not supported",
+   "datafusion": "runs"
+  }
+ },
+ "tpch-q21": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "tpch-q22": {
+  "checker": "upstream",
+  "stage": "substrait",
+  "detail": "NotImplemented(\"Cannot convert <subquery> to Substrait\")",
+  "datafusion": "runs",
+  "as_double": {
+   "checker": "upstream",
+   "stage": "substrait",
+   "detail": "NotImplemented(\"Cannot convert <subquery> to Substrait\")",
+   "datafusion": "runs"
+  }
+ },
+ "win-dedup-latest": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ },
+ "win-latest-argmax": {
+  "checker": "rejected",
+  "detail": "error: ordered aggregates are not supported: first_value",
+  "datafusion": "runs"
+ },
+ "win-top-n-per-group": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "win-top-n-with-ties": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: dense_rank",
+  "datafusion": "runs"
+ },
+ "win-running-total": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: sum",
+  "datafusion": "runs"
+ },
+ "win-moving-average": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: avg",
+  "datafusion": "runs"
+ },
+ "win-percent-of-total": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: avg",
+  "datafusion": "runs"
+ },
+ "win-above-group-average": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet",
+   "polars": "refused: aggregate functions (GROUP BY with measures) are not translated yet",
+   "snowflake": "refused: aggregate functions (GROUP BY with measures or expressions) are not translated yet"
+  }
+ },
+ "win-ntile-quartiles": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: ntile",
+  "datafusion": "runs"
+ },
+ "win-gaps-and-islands": {
+  "checker": "rejected",
+  "detail": "error: unsupported cast from Substrait.Parse.Kind.str to Substrait.Parse.Kind.other",
+  "datafusion": "runs"
+ },
+ "win-forward-fill": {
+  "checker": "rejected",
+  "detail": "error: unsupported window function: count",
+  "datafusion": "runs"
+ },
+ "win-lag-change": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake has no interval values, so timestamp - timestamp is refused"
+  }
+ },
+ "win-keyset-pagination": {
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
+ }
+}
