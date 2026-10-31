@@ -266,7 +266,10 @@ def _(dt, pa, tables):
         """`Rel.eval` of the plan on the same rows, as `substrait-check` prints it."""
         rows = {n: arrow_rows(tables[n]) for n in read_tables(json.loads(plan))}
         inlined = inline_tables(json.loads(plan), rows)
-        _, out, _ = run_checker((), json.dumps(inlined))
+        code, out, err = run_checker((), json.dumps(inlined))
+        if code:
+            # Lean does not evaluate black boxes on every input (#70).
+            return "refused: " + err.strip().removeprefix("error: ")[:120]
         got = [ln.strip() for ln in out.split("rows (")[1].splitlines()[1:] if ln.startswith("  (")]
         text = ", ".join(r[1:-1] if "," not in r else r for r in got) or "(no rows)"
         return text if len(text) < 140 else text[:137] + "…"
