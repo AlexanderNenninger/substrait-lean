@@ -3,7 +3,6 @@
 the window order are refused."""
 
 import json
-import subprocess
 
 import ibis
 import pytest
@@ -13,9 +12,9 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import (
-    checker_path,
     connect,
     create_table,
+    run_checker,
     run_sql,
     run_substrait_json,
     substrait_json,
@@ -68,13 +67,8 @@ def test_written_window_plans_run_on_datafusion():
     rows = [(1, 3, 10), (1, 1, 20), (2, 5, None), (1, 2, 30), (None, 4, 40)]
     create_table(con, "r", SCHEMA, rows)
     for sql in QUERIES:
-        written = subprocess.run(
-            [str(checker_path()), "--write", "/dev/stdin"],
-            input=substrait_json(con, sql),
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
+        code, written, err = run_checker(("--write",), substrait_json(con, sql))
+        assert code == 0, err
         got = [tuple(r.values()) for r in run_substrait_json(con, written).to_pylist()]
         want = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
         assert canonical(got) == canonical(want), sql

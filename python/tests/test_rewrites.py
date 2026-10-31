@@ -6,7 +6,6 @@ the same result."""
 
 import json
 import math
-import subprocess
 
 import ibis
 import pyarrow as pa
@@ -17,10 +16,10 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import (
-    checker_path,
     connect,
     create_table,
     put_table,
+    run_checker,
     run_sql,
     run_substrait_json,
     substrait_json,
@@ -78,13 +77,9 @@ def test_limit_offset_takes_the_right_number_of_rows():
 
 
 def written(plan_json: str) -> str:
-    return subprocess.run(
-        [str(checker_path()), "--write", "/dev/stdin"],
-        input=plan_json,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    code, out, err = run_checker(("--write",), plan_json)
+    assert code == 0, err
+    return out
 
 
 #: Doubles where the rewrites could go wrong: signed zeros and NaNs, infinities.
