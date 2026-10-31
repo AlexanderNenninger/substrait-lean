@@ -140,6 +140,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 11 | [Engines and SQL](notebooks/11_engines.py) | DataFusion, Polars, DuckDB; SQL for DuckDB and Snowflake |
 | 12 | [A complete pipeline](notebooks/12_fitness.py) | heart rate during workouts, end to end |
 | 13 | [What is proved, what is trusted](notebooks/13_trust.py) | the trusted boundary, a glossary and a map of the code |
+| 14 | [DataFusion's surprising semantics](notebooks/14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
 
 `poe notebooks` (part of `poe qa`) checks every chapter with `marimo check` and
 runs it headless. The chapters' tables come from `sverify.display`, which needs

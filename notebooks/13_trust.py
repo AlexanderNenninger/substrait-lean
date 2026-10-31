@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 12. [A complete pipeline](?file=12_fitness.py) · [Contents](?file=00_start_here.py)
+    ← 12. [A complete pipeline](?file=12_fitness.py) · [Contents](?file=00_start_here.py) · 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) →
     """)
     return
 
@@ -180,7 +180,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 12. [A complete pipeline](?file=12_fitness.py) · [Contents](?file=00_start_here.py)
+    ← 12. [A complete pipeline](?file=12_fitness.py) · [Contents](?file=00_start_here.py) · 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) →
     """)
     return
 
