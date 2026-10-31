@@ -16,7 +16,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", app_title="DataFusion's surprising semantics")
+app = marimo.App(width="full", app_title="14. DataFusion's surprising semantics")
 
 
 @app.cell(hide_code=True)
@@ -29,7 +29,15 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # DataFusion's surprising semantics, against the Lean model
+    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py)
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # 14. DataFusion's surprising semantics, against the Lean model
 
     `sverify` proves things about a pipeline's Substrait plan in Lean and then
     runs that plan on **DataFusion**. The proofs are about Lean's semantics
@@ -138,9 +146,7 @@ def _():
         "n": ints(x=[1, None, 2]),
         "s": ints(y=[1, None]),
         "e": ints(x=[]),
-        "f": pa.table(
-            {"v": [1.0, float("nan"), 0.0, float("inf"), float("-inf"), None]}
-        ),
+        "f": pa.table({"v": [1.0, float("nan"), 0.0, float("inf"), float("-inf"), None]}),
         "nanp": pa.table({"v": pa.array(nan_payloads.view(np.float64))}),
         "big53": ints(a=[2**53 + 1], b=[1]),
         "t": ints(a=[5, 0], b=[1, 0]),
@@ -152,18 +158,14 @@ def _():
         "m": ints(a=[-(2**63), 5]),
         "mx": ints(a=[2**63 - 1, -(2**63)]),
         "pn": ints(a=[None, 2]),
-        "i32": pa.table(
-            {"a": pa.array([2**31 - 1], pa.int32()), "b": pa.array([1], pa.int32())}
-        ),
-        "u8": pa.table(
-            {"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}
-        ),
+        "i32": pa.table({"a": pa.array([2**31 - 1], pa.int32()), "b": pa.array([1], pa.int32())}),
+        "u8": pa.table({"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}),
         "str": pa.table({"s": ["b", "B", "a", "", None, "é", "é", "🎉", "Z"]}),
         "ts": pa.table({"t": pa.array([dt.datetime(2024, 1, 31)], pa.timestamp("us"))}),
         "z": pa.table(
             {
                 "t": pa.array(
-                    [dt.datetime(2024, 3, 30, 12, 0, tzinfo=dt.timezone.utc)],
+                    [dt.datetime(2024, 3, 30, 12, 0, tzinfo=dt.UTC)],
                     pa.timestamp("us", tz="Europe/Berlin"),
                 )
             }
@@ -185,7 +187,6 @@ def _(dt, pa, tables):
 
     import duckdb
     import polars as pl
-
     import sverify as sv
     from sverify.engine import (
         checker_path,
@@ -238,19 +239,19 @@ def _(dt, pa, tables):
         """The query's rows on DataFusion, through SQL."""
         try:
             return fmt(arrow_rows(con.con.sql(sql).to_arrow_table()))
-        except Exception as e:  # noqa: BLE001 - showing the error is the point
+        except Exception as e:
             return short_error(e)
 
     def run_duck(sql: str) -> str:
         try:
             return fmt(duck.sql(sql).fetchall())
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return short_error(e)
 
     def run_polars(f) -> str:
         try:
             return fmt(f(P).rows())
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return short_error(e)
 
     def naive_utc(v: object) -> object:
@@ -264,6 +265,7 @@ def _(dt, pa, tables):
             input=json.dumps(plan),
             capture_output=True,
             text=True,
+            check=False,
         )
 
     def lean_rows(sql: str) -> str:
@@ -271,7 +273,7 @@ def _(dt, pa, tables):
         prints doubles with a `d`, and ±0.0 as their raw codes ±1."""
         try:
             plan = json.loads(substrait_json(con, sql))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return "no plan: " + short_error(e)
         refused = checker(plan)
         if refused.returncode != 0:
@@ -286,9 +288,7 @@ def _(dt, pa, tables):
             for line in out.split("rows (")[1].splitlines()[1:]
             if line.startswith("  (")
         ]
-        text = (
-            ", ".join(r[1:-1] if r.count(",") == 0 else r for r in got) or "(no rows)"
-        )
+        text = ", ".join(r[1:-1] if r.count(",") == 0 else r for r in got) or "(no rows)"
         return text if len(text) < 160 else text[:157] + "…"
 
     def prove(sql: str, requires=(), ensures=(), on: str = "t") -> str:
@@ -313,11 +313,9 @@ def _(dt, pa, tables):
                 ensures=list(ensures),
                 tables={on: dtypes},
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return "refused: " + str(e)[:110]
-        parts = [
-            f"{c.label}: {'proved' if c.proved else 'not proved'}" for c in r.ensures
-        ]
+        parts = [f"{c.label}: {'proved' if c.proved else 'not proved'}" for c in r.ensures]
         parts += [f"may fail: {i.kind}" for i in r.errors]
         parts += [f"warning: {i.kind}" for i in r.warnings]
         if not r.deterministic:
@@ -345,10 +343,7 @@ def _(dt, pa, tables):
             self.out["df"] = self.df() if callable(self.df) else run_df(self.sql)
             others = [f"SQL: {self.std}"] if self.std else []
             if self.duck is not None:
-                others.append(
-                    "DuckDB: "
-                    + run_duck(self.sql if self.duck == "same" else self.duck)
-                )
+                others.append("DuckDB: " + run_duck(self.sql if self.duck == "same" else self.duck))
             if self.polars is not None:
                 others.append("Polars: " + run_polars(self.polars))
             self.out["others"] = others
@@ -446,7 +441,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(P, Q, pl, render):
+def _(P, Q, pl, prove, render):
     nulls = [
         Q(
             "N1",
@@ -581,7 +576,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(P, Q, pl, render):
+def _(P, Q, pl, prove, render):
     floats = [
         Q(
             "F1",
@@ -686,9 +681,7 @@ def _(P, Q, pl, render):
             "handled",
             "Aggregates are refused for now; when they arrive, MAX/MIN must follow the total order.",
             duck="same",
-            polars=lambda P: P["f"].select(
-                mx=pl.col("v").max(), mn=(-pl.col("v")).min()
-            ),
+            polars=lambda P: P["f"].select(mx=pl.col("v").max(), mn=(-pl.col("v")).min()),
         ),
     ]
     render([q.run() for q in floats])
@@ -894,7 +887,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(P, Q, pl, render):
+def _(P, Q, pl, prove, render):
     strings = [
         Q(
             "S1",
@@ -1192,9 +1185,7 @@ def _(Q, prove, render):
             "Reported: `division by zero`.",
             std="unspecified evaluation order",
             duck="same",
-            lean=lambda: prove(
-                "SELECT a FROM t WHERE b <> 0 AND a / b > 1", requires=["a >= 0"]
-            ),
+            lean=lambda: prove("SELECT a FROM t WHERE b <> 0 AND a / b > 1", requires=["a >= 0"]),
         ),
         Q(
             "E2",
@@ -1241,9 +1232,7 @@ def _(Q, prove, render):
             "DataFusion evaluates every argument; Lean's `coalesce` is a CASE, so the division is assumed to happen only where b IS NULL.",
             std="short-circuit (SQL:2003 defines COALESCE as CASE)",
             duck="same",
-            lean=lambda: prove(
-                "SELECT coalesce(b, a / b) AS c FROM t", requires=["b IS NOT NULL"]
-            ),
+            lean=lambda: prove("SELECT coalesce(b, a / b) AS c FROM t", requires=["b IS NOT NULL"]),
         ),
     ]
     render([q.run() for q in evaluation])
@@ -1295,20 +1284,14 @@ def _(Q, con, render, run_substrait_json, substrait_json, sv, tables):
         try:
             run_substrait_json(con, substrait_json(con, sql))
             return "DataFusion reads its own plan"
-        except Exception as e:  # noqa: BLE001
-            return (
-                "own plan: error: "
-                + str(e).replace("DataFusion error: ", "")[:60]
-                + "…"
-            )
+        except Exception as e:
+            return "own plan: error: " + str(e).replace("DataFusion error: ", "")[:60] + "…"
 
     def _lean_written(sql):
         try:
-            rows = run_substrait_json(
-                con, sv.written_plan(substrait_json(con, sql))
-            ).to_pylist()
+            rows = run_substrait_json(con, sv.written_plan(substrait_json(con, sql))).to_pylist()
             return f"Lean's rewrite runs on DataFusion: {len(rows)} rows"
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return (
                 "Lean's rewrite on DataFusion: error: "
                 + str(e).replace("DataFusion error: ", "")[:70]
@@ -1446,6 +1429,14 @@ def _(mo):
     this notebook relies on, so a DataFusion upgrade that changes one of them
     fails the tests. The gaps are pinned as they are today, and each test
     says what a fix should change.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ← 13. [What is proved, what is trusted](?file=13_trust.py) · [Contents](?file=00_start_here.py)
     """)
     return
 
