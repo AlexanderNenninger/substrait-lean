@@ -21,6 +21,7 @@ Models a fragment of Substrait's `Rel` message:
 | `FetchRel`                        | `Rel.fetch`              |
 | `SetRel` (`UNION_ALL`)            | `Rel.unionAll`           |
 | `windowFunction` in a `ProjectRel`| `Rel.window`             |
+| `ExtensionSingleRel` (`sverify.Unnest`) | `Rel.unnest`       |
 
 Two Substrait-specific details are kept on purpose:
 
@@ -67,6 +68,9 @@ inductive Rel where
   /-- `GROUP BY groups`, appending one column per measure (see
   `SubstraitLean/Aggregate.lean`). -/
   | aggregate (input : Rel) (groups : List Expr) (measures : List Measure)
+  /-- `UNNEST` of the list in column `col`: one row per element, in its place
+  (no standard Substrait relation; see `docs/nested-values.md`). -/
+  | unnest (input : Rel) (col : Nat)
   deriving Repr, BEq
 
 /-- Output arity (the length of the output schema). -/
@@ -82,7 +86,7 @@ def Rel.arity (cat : Catalog) : Rel → Nat
   | .unionAll a _ => a.arity cat
   | .window r _ _ fns => r.arity cat + fns.length
   | .semi a _ _ _ => a.arity cat
-  | .orderBy r _ | .distinct r => r.arity cat
+  | .orderBy r _ | .distinct r | .unnest r _ => r.arity cat
   | .aggregate _ gs ms => gs.length + ms.length
 
 /-- Static well-formedness: every field reference is in range, literal
@@ -104,6 +108,7 @@ def Rel.WF (cat : Catalog) : Rel → Prop
   | .distinct r => r.WF cat
   | .aggregate r gs ms => r.WF cat ∧ (∀ g ∈ gs, g.refsLt (r.arity cat)) ∧
       ∀ m ∈ ms, m.refsLt (r.arity cat)
+  | .unnest r c => r.WF cat ∧ c < r.arity cat
 
 def crossRows (xs ys : Relation) : Relation :=
   xs.flatMap fun x => ys.map (x ++ ·)
@@ -113,6 +118,24 @@ padded with nulls when nothing matches. -/
 def leftJoinRow (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row) : Relation :=
   let ms := (ys.map (x ++ ·)).filter fun row => (on.eval row).isTrue
   if ms.isEmpty then [x ++ List.replicate rightArity .null] else ms
+
+/-- `UNNEST` on one row: a row per element of the list in column `c`, with
+the element in its place; none for an empty list or NULL (as DataFusion and
+DuckDB do; Polars' `explode` gives a row of NULL instead). -/
+def unnestRow (c : Nat) (x : Row) : Relation :=
+  match x.getD c .null with
+  | .list vs => vs.map (x.set c ·)
+  | _ => []
+
+theorem mem_unnestRow {c : Nat} {x row : Row} :
+    row ∈ unnestRow c x → ∃ vs v, x.getD c .null = .list vs ∧ v ∈ vs ∧ row = x.set c v := by
+  unfold unnestRow
+  split
+  · rename_i vs h
+    simp only [List.mem_map]
+    rintro ⟨v, hv, rfl⟩
+    exact ⟨vs, v, h, hv, rfl⟩
+  · simp
 
 /-- Does some row of `ys` satisfy `on` next to `x`? -/
 def hasMatch (on : Expr) (ys : Relation) (x : Row) : Bool :=
@@ -144,6 +167,7 @@ def Rel.eval (cat : Catalog) : Rel → Relation
   | .orderBy r keys => (r.eval cat).mergeSort (sortLe keys)
   | .distinct r => dedup (r.eval cat)
   | .aggregate r gs ms => aggregateEval gs ms (r.eval cat)
+  | .unnest r c => (r.eval cat).flatMap (unnestRow c)
 
 /-- Bag equivalence of plans: same rows with the same multiplicities, on
 every catalog. -/
@@ -241,5 +265,10 @@ theorem Rel.eval_arity {cat : Catalog} (hcat : cat.WF) :
       simp only [eval, mem_dedup] at h
       exact eval_arity hcat (r := r) hwf row h
   | .aggregate _ _ _, _, _, h => aggregateEval_length h
+  | .unnest r _, hwf, row, h => by
+      simp only [eval, List.mem_flatMap] at h
+      obtain ⟨x, hx, h⟩ := h
+      obtain ⟨_, _, _, _, rfl⟩ := mem_unnestRow h
+      simp [arity, eval_arity hcat hwf.1 x hx]
 
 end Substrait

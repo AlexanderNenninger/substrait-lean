@@ -155,7 +155,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `grouping_sets`, `decimal` |
 | tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 | tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `decimal`, `min_max` |
-| tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `decimal`, `sort_by_expression` |
+| tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 | tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 
 ## tpch
@@ -176,14 +176,14 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
-| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal` |
-| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `not_in_subquery` |
+| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `min_max` |
+| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
 | tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal` |
+| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 
 ## windows
 

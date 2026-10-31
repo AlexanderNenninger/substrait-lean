@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79); #80 open |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79), eager aggregation (#80) |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -202,7 +202,8 @@ guarantees. The question is when
   of the converted doubles (`Aggregate.lean`), which is not
   `CAST(SUM(x)) / COUNT(x)` either. Supporting it needs an exact accumulator.
   A proved error bound for the two-phase sum, which would let these run
-  sharded with a stated tolerance, is the epic #85.
+  sharded with a stated tolerance, is the epic #85; its model and
+  dependency are in `docs/float-bounds.md`.
 * **Other `DISTINCT` aggregates** are refused: a value in two shards counts
   once in the whole and twice in the parts. `DISTINCT` without the split
   key, windows and `FETCH` are refused because they look at rows of other
@@ -295,11 +296,22 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   600 ms. Neither engine gains: both hash a few more key columns more
   cheaply than they compute the `MIN`s. The rewrite may pay off on engines
   with costly wide hash keys or spilling, which is not measured here.
-* **Eager aggregation below joins** (#80). Push `GROUP BY` below a join on a key
-  (Yan and Larson), using the two-phase lemmas of `Partition.lean`
-  (`AggFn.combine_apply`). Multiplicities make it subtle: `COUNT` and `SUM`
-  must be scaled by match counts unless the join is on a key, which is where
-  our keys come in.
+* **Eager aggregation below joins** (#80, done for joins on a key). Take a
+  `GROUP BY` of left columns over `R ⋈ S`, where the condition determines a
+  key of `S` (so each left row has at most one partner,
+  `Rel.partners_le_one`) and reads only left columns that are grouped (so the
+  rows of a group all have a partner or none). Then `R` is aggregated first
+  and the groups are joined with `S` (`Rel.eagerAgg`): the join keeps or
+  drops whole groups (`aggregateEval_filter`, `dedup_filter_map`). No
+  scaling of `COUNT` or `SUM` is needed, since every multiplicity is 0 or 1.
+  The general case, without a key, needs measures scaled by match counts
+  (`AggFn.combine_apply` in `Partition.lean`) and is not done.
+  **Benchmark** (`scripts/bench_optimizations.py`, laptop): 10⁶ line items
+  grouped by order key, 4 rows per group: DuckDB 10 ms as written, 12 ms
+  aggregated first; Polars 78 ms and 131 ms. With 1000 rows per group, DuckDB
+  is even (4.9 ms and 4.2 ms) and Polars still slower (31 ms and 43 ms). The
+  join to a small keyed table is cheap in both engines, so aggregating first
+  saves little.
 
 ## 4. Partition and file pruning (#81)
 

@@ -29,16 +29,16 @@ union_distinct = { lean = "yes", description = "UNION (distinct)" }
 intersect_except = { lean = "yes", description = "INTERSECT / EXCEPT" }
 distinct = { lean = "yes", description = "SELECT DISTINCT" }
 values = { lean = "yes", description = "inline VALUES table" }
-sort_by_expression = { lean = "no", description = "ORDER BY an expression rather than a column", note = "the Ibis producer refuses it (\"sort by a column\")" }
+sort_by_expression = { lean = "yes", description = "ORDER BY an expression rather than a column", note = "the Ibis producer projects the expression, sorts by it and drops it" }
 order_by = { lean = "yes", description = "ORDER BY in the result" }
 limit = { lean = "yes", description = "LIMIT / top-N after a sort" }
 offset = { lean = "yes", description = "OFFSET (pagination)" }
 cte = { lean = "yes", description = "non-recursive WITH (inlined)" }
 recursive_cte = { lean = "no", description = "WITH RECURSIVE", note = "DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model" }
 in_subquery = { lean = "yes", description = "x IN (SELECT …)" }
-not_in_subquery = { lean = "no", description = "x NOT IN (SELECT …), with its NULL semantics", note = "refused: DataFusion gets NULLs in the subquery wrong" }
-exists_subquery = { lean = "no", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "DataFusion's Substrait producer cannot convert Exists" }
-scalar_subquery = { lean = "no", description = "uncorrelated scalar subquery (x > (SELECT avg …))", note = "DataFusion's Substrait producer cannot convert it; rewrite as a cross join with a one-row aggregate" }
+not_in_subquery = { lean = "yes", description = "x NOT IN (SELECT …), with its NULL semantics", note = "the checker lifts it with SQL's NULL rule; DataFusion running the SQL gets NULLs in the subquery wrong" }
+exists_subquery = { lean = "yes", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "the Ibis producer writes a semi or anti join; DataFusion's Substrait producer cannot convert Exists" }
+scalar_subquery = { lean = "yes", description = "uncorrelated scalar subquery (x > (SELECT avg …))", note = "through the Ibis producer, where the checker proves at most one row; DataFusion's Substrait producer cannot convert it" }
 correlated_subquery = { lean = "no", description = "correlated scalar subquery", note = "as scalar_subquery; rewrite as a join with a grouped aggregate" }
 unnest = { lean = "no", description = "UNNEST / explode of lists", note = "DataFusion's Substrait producer has no Unnest" }
 pivot = { lean = "yes", description = "pivot with a fixed list of values (conditional aggregates)", note = "Ibis pivot_wider compiles to first_value, which is refused; write it as sum/max with where=" }

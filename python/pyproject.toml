@@ -99,6 +99,11 @@ help = "Build the substrait-check CLI that sverify calls"
 cmd = "lake build substrait-check"
 cwd = "${POE_ROOT}/.."
 
+[tool.poe.tasks.prove-floats]
+help = "Check the float error bounds (float-bounds/, needs Mathlib; not part of qa)"
+shell = "lake exe cache get && lake build --wfail"
+cwd = "${POE_ROOT}/../float-bounds"
+
 [tool.poe.tasks.lint]
 help = "Lint and check formatting of the Python code and the notebooks"
 sequence = ["ruff check . ../notebooks", "ruff format --check . ../notebooks"]

@@ -1046,13 +1046,17 @@
  "tpcds-q89": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "sorting by an expression is not supported; sort by a column",
+  "detail": "type decimal(38, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "sorting by an expression is not supported; sort by a column",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   }
   }
  },
  "tpcds-q98": {
@@ -1285,25 +1289,28 @@
  "tpch-q15": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "ScalarSubquery is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "stage": "producer",
-   "detail": "ScalarSubquery is not supported",
+   "detail": "error: max of doubles is not supported",
    "datafusion": "runs"
   }
  },
  "tpch-q16": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "InSubquery is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "InSubquery is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs (DataFusion's SQL differs)",
+    "polars": "runs (DataFusion's SQL differs)",
+    "snowflake": "sql (tie_free)"
+   }
   }
  },
  "tpch-q17": {
@@ -1385,13 +1392,17 @@
  "tpch-q22": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "ScalarSubquery is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "ScalarSubquery is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "win-dedup-latest": {

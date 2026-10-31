@@ -382,7 +382,7 @@ title = "TPC-H Q15: top supplier"
 intent = "Find the supplier(s) with the highest revenue in a quarter, ties included."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q15", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "group_by", "sum", "cte", "scalar_subquery", "order_by", "decimal", "date_literal", "interval_month"]
+features = ["filter", "inner_join", "group_by", "sum", "cte", "scalar_subquery", "order_by", "decimal", "date_literal", "interval_month", "min_max"]
 pitfalls = ["float_sum_order: as DOUBLE, equality with the maximum is fragile only if the two sums are computed differently"]
 ibis = '''
 start = D("1996-01-01")
@@ -405,7 +405,7 @@ title = "TPC-H Q16: parts/supplier relationship"
 intent = "Count the suppliers without complaints who can supply parts of given sizes, brands and types."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q16", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "not_in_subquery", "group_by", "count_distinct", "like", "in_list", "order_by"]
+features = ["filter", "inner_join", "not_in_subquery", "group_by", "count_distinct", "like", "in_list", "order_by", "decimal"]
 pitfalls = ["not_in_null: a NULL s_suppkey among complaining suppliers would empty the result under SQL semantics"]
 ibis = '''
 complaints = supplier.filter(supplier.s_comment.like("%Customer%Complaints%"))

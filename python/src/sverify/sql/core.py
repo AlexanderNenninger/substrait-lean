@@ -2458,10 +2458,23 @@ def arity(r: Rel) -> int:
     return len(kinds(r))
 
 
+def numbers_copies(w: Window) -> bool:
+    """Is `w` `ROW_NUMBER() OVER (PARTITION BY` every column`)`? It numbers the
+    copies of each row, and as a bag that does not depend on the row order
+    (the copies are equal)."""
+    return (
+        not w.sort
+        and all(f.fn == "row_number" for f in w.fns)
+        and set(w.part) == set(range(arity(w.input)))
+    )
+
+
 def order_matters(r: Rel) -> bool:
     """Does the result's row order matter (a FETCH, a window or a sort anywhere
     the order reaches the result)?"""
     match r:
+        case Window(input=i) if numbers_copies(r):
+            return order_matters(i)
         case Fetch() | Window() | OrderBy():
             return True
         case Read() | Values():
@@ -2837,7 +2850,11 @@ class _Writer:
         for k in sort:
             for x, kind in self.sort_exprs(col(k.col), ks[k.col]):
                 keys.append(d.sort_key(x, k.desc, k.nulls_first, kind))
-        if not self.tie_free:
+        copies = numbers_copies(Window(i, part, sort, fns)) and not ordered
+        if copies:
+            # Any order numbers the copies (some dialects need one).
+            keys = [d.sort_key(col(p), False, False, ks[p]) for p in part]
+        elif not self.tie_free:
             # Lean sorts with a stable merge sort: ties keep their input order.
             keys.append(self.asc(self.ordinal(a)))
         elif ordered and not keys:
@@ -2898,7 +2915,7 @@ class _Writer:
         if ordered:
             # `windowEval` emits the rows in sort order.
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
-        return self.select(items, d.subquery(self.rel(i, not self.tie_free), a))
+        return self.select(items, d.subquery(self.rel(i, not self.tie_free and not copies), a))
 
     def framed(
         self,
