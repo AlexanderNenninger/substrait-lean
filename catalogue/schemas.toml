@@ -1,0 +1,614 @@
+# Tables of each dataset, as Ibis types, with only the columns the catalogued
+# queries use. `values` gives pools for the synthetic data ("table.column"),
+# so that filters on the literals the queries use match some rows; other
+# integers are drawn from 0..5 (so keys join), and every column is NULL one
+# time in ten unless listed in `not_null`.
+
+# TPC-H (https://www.tpc.org/tpch/). Money columns are DECIMAL(15,2) as in the spec.
+[datasets.tpch.tables.lineitem]
+l_orderkey = "int64"
+l_partkey = "int64"
+l_suppkey = "int64"
+l_linenumber = "int64"
+l_quantity = "decimal(15,2)"
+l_extendedprice = "decimal(15,2)"
+l_discount = "decimal(15,2)"
+l_tax = "decimal(15,2)"
+l_returnflag = "string"
+l_linestatus = "string"
+l_shipdate = "date"
+l_commitdate = "date"
+l_receiptdate = "date"
+l_shipinstruct = "string"
+l_shipmode = "string"
+
+[datasets.tpch.tables.orders]
+o_orderkey = "int64"
+o_custkey = "int64"
+o_orderstatus = "string"
+o_totalprice = "decimal(15,2)"
+o_orderdate = "date"
+o_orderpriority = "string"
+o_shippriority = "int64"
+o_comment = "string"
+
+[datasets.tpch.tables.customer]
+c_custkey = "int64"
+c_name = "string"
+c_address = "string"
+c_nationkey = "int64"
+c_phone = "string"
+c_acctbal = "decimal(15,2)"
+c_mktsegment = "string"
+c_comment = "string"
+
+[datasets.tpch.tables.part]
+p_partkey = "int64"
+p_name = "string"
+p_mfgr = "string"
+p_brand = "string"
+p_type = "string"
+p_size = "int64"
+p_container = "string"
+
+[datasets.tpch.tables.supplier]
+s_suppkey = "int64"
+s_name = "string"
+s_address = "string"
+s_nationkey = "int64"
+s_phone = "string"
+s_acctbal = "decimal(15,2)"
+s_comment = "string"
+
+[datasets.tpch.tables.partsupp]
+ps_partkey = "int64"
+ps_suppkey = "int64"
+ps_availqty = "int64"
+ps_supplycost = "decimal(15,2)"
+
+[datasets.tpch.tables.nation]
+n_nationkey = "int64"
+n_name = "string"
+n_regionkey = "int64"
+
+[datasets.tpch.tables.region]
+r_regionkey = "int64"
+r_name = "string"
+
+[datasets.tpch.values]
+"lineitem.l_returnflag" = ["R", "A", "N"]
+"lineitem.l_linestatus" = ["O", "F"]
+"lineitem.l_shipmode" = ["MAIL", "SHIP", "AIR", "AIR REG", "TRUCK"]
+"lineitem.l_shipinstruct" = ["DELIVER IN PERSON", "NONE"]
+"lineitem.l_quantity" = [1, 5, 10, 15, 20, 25, 30]
+"lineitem.l_discount" = [0.04, 0.05, 0.06, 0.07, 0.1]
+"orders.o_orderpriority" = ["1-URGENT", "2-HIGH", "3-MEDIUM", "5-LOW"]
+"orders.o_orderstatus" = ["F", "O", "P"]
+"orders.o_comment" = ["special packages requests", "quick deposits", "pending"]
+"customer.c_mktsegment" = ["BUILDING", "AUTOMOBILE", "MACHINERY"]
+"customer.c_phone" = ["13-555-0101", "31-555-0102", "23-555-0103", "29-555-0104", "11-555-0105"]
+"part.p_name" = ["forest green lace", "almond antique blush", "lime khaki green", "forest navy"]
+"part.p_type" = ["PROMO BRUSHED COPPER", "ECONOMY ANODIZED STEEL", "LARGE BRUSHED BRASS", "MEDIUM POLISHED TIN", "STANDARD PLATED BRASS"]
+"part.p_brand" = ["Brand#12", "Brand#23", "Brand#34", "Brand#45"]
+"part.p_container" = ["SM CASE", "SM PKG", "MED BOX", "MED BAG", "LG PACK", "LG CASE", "WRAP CASE"]
+"part.p_size" = [1, 3, 5, 9, 14, 15, 19, 23, 45, 49]
+"supplier.s_comment" = ["Customer Complaints recorded", "ok"]
+"nation.n_name" = ["FRANCE", "GERMANY", "BRAZIL", "CANADA", "SAUDI ARABIA", "JAPAN"]
+"region.r_name" = ["ASIA", "EUROPE", "AMERICA"]
+
+# TPC-DS (https://www.tpc.org/tpcds/), the columns of the chosen queries.
+[datasets.tpcds.tables.date_dim]
+d_date_sk = "int64"
+d_date = "date"
+d_year = "int64"
+d_moy = "int64"
+d_qoy = "int64"
+d_month_seq = "int64"
+
+[datasets.tpcds.tables.store_sales]
+ss_sold_date_sk = "int64"
+ss_item_sk = "int64"
+ss_customer_sk = "int64"
+ss_cdemo_sk = "int64"
+ss_store_sk = "int64"
+ss_promo_sk = "int64"
+ss_quantity = "int64"
+ss_list_price = "decimal(7,2)"
+ss_sales_price = "decimal(7,2)"
+ss_coupon_amt = "decimal(7,2)"
+ss_ext_sales_price = "decimal(7,2)"
+ss_net_profit = "decimal(7,2)"
+
+[datasets.tpcds.tables.web_sales]
+ws_sold_date_sk = "int64"
+ws_item_sk = "int64"
+ws_ext_sales_price = "decimal(7,2)"
+ws_sales_price = "decimal(7,2)"
+
+[datasets.tpcds.tables.item]
+i_item_sk = "int64"
+i_item_id = "string"
+i_item_desc = "string"
+i_brand_id = "int64"
+i_brand = "string"
+i_class = "string"
+i_category = "string"
+i_manager_id = "int64"
+i_manufact_id = "int64"
+i_current_price = "decimal(7,2)"
+
+[datasets.tpcds.tables.store]
+s_store_sk = "int64"
+s_store_name = "string"
+s_company_name = "string"
+s_state = "string"
+
+[datasets.tpcds.tables.customer_demographics]
+cd_demo_sk = "int64"
+cd_gender = "string"
+cd_marital_status = "string"
+cd_education_status = "string"
+
+[datasets.tpcds.tables.promotion]
+p_promo_sk = "int64"
+p_channel_email = "string"
+p_channel_event = "string"
+
+[datasets.tpcds.values]
+"date_dim.d_year" = [1998, 1999, 2000, 2001, 2002]
+"date_dim.d_moy" = [11, 12, 1, 2]
+"date_dim.d_qoy" = [1, 2]
+"date_dim.d_month_seq" = [1200, 1205, 1211, 1212]
+"item.i_category" = ["Sports", "Books", "Home", "Women", "Music"]
+"item.i_class" = ["football", "fiction", "glassware"]
+"item.i_manager_id" = [1, 28, 36]
+"item.i_manufact_id" = [128, 436]
+"store.s_state" = ["TN", "SD", "AL"]
+"customer_demographics.cd_gender" = ["M", "F"]
+"customer_demographics.cd_marital_status" = ["S", "M", "W"]
+"customer_demographics.cd_education_status" = ["College", "Primary", "4 yr Degree"]
+"promotion.p_channel_email" = ["N", "Y"]
+"promotion.p_channel_event" = ["N", "Y"]
+
+# Star Schema Benchmark (O'Neil et al.), the date table renamed `dwdate`.
+[datasets.ssb.tables.lineorder]
+lo_orderdate = "int64"
+lo_custkey = "int64"
+lo_partkey = "int64"
+lo_suppkey = "int64"
+lo_quantity = "int64"
+lo_extendedprice = "int64"
+lo_discount = "int64"
+lo_revenue = "int64"
+lo_supplycost = "int64"
+
+[datasets.ssb.tables.dwdate]
+d_datekey = "int64"
+d_year = "int64"
+d_yearmonthnum = "int64"
+
+[datasets.ssb.tables.customer]
+c_custkey = "int64"
+c_nation = "string"
+c_region = "string"
+c_city = "string"
+
+[datasets.ssb.tables.supplier]
+s_suppkey = "int64"
+s_nation = "string"
+s_region = "string"
+s_city = "string"
+
+[datasets.ssb.tables.part]
+p_partkey = "int64"
+p_category = "string"
+p_brand1 = "string"
+p_mfgr = "string"
+
+[datasets.ssb.values]
+"dwdate.d_year" = [1992, 1993, 1994, 1997, 1998]
+"lineorder.lo_discount" = [0, 1, 2, 3, 4, 5]
+"lineorder.lo_quantity" = [10, 20, 24, 30, 40]
+"customer.c_region" = ["AMERICA", "ASIA", "EUROPE"]
+"supplier.s_region" = ["AMERICA", "ASIA", "EUROPE"]
+"customer.c_nation" = ["UNITED STATES", "CHINA", "FRANCE"]
+"supplier.s_nation" = ["UNITED STATES", "CHINA", "FRANCE"]
+"part.p_category" = ["MFGR#12", "MFGR#14"]
+"part.p_mfgr" = ["MFGR#1", "MFGR#2", "MFGR#3"]
+
+# ClickBench (`hits`, web analytics), the columns of the chosen queries.
+[datasets.hits.tables.hits]
+WatchID = "int64"
+UserID = "int64"
+CounterID = "int64"
+EventTime = "timestamp"
+EventDate = "date"
+RegionID = "int64"
+AdvEngineID = "int64"
+SearchPhrase = "string"
+SearchEngineID = "int64"
+URL = "string"
+Referer = "string"
+Title = "string"
+ResolutionWidth = "int64"
+IsRefresh = "int64"
+DontCountHits = "int64"
+TraficSourceID = "int64"
+MobilePhoneModel = "string"
+
+[datasets.hits.values]
+"hits.CounterID" = [62, 0, 1]
+"hits.SearchPhrase" = ["", "google maps", "cheap flights", "weather"]
+"hits.URL" = ["https://www.google.com/search?q=x", "http://example.org/a/b", "https://news.site/google"]
+"hits.Referer" = ["https://www.google.com/", "http://example.org/", ""]
+"hits.Title" = ["Google", "News", "Weather"]
+"hits.MobilePhoneModel" = ["", "iPhone", "Pixel"]
+"hits.EventDate" = ["2013-07-01", "2013-07-15", "2013-07-31", "2013-08-01"]
+"hits.EventTime" = ["2013-07-14 20:00:00", "2013-07-14 20:01:30", "2013-07-15 09:00:00"]
+"hits.IsRefresh" = [0, 1]
+"hits.DontCountHits" = [0, 1]
+
+# Join Order Benchmark (IMDB), the columns of the chosen queries.
+[datasets.imdb.tables.title]
+id = "int64"
+title = "string"
+production_year = "int64"
+kind_id = "int64"
+
+[datasets.imdb.tables.movie_companies]
+movie_id = "int64"
+company_id = "int64"
+company_type_id = "int64"
+note = "string"
+
+[datasets.imdb.tables.company_type]
+id = "int64"
+kind = "string"
+
+[datasets.imdb.tables.company_name]
+id = "int64"
+name = "string"
+country_code = "string"
+
+[datasets.imdb.tables.info_type]
+id = "int64"
+info = "string"
+
+[datasets.imdb.tables.movie_info_idx]
+movie_id = "int64"
+info_type_id = "int64"
+info = "string"
+
+[datasets.imdb.tables.keyword]
+id = "int64"
+keyword = "string"
+
+[datasets.imdb.tables.movie_keyword]
+movie_id = "int64"
+keyword_id = "int64"
+
+[datasets.imdb.tables.cast_info]
+movie_id = "int64"
+person_id = "int64"
+note = "string"
+
+[datasets.imdb.tables.name]
+id = "int64"
+name = "string"
+gender = "string"
+
+[datasets.imdb.values]
+"company_type.kind" = ["production companies", "distributors"]
+"info_type.info" = ["top 250 rank", "bottom 10 rank", "rating"]
+"movie_companies.note" = ["(co-production)", "(presents)", "(as Metro-Goldwyn-Mayer Pictures)", "(theatrical)"]
+"keyword.keyword" = ["marvel-cinematic-universe", "sequel", "character-name-in-title"]
+"name.name" = ["Downey Robert Jr.", "Bert Smith", "Ann Lee"]
+"name.gender" = ["m", "f"]
+"company_name.country_code" = ["[us]", "[de]", "[pl]"]
+"title.production_year" = [1995, 2005, 2010, 2014]
+"cast_info.note" = ["(voice)", "(producer)", "(writer)"]
+
+# H2O db-benchmark (groupby `x`; join `x` with `small`, `medium`).
+[datasets.h2o.tables.x]
+id1 = "string"
+id2 = "string"
+id3 = "string"
+id4 = "int64"
+id5 = "int64"
+id6 = "int64"
+v1 = "int64"
+v2 = "int64"
+v3 = "float64"
+
+# The join benchmark's left table: integer keys, factor (string) keys.
+[datasets.h2o.tables.xj]
+id1 = "int64"
+id2 = "int64"
+id3 = "int64"
+id4 = "string"
+id5 = "string"
+id6 = "string"
+v1 = "float64"
+
+[datasets.h2o.tables.small]
+id1 = "int64"
+id4 = "string"
+v2 = "float64"
+
+[datasets.h2o.tables.medium]
+id1 = "int64"
+id2 = "int64"
+id4 = "string"
+id5 = "string"
+v2 = "float64"
+
+[datasets.h2o.values]
+"x.id1" = ["id001", "id002", "id003"]
+"x.id2" = ["id001", "id002"]
+"x.id3" = ["id0000000001", "id0000000002", "id0000000003", "id0000000004"]
+
+# Application data for the practitioner idioms: events, orders, subscriptions,
+# sensors, markets, HR.
+[datasets.app.tables.events]
+user_id = "int64"
+event_ts = "timestamp"
+event_name = "string"
+page = "string"
+channel = "string"
+
+[datasets.app.tables.users]
+user_id = "int64"
+signup_ts = "timestamp"
+country = "string"
+plan = "string"
+
+[datasets.app.tables.orders]
+order_id = "int64"
+customer_id = "int64"
+order_ts = "timestamp"
+status = "string"
+amount = "float64"
+
+[datasets.app.tables.order_items]
+order_id = "int64"
+product_id = "int64"
+qty = "int64"
+price = "float64"
+
+[datasets.app.tables.products]
+product_id = "int64"
+name = "string"
+category = "string"
+
+[datasets.app.tables.subscriptions]
+customer_id = "int64"
+start_date = "date"
+end_date = "date"
+mrr = "int64"
+
+[datasets.app.tables.customer_updates]
+customer_id = "int64"
+city = "string"
+plan = "string"
+updated_at = "timestamp"
+
+[datasets.app.tables.customer_history]
+customer_id = "int64"
+city = "string"
+valid_from = "timestamp"
+valid_to = "timestamp"
+
+[datasets.app.tables.employees]
+emp_id = "int64"
+manager_id = "int64"
+name = "string"
+dept = "string"
+salary = "int64"
+
+[datasets.app.tables.trades]
+symbol = "string"
+ts = "timestamp"
+price = "float64"
+qty = "int64"
+
+[datasets.app.tables.quotes]
+symbol = "string"
+ts = "timestamp"
+bid = "float64"
+ask = "float64"
+
+[datasets.app.tables.readings]
+sensor_id = "int64"
+ts = "timestamp"
+value = "float64"
+
+[datasets.app.tables.logins]
+user_id = "int64"
+login_date = "date"
+
+[datasets.app.tables.calendar]
+day = "date"
+
+[datasets.app.tables.fx_rates]
+currency = "string"
+ts = "timestamp"
+rate = "float64"
+
+[datasets.app.tables.payments]
+payment_id = "int64"
+currency = "string"
+ts = "timestamp"
+amount = "float64"
+
+[datasets.app.tables.sales_wide]
+region = "string"
+q1 = "int64"
+q2 = "int64"
+q3 = "int64"
+q4 = "int64"
+
+[datasets.app.tables.bookings]
+resource = "string"
+start_ts = "timestamp"
+end_ts = "timestamp"
+
+[datasets.app.values]
+"events.event_name" = ["view", "signup", "add_to_cart", "checkout", "purchase"]
+"events.page" = ["/", "/pricing", "/docs", "/cart"]
+"events.channel" = ["organic", "paid", "email"]
+"events.event_ts" = ["2024-01-01 10:00:00", "2024-01-01 10:10:00", "2024-01-01 10:50:00", "2024-01-01 11:05:00", "2024-01-02 09:00:00", "2024-01-09 09:00:00", "2024-02-03 12:00:00"]
+"users.country" = ["DE", "FR", "US"]
+"users.plan" = ["free", "pro", "team"]
+"orders.status" = ["placed", "shipped", "returned", "cancelled"]
+"products.category" = ["books", "games", "garden"]
+"customer_updates.city" = ["Paris", "Rome", "Berlin"]
+"customer_history.city" = ["Paris", "Rome", "Berlin"]
+"employees.dept" = ["eng", "sales", "ops"]
+"employees.salary" = [50, 60, 70, 80, 90]
+"trades.symbol" = ["AAPL", "MSFT"]
+"quotes.symbol" = ["AAPL", "MSFT"]
+"fx_rates.currency" = ["EUR", "GBP"]
+"payments.currency" = ["EUR", "GBP"]
+"subscriptions.mrr" = [10, 20, 50]
+"logins.login_date" = ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-05", "2024-01-06", "2024-01-10"]
+"calendar.day" = ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"]
+"sales_wide.region" = ["north", "south", "east"]
+"bookings.resource" = ["room-a", "room-b"]
+
+[datasets.app]
+not_null = ["readings.ts", "trades.ts", "quotes.ts", "fx_rates.ts", "payments.payment_id"]
+
+# IoT telemetry: sensor readings, cumulative meters and counters, device
+# states, discrete events. Timestamps cluster in two days so windows and
+# time buckets have several rows.
+[datasets.iot.tables.readings]
+device_id = "int64"
+ts = "timestamp"
+temperature = "float64"
+
+[datasets.iot.tables.meters]
+device_id = "int64"
+ts = "timestamp"
+kwh_total = "float64"
+
+[datasets.iot.tables.counters]
+device_id = "int64"
+ts = "timestamp"
+packets = "int64"
+
+[datasets.iot.tables.states]
+device_id = "int64"
+ts = "timestamp"
+state = "string"
+
+[datasets.iot.tables.devices]
+device_id = "int64"
+site = "string"
+installed_at = "timestamp"
+
+[datasets.iot.tables.door_events]
+door_id = "int64"
+ts = "timestamp"
+event = "string"
+
+[datasets.iot.tables.motion_events]
+door_id = "int64"
+ts = "timestamp"
+
+[datasets.iot.tables.calendar]
+day = "date"
+
+[datasets.iot]
+not_null = ["readings.ts", "meters.ts", "counters.ts", "states.ts", "door_events.ts", "motion_events.ts"]
+
+[datasets.iot.values]
+"readings.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:01:00", "2024-03-01 00:02:30", "2024-03-01 00:05:00", "2024-03-01 00:20:00", "2024-03-01 01:00:00", "2024-03-01 06:00:00", "2024-03-02 00:00:00", "2024-03-02 12:00:00"]
+"readings.temperature" = [18.5, 21.0, 25.5, 30.0, 31.5, 35.0, -2.0]
+"meters.ts" = ["2024-03-01 00:00:00", "2024-03-01 08:00:00", "2024-03-01 23:00:00", "2024-03-02 00:00:00", "2024-03-02 12:00:00", "2024-03-03 00:00:00"]
+"meters.kwh_total" = [100.0, 102.5, 104.0, 110.0, 111.5, 120.0]
+"counters.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:01:00", "2024-03-01 00:02:00", "2024-03-01 00:03:00", "2024-03-01 00:04:00"]
+"counters.packets" = [0, 10, 25, 40, 3, 15]
+"states.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:10:00", "2024-03-01 00:25:00", "2024-03-01 01:00:00", "2024-03-01 02:00:00"]
+"states.state" = ["running", "idle", "fault"]
+"devices.site" = ["plant-a", "plant-b"]
+"devices.installed_at" = ["2024-01-01 00:00:00", "2024-02-15 00:00:00"]
+"door_events.ts" = ["2024-03-01 00:00:00", "2024-03-01 00:00:20", "2024-03-01 00:01:00", "2024-03-01 00:05:00"]
+"door_events.event" = ["open", "close"]
+"motion_events.ts" = ["2024-03-01 00:00:10", "2024-03-01 00:00:50", "2024-03-01 00:04:00"]
+"calendar.day" = ["2024-03-01", "2024-03-02", "2024-03-03"]
+
+# Financial transactions: card and account transactions, a double-entry
+# ledger, bank statements, invoices, and market prices. Money is DECIMAL as
+# in any ledger; market prices are DOUBLE as in most tick stores.
+[datasets.fin.tables.transactions]
+txn_id = "int64"
+account_id = "int64"
+card_id = "int64"
+ts = "timestamp"
+amount = "decimal(18,2)"
+kind = "string"
+merchant = "string"
+country = "string"
+
+[datasets.fin.tables.journal_lines]
+entry_id = "int64"
+account = "string"
+debit = "decimal(18,2)"
+credit = "decimal(18,2)"
+
+[datasets.fin.tables.ledger]
+ref = "string"
+booked_on = "date"
+amount = "decimal(18,2)"
+
+[datasets.fin.tables.bank_statement]
+ref = "string"
+value_date = "date"
+amount = "decimal(18,2)"
+
+[datasets.fin.tables.invoices]
+invoice_id = "int64"
+customer_id = "int64"
+due_date = "date"
+amount = "decimal(18,2)"
+paid = "boolean"
+
+[datasets.fin.tables.ticks]
+symbol = "string"
+ts = "timestamp"
+price = "float64"
+size = "int64"
+
+[datasets.fin.tables.lots]
+symbol = "string"
+ts = "timestamp"
+side = "string"
+qty = "int64"
+price = "float64"
+
+[datasets.fin]
+not_null = ["transactions.ts", "ticks.ts", "lots.ts"]
+
+[datasets.fin.values]
+"transactions.ts" = ["2024-05-01 09:00:00", "2024-05-01 09:20:00", "2024-05-01 09:45:00", "2024-05-01 12:00:00", "2024-05-02 09:00:00", "2024-09-01 10:00:00"]
+"transactions.amount" = [5.00, 9500.00, 9900.00, 120.00, 120.00, 42.50, 15000.00]
+"transactions.kind" = ["deposit", "withdrawal", "card"]
+"transactions.merchant" = ["acme", "bobs", "cafe"]
+"transactions.country" = ["DE", "FR", "US"]
+"journal_lines.account" = ["cash", "revenue", "receivables"]
+"journal_lines.debit" = [0.00, 100.00, 250.00]
+"journal_lines.credit" = [0.00, 100.00, 250.00]
+"ledger.ref" = ["INV-1", "INV-2", "INV-3", "INV-4"]
+"bank_statement.ref" = ["INV-1", "INV-2", "INV-3", "INV-5"]
+"ledger.amount" = [100.00, 250.00, 99.99]
+"bank_statement.amount" = [100.00, 250.00, 99.90]
+"ledger.booked_on" = ["2024-05-01", "2024-05-02"]
+"bank_statement.value_date" = ["2024-05-01", "2024-05-03"]
+"invoices.due_date" = ["2024-01-15", "2024-03-01", "2024-04-20", "2024-05-30"]
+"ticks.symbol" = ["AAPL", "MSFT"]
+"ticks.ts" = ["2024-05-01 09:30:00", "2024-05-01 09:30:20", "2024-05-01 09:31:05", "2024-05-01 09:31:40", "2024-05-01 09:35:00", "2024-05-02 09:30:00"]
+"ticks.price" = [100.0, 101.5, 99.0, 102.0, 98.5, 103.0]
+"lots.symbol" = ["AAPL"]
+"lots.side" = ["buy", "sell"]
+"lots.qty" = [10, 5, 20]
+"lots.price" = [100.0, 110.0, 95.0]

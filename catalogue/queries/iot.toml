@@ -1,0 +1,204 @@
+# IoT and telemetry idioms from time-series databases and stream processors:
+# time-weighted averages, heartbeats, condition durations, counter resets,
+# gap filling, downsampling, change detection, consecutive-threshold alerts,
+# meter consumption and event correlation. Re-written in our own words over
+# the `iot` data.
+dataset = "iot"
+
+[[query]]
+id = "iot-time-weighted-average"
+title = "Time-weighted average temperature"
+intent = "Average each device's temperature weighted by how long each reading stayed current."
+domain = "iot"
+source = { name = "TigerData (TimescaleDB) docs: time-weighted averages", url = "https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages", licence = "no licence stated (timescale/docs); paraphrased" }
+features = ["lag_lead", "epoch", "interval_to_number", "group_by", "sum", "arithmetic_float", "agg_arithmetic"]
+pitfalls = ["tie_order: two readings at the same instant get zero weight in either order", "division_by_zero: a device with a single reading has total weight 0", "float_sum_order: weighted sums of doubles"]
+ibis = '''
+w = ibis.window(group_by="device_id", order_by="ts")
+spans = readings.mutate(
+    seconds=readings.ts.lead().over(w).epoch_seconds() - readings.ts.epoch_seconds()
+).filter(_.seconds.notnull())
+q = spans.group_by("device_id").aggregate(
+    twa=(spans.temperature * spans.seconds).sum() / spans.seconds.sum()
+)
+'''
+
+[[query]]
+id = "iot-silent-devices"
+title = "Devices that stopped reporting"
+intent = "List the devices whose last reading is more than fifteen minutes old at a reference time, including devices that never reported."
+domain = "iot"
+source = { name = "TigerData (TimescaleDB) docs: heartbeat aggregation", url = "https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg", licence = "no licence stated (timescale/docs); paraphrased" }
+features = ["left_join", "group_by", "min_max", "filter", "interval_day_time"]
+pitfalls = ["null_join_keys: a device without readings has a NULL last_seen, which a plain comparison would drop; test IS NULL explicitly", "timezone_dst: the reference time and the readings must be in the same zone"]
+ibis = '''
+now = ibis.timestamp("2024-03-02 12:30:00")
+last = readings.group_by("device_id").aggregate(last_seen=_.ts.max())
+j = devices.left_join(last, devices.device_id == last.device_id)
+q = j.filter(j.last_seen.isnull() | (j.last_seen < now - ibis.interval(minutes=15))).select(
+    devices.device_id, devices.site, j.last_seen
+)
+'''
+
+[[query]]
+id = "iot-condition-duration"
+title = "How long a temperature stayed above a threshold"
+intent = "Find each period in which a device's temperature stayed above 30 degrees, with its start, end and number of readings."
+domain = "iot"
+source = { name = "Azure Stream Analytics: common query patterns (duration of a condition)", url = "https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns", licence = "CC-BY-4.0 (code samples MIT)" }
+features = ["lag_lead", "case_when", "running_agg", "sum", "filter", "group_by", "min_max", "count"]
+pitfalls = ["gap_threshold: is a reading of exactly 30 inside the period?", "tie_order: readings at the same instant", "window_default_frame: the running count of period starts must be ROWS-based"]
+ibis = '''
+w = ibis.window(group_by="device_id", order_by="ts")
+hot = readings.mutate(hot=readings.temperature > 30)
+starts = hot.mutate(
+    start=ibis.ifelse(hot.hot & ~hot.hot.lag().over(w).fill_null(False), 1, 0)
+)
+numbered = starts.mutate(period=starts.start.sum().over(ibis.cumulative_window(group_by="device_id", order_by="ts")))
+q = (
+    numbered.filter(numbered.hot)
+    .group_by(["device_id", "period"])
+    .aggregate(since=_.ts.min(), until=_.ts.max(), readings=_.count())
+)
+'''
+
+[[query]]
+id = "iot-time-in-state"
+title = "Time spent in each machine state"
+intent = "Total how long each device spent in each state, each state lasting until the device's next state change."
+domain = "iot"
+source = { name = "QuestDB cookbook: session windows", url = "https://questdb.com/docs/cookbook/sql/time-series/session-windows/", licence = "Apache-2.0" }
+features = ["lag_lead", "date_diff", "group_by", "sum", "epoch", "interval_to_number"]
+pitfalls = ["tie_order: two state changes at the same instant", "null_aggregate: the current state has no end yet and is left out (or needs a reference time)"]
+ibis = '''
+w = ibis.window(group_by="device_id", order_by="ts")
+spans = states.mutate(until=states.ts.lead().over(w)).filter(_.until.notnull())
+q = spans.group_by(["device_id", "state"]).aggregate(
+    seconds=(spans.until.epoch_seconds() - spans.ts.epoch_seconds()).sum()
+)
+'''
+
+[[query]]
+id = "iot-counter-increase"
+title = "Increase of a counter with resets"
+intent = "Total how much each device's packet counter increased, treating a drop as a counter reset rather than a negative increase."
+domain = "iot"
+source = { name = "TigerData (TimescaleDB) docs: counter aggregation", url = "https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation", licence = "no licence stated (timescale/docs); paraphrased" }
+features = ["lag_lead", "case_when", "group_by", "sum", "arithmetic_int"]
+pitfalls = ["tie_order: two samples at the same instant", "int_overflow: none at these sizes, but 64-bit counters that wrap need modular arithmetic"]
+ibis = '''
+w = ibis.window(group_by="device_id", order_by="ts")
+prev = counters.packets.lag().over(w)
+deltas = counters.mutate(
+    delta=ibis.cases((prev.isnull(), 0), (counters.packets < prev, counters.packets), else_=counters.packets - prev)
+)
+q = deltas.group_by("device_id").aggregate(increase=_.delta.sum())
+'''
+
+[[query]]
+id = "iot-gapfill-locf"
+title = "Hourly averages with last observation carried forward"
+intent = "Average each device's temperature per hour of a day, filling hours without readings with the last known average."
+domain = "iot"
+source = { name = "QuestDB cookbook: fill with previous values, with history", url = "https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/", licence = "Apache-2.0" }
+features = ["cross_join", "left_join", "date_trunc", "group_by", "avg", "first_last_value", "running_agg"]
+pitfalls = ["empty_aggregate: hours before a device's first reading stay NULL", "timezone_dst: local hours repeat or vanish at DST changes", "window_default_frame: LAST_VALUE needs a frame up to the current row and IGNORE NULLS"]
+ibis = '''
+hourly = readings.group_by(["device_id", _.ts.truncate("h").name("hour")]).aggregate(avg=_.temperature.mean())
+hours = readings.select(hour=_.ts.truncate("h")).distinct()
+spine = devices.select("device_id").cross_join(hours)
+j = spine.left_join(hourly, (spine.device_id == hourly.device_id) & (spine.hour == hourly.hour))
+filled = j.select(spine.device_id, spine.hour, hourly.avg)
+w = ibis.cumulative_window(group_by="device_id", order_by="hour")
+q = filled.mutate(avg_locf=filled.avg.last(include_null=False).over(w))
+'''
+notes = "The hour spine here is the hours that occur in the data; TimescaleDB's time_bucket_gapfill generates it."
+
+[[query]]
+id = "iot-downsample"
+title = "Hourly downsampling: min, max, mean, last"
+intent = "Reduce each device's readings to one row per hour with the minimum, maximum, mean, count and last value."
+domain = "iot"
+source = { name = "QuestDB docs: SAMPLE BY", url = "https://questdb.com/docs/query/sql/sample-by/", licence = "Apache-2.0" }
+features = ["date_trunc", "group_by", "min_max", "avg", "count", "arg_max"]
+pitfalls = ["tie_order: 'last' is arbitrary between readings at the same instant", "float_nan: a NaN reading makes MAX NaN in DataFusion", "timezone_dst: hours in local time"]
+ibis = '''
+q = readings.group_by(["device_id", _.ts.truncate("h").name("hour")]).aggregate(
+    lo=_.temperature.min(),
+    hi=_.temperature.max(),
+    mean=_.temperature.mean(),
+    n=_.count(),
+    last=_.temperature.argmax(_.ts),
+)
+'''
+
+[[query]]
+id = "iot-latest-reading"
+title = "Latest reading per device"
+intent = "Show each device's most recent temperature reading."
+domain = "iot"
+source = { name = "QuestDB docs: LATEST ON", url = "https://questdb.com/docs/query/sql/latest-on/", licence = "Apache-2.0" }
+features = ["row_number", "dedup_latest", "qualify", "filter"]
+pitfalls = ["tie_order: two readings at the same latest instant"]
+ibis = '''
+w = ibis.window(group_by="device_id", order_by=ibis.desc("ts"))
+q = readings.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop("rn")
+'''
+
+[[query]]
+id = "iot-change-detection"
+title = "Keep only state changes"
+intent = "Reduce each device's state log to the rows where the state differs from the previous one."
+domain = "iot"
+source = { name = "Azure Stream Analytics: common query patterns (calculation over past events)", url = "https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns", licence = "CC-BY-4.0 (code samples MIT)" }
+features = ["lag_lead", "filter", "coalesce_nullif"]
+pitfalls = ["null_join_keys: comparing with a NULL previous state is not true; the first row needs IS NULL", "tie_order: two states at the same instant"]
+ibis = '''
+prev = states.state.lag().over(ibis.window(group_by="device_id", order_by="ts"))
+q = states.mutate(prev_state=prev).filter(_.prev_state.isnull() | (_.state != _.prev_state)).drop("prev_state")
+'''
+
+[[query]]
+id = "iot-consecutive-threshold"
+title = "Alert on three consecutive high readings"
+intent = "Raise an alert at every reading that is the third or later in a row above 30 degrees."
+domain = "iot"
+source = { name = "Azure Stream Analytics: common query patterns (MATCH_RECOGNIZE)", url = "https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns", licence = "CC-BY-4.0 (code samples MIT)" }
+features = ["lag_lead", "filter"]
+pitfalls = ["null_aggregate: a missing (NULL) reading breaks the run", "tie_order: readings at the same instant"]
+ibis = '''
+w = ibis.window(group_by="device_id", order_by="ts")
+t = readings.mutate(p1=readings.temperature.lag(1).over(w), p2=readings.temperature.lag(2).over(w))
+q = t.filter((t.temperature > 30) & (t.p1 > 30) & (t.p2 > 30)).select("device_id", "ts", "temperature")
+'''
+
+[[query]]
+id = "iot-daily-energy"
+title = "Daily energy consumption from a cumulative meter"
+intent = "Compute each meter's energy use per day as the difference between its highest and lowest cumulative reading that day."
+domain = "iot"
+source = { name = "TigerData (TimescaleDB) tutorial: analyze energy consumption", url = "https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption", licence = "no licence stated (timescale/docs); paraphrased" }
+features = ["cast_date", "group_by", "min_max", "arithmetic_float", "agg_arithmetic"]
+pitfalls = ["timezone_dst: the day boundary depends on the zone", "empty_aggregate: usage across midnight is lost unless the last reading of the previous day is included"]
+ibis = '''
+q = meters.group_by(["device_id", _.ts.date().name("day")]).aggregate(
+    used=_.kwh_total.max() - _.kwh_total.min()
+)
+'''
+
+[[query]]
+id = "iot-event-correlation"
+title = "Door openings followed by motion"
+intent = "Pair each door opening with the motion events at the same door within the following 30 seconds."
+domain = "iot"
+source = { name = "Apache Flink docs: interval joins", url = "https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/sql/reference/queries/joins/", licence = "Apache-2.0" }
+features = ["range_join", "inner_join", "filter", "interval_day_time"]
+pitfalls = ["gap_threshold: is motion exactly 30 s later included?", "null_join_keys: events without a door id match nothing"]
+ibis = '''
+o = door_events.filter(door_events.event == "open")
+m = motion_events
+q = o.join(
+    m,
+    (o.door_id == m.door_id) & (m.ts >= o.ts) & (m.ts <= o.ts + ibis.interval(seconds=30)),
+).select(o.door_id, opened=o.ts, motion=m.ts)
+'''

@@ -1,0 +1,87 @@
+# Join Order Benchmark (Leis et al., "How Good Are Query Optimizers, Really?",
+# PVLDB 9(3), 2015) over the IMDB data set. The query files in
+# gregrahn/join-order-benchmark carry no licence, so only the intent is
+# taken, paraphrased; the Ibis expressions are our own and simplified.
+dataset = "imdb"
+
+[[query]]
+id = "job-1a"
+title = "JOB 1a: top-ranked movies of production companies"
+intent = "Find the earliest top-250 movie made by a production company credited as co-producer or presenter, but not as Metro-Goldwyn-Mayer."
+domain = "movies"
+source = { name = "Join Order Benchmark, query 1a", url = "https://github.com/gregrahn/join-order-benchmark", licence = "no licence stated; intent paraphrased" }
+features = ["filter", "inner_join", "multi_join", "like", "global_aggregate", "min_max", "string_compare"]
+pitfalls = ["string_collation: MIN of strings", "empty_aggregate: one row of NULLs when nothing matches"]
+notes = "Every IMDB table has an `id` column; Ibis refuses the third clashing `id_right` (\"Name collisions\"), so the tables are renamed first."
+ibis = '''
+# Every IMDB table has an `id`; Ibis refuses a third clashing `id_right`.
+mc = movie_companies
+ct = company_type.rename(ct_id="id")
+t = title.rename(t_id="id")
+mi = movie_info_idx.rename(mi_info="info")
+it = info_type.rename(it_id="id")
+j = (
+    ct.join(mc, ct.ct_id == mc.company_type_id)
+    .join(t, t.t_id == mc.movie_id)
+    .join(mi, mi.movie_id == t.t_id)
+    .join(it, it.it_id == mi.info_type_id)
+    .filter(
+        (ct.kind == "production companies")
+        & (it.info == "top 250 rank")
+        & ~mc.note.like("%(as Metro-Goldwyn-Mayer Pictures)%")
+        & (mc.note.like("%(co-production)%") | mc.note.like("%(presents)%"))
+    )
+)
+q = j.aggregate(
+    production_note=mc.note.min(),
+    movie_title=t.title.min(),
+    movie_year=t.production_year.min(),
+)
+'''
+
+[[query]]
+id = "job-2a"
+title = "JOB 2a: German movies with a character name in the title"
+intent = "Find the alphabetically first title of movies by German companies tagged with the keyword character-name-in-title."
+domain = "movies"
+source = { name = "Join Order Benchmark, query 2a", url = "https://github.com/gregrahn/join-order-benchmark", licence = "no licence stated; intent paraphrased" }
+features = ["filter", "inner_join", "multi_join", "global_aggregate", "min_max", "string_compare"]
+ibis = '''
+cn = company_name.rename(cn_id="id")
+t = title.rename(t_id="id")
+k = keyword.rename(k_id="id")
+j = (
+    cn.join(movie_companies, cn.cn_id == movie_companies.company_id)
+    .join(t, t.t_id == movie_companies.movie_id)
+    .join(movie_keyword, movie_keyword.movie_id == t.t_id)
+    .join(k, k.k_id == movie_keyword.keyword_id)
+    .filter((cn.country_code == "[de]") & (k.keyword == "character-name-in-title"))
+)
+q = j.aggregate(movie_title=t.title.min())
+'''
+
+[[query]]
+id = "job-6a"
+title = "JOB 6a: Marvel movies with a given actor"
+intent = "Find Marvel Cinematic Universe movies after 2010 featuring an actor whose name matches a pattern."
+domain = "movies"
+source = { name = "Join Order Benchmark, query 6a", url = "https://github.com/gregrahn/join-order-benchmark", licence = "no licence stated; intent paraphrased" }
+features = ["filter", "inner_join", "multi_join", "like", "global_aggregate", "min_max", "string_compare"]
+ibis = '''
+ci = cast_info
+n = name.rename(n_id="id")
+t = title.rename(t_id="id")
+k = keyword.rename(k_id="id")
+j = (
+    ci.join(n, n.n_id == ci.person_id)
+    .join(t, t.t_id == ci.movie_id)
+    .join(movie_keyword, movie_keyword.movie_id == t.t_id)
+    .join(k, k.k_id == movie_keyword.keyword_id)
+    .filter(
+        (k.keyword == "marvel-cinematic-universe")
+        & n.name.like("%Downey%Robert%")
+        & (t.production_year > 2010)
+    )
+)
+q = j.aggregate(movie_keyword=k.keyword.min(), actor_name=n.name.min(), marvel_movie=t.title.min())
+'''

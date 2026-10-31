@@ -1,0 +1,137 @@
+# ClickBench: web-analytics queries over one wide `hits` table. The queries in
+# ClickHouse/ClickBench are CC BY-NC-SA 4.0, so only the intent is taken here,
+# paraphrased; the Ibis expressions are our own. Numbers are ClickBench's
+# 0-based query numbers.
+dataset = "hits"
+
+[[query]]
+id = "clickbench-q06"
+title = "ClickBench Q6: date range of the data"
+intent = "Find the first and last event date in the log."
+domain = "web-analytics"
+source = { name = "ClickBench, query 6", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["global_aggregate", "min_max"]
+pitfalls = ["empty_aggregate: NULL, NULL on an empty table"]
+ibis = '''
+q = hits.aggregate(first=hits.EventDate.min(), last=hits.EventDate.max())
+'''
+
+[[query]]
+id = "clickbench-q09"
+title = "ClickBench Q9: regions by distinct users"
+intent = "List the ten regions with the most distinct users, with their hit counts."
+domain = "web-analytics"
+source = { name = "ClickBench, query 9", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["group_by", "count", "count_distinct", "order_by", "limit"]
+pitfalls = ["tie_order: top 10 by distinct users; equal counts tie", "count_distinct_null: NULL user ids are not counted"]
+ibis = '''
+q = (
+    hits.group_by("RegionID")
+    .aggregate(c=_.count(), u=_.UserID.nunique())
+    .order_by(ibis.desc("u"))
+    .limit(10)
+)
+'''
+
+[[query]]
+id = "clickbench-q13"
+title = "ClickBench Q13: most frequent search phrases"
+intent = "List the ten most frequent non-empty search phrases."
+domain = "web-analytics"
+source = { name = "ClickBench, query 13", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["filter", "group_by", "count", "order_by", "limit"]
+pitfalls = ["tie_order: top 10 by count"]
+ibis = '''
+q = (
+    hits.filter(hits.SearchPhrase != "")
+    .group_by("SearchPhrase")
+    .aggregate(c=_.count())
+    .order_by(ibis.desc("c"))
+    .limit(10)
+)
+'''
+
+[[query]]
+id = "clickbench-q21"
+title = "ClickBench Q21: search phrases leading to Google URLs"
+intent = "List the ten search phrases most often used on pages whose URL mentions google, with one example URL each."
+domain = "web-analytics"
+source = { name = "ClickBench, query 21", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["filter", "like", "group_by", "count", "min_max", "string_compare", "order_by", "limit"]
+pitfalls = ["string_collation: MIN(URL) depends on the collation", "tie_order: top 10 by count"]
+ibis = '''
+q = (
+    hits.filter(hits.URL.contains("google") & (hits.SearchPhrase != ""))
+    .group_by("SearchPhrase")
+    .aggregate(example=_.URL.min(), c=_.count())
+    .order_by(ibis.desc("c"))
+    .limit(10)
+)
+'''
+
+[[query]]
+id = "clickbench-q28"
+title = "ClickBench Q28: referring domains by average URL length"
+intent = "Group referrers by their host name (via a regular expression) and list the 25 hosts with the longest average referrer."
+domain = "web-analytics"
+source = { name = "ClickBench, query 28", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["regex_replace", "group_by", "avg", "count", "min_max", "having", "string_basic", "order_by", "limit"]
+pitfalls = ["regex_dialect: the back-reference syntax in the replacement differs (\\1 vs $1)", "string_collation: length counts characters, not bytes, in most engines"]
+ibis = '''
+k = hits.Referer.re_replace(r"^https?://(?:www\.)?([^/]+)/.*$", r"\1")
+q = (
+    hits.filter(hits.Referer != "")
+    .group_by(k=k)
+    .aggregate(l=_.Referer.length().mean(), c=_.count(), example=_.Referer.min())
+    .filter(_.c > 1)
+    .order_by(ibis.desc("l"))
+    .limit(25)
+)
+'''
+
+[[query]]
+id = "clickbench-q37"
+title = "ClickBench Q37: most visited URLs of a site in a month"
+intent = "List the ten most viewed URLs of one counter in a month, excluding refreshes and uncounted hits."
+domain = "web-analytics"
+source = { name = "ClickBench, query 37", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["filter", "between", "date_literal", "group_by", "count", "order_by", "limit"]
+pitfalls = ["tie_order: top 10 by views"]
+ibis = '''
+q = (
+    hits.filter(
+        (hits.CounterID == 62)
+        & hits.EventDate.between(D("2013-07-01"), D("2013-07-31"))
+        & (hits.DontCountHits == 0)
+        & (hits.IsRefresh == 0)
+        & (hits.URL != "")
+    )
+    .group_by("URL")
+    .aggregate(pageviews=_.count())
+    .order_by(ibis.desc("pageviews"))
+    .limit(10)
+)
+'''
+
+[[query]]
+id = "clickbench-q42"
+title = "ClickBench Q42: page views per minute, paginated"
+intent = "Count one site's page views per minute over two days and return one page of the minutes in time order."
+domain = "web-analytics"
+source = { name = "ClickBench, query 42", url = "https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql", licence = "CC BY-NC-SA 4.0; intent paraphrased" }
+features = ["filter", "between", "date_literal", "date_trunc", "group_by", "count", "order_by", "limit", "offset"]
+pitfalls = ["timezone_dst: minutes are truncated in the session time zone if EventTime is zoned", "limit_without_order: the ORDER BY makes the page deterministic here"]
+ibis = '''
+q = (
+    hits.filter(
+        (hits.CounterID == 62)
+        & hits.EventDate.between(D("2013-07-14"), D("2013-07-15"))
+        & (hits.IsRefresh == 0)
+        & (hits.DontCountHits == 0)
+    )
+    .group_by(m=_.EventTime.truncate("m"))
+    .aggregate(pageviews=_.count())
+    .order_by("m")
+    .limit(10, offset=1)
+)
+'''
