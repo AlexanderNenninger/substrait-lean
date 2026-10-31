@@ -29,7 +29,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✗ *(dbl)* | FPD | `decimal` |
 | fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✗ *(dbl)* | F | `decimal` |
 | fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✗ | F | `ntile`, `decimal` |
-| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | F | `decimal` |
+| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | FPDS | `decimal` |
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✗ | F | `agg_arithmetic` |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | F | `arg_max` |
 | fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `rows_frame`, `stddev_var` |
@@ -59,7 +59,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
 | iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✗ | F | `agg_arithmetic` |
-| iot-silent-devices | [Devices that stopped reporting](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg) | ✓ | F |  |
+| iot-silent-devices | [Devices that stopped reporting](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg) | ✓ | FPDS |  |
 | iot-condition-duration | [How long a temperature stayed above a threshold](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✗ | F | `running_agg` |
 | iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✓ | FPDS |  |
 | iot-counter-increase | [Increase of a counter with resets](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation) | ✓ | FPDS |  |
@@ -140,7 +140,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | ts-weekly-active-users | [Weekly active users](https://ibis-project.org/how-to/analytics/basics) | ✓ | FPDS |  |
 | ts-mom-growth | [Month-over-month revenue growth](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | FPD |  |
 | ts-sessionize | [Sessionize events with a 30-minute inactivity gap](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✗ | F | `running_agg` |
-| ts-session-starts | [Session starts (without numbering)](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✓ | F |  |
+| ts-session-starts | [Session starts (without numbering)](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✓ | FPDS |  |
 | ts-local-day-revenue | [Daily revenue in a local time zone](https://www.postgresql.org/docs/current/functions-datetime.html) | ✗ | F | `timezone` |
 | ts-overlapping-bookings | [Overlapping bookings of a resource](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✓ | FPDS |  |
 | ts-pack-intervals | [Merge overlapping bookings (packing intervals)](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✗ | F | `running_agg`, `rows_frame` |

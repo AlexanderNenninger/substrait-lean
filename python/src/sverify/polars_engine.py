@@ -546,9 +546,10 @@ def _days(v: Val) -> pl.Expr:
     return v.expr.to_physical().cast(pl.Int64)
 
 
-def _month_index(d: pl.Expr) -> tuple[pl.Expr, pl.Expr]:
-    """`Time.monthIndex` of day `d` (`12 · year + month - 1`), and the day
-    of the month from 0: the civil calendar in integer arithmetic."""
+def _month_index(d: Any) -> tuple[Any, Any]:
+    """`Time.monthIndex` of days `d` (`12 · year + month - 1`), and the day
+    of the month from 0: the civil calendar in integer arithmetic (on NumPy
+    arrays, floor division as Lean's)."""
     z = d + 719468
     era = z // 146097
     doe = z - era * 146097
@@ -560,7 +561,7 @@ def _month_index(d: pl.Expr) -> tuple[pl.Expr, pl.Expr]:
     return 12 * (yoe + era * 400) + mp + 2, dom
 
 
-def _month_start(i: pl.Expr) -> pl.Expr:
+def _month_start(i: Any) -> Any:
     """`Time.monthStart`: the first day of month `i`."""
     y, mp = (i - 2) // 12, (i - 2) % 12
     era = y // 400
@@ -569,10 +570,25 @@ def _month_start(i: pl.Expr) -> pl.Expr:
     return era * 146097 + doe - 719468
 
 
+def _on_days(f: Any, d: pl.Expr) -> pl.Expr:
+    """`f` on an `Int64` expression of days, as one NumPy step (NULLs kept)."""
+
+    def apply(s: pl.Series) -> pl.Series:
+        nulls = s.is_null()
+        out = pl.Series(f(s.fill_null(0).to_numpy().astype(np.int64)), dtype=pl.Int64)
+        return pl.select(pl.when(nulls).then(None).otherwise(out)).to_series()
+
+    return d.cast(pl.Int64).map_batches(apply, return_dtype=pl.Int64)
+
+
 def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
     """`Time.addMonths`: the same day `m` months later, or that month's last."""
-    i, dom = _month_index(d)
-    return pl.min_horizontal(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
+
+    def f(x: Any) -> Any:
+        i, dom = _month_index(x)
+        return np.minimum(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
+
+    return _on_days(f, d)
 
 
 def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
@@ -581,11 +597,10 @@ def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
         return d
     if unit == "week":
         return d - (d + 3) % 7
-    i, _ = _month_index(d)
     k = {"month": 1, "quarter": 3, "year": 12}.get(unit)
     if k is None:
         raise Unsupported(f"date_trunc of a date to a {unit} is not supported")
-    return _month_start(i // k * k)
+    return _on_days(lambda x: _month_start(_month_index(x)[0] // k * k), d)
 
 
 def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -> Val:

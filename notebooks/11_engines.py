@@ -3,6 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
+#     "sqlglot==30.27.0",
 #     "sverify",
 # ]
 #
@@ -252,10 +253,11 @@ def _(mo):
     no ties.
 
     Snowflake-specific choices: integers are `NUMBER(38,0)` checked against
-    the 64-bit range, timestamps `TIMESTAMP_NTZ(6)`, every identifier quoted.
+    the 64-bit range, timestamps `TIMESTAMP_NTZ(6)`, intervals counts of
+    microseconds (Snowflake has no interval type), every identifier quoted.
     Where Snowflake can't match the model, the query raises or is refused
-    instead of answering differently, as for interval-valued expressions
-    (Snowflake has no interval type).
+    instead of answering differently, as for an interval-valued result
+    column.
 
     ## Spark and Databricks
 

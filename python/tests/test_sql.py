@@ -26,12 +26,20 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_checker, run_substrait_json, substrait_json
+from sverify.engine import (
+    connect,
+    plan_json,
+    put_table,
+    run_checker,
+    run_substrait_json,
+    substrait_json,
+)
 from sverify.examples import PIPELINES
 from sverify.incremental import arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
+from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_rows, parse_rows
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -697,3 +705,42 @@ def test_sql_snapshot(name):
         SNAPSHOTS.mkdir(exist_ok=True)
         path.write_text(sql)
     assert path.read_text() == sql
+
+
+EVENTS = pa.table(
+    {
+        "u": pa.array([1, 1, 1, 2, 2], pa.int64()),
+        "ts": pa.array(
+            [T0, T0 + dt.timedelta(minutes=10), T0 + dt.timedelta(hours=2), T0, None],
+            pa.timestamp("us"),
+        ),
+    }
+)
+
+
+def interval_queries(events: ibis.Table) -> dict[str, ibis.Table]:
+    """Timestamp differences and timestamp constants compared with intervals
+    (#65): Lean writes the literals as intervals and timestamps, not as the
+    integers the model has them as."""
+    w = ibis.window(group_by="u", order_by="ts")
+    gap = events.mutate(prev=events.ts.lag().over(w))
+    return {
+        "lag_gap": gap.filter(
+            gap.prev.isnull() | (gap.ts - gap.prev > ibis.interval(seconds=30 * 60))
+        ),
+        "before_constant": events.filter(
+            events.ts < ibis.timestamp("2024-05-01 09:00:00") - ibis.interval(minutes=15)  # pyrefly: ignore
+        ),
+    }
+
+
+@pytest.mark.parametrize("name", ["lag_gap", "before_constant"])
+def test_timestamp_differences_compare_with_intervals(name):
+    con = connect()
+    put_table(con, "events", EVENTS)
+    plan = sv.written_plan(plan_json(con, interval_queries(con.table("events"))[name]))
+    lean = lean_on(json.loads(plan), {"events": EVENTS})
+    assert canonical(duckdb_rows(plan, {"events": EVENTS})) == canonical(lean)
+    assert lean, "the query should keep some rows"
+    snowflake = to_sql(json.loads(plan), SNOWFLAKE, tie_free=True)
+    assert "MICROSECOND" in snowflake

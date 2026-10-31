@@ -124,7 +124,7 @@ def check (input : Json) : Except String Json := do
   | none => throw (why S K T cat plan.root)
   | some (p, q) =>
     let schemas := planSchemas plan
-    let pk := relKinds schemas cat p
+    let pk := (relKinds schemas cat p).map WKind.toKind
     let cat' : Catalog := fun t => if t == partials then ⟨pk.length, []⟩ else cat t
     let schemas' : Schemas := fun t n => if t == partials then schemaOf pk else schemas t n
     let linear := plan.root.linear S K T cat

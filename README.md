@@ -376,6 +376,15 @@ plus_one(orders)
   row per `ts` (checked on the data when bound). In `ensures` it is proved, since
   keys survive filters, projections and joins whose condition pins down the other
   side's key (`a.ts = b.ts`, `w1.ts = w0.ts + 60`).
+* **Foreign keys:** `sv.references("cust", "customers", "id")` in `requires`
+  says every non-NULL `cust` occurs in `customers.id` (checked on the data, like
+  `unique`). It is only an assumption: nothing proves it in `ensures`.
+* **Rewrites:** `sv.verify(...).optimized` is the transformation rewritten with
+  what the preconditions establish (`Rel.optimize_sound`), and `rewrites` names
+  the changes: a `DISTINCT` over a key goes, a filter the preconditions imply goes,
+  a left join on a NOT NULL foreign key becomes an inner join, and a join to a
+  dimension whose columns nothing reads goes. Run it instead
+  of the transformation on data that meets the preconditions.
 * **Window functions:** `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY …`
   (any directions, NULLs first or last, offsets and defaults). Lean knows that
   `LAG(ts)` comes from an earlier row of the same partition, that a lagged
@@ -539,10 +548,25 @@ table format plays three roles:
   reading it are recomputed, and the report says so.
 * **A source of preconditions.** `requires` conditions are proved from
   metadata where possible: schema nullability (`nullable=false`, Iceberg
-  `required`), Delta CHECK constraints, and per-file statistics (min/max for
-  integers, dates and timestamps; NULL counts for every column). A batch only
+  `required`), Delta CHECK constraints, and per-file statistics: min/max for
+  integers, doubles, dates and timestamps, NULL counts for every column. A
+  column with NULLs gets the fact `c IS NULL OR (c >= lo AND c <= hi)`, so
+  conditions such as `amount >= 0 OR amount IS NULL` are proved from it. A
+  double's maximum is used only where the files count no NaN (NaN sorts above
+  every number; Delta has no NaN count). Strings (truncated bounds, no string
+  order in the model), decimals and zoned timestamps get no bounds. A batch only
   uses the statistics of the files it added. Keys are always checked on the
-  data, since neither format enforces them.
+  data, since neither format enforces them. Delta tables with deletion vectors
+  are read through delta-rs's DataFusion reader. Their statistics describe
+  all physical rows, deleted ones included; bounds of a superset of the rows
+  still hold.
+* **Proved file pruning.** `DeltaSource(uri, where="amount * 2 > 100")` is
+  the rows on which the condition is TRUE. A snapshot skips a file only if
+  Lean proves, from the facts the file's statistics give, that the condition
+  is not TRUE on any of its rows (`prune_sound`). That covers conditions the
+  readers' own statistics pushdown does not handle, such as arithmetic on a
+  column. The rows read are filtered exactly, changes are filtered the same
+  way, and the condition becomes a fact about every row.
 * **A sink that carries the contract.** `DeltaSink` writes a view in one
   commit per state, exactly once (Delta's transaction identifiers, keyed by
   the sum of the source versions). The proved guarantees become NOT NULL
@@ -611,24 +635,66 @@ for p in job2.preconditions: print(p)
 # big: (_.doubled >= 0) (Delta constraint)
 ```
 
-`pipe.refresh(audit=True)` also compares the batch with the new snapshot
-before committing, and every view with its recomputation afterwards
-(`AuditError`). Iceberg works the same way with `IcebergSource(catalog,
+`pipe.refresh(audit=True)` also compares the batch with the new snapshot,
+and every view with its recomputation on the new tables, before committing
+anything (`AuditError`): after a mismatch the state, the versions and any sink
+are as they were. When a source's schema changes, a batch whose data fits the
+old schema (added columns, widened types whose values still fit) is read in
+it and the report names the change. Otherwise the views reading the source
+are planned again on the new schema and recomputed. A view with a contract is
+not re-planned, because its proof was for the old schema: `refresh` raises
+`SchemaError` and changes nothing.
+
+A sink writes exactly once because its transaction id is built from the
+source versions, so every base table needs a version. A table that is not in
+a table format, such as a small lookup table, becomes a source with
+`pipe.source("regions", sv.StaticSource(table, version=1))`. The version is
+yours to pick (a release number). The sink records the table's content
+digest next to it and refuses to skip a commit made from other contents at
+the same version. `regions.replace(new_table, version=2)` and a `refresh`
+recompute the views that read it.
+
+A restarted job can resume from its sink instead of recomputing:
+
+```python
+stored = DeltaSource("big").stored()      # the state the sink's last commit holds
+orders = pipe.source("orders", DeltaSource("orders"), version=stored.sources["orders"])
+big = pipe.view("big", doubled(orders), resume=stored)
+big.resumed                               # 'resumed from big@v3'
+sink = DeltaSink("big", big)              # its next write is a MERGE
+pipe.refresh()                            # incremental from orders@v3
+```
+
+The view takes the stored rows only if its plan has the digest the sink
+recorded and the pipeline holds the view's sources at the recorded versions
+(and static tables with the recorded digests). Otherwise it is computed, and
+`big.resumed` says why. Resuming trusts that the sink's table holds exactly
+the view's rows, so `stored()` returns the state only when the table's last
+commit is the sink's own. Iceberg works the same way with `IcebergSource(catalog,
 "db.orders")` and `IcebergSink`: versions are snapshot sequence numbers, a
 run of appends is read from the files those snapshots added, and anything
-else (row-level deletes, overwrites) is a diff of the two snapshots, which the
-report names. Iceberg has no CHECK constraints, so the sink keeps the
-contract in the table properties and every snapshot summary, and a reader
-uses it only while every snapshot of the table was written under it.
+else (row-level deletes, overwrites, delete files) is a diff of the two
+snapshots on only the data files that changed between them (removed, added,
+or with other delete files), which the report names
+(`ChangeFeed.of_changed_files`). Iceberg has no CHECK constraints, so the sink
+keeps the contract in the table properties and every snapshot summary, and a
+reader uses it only while every snapshot of the table was written under it.
+After its first write, the sink writes each change as one snapshot of
+position delete files (one copy per deleted row, so duplicates are exact) and
+a data file of the new rows. pyiceberg 0.12 writes no delete files, so
+`sverify.io` writes them itself; it reads position deletes, but not equality
+deletes (a table with those cannot be read).
 
 What is trusted: that the change feed turns the old snapshot into the new
 one (each report says "Δ trusted as coming from …"), that writers enforce
 nullability and constraints, and that file statistics are correct (Delta's
 millisecond timestamp maxima are widened by 999 µs). What is proved: given a
 correct feed, the views are maintained correctly (`Rel.cdf_sound`); a
-snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
-the table and an append's rows (`stats_table`, `stats_append`); and each
-precondition follows from the metadata facts (`contract_sound`).
+snapshot diff is a correct feed (`ChangeFeed.of_diff`), also on the changed
+files alone (`ChangeFeed.of_changed_files`); per-file bounds bound
+the table and an append's rows (`stats_table`, `stats_append`), and the facts
+stated from them follow (`stats_bounds`, `stats_fact`, `stats_all_null`); and
+each precondition follows from the metadata facts (`contract_sound`).
 
 ### Sharded evaluation
 
@@ -1124,6 +1190,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
+| `SubstraitLean/Semantic.lean` | Rewrites from contract facts and keys (`DISTINCT` on a key, …); `Rel.optimize_sound` |
 | `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/ShardCheck.lean` | `--shard`: splitting a plan into per-shard and combining plans (trusted) |
@@ -1177,10 +1244,25 @@ interval, possible booleans, and whether it can be a string.
   `IS NULL` and comparisons with constants into constraints on the tested
   expression (or its negation), and `Expr.refineNeg_sound` refines columns
   where a condition is not TRUE. This is how `clip`, `abs`, `greatest` and
-  `least` get their bounds. `Expr.refine_sound` also covers `OR`, so a filter
-  `x IN (1, 2, 3)` gives `x ∈ [1, 3]`.
+  `least` get their bounds. `Expr.refine_sound` also covers `OR` and
+  `IS NULL`, so a filter `x IN (1, 2, 3)` gives `x ∈ [1, 3]` and
+  `x IS NULL OR x >= 0` gives "NULL or ≥ 0". `p OR q` is evaluated with `q`
+  refined where `p` is not TRUE, also when `p` may be NULL (`orSplitNull`),
+  which proves `x >= 0 OR x IS NULL` for a nullable `x`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
+* `Rel.optimize_sound` ([Semantic.lean](SubstraitLean/Semantic.lean)): the
+  rewrites a contract's keys and facts allow keep a plan's rows, on data that
+  meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
+  goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
+  A filter the preconditions imply goes; one they rule out empties the plan.
+  A left join on a NOT NULL foreign key (`sv.references`) becomes an inner
+  join, and so does one under a filter that rejects its padded rows. A join
+  whose condition hits a key of the right side goes when nothing reads the
+  right side's columns (for an inner join, given a NOT NULL foreign key).
+  A `GROUP BY` column that the other grouping columns determine (functional
+  dependencies from keys and equalities, `Rel.fds_sound`) moves into a `MIN`.
+  `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
   integer column can stand in for it in a key; a filter `$i = k` drops `i` from
@@ -1315,11 +1397,17 @@ hypotheses:
   `Rel.delta_correct`), the old view plus the delta plan's output has the
   weights of the view on the new snapshot. `ChangeFeed.of_diff`: the diff of
   two snapshots is such a feed, so the fallback needs no trust in the feed.
+  `ChangeFeed.of_changed_files`: so is the diff of only the files that
+  changed, if the unchanged files are the same rows in both snapshots.
 * `stats_table`: with correct per-file statistics (`ColStats.Correct`,
   trusted), every row of the table lies in the join of the files' bounds;
   `stats_append`: the files an append added bound its rows; `stats_bounds`:
   that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
-  contract checker.
+  contract checker; `stats_fact`: with NULLs or a missing side it is
+  `c IS NULL OR (…)`; `stats_all_null`: files that are all NULL give `c IS NULL`.
+* `prune_sound`: filtering only the files that are not skipped gives the
+  same rows as filtering the whole table, if no row of a skipped file makes
+  the filter TRUE (which the checker proves from the file's statistics).
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 
