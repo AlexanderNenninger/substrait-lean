@@ -238,20 +238,19 @@ def test_temporal_literals():
         "CAST('1970-01-01 00:00:00.001500' AS TIMESTAMP_NTZ(6))"
     )
     assert parses(SNOWFLAKE.date_lit(-1)) == "CAST('1969-12-31' AS DATE)"
-    assert SNOWFLAKE.interval_lit(-10_000) == "- INTERVAL '10000 microseconds'"
+    # Intervals are NUMBERs of microseconds; Snowflake has no interval type.
+    assert SNOWFLAKE.interval_lit(-10_000) == "-10000"
     ts = SNOWFLAKE.timestamp_lit(0)
     iv = SNOWFLAKE.interval_lit(-10_000)
-    assert parses(SNOWFLAKE.time_add_interval(ts, iv)).endswith(" - INTERVAL '10000 microseconds')")
-    assert parses(SNOWFLAKE.time_sub_interval(ts, iv)).endswith(" + INTERVAL '10000 microseconds')")
+    assert parses(SNOWFLAKE.time_add_interval(ts, iv)).startswith("DATEADD(MICROSECOND, -10000, ")
+    assert parses(SNOWFLAKE.time_sub_interval(ts, iv)).startswith(
+        "DATEADD(MICROSECOND, - (-10000), "
+    )
+    assert parses(SNOWFLAKE.time_diff("a", "b")) == "DATEDIFF(MICROSECOND, b, a)"
     with pytest.raises(Unsupported, match="years 1-9999"):
         SNOWFLAKE.timestamp_lit(-(10**18))
-    for refused in (
-        lambda: SNOWFLAKE.time_diff("a", "b"),
-        lambda: SNOWFLAKE.interval_add("a", "b"),
-        lambda: SNOWFLAKE.type_name("interval"),
-    ):
-        with pytest.raises(Unsupported, match="interval"):
-            refused()
+    with pytest.raises(Unsupported, match="interval result column"):
+        SNOWFLAKE.result_kind("interval")
 
 
 def test_strings_escape_backslashes():

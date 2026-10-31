@@ -187,6 +187,7 @@ end Substrait.Examples
 #print axioms Substrait.stats_bounds
 #print axioms Substrait.stats_fact
 #print axioms Substrait.stats_all_null
+#print axioms Substrait.prune_sound
 #print axioms Substrait.Rel.eval_sharded
 #print axioms Substrait.Rel.keyRows
 #print axioms Substrait.Sharding.coDisjoint

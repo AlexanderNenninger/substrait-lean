@@ -1,4 +1,4 @@
-"""DataFusion's surprising semantics, pinned (`notebooks/14_datafusion_semantics.py`).
+"""DataFusion's surprising semantics, pinned (`notebooks/16_datafusion_semantics.py`).
 
 The first half pins what DataFusion does where the Lean model relies on it
 (the total order on doubles, truncating division, which operations fail and
@@ -238,7 +238,7 @@ def test_reported_runtime_errors():
 
 
 gap = pytest.mark.xfail(
-    strict=True, reason="soundness gap, see notebooks/14_datafusion_semantics.py"
+    strict=True, reason="soundness gap, see notebooks/16_datafusion_semantics.py"
 )
 
 
