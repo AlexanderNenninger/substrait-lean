@@ -13,7 +13,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="2. The checker")
+app = marimo.App(width="medium", app_title="14. The checker")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 1. [Plans, meaning and proofs](?file=01_plans_and_proofs.py) · [Contents](?file=00_start_here.py) · 3. [Contracts](?file=03_contracts.py) →
+    ← 13. [Plans, meaning and proofs](?file=13_plans_and_proofs.py) · [Contents](?file=00_start_here.py) · 15. [What is proved, what is trusted](?file=15_trust.py) →
     """)
     return
 
@@ -35,7 +35,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 2. The checker
+    # 14. The checker
 
     The Lean project compiles to a small command-line program,
     `substrait-check`. It is the bridge between the proofs and real queries:
@@ -48,7 +48,7 @@ def _(mo):
     |:---|:---|:---|
     | `substrait-check plan.json` | show the plan, check it is well-formed, evaluate it | this chapter |
     | `--write plan.json` | write the plan back out from Lean's model | the engines (chapter 11) |
-    | `--contract contract.json` | prove postconditions from preconditions | contracts (chapters 3–8) |
+    | `--contract contract.json` | prove postconditions from preconditions | contracts (chapters 4–8) |
     | `--delta plan.json` | the proved update plans for incremental views | chapters 9–10 |
 
     Exit codes: 0 fine, 1 unsupported or unparseable, 2 ill-formed, 3 not
@@ -159,7 +159,7 @@ def _(mo):
       (chapter 9). Also a decision procedure with a proof (`isIncremental_iff`).
     * **`roundtrip: ok`**: writing the `Rel` back to JSON and reading it again
       gives the same `Rel`. That guards the parser, which is *trusted* code
-      (chapter 13).
+      (chapter 15).
     * **`rows (0)`**: named tables carry only their schema here, no data.
 
     ## Ruling out column bugs
@@ -228,7 +228,7 @@ def _(mo):
     (`$0` is well-formed but compares `id` instead of `amount` with 10:
     well-formedness rules out references to nothing, not references to the
     wrong thing.
-    Catching *that* is what contracts are for, from chapter 3 on.)
+    Catching *that* is what contracts are for, from chapter 4 on.)
 
     ## Lean as a reference engine
 
@@ -327,7 +327,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 1. [Plans, meaning and proofs](?file=01_plans_and_proofs.py) · [Contents](?file=00_start_here.py) · 3. [Contracts](?file=03_contracts.py) →
+    ← 13. [Plans, meaning and proofs](?file=13_plans_and_proofs.py) · [Contents](?file=00_start_here.py) · 15. [What is proved, what is trusted](?file=15_trust.py) →
     """)
     return
 
