@@ -160,9 +160,13 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
     return pa.table(cols, schema=schema)
 
 
+#: DataFusion writes `DISTINCT` as an aggregate with one empty grouping, which
+#: its own consumer rejects.
+DATAFUSION_CANNOT_READ = {"df_distinct"}
+
 #: Fixtures Lean accepts with relations the Polars translator does not have yet
-#: (`DISTINCT`, aggregates): it must refuse them, not run them wrongly.
-NOT_IN_POLARS = {"group_by_without_measures", "df_aggregate"}
+#: (aggregates with measures): it must refuse them, not run them wrongly.
+NOT_IN_POLARS = {"df_aggregate"}
 
 
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
@@ -195,12 +199,18 @@ def test_golden_fixtures(fixture, data):
     for t, table in tables.items():
         put_table(con, t, table)
     if fixture.stem in NOT_IN_POLARS:
-        with pytest.raises(polars_engine.Unsupported, match="unsupported relation"):
-            on_both(con, plan)
+        with pytest.raises(polars_engine.Unsupported, match="aggregate functions"):
+            rows_of(run_plan(con, plan, "polars"))
         return
-    df, pl_rows = on_both(con, plan)
+    if '"fetch"' in plan:
+        # DataFusion reads the current `offsetExpr`/`countExpr`, not the
+        # deprecated fields Lean writes: it runs the fixture itself.
+        df = datafusion_rows(run_substrait_json(con, source))
+        pl_rows = rows_of(run_plan(con, plan, "polars"))
+    else:
+        df, pl_rows = on_both(con, plan)
     assert same_bag(df, pl_rows)
-    if fixture.stem.startswith("df_"):
+    if fixture.stem.startswith("df_") and fixture.stem not in DATAFUSION_CANNOT_READ:
         # DataFusion's own plan (captured from it), not just Lean's rewrite.
         assert same_bag(datafusion_rows(run_substrait_json(con, source)), pl_rows)
     if all(f.type == pa.int64() for s in schemas.values() for f in s):
@@ -498,7 +508,7 @@ def test_aggregates_are_refused():
     con = connect()
     create_tables(con)
     plan = written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
-    with pytest.raises(polars_engine.Unsupported, match="unsupported relation"):
+    with pytest.raises(polars_engine.Unsupported, match="aggregate functions"):
         polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
 
 

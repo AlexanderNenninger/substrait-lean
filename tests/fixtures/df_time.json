@@ -1,0 +1,520 @@
+{
+  "extensions": [
+    {
+      "extensionFunction": {
+        "name": "date_part",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 2,
+        "name": "modulus",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 3,
+        "name": "date_trunc",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 1,
+        "name": "add",
+        "extensionUrnReference": 4294967295
+      }
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "project": {
+            "common": {
+              "emit": {
+                "outputMapping": [
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17
+                ]
+              }
+            },
+            "input": {
+              "read": {
+                "baseSchema": {
+                  "names": [
+                    "sensor",
+                    "ts",
+                    "value"
+                  ],
+                  "struct": {
+                    "types": [
+                      {
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "precisionTimestamp": {
+                          "precision": 6,
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "fp64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      }
+                    ],
+                    "nullability": "NULLABILITY_REQUIRED"
+                  }
+                },
+                "namedTable": {
+                  "names": [
+                    "sensors"
+                  ]
+                }
+              }
+            },
+            "expressions": [
+              {
+                "selection": {
+                  "directReference": {
+                    "structField": {
+                      "field": 1
+                    }
+                  },
+                  "rootReference": {}
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "year"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "quarter"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "month"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "week"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "day"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 2,
+                  "arguments": [
+                    {
+                      "value": {
+                        "scalarFunction": {
+                          "functionReference": 1,
+                          "arguments": [
+                            {
+                              "value": {
+                                "scalarFunction": {
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "string": "dow"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "value": {
+                                        "selection": {
+                                          "directReference": {
+                                            "structField": {
+                                              "field": 1
+                                            }
+                                          },
+                                          "rootReference": {}
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "value": {
+                                "literal": {
+                                  "i64": "6"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "i64": "7"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "doy"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "hour"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 3,
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "SECOND"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 3,
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "MINUTE"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 3,
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "DAY"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 3,
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "WEEK"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 3,
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "QUARTER"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 3,
+                  "arguments": [
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "YEAR"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "names": [
+          "ts",
+          "year",
+          "quarter",
+          "month",
+          "week",
+          "day",
+          "dow",
+          "doy",
+          "hour",
+          "to_second",
+          "to_minute",
+          "to_day",
+          "to_week",
+          "to_quarter",
+          "to_year"
+        ]
+      }
+    }
+  ],
+  "version": {
+    "minorNumber": 77,
+    "producer": "datafusion"
+  }
+}

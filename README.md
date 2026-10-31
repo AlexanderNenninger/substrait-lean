@@ -240,7 +240,21 @@ How much of the Ibis API gets through, from
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* |
+
+Every engine runs the plans of the 68 verified operations, except:
+
+| Engine | Runs | Refuses |
+|---|---|---|
+| Polars | 60 | non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts |
+| DuckDB | 60 | non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts |
+| Snowflake | 54 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
+
+The engines refuse what they cannot do as Lean does: `<` on strings is
+undefined in the model (it is NULL there, while SQL compares), and Snowflake
+tables have no row order for FETCH, or for the ties of a sort or a window, to
+follow. See [Engines](#engines). Aggregates with measures are verified but not
+translated to the engines yet.
 
 ### Pre- and postconditions on a transformation
 
@@ -720,19 +734,35 @@ translator pins the semantics instead of taking Polars defaults:
 
 * Filters and join conditions keep a row only when it is TRUE. `and`/`or` are
   written out as Kleene `and3`/`or3`. Equi-join keys never match on NULL.
+  Semi and anti joins keep the left rows with (without) a TRUE match, so an
+  anti join keeps a row whose key is NULL. Lean writes an outer join as a
+  left join plus the unmatched right rows (an anti join), padded with NULLs.
 * Rows come out in `Rel.eval`'s order. Joins are left-major, with a left
-  join's padded row in its place, and windows emit their sorted order. So
-  `FetchRel` takes the same rows as Lean, and the tests compare Polars with
-  Lean row for row.
+  join's padded row in its place, and windows emit their sorted order. Sorts
+  are stable, so ties keep their input order, and `DISTINCT` keeps the first
+  of each set of equal rows in place. So `FetchRel` takes the same rows as
+  Lean, and the tests compare Polars with Lean row for row.
 * Doubles compare, join, partition and sort by DataFusion's total order
   (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
-  Window sorts are stable and place NULLs as each key says.
+  Sorts place NULLs as each key says. `DISTINCT` compares rows as `Value`s:
+  NULLs are equal, and -0.0 and +0.0 (or -NaN and NaN) are not.
+* Strings are sequences of Unicode scalar values: `character_length`,
+  `strpos` and `substring` count characters, not bytes, and `substring` with
+  a start below 1 keeps only the positions that exist. `LIKE` escapes with a
+  backslash, and a trailing one stands for itself. `UPPER`, `LOWER` and
+  regular expressions are black boxes in Lean; Polars computes them with the
+  Rust code DataFusion uses.
+* `date_part` and `date_trunc` follow `SubstraitLean/Time.lean`: parts
+  within a day are integer arithmetic on the microseconds, the calendar comes
+  from chrono (as in DataFusion), and `date_part` is NULL outside the years
+  chrono represents.
 * Integers are unbounded in Lean. Polars computes on 128 bits, and a result
   outside 64 bits raises `IntegerOverflow`, where DataFusion wraps silently
   (`2^62 + 2^62` gives `-2^63`). Integer division and remainder truncate
   toward zero, as `Int.tdiv` and `Int.tmod` do (Polars' own operators floor).
 * Runtime errors are the `Issue`s of `SubstraitLean/Safety.lean`: division by
-  zero, `MIN / -1`, bad `POWER`s and out-of-range casts. Each expression
+  zero, `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions
+  that do not compile and `date_trunc` to a week or longer outside ±2⁶³ ns. Each expression
   carries a per-row flag for each one, masked by `CASE` as `Expr.issues`
   masks it. The operator raises the matching error if a flag is set on a row
   it evaluates. Polars runs filters where the plan puts them, so a filter
@@ -741,12 +771,18 @@ translator pins the semantics instead of taking Polars defaults:
 * Doubles divide in numpy: Polars divides a column by a constant by
   multiplying with its reciprocal, which rounds differently.
 
-`python/tests/test_polars.py` runs every golden fixture, the window and
-rewrite queries of the other suites, and every delta plan of the example
-pipelines on both engines. It checks Polars against DataFusion as bags and
+`python/tests/test_polars.py` runs every golden fixture (among them sorts,
+`DISTINCT`, semi, anti and outer joins, and the string and time functions),
+the window and rewrite queries of the other suites, and every delta plan of
+the example pipelines on both engines. It checks Polars against DataFusion as bags and
 against Lean's `Rel.eval` in order. It also has targeted tests for NULL join
 keys, three-valued filters, NULL and NaN order in windows, overflow, and each runtime error and its guards. The
 incremental-view tests run on both engines.
+
+`python/tests/test_backends.py` runs every Ibis operation the coverage
+harness verifies on random tables, on DataFusion, Polars and DuckDB, and
+generates its Snowflake SQL; `test_text.py` and `test_time.py` run their edge
+cases on all three engines.
 
 Known gaps: the writer gives virtual tables placeholder `i64` column types and
 writes `FetchRel`'s deprecated `offset`/`count`. DataFusion rejects both, so
@@ -783,9 +819,20 @@ the engine:
 * doubles compare by the model's total order (`-NaN < -inf < … < -0.0 < +0.0
   < … < inf < NaN`) in comparisons, joins, partitions and sorts;
 * every `ORDER BY` key says `NULLS FIRST`/`LAST`;
-* filters keep only TRUE rows;
-* below a `FETCH` or a window, an ordinal column carries Lean's list order, so
-  `LIMIT` and window ties pick Lean's rows.
+* filters keep only TRUE rows; semi and anti joins are `[NOT] EXISTS` over
+  the rows where the condition is TRUE;
+* `DISTINCT` groups by the same keys as a window partition (doubles also by
+  the sign bit), so equal means equal as `Value`s;
+* strings: lengths and positions count characters, a `substring` start below
+  1 is handled before it reaches the engine (which would count it from the
+  end), and `LIKE` names its escape character;
+* `date_part` and `date_trunc` use the engine's calendar functions where they
+  agree with `SubstraitLean/Time.lean` (ISO weeks, `dow` from Sunday,
+  milliseconds within the minute), and the SQL raises where DataFusion's
+  calendar truncation fails;
+* below a `FETCH`, a window or a sort, an ordinal column carries Lean's list
+  order, so `LIMIT` and ties in sorts and windows pick Lean's rows, and a
+  sorted result comes out in Lean's order.
 
 Engine differences go through the hooks of a `Dialect`
 (`sverify/sql/core.py`). DuckDB's is `sverify/sql/duckdb.py`.
@@ -807,8 +854,11 @@ and Lean delta plans as Snowflake SQL. The SQL is written to match Lean where
 Snowflake's documented behaviour differs:
 
 * integers are `NUMBER(38,0)` and are checked against the 64-bit range;
-* timestamps are `TIMESTAMP_NTZ(6)`;
-* backslashes in strings are escaped;
+  division and remainder truncate (through `MOD`, as `/` rounds to six
+  decimals), and `CAST(double AS BIGINT)` truncates and raises out of range;
+* timestamps are `TIMESTAMP_NTZ(6)`; weeks, days of the week and truncation
+  to a week use the ISO functions, not the session's `WEEK_START`;
+* backslashes and control characters in strings are escaped;
 * every identifier is quoted, so create tables and columns with quoted
   lower-case names.
 
@@ -816,20 +866,22 @@ Where Snowflake can't match, the plan is refused (`Unsupported`) or the query
 raises instead of answering differently:
 
 * FETCH over a named table is refused: Snowflake tables have no row order.
-  Windows are refused too, unless you pass `tie_free=True` to promise there
-  are no ties (a contract report's `deterministic` says so).
+  Windows and sorts are refused too, unless you pass `tie_free=True` to
+  promise there are no ties on their keys (a contract report's
+  `deterministic` says so for windows).
 * Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
   interval type.
 * Snowflake has one NaN, which stands for Lean's +NaN. A negative-NaN literal
   is refused, and negating a NaN raises.
 * Lean orders −0.0 below +0.0, and Snowflake doesn't document whether the sign
-  of a zero is visible. So comparing two zeros raises, and so does sorting or
-  partitioning on a double column that holds a zero.
+  of a zero is visible. So comparing two zeros raises, and so does sorting,
+  partitioning or `DISTINCT` on a double column that holds a zero.
 
 Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
 collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
 fixture and delta plan, parses it with sqlglot's Snowflake parser, and runs it
-on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`.
+on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`,
+along with sorts, `DISTINCT`, semi, anti and outer joins and string functions.
 fakesnow emulates Snowflake on DuckDB, so this checks the SQL, not Snowflake's
 behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 `SNOWFLAKE_USER`, a credential (`SNOWFLAKE_PASSWORD`,

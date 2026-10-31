@@ -1,0 +1,93 @@
+{
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "aggregate": {
+            "input": {
+              "project": {
+                "common": {
+                  "emit": {
+                    "outputMapping": [
+                      3,
+                      4
+                    ]
+                  }
+                },
+                "input": {
+                  "read": {
+                    "baseSchema": {
+                      "names": [
+                        "id",
+                        "customer",
+                        "amount"
+                      ],
+                      "struct": {
+                        "types": [
+                          {
+                            "i64": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          {
+                            "string": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          {
+                            "i64": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          }
+                        ],
+                        "nullability": "NULLABILITY_REQUIRED"
+                      }
+                    },
+                    "namedTable": {
+                      "names": [
+                        "orders"
+                      ]
+                    }
+                  }
+                },
+                "expressions": [
+                  {
+                    "selection": {
+                      "directReference": {
+                        "structField": {
+                          "field": 1
+                        }
+                      },
+                      "rootReference": {}
+                    }
+                  },
+                  {
+                    "selection": {
+                      "directReference": {
+                        "structField": {
+                          "field": 2
+                        }
+                      },
+                      "rootReference": {}
+                    }
+                  }
+                ]
+              }
+            },
+            "groupings": [
+              {}
+            ]
+          }
+        },
+        "names": [
+          "customer",
+          "amount"
+        ]
+      }
+    }
+  ],
+  "version": {
+    "minorNumber": 77,
+    "producer": "datafusion"
+  }
+}

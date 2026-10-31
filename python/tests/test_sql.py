@@ -46,8 +46,8 @@ ACCEPTED = sorted(
 )
 REFUSED = sorted(f.stem for f in FIXTURES.glob("*.json") if f.stem not in ACCEPTED)
 #: Accepted by Lean with relations the SQL generator does not have yet
-#: (`DISTINCT`, aggregates): it must refuse them, not translate them wrongly.
-NOT_IN_SQL = {"group_by_without_measures", "df_aggregate"}
+#: (aggregates with measures): it must refuse them, not translate them wrongly.
+NOT_IN_SQL = {"df_aggregate"}
 
 
 #: The Wheels workflow runs these tests against the installed wheel, with only
@@ -236,7 +236,7 @@ def test_fixture_lists_are_complete():
 @pytest.mark.parametrize("name", sorted(NOT_IN_SQL))
 def test_fixtures_beyond_the_sql_generator_are_refused(name):
     assert name in ACCEPTED
-    with pytest.raises(Unsupported, match="unsupported relation"):
+    with pytest.raises(Unsupported, match="aggregate functions"):
         to_sql(fixture(name), DUCKDB)
 
 
@@ -619,8 +619,7 @@ def test_unsupported_constructs_raise():
     r = ints(a=[1], b=[2])
     s = pa.table({"name": ["a"]})
     for sql, tables, match in [
-        ("SELECT a, SUM(b) AS s FROM r GROUP BY a", {"r": r}, "unsupported relation"),
-        ("SELECT a FROM r ORDER BY a", {"r": r}, "unsupported relation"),
+        ("SELECT a, SUM(b) AS s FROM r GROUP BY a", {"r": r}, "aggregate functions"),
         ("SELECT name FROM s WHERE name < 'b'", {"s": s}, "ordering comparisons of str"),
         ("SELECT a FROM r WHERE a < 1 IS TRUE", {"r": r}, "unsupported function is_true"),
     ]:

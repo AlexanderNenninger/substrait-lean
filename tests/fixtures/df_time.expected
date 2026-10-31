@@ -1,0 +1,10 @@
+Emit [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+  Project +[$1, DATE_PART_year($1), DATE_PART_quarter($1), DATE_PART_month($1), DATE_PART_week($1), DATE_PART_day($1), ((DATE_PART_dow($1) + 6) % 7), DATE_PART_doy($1), DATE_PART_hour($1), DATE_TRUNC_second($1), DATE_TRUNC_minute($1), DATE_TRUNC_day($1), DATE_TRUNC_week($1), DATE_TRUNC_quarter($1), DATE_TRUNC_year($1)]
+    Read sensors
+tables: sensors(3)
+arity: 15
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

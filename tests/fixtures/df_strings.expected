@@ -1,0 +1,10 @@
+Emit [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+  Project +[UPPER($0), LOWER($1), LENGTH($0), ($0 SUBSTRING_FOR_2 IF NOT(((1 + 1) < 1)) THEN (1 + 1) ELSE ((1 + 1) + LENGTH($0))), (($0 STRPOS "b") - 1), ($1 LIKE "R%"), ($1 BTRIM " \t\n\x0d\x0b\x0c"), IF (IS_NULL(IF (IS_NULL($0) OR IS_NULL("@")) THEN NULL ELSE ($0 || "@")) OR IS_NULL($1)) THEN NULL ELSE (IF (IS_NULL($0) OR IS_NULL("@")) THEN NULL ELSE ($0 || "@") || $1), ($0 STARTS_WITH "a"), ($1 ENDS_WITH "e")]
+    Read customers
+tables: customers(2)
+arity: 10
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

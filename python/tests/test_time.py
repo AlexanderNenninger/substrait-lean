@@ -5,12 +5,15 @@
   (where `date_part` becomes NULL) and of DataFusion's nanosecond range.
 * Truncating to a week, month, quarter or year outside that range is reported
   as an error, and DataFusion fails only where an error was reported.
+* Polars and DuckDB, which run the plan Lean writes, agree with both, and
+  fail where DataFusion does.
 * Contracts use that years and truncations grow with the timestamp.
 """
 
 import json
 from datetime import datetime
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -19,7 +22,16 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_sql, substrait_json, to_sql
+from sverify import polars_engine
+from sverify.engine import (
+    connect,
+    put_table,
+    run_plan,
+    run_sql,
+    substrait_json,
+    to_sql,
+    written_plan,
+)
 from sverify.testing import canonical, inline_tables, lean_values
 
 MIN, MAX = -(2**63), 2**63 - 1
@@ -54,6 +66,27 @@ UNITS = [
     "quarter",
     "year",
 ]
+
+
+def micros(out: pa.Table) -> list[tuple]:
+    """Rows, with timestamps as microseconds (Python's datetime stops at 9999)."""
+    columns = [c.cast(pa.int64()) if pa.types.is_timestamp(c.type) else c for c in out.columns]
+    return [tuple(x.values()) for x in pa.table(columns, names=out.column_names).to_pylist()]
+
+
+#: DuckDB's timestamps: `MAX` is its infinity, and it starts in 290309 BC.
+DUCKDB_MIN = -9223372022400000000
+
+
+def engines(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
+    """Rows from Polars and DuckDB (on the timestamps DuckDB has)."""
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
+    plan = written_plan(substrait_json(con, sql))
+    out = {"polars": micros(run_plan(con, plan, "polars"))}
+    if all(v is None or DUCKDB_MIN <= v < MAX for v in values):
+        out["duckdb"] = micros(run_plan(con, plan, "duckdb"))
+    return out
 
 
 def lean_and_datafusion(sql: str, values: list[int | None]) -> tuple[list, list]:
@@ -95,6 +128,8 @@ def test_date_part_matches_datafusion(values):
     sql = "SELECT " + ", ".join(f"date_part('{p}', ts) AS {p}" for p in PARTS) + " FROM r"
     got, expected = lean_and_datafusion(sql, values)
     assert canonical(got) == canonical(expected)
+    for engine, rows in engines(sql, values).items():
+        assert canonical(rows) == canonical(expected), engine
 
 
 @pytest.mark.parametrize("unit", UNITS)
@@ -110,6 +145,23 @@ def test_date_trunc_matches_datafusion_where_no_issue(unit, values):
     values = [v for v in values if v is None or lo <= v <= hi]
     got, expected = lean_and_datafusion(sql, values)
     assert canonical(got) == canonical(expected)
+    for engine, rows in engines(sql, values).items():
+        assert canonical(rows) == canonical(expected), engine
+
+
+@pytest.mark.parametrize("unit", ["week", "month", "quarter", "year"])
+@pytest.mark.parametrize("ts", [NS_MAX + 1, NS_MIN - 1, NS_MIN + 1, MIN])
+def test_calendar_truncation_outside_nanoseconds_fails(unit, ts):
+    """`Issue.overflow`: where DataFusion fails (or computes garbage), the
+    engines raise. (`NS_MIN + 1` is 1677-09-21 00:12, after its truncations.)"""
+    sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
+    with pytest.raises(polars_engine.Overflow):
+        engines(sql, [ts])
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array([ts], pa.timestamp("us"))}))
+    if ts >= DUCKDB_MIN:
+        with pytest.raises(duckdb.Error, match="date_trunc"):
+            run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")
 
 
 T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")

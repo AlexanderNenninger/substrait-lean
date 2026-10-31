@@ -9,14 +9,21 @@ to `substrait-check`:
 * `rejected`: the checker refuses the plan (an operation outside the model);
 * `upstream`: Ibis or DataFusion fails before a plan exists.
 
-`tests/test_coverage.py` pins every case to its `expected` status, so a change
-in coverage is a deliberate edit here. Regenerate the README table with
+Every verified case also runs on each engine (`ENGINES`): Polars and the SQL
+of DuckDB and Snowflake translate the plan Lean writes back out. `REFUSED`
+lists the cases an engine refuses, and why; `tests/test_backends.py` runs the
+rest on random tables and compares the engines.
+
+`tests/test_coverage.py` pins every case to its `expected` status and its
+refusals, so a change in coverage is a deliberate edit here. Regenerate the
+README tables with
 
     uv run python -m sverify.coverage --write-readme
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from collections.abc import Callable
@@ -35,6 +42,7 @@ from sverify.engine import (
     run_checker,
     substrait_json,
     to_sql,
+    written_plan,
 )
 
 Status = Literal["verified", "rejected", "upstream"]
@@ -226,12 +234,69 @@ CASES: list[Case] = [
 ]
 
 
+#: The engines besides DataFusion, which runs Ibis's own plans.
+ENGINES = ("polars", "duckdb", "snowflake")
+
+#: Verified cases an engine refuses (`Unsupported`), with a pattern of the
+#: reason. These are what cannot be expressed there:
+#:
+#: * `lt` on strings is undefined in the model (`BinFn.apply` has no case for
+#:   it, so it is NULL, where SQL compares), so no engine may run it.
+#: * Snowflake tables have no row order, which FETCH and a stable sort's or a
+#:   window's ties follow. Sorts and windows run with `tie_free=True`.
+#: * Aggregates with measures (`Rel.aggregate`) are verified, but not
+#:   translated to any engine yet.
+AGGREGATES = ["count()", "group_by sum", "count, max, mean", "nunique", "sum(where=)",
+              "having", "value_counts"]  # fmt: skip
+REFUSED: dict[str, dict[str, str]] = {
+    **{
+        a: dict.fromkeys(("polars", "duckdb", "snowflake"), "aggregate functions")
+        for a in AGGREGATES
+    },
+    "non-equi join": {
+        "polars": "lt of String",
+        "duckdb": "ordering comparisons of str values",
+        "snowflake": "ordering comparisons of str values",
+    },
+    "order_by": {"snowflake": "no row order"},
+    "limit": {"snowflake": "no row order"},
+    "limit with offset": {"snowflake": "no row order"},
+    "order_by + limit": {"snowflake": "no row order"},
+    "row_number": {"snowflake": "no row order"},
+    "lag": {"snowflake": "no row order"},
+}
+#: Of those, the cases Snowflake runs when the caller promises no ties.
+TIE_FREE = {"order_by", "row_number", "lag"}
+
+
+def refusal(con: Backend, c: Case, engine: str, tie_free: bool = False) -> str | None:
+    """Why `engine` refuses the plan of a verified case, or None if it runs it."""
+    from sverify import polars_engine
+    from sverify.sql import Unsupported
+    from sverify.sql import to_sql as plan_sql
+    from sverify.sql.duckdb import DUCKDB
+    from sverify.sql.snowflake import SNOWFLAKE
+
+    plan = json.loads(written_plan(substrait_json(con, to_sql(c.build()))))
+    try:
+        if engine == "polars":
+            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in (T, U)}
+            polars_engine.run(plan, tables)
+        else:
+            plan_sql(plan, DUCKDB if engine == "duckdb" else SNOWFLAKE, tie_free=tie_free)
+    except (polars_engine.Unsupported, Unsupported) as e:
+        return str(e)
+    return None
+
+
 @dataclass(frozen=True)
 class Result:
     case: Case
     status: Status
     incremental: bool
     detail: str
+    refused: dict[str, str]
+    """Engine → reason, for the engines that refuse a verified case."""
 
 
 def setup() -> Backend:
@@ -245,13 +310,14 @@ def check(con: Backend, c: Case) -> Result:
     try:
         plan = substrait_json(con, to_sql(c.build()))
     except Exception as e:  # noqa: BLE001 - any producer failure counts
-        return Result(c, "upstream", False, str(e).splitlines()[0])
+        return Result(c, "upstream", False, str(e).splitlines()[0], {})
     code, stdout, stderr = run_checker((), plan)
     out = stdout + stderr
     if code == 0:
-        return Result(c, "verified", "incremental: yes" in out, "")
+        refused = {e: why for e in ENGINES if (why := refusal(con, c, e)) is not None}
+        return Result(c, "verified", "incremental: yes" in out, "", refused)
     lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
-    return Result(c, "rejected", False, (lines or [out.strip()])[-1])
+    return Result(c, "rejected", False, (lines or [out.strip()])[-1], {})
 
 
 def results() -> list[Result]:
@@ -261,6 +327,7 @@ def results() -> list[Result]:
 
 SYMBOL = {"verified": "✓", "rejected": "✗", "upstream": "–"}
 START, END = "<!-- coverage:start -->", "<!-- coverage:end -->"
+NAMES = {"polars": "Polars", "duckdb": "DuckDB", "snowflake": "Snowflake"}
 
 
 def table(rs: list[Result]) -> str:
@@ -280,6 +347,21 @@ def table(rs: list[Result]) -> str:
             if r.case.area == area
         ]
         lines.append(f"| {area} | {' · '.join(ops)} |")
+    verified = [r for r in rs if r.status == "verified"]
+    lines += [
+        "",
+        f"Every engine runs the plans of the {len(verified)} verified operations, except:",
+        "",
+        "| Engine | Runs | Refuses |",
+        "|---|---|---|",
+    ]
+    for e in ENGINES:
+        out = [r for r in verified if e in r.refused]
+        refused = " · ".join(
+            r.case.label + (" (with `tie_free=True` it runs)" if r.case.label in TIE_FREE else "")
+            for r in out
+        )
+        lines.append(f"| {NAMES[e]} | {len(verified) - len(out)} | {refused or '—'} |")
     return "\n".join(lines)
 
 

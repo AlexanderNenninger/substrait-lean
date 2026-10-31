@@ -13,7 +13,7 @@ import ibis
 
 from sverify.asof import asof_join
 from sverify.engine import connect, create_table, substrait_json, to_sql
-from sverify.examples import PIPELINES, UNSUPPORTED, create_tables
+from sverify.examples import PIPELINES, UNSUPPORTED, create_tables, customers, orders
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
@@ -36,6 +36,45 @@ CAPTURED = {
         later=SENSORS.ts.lead(2).over(ibis.window(order_by=ibis.desc(SENSORS.ts))),
     ),
     "asof": asof_join(ACC, GYR, on="ts", by="device", tolerance=ibis.interval(milliseconds=10)),
+    # Sorts, DISTINCT, semi, anti and outer joins.
+    "order_by": orders.order_by([ibis.desc("amount"), "customer"]),
+    "order_by_limit": orders.order_by("amount").limit(2, offset=1),
+    "distinct": orders.select("customer", "amount").distinct(),
+    "semi_join": orders.semi_join(customers, orders.customer == customers.name),
+    "anti_join": orders.anti_join(customers, orders.customer == customers.name),
+    "outer_join": orders.outer_join(customers, orders.customer == customers.name),
+    # The string functions of `SubstraitLean/Text.lean` (regular expressions,
+    # which Lean does not evaluate, are in `tests/test_backends.py`).
+    "strings": customers.select(
+        upper=customers.name.upper(),
+        lower=customers.city.lower(),
+        length=customers.name.length(),
+        sub=customers.name.substr(1, 2),
+        find=customers.name.find("b"),
+        like=customers.city.like("R%"),
+        strip=customers.city.strip(),
+        concat=customers.name + "@" + customers.city,
+        starts=customers.name.startswith("a"),
+        ends=customers.city.endswith("e"),
+    ),
+    # The time functions of `SubstraitLean/Time.lean`.
+    "time": SENSORS.select(
+        "ts",
+        year=SENSORS.ts.year(),
+        quarter=SENSORS.ts.quarter(),
+        month=SENSORS.ts.month(),
+        week=SENSORS.ts.week_of_year(),
+        day=SENSORS.ts.day(),
+        dow=SENSORS.ts.day_of_week.index(),
+        doy=SENSORS.ts.day_of_year(),
+        hour=SENSORS.ts.hour(),
+        to_second=SENSORS.ts.truncate("s"),
+        to_minute=SENSORS.ts.truncate("m"),
+        to_day=SENSORS.ts.truncate("D"),
+        to_week=SENSORS.ts.truncate("W"),
+        to_quarter=SENSORS.ts.truncate("Q"),
+        to_year=SENSORS.ts.truncate("Y"),
+    ),
     # Not in the modelled fragment: recorded to pin down the rejection.
     "aggregate": UNSUPPORTED["aggregate"],
 }

@@ -126,6 +126,35 @@ def ordered_plans() -> dict[str, dict]:
     return {name: json.loads(sv.substrait_json(con, q)) for name, q in ORDERED_QUERIES.items()}
 
 
+def feature_plans() -> dict[str, dict]:
+    """Sorts, DISTINCT, semi, anti and outer joins and string functions."""
+    o, c = sv.examples.orders, sv.examples.customers
+    exprs = {
+        "distinct": o.select("customer", "amount").distinct(),
+        "semi_join": o.semi_join(c, o.customer == c.name),
+        "anti_join": o.anti_join(c, o.customer == c.name),
+        "outer_join": o.outer_join(c, o.customer == c.name),
+        "union_distinct": o.select(x=o.customer).union(c.select(x=c.city), distinct=True),
+        "strings": c.select(
+            u=c.name.upper(),
+            n=c.city.length(),
+            s=c.city.substr(1, 3),
+            p=c.city.find("o"),
+            l=c.city.like("%r%"),
+            t=(c.city + "  ").rstrip(),
+            b=c.name.startswith("a"),
+        ),
+    }
+    con = sv.connect()
+    create_tables(con, ORDERS, CUSTOMERS)
+    return {k: json.loads(sv.substrait_json(con, sv.engine.to_sql(e))) for k, e in exprs.items()}
+
+
+FEATURE_PLANS = feature_plans()
+#: Sorted in Lean's order: the only ties in `ORDERS` are equal rows.
+SORTED = {"order_by": sv.examples.orders.order_by([sv.examples.orders.amount.desc(), "id"])}
+
+
 DELTA_PLANS = {
     f"{name}_delta{i}": json.loads(d)
     for name, plan in PLANS.items()
@@ -320,6 +349,15 @@ def run_differential(cur, suffix: str) -> None:
     for name, plan in TIE_FREE.items():
         got = cur.execute(retarget(to_sql(plan, SNOWFLAKE, tie_free=True))).fetchall()
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
+    for name, plan in FEATURE_PLANS.items():
+        got = cur.execute(retarget(to_sql(plan, SNOWFLAKE))).fetchall()
+        assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
+    con = sv.connect()
+    create_tables(con, ORDERS, CUSTOMERS)
+    for name, expr in SORTED.items():
+        plan = json.loads(sv.substrait_json(con, sv.engine.to_sql(expr)))
+        got = cur.execute(retarget(to_sql(plan, SNOWFLAKE, tie_free=True))).fetchall()
+        assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():
         plan = json.loads(path.read_text())
         if "namedTable" in path.read_text():
