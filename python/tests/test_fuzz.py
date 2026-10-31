@@ -3,8 +3,8 @@
 Every random query and input either falls outside the model or gives no
 finding that an open issue (`sverify.fuzz.KNOWN`) does not explain. The
 findings the generator turned up are pinned below as strict `xfail`s, so a
-fix shows up as an XPASS. `poe fuzz` runs a long budget and prints the
-shrunk findings.
+fix shows up as an XPASS. The examples are fixed (`derandomize`); `poe fuzz`
+runs a long, random budget and prints the shrunk findings.
 """
 
 import math
@@ -15,8 +15,10 @@ from hypothesis import HealthCheck, given, settings
 from sverify import fuzz
 from sverify.fuzz import Finding, Query, Refused, check, check_contract, known, same_rows
 
+# The same examples on every run, so that CI is not flaky; `poe fuzz` explores.
 CHEAP = settings(
     max_examples=60,
+    derandomize=True,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
@@ -109,6 +111,23 @@ def test_double_literal_arithmetic_proofs():
 def test_join_condition_over_one_side():
     sql = "SELECT COUNT(*) AS c0 FROM t JOIN u ON t.i = u.k AND t.i = t.j"
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(1, "x")]})
+
+
+@pytest.mark.xfail(strict=True, reason="#109: DataFusion can't read Lean's FetchRel.count")
+def test_limit_on_datafusion():
+    assert not finding("SELECT i AS c0 FROM t AS q ORDER BY c0 LIMIT 1", "engines", {"t": [T_ROW]})
+
+
+@pytest.mark.xfail(strict=True, reason="#96: a FULL JOIN's NULL padding is written as i64")
+def test_full_join_on_datafusion():
+    sql = "SELECT COUNT(i) AS c0 FROM (SELECT t.i, u.k FROM t FULL JOIN u ON t.i = u.k) AS q"
+    assert not finding(sql, "engines", {"t": [T_ROW], "u": [(2, "x")]})
+
+
+@pytest.mark.xfail(strict=True, reason="#111: the DuckDB guard raises on NULL / 0")
+def test_null_divided_by_zero_on_duckdb():
+    row = (0, None, None, None, None, None)
+    assert not finding("SELECT j / i AS c0 FROM t AS q", "engines", {"t": [row]})
 
 
 @pytest.mark.xfail(strict=True, reason="#17: ordering comparisons of booleans are NULL in Lean")
