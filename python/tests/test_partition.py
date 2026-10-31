@@ -32,6 +32,27 @@ TWO_PHASE = [
     "SELECT COUNT(a) AS n, SUM(a) AS s, MAX(c) AS hi FROM r",
     "SELECT b, SUM(a) * 2 AS s2 FROM r WHERE c > 0 GROUP BY b HAVING SUM(a) > 3",
     "SELECT s.d, COUNT(*) AS n, MIN(r.a) AS lo FROM r JOIN s ON r.b = s.b GROUP BY s.d",
+    "SELECT b, MIN(DISTINCT c) AS lo, MAX(DISTINCT a) AS hi FROM r GROUP BY b",
+]
+#: With `r` split on `b`: (query, mode).
+KEYED = [
+    ("SELECT b, COUNT(DISTINCT a) AS n, SUM(DISTINCT c) AS s FROM r GROUP BY b", "linear"),
+    ("SELECT DISTINCT b, a FROM r", "linear"),
+    ("SELECT b, n FROM (SELECT b, a, COUNT(*) AS n FROM r GROUP BY b, a) t WHERE n > 1", "linear"),
+    ("SELECT x, COUNT(*) AS k FROM (SELECT DISTINCT b AS x, c FROM r) t GROUP BY x", "linear"),
+    ("SELECT COUNT(DISTINCT b) AS n, SUM(DISTINCT b) AS s FROM r", "two_phase"),
+    ("SELECT c, COUNT(DISTINCT b) AS n FROM r GROUP BY c", "two_phase"),
+]
+KEYED_REFUSED = [
+    ("SELECT COUNT(DISTINCT a) AS n FROM r", "unless its argument is the split key"),
+    ("SELECT DISTINCT a FROM r", "include the split key"),
+    ("SELECT b, SUM(CAST(a AS DOUBLE)) AS s FROM r GROUP BY b", "not associative"),
+]
+#: Sums of doubles, split only with `float_order="any"`.
+FLOATS = [
+    "SELECT b, SUM(CAST(a AS DOUBLE)) AS s, AVG(CAST(c AS DOUBLE)) AS m, COUNT(*) AS n"
+    " FROM r GROUP BY b",
+    "SELECT AVG(CAST(a AS DOUBLE)) AS m FROM r",
 ]
 REFUSED = [
     ("SELECT AVG(CAST(a AS DOUBLE)) AS m FROM r", "not associative"),
@@ -107,6 +128,49 @@ def test_aggregates_run_in_two_phases(sql: str):
 def test_refused_with_a_reason(sql: str, why: str):
     with pytest.raises(NotShardable, match=why):
         split(plan_of(sql), ["r"])
+
+
+@pytest.mark.parametrize(("sql", "mode"), KEYED)
+@SETTINGS
+@given(rows=r_rows)
+def test_split_keys(sql: str, mode: str, rows):
+    """Shard `i` holds the rows with `b = i`."""
+    plan = plan_of(sql)
+    s = split(plan, ["r"], keys={"r": ["b"]})
+    assert (s.mode, s.proved) == (mode, True)
+    shards = [{"r": arrow([row for row in rows if row[1] == i])} for i in range(4)]
+    got = run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]})
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+@pytest.mark.parametrize(("sql", "why"), KEYED_REFUSED)
+def test_split_keys_refuse_the_rest(sql: str, why: str):
+    with pytest.raises(NotShardable, match=why):
+        split(plan_of(sql), ["r"], keys={"r": ["b"]})
+
+
+def test_split_keys_are_checked_on_the_data():
+    plan = plan_of("SELECT DISTINCT b, a FROM r")
+    shards = [{"r": arrow([(1, 2, 0)])}, {"r": arrow([(1, 2, 0), (3, 1, 0)])}]
+    with pytest.raises(ValueError, match=r"split key \(2,\) .* on shards 0 and 1"):
+        run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]})
+
+
+@pytest.mark.parametrize("sql", FLOATS)
+@SETTINGS
+@given(data=rows_and_shards)
+def test_float_order_any(sql: str, data):
+    """Unproved, but small integers add exactly as doubles, so here the
+    result is still Lean's."""
+    rows, where = data
+    plan = plan_of(sql)
+    with pytest.raises(NotShardable, match="not associative"):
+        split(plan, ["r"])
+    assert not split(plan, ["r"], float_order="any").proved
+    pairs = list(zip(rows, where, strict=True))
+    shards = [{"r": arrow([row for row, k in pairs if k == i])} for i in range(4)]
+    got = run_sharded(plan, shards, sharded=["r"], float_order="any")
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
 
 
 def test_broadcast_tables_are_not_split():
