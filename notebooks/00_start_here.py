@@ -28,7 +28,10 @@ def _(mo):
     mo.md(r"""
     # sverify: a guided tour
 
-    `sverify` checks a data pipeline **before it runs**. You write the
+    Somewhere downstream of every pipeline you write, someone is relying on
+    it: the customer waiting for a refund, whoever gets paged at 3 a.m., the
+    analyst whose dashboard has to add up. `sverify` checks the pipeline for
+    them **before it runs**. You write the
     transformation in [Ibis](https://ibis-project.org) or SQL, as usual,
     and say what it may assume about its inputs and what it guarantees
     about its output. A checker written in [Lean](https://lean-lang.org)

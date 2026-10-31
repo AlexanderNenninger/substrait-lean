@@ -37,10 +37,15 @@ def _(mo):
     mo.md(r"""
     # 7. Windows and ASOF joins
 
-    Time-series pipelines constantly look at *neighbouring* rows: the
-    previous reading of the same sensor, the next event of the same user,
-    the position of a row within its group. SQL does this with **window
-    functions**:
+    Say the maintenance team asks how long each sensor went quiet between
+    readings, because a long silence means a unit they should replace
+    before it fails outright. For that you need, for every reading, the one
+    before it.
+
+    Time-series pipelines constantly look at *neighbouring* rows like this:
+    the previous reading of the same sensor, the next event of the same
+    user, the position of a row within its group. SQL does this with
+    **window functions**:
 
     ```sql
     LAG(ts) OVER (PARTITION BY sensor ORDER BY ts)
@@ -108,11 +113,12 @@ def _(mo):
 
     ## Ties: when "previous" isn't well defined
 
-    If two readings of a sensor have the **same** `ts`, which one is
-    "previous"? SQL doesn't say; the engine picks, and may pick differently
-    on the next run. A proof about one choice would say nothing about the
-    other. So unless `requires` gives a key on the partition and order
-    columns, Lean reports every postcondition as *undetermined* and
+    Sensors sometimes report twice in the same instant. If two readings of
+    a sensor have the **same** `ts`, which one is "previous"? SQL doesn't
+    say; the engine picks, and may pick differently on the next run. A
+    proof about one choice would say nothing about the other. So unless
+    `requires` gives a key on the partition and order columns, Lean
+    reports every postcondition as *undetermined* and
     `report.deterministic` is `False`. With the key, earlier means strictly
     earlier: `prev_ts < ts`.
     """)
@@ -154,14 +160,16 @@ def _(mo):
 
     ## ASOF joins: aligning two sensors
 
-    An accelerometer samples at 100 Hz, a gyroscope at 130 Hz. To train a
-    model on both you want, for each accelerometer sample, the **latest
-    gyroscope sample at or before it**, and only if it is recent enough.
-    That is an *ASOF join*. DataFusion doesn't have one (and Ibis's
-    `asof_join` compiles to DuckDB syntax), so `sv.asof_join` builds it from
-    parts Lean understands: a range join, then `ROW_NUMBER` to keep the
-    latest match.
+    An accelerometer samples at 100 Hz, a gyroscope at 130 Hz, so their
+    timestamps rarely line up. To train a model on both you want, for each
+    accelerometer sample, the **latest gyroscope sample at or before it**,
+    and only if it is recent enough. That is an *ASOF join*. DataFusion
+    doesn't have one (and Ibis's `asof_join` compiles to DuckDB syntax), so
+    `sv.asof_join` builds it from parts Lean understands: a range join, then
+    `ROW_NUMBER` to keep the latest match.
 
+    The model will be trained on these pairs, so a gyroscope reading from
+    the future would quietly leak information it can't have in production.
     The contract says what an ASOF join promises: one output row per
     accelerometer sample, never a gyroscope sample from the future, and
     never one older than the tolerance.
@@ -255,6 +263,13 @@ def _(mo):
     yet: chapter 10 shows how a pipeline recomputes such views instead.
     Framed aggregates (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running
     sums are not supported yet.
+
+    You can now prove facts about neighbouring rows, tell when ties leave a
+    window's result up to the engine, and align two sensors with an ASOF
+    join that never reaches into the future. The maintenance team's gaps
+    and the model's training pairs both rest on proofs. **Next up:**
+    [Composing contracts](?file=08_composition.py), where one step's
+    promises become the next step's assumptions.
     """)
     return
 

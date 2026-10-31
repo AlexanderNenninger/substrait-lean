@@ -39,14 +39,18 @@ def _(mo):
     mo.md(r"""
     # 2. Sensor alerts from an Iceberg table
 
-    A plant's temperature sensors write a reading per device per minute to
-    an Iceberg table. Operations wants an **alert at every reading that is
-    the third or more in a row above 30 °C** (`iot-consecutive-threshold` in
-    the [query catalogue](../catalogue/INDEX.md), Azure Stream Analytics'
-    `MATCH_RECOGNIZE` example). In SQL that is two `LAG`s over a window.
+    Say you look after a plant's temperature sensors. When a machine runs
+    hot for three minutes in a row, someone on call gets paged, and if the
+    alert is wrong in either direction, it's their night or the machine
+    that pays for it. You want an **alert at every reading that is the
+    third or more in a row above 30 °C**.
 
+    The sensors write a reading per device per minute to an Iceberg table,
+    and the rule is `iot-consecutive-threshold` in the
+    [query catalogue](../catalogue/INDEX.md) (Azure Stream Analytics'
+    `MATCH_RECOGNIZE` example). In SQL that is two `LAG`s over a window.
     Window queries are where engines quietly disagree. Three things go
-    wrong in practice, and this notebook runs into each:
+    wrong in practice, and we'll run into each:
 
     * **ties**: two readings of a device at the same instant make
       "previous reading" ambiguous, and each engine picks one;
@@ -67,10 +71,11 @@ def _(mo):
     mo.md(r"""
     ## 1. The source: an Iceberg table of readings
 
-    Iceberg needs a catalog; a SQLite one in a temporary directory stands in
-    for Glue, a REST catalog or Unity here. `device_id` and `ts` are
-    `required` fields. Device 2 has a missing reading (NULL) and device 3 a
-    NaN glitch.
+    Iceberg wants a catalog, so a small SQLite one in a temporary folder
+    plays the part of Glue, a REST catalog or Unity. `device_id` and `ts`
+    are `required`. Two of the devices are troublemakers: device 2 skipped
+    a reading (NULL), and device 3 had a glitch and sent NaN. We'll see what
+    each of them does to the alerts.
     """)
     return
 
@@ -147,7 +152,7 @@ def _(mo):
     mo.md(r"""
     ## 2. The rule, and the first thing the checker says
 
-    Straight from the catalogue:
+    Straight from the catalogue, three high readings in a row:
     """)
     return
 
@@ -169,9 +174,11 @@ def _(ibis):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Ask for what an on-call engineer would assume about an alert: its
-    temperature is above 30, and there is one alert per device and minute.
-    With no assumptions about the input:
+    Think of whoever gets paged at 3 a.m. They'll assume that every alert
+    means the temperature really is above 30, and that one hot minute pages
+    them once, not three times. Those are reasonable things to rely on, so
+    let's write them down and ask the checker. First, with no assumptions
+    about the input:
     """)
     return
 
@@ -205,11 +212,13 @@ def _(mo):
     equal timestamps); it is the most common way for engines to disagree.
 
     The fix is to say what the source promises: at most one reading per
-    device and minute.
+    device and minute. That's a promise the sensor team can make, and one
+    we'll hold them to later.
 
     ## 3. The NaN glitch
 
-    With that key, try again, and also ask that no alert is a NaN:
+    With that key, we try again, and also ask that no alert is a NaN: the
+    person paged needs a temperature, not a glitch.
     """)
     return
 
@@ -235,10 +244,10 @@ def _(keyed, mo):
 def _(mo):
     mo.md(r"""
     `temperature > 30` and the key are proved now. `~isnan()` is refused,
-    and the checker is right: in SQL a NaN is greater than every number, so
-    device 3's glitch counts as a high reading and the alert fires. Python
-    says the opposite, which is how a rule tested in pandas misbehaves in
-    the warehouse:
+    and the checker is right. In SQL, `NaN > 30` is TRUE: NaN sorts above
+    every number, so device 3's glitch counts as hot and pages someone.
+    We'll want to rule that out. Python says the opposite, which is how a
+    rule tested in pandas misbehaves in the warehouse:
     """)
     return
 
@@ -257,7 +266,8 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Say what a high reading is, and NaN breaks the run like a missing one:
+    So we say what a high reading is. NaN then breaks the run, like a
+    missing reading does:
     """)
     return
 
@@ -286,8 +296,9 @@ def _(mo):
     mo.md(r"""
     ## 4. The pipeline
 
-    Both versions as views over the Iceberg source, to compare them on the
-    data. Building the `alerts` view proves its contract:
+    We put both versions side by side as views over the Iceberg source,
+    and compare them on the data. Building the `alerts` view proves its
+    contract:
     """)
     return
 
@@ -327,6 +338,7 @@ def _(mo):
     mo.md(r"""
     ## 5. Every engine, and the warehouses
 
+    The alerts may run on a laptop today and in the warehouse tomorrow.
     DuckDB, Polars and DataFusion run the checked plan with the same rows.
     Snowflake and Spark tables have no row order, so sverify **refuses** to
     write a window for them unless you promise the order keys have no ties.
@@ -398,9 +410,9 @@ def _(IcebergSink, catalog, view):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Two more readings from device 2 arrive. Iceberg appends are read from
-    the files they added, and the keys of the new rows are checked against
-    the rows kept:
+    Device 2 keeps running hot, and two more readings arrive. Iceberg
+    appends are read from the files they added, and the keys of the new
+    rows are checked against the rows kept:
     """)
     return
 
@@ -426,10 +438,10 @@ def _(mo):
     Device 2's 12:03 reading doesn't alert (12:01 was missing); 12:04 does.
 
     Then device 1 sends two readings for 12:04. That is exactly the case
-    the key rules out, and the one that would make the alerts depend on
-    the engine. The refresh refuses the batch, and **nothing changes**: the
-    view and the sink stay at the last good version, and the next refresh
-    retries from there.
+    the key rules out, and the one that would make the
+    alerts depend on the engine. The refresh refuses the batch, and
+    **nothing changes**: the view and the sink stay at the last good
+    version, and the next refresh retries from there.
     """)
     return
 
@@ -451,21 +463,20 @@ def _(mo):
     mo.md(r"""
     ## What you got
 
-    * The checker found **two real bugs before anything ran**: the rule's
-      result depended on tie-breaking without a key, and a NaN reading
-      raised a false alert.
-    * The key is checked on every batch, so a sensor sending twice stops the
-      job instead of making it engine-dependent.
-    * The same plan runs on DuckDB, Polars and DataFusion, and sverify
-      writes Snowflake or Spark SQL only when the tie-freedom it needs is
-      proved.
-    * The window view is honest about not being incremental, and is kept
-      up to date by recomputation, with its change written to the sink.
+    You now have alerts the on-call engineer can rely on. The checker found
+    two real bugs before anything ran, an alert that depended on how ties
+    were broken and a NaN reading that would have paged someone, and nobody
+    was woken up for either. The key is checked on every batch, so a sensor
+    that sends twice stops the job instead of making it engine-dependent.
+    The same plan runs on DuckDB, Polars and DataFusion, and you get
+    Snowflake or Spark SQL only once the tie-freedom it needs is proved. The
+    window view is honest about not being incremental, and stays up to date
+    by recomputation, with its change written to the sink.
 
-    **Next:** [An orders mart in SQL and Ibis](?file=03_orders_mart.py).
-    Windows and ties are covered in depth in
-    [Windows and ASOF joins](?file=07_windows_and_asof.py), NaN and other
-    double semantics in [Doubles, time and text](?file=12_values.py).
+    **Next up:** [An orders mart in SQL and Ibis](?file=03_orders_mart.py),
+    where a dashboard's dbt tests become a contract. Windows and ties are
+    covered in depth in [Windows and ASOF joins](?file=07_windows_and_asof.py),
+    NaN and other double semantics in [Doubles, time and text](?file=12_values.py).
     """)
     return
 

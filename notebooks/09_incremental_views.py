@@ -37,16 +37,18 @@ def _(mo):
     mo.md(r"""
     # 9. Incremental views
 
-    Say a dashboard table is a join over a few million orders, and a hundred
-    orders change every hour. Recomputing the whole join each time is slow.
-    Hand-written incremental logic ("only process rows where `updated_at` is
-    newer than…") is fast, but tends to go wrong silently: deletes are
-    missed, late rows are skipped, a join gets a new match.
+    Say your dashboard table is a join over a few million orders, and a
+    hundred orders change every hour. Recomputing the whole join each time
+    is slow; hand-written incremental logic ("only process rows where
+    `updated_at` is newer than…") is fast, but tends to go wrong silently:
+    deletes are missed, late rows are skipped, a join gets a new match.
+    Nobody notices until the analyst reading the dashboard finds totals
+    that no longer add up.
 
     *Incremental view maintenance* computes only the **change** to the
     result from the **changes** to the inputs. `sv.IncrementalView` does it
     with update rules proved correct in Lean, on DuckDB, Polars or
-    DataFusion. This chapter shows how to use it, what it refuses, and then
+    DataFusion. We'll use it first, see what it refuses, and then look at
     how it works.
 
     ## Keeping a join up to date
@@ -84,7 +86,8 @@ def _(mo):
     `view.apply({...})` takes a batch of changes per table, as
     `sv.Changes(inserts=[...], deletes=[...])`. It updates the base tables
     *and* the view. `view.recompute()` computes the view from scratch, for
-    checking. Press the button to change both tables at once, at random:
+    checking. We'll throw some changes at it: press the button to change
+    both tables at once, at random.
     """)
     return
 
@@ -167,11 +170,12 @@ def _(mo):
     mo.md(r"""
     ## What can be maintained
 
-    Filters, computed columns, inner joins (self-joins too), cross joins,
-    `UNION ALL` and `ORDER BY`. Everything else is **refused up front**
-    instead of being maintained wrongly: left, semi and anti joins (a left
-    join's NULL-padded rows must be *retracted* when a match turns up
-    later), `DISTINCT`, `LIMIT` (it depends on row order), windows, and
+    A view that is quietly wrong is worse than no view, so the rule is
+    strict. Filters, computed columns, inner joins (self-joins too), cross
+    joins, `UNION ALL` and `ORDER BY`. Everything else is **refused up
+    front** instead of being maintained wrongly: left, semi and anti joins
+    (a left join's NULL-padded rows must be *retracted* when a match turns
+    up later), `DISTINCT`, `LIMIT` (it depends on row order), windows, and
     aggregates (contracts work on them, but their update rules aren't proved
     yet). Pick one:
     """)
@@ -224,17 +228,17 @@ def _(mo):
     mo.md(r"""
     ## How it works: rows with weights
 
-
-    The trick that makes it tractable is to give every row a **weight**:
+    So how does the view know what changed? The trick that makes it
+    tractable is to give every row a **weight**:
 
     * `+1`: this row was inserted,
     * `−1`: this row was deleted,
     * an update is a delete plus an insert.
 
-    A table with weights is called a *Z-set*. Adding a batch of changes is
-    just putting the weighted rows together and summing the weights per row.
-    Here's a small mirror of `SubstraitLean/Incremental.lean`, and a query
-    over it:
+    A table with weights is called a *Z-set*. Adding a batch of changes
+    means putting the weighted rows together and summing the weights per
+    row. Here's a small mirror of `SubstraitLean/Incremental.lean`, and a
+    query over it:
     """)
     return
 
@@ -347,7 +351,7 @@ def _(consolidate, delta_orders, display, mo, orders, z_lift, z_query):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    For this query the rule is simple: **run the same query on just the
+    For this query the rule is simple: **run the same query on only the
     changes**, then add the result to the old one. That works because
     filter and project treat each row independently (they are *linear*).
     In Lean that is theorem `Rel.zeval_add`:
@@ -369,7 +373,7 @@ def _(mo):
     | | old customers `B` | new customers `ΔB` |
     |:---|:---|:---|
     | **old orders `A`** | `A × B`: already in the old result | `A × ΔB`: new |
-    | **new orders `ΔA`** | `ΔA × B`: new | `ΔA × ΔB`: new, and easy to forget! |
+    | **new orders `ΔA`** | `ΔA × B`: new | `ΔA × ΔB`: new, and easy to forget |
 
     So the change to a join is `ΔA × B + ΔA × ΔB + A × ΔB`. Forgetting the
     bottom-right cell is a classic bug in hand-written incremental
@@ -517,11 +521,18 @@ def _(mo):
     mo.md(r"""
     ### How do I know it's right?
 
-    The theorems cover the Lean model. The rest (the JSON translation, the
+    Before you point a dashboard at it, you'll want more than a demo. The
+    theorems cover the Lean model. The rest (the JSON translation, the
     Python glue, the engine itself) is covered by randomized tests: they
     generate random tables and random batches, with NULLs and duplicates,
     and after every batch compare the maintained view with a full
-    recompute, just like the button above.
+    recompute, as the button above does.
+
+    You can now keep a join up to date from its changes alone, with update
+    rules proved in Lean, and you know which queries are refused rather
+    than maintained wrongly. Next up, [Pipelines](?file=10_pipelines.py)
+    stacks views that read each other, so each change flows through every
+    layer, and brings back the contracts of chapter 8.
     """)
     return
 

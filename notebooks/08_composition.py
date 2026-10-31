@@ -37,11 +37,16 @@ def _(mo):
     mo.md(r"""
     # 8. Composing contracts
 
-    Real pipelines are many steps, often written by different people. If
-    each step has a contract, the contracts should **compose**: when one
-    step's output feeds another, the downstream step's preconditions should
-    follow from what the upstream step guarantees, with no need to check
-    the intermediate data.
+    Say the billing team owns a step that cleans up `orders`, and you own
+    the step after it, which doubles the amounts for a promotion. You've
+    never read their code, and you shouldn't have to; but if a negative
+    amount slips past them, your step doubles it and your name is on the
+    incident.
+
+    What you rely on is their contract. If each step has one, the contracts
+    should **compose**: when one step's output feeds another, the downstream
+    step's preconditions should follow from what the upstream step
+    guarantees, with no need to check the intermediate data.
 
     That is exactly what happens. When the input of a contracted function is
     the result of another contracted function, `sverify`:
@@ -98,7 +103,8 @@ def _(mo):
 
     ## When the link breaks
 
-    Pick what feeds `doubled`:
+    Now we'll swap the step upstream for one that promises less. Pick what
+    feeds `doubled`:
     """)
     return
 
@@ -168,7 +174,8 @@ def _(mo):
 
     With bound tables, only the **base** tables are checked: `paid`'s
     preconditions on `orders`. The intermediate result is never inspected;
-    `doubled`'s preconditions were proved.
+    `doubled`'s preconditions were proved. Here are three orders that meet
+    `paid`'s preconditions, including cy's, with an amount of 0:
     """)
     return
 
@@ -213,10 +220,11 @@ def _(mo):
     mo.md(r"""
     ## Where did a result come from?
 
-    `sverify.contracts.provenance(expr)` shows what a contracted result
-    assumed and what it guarantees: `guarantees` are its proved
-    postconditions, `external` the preconditions on base tables that the
-    whole chain rests on.
+    When the analyst downstream asks why they can trust a number, you'll
+    want to say what it rests on. `sverify.contracts.provenance(expr)` shows
+    what a contracted result assumed and what it guarantees: `guarantees`
+    are its proved postconditions, `external` the preconditions on base
+    tables that the whole chain rests on.
     """)
     return
 
@@ -241,9 +249,17 @@ def _(display, doubled, mo, orders, paid):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Composed results can also be **kept up to date**: chapter 10 maintains
-    `doubled(paid(orders))` incrementally, and shows how its guarantees keep
-    holding while the data changes.
+    You can now chain steps written by different teams and have every link
+    proved from their contracts alone. The intermediate data is never
+    checked, a step that promises too little is caught before anything
+    runs, and `provenance` tells the analyst what a number rests on.
+
+    Orders keep arriving, though, so composed results also need to be
+    **kept up to date**. Next up,
+    [Incremental views](?file=09_incremental_views.py) maintains a query
+    from its changes alone; chapter 10 then maintains
+    `doubled(paid(orders))` incrementally, and shows how its guarantees
+    keep holding while the data changes.
     """)
     return
 

@@ -37,8 +37,9 @@ def _(mo):
     mo.md(r"""
     # 13. Plans, meaning and proofs
 
-    The chapters so far were about using the library. This one starts the
-    part about how it works, with the three ideas everything rests on:
+    The chapters so far were about using the library. If you're the person
+    who has to explain to a reviewer why a ✅ can be trusted, this part is
+    for you. It starts with the three ideas everything rests on:
 
     1. a query is a **plan**, a tree of small operators;
     2. a plan has a **meaning**, given by an interpreter that serves as the

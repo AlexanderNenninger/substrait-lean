@@ -39,18 +39,24 @@ def _(mo):
     mo.md(r"""
     # 3. An orders mart: dbt tests, proved
 
-    A mart model of the kind every analytics team has: **revenue per city
-    and day**, where the city is the customer's city *when the order was
-    placed*. Customers move, so the city comes from a type-2 slowly changing
-    dimension (dbt snapshots build these), and the join is a point-in-time
-    join (`dbt-scd2-point-in-time` in the
-    [query catalogue](../catalogue/INDEX.md)).
+    Say you own the dashboard the sales team opens every morning:
+    **revenue per city and day**. The regional managers' bonuses depend on
+    it, so when a number is off, you hear about it before lunch.
+
+    It's a mart model of the kind every analytics team has, with one
+    subtlety: the city is the customer's city *when the order was placed*.
+    Customers move,
+    so the city comes from a type-2 slowly changing dimension (dbt snapshots
+    build these), and the join is a point-in-time join
+    (`dbt-scd2-point-in-time` in the [query
+    catalogue](../catalogue/INDEX.md)).
 
     In dbt this model would come with tests: `not_null(city)`,
     `unique(city, day)`, `revenue >= 0`. Those run after the model has been
     built, on the data that happens to be there. Here they are the model's
     contract, proved for every possible input before it runs, and one of
-    them fails for a reason the test data doesn't show.
+    them fails for a reason the test data doesn't show. Better that it fails
+    here than in a regional manager's inbox.
     """)
     return
 
@@ -62,7 +68,7 @@ def _(mo):
 
     `customer_history` has one row per customer and version: `[valid_from,
     valid_to)`, with `valid_to` NULL for the current one. Customer 1 moved
-    from Paris to Lyon on 2 May.
+    from Paris to Lyon on 2 May, and takes their orders' revenue with them.
     """)
     return
 
@@ -206,7 +212,8 @@ def _(dt, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Check the first version, where `city` is the dimension's column as is:
+    We check the first version, where `city` is the dimension's column as
+    is:
     """)
     return
 
@@ -244,7 +251,9 @@ def _(mo):
     enough rows can leave 64 bits: DataFusion would then wrap around
     silently, while sverify's DuckDB and Polars runners raise.
 
-    Decide what such an order should count as, and say it:
+    Someone has to decide what such an order counts as, and the dashboard's
+    readers would rather see an `unknown` row than revenue that silently
+    vanished. So we say it:
     """)
     return
 
@@ -263,10 +272,10 @@ def _(mo):
     mo.md(r"""
     ### The same model in SQL
 
-    If your models are SQL, `sv.verify` checks the SQL text against the same
-    kind of contract (conditions can be SQL snippets too). The SQL needs
-    `coalesce` around the `SUM` for the same reason the Ibis needs
-    `fill_null`:
+    If your team writes its models in SQL, `sv.verify` checks the SQL text
+    against the same kind of contract (conditions can be SQL snippets too).
+    The SQL needs `coalesce` around the `SUM` for the same reason the Ibis
+    needs `fill_null`:
     """)
     return
 
@@ -305,9 +314,9 @@ def _(mo):
 
     ## 3. Build it from the Delta tables
 
-    The pipeline reads both tables. A left join and an aggregate have no
-    proven delta rules yet, so the view is recomputed on each refresh, and
-    the pipeline says so:
+    Now we wire it up. The pipeline reads both tables. A left join and an
+    aggregate have no proven delta rules yet, so the view is recomputed on
+    each refresh, and the pipeline says so:
     """)
     return
 
@@ -364,7 +373,8 @@ def _(mo):
     PostgreSQL's) truncates, Snowflake's gives a NUMBER with extra
     decimals, and Spark's a double. A model moved from DuckDB in
     development to Snowflake in production changes its numbers without an
-    error. sverify's translations write out what the plan means instead
+    error, and the first to notice is whoever reconciles the dashboard with
+    finance. sverify's translations write out what the plan means instead
     (integer division truncates, on every engine), so the checked plan gives
     the same rows on each:
     """)
@@ -396,9 +406,9 @@ def _(mo):
     mo.md(r"""
     ## 5. The next day: a move and a new customer
 
-    The snapshot job records that customer 2 moved from Rome to Milan at
-    15:00 on 3 May: the old row is closed and a new one added. And a new
-    customer, 4, places an order before their first snapshot.
+    Overnight, the snapshot job records that customer 2 moved from Rome to
+    Milan at 15:00 on 3 May: the old row is closed and a new one added. And
+    a new customer, 4, places an order before their first snapshot.
     """)
     return
 
@@ -448,18 +458,19 @@ def _(mo):
     mo.md(r"""
     ## What you got
 
-    * The model's dbt tests became a **contract proved before the model
-      runs**, and the one that would fail in production (`not_null(city)`
-      after a left join) failed at definition time.
-    * The preconditions were discharged from Delta metadata where possible.
-    * The checked plan runs with the same rows on DuckDB, Polars and
-      DataFusion, and as Snowflake or Spark SQL, where the same SQL text
-      would not.
-    * A model outside the incremental fragment still runs in the pipeline,
-      recomputed and diffed, and its sink is merged exactly once per state.
+    You now have a dashboard model whose tests can't fail in production for
+    a reason CI didn't see. Its dbt tests became a contract proved before
+    the model runs, and the one that would have failed, `not_null(city)`
+    after a left join, failed at definition time instead of on the
+    dashboard. The preconditions came from Delta metadata where possible.
+    The checked plan gives the same rows on DuckDB, Polars and DataFusion,
+    and as Snowflake or Spark SQL, where the same SQL text would not. And
+    although the model is outside the incremental fragment, it still runs
+    in the pipeline, recomputed and diffed, with its sink merged exactly
+    once per state.
 
-    **Next:** the rest of the tour explains each feature in turn, starting
-    with [Contracts](?file=04_contracts.py).
+    **Next up:** the rest of the tour explains each feature in turn,
+    starting with [Contracts](?file=04_contracts.py).
     """)
     return
 

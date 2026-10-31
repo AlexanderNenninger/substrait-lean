@@ -89,3 +89,40 @@ Parallel PRs used to conflict in two shared lists; both are now split by area.
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.
+
+## Notebook voice
+
+The tour's markdown cells (`notebooks/`) are written for a data engineer with
+a stake in the outcome. Keep this voice when you edit them:
+
+- **Openings are a short story** of two or three sentences, in the second
+  person, that set the scene and the stakes. Then the rule or feature.
+- **Name the people a result affects** (the customer, whoever gets paged at
+  3 a.m., the analyst reading the dashboard), and state requirements as what
+  those people rely on.
+- **Walkthrough steps say "we"**: "We'll write the rule in Ibis, state what it
+  assumes and what it promises, and have the checker prove it before any
+  data runs." Openings and recaps speak to the reader as "you".
+- **Technical explanations are plain and warm, with no humour.** For example:
+  "In SQL, `NaN > 30` is TRUE: NaN sorts above every number, so a glitching
+  sensor that sends NaN counts as hot and pages someone. We'll want to rule
+  that out." Humour, aimed at the data rather than the reader (bad rows can
+  be characters), belongs only in openings and asides, at most once per cell.
+- **Endings are a warm recap, not a bullet list**: a short paragraph to the
+  reader about what they can now do, leading into the next notebook, with
+  its link.
+- Keep every fact, identifier, link and number. Don't soften technical
+  claims or hide caveats: the warmth goes in the framing, not the substance.
+- Stay concise: at most about a third longer than plain prose would be. No
+  emojis or exclamation marks, and no "simply" or "just".
+
+An opening: "Say you're on the payments team. A customer was charged twice for
+the same coffee, and by the time support hears about it, they've already
+tweeted. You want to catch these double charges, the same card paying the
+same amount at the same merchant twice within five minutes, and refund them
+first."
+
+An ending: "You now have a refund queue you can trust. Its assumptions were
+proved before a single row ran, it stays right as charges arrive and get
+reversed, and the next job can build on it without checking again. Next up:
+sensor alerts, where ties and NaN get involved."

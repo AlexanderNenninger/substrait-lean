@@ -38,8 +38,10 @@ def _(mo):
     mo.md(r"""
     # 17. One expression, many engines
 
-    A query or an Ibis expression has no single meaning: each engine gives it
-    its own. This notebook collects the questions that a semantics written
+    If you've ever moved a query from one engine to another and watched a
+    number change, this appendix is the long version of why. A query or an
+    Ibis expression has no single meaning: each engine gives it its own.
+    This notebook collects the questions that a semantics written
     *from first principles* (instead of read off one implementation) has to
     answer, and shows how each engine answers them today. It is the companion
     of [chapter 16](?file=16_datafusion_semantics.py), which compares

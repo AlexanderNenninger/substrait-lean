@@ -37,12 +37,14 @@ def _(mo):
     mo.md(r"""
     # 14. The checker
 
-    The Lean project compiles to a small command-line program,
+    Say a reviewer asks what actually happens when you call
+    `@sv.transform`. The answer is a small command-line program that does
+    the work. The Lean project compiles to it,
     `substrait-check`. It is the bridge between the proofs and real queries:
     it reads a Substrait plan (as JSON), translates it into the Lean model
     `Rel`, and runs checks that are **proved** to answer the mathematical
     questions they claim to answer. `sverify` calls it behind the scenes for
-    everything in the rest of the display.
+    everything in the rest of the tour, and you can run it yourself.
 
     | Mode | What it does | Used by |
     |:---|:---|:---|
@@ -56,7 +58,8 @@ def _(mo):
 
     ## A real plan
 
-    First some tables, in DataFusion (the engine `sverify` uses by default):
+    Let's start with some tables, registered in DataFusion, which compiles
+    the SQL here:
     """)
     return
 

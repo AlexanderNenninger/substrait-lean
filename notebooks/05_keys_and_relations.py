@@ -37,9 +37,14 @@ def _(mo):
     mo.md(r"""
     # 5. Keys and relations
 
+    Say you add each customer's city to the orders table so finance can sum
+    revenue by city. If one customer appears twice in `customers`, their
+    orders are counted twice, and the totals stop matching the ledger
+    without anyone being told why.
+
     The facts in chapter 4 were about one value at a time: "this column is
-    never NULL", "this one is at least 22". Two other kinds of facts matter
-    just as much in practice:
+    never NULL", "this one is at least 22". Facts like "one row per order"
+    are of another kind, and two such kinds matter as much in practice:
 
     * **keys**: "no two rows have the same `id`", a fact about pairs of rows;
     * **relations between columns**: "`end` is after `start`", "`t1` is
@@ -54,7 +59,7 @@ def _(mo):
     most one partner on the other side.
 
     Joining orders with customers keeps one row per order only if each
-    customer name appears once. Flip the switch:
+    customer name appears once. We'll try it both ways with the switch:
     """)
     return
 
@@ -96,7 +101,8 @@ def _(mo):
     mo.md(r"""
     Without the key on `name`, Lean refuses, and rightly so: here is the
     counterexample it could not rule out, run on DataFusion. `bob` moved and
-    was entered twice, so his order shows up twice.
+    was entered twice, once per city, so his one order shows up twice and
+    finance's totals are off by his 5.
     """)
     return
 
@@ -129,7 +135,8 @@ def _(display, ibis, sv, with_city):
 def _(mo):
     mo.md(r"""
     With the key in `requires`, calling a contracted function on these
-    tables would stop at the precondition check instead:
+    tables stops at the precondition check instead, before finance sees a
+    number:
     """)
     return
 
@@ -183,9 +190,11 @@ def _(mo):
     projections, joins and unions. Postconditions such as `t1 - t0 == 1` or
     `t1 > t0` then follow.
 
-    A typical machine-learning preprocessing step: readings arrive once a
-    minute, `-9999` marks a sensor error, and a model needs pairs of
-    *consecutive* clean readings. The pipeline joins the clean readings with
+    Say you prepare training data for a forecasting model. Readings arrive
+    once a minute, `-9999` marks a sensor error, and the model needs pairs
+    of *consecutive* clean readings. Whoever trains it will assume each pair
+    is exactly one minute apart and that no `-9999` slipped through, so
+    we'll prove both. The pipeline joins the clean readings with
     themselves, one minute apart:
     """)
     return
@@ -262,6 +271,13 @@ def _(mo):
 
     Relations that need more than "a column plus a constant" (`a < 2 * b`)
     and relations between strings are not tracked yet.
+
+    You can now prove that a result has one row per key, and that its
+    columns keep the relations the filters and joins set up. Finance's
+    join stays one row per order, and whoever trains the model gets pairs
+    exactly one minute apart, as they assume. **Next up:**
+    [Runtime errors](?file=06_runtime_errors.py), where a plan that is
+    correct can still crash, or quietly give a wrong number.
     """)
     return
 
