@@ -36,11 +36,11 @@ from sverify.incremental import (
     Snapshot,
     SourceBatch,
     arrow_rows,
+    first_line,
 )
 from sverify.io._common import (
     ColumnStats,
     Contract,
-    first_line,
     q,
     sink_schema,
     stats_facts,
@@ -153,18 +153,13 @@ class DeltaSource:
         end = dt.version()
         files = file_stats(dt)
         snapshot_facts = _facts(dt, files, f"file stats @v{end}")
-        if end == since:
-            return SourceBatch(since, end, snapshot_facts)
         schema = _arrow_schema(dt)
+        if end == since:
+            return SourceBatch(since, end, snapshot_facts, schema=schema)
         try:
             old: DeltaTable | None = self.table(since)
         except Exception:
             old = None  # its log is gone: no statistics for the batch
-        if old is not None and _arrow_schema(old) != schema:
-            raise ValueError(
-                f"the schema of {self.uri} changed between v{since} and v{end}; "
-                "build the pipeline again"
-            )
         try:
             self._check_cdf(dt, since, end)
             cdf = pa.table(dt.load_cdf(starting_version=since + 1, ending_version=end).read_all())
@@ -175,6 +170,7 @@ class DeltaSource:
                 snapshot_facts,
                 snapshot=_read(dt),
                 fallback=f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
+                schema=schema,
             )
         kinds = cdf.column("_change_type").to_pylist()
         rows = arrow_rows(cdf.select(schema.names).cast(schema))
@@ -197,6 +193,7 @@ class DeltaSource:
             changes=changes,
             facts=facts,
             trusted=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
+            schema=schema,
         )
 
 

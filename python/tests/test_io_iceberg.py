@@ -166,3 +166,18 @@ def sink_schema_of(catalog):
     from sverify.io.iceberg import _arrow_schema
 
     return _arrow_schema(catalog.load_table("db.big"))
+
+
+def test_added_column_is_left_out(catalog):
+    from pyiceberg.types import StringType
+
+    src = make_orders(catalog, [(1, "ada", 5)])
+    pipe = sv.Pipeline(sv.connect())
+    big = pipe.view("big", doubled(pipe.source("orders", src)))
+    with src.table().update_schema() as update:
+        update.add_column("note", StringType())
+    wide = rows_table([(2, "bob", 1)]).append_column("note", pa.array(["new"]))
+    src.table().append(wide)
+    [s] = pipe.refresh().sources
+    assert s.mode == "change feed" and "schema: added note, read in the old schema" in s.detail
+    assert big.rows() == big.recompute() == [(1, "ada", 10), (2, "bob", 2)]

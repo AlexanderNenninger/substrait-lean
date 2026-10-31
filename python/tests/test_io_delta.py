@@ -1,6 +1,7 @@
 """Delta Lake tables as change sources (CDF), sources of preconditions and
 sinks, on local tables in temporary directories."""
 
+from collections import Counter
 from datetime import datetime
 
 import ibis
@@ -12,7 +13,7 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.engine import Engine
-from sverify.incremental import AuditError
+from sverify.incremental import AuditError, SchemaError
 from sverify.io import DeltaSink, DeltaSource
 
 SCHEMA_ORDERS = pa.schema(
@@ -167,6 +168,32 @@ def test_audit_catches_a_wrong_feed(tmp_path, monkeypatch):
     with pytest.raises(AuditError, match="nothing was applied"):
         pipe.refresh(audit=True)
     assert pipe.versions == {"orders": 1} and big.rows() == [(1, "ada", 10)]
+
+
+def test_audit_catches_a_wrong_view_before_the_commit(tmp_path, monkeypatch):
+    src, pipe, big, sink = job1(tmp_path)
+    sink.write()
+    sink_version = DeltaTable(sink.uri).version()
+    write_deltalake(src.uri, orders_table([(3, "cy", 1)]), mode="append")
+    real = sv.IncrementalView._delta
+
+    def wrong(self, deltas):
+        delta, examples = real(self, deltas)
+        delta = Counter({k: 2 * n for k, n in delta.items()})
+        return delta, examples
+
+    monkeypatch.setattr(sv.IncrementalView, "_delta", wrong)
+    with pytest.raises(AuditError, match="big differs from its recomputation; nothing was applied"):
+        pipe.refresh(audit=True)
+    # State, versions and sink are as before the refresh.
+    assert pipe.versions == {"orders": 1}
+    assert big.rows() == [(1, "ada", 10), (2, "bob", 14)]
+    assert pipe.con.arrow["orders"].num_rows == 2
+    assert sink.write().mode == "skipped"
+    assert DeltaTable(sink.uri).version() == sink_version
+    monkeypatch.undo()
+    pipe.refresh(audit=True)
+    assert big.rows() == [(1, "ada", 10), (2, "bob", 14), (3, "cy", 2)]
 
 
 def test_source_tables_change_only_through_refresh(tmp_path):
@@ -439,3 +466,105 @@ def test_sink_needs_source_versions(tmp_path):
     view = sv.IncrementalView(con, con.table("orders"), "v")
     with pytest.raises(ValueError, match="without a source"):
         DeltaSink(str(tmp_path / "v"), view).write()
+
+
+# -- Schema evolution ---------------------------------------------------------
+
+
+def test_added_column_is_left_out(tmp_path):
+    src, pipe, big, _ = job1(tmp_path)
+    wide = orders_table([(3, "cy", 1)]).append_column("note", pa.array(["new"]))
+    write_deltalake(src.uri, wide, mode="append", schema_mode="merge")
+    report = pipe.refresh()
+    [s] = report.sources
+    assert "schema: added note, read in the old schema" in s.detail
+    assert big.rows() == big.recompute() == [(1, "ada", 10), (2, "bob", 14), (3, "cy", 2)]
+    assert pipe.con.arrow["orders"].schema == SCHEMA_ORDERS
+    # The next batch is read the same way.
+    write_deltalake(src.uri, wide.set_column(0, "id", pa.array([4])), mode="append")
+    assert pipe.refresh().sources[0].mode == "change feed"
+    assert big.rows() == big.recompute()
+
+
+NARROW = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("amount", pa.int32())])
+
+
+def narrow_orders(path, rows):
+    cdf = {"delta.enableChangeDataFeed": "true"}
+    write_deltalake(path, pa.Table.from_pylist(rows, schema=NARROW), configuration=cdf)
+    return DeltaSource(str(path))
+
+
+def widen(path, rows):
+    schema = pa.schema([NARROW.field("id"), pa.field("amount", pa.int64())])
+    table = pa.Table.from_pylist(rows, schema=schema)
+    write_deltalake(path, table, mode="overwrite", schema_mode="overwrite")
+
+
+def test_widened_column_whose_values_fit_is_read_as_before(tmp_path):
+    src = narrow_orders(tmp_path / "o", [{"id": 1, "amount": 5}])
+    pipe = sv.Pipeline(sv.connect())
+    orders = pipe.source("orders", src)
+    pos = pipe.view("pos", orders.filter(orders.amount > 0))
+    widen(src.uri, [{"id": 1, "amount": 5}, {"id": 2, "amount": 7}])
+    [s] = pipe.refresh().sources
+    assert "widened amount int32→int64" in s.detail and s.mode != "recomputed"
+    assert pos.rows() == [(1, 5), (2, 7)]
+    assert pipe.con.arrow["orders"].schema == NARROW
+
+
+def test_widened_column_that_does_not_fit_replans_the_views(tmp_path):
+    src = narrow_orders(tmp_path / "o", [{"id": 1, "amount": 5}])
+    pipe = sv.Pipeline(sv.connect())
+    orders = pipe.source("orders", src)
+    pos = pipe.view("pos", orders.filter(orders.amount > 0))
+    top = pipe.view("top", pos.table.select(pos.table.amount))
+    widen(src.uri, [{"id": 1, "amount": 5}, {"id": 2, "amount": 2**40}])
+    [s] = pipe.refresh().sources
+    assert s.mode == "recomputed"
+    assert "widened amount int32→int64" in s.detail
+    assert "views planned again and recomputed: pos, top" in s.detail
+    assert pos.rows() == pos.recompute() == [(1, 5), (2, 2**40)]
+    assert sorted(top.rows()) == [(5,), (2**40,)]
+    assert pos.schema.field("amount").type == pa.int64()
+    assert pipe.versions == {"orders": 1}
+    # Incremental again from the new schema.
+    write_deltalake(src.uri, pa.table({"id": [3], "amount": [-1]}).cast(pos.schema), mode="append")
+    assert pipe.refresh().sources[0].mode == "change feed"
+    assert top.rows() == top.recompute()
+
+
+def test_dropped_column_read_by_a_view_changes_nothing(tmp_path):
+    src = narrow_orders(tmp_path / "o", [{"id": 1, "amount": 5}])
+    pipe = sv.Pipeline(sv.connect())
+    orders = pipe.source("orders", src)
+    ids = pipe.view("ids", orders.select(orders.id))
+    pos = pipe.view("pos", orders.filter(orders.amount > 0))
+    only_id = pa.table({"id": pa.array([1, 2], pa.int64())})
+    write_deltalake(src.uri, only_id, mode="overwrite", schema_mode="overwrite")
+    with pytest.raises(Exception, match="amount"):
+        pipe.refresh()
+    assert pipe.versions == {"orders": 0}
+    assert ids.rows() == [(1,)] and pos.rows() == [(1, 5)]
+    assert pipe.con.arrow["orders"].schema == NARROW
+
+
+def test_dropped_column_no_view_reads_replans(tmp_path):
+    src = narrow_orders(tmp_path / "o", [{"id": 1, "amount": 5}])
+    pipe = sv.Pipeline(sv.connect())
+    orders = pipe.source("orders", src)
+    ids = pipe.view("ids", orders.select(orders.id))
+    only_id = pa.table({"id": pa.array([1, 2], pa.int64())})
+    write_deltalake(src.uri, only_id, mode="overwrite", schema_mode="overwrite")
+    [s] = pipe.refresh().sources
+    assert s.mode == "recomputed" and "dropped amount" in s.detail
+    assert ids.rows() == [(1,), (2,)]
+
+
+def test_incompatible_schema_change_under_a_contract_is_refused(tmp_path):
+    src, pipe, big, _ = job1(tmp_path)
+    renamed = orders_table([(1, "ada", 5)]).rename_columns(["id", "who", "amount"])
+    write_deltalake(src.uri, renamed, mode="overwrite", schema_mode="overwrite")
+    with pytest.raises(SchemaError, match="contracts proved against the old schema"):
+        pipe.refresh()
+    assert pipe.versions == {"orders": 1} and big.rows() == [(1, "ada", 10), (2, "bob", 14)]

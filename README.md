@@ -611,9 +611,15 @@ for p in job2.preconditions: print(p)
 # big: (_.doubled >= 0) (Delta constraint)
 ```
 
-`pipe.refresh(audit=True)` also compares the batch with the new snapshot
-before committing, and every view with its recomputation afterwards
-(`AuditError`). Iceberg works the same way with `IcebergSource(catalog,
+`pipe.refresh(audit=True)` also compares the batch with the new snapshot,
+and every view with its recomputation on the new tables, before committing
+anything (`AuditError`): after a mismatch the state, the versions and any sink
+are as they were. When a source's schema changes, a batch whose data fits the
+old schema (added columns, widened types whose values still fit) is read in
+it and the report names the change. Otherwise the views reading the source
+are planned again on the new schema and recomputed. A view with a contract is
+not re-planned, because its proof was for the old schema: `refresh` raises
+`SchemaError` and changes nothing. Iceberg works the same way with `IcebergSource(catalog,
 "db.orders")` and `IcebergSink`: versions are snapshot sequence numbers, a
 run of appends is read from the files those snapshots added, and anything
 else (row-level deletes, overwrites) is a diff of the two snapshots, which the

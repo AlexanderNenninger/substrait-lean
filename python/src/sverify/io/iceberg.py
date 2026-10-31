@@ -39,12 +39,12 @@ from sverify.incremental import (
     Snapshot,
     SourceBatch,
     arrow_rows,
+    first_line,
     snapshot_diff,
 )
 from sverify.io._common import (
     ColumnStats,
     Contract,
-    first_line,
     q,
     sink_schema,
     stats_facts,
@@ -155,14 +155,14 @@ class IcebergSource:
             return SourceBatch(since, end, snapshot_facts)
         between = [s for s in _ancestry(t) if _version(s) > since]
         old = _at(t, since)
-        if len({s.schema_id for s in between} | ({old.schema_id} if old else set())) > 1:
-            raise ValueError(f"the schema of {self.identifier} changed; build the pipeline again")
+        schema = _arrow_schema(t)
         if since != 0 and old is None:
             return SourceBatch(
                 since,
                 end,
                 snapshot_facts,
                 snapshot=_read(t, current),
+                schema=schema,
                 fallback=f"Iceberg snapshot v{since} is not an ancestor of v{end} (expired?)",
             )
         appends = all(
@@ -178,6 +178,7 @@ class IcebergSource:
                     end,
                     snapshot_facts,
                     snapshot=_read(t, current),
+                    schema=schema,
                     fallback=f"Iceberg snapshot v{since} unreadable: {first_line(e)}",
                 )
             return SourceBatch(
@@ -187,6 +188,7 @@ class IcebergSource:
                 changes=changes,
                 facts=snapshot_facts,
                 kind="snapshot diff",
+                schema=schema,
                 trusted=(
                     f"Δ = snapshot v{end} − snapshot v{since} (not append-only: {', '.join(ops)}); "
                     "only the snapshots are trusted"
@@ -200,7 +202,6 @@ class IcebergSource:
             for task in t.scan(snapshot_id=current.snapshot_id).plan_files()
             if task.file.file_path in paths
         ]
-        schema = _arrow_schema(t)
         inserted = ArrowScan(t.metadata, t.io, t.schema(), AlwaysTrue()).to_table(tasks)
         return SourceBatch(
             since,
@@ -209,6 +210,7 @@ class IcebergSource:
             changes=Changes(inserts=arrow_rows(inserted.cast(schema))),
             facts=self._facts(t, added, f"file stats @v{end} (new files)"),
             trusted=f"Δ trusted as the files Iceberg appends v{since}→v{end} added",
+            schema=schema,
         )
 
 

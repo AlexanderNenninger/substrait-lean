@@ -204,11 +204,6 @@ def sink_schema(view: IncrementalView, not_null: Iterable[str]) -> pa.Schema:
     return pa.schema([f.with_nullable(f.name not in keep) for f in view.schema])
 
 
-def first_line(e: BaseException) -> str:
-    text = str(e).strip().splitlines()
-    return f"{type(e).__name__}: {text[0] if text else ''}"
-
-
 def describe_contract(c: Contract) -> str:
     sources = ", ".join(f"{t}@v{n}" for t, n in c.sources.items())
     return f"{c.view} (plan {c.plan[:12]}) from {sources}"
