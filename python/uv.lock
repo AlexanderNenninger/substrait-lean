@@ -2116,7 +2116,7 @@ dependencies = [
     { name = "numpy" },
     { name = "polars" },
     { name = "pyarrow" },
-    { name = "pyiceberg", extra = ["pyarrow", "sql-sqlite"] },
+    { name = "pyiceberg", extra = ["pyarrow"] },
     { name = "substrait" },
 ]
 
@@ -2126,6 +2126,7 @@ dev = [
     { name = "hypothesis" },
     { name = "marimo" },
     { name = "poethepoet" },
+    { name = "pyiceberg", extra = ["sql-sqlite"] },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "ruff" },
@@ -2142,7 +2143,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "polars", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
-    { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], specifier = ">=0.12.0" },
+    { name = "pyiceberg", extras = ["pyarrow"], specifier = ">=0.12.0" },
     { name = "substrait", specifier = ">=0.37.0" },
 ]
 
@@ -2152,6 +2153,7 @@ dev = [
     { name = "hypothesis", specifier = ">=6.170.14" },
     { name = "marimo", specifier = ">=0.25.2" },
     { name = "poethepoet", specifier = ">=0.49.0" },
+    { name = "pyiceberg", extras = ["sql-sqlite"], specifier = ">=0.12.0" },
     { name = "pyrefly", specifier = ">=1.4.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },
