@@ -30,7 +30,7 @@ producer and checks Lean's evaluation against it.
 | window with `order_by`, no frame | the whole partition | same | same | same |
 | 64-bit overflow of `+ - *` | a warning: DataFusion wraps around (#23 makes this per engine) | wraps | error | wraps |
 | `v.max()` of doubles | refused (`max of doubles is not supported`) | NaN | NaN | skips NaN |
-| `ts.day_of_week.index()` | refused by the producer | Monday = 0 | Monday = 0 | Monday = 0 |
+| `ts.day_of_week.index()` | Monday = 0 | same | same | same |
 | `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text (#70) | same | utf8proc, RE2 | same |
 
 "Same" means the backend's Ibis result agrees with `verify`'s meaning on the
