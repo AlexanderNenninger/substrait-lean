@@ -89,3 +89,26 @@ Parallel PRs used to conflict in two shared lists; both are now split by area.
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.
+
+## Notebook voice
+
+The tour's markdown cells (`notebooks/`) are written for a data engineer with
+a stake in the outcome. Keep this voice when you edit them:
+
+- Open with a concrete situation the reader would recognise, then the rule
+  or feature.
+- Name the people a result affects (the customer, whoever gets paged at
+  3 a.m., the analyst reading the dashboard), and state requirements as what
+  those people rely on.
+- A little humour, aimed at the data rather than the reader: bad rows can be
+  characters. At most one light touch per cell, and none in technical
+  explanations.
+- "Let's" before a step is fine.
+- Keep every fact, identifier, link and number. Don't soften technical
+  claims or hide caveats: the warmth goes in the framing, not the substance.
+- Stay concise. No emojis or exclamation marks, and no "simply" or "just".
+
+For example: "Think of whoever gets paged at 3 a.m. They'll assume that every
+alert means the temperature really is above 30, and that one hot minute pages
+them once, not three times. Those are reasonable things to rely on, so let's
+write them down and ask the checker."

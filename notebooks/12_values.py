@@ -38,7 +38,9 @@ def _(mo):
     # 12. Doubles, time and text
 
     Integers are the easy case. Real pipelines are full of floating-point
-    measurements, timestamps and strings, each with traps of its own. The
+    measurements, timestamps and strings, each with traps of its own, and
+    a sensor that sends NaN or a timestamp at the edge of the calendar will
+    find them eventually. The
     Lean model pins each of them down, bit for bit where it matters, because
     a proof about the wrong semantics proves nothing.
 

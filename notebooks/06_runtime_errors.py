@@ -37,9 +37,11 @@ def _(mo):
     mo.md(r"""
     # 6. Runtime errors
 
-    A pipeline that is "correct" but crashes at 3 a.m. on a row nobody
-    expected is not much use. Some operations can **fail** in DataFusion, and
-    some silently give a **wrong** answer:
+    Think of whoever is on call when the nightly job dies. A pipeline that
+    is "correct" but crashes at 3 a.m. on a row nobody expected is not much
+    comfort to them, and one that quietly writes a wrong number is worse.
+    Some operations can **fail** in DataFusion, and some silently give a
+    **wrong** answer:
 
     | | operation | what goes wrong |
     |:---|:---|:---|
@@ -62,9 +64,11 @@ def _(mo):
 
     The usual fix is a *guard*: make sure the divisor isn't zero before
     dividing. Whether a guard works depends on **when DataFusion evaluates
-    each part**, and that is less obvious than it looks. Pick a variant;
-    the report is Lean's, and the result is DataFusion actually running it
-    on the table below.
+    each part**, and that is less obvious than it looks. The table below
+    has a row for each kind of trouble: a zero divisor, `MIN` waiting for a
+    `-1`, and doubles a `BIGINT` can't hold. Pick a variant; the
+    report is Lean's, and the result is DataFusion actually running it on
+    that table.
     """)
     return
 
@@ -170,8 +174,9 @@ def _(mo):
 
     ## Contracts refuse possible errors
 
-    A contracted transformation must be proved free of runtime errors, not
-    just correct when it runs. Warnings (wrap-around) don't block it:
+    That is what lets the on-call engineer sleep: a contracted
+    transformation must be proved free of runtime errors, not only correct
+    when it runs. Warnings (wrap-around) don't block it:
     """)
     return
 

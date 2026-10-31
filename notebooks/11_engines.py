@@ -38,12 +38,15 @@ def _(mo):
     mo.md(r"""
     # 11. Engines and SQL
 
-    A proof is about the Lean model. Whether an engine *computes* what the
-    model says is a separate question, and engines disagree with each other
-    more than you'd think: about NULL join keys, NaN, integer overflow, the
-    rounding of integer division, the order of ties. So plans in `sverify`
-    come from one producer (the vendored Ibis producer, or DataFusion's for
-    SQL strings), but they can **run** on three engines:
+    Say your pipeline was proved and tested on DuckDB on your laptop, and
+    the platform team wants it on Spark next quarter. The proof hasn't
+    changed, but will the answers? A proof is about the Lean model. Whether
+    an engine *computes* what the model says is a separate question, and
+    engines disagree with each other more than you'd think: about NULL join
+    keys, NaN, integer overflow, the rounding of integer division, the order
+    of ties. So plans in `sverify` come from one producer (the vendored Ibis
+    producer, or DataFusion's for SQL strings), but they can **run** on
+    three engines:
 
     | engine | how the plan runs |
     |:---|:---|
@@ -59,8 +62,8 @@ def _(mo):
 
     ## The same plan on three engines
 
-    Pick a query; each engine runs the same checked plan, next to Lean's
-    reference interpreter:
+    Let's line them up. Pick a query; each engine runs the same checked
+    plan, next to Lean's reference interpreter:
     """)
     return
 
@@ -195,12 +198,13 @@ def _(mo):
 
     ## SQL for DuckDB, Snowflake and Spark
 
-    The SQL generator in `sverify.sql` writes a checked plan, or one of
-    Lean's update plans, as SQL whose result is `Rel.eval` of the plan.
-    Nothing is left to engine defaults: columns are positional (`c0`, `c1`,
-    …), filters keep only TRUE rows (`IS TRUE`), integers are checked
-    against 64 bits, every `ORDER BY` says where NULLs go. Each engine's
-    differences go through a `Dialect`:
+    Often the data already lives in a warehouse, and the plan has to go to
+    it rather than the other way round. The SQL generator in `sverify.sql`
+    writes a checked plan, or one of Lean's update plans, as SQL whose
+    result is `Rel.eval` of the plan. Nothing is left to engine defaults:
+    columns are positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS
+    TRUE`), integers are checked against 64 bits, every `ORDER BY` says
+    where NULLs go. Each engine's differences go through a `Dialect`:
     """)
     return
 
@@ -248,9 +252,9 @@ def _(mo):
     `select k, row_number() over (partition by k order by qty) as rn from t`
     in each dialect: DuckDB gets an ordinal column so ties break the way
     Lean's stable sort breaks them, while **Snowflake and Spark refuse**,
-    because their tables have no row order to break ties with. If a contract report says
-    `deterministic` (chapter 7), pass `tie_free=True` to promise there are
-    no ties.
+    because their tables have no row order to break ties with. If a
+    contract report says `deterministic` (chapter 7), pass `tie_free=True`
+    to promise there are no ties.
 
     Snowflake-specific choices: integers are `NUMBER(38,0)` checked against
     the 64-bit range, timestamps `TIMESTAMP_NTZ(6)`, intervals counts of
@@ -289,11 +293,12 @@ def _(mo):
 
     ## Testing the engines against the model
 
-    The Lean evaluator is the specification. The test suite runs every
-    fixture and every update plan on DataFusion, Polars and DuckDB with
-    random tables and compares them with each other and with `Rel.eval`, row
-    for row in Lean's order where order matters (`LIMIT`, windows). The
-    Snowflake SQL is checked by parsing and by running it on
+    Moving a pipeline to another engine is only safe if every engine gives
+    the model's answer. The Lean evaluator is the specification. The test
+    suite runs every fixture and every update plan on DataFusion, Polars and
+    DuckDB with random tables and compares them with each other and with
+    `Rel.eval`, row for row in Lean's order where order matters (`LIMIT`,
+    windows). The Snowflake SQL is checked by parsing and by running it on
     [fakesnow](https://github.com/tekumara/fakesnow), a Snowflake emulator,
     or on a real account if you configure one.
     """)

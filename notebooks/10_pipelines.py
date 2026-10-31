@@ -37,7 +37,9 @@ def _(mo):
     mo.md(r"""
     # 10. Pipelines
 
-    Real pipelines are layered: cleaned tables feed joined tables feed
+    Picture the Monday report: it reads a table of orders by city, which
+    reads the cleaned orders, which read the raw `orders` feed. Real
+    pipelines are layered like that: cleaned tables feed joined tables feed
     reports. `sv.Pipeline` maintains several views that **read each other**.
     Each view's change is handed to the views that read it, so an
     intermediate result is computed once and shared, and only changes flow
@@ -45,7 +47,7 @@ def _(mo):
 
     This chapter brings chapters 8 and 9 together: the base layer is the
     contracted `doubled(paid(orders))`, and its guarantees keep holding in
-    **every** state of the pipeline, not just the first.
+    **every** state of the pipeline, not only the first.
 
     ## Three layers
     """)
@@ -136,8 +138,9 @@ def _(mo):
     mo.md(r"""
     ## Changes, layer by layer
 
-    Each button applies one batch to `orders` and `customers`. Two of them
-    break a precondition of `paid`:
+    Let's feed the pipeline. Each button applies one batch to `orders` and
+    `customers`. The first is well-behaved; the other two each sneak in an
+    order that breaks a precondition of `paid`:
     """)
     return
 
@@ -241,8 +244,10 @@ def _(mo):
     mo.md(r"""
     ## Why the guarantees survive every batch
 
-    `paid`'s preconditions were checked on all of `orders` once, when the
-    pipeline was built. After that, only **the batch** is checked:
+    Whoever reads `base` relies on its guarantees on the hundredth batch as
+    much as on the first. `paid`'s preconditions were checked on all of
+    `orders` once, when the pipeline was built. After that, only **the
+    batch** is checked:
 
     * row conditions (`amount >= 0`) on the inserted rows;
     * keys (`unique(id)`) among the inserted rows and against the keys of
