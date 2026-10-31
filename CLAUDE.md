@@ -55,6 +55,19 @@ ssh homelab 'export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
 
 Run long QA commands there in the background, not in the foreground shell.
 
+## Notebooks on molab
+
+The README's molab links open `notebooks/` on the `published` branch, not on
+`main`: molab reads notebooks straight from GitHub, and `main` runs ahead of
+PyPI. After the PyPI upload of a `v*` tag, the `publish-notebooks` job of
+`.github/workflows/wheels.yml` rewrites each notebook's PEP 723 header with
+`python/scripts/publish_notebooks.py` (it drops the `[tool.uv.sources]` path to
+`../python` and pins `sverify[...]==<version>`), runs each one against the
+release, and commits the result to `published`, one commit per release. Never
+edit or force-push `published`. To republish a release, start the workflow by
+hand with `notebooks: <version>`; `dry_run: true` runs this ref's notebooks
+against that version without pushing.
+
 ## Generated files
 
 Don't commit regenerated tables on a feature branch. They are rewritten on
