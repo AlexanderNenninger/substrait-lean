@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 10. [Pipelines](?file=10_pipelines.py) · [Contents](?file=00_start_here.py) · 12. [A complete pipeline](?file=12_fitness.py) →
+    ← 10. [Pipelines](?file=10_pipelines.py) · [Contents](?file=00_start_here.py) · 12. [Doubles, time and text](?file=12_values.py) →
     """)
     return
 
@@ -51,7 +51,7 @@ def _(mo):
     | `"datafusion"` | DataFusion's own Substrait consumer (the `sverify[datafusion]` extra) |
 
     Polars and DuckDB run **Lean's written form** of the plan (`sv.written_plan`,
-    chapter 2), so what runs is exactly what was checked. Their translators
+    chapter 14), so what runs is exactly what was checked. Their translators
     don't take engine defaults: they spell out the model's semantics, so
     that disagreements with Lean show up as test failures instead of quiet
     differences.
@@ -170,7 +170,7 @@ def _(mo):
       (`-7 / 2 = -3`). Polars' own `//` floors (`-4`); the translator uses
       truncation instead.
     * **NaN** is one value, equal to itself and above every number, so
-      `NaN > 0` is TRUE; and −0.0 is 0.0 (chapter 5), on every engine.
+      `NaN > 0` is TRUE; and −0.0 is 0.0 (chapter 12), on every engine.
     * **`qty + 1` on the largest integer** is where engines really differ:
       DataFusion silently wraps around to the smallest integer, while the
       Polars and DuckDB translators **raise**, because Lean's integers are
@@ -263,7 +263,7 @@ def _(mo):
     SQL. It assumes the session settings of `SPARK_CONF`, above all
     `spark.sql.ansi.enabled`: without ANSI mode an overflow wraps around and
     a bad cast is NULL. Spark answers several of
-    [chapter 15](?file=15_backend_semantics.py)'s questions its own way, and
+    [chapter 17](?file=17_backend_semantics.py)'s questions its own way, and
     each is spelled out or refused:
 
     * `/` of integers is a double, so division is `div`; `/` of doubles
@@ -283,7 +283,7 @@ def _(mo):
     Unlike Snowflake, Spark runs locally: the tests run every coverage case
     and every query of the Snowflake suite on a local Spark session and
     compare them with `Rel.eval`. DataFusion's own departures from the model
-    are in [chapter 14](?file=14_datafusion_semantics.py).
+    are in [chapter 16](?file=16_datafusion_semantics.py).
 
     ## Testing the engines against the model
 
@@ -301,7 +301,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 10. [Pipelines](?file=10_pipelines.py) · [Contents](?file=00_start_here.py) · 12. [A complete pipeline](?file=12_fitness.py) →
+    ← 10. [Pipelines](?file=10_pipelines.py) · [Contents](?file=00_start_here.py) · 12. [Doubles, time and text](?file=12_values.py) →
     """)
     return
 

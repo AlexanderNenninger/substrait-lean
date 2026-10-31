@@ -29,7 +29,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 1. [Duplicate card payments](?file=01_duplicate_payments.py) · [Contents](?file=00_start_here.py) · 3. [An orders mart in SQL and Ibis](?file=03_orders_mart.py) →
+    ← 1. [Duplicate card payments](?file=01_duplicate_payments.py) · [Contents](?file=00_start_here.py) · 3. [An orders mart](?file=03_orders_mart.py) →
     """)
     return
 

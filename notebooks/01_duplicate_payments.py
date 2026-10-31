@@ -29,7 +29,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [Contents](?file=00_start_here.py) · 2. [Sensor alerts from an Iceberg table](?file=02_sensor_alerts.py) →
+    [Contents](?file=00_start_here.py) · 2. [Sensor alerts](?file=02_sensor_alerts.py) →
     """)
     return
 
