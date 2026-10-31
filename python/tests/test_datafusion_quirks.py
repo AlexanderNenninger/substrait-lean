@@ -23,6 +23,8 @@ from sverify.engine import connect, put_table, run_substrait_json, substrait_jso
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows
 
+pytestmark = pytest.mark.backend("datafusion")
+
 
 def ints(**cols: list) -> pa.Table:
     return pa.table({k: pa.array(v, pa.int64()) for k, v in cols.items()})
