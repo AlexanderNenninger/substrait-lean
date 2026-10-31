@@ -15,17 +15,19 @@ parser: google
 
 # Static analysis (griffe reads the source). Runtime introspection resolves
 # `io.DeltaSource` as an attribute of `sverify`, and `import sverify` doesn't
-# import its submodules (`sverify.io` loads delta-rs and pyiceberg lazily).
+# import all of its submodules (`sverify.io` loads delta-rs and pyiceberg
+# lazily).
 dynamic: false
 
-# Sections in the order a data engineer looks for things: what a pipeline
-# promises, how it is kept up to date, where its tables live, where it runs.
-# Internals (coverage, catalogue, fuzz, testing, ibis_substrait,
-# coverage_cases) are left out. `Unique` and `References` are described under
-# `unique` and `references`: their pages would collide with those functions'
-# on case-insensitive file systems.
+# Sections in the order a data engineer looks for things: what a transform
+# promises, how its result is built, stored and kept up to date, where its
+# tables live, where it runs, what can go wrong. The public API is the ten
+# top-level names plus `sverify.io`, `sverify.engines` and `sverify.errors`;
+# everything else is internal (CHANGELOG.md, 0.2.0). `Node`'s results
+# (`Refresh`, `Status`, `Group`) live in `sverify.nodes` and are documented
+# because users hold them, not because they are imported.
 reference:
-  - title: Contracts and verification
+  - title: Contracts
     desc: >
       State what a transformation assumes and promises, and have it proved
       before any data runs.
@@ -35,70 +37,55 @@ reference:
       - unique
       - references
       - Report
-      - Issue
-      - VerificationError
-      - PreconditionError
-      - PostconditionError
-      - CompositionError
 
-  - title: Incremental views and pipelines
+  - title: Transforms, nodes and refresh
     desc: >
-      Keep results up to date from inserts and deletes, with update plans
-      proved equal to a full recompute.
+      A contracted transform called on a source builds a node. Nodes compose,
+      are stored with `.write(sink)`, and are kept up to date by `.refresh()`,
+      with update plans proved equal to a full recompute.
     contents:
-      - IncrementalView
-      - Pipeline
+      - Node
+      - group
       - Changes
-      - StaticSource
-      - incremental.RefreshReport
-      - NotIncremental
+      - nodes.Group
+      - nodes.Refresh
+      - nodes.Status
+      - nodes.NodeStatus
+      - nodes.StageRefresh
 
-  - title: Table formats
+  - title: Sources and sinks
     desc: >
-      Delta Lake and Iceberg tables as change sources, sources of
+      Delta Lake and Iceberg tables as versioned sources, sources of
       preconditions, and sinks that carry the contract (`sverify.io`).
     contents:
       - io.DeltaSource
       - io.DeltaSink
       - io.IcebergSource
       - io.IcebergSink
-      - io.Contract
-      - io.Stored
+      - io.StaticSource
       - io.SinkWrite
-      - io.IcebergWrite
+      - io.Contract
 
   - title: Engines and SQL
     desc: >
-      Run a checked plan on DuckDB, Polars or DataFusion, or write it as
-      DuckDB, Snowflake or Spark SQL.
+      Run a checked plan on DuckDB, Polars, DataFusion or Spark, or write it
+      as DuckDB, Snowflake or Spark SQL (`sverify.engines`).
     contents:
       - connect
-      - Connection
-      - create_table
-      - table_rows
-      - run_plan
-      - ENGINES
-      - SQL_PRODUCERS
-      - sql.to_sql
-      - sql.Dialect
-      - sql.Unsupported
-      - SqlError
-
-  - title: Spark
-    desc: >
-      Run a checked plan's Spark SQL on a local or existing Spark session
-      (`sverify.spark_engine`, the `spark` extra).
-    contents:
-      - spark_engine.run
-
-  - title: Sharding
-    desc: >
-      Run a plan shard by shard and combine the results, with a proof that
-      the result is the same (`sverify.partition`).
-    contents:
-      - partition.run_sharded
-      - partition.split
-      - partition.NotShardable
+      - engines.run
+      - engines.ENGINES
+      - engines.Connection
+      - engines.create_table
+      - engines.table_rows
+      - engines.to_sql
+      - engines.Dialect
+      - engines.DUCKDB
+      - engines.SNOWFLAKE
+      - engines.SPARK
+      - engines.Unsupported
+      - engines.run_spark
+      - engines.SPARK_CONF
+      - engines.run_sharded
 
   - title: ASOF joins
     desc: Align two time series, each row with the latest earlier row of the other.
@@ -108,13 +95,26 @@ reference:
   - title: Plans
     desc: >
       The low-level layer: Substrait plans, Lean's written form of them, and
-      the update plans of incremental views.
+      the update plans of incremental maintenance (`sverify.engines`).
     contents:
-      - substrait_json
-      - isthmus_json
-      - written_plan
-      - run_substrait_json
-      - delta_plans
+      - engines.substrait_json
+      - engines.isthmus_json
+      - engines.SQL_PRODUCERS
+      - engines.written_plan
+      - engines.run_substrait_json
+      - engines.delta_plans
+
+  - title: Errors
+    desc: What sverify raises, and when (`sverify.errors`).
+    contents:
+      - errors.VerificationError
+      - errors.PreconditionError
+      - errors.PostconditionError
+      - errors.CompositionError
+      - errors.NotIncremental
+      - errors.AuditError
+      - errors.SchemaError
+      - errors.SqlError
 
 # Agent skills for sverify users, written by hand and shipped in the wheel
 # (`sverify/skills/<name>/SKILL.md`, with their `references/`). The site

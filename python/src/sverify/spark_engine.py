@@ -90,23 +90,29 @@ def run(
     tie_free: bool = False,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
+    This is `sverify.engines.run_spark`.
+
+    The plan is written as Spark SQL by `sverify.engines.to_sql` in the
+    `sverify.engines.SPARK` dialect. `sverify.engines.run(con, plan,
+    "spark")` runs a plan over a connection's tables the same way.
 
     Args:
         plan: A Substrait JSON plan, as a string or parsed.
         tables: The tables the plan reads, by name. Each is registered as a
             temporary view of that name, replacing any view of the same name.
-        spark: The Spark session to run on. Default: `session()`, a local
-            session.
+        spark: The Spark session to run on, configured with
+            `sverify.engines.SPARK_CONF`. Default: a local session with
+            those settings.
         tie_free: Promise that no two rows tie on any window's
             `PARTITION BY` and `ORDER BY` columns (what a contract report's
             `deterministic` says), so windows run without a row-order
-            tiebreak (see `sverify.sql.to_sql`). Default False.
+            tiebreak (see `sverify.engines.to_sql`). Default False.
 
     Returns:
         The plan's result, as an Arrow table.
 
     Raises:
-        sverify.sql.Unsupported: Spark SQL cannot express the plan with
+        sverify.engines.Unsupported: Spark SQL cannot express the plan with
             Lean's meaning, for example a plan that needs a table's row order
             without `tie_free=True`.
         TypeError: A column has a type Spark cannot hold here, such as a

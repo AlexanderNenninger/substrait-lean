@@ -27,5 +27,8 @@ def test_skills_exist():
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: str(p.relative_to(SKILLS)))
 def test_skill_examples_run(path, tmp_path, monkeypatch):
+    text = path.read_text()
+    # An unclosed fence would hide the code after it from the test.
+    assert sum(line.startswith("```") for line in text.splitlines()) % 2 == 0
     monkeypatch.chdir(tmp_path)
-    run_blocks(path, path.read_text())
+    run_blocks(path, text)

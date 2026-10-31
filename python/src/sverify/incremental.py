@@ -86,12 +86,37 @@ WEIGHT = "__weight"
 
 
 class NotIncremental(Exception):
-    """The plan is outside the fragment with verified delta rules."""
+    """The plan is outside the fragment with verified delta rules.
+
+    Raised by `sverify.engines.delta_plans` for a plan with an operator
+    without a delta rule (a left join, aggregate, window, `DISTINCT` or
+    `LIMIT`). A node over such a plan is recomputed and diffed instead, so
+    refreshing it does not raise this. The message is the checker's reason.
+    """
 
 
 def delta_plans(plan_json: str) -> list[str]:
     """Ask Lean for the weighted delta plans of a Substrait JSON plan; the
-    change to the view is the concatenation of their outputs."""
+    change to the view is the concatenation of their outputs.
+
+    Each delta plan reads the view's input tables `t` at their old contents
+    and their changes as tables `t$delta`, which have the columns of `t` and
+    an extra `__weight` column (+1 for an inserted row, -1 for a deleted
+    one). Its output has the view's columns and a weight column likewise.
+
+    Args:
+        plan_json: A Substrait plan as protobuf JSON, as
+            `sverify.engines.substrait_json`, `sverify.engines.isthmus_json`
+            or a node's `plan` write it.
+
+    Returns:
+        The delta plans, each a Substrait JSON plan in Lean's written form.
+
+    Raises:
+        sverify.errors.NotIncremental: The plan has an operator without a
+            verified delta rule.
+        ValueError: The checker rejects the plan.
+    """
     code, out, err = run_checker(("--delta",), plan_json)
     if code == 3:
         raise NotIncremental(err.strip())
@@ -120,7 +145,17 @@ def arrow_rows(table: pa.Table) -> list[Row]:
 @dataclass
 class Changes:
     """Rows to insert into and delete from one table (bag semantics: each
-    deleted row removes one occurrence)."""
+    deleted row removes one occurrence).
+
+    Rows are tuples in the table's column order. An update is a delete of the
+    old row plus an insert of the new one. `StaticSource.apply` takes one.
+
+    Attributes:
+        inserts: Rows to add. Default: none.
+        deletes: Rows to remove, one occurrence each; every one must be in
+            the table, or `StaticSource.apply` raises `ValueError`.
+            Default: none.
+    """
 
     inserts: Sequence[Row] = field(default_factory=list)
     deletes: Sequence[Row] = field(default_factory=list)
@@ -208,8 +243,15 @@ class Source(Protocol):
 
 
 class SchemaError(Exception):
-    """A source's new schema cannot be read in the old one, and a view
-    reading it has a contract that was proved against the old one."""
+    """A source's new schema cannot be read in the old one, and a node
+    reading it has a contract that was proved against the old one.
+
+    Raised by `refresh`. A source whose data fits its old schema (added
+    columns, widened types) is read in the old schema; otherwise the nodes
+    reading it are planned again and recomputed, which a contracted node
+    cannot be. Build its nodes again on the new schema, so the contract is
+    proved against it. Nothing was applied.
+    """
 
 
 def _plain(t: pa.DataType) -> pa.DataType:
@@ -353,7 +395,20 @@ class StaticSource:
     `digest` is recorded next to it, so a sink can write a node reading it
     exactly once. `apply` changes some rows (the next refresh gets exactly
     that change); `replace` swaps the whole table (the next refresh diffs the
-    two). `name` is the table's name in the plans that read it."""
+    two). `name` is the table's name in the plans that read it.
+
+    Args:
+        table: The table's contents.
+        version: The version of these contents. Default: 0.
+        name: The table's name in the plans that read it. Default:
+            `"table"`.
+
+    Attributes:
+        table: The current contents.
+        version: Their version.
+        digest: sha256 of their schema and bag of rows.
+        name: The table's name in the plans that read it.
+    """
 
     def __init__(self, table: pa.Table, version: int = 0, *, name: str = "table"):
         self.name = name
@@ -361,7 +416,20 @@ class StaticSource:
         self.replace(table, version)
 
     def replace(self, table: pa.Table, version: int) -> None:
-        """Swap in a new table at `version`, above the current one."""
+        """Swap in a new table at `version`, above the current one. The
+        next `refresh` diffs it against the old one, and recomputes the
+        nodes that read the table.
+
+        Use `apply` when you know which rows changed: the refresh then gets
+        exactly that change.
+
+        Args:
+            table: The new contents.
+            version: Their version, above the current one.
+
+        Raises:
+            ValueError: `version` is not above the current version.
+        """
         if hasattr(self, "version") and version <= self.version:
             raise ValueError(f"a new table needs a version above {self.version}")
         self.table, self.version, self.digest = table, version, table_digest(table)
@@ -369,7 +437,45 @@ class StaticSource:
 
     def apply(self, changes: Changes, version: int | None = None) -> None:
         """Insert and delete rows (tuples in schema order), as `version`
-        (default: one above the current one)."""
+        (default: one above the current one).
+
+        The next `refresh` of a node reading the source gets exactly this
+        change (several `apply` calls in between add up), so the node is
+        updated from it rather than recomputed.
+
+        Args:
+            changes: The rows to insert and delete.
+            version: The new version, above the current one. Default: one
+                above the current one.
+
+        Raises:
+            ValueError: `version` is not above the current version, or a
+                deleted row is not in the table (nothing is changed).
+
+        Examples:
+            ```python
+            import pyarrow as pa
+            import sverify as sv
+            from sverify.io import StaticSource
+
+            orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+
+            @sv.transform()
+            def big_orders(orders):
+                return orders.filter(orders.amount > 10)
+
+
+            big = big_orders(orders)
+            big.refresh()
+            orders.apply(sv.Changes(inserts=[(3, 50)], deletes=[(1, 30)]))  # version 1
+            print(big.refresh())
+            # big_orders:
+            #   orders@v0→v1: 1 insert(s), 1 delete(s); Δ as applied to orders v0→v1
+            #   view big_orders: orders@v1
+            assert big.to_arrow().to_pylist() == [{"id": 3, "amount": 50}]
+            ```
+        """
         version = self.version + 1 if version is None else version
         if version <= self.version:
             raise ValueError(f"a new table needs a version above {self.version}")
@@ -378,17 +484,45 @@ class StaticSource:
         self._log.append((version, changes))
 
     def schema(self) -> pa.Schema:
+        """The current table's schema."""
         return self.table.schema
 
     def latest(self) -> int:
+        """The current version."""
         return self.version
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The current table, as a refresh reads it.
+
+        Args:
+            version: The current version, or None for it.
+
+        Returns:
+            The version and the rows, with no facts from metadata.
+
+        Raises:
+            ValueError: `version` is not the current one; a static table
+                keeps only its current contents.
+        """
         if version not in (None, self.version):
             raise ValueError(f"a static table only has version {self.version}")
         return Snapshot(self.version, self.table, [])
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        """The change from version `since` to the current one, as a refresh
+        reads it.
+
+        Args:
+            since: The version the node's state was computed from.
+            until: The current version, or None for it.
+
+        Returns:
+            The rows `apply` inserted and deleted since `since`; or, if
+            `replace` swapped the table since, the current table, to diff.
+
+        Raises:
+            ValueError: `until` is not the current version.
+        """
         if until not in (None, self.version):
             raise ValueError(f"a static table only has version {self.version}")
         if since == self.version:
@@ -464,7 +598,12 @@ class RefreshReport:
 
 
 class AuditError(Exception):
-    """In audit mode, the change feed or a view disagrees with recomputation."""
+    """In audit mode, the change feed or a view disagrees with recomputation.
+
+    Raised by `refresh(audit=True)`, which compares each batch with the new
+    snapshots and every node with its recomputation before committing
+    anything: when this is raised, nothing was applied.
+    """
 
 
 class IncrementalView:

@@ -29,15 +29,21 @@ Wheels bundle the checker, so no Lean toolchain is needed.
 
 ## Write a contracted transformation
 
-The function body is ordinary Ibis. Calling it proves the contract and
-returns the expression; `last_report` says what was proved.
+The function body is ordinary Ibis. Called on a source, it proves the
+contract and returns a `Node`; `refresh()` computes it, on DuckDB unless you
+pass `engine=`. `last_report` says what was proved.
 
 ```python
 import ibis
-import sverify as sv
+import pyarrow as pa
 from ibis import _
 
-orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+import sverify as sv
+from sverify.io import StaticSource
+
+orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same way
+    pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
+)
 
 
 @sv.transform(
@@ -48,7 +54,9 @@ def big_orders(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
 
-expr = big_orders(orders)
+big = big_orders(orders)  # proved here, before any data runs
+big.refresh()
+assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
 report = big_orders.last_report
 assert report.proved
 print(report.facts["doubled"])  # what Lean established about the column
@@ -57,17 +65,23 @@ print(report.facts["doubled"])  # what Lean established about the column
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
   snippets (`"doubled >= 22"`). `sv.unique(...)` states a key;
   `sv.references(col, table, key_col)` a foreign key (only in `requires`).
-* With inputs bound to real tables (`sv.connect()`, `con.table(...)`),
-  `requires` is checked on the data (`PreconditionError`).
+* `requires` is checked on the source's data when the node is refreshed
+  (`sverify.errors.PreconditionError`), or proved from table metadata.
+* Transforms compose: `revenue(paid(orders))` proves each link from the
+  upstream contract (`sverify.errors.CompositionError` names a broken one).
+* Called on Ibis tables instead of a source, a transform returns an Ibis
+  expression: handy for checking a contract without data.
 
 ## Read the report, and fix what isn't proved
 
-An unproved postcondition raises `VerificationError`. `sv.verify` returns the
-report without raising, with a counterexample when the search finds one:
+An unproved postcondition raises `sverify.errors.VerificationError`.
+`sv.verify` returns the report without raising, with a counterexample when
+the search finds one:
 
 ```python
+orders_t = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 report = sv.verify(
-    orders.select(orders.id, total=orders.amount + 1),
+    orders_t.select(orders_t.id, total=orders_t.amount + 1),
     requires={"orders": [_.amount >= 0]},
     ensures=[_.total > 5],
 )
@@ -81,7 +95,7 @@ really can't look like that), change the transformation, or weaken the
 postcondition. Here a filter makes it hold:
 
 ```python
-fixed = orders.filter(orders.amount > 4).select(orders.id, total=orders.amount + 1)
+fixed = orders_t.filter(orders_t.amount > 4).select(orders_t.id, total=orders_t.amount + 1)
 assert sv.verify(fixed, requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5]).proved
 ```
 
@@ -95,8 +109,8 @@ wrap-around) doesn't. Guard a divisor with `NULLIF`/`ifelse`, or bound it in
 `@sv.transform(..., on_unproved=...)`:
 
 * `"error"` (default): raise `VerificationError`.
-* `"runtime"`: check the unproved postconditions on the output data instead
-  (needs bound inputs; raises `PostconditionError`).
+* `"runtime"`: check the unproved postconditions on the output data instead,
+  at refresh (raises `PostconditionError`).
 * `"warn"`: warn and continue.
 
 ## Gotchas
@@ -112,15 +126,16 @@ wrap-around) doesn't. Guard a divisor with `NULLIF`/`ifelse`, or bound it in
 * **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
 * **Incremental maintenance** covers filters, projections, inner and cross
-  joins and `UNION ALL`; other views are recomputed in a `Pipeline` (see the
+  joins and `UNION ALL`; other nodes (left joins, aggregates, windows,
+  `DISTINCT`, `LIMIT`) are recomputed and diffed on each refresh (see the
   `sverify-pipelines` skill).
-* **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.partition`), since
+* **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
   the rounding would depend on the split.
 
 ## More
 
 * [references/contracts.md](references/contracts.md): what Lean tracks,
   SQL transformations, composing contracts.
-* The `sverify-pipelines` skill: Delta and Iceberg sources and sinks.
+* The `sverify-pipelines` skill: Delta and Iceberg sources, sinks, refresh.
 * The `sverify-engines` skill: running a plan on DuckDB, Polars, DataFusion,
   Snowflake or Spark, and ASOF joins.

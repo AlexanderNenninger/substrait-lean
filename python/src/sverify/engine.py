@@ -46,8 +46,14 @@ from sverify.ibis_substrait import Unsupported, to_substrait_json
 
 Engine = Literal["duckdb", "polars", "datafusion"]
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
+"""The engines a `Connection` runs plans on: `"duckdb"` (the default),
+`"polars"` and `"datafusion"`. Loop over it to run a plan on each, as the
+tests do. `sverify.engines.run` also takes `"spark"` or a Spark session."""
 SqlProducer = Literal["datafusion", "isthmus"]
 SQL_PRODUCERS: tuple[SqlProducer, ...] = ("datafusion", "isthmus")
+"""The compilers for SQL strings: `"datafusion"` (DataFusion's Substrait
+producer, the default when DataFusion is installed) and `"isthmus"`
+(substrait-java's, as a native binary)."""
 
 _literal = DataFusionCompiler.visit_NonNullLiteral
 
@@ -168,12 +174,30 @@ class Connection:
     * `table(name)` is an Ibis table bound to it, through an Ibis DuckDB
       backend that views the Arrow tables (`ibis`). Contracts find a table's
       data and metadata through it, and Ibis's own `execute` works on it.
-    * `engine` runs plans (`run_plan`) unless a call names another.
+    * `engine` runs plans (`sverify.engines.run`) unless a call names
+      another.
     * `sql_producer` compiles SQL strings: `"datafusion"` or `"isthmus"`;
       `None` picks DataFusion if it is installed, else Isthmus.
     * `datafusion` is a DataFusion session holding the same tables (with the
       functions Ibis's DataFusion SQL calls), created on first use; only the
       DataFusion engine and DataFusion's SQL producer need it.
+
+    `sverify.connect()` makes one.
+
+    Args:
+        engine: `"duckdb"`, `"polars"` or `"datafusion"`. Default:
+            `"duckdb"`.
+        sql_producer: `"datafusion"`, `"isthmus"`, or None (the default) to
+            pick one when a SQL string is first compiled.
+
+    Attributes:
+        engine: The engine that runs plans unless a call names another.
+        sql_producer: The SQL producer, or None for the default.
+        arrow: The tables by name, as Arrow tables.
+        ibis: The Ibis DuckDB backend the bound tables read through.
+
+    Raises:
+        ValueError: `engine` or `sql_producer` is unknown.
     """
 
     def __init__(self, engine: Engine = "duckdb", sql_producer: SqlProducer | None = None):
@@ -194,16 +218,36 @@ class Connection:
     def table(self, name: str) -> ir.Table:
         """Table `name` as an Ibis table bound to the connection. Its schema is
         the Arrow table's, nullability included (DuckDB's view of it drops
-        NOT NULL, which contracts read)."""
+        NOT NULL, which contracts read).
+
+        Args:
+            name: A table of the connection.
+
+        Returns:
+            The bound Ibis table.
+
+        Raises:
+            KeyError: The connection has no table `name`.
+        """
         schema = ibis.Schema.from_pyarrow(self.arrow[name].schema)
         return ops.DatabaseTable(name, schema=schema, source=self.ibis).to_expr()
 
     def has(self, name: str) -> bool:
+        """Whether the connection has a table `name`."""
         return name in self.arrow
 
     def put(self, name: str, table: pa.Table) -> None:
         """Add or replace table `name`, with doubles as the model has them
-        (`canonical`: one zero, one NaN)."""
+        (`canonical`: one zero, one NaN).
+
+        Large and view strings become plain strings, the one string type of
+        Substrait plans. The table is registered with the Ibis backend and,
+        once it exists, the DataFusion session.
+
+        Args:
+            name: The table's name.
+            table: Its contents.
+        """
         table = canonical(table.cast(plain_schema(table.schema)))
         self.drop(name)
         self.arrow[name] = table
@@ -212,6 +256,7 @@ class Connection:
             _register(self._datafusion, name, table)
 
     def drop(self, name: str) -> None:
+        """Remove table `name`; nothing happens if there is none."""
         if self.arrow.pop(name, None) is None:
             return
         self.ibis.con.unregister(name)
@@ -220,7 +265,12 @@ class Connection:
 
     @property
     def datafusion(self) -> Any:
-        """A `datafusion.SessionContext` with the connection's tables."""
+        """A `datafusion.SessionContext` with the connection's tables.
+
+        Raises:
+            ImportError: DataFusion is not installed (`pip install
+                'sverify[datafusion]'`).
+        """
         if self._datafusion is None:
             _datafusion()
             # Ibis's DataFusion backend registers the UDFs its SQL calls
@@ -235,7 +285,22 @@ class Connection:
 def connect(engine: Engine = "duckdb", sql_producer: SqlProducer | None = None) -> Connection:
     """A new, empty connection whose plans run on `engine` and whose SQL
     strings `sql_producer` compiles (default: DataFusion if installed, else
-    Isthmus)."""
+    Isthmus).
+
+    Args:
+        engine: `"duckdb"`, `"polars"` or `"datafusion"` (see
+            `sverify.engines.ENGINES`). Default: `"duckdb"`.
+        sql_producer: `"datafusion"` or `"isthmus"` (see
+            `sverify.engines.SQL_PRODUCERS`). Default: None, DataFusion if
+            installed, else Isthmus.
+
+    Returns:
+        A connection with no tables. Add them with
+        `sverify.engines.create_table` or `Connection.put`.
+
+    Raises:
+        ValueError: `engine` or `sql_producer` is unknown.
+    """
     return Connection(engine, sql_producer)
 
 
@@ -284,7 +349,21 @@ def substrait_json(con: Connection, sql: str) -> str:
 
     DataFusion 51's producer writes the offsets of a RANGE frame (`RANGE
     BETWEEN 1 PRECEDING AND …`) as UNBOUNDED, so the plan would mean another
-    query: those are refused."""
+    query: those are refused.
+
+    Args:
+        con: The connection whose tables the SQL reads.
+        sql: A query in DataFusion's SQL dialect.
+
+    Returns:
+        The Substrait plan as protobuf JSON.
+
+    Raises:
+        ImportError: DataFusion is not installed.
+        ValueError: The query has a RANGE frame with an offset (the vendored
+            Ibis producer's `Unsupported`, a `ValueError`).
+        Exception: DataFusion's own error for SQL it cannot plan.
+    """
     ss = _datafusion().substrait
     ctx = con.datafusion
     key = "datafusion.optimizer.max_passes"
@@ -345,7 +424,11 @@ def create_statements(con: Connection) -> tuple[list[str], list[str]]:
 
 
 class SqlError(ValueError):
-    """A SQL producer refused a query."""
+    """A SQL producer refused a query.
+
+    Raised by `sverify.engines.isthmus_json` with Isthmus's message, and the
+    tables Isthmus could not see if a column type has no SQL name.
+    """
 
 
 @functools.lru_cache(maxsize=256)
@@ -366,7 +449,24 @@ def isthmus_json(con: Connection, sql: str) -> str:
     """Compile SQL to a Substrait plan with Isthmus, as protobuf JSON. Isthmus
     reads standard SQL (Calcite's default conformance), not DataFusion's or
     Postgres's dialect: `FLOOR(ts TO DAY)` rather than `DATE_TRUNC`, no
-    `GROUP BY` ordinals."""
+    `GROUP BY` ordinals.
+
+    The connection's tables are declared to Isthmus as `CREATE TABLE`
+    statements; a table with a column type SQL cannot name (a timestamp
+    with a time zone, for one) is left out.
+
+    Args:
+        con: The connection whose tables the SQL reads.
+        sql: A query in standard SQL.
+
+    Returns:
+        The Substrait plan as protobuf JSON.
+
+    Raises:
+        ImportError: There is no Isthmus binary (`$SVERIFY_ISTHMUS`, or
+            `isthmus` on `PATH`).
+        sverify.errors.SqlError: Isthmus refuses the query.
+    """
     binary = isthmus_path()
     if binary is None:
         raise ImportError(
@@ -384,7 +484,22 @@ def isthmus_json(con: Connection, sql: str) -> str:
 
 
 def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
-    """Run a Substrait plan on DataFusion."""
+    """Run a Substrait plan on DataFusion.
+
+    The plan runs as given; `sverify.engines.run(con, plan, "datafusion")`
+    first rewrites a plan in Lean's written form where DataFusion's
+    semantics differ, and is what to use for checked plans.
+
+    Args:
+        con: The connection whose tables the plan reads.
+        plan_json: A Substrait plan as protobuf JSON.
+
+    Returns:
+        The result, with doubles as `canonical` makes them.
+
+    Raises:
+        ImportError: DataFusion is not installed.
+    """
     ss = _datafusion().substrait
     ctx = con.datafusion
     proto = Plan()
@@ -528,7 +643,21 @@ def read_tables(plan: dict) -> list[str]:
 def written_plan(plan_json: str) -> str:
     """The plan as Lean parsed it, written back out from its `Rel`
     (`substrait-check --write`; the golden tests check this round trip), once
-    the checker has found it well-formed."""
+    the checker has found it well-formed.
+
+    This is the form `sverify.engines.run` and `sverify.engines.to_sql`
+    take, and what a node's `plan` holds.
+
+    Args:
+        plan_json: A Substrait plan as protobuf JSON.
+
+    Returns:
+        The plan in Lean's written form, as protobuf JSON.
+
+    Raises:
+        ValueError: The checker rejects the plan (an operator, function or
+            type outside the Lean model, or an ill-formed plan).
+    """
 
     def check(*flags: str) -> str:
         code, out, err = run_checker(flags, plan_json)
@@ -558,7 +687,57 @@ def run_plan(con: Connection, plan_json: str, engine: Engine | Any = None) -> pa
     connection's), over the tables of `con`. DataFusion runs it as
     `datafusion_plan` writes it; `"spark"` runs it on the local Spark session
     (`sverify.spark_engine.session`), and a Spark session as `engine` runs it
-    there."""
+    there.
+
+    DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
+    a translation to a lazy frame, Spark the Spark SQL of
+    `sverify.engines.run_spark`; each gives the result `Rel.eval` gives.
+    This is `sverify.engines.run`.
+
+    Args:
+        con: The connection whose tables the plan reads.
+        plan_json: A plan in Lean's written form (a node's `plan`, or
+            `sverify.engines.written_plan`'s output).
+        engine: `"duckdb"`, `"polars"`, `"datafusion"`, `"spark"`, or a
+            Spark session. Default: the connection's engine.
+
+    Returns:
+        The result as an Arrow table, with the plan's output names.
+
+    Raises:
+        ValueError: `engine` is unknown, or the checker rejects the plan.
+        ImportError: The engine is an extra that is not installed.
+        sverify.engines.Unsupported: The plan uses something the engine's
+            SQL dialect cannot express (DuckDB, Spark). Polars refuses what
+            its translation does not cover with a `ValueError` of its own.
+
+    Examples:
+        The plan of a transform, on every engine:
+
+        ```python
+        import ibis
+        import pyarrow as pa
+        import sverify as sv
+        from sverify.engines import ENGINES, create_table, run
+        from sverify.io import StaticSource
+
+        orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+
+        @sv.transform()
+        def big_orders(orders):
+            return orders.filter(orders.amount > 10)
+
+
+        plan = big_orders(orders).plan  # the plan Lean checked
+
+        con = sv.connect()
+        create_table(con, "orders", ibis.schema({"id": "int64", "amount": "int64"}),
+                     [(1, 30), (2, 5)])
+        for engine in ENGINES:
+            assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
+        ```
+    """
     engine = engine or con.engine
     if engine == "spark" or not isinstance(engine, str):
         # Spark: the local session, or the session given as the engine.
@@ -625,13 +804,33 @@ def to_arrow(rows, schema: pa.Schema) -> pa.Table:
 
 def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
     """Add table `name` to `con` with `schema` (Ibis or Arrow) and `rows`
-    (tuples in schema order), replacing any table of that name."""
+    (tuples in schema order), replacing any table of that name.
+
+    Args:
+        con: The connection.
+        name: The table's name.
+        schema: Its schema, as an Ibis or Arrow schema. An Arrow schema can
+            mark columns NOT NULL (`nullable=False`), which contracts use.
+        rows (Iterable[tuple]): Tuples in the schema's column order.
+            Default: no rows.
+    """
     arrow_schema = schema if isinstance(schema, pa.Schema) else schema.to_pyarrow()
     put_table(con, name, to_arrow(rows, arrow_schema))
 
 
 def table_rows(con: Connection, name: str) -> list[tuple]:
-    """The rows of table `name` of `con`, as tuples in schema order."""
+    """The rows of table `name` of `con`, as tuples in schema order.
+
+    Args:
+        con: The connection.
+        name: A table of the connection.
+
+    Returns:
+        The rows, in the table's order.
+
+    Raises:
+        KeyError: The connection has no table `name`.
+    """
     t = con.arrow[name]
     return [tuple(r.values()) for r in t.to_pylist()]
 

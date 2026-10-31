@@ -61,9 +61,11 @@ between integer and double arithmetic by it, so this module tracks it too."""
 class Unsupported(ValueError):
     """The plan is outside the Lean model, or the dialect cannot express it.
 
-    Raised by `to_sql` and `parse_plan`; the message says which construct,
-    and for a dialect, why (e.g. Snowflake tables have no row order, so a
-    `FETCH` cannot follow the model's).
+    Raised by `sverify.engines.to_sql`, and so by `sverify.engines.run` on
+    DuckDB and Spark and by `sverify.engines.run_spark`; the message says
+    which construct, and for a dialect, why (e.g. Snowflake tables have no
+    row order, so a `FETCH` cannot follow the model's). A subclass of
+    `ValueError`. This is `sverify.engines.Unsupported`.
     """
 
 
@@ -81,8 +83,8 @@ class Dialect:
     `Unsupported` for what it cannot do.
 
     Use one of the dialect objects rather than building one:
-    `sverify.sql.duckdb.DUCKDB`, `sverify.sql.snowflake.SNOWFLAKE` and
-    `sverify.sql.spark.SPARK`.
+    `sverify.engines.DUCKDB`, `sverify.engines.SNOWFLAKE` and
+    `sverify.engines.SPARK`. This is `sverify.engines.Dialect`.
 
     Attributes:
         name: The engine's name, used in `Unsupported` messages.
@@ -3523,7 +3525,8 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
 
     The result has the plan's output names (`RelRoot.names`, else `c0`, …),
     and is ordered as Lean orders it when the plan has a FETCH or a window.
-    Raises `Unsupported` for plans outside the Lean model.
+    Raises `Unsupported` for plans outside the Lean model. This is
+    `sverify.engines.to_sql`.
 
     `tie_free=True` promises that no two rows tie on any window's PARTITION BY
     and ORDER BY columns (what a contract report's `deterministic` says). Then
@@ -3535,11 +3538,10 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     SQL on data that meets the contract's preconditions.
 
     Args:
-        plan: A Substrait JSON plan, parsed (`json.loads`), such as
-            `IncrementalView.plan` or `written_plan`'s output.
-        dialect: The engine to write SQL for:
-            `sverify.sql.duckdb.DUCKDB`, `sverify.sql.snowflake.SNOWFLAKE`
-            or `sverify.sql.spark.SPARK`.
+        plan: A Substrait JSON plan, parsed (`json.loads`), such as a
+            node's `plan` or `sverify.engines.written_plan`'s output.
+        dialect: The engine to write SQL for: `sverify.engines.DUCKDB`,
+            `sverify.engines.SNOWFLAKE` or `sverify.engines.SPARK`.
         tie_free: Promise that windows have no ties on their PARTITION BY
             and ORDER BY columns. Default: False.
         guards: Write the run-time checks. Default: True.
@@ -3553,13 +3555,26 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
             not match its columns, or the dialect cannot express it.
 
     Examples:
+        The plan of a transform, as Snowflake SQL:
+
         ```python
         import json
 
-        from sverify.sql import to_sql
-        from sverify.sql.snowflake import SNOWFLAKE
+        import pyarrow as pa
+        import sverify as sv
+        from sverify.engines import SNOWFLAKE, to_sql
+        from sverify.io import StaticSource
 
-        sql = to_sql(json.loads(view.plan), SNOWFLAKE)  # view: an IncrementalView
+        orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
+
+
+        @sv.transform()
+        def big_orders(orders):
+            return orders.filter(orders.amount > 10)
+
+
+        print(to_sql(json.loads(big_orders(orders).plan), SNOWFLAKE))
+        # SELECT s1."c0" AS "id", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", ...
         ```
     """
     if not guards:

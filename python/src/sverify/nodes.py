@@ -53,7 +53,15 @@ if TYPE_CHECKING:
 
 
 class Sink(Protocol):
-    """What `Node.write` needs of a sink (`sverify.io.DeltaSink`, `IcebergSink`)."""
+    """What `Node.write` needs of a sink (`sverify.io.DeltaSink`, `IcebergSink`).
+
+    The sinks in `sverify.io` implement it; the methods it asks for are
+    private, called by `refresh`, so a sink has no public `write` of its own.
+
+    Attributes:
+        name: The stored table's name in the plans that read it (the sink's
+            `name=`, by default the last part of its URI or identifier).
+    """
 
     name: str
 
@@ -82,7 +90,56 @@ class Node:
     `to_arrow`, `to_polars`, `to_pandas` and `table` (an Ibis table).
 
     The node keeps its state while the process runs; a stored node's table
-    is its durable state, so a restarted job resumes from it."""
+    is its durable state, so a restarted job resumes from it.
+
+    Attributes:
+        name: The node's name: the transform's, or for a stored node the
+            sink's `name`. It names the node in `Refresh` and `Status`, and
+            a stored node's table in the plans that read it.
+
+    Examples:
+        Two contracted transforms over an in-memory source, first fused into
+        one plan, then with the first one stored in a Delta table:
+
+        ```python
+        import tempfile
+
+        import pyarrow as pa
+        import sverify as sv
+        from ibis import _
+        from sverify.io import DeltaSink, StaticSource
+
+        orders = StaticSource(
+            pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}),
+            name="orders",
+        )
+
+        @sv.transform(
+            requires={"orders": [_.amount >= 0, sv.unique("id")]},
+            ensures=[_.amount > 10, sv.unique("id")],
+        )
+        def paid(orders):
+            return orders.filter(orders.amount > 10)
+
+        @sv.transform(requires={"t": [_.amount > 10]}, ensures=[_.doubled > 20])
+        def doubled(t):
+            return t.select(t.id, doubled=t.amount * 2)
+
+        r = doubled(paid(orders))  # one fused plan, proved here
+        r.refresh()  # computed, on DuckDB by default
+        r.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]
+
+        lake = tempfile.mkdtemp()
+        p = paid(orders).write(DeltaSink(f"{lake}/paid"))  # stored: a source
+        r = doubled(p).write(DeltaSink(f"{lake}/doubled"))
+        r.refresh()  # paid first, then doubled; each written once
+
+        orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
+        r.refresh(engine="polars")  # updated from the changes alone
+        r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
+        r.to_polars(); r.to_pandas(); r.table  # the same rows, other forms
+        ```
+    """
 
     def __init__(self, name: str, expr: ir.Table, inputs: Sequence[Node]):
         self.name = name
@@ -97,14 +154,17 @@ class Node:
 
     @property
     def schema(self) -> ibis.Schema:
-        """The node's columns and their types."""
+        """The node's columns and their types, known when the node is built."""
         return self._expr.schema()
 
     @property
     def plan(self) -> str:
         """The Substrait plan (JSON) of the node's stage, as Lean checked and
         wrote it: what every engine runs. `sverify.engines.delta_plans(plan)`
-        are the plans that maintain it from changes."""
+        are the plans that maintain it from changes.
+
+        The stage reads the sources and stored nodes upstream under their
+        names, so a stored node's plan is that of the node it stores."""
         if self._plan is None:
             self._plan = written_plan(to_substrait_json(self._query()._expr))
         return self._plan
@@ -113,7 +173,36 @@ class Node:
         """Store this node in `sink` (`sverify.io.DeltaSink`, `IcebergSink`),
         as a cache in the middle of a job or as its output. Each refresh
         writes it once, upstream first, exactly once per state. Returns the
-        stored node, which transforms read as a versioned source."""
+        stored node, which transforms read as a versioned source.
+
+        Nothing is written until a refresh. Downstream transforms may assume
+        about the stored node what this node's stage proved: the
+        preconditions on its sources are checked there, not again by the
+        stages that read it. Without a `write`, transforms fuse into one plan
+        and the intermediate rows are never stored.
+
+        Args:
+            sink: Where to store the node, such as `DeltaSink(uri)` or
+                `IcebergSink(catalog, identifier)`. A sink stores one node.
+
+        Returns:
+            The stored node, named by the sink's `name`. Refreshing it (or
+            any node that reads it) writes the sink.
+
+        Raises:
+            ValueError: `sink` already stores a node.
+
+        Examples:
+            With `orders`, `paid` and `doubled` from the `Node` example, in
+            a new directory:
+
+            ```python
+            lake = tempfile.mkdtemp()
+            p = paid(orders).write(DeltaSink(f"{lake}/paid"))
+            r = doubled(p).write(DeltaSink(f"{lake}/doubled"))
+            [w.mode for w in r.refresh().writes]  # ['created', 'created']
+            ```
+        """
         return _Stored(self, sink)
 
     def refresh(self, *, engine: Any = "duckdb", audit: bool = False) -> Refresh:
@@ -121,12 +210,52 @@ class Node:
         stored ones. `engine` runs the plans: `"duckdb"` (in memory),
         `"polars"`, `"datafusion"`, `"spark"` or a Spark session. With
         `audit`, every batch is compared with recomputation before it is
-        applied (`AuditError`)."""
+        applied (`AuditError`).
+
+        Each node is refreshed once per call, upstream first, against each
+        source's latest version when the call starts, and every stored node
+        is written once. The first refresh computes a node in full, or
+        resumes a stored node from its table; later ones apply the changes to
+        the sources with the delta plans Lean derives, or recompute and diff
+        a node that has none (`status` says which).
+
+        Args:
+            engine: What runs the plans: `"duckdb"` (the default, in memory),
+                `"polars"`, `"datafusion"`, `"spark"` or a Spark session. It
+                may differ from one refresh to the next.
+            audit: Whether to compare every batch with recomputation before
+                applying it. Default False.
+
+        Returns:
+            A `Refresh`: what was done to each node, upstream first.
+
+        Raises:
+            sverify.errors.PreconditionError: A precondition on a source does
+                not hold on its rows (checked in full on the first refresh,
+                then on each batch).
+            sverify.errors.SchemaError: A source's schema changed in a way the
+                contract, proved against the old schema, cannot follow.
+            sverify.errors.AuditError: With `audit`, a batch disagrees with
+                recomputation; nothing was applied.
+
+        Examples:
+            With `r` from the `Node` example:
+
+            ```python
+            result = r.refresh(engine="polars")
+            print(result)  # one entry per node, upstream first
+            r.to_arrow().to_pylist()  # [{'id': 3, 'doubled': 100}]
+            ```
+        """
         return group(self).refresh(engine=engine, audit=audit)
 
     def status(self) -> Status:
         """Where the node stands: the source versions of its state, where it
-        is stored, and whether it is recomputed rather than maintained."""
+        is stored, and whether it is recomputed rather than maintained.
+
+        Returns:
+            A `Status` with one `NodeStatus`, for this node.
+        """
         return group(self).status()
 
     def _view(self) -> IncrementalView:
@@ -136,21 +265,45 @@ class Node:
 
     @property
     def table(self) -> ir.Table:
-        """The node's state as an Ibis table, to query further."""
+        """The node's state as an Ibis table, to query further.
+
+        Raises:
+            RuntimeError: The node has not been refreshed yet.
+        """
         return self._view().table
 
     @property
     def versions(self) -> dict[str, int]:
-        """The version of every source the node's state reflects."""
+        """The version of every source the node's state reflects, by name,
+        such as `{"paid": 3}`. A stage reads the sources and stored nodes
+        directly upstream, so these are their versions.
+
+        Raises:
+            RuntimeError: The node has not been refreshed yet.
+        """
         return self._view().versions
 
     def to_arrow(self) -> pa.Table:
-        """The node's state as an Arrow table."""
+        """The node's state as an Arrow table.
+
+        Returns:
+            The node's rows as of the last refresh.
+
+        Raises:
+            RuntimeError: The node has not been refreshed yet.
+        """
         view = self._view()
         return view.con.arrow[view.name]
 
     def to_polars(self) -> polars.DataFrame:
-        """The node's state as a Polars DataFrame."""
+        """The node's state as a Polars DataFrame (needs `polars`).
+
+        Returns:
+            The node's rows as of the last refresh.
+
+        Raises:
+            RuntimeError: The node has not been refreshed yet.
+        """
         import polars as pl
 
         out = pl.from_arrow(self.to_arrow())
@@ -158,7 +311,14 @@ class Node:
         return out
 
     def to_pandas(self) -> pandas.DataFrame:
-        """The node's state as a pandas DataFrame."""
+        """The node's state as a pandas DataFrame (needs `pandas`).
+
+        Returns:
+            The node's rows as of the last refresh.
+
+        Raises:
+            RuntimeError: The node has not been refreshed yet.
+        """
         return self.to_arrow().to_pandas()
 
     # -- the node's stage ---------------------------------------------------
@@ -323,10 +483,16 @@ class _Stage:
 @dataclass
 class StageRefresh:
     """What one refresh did to one node: how its state started (on the first
-    refresh), what the batch was, and what its sink wrote."""
+    refresh), what the batch was, and what its sink wrote. `str()` shows
+    them in that order."""
 
     node: str
+    """The node's name."""
     report: RefreshReport | None
+    """The batch: the source versions it went from and to, the changes,
+    how they were applied and the preconditions checked on them. None on a
+    first refresh that computed or resumed the state at the latest
+    versions."""
     started: str | None = None
     """"computed", or "resumed from <table>@v<n>", on the first refresh."""
     write: SinkWrite | None = None
@@ -348,7 +514,14 @@ class StageRefresh:
 
 @dataclass
 class Refresh:
-    """What a refresh did, node by node, upstream first."""
+    """What a refresh did, node by node, upstream first: returned by
+    `Node.refresh` and `Group.refresh`. `str()` shows each node's entry;
+    `refresh["paid"]` is the entry of the node named "paid".
+
+    Attributes:
+        nodes: One `StageRefresh` per node refreshed: the nodes asked for and
+            the stored nodes they read, each once, upstream first.
+    """
 
     nodes: list[StageRefresh]
 
@@ -360,6 +533,8 @@ class Refresh:
 
     @property
     def writes(self) -> list[SinkWrite]:
+        """What each stored node's sink wrote (`sverify.io.SinkWrite`),
+        upstream first."""
         return [s.write for s in self.nodes if s.write is not None]
 
     def __str__(self) -> str:
@@ -368,13 +543,20 @@ class Refresh:
 
 @dataclass
 class NodeStatus:
+    """Where one node stands; see `Node.status`. `str()` gives one line,
+    such as "doubled: paid@v3; stored in lake/doubled"."""
+
     node: str
+    """The node's name."""
     versions: dict[str, int] | None
-    """None: not refreshed in this process."""
+    """The version of every source the node's state reflects (as
+    `Node.versions`), or None if it has not been refreshed in this process."""
     stored: str | None = None
-    """The table the node is stored in."""
+    """The table the node is stored in (a Delta URI or an Iceberg
+    identifier), or None if it is not stored."""
     recomputed: str | None = None
-    """Why the node is recomputed on every refresh instead of maintained."""
+    """Why the node is recomputed on every refresh instead of maintained,
+    or None if it is maintained from changes (or not refreshed yet)."""
 
     def __str__(self) -> str:
         if self.versions is None:
@@ -390,7 +572,12 @@ class NodeStatus:
 
 @dataclass
 class Status:
-    """Where each node of a group stands."""
+    """Where each node of a group stands: returned by `Node.status` and
+    `Group.status`. `str()` gives one line per node.
+
+    Attributes:
+        nodes: One `NodeStatus` per node, in the order they were given.
+    """
 
     nodes: list[NodeStatus] = field(default_factory=list)
 
@@ -399,7 +586,11 @@ class Status:
 
 
 class Group:
-    """Nodes refreshed together; see `group`."""
+    """Nodes refreshed together; see `group`.
+
+    Attributes:
+        nodes: The nodes, in the order given.
+    """
 
     def __init__(self, nodes: Sequence[Node]):
         bad = [n for n in nodes if not isinstance(n, Node) or isinstance(n, _Source)]
@@ -427,7 +618,26 @@ class Group:
     def refresh(self, *, engine: Any = "duckdb", audit: bool = False) -> Refresh:
         """Refresh every node against the same source versions (each
         source's latest when the refresh starts), sharing the stored nodes
-        they read: each is refreshed and written once. See `Node.refresh`."""
+        they read: each is refreshed and written once. See `Node.refresh`.
+
+        Args:
+            engine: What runs the plans: `"duckdb"` (the default, in memory),
+                `"polars"`, `"datafusion"`, `"spark"` or a Spark session.
+            audit: Whether to compare every batch with recomputation before
+                applying it. Default False.
+
+        Returns:
+            A `Refresh` with an entry for every node refreshed: the nodes and
+            the stored nodes they read, each once, upstream first.
+
+        Raises:
+            sverify.errors.PreconditionError: A precondition on a source does
+                not hold on its rows.
+            sverify.errors.SchemaError: A source's schema changed in a way a
+                contract cannot follow.
+            sverify.errors.AuditError: With `audit`, a batch disagrees with
+                recomputation; nothing was applied.
+        """
         order = self._order()
         pins: dict[int, int] = {}
         for n in order:
@@ -437,7 +647,12 @@ class Group:
         return Refresh([n._refresh(pins, engine, audit) for n in order])
 
     def status(self) -> Status:
-        """Where each node stands (`Node.status`)."""
+        """Where each node stands (`Node.status`).
+
+        Returns:
+            A `Status` with one `NodeStatus` per node of the group (not the
+            stored nodes they read, unless they are in the group).
+        """
         out = Status()
         for n in self.nodes:
             stage = n._stage
@@ -458,7 +673,34 @@ class Group:
 def group(*nodes: Node) -> Group:
     """Several nodes to refresh together, against the same source versions:
     `sv.group(a, b).refresh()`. A stored node they share is refreshed and
-    written once; `.status()` reports on each."""
+    written once; `.status()` reports on each.
+
+    Args:
+        *nodes: The nodes to refresh together: results of transforms, stored
+            or not (not sources).
+
+    Returns:
+        A `Group`, with `refresh` and `status`.
+
+    Raises:
+        TypeError: No nodes are given, or one is not a node (a source, or an
+            Ibis table).
+
+    Examples:
+        Two outputs that read the same stored node, with `p` and `r` from
+        the `Node` example:
+
+        ```python
+        @sv.transform()
+        def customers(t):
+            return t.select(t.customer)
+
+        g = sv.group(r, customers(p))
+        result = g.refresh()  # paid is refreshed and written once
+        [s.node for s in result.nodes]  # ['paid', 'doubled', 'customers']
+        print(g.status())  # one line per node
+        ```
+    """
     return Group(nodes)
 
 

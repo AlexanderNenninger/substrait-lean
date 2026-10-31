@@ -189,19 +189,39 @@ def contract_facts(t: Table) -> list[Fact]:
 class IcebergSource:
     """An Iceberg table of a catalog, read by snapshot sequence number, as
     the input of transforms. `name` is the table's name in the plans that
-    read it (default: the last part of `identifier`)."""
+    read it (default: the last part of `identifier`).
+
+    A refresh reads the files that appends added since the version a node's
+    state was computed from; after row-level deletes or overwrites it diffs
+    the data files that changed. Tables with equality deletes cannot be
+    read.
+
+    Args:
+        catalog: A pyiceberg catalog.
+        identifier: The table's identifier in it, e.g. `"db.readings"`.
+        name: The table's name in the plans that read it. Default: the last
+            part of `identifier`.
+
+    Attributes:
+        catalog: The catalog.
+        identifier: The table's identifier.
+        name: The table's name in the plans that read it.
+    """
 
     def __init__(self, catalog: Catalog, identifier: str, *, name: str | None = None):
         self.catalog, self.identifier = catalog, identifier
         self.name = name or identifier.rsplit(".", 1)[-1]
 
     def table(self) -> Table:
+        """The table as the catalog loads it now (a `pyiceberg.table.Table`)."""
         return self.catalog.load_table(self.identifier)
 
     def schema(self) -> pa.Schema:
+        """The table's current schema, as Arrow."""
         return _arrow_schema(self.table())
 
     def latest(self) -> int:
+        """The current snapshot's sequence number (0 before the first)."""
         return _version(self.table().current_snapshot())
 
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
@@ -210,6 +230,21 @@ class IcebergSource:
         return contract_facts(t) + stats_facts(stats, schema, source)
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table's rows at a snapshot, with what its metadata says about
+        every row (`required` fields, file statistics, and the contract of
+        an `IcebergSink` that wrote every snapshot).
+
+        Args:
+            version: A snapshot sequence number of the current snapshot's
+                ancestry; 0 is the empty table before the first snapshot.
+                Default: the current snapshot.
+
+        Returns:
+            The version, the rows and the facts.
+
+        Raises:
+            ValueError: No ancestor has that sequence number.
+        """
         t = self.table()
         s = t.current_snapshot() if version is None else _at(t, version)
         if version is not None and s is None and version != 0:
@@ -219,12 +254,21 @@ class IcebergSource:
         return Snapshot(v, _read(t, s), self._facts(t, files, f"file stats @v{v}"))
 
     def contract(self) -> Contract | None:
+        """The contract the table property `sverify.contract` records, or
+        None if it has none."""
         text = self.table().properties.get(KEY)
         return None if text is None else Contract.from_json(text)
 
     def stored(self) -> Stored | None:
-        """The view state the current snapshot stored, if an `IcebergSink`
-        wrote it under the table's contract (to resume a pipeline from)."""
+        """The node state the current snapshot stored, if an `IcebergSink`
+        wrote it under the table's contract. A restarted job's first refresh
+        resumes the sink's node from it, when it was stored by the same plan
+        from the same sources.
+
+        Returns:
+            The stored state, or None if the current snapshot was not
+            written under the contract.
+        """
         t = self.table()
         s, text = t.current_snapshot(), t.properties.get(KEY)
         if s is None or s.summary is None or text is None:
@@ -236,6 +280,22 @@ class IcebergSource:
         return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        """The change from sequence number `since` to `until`, as a refresh
+        reads it.
+
+        Args:
+            since: The version the node's state was computed from.
+            until: A snapshot sequence number to read up to. Default: the
+                current snapshot.
+
+        Returns:
+            The rows of the files appends added (trusted), or the diff of
+            the data files that changed (exact); or, where snapshot `since`
+            is gone or unreadable, the snapshot at `until` and the reason.
+
+        Raises:
+            ValueError: No ancestor has sequence number `until`.
+        """
         t = self.table()
         current = t.current_snapshot() if until is None else _at(t, until)
         if until is not None and current is None and until != 0:
@@ -473,7 +533,8 @@ def _commit_rows(
 
 class IcebergSink:
     """Stores a node in an Iceberg table, exactly once per state:
-    `node.write(IcebergSink(catalog, identifier))`.
+    `node.write(IcebergSink(catalog, identifier))`, written by every
+    `refresh`.
 
     After the first write, each state is one snapshot the size of the change:
     position delete files for the rows that went (one copy each, so
@@ -485,7 +546,28 @@ class IcebergSink:
     also the table property `sverify.contract`, and columns the view proves
     NOT NULL are `required`. `name` is the table's name in the plans that
     read the stored node (default: the last part of `identifier`); `app_id`
-    defaults to `sverify:<node name>`."""
+    defaults to `sverify:<node name>`.
+
+    The node `write` returns reads the table as an `IcebergSource` and builds
+    on the contract the stored node proved. A restarted job that builds the
+    same nodes resumes from the table on its first refresh. The refresh's
+    report includes what each write did (`SinkWrite`). It raises
+    `ValueError` if the table holds this state's epoch from other contents
+    of a `StaticSource`.
+
+    Args:
+        catalog: A pyiceberg catalog.
+        identifier: The sink table's identifier; the first write creates it.
+        app_id: The application id recorded in each snapshot. Default:
+            `"sverify:<node name>"`.
+        name: The table's name in the plans that read the stored node.
+            Default: the last part of `identifier`.
+
+    Attributes:
+        catalog: The catalog.
+        identifier: The sink table's identifier.
+        name: The table's name in the plans that read the stored node.
+    """
 
     def __init__(
         self,

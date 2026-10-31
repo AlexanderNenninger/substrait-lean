@@ -1,31 +1,31 @@
 ---
 name: sverify-pipelines
 description: >
-  Build incrementally maintained, contract-carrying data pipelines over Delta
-  Lake or Iceberg tables with sverify. Use when a user wants to keep a query
+  Build incrementally maintained, contract-carrying data jobs over Delta Lake
+  or Iceberg tables with sverify. Use when a user wants to keep a query
   result up to date from a table's change feed instead of recomputing it,
-  replace a watermark ("rows newer than…") job, write results to a Delta or
-  Iceberg table exactly once, resume a restarted job, or prove preconditions
-  from table metadata.
+  replace a watermark ("rows newer than…") job, store results in a Delta or
+  Iceberg table exactly once, chain jobs through stored tables, resume a
+  restarted job, or prove preconditions from table metadata.
 ---
 
-# sverify pipelines: Delta and Iceberg, kept up to date
+# sverify jobs: Delta and Iceberg, kept up to date
 
-A `sv.Pipeline` reads sources, maintains views over them, and refreshes them
-from the sources' changes. Views in the incremental fragment (filters,
-projections, inner and cross joins, `UNION ALL`) are updated by delta plans
-proved equal to a full recompute; other views (left joins, aggregates,
-windows, `DISTINCT`, `LIMIT`) are recomputed and diffed, and
-`pipe.fallbacks` lists them. Needs the `delta` or `iceberg` extra.
+A contracted transform (`@sv.transform`) called on a source builds a node;
+transforms called on nodes compose. `node.write(sink)` stores a node, and
+`node.refresh()` brings its whole lineage up to date, upstream first. Nodes
+in the incremental fragment (filters, projections, inner and cross joins,
+`UNION ALL`) are updated by delta plans proved equal to a full recompute;
+others (left joins, aggregates, windows, `DISTINCT`, `LIMIT`) are recomputed
+and diffed. Needs the `delta` or `iceberg` extra.
 
-## Source, contracted view, sink
+## Source, contracted transforms, sink
 
 ```python
 import datetime as dt
 from pathlib import Path
 from tempfile import mkdtemp
 
-import ibis
 import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
 from ibis import _
@@ -50,8 +50,8 @@ def rows(*rs):
 write_deltalake(
     lake / "orders",
     rows((1, 30, dt.datetime(2026, 1, 1)), (2, 5, dt.datetime(2026, 1, 2))),
-    configuration={"delta.enableChangeDataFeed": "true"},
-)  # CDF on: refresh reads it
+    configuration={"delta.enableChangeDataFeed": "true"},  # refresh reads the CDF
+)
 DeltaTable(lake / "orders").alter.add_constraint({"non_negative": "amount >= 0"})
 
 
@@ -63,18 +63,18 @@ def big(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
 
-pipe = sv.Pipeline(sv.connect())
-orders = pipe.source("orders", DeltaSource(str(lake / "orders")))
-view = pipe.view("big", big(orders))  # proves the contract, loads the snapshot
-for p in pipe.preconditions:
+orders = DeltaSource(str(lake / "orders"))
+stored = big(orders).write(DeltaSink(str(lake / "big")))  # proved here
+first = stored.refresh()  # checks preconditions, computes, writes the sink
+for p in first["big"].preconditions:
     print(p)
 # orders: unique(id) (checked on data)
 # orders: (_.amount >= 0) (Delta constraint)
-
-sink = DeltaSink(str(lake / "big"), view)
-print(sink.write())  # creates the table; guarantees become NOT NULL / CHECK constraints
-# big from orders@v1: created v2, 1 row(s) written, 0 deleted
 ```
+
+The sink's table gets the proved guarantees as NOT NULL columns and CHECK
+constraints, and the contract in the commit. A transform called on `stored`
+reads the table as a versioned source and builds on that contract.
 
 ## Refresh from the change feed
 
@@ -83,35 +83,40 @@ t = DeltaTable(lake / "orders")
 write_deltalake(t, rows((3, 50, dt.datetime(2026, 1, 3))), mode="append")
 t.delete("id = 1")
 
-report = pipe.refresh(audit=True)  # CDF v1→v3, delta plans, then compare with a recompute
-print(report.sources[0])
-# orders@v1→v3: 1 insert(s), 1 delete(s); Δ trusted as coming from Delta CDF v1→v3
-assert view.rows() == [(3, 100)] == view.recompute()
-sink.write()  # one MERGE commit; a retry of the same state is skipped
+print(stored.refresh(audit=True))  # CDF v1→v3, delta plans, one MERGE commit
+# big:
+#   orders@v1→v3: 1 insert(s), 1 delete(s); Δ trusted as coming from Delta CDF v1→v3
+# ...
+assert stored.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 ```
 
 * `refresh()` is all or nothing: a batch that breaks a precondition raises
-  `PreconditionError` and changes nothing; the next refresh retries.
-* `audit=True` also compares the batch with the new snapshot and every view
-  with a recompute before committing (`AuditError`).
-* Where the change feed is gone (CDF off, files vacuumed), the pipeline
-  diffs the changed files and says so in the report.
+  `sverify.errors.PreconditionError` and changes nothing (sinks included);
+  the next refresh retries.
+* `audit=True` also compares the batch with the new snapshot and every node
+  with a recompute before committing (`sverify.errors.AuditError`).
+* `refresh(engine="polars")` (or `"datafusion"`, `"spark"`, a Spark session)
+  picks the engine at refresh time.
+* Where the change feed is gone (CDF off, files vacuumed), the changed files
+  are diffed, and the report says so.
 
-## Resume a restarted job from its sink
+## Restart a job, and refresh several outputs together
+
+A restarted job builds the same nodes again; the first refresh resumes each
+stored node from its sink's table instead of recomputing it, if the plan and
+source versions match what the sink recorded:
 
 ```python
-stored = DeltaSource(str(lake / "big")).stored()
-restarted = sv.Pipeline(sv.connect())
-src = restarted.source(
-    "orders", DeltaSource(str(lake / "orders")), version=stored.sources["orders"]
-)
-resumed = restarted.view("big", big(src), resume=stored)
-print(resumed.resumed)
-# resumed from .../big@v3
+restarted = big(DeltaSource(str(lake / "orders"))).write(DeltaSink(str(lake / "big")))
+print(restarted.refresh())
+# big:
+#   resumed from .../big@v3
+# ...
+assert restarted.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 ```
 
-The stored rows are used only if the plan and source versions match what
-the sink recorded; otherwise the view is computed and `resumed` says why.
+`sv.group(a, b).refresh()` refreshes several outputs against the same source
+versions, sharing the stored nodes they read; `.status()` reports on each.
 
 ## Gotchas
 
@@ -120,12 +125,16 @@ the sink recorded; otherwise the view is computed and `resumed` says why.
 * Keys are always checked on the data (neither format enforces them); other
   preconditions come from schema nullability, CHECK constraints and file
   statistics where possible.
-* A sink needs a version for every input: wrap a plain lookup table in
-  `sv.StaticSource(table, version=1)`.
-* A view with a contract isn't re-planned when a source's schema changes in
-  an incompatible way: `refresh` raises `SchemaError` and changes nothing.
+* A sink needs a version for every input: wrap an in-memory lookup table in
+  `sverify.io.StaticSource(table, version=1, name="regions")`.
+* Without a `.write` between transforms, they fuse into one plan and the
+  intermediate rows are never stored. Write a node when another job reads
+  it, or when recomputing it would be expensive.
+* A node with a contract isn't re-planned when a source's schema changes
+  incompatibly: `refresh` raises `sverify.errors.SchemaError` and changes
+  nothing.
 
 ## More
 
 [references/table-formats.md](references/table-formats.md): Iceberg, file
-pruning, static sources, a downstream job reading the sink's contract.
+pruning, static sources, chaining jobs through stored tables.

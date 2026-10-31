@@ -55,15 +55,15 @@ def hot(readings):
     return readings.filter((t > 30) & ~t.isnan())
 
 
-pipe = sv.Pipeline(sv.connect())
-view = pipe.view("hot", hot(pipe.source("readings", IcebergSource(catalog, "plant.readings"))))
-sink = IcebergSink(catalog, "plant.hot", view)
-sink.write()
+hot_readings = hot(IcebergSource(catalog, "plant.readings", name="readings"))
+stored = hot_readings.write(IcebergSink(catalog, "plant.hot"))
+stored.refresh()
 table.append(readings((1, dt.datetime(2026, 7, 1, 12, 1), 33.0)))
-print(pipe.refresh().sources[0])
-# readings@v1→v2: 1 insert(s), 0 delete(s); Δ trusted as the files Iceberg appends v1→v2 added
-sink.write()
-assert len(view.rows()) == 2
+print(stored.refresh())
+# hot:
+#   readings@v1→v2: 1 insert(s), 0 delete(s); Δ trusted as the files Iceberg appends v1→v2 added
+# ...
+assert len(stored.to_arrow()) == 2
 ```
 
 `NaN > 30` is TRUE in SQL (NaN sorts above every number), which is why the
@@ -80,22 +80,37 @@ condition becomes a fact the contracts can use.
 
 A sink writes exactly once per state, keyed by the versions of all its
 inputs. A small lookup table that lives in memory becomes a source with a
-version you choose:
+version you choose; `apply` changes some of its rows, and `replace` swaps
+the whole table (the next refresh diffs it):
 
 ```python
-regions = sv.StaticSource(pa.table({"device_id": [1, 2], "region": ["north", "south"]}), version=1)
-pipe2 = sv.Pipeline(sv.connect())
-r = pipe2.source("readings", IcebergSource(catalog, "plant.readings"))
-g = pipe2.source("regions", regions)
-located = pipe2.view("located", r.join(g, r.device_id == g.device_id).select(r.ts, g.region))
+from sverify.io import StaticSource
+
+regions = StaticSource(
+    pa.table({"device_id": [1, 2], "region": ["north", "south"]}), version=1, name="regions"
+)
+
+
+@sv.transform()
+def located(readings, regions):
+    return readings.join(regions, readings.device_id == regions.device_id).select(
+        readings.ts, regions.region
+    )
+
+
+where = located(IcebergSource(catalog, "plant.readings", name="readings"), regions)
+where.refresh()
 regions.replace(pa.table({"device_id": [1, 2], "region": ["north", "east"]}), version=2)
-pipe2.refresh()  # recomputes the views that read `regions`
-assert sorted({row[1] for row in located.rows()}) == ["east", "north"]
+where.refresh()  # recomputes from the new regions
+assert sorted(set(where.to_arrow().column("region").to_pylist())) == ["east", "north"]
 ```
 
-## A downstream job builds on the sink's contract
+## Chaining jobs through stored tables
 
-A job that reads a sink's table gets its preconditions from the contract the
-sink wrote (Delta: NOT NULL columns and CHECK constraints), instead of
-checking the data again. `DeltaSource(uri).contract()` returns it, and
-`pipe.preconditions` names where each precondition came from.
+A transform called on a written node reads its table as a versioned source
+and builds on the contract the sink stored (Delta: NOT NULL columns and CHECK
+constraints), instead of checking the data again:
+`revenue(paid(orders).write(DeltaSink(...))).write(DeltaSink(...))`. A
+separate job that opens the table with `DeltaSource(uri)` gets the same:
+`DeltaSource(uri).contract()` returns the contract, and each refresh report
+names where every precondition came from.

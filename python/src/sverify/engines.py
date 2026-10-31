@@ -1,28 +1,33 @@
 """Engines, SQL and plans: the lower-level tools under `sverify`'s transforms.
 
-    import sverify as sv
-    from sverify.engines import SNOWFLAKE, run, substrait_json, to_sql, written_plan
+    import json
 
+    import sverify as sv
+    from sverify.engines import SNOWFLAKE, create_table, run, to_sql
+
+    plan = node.plan                  # the plan Lean checked
     con = sv.connect()
-    plan = written_plan(substrait_json(con, "SELECT ..."))
-    run(con, plan, "polars")          # or "duckdb", "datafusion"
+    create_table(con, "orders", schema, rows)
+    run(con, plan, "polars")          # or "duckdb", "datafusion", "spark"
     to_sql(json.loads(plan), SNOWFLAKE)
 
 Running plans:
 
 * `run` runs a plan in Lean's written form on DuckDB, Polars or DataFusion
-  (`ENGINES`), over a `Connection`'s tables; `run_substrait_json` runs any
-  Substrait plan on DataFusion; `run_sharded` runs a plan shard by shard
-  and combines the results; `run_spark` runs a plan on a Spark session
-  configured with `SPARK_CONF` (`pip install 'sverify[spark]'`).
+  (`ENGINES`), or on Spark, over a `Connection`'s tables (`sv.connect()`
+  makes one); `run_substrait_json` runs any Substrait plan on DataFusion;
+  `run_sharded` runs a plan shard by shard and combines the results;
+  `run_spark` runs a plan on a Spark session configured with `SPARK_CONF`
+  (`pip install 'sverify[spark]'`).
 * `create_table` and `table_rows` put rows into a connection and read them back.
 
 Plans:
 
+* A node's `plan` is the plan Lean checked, in Lean's written form.
 * `substrait_json` compiles SQL with DataFusion's producer, `isthmus_json`
   with Isthmus (`SQL_PRODUCERS`); `written_plan` is a plan as Lean parsed
-  and wrote it back; `delta_plans` are the weighted delta plans Lean derives
-  for incremental maintenance.
+  and wrote it back, the form `run` and `to_sql` take; `delta_plans` are
+  the weighted delta plans Lean derives for incremental maintenance.
 
 SQL:
 

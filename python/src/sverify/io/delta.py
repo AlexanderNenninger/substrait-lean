@@ -158,7 +158,62 @@ class DeltaSource:
     With `where` (a SQL condition on the columns), the source is the rows on
     which it is TRUE: snapshots read only the files whose statistics do not
     rule it out, and changes are filtered. `name` is the table's name in the
-    plans that read it (default: the last part of `uri`)."""
+    plans that read it (default: the last part of `uri`).
+
+    A refresh reads the Change Data Feed (`delta.enableChangeDataFeed`)
+    between the version a node's state was computed from and the latest;
+    where the feed is off or its files are gone, the new snapshot is diffed
+    instead. Its metadata gives facts about every row, which can establish
+    a transform's preconditions without reading the data: NOT NULL columns,
+    CHECK constraints and file statistics.
+
+    Args:
+        uri: The table's location: a path, or a URI such as `s3://...`.
+        storage_options: Options for delta-rs's object store (credentials,
+            region). Default: None.
+        where: A SQL condition on the columns. The source is the rows on
+            which it is TRUE; files are skipped only where Lean proves from
+            their statistics that it is TRUE on none of their rows. Default:
+            None, every row.
+        name: The table's name in the plans that read it. Default: the last
+            part of `uri`.
+
+    Attributes:
+        uri: The table's location.
+        name: The table's name in the plans that read it.
+        where: The SQL condition, or None.
+
+    Examples:
+        A node over a Delta table, updated from its Change Data Feed:
+
+        ```python
+        import tempfile
+        from pathlib import Path
+
+        import pyarrow as pa
+        import sverify as sv
+        from deltalake import write_deltalake
+        from sverify.io import DeltaSource
+
+        lake = Path(tempfile.mkdtemp())
+        write_deltalake(lake / "orders", pa.table({"id": [1, 2], "amount": [30, 5]}),
+                        configuration={"delta.enableChangeDataFeed": "true"})
+
+
+        @sv.transform()
+        def big_orders(orders):
+            return orders.filter(orders.amount > 10)
+
+
+        big = big_orders(DeltaSource(str(lake / "orders")))
+        big.refresh()
+        write_deltalake(lake / "orders", pa.table({"id": [3], "amount": [50]}), mode="append")
+        print(big.refresh())
+        # big_orders:
+        #   orders@v0→v1: 1 insert(s), 0 delete(s); Δ trusted as coming from Delta CDF v0→v1
+        #   view big_orders: orders@v1
+        ```
+    """
 
     def __init__(
         self,
@@ -198,25 +253,53 @@ class DeltaSource:
         return rows, {p: s for p, s in files.items() if p in keep}
 
     def table(self, version: int | None = None) -> DeltaTable:
+        """The table as delta-rs opens it.
+
+        Args:
+            version: The version to load. Default: the latest.
+
+        Returns:
+            A `deltalake.DeltaTable`.
+        """
         dt = DeltaTable(self.uri, storage_options=self.storage_options)
         if version is not None:
             dt.load_as_version(version)
         return dt
 
     def schema(self) -> pa.Schema:
+        """The table's schema at its latest version, as Arrow."""
         return _arrow_schema(self.table())
 
     def latest(self) -> int:
+        """The table's latest version."""
         return self.table().version()
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table's rows at a version, with what its metadata says about
+        every row (schema nullability, CHECK constraints, file statistics).
+
+        Args:
+            version: The version to read. Default: the latest.
+
+        Returns:
+            The version, the rows (those passing `where`, if given) and the
+            facts.
+        """
         dt = self.table(version)
         v = dt.version()
         rows, files = self._rows(dt)
         return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
-        """The contract the last sverify commit up to `version` recorded."""
+        """The contract the last sverify commit up to `version` recorded.
+
+        Args:
+            version: The latest version to look at. Default: the latest.
+
+        Returns:
+            The contract a `DeltaSink` stored in the commit metadata, or None
+            if no commit has one.
+        """
         dt = self.table(version)
         for commit in dt.history():
             if METADATA_KEY in commit:
@@ -224,8 +307,14 @@ class DeltaSource:
         return None
 
     def stored(self) -> Stored | None:
-        """The view state the table's last commit stored, if a `DeltaSink`
-        made that commit (to resume a pipeline from)."""
+        """The node state the table's last commit stored, if a `DeltaSink`
+        made that commit. A restarted job's first refresh resumes the sink's
+        node from it, when it was stored by the same plan from the same
+        sources.
+
+        Returns:
+            The stored state, or None if another writer made the last commit.
+        """
         dt = self.table()
         last = dt.history(1)
         if not last or METADATA_KEY not in last[0]:
@@ -250,6 +339,18 @@ class DeltaSource:
             raise ValueError(f"{CDF_KEY} is not set for every commit")
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        """The change from version `since` to `until`, as a refresh reads it.
+
+        Args:
+            since: The version the node's state was computed from.
+            until: The version to read up to. Default: the latest.
+
+        Returns:
+            The net change from the Change Data Feed, with facts from the
+            statistics of the files added since; or, where the feed is
+            unavailable for some commit, the snapshot at `until` and the
+            reason.
+        """
         dt = self.table(until)
         end = dt.version()
         files = file_stats(dt)
@@ -318,7 +419,7 @@ OP = "__sverify_op"
 
 class DeltaSink:
     """Stores a node in a Delta table, exactly once per state:
-    `node.write(DeltaSink(uri))`.
+    `node.write(DeltaSink(uri))`, written by every `refresh`.
 
     Each commit carries the transaction `(app_id, epoch)`, where the epoch is
     the sum of the node's source versions; a state whose epoch the table has
@@ -329,7 +430,65 @@ class DeltaSink:
     sink on an existing table first overwrites it, unless it resumes from it.
     `name` is the table's name in the plans that read the stored node
     (default: the last part of `uri`); `app_id` defaults to
-    `sverify:<node name>`."""
+    `sverify:<node name>`.
+
+    The node `write` returns reads the table as a `DeltaSource`, through its
+    Change Data Feed, and builds on the contract the stored node proved. A
+    restarted job that builds the same nodes resumes from the table on its
+    first refresh. The refresh's report includes what each write did
+    (`SinkWrite`). It raises `ValueError` if the table has CHECK constraints
+    the node does not guarantee, or holds this state's epoch from other
+    contents of a `StaticSource`.
+
+    Args:
+        uri: The sink table's location: a path, or a URI such as `s3://...`.
+        app_id: The transaction's application id. Default:
+            `"sverify:<node name>"`.
+        storage_options: Options for delta-rs's object store. Default: None.
+        name: The table's name in the plans that read the stored node.
+            Default: the last part of `uri`.
+
+    Attributes:
+        uri: The sink table's location.
+        name: The table's name in the plans that read the stored node.
+
+    Examples:
+        A node written to a Delta table and refreshed:
+
+        ```python
+        import tempfile
+        from pathlib import Path
+
+        import pyarrow as pa
+        import sverify as sv
+        from deltalake import write_deltalake
+        from ibis import _
+        from sverify.io import DeltaSink, DeltaSource
+
+        lake = Path(tempfile.mkdtemp())
+        write_deltalake(lake / "orders", pa.table({"id": [1, 2], "amount": [30, 5]}),
+                        configuration={"delta.enableChangeDataFeed": "true"})
+
+
+        @sv.transform(ensures=[_.amount > 10])
+        def big_orders(orders):
+            return orders.filter(orders.amount > 10)
+
+
+        orders = DeltaSource(str(lake / "orders"))
+        big = big_orders(orders).write(DeltaSink(str(lake / "big_orders")))
+        big.refresh()  # creates the table, with a CHECK constraint for `amount > 10`
+
+        write_deltalake(lake / "orders", pa.table({"id": [3], "amount": [50]}), mode="append")
+        print(big.refresh())  # reads the Change Data Feed, writes one MERGE commit
+        # big_orders:
+        #   orders@v0→v1: 1 insert(s), 0 delete(s); Δ trusted as coming from Delta CDF v0→v1
+        #   view big_orders: orders@v1
+        #   wrote big_orders from orders@v1: merge v3, 1 row(s) written, 0 deleted
+        print(DeltaSource(str(lake / "big_orders")).contract().checks)
+        # {'sverify_1': 'amount > 10'}
+        ```
+    """
 
     def __init__(
         self,

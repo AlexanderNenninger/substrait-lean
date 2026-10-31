@@ -40,14 +40,16 @@ report = sv.verify(
 assert report.proved
 ```
 
-Contracts travel through a `Pipeline` only with Ibis steps; a SQL view is
-maintained without guarantees.
+Nodes come from Ibis transforms: a SQL string can be verified, but not
+built into a node (there is no public replacement for incremental views over
+SQL strings yet).
 
 ## Composing contracts
 
 When one contracted step feeds another, the downstream preconditions are
 proved from the upstream contract instead of being checked on the data. A
-broken link raises `CompositionError`:
+broken link raises `sverify.errors.CompositionError`, when the node is built
+(on sources) or the expression is (on Ibis tables):
 
 ```python
 from ibis import _

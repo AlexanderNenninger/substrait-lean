@@ -216,11 +216,11 @@ class Contract:
     `DeltaSource.contract` and `IcebergSource.contract` read it back.
 
     Attributes:
-        view: The view's name.
+        view: The stored node's name.
         sources: The version of every source table the state was computed
             from.
-        not_null: Columns the view proves NOT NULL.
-        unique: Column sets the view proves unique.
+        not_null: Columns the node proves NOT NULL.
+        unique: Column sets the node proves unique.
     """
 
     view: str
@@ -235,15 +235,26 @@ class Contract:
     """Constraint name -> SQL."""
     unique: list[list[str]]
     digests: dict[str, str] = field(default_factory=dict)
-    """Content digest of each static table (`StaticSource`) the view read."""
+    """Content digest of each static table (`StaticSource`) the node read."""
 
     def to_json(self) -> str:
-        """The contract as JSON, as sinks store it."""
+        """The contract as JSON, as sinks store it.
+
+        Returns:
+            A JSON object with the contract's fields, keys sorted.
+        """
         return json.dumps(self.__dict__, sort_keys=True)
 
     @staticmethod
     def from_json(text: str) -> Contract:
-        """A contract from what `to_json` wrote."""
+        """A contract from what `to_json` wrote.
+
+        Args:
+            text: The JSON `to_json` wrote.
+
+        Returns:
+            The contract.
+        """
         return Contract(**json.loads(text))
 
 
@@ -255,7 +266,24 @@ class SinkWrite:
     (Delta), `append` the new rows or write the change `row-level` (Iceberg),
     or `skipped` a state the table already holds. `version` is the table's
     version afterwards; `constraints` are the CHECK constraints the table
-    has for the node's guarantees (Delta)."""
+    has for the node's guarantees (Delta). `print` it for a one-line
+    summary. A refresh's report lists the writes it made.
+
+    Attributes:
+        mode: `"created"` (the first write made the table), `"overwrite"`
+            (a new sink replaced the table's rows), `"merge"` (the change in
+            one MERGE commit, Delta), `"append"` (the change only added rows,
+            Iceberg), `"row-level"` (position deletes and new rows in one
+            snapshot, Iceberg) or `"skipped"` (the table already has this
+            state's epoch).
+        version: The table's version afterwards (Delta), or its snapshot
+            sequence number (Iceberg).
+        contract: What the commit recorded.
+        inserted: Rows written.
+        deleted: Rows deleted.
+        constraints: The table's CHECK constraints from the node's
+            guarantees, by name (Delta; empty for Iceberg).
+    """
 
     mode: Literal["created", "overwrite", "merge", "append", "row-level", "skipped"]
     version: int
