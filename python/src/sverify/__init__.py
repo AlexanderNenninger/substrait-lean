@@ -28,7 +28,14 @@ from sverify.engine import (
     table_rows,
     written_plan,
 )
-from sverify.incremental import Changes, IncrementalView, NotIncremental, Pipeline, delta_plans
+from sverify.incremental import (
+    Changes,
+    IncrementalView,
+    NotIncremental,
+    Pipeline,
+    StaticSource,
+    delta_plans,
+)
 
 __all__ = [
     "CompositionError",
@@ -46,6 +53,7 @@ __all__ = [
     "IncrementalView",
     "NotIncremental",
     "Pipeline",
+    "StaticSource",
     "Connection",
     "connect",
     "create_table",

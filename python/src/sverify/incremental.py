@@ -30,19 +30,26 @@ old snapshot into the new one (`ChangeFeed`, `Rel.cdf_sound` in
 `SubstraitLean/TableFormat.lean`), and every `RefreshReport` says so; where
 the feed is unavailable, the new snapshot is diffed against the view's state
 instead and the views reading it are recomputed (`ChangeFeed.of_diff`).
+A source whose schema changed is read in the schema the views were checked
+against where its data still fits (added columns, widened types); otherwise
+the views reading it are planned and checked again on the new schema and
+recomputed (`SchemaChange`).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, Protocol
 
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
+import sqlglot as sg
 
 from sverify.contracts import (
     ON_DATA,
@@ -168,6 +175,9 @@ class SourceBatch:
     are trusted."""
     snapshot: pa.Table | None = None
     fallback: str | None = None
+    schema: pa.Schema | None = None
+    """The table's schema at `end`, which `changes` and `snapshot` have;
+    None: the schema the pipeline recorded."""
 
 
 class Source(Protocol):
@@ -178,6 +188,177 @@ class Source(Protocol):
         ...
 
     def changes(self, since: int) -> SourceBatch: ...
+
+
+class SchemaError(Exception):
+    """A source's new schema cannot be read in the old one, and a view
+    reading it has a contract that was proved against the old one."""
+
+
+def _plain(t: pa.DataType) -> pa.DataType:
+    if pa.types.is_large_string(t) or getattr(pa.types, "is_string_view", lambda _: False)(t):
+        return pa.string()
+    return t
+
+
+def _widens(old: pa.DataType, new: pa.DataType) -> bool:
+    """Every value of `old` is a value of `new` (the type widenings Delta and
+    Iceberg allow: wider integers, float to double)."""
+    if pa.types.is_integer(old) and pa.types.is_integer(new):
+        if pa.types.is_signed_integer(old) and not pa.types.is_signed_integer(new):
+            return False
+        extra = 0 if pa.types.is_signed_integer(old) == pa.types.is_signed_integer(new) else 1
+        return new.bit_width >= old.bit_width + extra
+    return pa.types.is_float32(old) and pa.types.is_float64(new)
+
+
+@dataclass
+class SchemaChange:
+    """How a source's schema at a new version differs from the one the
+    pipeline's views were checked against."""
+
+    added: list[str] = field(default_factory=list)
+    dropped: list[str] = field(default_factory=list)
+    widened: dict[str, str] = field(default_factory=dict)
+    """Column -> "int32→int64"."""
+    nullable: list[str] = field(default_factory=list)
+    """NOT NULL columns that may now be NULL."""
+    retyped: dict[str, str] = field(default_factory=dict)
+
+    @staticmethod
+    def of(old: pa.Schema, new: pa.Schema) -> SchemaChange:
+        out = SchemaChange()
+        names = set(new.names)
+        out.dropped = [n for n in old.names if n not in names]
+        out.added = [n for n in new.names if n not in set(old.names)]
+        for f in old:
+            if f.name not in names:
+                continue
+            g = new.field(f.name)
+            a, b = _plain(f.type), _plain(g.type)
+            if a != b:
+                kind = out.widened if _widens(a, b) else out.retyped
+                kind[f.name] = f"{a}→{b}"
+            if not f.nullable and g.nullable:
+                out.nullable.append(f.name)
+        return out
+
+    def __bool__(self) -> bool:
+        return bool(self.added or self.dropped or self.widened or self.nullable or self.retyped)
+
+    @property
+    def compatible(self) -> bool:
+        """The old schema can hold the new data, if its values fit: nothing
+        the views read was dropped or retyped."""
+        return not self.dropped and not self.retyped
+
+    def __str__(self) -> str:
+        parts = []
+        if self.added:
+            parts.append(f"added {', '.join(self.added)}")
+        if self.dropped:
+            parts.append(f"dropped {', '.join(self.dropped)}")
+        parts += [f"widened {c} {t}" for c, t in self.widened.items()]
+        if self.nullable:
+            parts.append(f"{', '.join(self.nullable)} now nullable")
+        parts += [f"retyped {c} {t}" for c, t in self.retyped.items()]
+        return "; ".join(parts)
+
+
+def _conform(table: pa.Table, schema: pa.Schema) -> pa.Table:
+    """`table` (a new schema) in the old `schema`: added columns left out,
+    widened columns cast back. Raises if a value does not fit (a NULL in a NOT
+    NULL column, a number out of range)."""
+    cols = []
+    for f in schema:
+        col = table.column(f.name)
+        if not f.nullable and col.null_count:
+            raise ValueError(f"{col.null_count} NULL(s) in column {f.name}, NOT NULL before")
+        cols.append(col.cast(f.type, safe=True))
+    return pa.Table.from_arrays(cols, schema=schema)
+
+
+def _conform_rows(rows: Sequence[Row], new: pa.Schema, old: pa.Schema) -> list[Row]:
+    return arrow_rows(_conform(to_arrow(rows, new), old)) if rows else []
+
+
+def _facts_within(facts: Sequence[Fact], names: Sequence[str]) -> list[Fact]:
+    """The facts that only mention columns in `names`."""
+    keep = set(names)
+    out = []
+    for f in facts:
+        try:
+            cols = {
+                c.name for c in sg.parse_one(f.condition, read="postgres").find_all(sg.exp.Column)
+            }
+        except Exception:
+            continue
+        if cols <= keep:
+            out.append(f)
+    return out
+
+
+def plan_digest(plan: str) -> str:
+    """sha256 of a plan as Lean wrote it; sinks record it."""
+    return hashlib.sha256(plan.encode()).hexdigest()
+
+
+def table_digest(table: pa.Table) -> str:
+    """sha256 of a table's schema and bag of rows (in no particular order)."""
+    rows = sorted(repr(row_key(r)) for r in arrow_rows(table))
+    return hashlib.sha256(repr((str(table.schema), rows)).encode()).hexdigest()
+
+
+@dataclass
+class Stored:
+    """A view's state as a sink stored it, to resume a restarted pipeline
+    from (`Pipeline.view(..., resume=...)`). Trusted: the sink's table holds
+    exactly the view's rows at `sources`; it does while the sink is the only
+    writer, and the sources check that the last commit is the sink's."""
+
+    where: str
+    """E.g. "data/big@v7"."""
+    where_key: str
+    """The table the sink writes (its uri or identifier)."""
+    plan: str
+    """`plan_digest` of the view's plan."""
+    sources: dict[str, int]
+    digests: dict[str, str]
+    """`table_digest` of each static table the view read."""
+    table: pa.Table
+
+
+class StaticSource:
+    """A table that is not in a table format, such as a small lookup table,
+    as a pipeline source: its `version` is the caller's (a release number, a
+    batch id), and its `digest` is recorded next to it, so a sink can write
+    a pipeline reading it exactly once. `replace` swaps the table; the next
+    `refresh` diffs the two."""
+
+    def __init__(self, table: pa.Table, version: int = 0):
+        self.replace(table, version)
+
+    def replace(self, table: pa.Table, version: int) -> None:
+        if hasattr(self, "version") and version <= self.version:
+            raise ValueError(f"a new table needs a version above {self.version}")
+        self.table, self.version, self.digest = table, version, table_digest(table)
+
+    def snapshot(self, version: int | None = None) -> Snapshot:
+        if version not in (None, self.version):
+            raise ValueError(f"a static table only has version {self.version}")
+        return Snapshot(self.version, self.table, [])
+
+    def changes(self, since: int) -> SourceBatch:
+        if since == self.version:
+            return SourceBatch(since, since, [])
+        return SourceBatch(
+            since,
+            self.version,
+            [],
+            snapshot=self.table,
+            fallback="static table replaced",
+            schema=self.table.schema,
+        )
 
 
 @dataclass
@@ -253,34 +434,39 @@ class IncrementalView:
         engine: Engine | None = None,
         *,
         pipeline: Pipeline | None = None,
+        resume: Stored | None = None,
     ):
         self.con, self.name = con, name
         self.engine: Engine = engine or con.engine
+        self.query = query
         contract = None if isinstance(query, str) else view_contract(query)
-        plan = json.loads(plan_json(con, query))
-        self.columns: list[str] = plan["relations"][0]["root"]["names"]
-        self.tables = read_tables(plan)
-        # Publishing the view would replace the table it is computed from.
-        if name in self.tables:
-            raise ValueError(f"view name {name!r} is a table the view reads")
-        self.fallback: str | None = None
-        """Why the view has no delta plans and is recomputed, if it is."""
-        try:
-            self.deltas = delta_plans(json.dumps(plan))
-        except NotIncremental as e:
-            if pipeline is None:
-                raise
-            self.deltas, self.fallback = [], str(e)
-        self.plan = written_plan(json.dumps(plan))
+        self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.pipeline = pipeline or Pipeline(con, engine)
         self.pipeline._check_new_requires(self.requires)
-        result = run_plan(con, self.plan, self.engine)
+        self.resumed: str | None = None
+        """How the view got its first state from `resume`, or why it could
+        not and was computed instead."""
+        self.stored: tuple[str, Counter[tuple]] | None = None
+        """Where the view's state was restored from, and that state."""
+        reason = None if resume is None else self._mismatch(resume)
+        if resume is not None and reason is None:
+            # The schema the engine gives the view, from a run on no rows.
+            empty = {t: con.arrow[t].schema.empty_table() for t in self.tables}
+            schema = self._result_on(empty).schema
+            result = resume.table.select(schema.names).cast(schema)
+            self.resumed = f"resumed from {resume.where}"
+        else:
+            result = run_plan(con, self.plan, self.engine)
+            if resume is not None:
+                self.resumed = f"computed: {reason} (stored at {resume.where})"
         self.schema = result.schema
         self.counts: Counter[tuple] = Counter()
         self.examples: dict[tuple, Row] = {}
         self._add(arrow_rows(result), 1)
+        if resume is not None and reason is None:
+            self.stored = (resume.where_key, Counter(self.counts))
         self._publish()
         self.table: ir.Table = con.table(name)
         """The view as a table for other queries; contracted transformations
@@ -288,6 +474,61 @@ class IncrementalView:
         if contract is not None:
             register_view(self.table, contract)
         self.pipeline._views.append(self)
+
+    def _plan(self, query: ir.Table | str, *, standalone: bool) -> None:
+        plan = json.loads(plan_json(self.con, query))
+        self.columns: list[str] = plan["relations"][0]["root"]["names"]
+        self.tables = read_tables(plan)
+        # Publishing the view would replace the table it is computed from.
+        if self.name in self.tables:
+            raise ValueError(f"view name {self.name!r} is a table the view reads")
+        self.fallback: str | None = None
+        """Why the view has no delta plans and is recomputed, if it is."""
+        try:
+            self.deltas = delta_plans(json.dumps(plan))
+        except NotIncremental as e:
+            if standalone:
+                raise
+            self.deltas, self.fallback = [], str(e)
+        self.plan = written_plan(json.dumps(plan))
+
+    def _mismatch(self, stored: Stored) -> str | None:
+        """Why `stored` is not this view's state at the versions the pipeline
+        holds its inputs at, or None if it is."""
+        if stored.plan != plan_digest(self.plan):
+            return "the plan changed"
+        lineage: dict[str, int] = {}
+        for t in self.tables:
+            lineage.update(self.pipeline.lineage(t))
+        if stored.sources != lineage:
+            have = ", ".join(f"{t}@v{n}" for t, n in lineage.items())
+            want = ", ".join(f"{t}@v{n}" for t, n in stored.sources.items())
+            return f"stored from {want}, the pipeline holds {have}"
+        digests = self.pipeline.digests(self.name)
+        if stored.digests != digests:
+            return f"static tables changed ({', '.join(sorted(digests))})"
+        return None
+
+    @property
+    def contracted(self) -> bool:
+        return bool(self.requires or self.guarantees)
+
+    def _replan(self, changed: set[str]) -> None:
+        """Plan the view again over the current schemas of the `changed`
+        tables it reads, and recompute it."""
+        query = self.query
+        if not isinstance(query, str):
+            old = [op for op in query.op().find(ops.DatabaseTable) if op.name in changed]
+            new = {op: self.con.table(op.name).op() for op in old}
+            query = query.op().replace(new).to_expr()  # type: ignore[attr-defined]
+        self.query = query
+        self._plan(query, standalone=False)
+        result = run_plan(self.con, self.plan, self.engine)
+        self.schema = result.schema
+        self.counts, self.examples = Counter(), {}
+        self._add(arrow_rows(result), 1)
+        self._publish()
+        self.table = self.con.table(self.name)
 
     def _add(self, rows: Sequence[Row], weight: int) -> None:
         for r in rows:
@@ -342,17 +583,24 @@ class IncrementalView:
                 con.drop(t + "$delta")
         return delta, examples
 
-    def _diff(self, new_tables: Mapping[str, pa.Table]) -> tuple[Counter[tuple], dict[tuple, Row]]:
-        """The view's change by recomputing it on the new inputs and diffing."""
+    def _result_on(self, new_tables: Mapping[str, pa.Table]) -> pa.Table:
+        """The view computed on the new inputs; nothing is replaced."""
         con = self.con
         old = {t: con.arrow[t] for t in self.tables if t in new_tables}
         try:
             for t in old:
                 put_table(con, t, new_tables[t])
-            rows = arrow_rows(run_plan(con, self.plan, self.engine))
+            return run_plan(con, self.plan, self.engine)
         finally:
             for t, table in old.items():
                 put_table(con, t, table)
+
+    def _run_on(self, new_tables: Mapping[str, pa.Table]) -> list[Row]:
+        return arrow_rows(self._result_on(new_tables))
+
+    def _diff(self, new_tables: Mapping[str, pa.Table]) -> tuple[Counter[tuple], dict[tuple, Row]]:
+        """The view's change by recomputing it on the new inputs and diffing."""
+        rows = self._run_on(new_tables)
         delta = Counter[tuple]()
         examples: dict[tuple, Row] = {}
         for r in rows:
@@ -406,22 +654,30 @@ class Pipeline:
         self.versions: dict[str, int] = {}
         """The version of each source table the pipeline's state reflects."""
 
-    def source(self, name: str, source: Source) -> ir.Table:
-        """Load the latest snapshot of `source` as base table `name`, record
-        its version and what its metadata says about it."""
+    def source(self, name: str, source: Source, *, version: int | None = None) -> ir.Table:
+        """Load the snapshot of `source` at `version` (default: the latest)
+        as base table `name`, record its version and what its metadata says
+        about it."""
         if name in self.sources or name in self.views:
             raise ValueError(f"the pipeline already has a table {name!r}")
-        snap = source.snapshot()
+        snap = source.snapshot(version)
         put_table(self.con, name, snap.table)
         register_facts(self.con, name, snap.facts)
         self.sources[name] = source
         self.versions[name] = snap.version
         return self.con.table(name)
 
-    def view(self, name: str, query: ir.Table | str) -> IncrementalView:
+    def view(
+        self, name: str, query: ir.Table | str, *, resume: Stored | None = None
+    ) -> IncrementalView:
+        """Add a view. With `resume` (what a sink stored, e.g.
+        `DeltaSource(uri).stored()`), its first state is the stored one
+        instead of a computation, if the plan is the same and the pipeline
+        holds the view's sources at the stored versions (`pipe.source(...,
+        version=stored.sources[name])`); `view.resumed` says which."""
         if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
-        return IncrementalView(self.con, query, name, self.engine, pipeline=self)
+        return IncrementalView(self.con, query, name, self.engine, pipeline=self, resume=resume)
 
     @property
     def views(self) -> dict[str, IncrementalView]:
@@ -441,6 +697,17 @@ class Pipeline:
         if (v := self.views.get(name)) is not None:
             for t in v.tables:
                 out.update(self.lineage(t))
+        return out
+
+    def digests(self, name: str) -> dict[str, str]:
+        """The content digest of every static table (`StaticSource`) that
+        `name` is computed from."""
+        if isinstance(src := self.sources.get(name), StaticSource):
+            return {name: src.digest}
+        out: dict[str, str] = {}
+        if (v := self.views.get(name)) is not None:
+            for t in v.tables:
+                out.update(self.digests(t))
         return out
 
     def _check_new_requires(self, requires: Mapping[str, Sequence[Condition]]) -> None:
@@ -524,13 +791,20 @@ class Pipeline:
         are recorded in the same commit as the new state, so a failed refresh
         changes nothing and a retry does not apply a batch twice.
 
-        With `audit`, the batch is first compared with the new snapshots and,
-        after the commit, every view with its recomputation (`AuditError`)."""
+        A source whose schema changed is read in the old schema if its data
+        fits (added columns are left out, widened columns cast back). If not,
+        the views reading it are planned again on the new schema and
+        recomputed; a view with a contract cannot be (`SchemaError`).
+
+        With `audit`, the batch is compared with the new snapshots and every
+        view with its recomputation on the new tables, before anything is
+        committed (`AuditError`): a mismatch changes nothing."""
         changes: dict[str, Changes] = {}
         facts: dict[str, list[Fact]] = {}
         versions: dict[str, int] = {}
         snapshot_facts: dict[str, list[Fact]] = {}
         recompute: set[str] = set()
+        rebuild: dict[str, tuple[pa.Table, SourceRefresh]] = {}
         report: list[SourceRefresh] = []
         for t, src in self.sources.items():
             start = self.versions[t]
@@ -539,6 +813,26 @@ class Pipeline:
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
             current = self.con.arrow[t]
+            evolved = SchemaChange.of(current.schema, batch.schema or current.schema)
+            note = ""
+            if evolved:
+                try:
+                    if not evolved.compatible:
+                        raise ValueError("the old schema cannot hold the new data")
+                    batch = _conform_batch(batch, current.schema)
+                    note = f"; schema: {evolved}, read in the old schema"
+                except (ValueError, pa.ArrowException) as e:
+                    snap = batch.snapshot
+                    if snap is None or batch.changes is not None:
+                        snap = src.snapshot(batch.end).table
+                    entry = SourceRefresh(
+                        t, start, batch.end, "recomputed", f"schema: {evolved} ({first_line(e)})"
+                    )
+                    rebuild[t] = (snap, entry)
+                    versions[t] = batch.end
+                    snapshot_facts[t] = batch.snapshot_facts
+                    report.append(entry)
+                    continue
             if batch.changes is None:
                 assert batch.snapshot is not None
                 ch = snapshot_diff(current, batch.snapshot)
@@ -553,6 +847,8 @@ class Pipeline:
             if audit and batch.changes is not None:
                 got = _apply_to_table(self.con, t, ch)
                 want = src.snapshot(batch.end).table
+                if evolved:
+                    want = _conform(want, current.schema)
                 if Counter(map(row_key, arrow_rows(got))) != Counter(
                     map(row_key, arrow_rows(want))
                 ):
@@ -563,18 +859,85 @@ class Pipeline:
             changes[t], versions[t] = ch, batch.end
             snapshot_facts[t] = batch.snapshot_facts
             report.append(
-                SourceRefresh(t, start, batch.end, mode, detail, len(ch.inserts), len(ch.deletes))
+                SourceRefresh(
+                    t, start, batch.end, mode, detail + note, len(ch.inserts), len(ch.deletes)
+                )
             )
-        found = self._apply(changes, facts=facts, recompute=recompute, versions=versions)
+        replan = self._reading(set(rebuild))
+        if bad := [v.name for v in replan if v.contracted]:
+            raise SchemaError(
+                f"the schema of {', '.join(sorted(rebuild))} changed incompatibly; views "
+                f"{bad} have contracts proved against the old schema: build the pipeline again"
+            )
+        incremental = {t: n for t, n in versions.items() if t not in rebuild}
+        pending = self._prepare(changes, facts=facts, recompute=recompute, versions=incremental)
+        if audit:
+            self._audit(pending)
+        backup = self._backup() if rebuild else None
+        self._commit(pending)
+        if rebuild:
+            assert backup is not None
+            try:
+                for t, (snap, _) in rebuild.items():
+                    put_table(self.con, t, snap)
+                changed = set(rebuild)
+                for v in replan:
+                    v._replan(changed)
+                    changed.add(v.name)
+            except BaseException:
+                self._restore(backup)
+                raise
+            for t, (snap, entry) in rebuild.items():
+                names = [v.name for v in self._reading({t})]
+                entry.detail += (
+                    f"; views planned again and recomputed: {', '.join(names) or 'none'}"
+                )
+                entry.inserts = snap.num_rows
+                self.versions[t] = versions[t]
         for t, fs in snapshot_facts.items():
             register_facts(self.con, t, fs)
-        if audit:
-            for v in self._views:
-                if v.rows() != v.recompute():
-                    raise AuditError(f"view {v.name} differs from its recomputation")
         return RefreshReport(
-            report, found, {v.name: v.versions for v in self._views}, audited=audit
+            report, pending.found, {v.name: v.versions for v in self._views}, audited=audit
         )
+
+    def _reading(self, tables: set[str]) -> list[IncrementalView]:
+        """The views that read any of `tables`, directly or through other
+        views, in pipeline order."""
+        out: list[IncrementalView] = []
+        seen = set(tables)
+        for v in self._views:
+            if seen & set(v.tables):
+                out.append(v)
+                seen.add(v.name)
+        return out
+
+    def _backup(self) -> tuple:
+        """What a refresh may change: tables, views, versions and keys."""
+        tables = {t: self.con.arrow[t] for t in [*self.sources, *self.views]}
+        views = {v.name: dict(v.__dict__) for v in self._views}
+        return tables, views, dict(self.versions), dict(self._keys)
+
+    def _restore(self, backup: tuple) -> None:
+        tables, views, versions, keys = backup
+        self._keys = keys
+        for t, table in tables.items():
+            if self.con.arrow[t] is not table:
+                put_table(self.con, t, table)
+        for v in self._views:
+            state = views[v.name]
+            v.__dict__.clear()
+            v.__dict__.update(state)
+        self.versions = versions
+
+    def _audit(self, pending: _Commit) -> None:
+        """Compare every view's new state with its recomputation on the new
+        tables, before the commit."""
+        for v in self._views:
+            want = Counter(map(row_key, v._run_on(pending.new_tables)))
+            if +want != +pending.counts.get(v.name, v.counts):
+                raise AuditError(
+                    f"view {v.name} differs from its recomputation; nothing was applied"
+                )
 
     def _apply(
         self,
@@ -584,10 +947,22 @@ class Pipeline:
         recompute: set[str] | None = None,
         versions: Mapping[str, int] | None = None,
     ) -> list[Discharged]:
-        """Apply `changes` and bring every view up to date. Views reading a
-        table in `recompute` (directly or through other views) are recomputed
-        and diffed; `versions` are recorded with the commit."""
-        con = self.con
+        pending = self._prepare(changes, facts=facts, recompute=recompute, versions=versions)
+        self._commit(pending)
+        return pending.found
+
+    def _prepare(
+        self,
+        changes: Mapping[str, Changes],
+        *,
+        facts: Mapping[str, Sequence[Fact]] | None = None,
+        recompute: set[str] | None = None,
+        versions: Mapping[str, int] | None = None,
+    ) -> _Commit:
+        """Compute the new state of every table and view after `changes`,
+        without replacing anything. Views reading a table in `recompute`
+        (directly or through other views) are recomputed and diffed;
+        `versions` are recorded with the commit."""
         views = self.views
         bad = set(changes) & set(views)
         if bad:
@@ -597,14 +972,14 @@ class Pipeline:
         if unknown:
             raise ValueError(f"no view reads {sorted(unknown)}")
         # New base tables first: this also checks that every delete exists.
-        new_tables = {t: _apply_to_table(con, t, ch) for t, ch in changes.items()}
+        new_tables = {t: _apply_to_table(self.con, t, ch) for t, ch in changes.items()}
         indexes, found = self._check_batch(changes, facts or {})
         deltas: dict[str, ZRows] = {
             t: [(tuple(r), 1) for r in ch.inserts] + [(tuple(r), -1) for r in ch.deletes]
             for t, ch in changes.items()
         }
         stale = set(recompute or ())
-        updates: list[tuple[IncrementalView, Counter[tuple], dict[tuple, Row]]] = []
+        counts: dict[str, Counter[tuple]] = {}
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
@@ -623,16 +998,57 @@ class Pipeline:
             merged = +merged
             deltas[v.name] = [(v.examples[k], n) for k, n in delta.items() if n != 0]
             new_tables[v.name] = v._arrow(merged)
-            updates.append((v, merged, examples))
-        # Commit: nothing above changed any table, view or version.
-        for t in changes:
-            put_table(con, t, new_tables[t])
-        self._keys.update(indexes)
-        self.versions.update(versions or {})
-        for v, merged, _ in updates:
-            v.counts = merged
-            v._publish()
-        return found
+            counts[v.name] = merged
+        return _Commit(changes, new_tables, indexes, dict(versions or {}), counts, found)
+
+    def _commit(self, pending: _Commit) -> None:
+        """Replace the tables, views and versions with their new state."""
+        for t in pending.changes:
+            put_table(self.con, t, pending.new_tables[t])
+        self._keys.update(pending.indexes)
+        self.versions.update(pending.versions)
+        views = self.views
+        for name, merged in pending.counts.items():
+            views[name].counts = merged
+            views[name]._publish()
+
+
+@dataclass
+class _Commit:
+    """A pipeline's state after a batch, computed but not yet in place."""
+
+    changes: Mapping[str, Changes]
+    new_tables: dict[str, pa.Table]
+    indexes: dict[tuple[str, tuple[str, ...]], Counter[tuple]]
+    versions: dict[str, int]
+    counts: dict[str, Counter[tuple]]
+    """The new contents of each view that changed."""
+    found: list[Discharged]
+
+
+def _conform_batch(batch: SourceBatch, schema: pa.Schema) -> SourceBatch:
+    """A batch read in the new schema, in the old `schema` (`_conform`); facts
+    about columns the old schema lacks are left out."""
+    new = batch.schema or schema
+    changes = batch.changes
+    if changes is not None:
+        changes = Changes(
+            inserts=_conform_rows(changes.inserts, new, schema),
+            deletes=_conform_rows(changes.deletes, new, schema),
+        )
+    return replace(
+        batch,
+        changes=changes,
+        snapshot=None if batch.snapshot is None else _conform(batch.snapshot, schema),
+        facts=_facts_within(batch.facts, schema.names),
+        snapshot_facts=_facts_within(batch.snapshot_facts, schema.names),
+        schema=schema,
+    )
+
+
+def first_line(e: BaseException) -> str:
+    text = str(e).strip().splitlines()
+    return f"{type(e).__name__}: {text[0] if text else ''}"
 
 
 def _rows(con: Connection, t: str) -> list[Row]:
