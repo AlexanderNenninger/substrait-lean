@@ -26,7 +26,7 @@ BC), which `date_trunc` leaves as it is.
 
 from dataclasses import dataclass
 
-from sverify.sql.core import Dialect, Kind
+from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind
 
 #: The timestamps chrono represents (`Time.partMin`, `Time.partMax`).
 PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
@@ -67,6 +67,21 @@ class DuckDBDialect(Dialect):
 
     def row_ordinal(self) -> str:
         return "rowid"
+
+    def int_sum(self, v: str) -> str:
+        # SUM of BIGINT is a HUGEINT: exact.
+        total = f"SUM({v})"
+        fail = self.raise_("integer overflow in SUM", total, "int")
+        inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
+        return (
+            f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
+            f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
+        )
+
+    def float_sum(self, v: str, o: str) -> str:
+        values = f"list({v} ORDER BY {o}) FILTER (WHERE {v} IS NOT NULL)"
+        start = self.cast("0", "float")
+        return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
 
     def char_length(self, s: str) -> str:
         return f"length({s})"

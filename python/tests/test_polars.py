@@ -164,10 +164,6 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
 #: its own consumer rejects.
 DATAFUSION_CANNOT_READ = {"df_distinct"}
 
-#: Fixtures Lean accepts with relations the Polars translator does not have yet
-#: (aggregates with measures): it must refuse them, not run them wrongly.
-NOT_IN_POLARS = {"df_aggregate"}
-
 
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
     return canonical(a) == canonical(b)
@@ -198,10 +194,6 @@ def test_golden_fixtures(fixture, data):
     tables = {t: data.draw(table_data(s)) for t, s in schemas.items()}
     for t, table in tables.items():
         put_table(con, t, table)
-    if fixture.stem in NOT_IN_POLARS:
-        with pytest.raises(polars_engine.Unsupported, match="aggregate functions"):
-            rows_of(run_plan(con, plan, "polars"))
-        return
     if '"fetch"' in plan:
         # DataFusion reads the current `offsetExpr`/`countExpr`, not the
         # deprecated fields Lean writes: it runs the fixture itself.
@@ -504,12 +496,16 @@ def test_unknown_function_is_refused():
         polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
 
 
-def test_aggregates_are_refused():
+def test_integer_sum_overflow_raises():
+    """`SUM` of integers is exact in Lean; DataFusion wraps around (`Issue.wraps`)."""
     con = connect()
-    create_tables(con)
-    plan = written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
-    with pytest.raises(polars_engine.Unsupported, match="aggregate functions"):
-        polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
+    create_table(con, "r", R, [(2**62, 1, 0), (2**62, 1, 0), (1, 2, 0)])
+    with pytest.raises(polars_engine.IntegerOverflow):
+        polars_rows(con, "SELECT b, SUM(a) AS s FROM r GROUP BY b")
+    assert polars_rows(con, "SELECT b, SUM(a - 1) AS s FROM r GROUP BY b") == [
+        (1, 2**63 - 2),
+        (2, 0),
+    ]
 
 
 def test_checker_writes_what_polars_reads():
