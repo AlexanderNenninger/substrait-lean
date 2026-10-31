@@ -136,7 +136,11 @@ class SnowflakeDialect(Dialect):
 
     # Integers: exact NUMBER(38,0) arithmetic, then the i64 range check.
 
-    def checked(self, r: str) -> str:
+    def checked(self, r: str, *, row: bool = True) -> str:
+        """`r` if it fits in 64 bits, else an error. Row-level checks go
+        with `guards=False`; the one on `SUM` (`row=False`) stays."""
+        if row and not self.guards:
+            return r
         fail = self.raise_("integer overflow", r, "int")
         return f"IFF({r} BETWEEN {I64_MIN} AND {I64_MAX}, {r}, {fail})"
 
@@ -165,8 +169,10 @@ class SnowflakeDialect(Dialect):
         # Doubles in [-2^63, 2^63) truncate into 64 bits; the float NaN is
         # above 'inf', so the range check rejects it too.
         lo, hi = self.float_lit(-(2.0**63)), self.float_lit(2.0**63)
-        fail = self.raise_("CAST to BIGINT out of range", x, "int")
         value = f"CAST(TRUNC({x}) AS NUMBER(38,0))"
+        if not self.guards:
+            return value
+        fail = self.raise_("CAST to BIGINT out of range", x, "int")
         return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN {value} ELSE {fail} END)"
 
     def int_to_float(self, a: str) -> str:
@@ -244,7 +250,7 @@ class SnowflakeDialect(Dialect):
 
     def int_sum(self, v: str) -> str:
         # NUMBER(38,0) sums are exact far beyond 64 bits.
-        return f"CAST({self.checked(f'SUM({v})')} AS NUMBER(38,0))"
+        return f"CAST({self.checked(f'SUM({v})', row=False)} AS NUMBER(38,0))"
 
     def float_sum(self, v: str, o: str) -> str:
         raise Unsupported(
