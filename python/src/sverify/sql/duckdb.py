@@ -15,7 +15,8 @@ without a collation. `LIKE` has no escape character by default, so the SQL
 names one. Regular expressions are RE2's, DataFusion's Rust's: they agree on
 the simple patterns of `Text.simpleRegex`, but `\\d`, `\\w` and `\\s` are
 ASCII-only in RE2. `upper`/`lower` map case with utf8proc (black boxes in
-Lean; `'ß'` stays one character, where DataFusion writes `'SS'`).
+Lean; `'ß'` stays one character, where DataFusion writes `'SS'`). So the SQL
+raises on non-ASCII text where they would differ from DataFusion (#70).
 
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
@@ -91,6 +92,9 @@ class DuckDBDialect(Dialect):
 
     def char_length(self, s: str) -> str:
         return f"length({s})"
+
+    def is_ascii(self, s: str) -> str:
+        return f"(strlen({s}) = length({s}))"
 
     def strpos(self, s: str, t: str) -> str:
         return f"strpos({s}, {t})"

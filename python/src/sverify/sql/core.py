@@ -378,7 +378,9 @@ class Dialect:
     # sorts use) is by code point, i.e. byte order: no collation.
 
     def upper(self, s: str) -> str:
-        """A black box in Lean (Unicode case mapping in DataFusion)."""
+        """A black box in Lean, meaning Rust's `str::to_uppercase` (DataFusion's
+        and Polars'). SQL engines map case with their own tables (`'ß'`), so
+        the writer guards it with `is_ascii`."""
         return f"UPPER({s})"
 
     def lower(self, s: str) -> str:
@@ -386,6 +388,10 @@ class Dialect:
 
     def char_length(self, s: str) -> str:
         return f"CHAR_LENGTH({s})"
+
+    def is_ascii(self, s: str) -> str:
+        """Is every character of `s` ASCII? (Its UTF-8 bytes are its characters.)"""
+        return f"(OCTET_LENGTH({s}) = {self.char_length(s)})"
 
     def concat(self, a: str, b: str) -> str:
         """NULL if either is."""
@@ -2776,13 +2782,20 @@ class _Writer:
             case If(cond=c, then=t, orelse=o):
                 k = kind(e) or ctx
                 return d.case_when(go(c, "bool"), go(t, k), go(o, k))
-            case Un(op="upper" | "lower" | "length" as op, arg=a):
+            case Un(op="length", arg=a):
+                return d.char_length(self.operand(a, "str", ref, cols, "length"))
+            case Un(op="upper" | "lower" as op, arg=a):
                 x = self.operand(a, "str", ref, cols, op)
-                return {"upper": d.upper, "lower": d.lower, "length": d.char_length}[op](x)
+                return self.ascii_only(x, (d.upper if op == "upper" else d.lower)(x), op.upper())
             case Un(op="regex_match", arg=a, param=pattern):
                 groups = regex_groups(pattern)
                 x = self.operand(a, "str", ref, cols, "regexp_match")
-                return d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
+                m = d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
+                return (
+                    self.ascii_only(x, m, f"regular expression {pattern!r}", "int")
+                    if (unicode_classes(pattern))
+                    else m
+                )
             case Un(op="date_part", arg=a, param=part):
                 return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
             case Un(op="date_trunc", arg=a, param=unit):
@@ -2917,6 +2930,14 @@ class _Writer:
         )
         return d.case_when(bad, fail, r)
 
+    def ascii_only(self, x: str, value: str, what: str, kind: Kind = "str") -> str:
+        """`value`, a black box of the string `x` that the engine computes as
+        Rust does on ASCII text only, or an error where `x` is not ASCII
+        (#70). Not one of `Safety.lean`'s issues, so `guards=False` keeps it."""
+        d = self.d
+        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind)
+        return d.case_when(f"(NOT {d.is_ascii(x)})", fail, value)
+
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
     ) -> str:
@@ -2988,6 +3009,21 @@ def like_pattern(p: str) -> str:
     the next character, and a trailing one stands for itself (where SQL
     engines reject it), so it is escaped."""
     return p + "\\" if (len(p) - len(p.rstrip("\\"))) % 2 else p
+
+
+def unicode_classes(p: str) -> bool:
+    """Does the pattern use `\\d`, `\\w` or `\\s` (or their negations)? Rust's
+    are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's are
+    ASCII-only, so they agree on ASCII text only."""
+    i = 0
+    while i < len(p):
+        if p[i] == "\\" and i + 1 < len(p):
+            if p[i + 1] in "dDwWsS":
+                return True
+            i += 2
+        else:
+            i += 1
+    return False
 
 
 def regex_groups(p: str) -> int:
