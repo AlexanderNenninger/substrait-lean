@@ -190,12 +190,14 @@ See the main README for the full example and what is trusted versus proved.
 ## Engines
 
 ```python
-sv.run_plan(con, plan, "polars")              # or "datafusion"; DuckDB by default (extras: polars, datafusion)
 from sverify.sql import to_sql
-from sverify.sql.snowflake import SNOWFLAKE   # also sverify.sql.duckdb, sverify.sql.spark
-to_sql(plan, SNOWFLAKE)                       # or sverify.sql.Unsupported, saying why
+from sverify.sql.snowflake import SNOWFLAKE  # also sverify.sql.duckdb, sverify.sql.spark
+
+sv.run_plan(con, plan, "polars")  # or "datafusion"; DuckDB by default
+to_sql(plan, SNOWFLAKE)  # or sverify.sql.Unsupported, saying why
 ```
 
+Polars and DataFusion need their extras (`polars`, `datafusion`).
 `sverify.spark_engine.run(plan, tables)` runs the Spark SQL on a local
 session or on one you pass (extra: `spark`). Snowflake and Spark tables have
 no row order, so sorts, `LIMIT` and windows are refused there unless you pass
