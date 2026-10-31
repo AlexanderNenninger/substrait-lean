@@ -239,11 +239,28 @@ def plan_json(con: Connection, query: ir.Table | str) -> str:
     return to_substrait_json(query)
 
 
+#: `substrait_json` changes a session setting while it plans.
+_analyse_lock = threading.Lock()
+
+
 def substrait_json(con: Connection, sql: str) -> str:
-    """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON."""
+    """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON.
+
+    The plan is the *analysed* one: DataFusion's type coercion makes its
+    implicit casts explicit (`int > double` compares `CAST(int AS DOUBLE)`),
+    which the unanalysed plan leaves to the consumer. The optimizer, whose
+    rewrites would change the plan's shape, runs no passes."""
     ss = _datafusion().substrait
     ctx = con.datafusion
-    plan = ss.Producer.to_substrait_plan(ctx.sql(sql).logical_plan(), ctx)
+    key = "datafusion.optimizer.max_passes"
+    with _analyse_lock:
+        passes = ctx.sql(f"SHOW {key}").to_pylist()[0]["value"]
+        ctx.sql(f"SET {key} = 0").collect()
+        try:
+            logical = ctx.sql(sql).optimized_logical_plan()
+        finally:
+            ctx.sql(f"SET {key} = {passes}").collect()
+    plan = ss.Producer.to_substrait_plan(logical, ctx)
     proto = Plan()
     proto.ParseFromString(plan.encode())
     return json_format.MessageToJson(proto)

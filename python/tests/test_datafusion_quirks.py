@@ -152,12 +152,15 @@ def test_datafusion_fails(con, sql, error):
         rows(con, sql)
 
 
-def test_unanalysed_plan_has_no_coercion_casts(con):
-    """The plan `substrait_json` produces compares int with double uncast;
-    DataFusion's consumer adds the cast back when it reads the plan."""
+def test_plan_has_coercion_casts(con):
+    """`substrait_json` writes the analysed plan, with DataFusion's implicit
+    casts explicit (`CAST(a AS DOUBLE) > f`), and leaves the session's
+    optimizer settings as they were."""
+    passes = rows(con, "SHOW datafusion.optimizer.max_passes")
     plan = substrait_json(con, "SELECT a > f AS gt FROM mixed")
-    assert '"cast"' not in plan
+    assert '"cast"' in plan
     assert arrow_rows(run_substrait_json(con, plan)) == [(True,)]
+    assert rows(con, "SHOW datafusion.optimizer.max_passes") == passes
 
 
 def test_distinct_plan_is_not_readable_by_datafusion(con):
@@ -208,8 +211,7 @@ gap = pytest.mark.xfail(
 )
 
 
-@gap
-def test_gap_int_vs_double_comparison():
+def test_int_vs_double_comparison():
     """F6: DataFusion says `1 > 0.5`; Lean compares 1 with the code of 0.5."""
     report = verify(
         "SELECT a > f AS gt FROM t",
@@ -221,8 +223,7 @@ def test_gap_int_vs_double_comparison():
     assert not report.ensures[0].proved
 
 
-@gap
-def test_gap_int_concat_string():
+def test_int_concat_string():
     """N7: `x || 'a'` is '1a' on DataFusion; Lean, missing the cast, gives NULL."""
     report = verify("SELECT x || 'a' AS p FROM n", "n", {"x": "int64"}, ensures=["p IS NULL"])
     assert not report.ensures[0].proved
