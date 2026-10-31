@@ -14,6 +14,8 @@
   run agree with Python's calendar.
 * Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` agree with
   DataFusion within the years chrono represents, and fail outside them.
+* Time-based windows mean what Polars' `rolling_sum_by` and
+  `group_by_dynamic` compute.
 """
 
 import json
@@ -28,7 +30,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify import polars_engine
+from sverify import duckdb_engine, polars_engine
 from sverify.engine import (
     connect,
     put_table,
@@ -39,7 +41,7 @@ from sverify.engine import (
     to_sql,
     written_plan,
 )
-from sverify.ibis_substrait import Unsupported, to_substrait
+from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
 from sverify.testing import canonical, inline_tables, lean_values
 
 MIN, MAX = -(2**63), 2**63 - 1
@@ -520,3 +522,131 @@ def test_constructors_of_constants():
         to_substrait(D.select(a=ibis.date(2024, 2, 30)))
     with pytest.raises(Unsupported, match="of columns"):
         to_substrait(D.select(a=ibis.date(D.n, 1, 1)))
+
+
+# --------------------------------------------------------------------------
+# Time-based windows, to Polars lazy's level (#95)
+
+W = ibis.table({"g": "int64", "ts": "timestamp", "x": "int64"}, name="t")
+#: Polars' `closed="right"`: the window (t - 7d, t], microsecond timestamps.
+SEVEN_DAYS = ibis.interval(days=7) - ibis.interval(microseconds=1)
+ROLLING = W.select(
+    "g",
+    "ts",
+    "x",
+    s=W.x.sum().over(
+        ibis.range_window(group_by="g", order_by="ts", preceding=SEVEN_DAYS, following=0)
+    ),
+)
+BUCKETED = W.mutate(b=W.ts.bucket(minutes=15))
+DYNAMIC = BUCKETED.group_by(["g", "b"]).aggregate(s=BUCKETED.x.sum(), n=BUCKETED.x.count())
+
+minutes = st.sampled_from([0, 7, 15, 600, 10080, 10081, 20000])
+
+
+@st.composite
+def w_rows(draw: st.DrawFn) -> list[tuple]:
+    n = draw(st.integers(0, 8))
+    start = datetime(2024, 1, 1)
+    return [
+        (
+            draw(st.one_of(st.none(), st.integers(1, 2))),
+            start + timedelta(minutes=draw(minutes), microseconds=draw(st.sampled_from([0, 1]))),
+            draw(st.one_of(st.none(), st.integers(1, 2))),
+        )
+        for _ in range(n)
+    ]
+
+
+def as_micros(v: object) -> object:
+    return (v - datetime(1970, 1, 1)) // timedelta(microseconds=1) if isinstance(v, datetime) else v
+
+
+def polars_sums(rows: list[tuple]) -> list[tuple]:
+    """Polars sums no values to 0; SQL (and Lean) to NULL."""
+    return [(*r[:-2], None if r[-1] == 0 else r[-2], r[-1]) for r in rows]
+
+
+@settings(max_examples=40, deadline=None)
+@given(rows=w_rows())
+def test_time_windows_match_polars(rows):
+    """A rolling sum over the last seven days (`rolling_sum_by(ts, "7d",
+    closed="right")`, peers with equal times included) and 15-minute buckets
+    (`group_by_dynamic(ts, every="15m")`) mean what Polars' own operations
+    compute, and Polars and DuckDB running Lean's plans agree."""
+    import polars as pl
+
+    table = pa.table(
+        {
+            "g": pa.array([r[0] for r in rows], pa.int64()),
+            "ts": pa.array([r[1] for r in rows], pa.timestamp("us")),
+            "x": pa.array([r[2] for r in rows], pa.int64()),
+        }
+    )
+    df = pl.from_arrow(table).sort("ts")
+    rolling = df.with_columns(
+        s=pl.col("x").rolling_sum_by("ts", "7d", closed="right", min_samples=0).over("g")
+    )
+    # The rolling sum's emptiness, by counting the non-NULL values in the window.
+    counts = df.with_columns(
+        c=pl.col("x")
+        .is_not_null()
+        .cast(pl.Int64)
+        .rolling_sum_by("ts", "7d", closed="right")
+        .over("g")
+    )["c"].to_list()
+    native_rolling = [
+        (g, as_micros(ts), x, s if c else None)
+        for (g, ts, x, s), c in zip(rolling.select("g", "ts", "x", "s").rows(), counts, strict=True)
+    ]
+    native_dynamic = (
+        polars_sums(
+            [
+                tuple(as_micros(v) for v in r)
+                for r in df.group_by_dynamic("ts", every="15m", group_by="g")
+                .agg(s=pl.col("x").sum(), n=pl.col("x").count())
+                .select("g", "ts", "s", "n")
+                .rows()
+            ]
+        )
+        if rows
+        else []
+    )
+    for expr, native in ((ROLLING, native_rolling), (DYNAMIC, native_dynamic)):
+        lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"t": rows})))
+        assert canonical(lean) == canonical(native)
+        plan = written_plan(to_substrait_json(expr))
+        for engine in (polars_engine, duckdb_engine):
+            got = [
+                tuple(as_micros(v) for v in r.values())
+                for r in engine.run(plan, {"t": table}).to_pylist()
+            ]
+            assert canonical(got) == canonical(lean), engine.__name__
+
+
+def test_calendar_offsets_and_truncation():
+    """`dt.offset_by("1mo2d")`, `dt.truncate("1mo" / "1w" / "1q")` and
+    `dt.month_end` as interval arithmetic and truncation (`Time.addMonths`
+    clamps to the end of a shorter month)."""
+    expr = D.select(
+        o=D.ts + ibis.interval(months=1) + ibis.interval(days=2),
+        m=D.ts.truncate("M"),
+        w=D.ts.truncate("W"),
+        q=D.ts.truncate("Q"),
+        e=D.d.truncate("M") + ibis.interval(months=1) - ibis.interval(days=1),
+    )
+    rows = [(19753, 19753 * DAY + 3_600_000_000, 0)]  # 2024-01-31 01:00
+    plan = inline_tables(to_substrait(expr), {"t": rows})
+    assert lean_values(json.dumps(plan)) == [
+        (19784 * DAY + 3_600_000_000, 19723 * DAY, 19751 * DAY, 19723 * DAY, 19753)
+    ]
+
+
+def test_overlapping_windows_are_refused():
+    """`group_by_dynamic` with `period > every` puts a row into several
+    windows: an array of window starts, then UNNEST (#94), which is refused."""
+    starts = ibis.range(
+        W.ts.bucket(minutes=15) - ibis.interval(minutes=15), W.ts, ibis.interval(minutes=15)
+    )
+    with pytest.raises(Unsupported):
+        to_substrait(W.mutate(start=starts.unnest()))

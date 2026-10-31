@@ -450,6 +450,7 @@ def UnFn.abs : UnFn → AVal → AVal
       ⟨a.nonInt, a.int.map fun _ => ⟨some 0, some (Time.usPerDay - 1)⟩, false, false, false⟩
   | .asTime, a => monoAbs id a
   | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
+  | .bucket k o, a => monoAbs (Time.bucket k o) a
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -659,6 +660,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     · exact monoAbs_sound (Time.addMonths_mono m) (fun v => by cases v <;> rfl) h
     · exact topAbs_sound (fun v => by cases v <;> rfl) h
   case asTime => exact monoAbs_sound (fun h => h) (fun v => by cases v <;> rfl) h
+  case bucket k o => exact monoAbs_sound (Time.bucket_mono k o) (fun v => by cases v <;> rfl) h
   case timeOfDay =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
     · simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]

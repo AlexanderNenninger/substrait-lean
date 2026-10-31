@@ -338,7 +338,51 @@ CASES: list[Case] = [
         lambda: t.select(x=t.ts.date() + t.qty.as_interval("M")),
     ),
     case("time", "timestamp delta", R, lambda: t.select(x=t.ts.delta(t.ts, unit="hour"))),
-    case("time", "bucket", R, lambda: t.select(x=t.ts.bucket(minutes=15))),
+    case("time", "bucket", V, lambda: t.select(x=t.ts.bucket(minutes=15))),
+    case(
+        "time",
+        "group_by_dynamic (no overlap)",
+        V,
+        lambda: t.mutate(b=t.ts.bucket(minutes=15)).group_by("b").aggregate(n=_.count()),
+    ),
+    case(
+        "time",
+        "rolling sum by time",
+        V,
+        lambda: t.mutate(
+            s=t.qty.sum().over(
+                ibis.range_window(
+                    order_by="ts",
+                    preceding=ibis.interval(days=7) - ibis.interval(microseconds=1),
+                    following=0,
+                )
+            )
+        ),
+    ),
+    case(
+        "time",
+        "offset_by months and days",
+        V,
+        lambda: t.select(x=t.ts + ibis.interval(months=1) + ibis.interval(days=2)),
+    ),
+    case(
+        "time",
+        "month end",
+        V,
+        lambda: t.select(
+            x=t.ts.date().truncate("M") + ibis.interval(months=1) - ibis.interval(days=1)
+        ),
+    ),
+    case(
+        "time",
+        "group_by_dynamic (overlapping)",
+        R,
+        lambda: t.mutate(
+            start=ibis.range(
+                t.ts.bucket(minutes=15) - ibis.interval(minutes=15), t.ts, ibis.interval(minutes=15)
+            ).unnest()
+        ),
+    ),
     case("time", "time of day", V, lambda: t.select(x=t.ts.time())),
     case("time", "time parts", V, lambda: t.select(h=t.ts.time().hour(), m=t.ts.time().minute())),
     case("time", "compare times", V, lambda: t.filter(t.ts.time() > dt.time(9, 30))),
@@ -382,6 +426,10 @@ NO_DATAFUSION_SQL = {
     "date - date": "compares durations with days wrongly",
     # "frame offsets for RANGE must be …": Ibis writes the bound as a cast.
     "rolling sum (interval)": "refuses Ibis's interval frame",
+    "rolling sum by time": "refuses Ibis's interval frame",
+    # No compilation rule.
+    "bucket": "no rule",
+    "group_by_dynamic (no overlap)": "no rule",
 }
 
 #: The engines besides DataFusion, which runs Ibis's own plans.
@@ -427,6 +475,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "percent_rank, cume_dist": NO_ROW_ORDER,
     "rolling sum (range)": NO_ROW_ORDER,
     "rolling sum (interval)": NO_ROW_ORDER,
+    "rolling sum by time": NO_ROW_ORDER,
     "running mean": FRAME_DOUBLES,
     "last, nth": NO_ROW_ORDER,
     "max, count over frame": NO_ROW_ORDER,
@@ -435,6 +484,7 @@ REFUSED: dict[str, dict[str, str]] = {
 TIE_FREE = {
     "order_by", "row_number", "lag", "rank", "dense_rank", "cumsum", "ntile",
     "first", "percent_rank, cume_dist", "rolling sum (range)", "rolling sum (interval)",
+    "rolling sum by time",
     "last, nth",
     "max, count over frame",
 }  # fmt: skip

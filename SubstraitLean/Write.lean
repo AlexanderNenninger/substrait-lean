@@ -31,7 +31,7 @@ def functions : List (Nat × String) :=
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
    (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
-   (60, "date_diff"), (61, "strftime"),
+   (60, "date_diff"), (61, "strftime"), (62, "date_bin"),
    (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
    (75, "first_value"), (76, "last_value"), (77, "nth_value")]
 
@@ -42,7 +42,7 @@ def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
   | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ | .dayPart _ => 25
-  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4 | .strftime _ => 61
+  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4 | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
 
@@ -159,6 +159,7 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
   | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
   | .un (.strftime fmt) a => call 61 [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
+  | .un (.bucket k o) a => call 62 [writeInterval k, writeExpr cols .time a, writeLit .time (.int o)]
   | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
   | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
   | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]

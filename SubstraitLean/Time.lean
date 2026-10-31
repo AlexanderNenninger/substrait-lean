@@ -466,6 +466,25 @@ theorem timeOfDay_range (ts : Int) : 0 ≤ timeOfDay ts ∧ timeOfDay ts < usPer
 #guard (parseFormat "%Y %q".toList).isNone && (parseFormat "50%".toList).isNone
 #guard timeOfDay (-1) == usPerDay - 1
 
+/-! ## Buckets
+
+`date_bin(k, ts, origin)` (Ibis's `bucket`, Polars' `group_by_dynamic` without
+overlap): the start of the `k`-microsecond bucket, counted from `origin`,
+that `ts` falls in. -/
+
+def bucket (k : Nat) (origin ts : Int) : Int := floorTo k (ts - origin) + origin
+
+theorem bucket_mono (k : Nat) (origin : Int) {s t : Int} (h : s ≤ t) :
+    bucket k origin s ≤ bucket k origin t := by
+  simp only [bucket]
+  rcases Nat.eq_zero_or_pos k with rfl | hk
+  · simp [floorTo]
+  · have := floorTo_mono (k := (k : Int)) (by omega) (show s - origin ≤ t - origin by omega)
+    omega
+
+#guard bucket 900000000 0 (-1) == -900000000 && bucket 900000000 300000000 0 == -600000000
+#guard bucket 900000000 0 899999999 == 0 && bucket 900000000 0 900000000 == 900000000
+
 /-! Values DataFusion gives (`python/tests/test_time.py` checks many more). -/
 
 #guard DatePart.all.map (partOf · 1700000000123456) == [2023, 4, 11, 46, 14, 22, 13, 20, 20123, 20123456, 2, 318]

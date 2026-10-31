@@ -163,7 +163,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
-  | .un (.addMonths _ true) _ | .un .asTime _ => .time
+  | .un (.addMonths _ true) _ | .un .asTime _ | .un (.bucket _ _) _ => .time
   | .un .timeOfDay _ => .tod
   | .un (.strftime _) _ => .str
   | .un (.addMonths _ false) _ => .date
@@ -850,6 +850,15 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
         if (field? o "name") != some (.str "null_handling") then return false
         return (← arrD o "preference").head? == some (.str "ACCEPT_NULLS")
       if !accepts then throw "concat is only supported with null_handling ACCEPT_NULLS"
+    -- `date_bin(INTERVAL k, ts, origin)` of a timestamp, `k` days or less.
+    if baseName name == "date_bin" then
+      let [kj, tj, oj] := argJs | throw "date_bin takes an interval, a timestamp and an origin"
+      let some (0, k) ← intervalLit? kj | throw "date_bin needs a constant interval of days or less"
+      if k ≤ 0 then throw "date_bin needs a positive interval"
+      let some (.int o) ← constOf? fns oj | throw "date_bin needs a constant origin"
+      let ts ← parseExpr fns cols tj
+      if ts.kind cols != .time then throw "date_bin is only supported on timestamps"
+      return .un (.bucket k.toNat o) ts
     if ["strftime", "to_char", "date_format"].contains (baseName name) then
       if (parsed.getD 0 (.lit .null)).kind cols != .time then
         throw s!"{baseName name} is only supported on timestamps"

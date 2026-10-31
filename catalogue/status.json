@@ -850,10 +850,14 @@
   }
  },
  "ts-resample-15min": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "TimestampBucket is not supported",
-  "datafusion": "error: Compilation rule for 'TimestampBucket' operation is not defined"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "error: Compilation rule for 'TimestampBucket' operation is not defined",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "ts-hourly-rollup": {
   "checker": "verified",
@@ -1057,10 +1061,14 @@
   "detail": "type decimal(7, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "window function Sum is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   }
   }
  },
  "tpch-q01": {

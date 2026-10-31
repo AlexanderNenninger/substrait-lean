@@ -641,6 +641,17 @@ def _strftime(x: Exprs, op: Any) -> Json:
     return call("strftime", [x(op.arg), literal(op.format_str.value, dt.string)])
 
 
+def _bucket(x: Exprs, op: Any) -> Json:
+    """`date_bin`: buckets of a constant interval of days or less, counted
+    from 1970-01-01 plus the offset (Ibis's origin)."""
+    c = _const_interval(op.interval)
+    o = (0, 0) if op.offset is None else _const_interval(op.offset)
+    if c is None or c[0] or c[1] <= 0 or o is None or o[0]:
+        raise Unsupported("bucket needs constant intervals of days or less")
+    origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(o[1])}}}
+    return call("date_bin", [interval_json(0, c[1]), x(op.arg), origin])
+
+
 def _between_time(x: Exprs, op: Any) -> Json:
     t = cast_json(x(op.arg), dt.time)
     lo, hi = x(op.lower_bound, dt.time), x(op.upper_bound, dt.time)
@@ -746,6 +757,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Strftime: _strftime,
     ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
     ops.BetweenTime: _between_time,
+    ops.TimestampBucket: _bucket,
     ops.IsNan: _is_nan,
     ops.StringFind: _string_find,
     ops.ExtractWeekOfYear: _date_part("week"),
@@ -900,6 +912,9 @@ def _frame_offset(op: Any, b: Any) -> int:
 def _interval_offset(v: Any) -> int:
     """A constant interval of days or less, in microseconds (Ibis writes a
     zero bound as a cast of an integer)."""
+    c = _const_interval(v)
+    if c is not None and not c[0]:
+        return c[1]
     dtype = v.dtype
     if isinstance(v, ops.Cast):
         v = v.arg

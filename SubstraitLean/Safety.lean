@@ -105,6 +105,8 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .addMonths m true, .int ts => rangeIssue Time.partMin Time.partMax ts (Time.addMonthsUs m ts)
   -- chrono's calendar, which fails outside its years.
   | .timeOfDay, .int ts | .strftime _, .int ts => rangeIssue Time.partMin Time.partMax ts ts
+  -- DataFusion bins in nanoseconds, which wrap around outside ±2⁶³.
+  | .bucket k o, .int ts => rangeIssue Time.nsMin Time.nsMax ts (Time.bucket k o ts)
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
@@ -195,6 +197,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
   | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
+  | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -378,6 +381,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
   case dayTrunc.int u d => exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
   case timeOfDay.int ts => exact rangeIssue_sound ha ha hk
   case strftime.int fmt ts => exact rangeIssue_sound ha ha hk
+  case bucket.int k o ts => exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
   case addMonths.int m t x =>
     cases t
     · exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk

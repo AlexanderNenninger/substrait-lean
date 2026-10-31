@@ -599,7 +599,7 @@ class Un:
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
-        "strftime",
+        "strftime", "bucket",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -607,6 +607,8 @@ class Un:
     param: str = ""
     """The pattern of `regexMatch`, the part of `datePart`, the unit of
     `dateTrunc`; `time` or `date` for `addMonths`."""
+    origin: int = 0
+    """The origin of `bucket` (whose width is `digits`)."""
 
 
 @dataclass(frozen=True)
@@ -924,7 +926,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "time" if k == "time" else "date"
         case Un(op="time_of_day"):
             return "tod"
-        case Un(op="as_time"):
+        case Un(op="as_time" | "bucket"):
             return "time"
         case Un(op="strftime"):
             return "str"
@@ -970,7 +972,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return "time" if k == "time" else "date"
         case Un(op="time_of_day"):
             return "tod"
-        case Un(op="as_time"):
+        case Un(op="as_time" | "bucket"):
             return "time"
         case Un(op="strftime"):
             return "str"
@@ -1529,6 +1531,18 @@ class _Parser:
                     for a, e in zip(arg_js, parsed, strict=True)
                 ):
                     raise Unsupported("date_diff takes two dates")
+                if name == "date_bin":
+                    if len(arg_js) != 3:
+                        raise Unsupported("date_bin takes an interval, a timestamp and an origin")
+                    iv = _interval_lit(arg_js[0])
+                    origin = self.const(arg_js[2])
+                    if iv is None or iv[0] != 0 or iv[1] <= 0:
+                        raise Unsupported("date_bin needs a constant interval of days or less")
+                    if origin is None or origin.tag != "int":
+                        raise Unsupported("date_bin needs a constant origin")
+                    if lean_expr_kind(parsed[1], cols.lean) != "time":
+                        raise Unsupported("date_bin is only supported on timestamps")
+                    return Un("bucket", parsed[1], digits=iv[1], origin=origin.value)
                 if name in ("strftime", "to_char", "date_format"):
                     first = parsed[0] if parsed else Lit(None, None)
                     if lean_expr_kind(first, cols.lean) != "time":
@@ -3100,6 +3114,22 @@ class _Writer:
             case Un(op="time_of_day", arg=a):
                 x = self.operand(a, "time", ref, cols, "CAST to TIME")
                 return self.chrono_only(x, d.time_of_day(x), "CAST to TIME", "tod")
+            case Un(op="bucket", arg=a, digits=k, origin=origin):
+                # `Time.bucket`, in integer microseconds; DataFusion's nanoseconds
+                # wrap outside ±2⁶³, where it is an error here.
+                x = self.operand(a, "time", ref, cols, "date_bin")
+                us = d.time_micros(x)
+                rel = f"({us} - {d.int_lit(origin)})"
+                k_ = d.int_lit(k)
+                floor = f"(({d.trunc_mod(rel, k_)} + {k_}) % {k_})"
+                r = d.as_time(f"({us} - {floor})")
+                if not d.guards:
+                    return r
+                lo, hi = d.int_lit(NS_MIN), d.int_lit(NS_MAX)
+                fail = d.raise_("date_bin outside ±2^63 ns", x, "time")
+                ru = d.time_micros(r)
+                bad = f"({us} NOT BETWEEN {lo} AND {hi} OR {ru} NOT BETWEEN {lo} AND {hi})"
+                return d.case_when(bad, fail, r)
             case Un(op="as_time", arg=a):
                 return d.as_time(self.int_operand(a, ref, cols, "CAST to TIMESTAMP"))
             case Un(op="strftime", arg=a, param=fmt):

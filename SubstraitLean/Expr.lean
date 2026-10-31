@@ -75,6 +75,9 @@ inductive UnFn where
   | asTime
   /-- `strftime(ts, fmt)` for a format `Time.parseFormat` accepts. -/
   | strftime (fmt : String)
+  /-- `date_bin(INTERVAL k, ts, origin)`: the start of `ts`'s `k`-microsecond
+  bucket (`Time.bucket`). -/
+  | bucket (k : Nat) (origin : Int)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -145,6 +148,7 @@ def UnFn.apply : UnFn → Value → Value
   | .timeOfDay, .int ts => .int (Time.timeOfDay ts)
   | .asTime, .int n => .int n
   | .strftime fmt, .int ts => .str (Time.strftime fmt ts)
+  | .bucket k o, .int ts => .int (Time.bucket k o ts)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
