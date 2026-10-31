@@ -30,7 +30,7 @@ def functions : List (Nat × String) :=
    (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max")]
+   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl")]
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
@@ -80,11 +80,7 @@ def call (anchor : Nat) (args : List Json) : Json :=
 def writeLit (k : Parse.Kind) (v : Value) : Json :=
   let lit (kvs : List (String × Json)) := obj [("literal", obj kvs)]
   match k, v with
-  -- JSON has no negative NaN or zero: write `negate(NaN)`, `negate(0.0)`, which fold back.
-  | .float, .int c =>
-    if c == FloatCode.negNan then call 3 [lit [("fp64", "NaN")]]
-    else if c == FloatCode.ofMag true 0 then call 3 [lit [("fp64", writeDouble (FloatCode.ofMag false 0))]]
-    else lit [("fp64", writeDouble c)]
+  | .float, .int c => lit [("fp64", writeDouble c)]
   | .time, .int us =>
     lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .date, .int d => lit [("date", toJson d)]
@@ -102,6 +98,15 @@ def writeInterval (us : Int) : Json :=
     ("seconds", toJson (us / 1_000_000)), ("subseconds", toJson (toString (us % 1_000_000))),
     ("precision", toJson 6)])])]
 
+/-- A double the model has one zero and one NaN for, as IEEE engines compute
+it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
+Engines that compare by `f64::total_cmp` (DataFusion) need it after an
+operation that can give `-0.0` or a negative NaN; the parser reads
+`nanvl(x, NaN)` back as `x`. -/
+def canonical (x : Json) : Json :=
+  let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
+  call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
+
 def isLit : Expr → Bool
   | .lit _ => true
   | _ => false
@@ -116,7 +121,7 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .time a)])]
-  | .un .fneg a => call 3 [writeExpr cols .float a]
+  | .un .fneg a => canonical (call 3 [writeExpr cols .float a])
   | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.narrow n) a =>
@@ -125,7 +130,11 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
-  | .un (.froundTo d) a => call 17 [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]]
+  | .un (.froundTo d) a =>
+    canonical (call 17 [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]])
+  | .un .ffloor a => canonical (call 15 [writeExpr cols .float a])
+  | .un .fceil a => canonical (call 16 [writeExpr cols .float a])
+  | .un .fround a => canonical (call 17 [writeExpr cols .float a])
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
@@ -136,8 +145,10 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
     let ka := if isLit a then b.kind cols else a.kind cols
     let kb := if isLit b then a.kind cols else b.kind cols
     match f with
+    -- A sum or difference of canonical doubles is `-0.0` never, NaN only
+    -- as `inf - inf`, which IEEE engines may make negative.
     | .fadd | .fsub | .fmul | .fdiv | .fpow =>
-      call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b]
+      canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
       match ka, b with

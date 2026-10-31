@@ -53,9 +53,15 @@ def positional(t: pa.Table) -> list[tuple]:
 
 @pytest.fixture(scope="module")
 def con():
+    """The tables as the model has them (`put_table`: one zero, one NaN), and
+    in DataFusion as they are, so that its own answers show its own order."""
     c = connect()
     for name, t in TABLES.items():
         put_table(c, name, t)
+    ctx = c.datafusion
+    for name, t in TABLES.items():
+        ctx.deregister_table(name)
+        ctx.register_record_batches(name, [t.to_batches()])
     return c
 
 

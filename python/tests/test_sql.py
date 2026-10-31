@@ -552,7 +552,8 @@ def test_double_window_order_and_partitions():
         assert canonical(duck) == canonical(df), sql
 
 
-def test_signed_zeros_partition_apart():
+def test_zeros_and_nans_partition_together():
+    """One zero and one NaN: -0.0 and 0.0 share a partition, as do both NaNs."""
     f = pa.table(
         {
             "v": pa.array([0.0, -0.0, 0.0, NEG_NAN, math.nan], pa.float64()),
@@ -562,7 +563,8 @@ def test_signed_zeros_partition_apart():
     sql = "SELECT v, t, ROW_NUMBER() OVER (PARTITION BY v ORDER BY t) AS n FROM f"
     df, duck = both(plan_of(sql, {"f": f}), {"f": f})
     assert canonical(duck) == canonical(df)
-    assert sorted(n for _, t, n in duck) == [1, 1, 1, 1, 2]
+    assert sorted((t, n) for _, t, n in duck) == [(1, 1), (2, 2), (3, 3), (4, 1), (5, 2)]
+    assert sorted(repr(v) for v, _, _ in duck) == ["0.0"] * 3 + ["nan"] * 2
 
 
 def test_fetch_takes_lean_rows_after_a_union_and_join():

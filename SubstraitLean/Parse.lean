@@ -196,7 +196,7 @@ Literals, and expressions built only from literals (`CAST('inf' AS DOUBLE)`,
 inductive Const where
   | int (i : Int)
   | flt (f : Float)
-  /-- A double as its code; Lean's `Float` cannot hold a negative NaN. -/
+  /-- A double as its code (zero `0`, one NaN). -/
   | code (c : Int)
   | dec (m : Int) (scale : Nat)
   | str (s : String)
@@ -353,13 +353,16 @@ def arrowCast (c : Const) (ty : String) : Option Const :=
     else none
   target >>= fun t => (castConst t c).toOption
 
+/-- Negation of a double constant: NaN stays NaN. -/
+def fneg (c : Int) : Int := if c == FloatCode.nan then c else FloatCode.neg c
+
 /-- Fold a function applied to constants, if it is one the parser knows. -/
 def foldCall : String → List Const → Option Const
   | "arrow_cast", [c, .str ty] => arrowCast c ty
-  -- Negating a double negates its code, also for NaN.
+  -- Negating a double negates its code; zero and NaN stay as they are.
   | "negate", [.int i] => some (.int (-i))
-  | "negate", [.code c] => some (.code (FloatCode.neg c))
-  | "negate", [c] => c.toFloat? >>= fun f => some (.code (FloatCode.neg (FloatCode.ofFloat f)))
+  | "negate", [.code c] => some (.code (fneg c))
+  | "negate", [c] => c.toFloat? >>= fun f => some (.code (fneg (FloatCode.ofFloat f)))
   | "trunc", [c] => c.toFloat? >>= fun f => some (.flt (if f ≥ 0 then f.floor else f.ceil))
   | "to_seconds", [c] => c.toFloat? >>= fun f => roundMicros? (f * 1000000.0) >>= (some ∘ .int)
   | "to_minutes", [c] => c.toInt? >>= fun i => some (.int (i * 60_000_000))
@@ -413,9 +416,15 @@ def mkCall : String → List Expr → J Expr
   | "gte", [a, b] => pure (.un .not (.bin .lt a b))
   -- Intervals are total microseconds, already normalized.
   | "normalized_interval", [a] => pure a
-  -- NaN equals itself in DataFusion's total order; it may carry either sign.
-  | "is_nan", [a] | "isnan", [a] =>
-    pure (.bin .or (.bin .eq a (.lit (.int FloatCode.nan))) (.bin .eq a (.lit (.int FloatCode.negNan))))
+  -- There is one NaN, equal to itself.
+  | "is_nan", [a] | "isnan", [a] => pure (.bin .eq a (.lit (.int FloatCode.nan)))
+  -- `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
+  -- zero: the writer's `canonical`, read back as it was.
+  | "nanvl", [a, .lit (.int c)] =>
+    if c != FloatCode.nan then throw "nanvl is only supported with NaN as its fallback"
+    else match a with
+      | .bin .fadd x (.lit (.int 0)) => pure x
+      | _ => pure a
   -- `and` / `or` are variadic in Substrait.
   | "and", a :: as => pure (as.foldl (.bin .and) a)
   | "or", a :: as => pure (as.foldl (.bin .or) a)
@@ -485,15 +494,11 @@ def mkFloatCall : String → List Expr → J Expr
   | "subtract", [a, b] => pure (.bin .fsub a b)
   | "multiply", [a, b] => pure (.bin .fmul a b)
   | "divide", [a, b] => pure (.bin .fdiv a b)
-  | "subtract", [a] | "negate", [a] => pure (.un .fneg a)
-  -- `ABS` clears the sign bit. Codes below `-0.0` (negatives, `-∞`, negative
-  -- NaNs) are negated; `-0.0` becomes `+0.0`; the rest stay. Handling `-0.0`
-  -- on its own lets the contract checker see that the result is `≥ +0.0`.
-  | "abs", [a] =>
-    let negZero := FloatCode.ofMag true 0
-    let posZero := FloatCode.ofMag false 0
-    pure (.ifThen (.bin .lt a (.lit (.int negZero))) (.un .fneg a)
-      (.ifThen (.bin .lt a (.lit (.int posZero))) (.lit (.int posZero)) a))
+  -- Code negation would make NaN the smallest code; SQL's one NaN stays NaN.
+  | "subtract", [a] | "negate", [a] =>
+    pure (.ifThen (.bin .eq a (.lit (.int FloatCode.nan))) a (.un .fneg a))
+  -- `ABS` negates the codes below zero (negatives and `-∞`).
+  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .fneg a) a)
   | "power", [a, b] => pure (.bin .fpow a b)
   | "floor", [a] => pure (.un .ffloor a)
   | "ceil", [a] => pure (.un .fceil a)
@@ -750,8 +755,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
     | "avg", .int => pure (.avg, .un .itof arg)
     | "avg", .float => pure (.avg, arg)
     -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
-    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, NaN is skipped next to
-    -- other values, and which of -0.0 and 0.0 wins depends on the row order.
+    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
+    -- to other values.
     | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
     | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
     | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"

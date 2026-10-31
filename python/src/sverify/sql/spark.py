@@ -14,22 +14,15 @@ result is the Lean value, checked on a local Spark session by
   sum overflows, though Lean's is the true total: it adds `DECIMAL(38,0)`
   values instead (exact) and checks the total against 64 bits.
 * **Doubles** are IEEE, but in ANSI mode `/` raises on a zero divisor, so
-  `x / ±0.0` is spelled out (±inf or NaN by the signs). `CAST(x AS BIGINT)`
-  truncates, raises on NaN and ±inf, but saturates at 2⁶³: the range is
-  checked first. `FLOOR` and `CEIL` return `BIGINT`, and `ROUND(-0.4)` is
-  +0.0, so these keep NaN, ±inf and large values as they are and give a
-  zero result the sign of its argument. `POWER` is Java's `Math.pow`,
-  which is only within 1 ulp, so double powers are refused.
-* **Signed zeros and NaN**: `=` and `<` treat NaN as equal to itself and
-  largest, as Lean does for a positive NaN, but -0.0 as equal to +0.0, so
-  comparisons go through the core's total order. The sign bit of a zero is
-  read from its text (`CAST(-0.0 AS STRING)` is `'-0.0'`). Spark has one
-  NaN, read as Lean's +NaN: a negative-NaN literal is refused and negating
-  a NaN raises. `GROUP BY`, `DISTINCT` and window partitions normalise
-  -0.0 to +0.0 (`NormalizeFloatingNumbers`): the extra sign key keeps the
-  groups apart and `group_value` puts the sign back. The optimizer takes the
-  literals -0.0 and +0.0 for equal and folds a `CASE` between them into one
-  of them, so `case_when` writes such a choice as arithmetic.
+  `x / 0.0` is spelled out (±inf by the sign of `x`, or NaN).
+  `CAST(x AS BIGINT)` truncates, raises on NaN and ±inf, but saturates at
+  2⁶³: the range is checked first. `FLOOR` and `CEIL` return `BIGINT`, so
+  they keep NaN, ±inf and large values as they are. `POWER` is Java's
+  `Math.pow`, which is only within 1 ulp, so double powers are refused.
+* **Zero and NaN**: `=` and `<` are the model's: NaN equals itself and is
+  largest, and -0.0 equals 0.0. `GROUP BY`, `DISTINCT` and window
+  partitions treat them the same way (`NormalizeFloatingNumbers`), and
+  `canon` keeps -0.0 out of results.
 * **NULL order**: `NULLS FIRST` is the default for ascending sorts; every
   key says where NULLs go.
 * **Timestamps** are `TIMESTAMP_NTZ`: wall-clock microseconds like Lean.
@@ -118,14 +111,6 @@ class SparkDialect(Dialect):
         # Control characters as escapes, so every query is one line of text.
         return "'" + "".join(f"\\u{ord(c):04x}" if ord(c) < 32 else c for c in s) + "'"
 
-    def float_lit(self, f: float) -> str:
-        negative = math.copysign(1.0, f) < 0
-        if math.isnan(f) and negative:
-            raise Unsupported("Spark has a single NaN; a negative NaN cannot be written")
-        if f == 0 and negative:
-            return "(- CAST('0' AS DOUBLE))"  # IEEE negation
-        return super().float_lit(f)
-
     def timestamp_lit(self, micros: int) -> str:
         return f"TIMESTAMP_NTZ '{_timestamp_text(micros)}'"
 
@@ -148,29 +133,19 @@ class SparkDialect(Dialect):
     def float_div(self, a: str, b: str) -> str:
         if (c := _float_const(b)) is not None and c != 0:
             return f"({a} / {b})"
-        nan, inf, ninf = (self.float_lit(x) for x in (float("nan"), float("inf"), float("-inf")))
+        nan, inf, ninf = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf))
+        # The divisor is the one zero, +0.0.
         by_zero = (
             f"(CASE WHEN {a} IS NULL THEN {self.null('float')} "
-            f"WHEN isnan({a}) OR {a} = 0 THEN {nan} "
-            f"WHEN {self.sign_bit(a)} = {self.sign_bit(b)} THEN {inf} ELSE {ninf} END)"
+            f"WHEN isnan({a}) OR {a} = 0 THEN {nan} WHEN {a} > 0 THEN {inf} ELSE {ninf} END)"
         )
         return f"(CASE WHEN {b} = 0 THEN {by_zero} ELSE {a} / {b} END)"
-
-    def float_neg(self, a: str) -> str:
-        fail = self.raise_("negating NaN gives a negative NaN, which Spark lacks", a, "float")
-        return f"(CASE WHEN isnan({a}) THEN {fail} ELSE (- {a}) END)"
-
-    def signed(self, r: str, x: str) -> str:
-        """`r`, a whole double computed from the finite `x`, with the sign of
-        `x` when it is zero (Spark's detour through integers loses it):
-        `x * +0.0` is the zero with the sign of `x`."""
-        return f"(CASE WHEN {r} = 0 THEN {x} * {self.float_lit(0.0)} ELSE {r} END)"
 
     def whole(self, fn: str, x: str) -> str:
         """`fn` (FLOOR or CEIL, which return BIGINT) on a double. Doubles of
         magnitude 2⁵² and more are whole already; NaN and ±inf stay."""
         big = self.float_lit(2.0**52)
-        value = self.signed(f"CAST({fn}({x}) AS DOUBLE)", x)
+        value = f"CAST({fn}({x}) AS DOUBLE)"
         return f"(CASE WHEN isnan({x}) OR abs({x}) >= {big} THEN {x} ELSE {value} END)"
 
     def float_floor(self, x: str) -> str:
@@ -181,9 +156,8 @@ class SparkDialect(Dialect):
 
     def float_round(self, x: str) -> str:
         # Half away from zero on the shortest decimal of the double, which is
-        # the double's own rounding (a halfway double prints as one); only the
-        # sign of a zero result is lost.
-        return self.signed(f"ROUND({x})", x)
+        # the double's own rounding (a halfway double prints as one).
+        return f"ROUND({x})"
 
     def float_pow(self, a: str, b: str) -> str:
         raise Unsupported(
@@ -199,34 +173,11 @@ class SparkDialect(Dialect):
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
 
-    def case_when(self, c: str, t: str, e: str) -> str:
-        """Spark's optimizer takes the literals -0.0 and +0.0 for equal
-        (`SimplifyConditionals` compares boxed doubles with `==`), so a
-        `CASE` choosing between them becomes one of them. Equal branches
-        need no `CASE`; opposite zeros are a product with the condition,
-        which no rule folds."""
-        if t == e:
-            return t
-        zeros = {self.float_lit(0.0): False, self.float_lit(-0.0): True}
-        if t in zeros and e in zeros:
-            neg = self.is_true(c) if zeros[t] else self.not3(self.is_true(c))
-            sign = f"(1.0D - 2.0D * CAST({neg} AS DOUBLE))"
-            return f"({sign} * {self.float_lit(0.0)})"
-        return super().case_when(c, t, e)
+    def float_eq(self, a: str, b: str) -> str:
+        return f"({a} = {b})"
 
-    def sign_bit(self, x: str) -> str:
-        """`x < 0`, and for a zero its text: Spark's one NaN is +NaN."""
-        return f"(CAST({x} AS STRING) LIKE '-%')"
-
-    def float_rank(self, x: str) -> str:
-        return f"(CASE WHEN {x} IS NULL THEN NULL WHEN isnan({x}) THEN 1 ELSE 0 END)"
-
-    def group_value(self, x: str, kind: Kind | None) -> str:
-        # The GROUP BY normalised -0.0 to +0.0; its sign key did not.
-        if kind != "float":
-            return x
-        neg = self.float_lit(-0.0)
-        return f"(CASE WHEN {x} = 0 AND {self.sign_bit(x)} THEN {neg} ELSE {x} END)"
+    def float_lt(self, a: str, b: str) -> str:
+        return f"({a} < {b})"
 
     # Temporal
 
