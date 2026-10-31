@@ -717,6 +717,8 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     if ["like", "contains", "starts_with", "ends_with", "strpos"].contains base then
       some (some ["CASE_SENSITIVE"])
     else none
+  -- `UPPER` and `LOWER` map Unicode case (`SubstraitLean/Text.lean`).
+  | "char_set" => if base == "upper" || base == "lower" then some (some ["UTF8"]) else none
   | _ => none
 
 def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
@@ -745,6 +747,8 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
   ("preference", Json.arr #["CASE_SENSITIVE"])]]).toBool
 #guard (checkOptions "like:str_str" false [Json.mkObj [("name", "case_sensitivity"),
   ("preference", Json.arr #["CASE_INSENSITIVE"])]]).toBool == false
+#guard (checkOptions "upper:str" false [Json.mkObj [("name", "char_set"),
+  ("preference", Json.arr #["ASCII_ONLY"])]]).toBool == false
 
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
