@@ -128,8 +128,9 @@ def test_isthmus_agrees_with_datafusion(con, name):
 @pytest.mark.parametrize(
     ("sql", "error"),
     [
-        # `add:date_iday` (#17): days plus microseconds.
-        ("SELECT CAST(ts AS DATE) + INTERVAL '1' DAY AS d FROM orders", "date arithmetic"),
+        # Calcite types `DATE + INTERVAL` as a timestamp: a date only under
+        # a cast to DATE, and only for whole days.
+        ("SELECT CAST(ts AS DATE) + INTERVAL '1' HOUR AS d FROM orders", "a date plus"),
         # Calcite types `'ab '` as CHAR(3): its trailing blank is padding.
         ("SELECT CHAR_LENGTH('ab ') AS n FROM orders", "trailing blanks"),
     ],

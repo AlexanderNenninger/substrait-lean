@@ -246,7 +246,6 @@ def test_fixture_lists_are_complete():
         "bad_field_ref",
         "isthmus_avg_integer",
         "isthmus_char_padding",
-        "isthmus_date_iday",
         "isthmus_timestamp_seconds",
     }
 

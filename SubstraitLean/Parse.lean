@@ -590,14 +590,18 @@ def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
 
 /-- `x ± interval` where `x` is a DATE, or a timestamp and the interval has
 months. `none` for other calls, which `mkCall` reads. -/
-def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (argJs : List Json) :
-    J (Option Expr) := do
+def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (argJs : List Json)
+    (out : Kind) : J (Option Expr) := do
   let [aj, bj] := argJs | return none
   if name != "add" && name != "subtract" then return none
   let sub := name == "subtract"
   let a ← parse aj
   let ka := argKind cols aj a
   if ka != .date && ka != .time then return none
+  -- Calcite types `DATE + INTERVAL` as a timestamp; under a cast to DATE
+  -- (`parseExpr` retypes it) that is the date.
+  if ka == .date && out == .time then
+    throw "a date plus an interval typed as a timestamp is not supported"
   let iv ← intervalLit? bj
   -- A month interval literal is not an expression of its own.
   let b ← match iv with
@@ -787,7 +791,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols sj)
-    if let some e ← temporalArith (parseExpr fns cols) cols (baseName name) argJs then return e
+    let out := typeKind ((field? f "outputType").getD .null)
+    if let some e ← temporalArith (parseExpr fns cols) cols (baseName name) argJs out then return e
     if comparisonFns.contains (baseName name) then
       for a in argJs do
         if let some l := field? a "literal" then
@@ -832,7 +837,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
     -- (Isthmus types `POWER` of integers as a double).
-    let out := typeKind ((field? f "outputType").getD .null)
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
       "ceil", "round"]
     let hasFloat := parsed.any (·.kind cols == .float)
@@ -860,7 +864,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
       return .ifThen (← parseExpr fns cols (← field clause "if"))
         (← parseExpr fns cols (← field clause "then")) acc
   | ("cast", c) =>
-    let e ← parseExpr fns cols (← field c "input")
+    let input ← field c "input"
+    -- `CAST(d + INTERVAL '1' DAY AS DATE)` (Calcite types the sum as a
+    -- timestamp, at midnight): the date arithmetic itself.
+    let dateType := Json.mkObj [("date", Json.mkObj [])]
+    let target ← field c "type"
+    let input := match field? input "scalarFunction" with
+      | some f =>
+        if typeKind target == .date &&
+            typeKind ((field? f "outputType").getD .null) == .time then
+          Json.mkObj [("scalarFunction", f.setObjVal! "outputType" dateType)]
+        else input
+      | none => input
+    let e ← parseExpr fns cols input
     let target := typeKind (← field c "type")
     let k := e.kind cols
     if target == .float && k == .int then return .un .itof e

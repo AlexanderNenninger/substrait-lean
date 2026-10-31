@@ -260,18 +260,18 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DataFusion runs | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 6 | 0 | 1 | 0 | 7 | 6 | 6 | 6 |
-| finance | 18 | 0 | 7 | 11 | 0 | 17 | 6 | 6 | 3 |
+| finance | 18 | 0 | 8 | 10 | 0 | 17 | 6 | 6 | 3 |
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
-| iot | 12 | 6 | 0 | 6 | 0 | 12 | 5 | 5 | 5 |
+| iot | 12 | 7 | 0 | 5 | 0 | 12 | 6 | 6 | 6 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 10 | 0 | 2 | 2 | 11 | 10 | 10 | 9 |
-| product | 13 | 7 | 0 | 6 | 0 | 12 | 7 | 7 | 7 |
+| product | 13 | 8 | 0 | 5 | 0 | 12 | 8 | 8 | 8 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 8 | 0 | 7 | 0 | 13 | 7 | 7 | 5 |
+| timeseries | 15 | 10 | 0 | 5 | 0 | 13 | 9 | 9 | 6 |
 | tpcds | 8 | 0 | 3 | 5 | 0 | 8 | 3 | 3 | 0 |
-| tpch | 22 | 0 | 5 | 17 | 0 | 22 | 5 | 5 | 2 |
-| windows | 13 | 5 | 0 | 8 | 0 | 13 | 5 | 5 | 2 |
-| **all** | 139 | 57 | 15 | 65 | 2 | 132 | 69 | 69 | 52 |
+| tpch | 22 | 0 | 15 | 7 | 0 | 22 | 15 | 15 | 4 |
+| windows | 13 | 6 | 0 | 7 | 0 | 13 | 6 | 6 | 3 |
+| **all** | 139 | 62 | 26 | 49 | 2 | 132 | 84 | 84 | 58 |
 
 ### Feature frequency
 
@@ -284,20 +284,20 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `sum` | aggregation | 57 | 41% | yes |
 | `inner_join` | relational | 44 | 32% | yes |
 | `order_by` | relational | 42 | 30% | yes |
-| `decimal` | expressions | 37 | 27% | no |
+| `decimal` | expressions | 39 | 28% | no |
 | `count` | aggregation | 28 | 20% | yes |
 | `arithmetic_float` | expressions | 26 | 19% | yes |
 | `limit` | relational | 20 | 14% | yes |
 | `avg` | aggregation | 19 | 14% | yes |
 | `min_max` | aggregation | 18 | 13% | partial |
 | `date_literal` | expressions | 18 | 13% | yes |
-| `interval_day_time` | expressions | 17 | 12% | partial |
+| `interval_day_time` | expressions | 17 | 12% | yes |
 | `multi_join` | relational | 17 | 12% | yes |
 | `lag_lead` | windows | 15 | 11% | yes |
 | `case_when` | expressions | 14 | 10% | yes |
 | `global_aggregate` | aggregation | 12 | 9% | yes |
 | `between` | expressions | 11 | 8% | yes |
-| `date_trunc` | expressions | 11 | 8% | partial |
+| `date_trunc` | expressions | 11 | 8% | yes |
 | `running_agg` | windows | 11 | 8% | no |
 | `range_join` | relational | 11 | 8% | yes |
 | `agg_filter` | aggregation | 10 | 7% | yes |
@@ -311,7 +311,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `agg_arithmetic` | aggregation | 8 | 6% | no |
 | `window_over_aggregate` | windows | 8 | 6% | yes |
 | `row_number` | windows | 8 | 6% | yes |
-| `interval_month` | expressions | 8 | 6% | no |
+| `interval_month` | expressions | 8 | 6% | yes |
 | `non_equi_join` | relational | 7 | 5% | partial |
 | `qualify` | windows | 7 | 5% | yes |
 | `having` | aggregation | 6 | 4% | yes |
@@ -339,8 +339,8 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `full_join` | relational | 2 | 1% | yes |
 | `math_transcendental` | expressions | 2 | 1% | no |
 | `percentile` | aggregation | 2 | 1% | no |
-| `epoch` | expressions | 2 | 1% | no |
-| `interval_to_number` | expressions | 2 | 1% | no |
+| `epoch` | expressions | 2 | 1% | partial |
+| `interval_to_number` | expressions | 2 | 1% | partial |
 | `cross_join` | relational | 2 | 1% | yes |
 | `first_last_value` | windows | 2 | 1% | no |
 | `pivot` | relational | 2 | 1% | yes |
@@ -363,7 +363,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `sort_by_expression` | relational | 1 | 1% | no |
 | `not_in_subquery` | relational | 1 | 1% | no |
 | `distinct` | relational | 1 | 1% | yes |
-| `dynamic_interval` | expressions | 1 | 1% | no |
+| `dynamic_interval` | expressions | 1 | 1% | partial |
 
 ### Gaps ranked by the queries they block
 
@@ -371,26 +371,20 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `decimal` | 37 | 15 | no | sverify's Ibis producer refuses any DECIMAL column ("type decimal(15, 2) is not supported"); through DataFusion's SQL producer, columns pass through and compare but SUM/AVG/MIN/MAX and literals are refused. The catalogue also probes each failing query with DOUBLE in their place |
+| `decimal` | 39 | 26 | no | sverify's Ibis producer refuses any DECIMAL column ("type decimal(15, 2) is not supported"); through DataFusion's SQL producer, columns pass through and compare but SUM/AVG/MIN/MAX and literals are refused. The catalogue also probes each failing query with DOUBLE in their place |
 | `running_agg` | 11 | 6 | no |  |
-| `agg_arithmetic` | 8 | 2 | no | the Ibis producer refuses it ("aggregate Divide is not supported"); DataFusion's SQL path, which projects after the aggregate, verified it |
-| `interval_month` | 8 | 2 | no | refused by the checker ("month and year intervals are not supported") and the Ibis producer ("intervals in months") |
-| `interval_day_time` | 5 | 3 | partial | timestamps yes; DATE ± interval is refused by the Ibis producer (DateAdd/DateSub) |
+| `agg_arithmetic` | 8 | 3 | no | the Ibis producer refuses it ("aggregate Divide is not supported"); DataFusion's SQL path, which projects after the aggregate, verified it |
 | `rows_frame` | 4 | 2 | no |  |
 | `window_partition_agg` | 4 | 1 | no |  |
 | `stddev_var` | 4 | 0 | no |  |
 | `arg_max` | 3 | 3 | no | first_value aggregates are refused |
 | `ntile` | 3 | 2 | no |  |
-| `date_part` | 3 | 0 | partial | timestamps only; EPOCH and DATE columns refused |
 | `math_transcendental` | 2 | 1 | no | unsupported function ln/1 |
 | `percentile` | 2 | 1 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
 | `rank` | 2 | 1 | no |  |
-| `epoch` | 2 | 0 | no | unsupported date part 'EPOCH' |
 | `first_last_value` | 2 | 0 | no |  |
 | `grouping_sets` | 2 | 0 | no |  |
-| `interval_to_number` | 2 | 0 | no | casting an interval to a number is refused; Ibis delta() and epoch_seconds() do not compile or are refused |
 | `scalar_subquery` | 2 | 0 | no | DataFusion's Substrait producer cannot convert it; rewrite as a cross join with a one-row aggregate |
-| `dynamic_interval` | 1 | 1 | no | refused by the Ibis producer (IntervalFromInteger); through SQL, Ibis wrote CAST(CAST(n AS VARCHAR) \|\| ' day' AS INTERVAL), refused as a string cast |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `hash` | 1 | 1 | no |  |
 | `not_in_subquery` | 1 | 1 | no | refused: DataFusion gets NULLs in the subquery wrong |
@@ -402,20 +396,21 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 | `corr` | 1 | 0 | no |  |
-| `date_diff` | 1 | 0 | partial | timestamps yes; DATE - DATE is refused by the Ibis producer (DateDiff) |
 | `min_max` | 1 | 0 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
 | `sort_by_expression` | 1 | 0 | no | the Ibis producer refuses it ("sort by a column") |
 
 ### Why engines refuse verified queries
 
-Over the 72 queries that verify (some only as DOUBLE):
+Over the 88 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 16 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 26 |
 | duckdb: refused: comparison of time with interval; cast one side first | 2 |
 | polars: refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us') | 2 |
 | snowflake: refused: comparison of time with interval; cast one side first | 2 |
+| duckdb: differs | 1 |
+| polars: differs | 1 |
 | duckdb: refused: comparison of time with int; cast one side first | 1 |
 | polars: refused: lt of Datetime(time_unit='us', time_zone=None) and Int64 | 1 |
 | snowflake: refused: comparison of time with int; cast one side first | 1 |
@@ -448,6 +443,7 @@ Over the 72 queries that verify (some only as DOUBLE):
 | `week_definition` | 2 | – |
 | `implicit_coercion` | 2 | F6, I10, I11 |
 | `regex_dialect` | 1 | – |
+| `duration_vs_interval` | 1 | – |
 | `eager_evaluation` | 1 | E1, E2, E4, E5 |
 | `like_escape` | 1 | – |
 | `substr_index` | 1 | S3 |

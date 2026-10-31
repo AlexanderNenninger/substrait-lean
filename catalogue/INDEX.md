@@ -27,7 +27,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-structuring | [Structuring: repeated deposits just below a threshold](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | FPD | `decimal` |
 | fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✗ *(dbl)* | FPDS | `decimal` |
 | fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✗ *(dbl)* | FPD | `decimal` |
-| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✗ | F | `date_diff`, `decimal` |
+| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✗ *(dbl)* | F | `decimal` |
 | fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✗ | F | `ntile`, `decimal` |
 | fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | F | `decimal` |
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✗ | F | `agg_arithmetic` |
@@ -58,10 +58,10 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✗ | F | `epoch`, `interval_to_number`, `agg_arithmetic` |
+| iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✗ | F | `agg_arithmetic` |
 | iot-silent-devices | [Devices that stopped reporting](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg) | ✓ | F |  |
 | iot-condition-duration | [How long a temperature stayed above a threshold](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✗ | F | `running_agg` |
-| iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✗ | F | `epoch`, `interval_to_number` |
+| iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✓ | FPDS |  |
 | iot-counter-increase | [Increase of a counter with resets](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation) | ✓ | FPDS |  |
 | iot-gapfill-locf | [Hourly averages with last observation carried forward](https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/) | ✗ | F | `first_last_value`, `running_agg` |
 | iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✗ | F | `arg_max` |
@@ -104,7 +104,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | pa-funnel-ordered | [Ordered conversion funnel](https://cube.dev/blog/sql-queries-for-funnel-analysis) | ✓ | FPDS |  |
 | pa-cohort-retention | [Monthly cohort retention matrix](https://www.holistics.io/blog/calculate-cohort-retention-analysis-with-sql/) | ✓ | FPDS |  |
-| pa-day-n-retention | [Day-1 and day-7 retention](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✗ | F | `interval_day_time` |
+| pa-day-n-retention | [Day-1 and day-7 retention](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | FPDS |  |
 | pa-first-touch | [First-touch attribution of purchases](https://github.com/dbt-labs/segment) | ✓ | FPDS |  |
 | pa-repeat-purchase-rate | [Repeat purchase rate](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | FPDS |  |
 | pa-users-without-orders | [Users who never ordered](https://www.postgresql.org/docs/current/functions-subquery.html) | ✓ | FPDS |  |
@@ -134,9 +134,9 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | ts-resample-15min | [Resample sensor readings to 15-minute means](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html) | ✗ | — | `time_bucket` |
 | ts-hourly-rollup | [Hourly rollup of sensor readings](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✓ | FPD |  |
 | ts-rolling-time-window | [Rolling one-hour mean](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✗ | — | `range_frame` |
-| ts-rolling-7day-calendar | [Rolling seven-day revenue via a calendar join](https://www.skeptric.com/sql-fill-gaps/index.html) | ✗ | F | `interval_day_time` |
+| ts-rolling-7day-calendar | [Rolling seven-day revenue via a calendar join](https://www.skeptric.com/sql-fill-gaps/index.html) | ✓ | FPD |  |
 | ts-date-spine | [Daily order counts with a date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | ✓ | FPDS |  |
-| ts-dau-rolling-7d | [Daily and seven-day active users](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✗ | F | `interval_day_time` |
+| ts-dau-rolling-7d | [Daily and seven-day active users](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | FPDS |  |
 | ts-weekly-active-users | [Weekly active users](https://ibis-project.org/how-to/analytics/basics) | ✓ | FPDS |  |
 | ts-mom-growth | [Month-over-month revenue growth](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | FPD |  |
 | ts-sessionize | [Sessionize events with a 30-minute inactivity gap](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✗ | F | `running_agg` |
@@ -156,32 +156,32 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 | tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `running_agg`, `decimal` |
 | tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `window_partition_agg`, `decimal`, `sort_by_expression` |
-| tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `window_partition_agg`, `interval_day_time`, `decimal` |
+| tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `window_partition_agg`, `decimal` |
 
 ## tpch
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| tpch-q01 | [TPC-H Q1: pricing summary report](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_day_time` |
+| tpch-q01 | [TPC-H Q1: pricing summary report](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q02 | [TPC-H Q2: minimum cost supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `min_max`, `decimal` |
 | tpch-q03 | [TPC-H Q3: shipping priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q04 | [TPC-H Q4: order priority checking](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `interval_month` |
-| tpch-q05 | [TPC-H Q5: local supplier volume](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month` |
-| tpch-q06 | [TPC-H Q6: forecasting revenue change](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month` |
-| tpch-q07 | [TPC-H Q7: volume shipping](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `date_part` |
-| tpch-q08 | [TPC-H Q8: national market share](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `date_part` |
-| tpch-q09 | [TPC-H Q9: product type profit measure](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `date_part` |
-| tpch-q10 | [TPC-H Q10: returned item reporting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month` |
+| tpch-q04 | [TPC-H Q4: order priority checking](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
+| tpch-q05 | [TPC-H Q5: local supplier volume](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
+| tpch-q06 | [TPC-H Q6: forecasting revenue change](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
+| tpch-q07 | [TPC-H Q7: volume shipping](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
+| tpch-q08 | [TPC-H Q8: national market share](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
+| tpch-q09 | [TPC-H Q9: product type profit measure](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
+| tpch-q10 | [TPC-H Q10: returned item reporting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q11 | [TPC-H Q11: important stock identification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
-| tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `interval_month` |
+| tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month`, `agg_arithmetic` |
-| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal`, `interval_month` |
+| tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
+| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal` |
 | tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `not_in_subquery` |
 | tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
 | tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `interval_month` |
+| tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
 | tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
 | tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `scalar_subquery`, `decimal` |
 
@@ -198,7 +198,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | win-percent-of-total | [Salary relative to the department](https://www.postgresql.org/docs/current/tutorial-window.html) | ✗ | F | `window_partition_agg` |
 | win-above-group-average | [Employees paid above their department average](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | FPD |  |
 | win-ntile-quartiles | [Customer spend quartiles](https://www.thoughtspot.com/sql-tutorial/sql-window-functions) | ✗ | F | `ntile` |
-| win-gaps-and-islands | [Login streaks (gaps and islands)](https://www.red-gate.com/simple-talk/databases/sql-server/t-sql-programming-sql-server/introduction-to-gaps-and-islands-analysis/) | ✗ | F | `dynamic_interval` |
+| win-gaps-and-islands | [Login streaks (gaps and islands)](https://www.red-gate.com/simple-talk/databases/sql-server/t-sql-programming-sql-server/introduction-to-gaps-and-islands-analysis/) | ✓ | FPDS |  |
 | win-forward-fill | [Forward-fill missing readings](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html) | ✗ | F | `running_agg`, `first_last_value` |
 | win-lag-change | [Change since the previous order](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | FPD |  |
 | win-keyset-pagination | [Keyset pagination](https://use-the-index-luke.com/sql/partial-results/fetch-next-page) | ✓ | FPDS |  |

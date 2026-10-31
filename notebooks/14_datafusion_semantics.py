@@ -980,7 +980,8 @@ def _(mo):
     days, nanoseconds), because a month or a day has no fixed length:
 
     * **T1**: `Jan 31 + 1 month` is `Feb 29`. DataFusion clamps to the end
-      of the month. Lean refuses month and year intervals.
+      of the month. Lean's `Time.addMonths` does the same (constant months,
+      added to a date or timestamp before any days).
     * **T2**: `INTERVAL '1 day' = INTERVAL '24 hours'` is **false**, since the
       fields are compared separately.
     * **T3**: on a timestamp *with* a time zone, `+ INTERVAL '1 day'` keeps

@@ -146,3 +146,8 @@ quirks = ["O3"]
 description = "Session and island boundaries: is a gap of exactly the threshold a new session?"
 engines = "A semantic choice, but > vs >= on timestamps of different precision (ns in DataFusion literals, µs columns) can flip it."
 quirks = ["T5"]
+
+[duration_vs_interval]
+description = "A duration (timestamp - timestamp, date - date) compared with an interval of days or months."
+engines = "DataFusion compares them as (months, days, nanoseconds): a duration has no days field, so d - e > INTERVAL '3 days' is false for any duration, and beyond ±2^63 ns the comparison fails. DuckDB, Polars, Snowflake and PostgreSQL compare lengths. sverify refuses DataFusion's comparison and DATE - DATE; the Ibis producer writes DateDiff as a count of days and intervals in seconds, so the plan means what the engines compute."
+quirks = []

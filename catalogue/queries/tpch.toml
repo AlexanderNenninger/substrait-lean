@@ -88,7 +88,7 @@ title = "TPC-H Q4: order priority checking"
 intent = "Count, per order priority, the orders of a quarter in which some line arrived after its committed date."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q4", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "semi_join", "group_by", "count", "order_by", "date_literal", "interval_month"]
+features = ["filter", "semi_join", "group_by", "count", "order_by", "date_literal", "interval_month", "decimal"]
 rewrites = ["exists_subquery -> semi join"]
 ibis = '''
 late = lineitem.filter(lineitem.l_commitdate < lineitem.l_receiptdate)
@@ -314,7 +314,7 @@ title = "TPC-H Q12: shipping modes and order priority"
 intent = "Count, per shipping mode, the late lines of high- and low-priority orders received in one year."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q12", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "group_by", "sum", "agg_filter", "case_when", "in_list", "order_by", "date_literal", "interval_month"]
+features = ["filter", "inner_join", "group_by", "sum", "agg_filter", "case_when", "in_list", "order_by", "date_literal", "interval_month", "decimal"]
 ibis = '''
 start = D("1994-01-01")
 j = orders.join(lineitem, orders.o_orderkey == lineitem.l_orderkey).filter(

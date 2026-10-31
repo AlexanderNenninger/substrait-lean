@@ -179,10 +179,14 @@
   "detail": "type decimal(18, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateDiff is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "differs",
+    "polars": "differs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "fin-rfm": {
@@ -404,7 +408,7 @@
  "iot-time-weighted-average": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "ExtractEpochSeconds is not supported",
+  "detail": "aggregate Divide is not supported",
   "datafusion": "runs"
  },
  "iot-silent-devices": {
@@ -424,10 +428,14 @@
   "datafusion": "runs"
  },
  "iot-time-in-state": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "ExtractEpochSeconds is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "iot-counter-increase": {
   "checker": "verified",
@@ -672,10 +680,14 @@
   }
  },
  "pa-day-n-retention": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "DateAdd is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
  },
  "pa-first-touch": {
   "checker": "verified",
@@ -840,10 +852,14 @@
   "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for RANGE must be either a numeric value, a string value or an interval\")"
  },
  "ts-rolling-7day-calendar": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "DateSub is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "ts-date-spine": {
   "checker": "verified",
@@ -856,10 +872,14 @@
   }
  },
  "ts-dau-rolling-7d": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "DateSub is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
  },
  "ts-weekly-active-users": {
   "checker": "verified",
@@ -1012,25 +1032,29 @@
  "tpcds-q98": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(7, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "DateAdd is not supported",
+   "detail": "window function Sum is not supported",
    "datafusion": "runs"
   }
  },
  "tpch-q01": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateSub is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateSub is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q02": {
@@ -1063,37 +1087,49 @@
  "tpch-q04": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql (tie_free)"
+   }
   }
  },
  "tpch-q05": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q06": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q07": {
@@ -1102,9 +1138,14 @@
   "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "detail": "error: date_part is only supported on timestamps",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q08": {
@@ -1113,9 +1154,14 @@
   "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "detail": "error: date_part is only supported on timestamps",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q09": {
@@ -1124,21 +1170,30 @@
   "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "detail": "error: date_part is only supported on timestamps",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q10": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q11": {
@@ -1156,13 +1211,17 @@
  "tpch-q12": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "sql (tie_free)"
+   }
   }
  },
  "tpch-q13": {
@@ -1184,12 +1243,12 @@
  "tpch-q14": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "DateAdd is not supported",
+  "detail": "type decimal(15, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "DateAdd is not supported",
+   "detail": "aggregate Divide is not supported",
    "datafusion": "runs"
   }
  },
@@ -1267,10 +1326,14 @@
   "detail": "type decimal(38, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "DateAdd is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "tpch-q21": {
@@ -1368,10 +1431,14 @@
   "datafusion": "runs"
  },
  "win-gaps-and-islands": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "DateSub is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "win-forward-fill": {
   "checker": "rejected",

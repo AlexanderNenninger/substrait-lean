@@ -1395,7 +1395,8 @@ class _Parser:
                         if pat is None or pat.tag != "str":
                             raise Unsupported("regular expressions must be constants")
                         return Un("regex_match", self.expr(gargs[0], cols), param=pat.value)
-                if (t := self.temporal_arith(name, arg_js, cols)) is not None:
+                out_kind = _lean_type_kind(_field(v, "outputType"))
+                if (t := self.temporal_arith(name, arg_js, cols, out_kind)) is not None:
                     return t
                 if name in _COMPARISONS and any(_calendar_interval(a) for a in arg_js):
                     raise Unsupported(
@@ -1475,8 +1476,14 @@ class _Parser:
                     )
                 return acc
             case "cast":
-                e = self.expr(_req(v, "input"), cols)
+                inp = _req(v, "input")
                 target = _lean_type_kind(_req(v, "type"))
+                # `CAST(d + INTERVAL '1' DAY AS DATE)`: the date arithmetic itself.
+                f = _field(inp, "scalarFunction")
+                retype = target == "date" and f is not None
+                if retype and _lean_type_kind(_field(f, "outputType")) == "time":
+                    inp = {"scalarFunction": {**f, "outputType": {"date": {}}}}
+                e = self.expr(inp, cols)
                 k = lean_expr_kind(e, cols.lean)
                 if target == "float" and k == "int":
                     return Un("itof", e)
@@ -1509,7 +1516,7 @@ class _Parser:
                 return acc
         raise Unsupported(f"unsupported expression: {key}")
 
-    def temporal_arith(self, name: str, arg_js: list, cols: _Cols) -> Expr | None:
+    def temporal_arith(self, name: str, arg_js: list, cols: _Cols, out: LeanKind) -> Expr | None:
         """`temporalArith`: `x ± interval` of a DATE, or of a timestamp and an
         interval with months."""
         if name not in ("add", "subtract") or len(arg_js) != 2:
@@ -1520,6 +1527,8 @@ class _Parser:
         ka = _arg_kind(cols.lean, aj, a)
         if ka not in ("date", "time"):
             return None
+        if ka == "date" and out == "time":
+            raise Unsupported("a date plus an interval typed as a timestamp is not supported")
         iv = _interval_lit(bj)
         b = Lit(iv[1], "interval") if iv is not None else self.expr(bj, cols)
         if ka == "date" and _arg_kind(cols.lean, bj, b) == "date":
