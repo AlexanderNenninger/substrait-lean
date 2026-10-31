@@ -376,6 +376,15 @@ plus_one(orders)
   row per `ts` (checked on the data when bound). In `ensures` it is proved, since
   keys survive filters, projections and joins whose condition pins down the other
   side's key (`a.ts = b.ts`, `w1.ts = w0.ts + 60`).
+* **Foreign keys:** `sv.references("cust", "customers", "id")` in `requires`
+  says every non-NULL `cust` occurs in `customers.id` (checked on the data, like
+  `unique`). It is only an assumption: nothing proves it in `ensures`.
+* **Rewrites:** `sv.verify(...).optimized` is the transformation rewritten with
+  what the preconditions establish (`Rel.optimize_sound`), and `rewrites` names
+  the changes: a `DISTINCT` over a key goes, a filter the preconditions imply goes,
+  a left join on a NOT NULL foreign key becomes an inner join, and a join to a
+  dimension whose columns nothing reads goes. Run it instead
+  of the transformation on data that meets the preconditions.
 * **Window functions:** `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY …`
   (any directions, NULLs first or last, offsets and defaults). Lean knows that
   `LAG(ts)` comes from an earlier row of the same partition, that a lagged
@@ -1174,6 +1183,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
+| `SubstraitLean/Semantic.lean` | Rewrites from contract facts and keys (`DISTINCT` on a key, …); `Rel.optimize_sound` |
 | `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/ShardCheck.lean` | `--shard`: splitting a plan into per-shard and combining plans (trusted) |
@@ -1234,6 +1244,18 @@ interval, possible booleans, and whether it can be a string.
   which proves `x >= 0 OR x IS NULL` for a nullable `x`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
+* `Rel.optimize_sound` ([Semantic.lean](SubstraitLean/Semantic.lean)): the
+  rewrites a contract's keys and facts allow keep a plan's rows, on data that
+  meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
+  goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
+  A filter the preconditions imply goes; one they rule out empties the plan.
+  A left join on a NOT NULL foreign key (`sv.references`) becomes an inner
+  join, and so does one under a filter that rejects its padded rows. A join
+  whose condition hits a key of the right side goes when nothing reads the
+  right side's columns (for an inner join, given a NOT NULL foreign key).
+  A `GROUP BY` column that the other grouping columns determine (functional
+  dependencies from keys and equalities, `Rel.fds_sound`) moves into a `MIN`.
+  `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
   integer column can stand in for it in a key; a filter `$i = k` drops `i` from
