@@ -35,7 +35,9 @@ documentation they rest on:
   characters. `POSITION('' IN s)` is not documented, so an empty needle is 1
   by a `CASE`. Regular expressions are POSIX extended with Perl's `\\d`,
   `\\w` and `\\s` (black boxes in Lean); `REGEXP_INSTR` searches, where
-  `REGEXP_LIKE` would match the whole string.
+  `REGEXP_LIKE` would match the whole string. `UPPER`, `LOWER` and patterns
+  with `\\d`, `\\w` or `\\s` raise on non-ASCII text, where Snowflake's
+  tables need not be Rust's (#70).
 * **Dates**: `DAYOFWEEK`, `WEEK` and `DATE_TRUNC('WEEK')` depend on the
   session's `WEEK_START` and `WEEK_OF_YEAR_POLICY`, so the SQL uses the ISO
   forms (`DAYOFWEEKISO`, `WEEKISO`) and truncates to Monday itself. There is
@@ -250,6 +252,9 @@ class SnowflakeDialect(Dialect):
 
     def char_length(self, s: str) -> str:
         return f"LENGTH({s})"
+
+    def is_ascii(self, s: str) -> str:
+        return f"(OCTET_LENGTH(TO_BINARY({s}, 'UTF-8')) = LENGTH({s}))"
 
     def strpos(self, s: str, t: str) -> str:
         return (

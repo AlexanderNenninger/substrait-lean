@@ -41,7 +41,8 @@ result is the Lean value, checked on a local Spark session by
   collation (`UTF8_LCASE`, ICU) would compare differently. `length`,
   `locate` and `substring` count characters. Regular expressions are
   Java's, which agree with Rust's on simple patterns (black boxes in Lean);
-  `RLIKE` searches.
+  `RLIKE` searches. `upper`, `lower` and patterns with `\\d`, `\\w` or
+  `\\s` raise on non-ASCII text, where Java's tables differ from Rust's (#70).
 * **Decimals** do not occur in the model; the only ones here are the exact
   `DECIMAL(38,0)` sums and `extract(SECOND …)`, cast back to `BIGINT`.
 * **Rows**: tables (Parquet, Delta, views) have no row order, so nothing
