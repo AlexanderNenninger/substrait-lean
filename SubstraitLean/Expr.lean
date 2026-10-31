@@ -26,8 +26,9 @@ DataFusion raises an error (division by zero, a cast out of range, …) the
 value here is `null`; `SubstraitLean/Safety.lean` says when that happens.
 
 String functions are in `SubstraitLean/Text.lean` (`UPPER`, `LOWER` and
-regular expressions are black boxes there); timestamps are microseconds, and
-`date_part`/`date_trunc` are in `SubstraitLean/Time.lean`.
+regular expressions are black boxes there); timestamps are microseconds and dates
+days; `date_part`, `date_trunc` and month arithmetic are in
+`SubstraitLean/Time.lean`.
 -/
 
 namespace Substrait
@@ -61,6 +62,19 @@ inductive UnFn where
   | dateTrunc (u : Time.TimeUnit)
   /-- `CAST(ts AS DATE)`: days since 1970-01-01, rounding down. -/
   | toDate
+  /-- `date_part(p, d)` of a DATE (days): the part of its midnight. -/
+  | dayPart (p : Time.DatePart)
+  /-- `date_trunc(u, d)` of a DATE, as a DATE. -/
+  | dayTrunc (u : Time.TimeUnit)
+  /-- `x + INTERVAL 'm' MONTH` of a DATE, or of a timestamp (`time`): the same
+  day of the month, clamped to the month's end (`Time.addMonths`). -/
+  | addMonths (m : Int) (time : Bool)
+  /-- `CAST(ts AS TIME)`: the time of day, in microseconds since midnight. -/
+  | timeOfDay
+  /-- `CAST(n AS TIMESTAMP)` of microseconds since 1970-01-01: the same number. -/
+  | asTime
+  /-- `strftime(ts, fmt)` for a format `Time.parseFormat` accepts. -/
+  | strftime (fmt : String)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -77,6 +91,10 @@ inductive BinFn where
   | substr (n : Option Nat)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
+  /-- `d + n` days of a DATE (`d + INTERVAL 'n' DAY`). -/
+  | dateAdd
+  /-- `d - e` of DATEs, in days. -/
+  | dateDiff
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -118,6 +136,15 @@ def UnFn.apply : UnFn → Value → Value
     | none => .null
   | .dateTrunc u, .int ts => .int (Time.trunc u ts)
   | .toDate, .int ts => .int (Time.days ts)
+  | .dayPart p, .int d => match Time.datePartDay p d with
+    | some v => .int v
+    | none => .null
+  | .dayTrunc u, .int d => .int (Time.truncDay u d)
+  | .addMonths m false, .int d => .int (Time.addMonths m d)
+  | .addMonths m true, .int ts => .int (Time.addMonthsUs m ts)
+  | .timeOfDay, .int ts => .int (Time.timeOfDay ts)
+  | .asTime, .int n => .int n
+  | .strftime fmt, .int ts => .str (Time.strftime fmt ts)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -163,6 +190,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .like, .str a, .str b => .bool (Text.like a b)
   | .substr n, .str s, .int a => .str (Text.substr s a n)
   | .trim l r, .str s, .str set => .str (Text.trim l r s set)
+  | .dateAdd, .int d, .int n => .int (d + n)
+  | .dateDiff, .int d, .int e => .int (d - e)
   | _, _, _ => .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules

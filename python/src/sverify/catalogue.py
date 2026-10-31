@@ -27,8 +27,10 @@ every recorded status still holds.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
+import math
 import random
 import re
 import sys
@@ -305,7 +307,7 @@ def _rows(table: pa.Table) -> list[tuple]:
 
 def _canonical(rows: list[tuple]) -> list[str]:
     def norm(v: object) -> object:
-        if isinstance(v, float) and v == int(v) and abs(v) < 2**53:
+        if isinstance(v, float) and math.isfinite(v) and v == int(v) and abs(v) < 2**53:
             return int(v)
         if isinstance(v, float):
             return round(v, 6)
@@ -409,7 +411,12 @@ def probe_profile(
     # DataFusion runs the query itself: Ibis's own SQL for an expression.
     try:
         sql = query if isinstance(query, str) else to_sql(query)
-        reference: list[tuple] | None = _rows(run_sql(con, sql))
+        out = run_sql(con, sql)
+        if not isinstance(query, str):
+            # In the expression's types: DataFusion makes `ts.date()` a timestamp.
+            with contextlib.suppress(pa.ArrowInvalid, pa.ArrowNotImplementedError):
+                out = out.cast(query.schema().to_pyarrow())
+        reference: list[tuple] | None = _rows(out)
         ran = "runs"
     except Exception as e:  # noqa: BLE001 - DataFusion's own failures are findings
         reference, ran = None, f"error: {_first_line(e)}"

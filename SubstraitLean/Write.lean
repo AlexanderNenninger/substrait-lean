@@ -31,6 +31,7 @@ def functions : List (Nat × String) :=
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
    (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
+   (60, "date_diff"), (61, "strftime"),
    (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
    (75, "first_value"), (76, "last_value"), (77, "nth_value")]
 
@@ -40,15 +41,16 @@ def AggFn.anchor : AggFn → Nat
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
-  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
+  | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ | .dayPart _ => 25
+  | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4 | .strftime _ => 61
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
+  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
-  | .substr _ => 32
+  | .substr _ => 32 | .dateAdd => 4 | .dateDiff => 60
   | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
@@ -84,17 +86,17 @@ as microseconds, and `Expr.kind` calls `ts - ts` a time; the writer must tell
 them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
-  | int | float | time | date | interval | str | bool | other
+  | int | float | time | date | interval | str | bool | tod | other
   deriving BEq
 
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
-  | .str => .str | .bool => .bool | .other => .other
+  | .str => .str | .bool => .bool | .tod => .tod | .other => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Parse.Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
-  | .str => .str | .bool => .bool | .other => .other
+  | .str => .str | .bool => .bool | .tod => .tod | .other => .other
 
 /-- An expression without field references. -/
 def isConst : Expr → Bool
@@ -154,6 +156,9 @@ def writeLit (k : WKind) (v : Value) : Json :=
     lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
   | .interval, .int us => writeInterval us
   | .date, .int d => lit [("date", toJson d)]
+  | .tod, .int us =>
+    lit [("precisionTime", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .tod, .null => lit [("null", obj [("precisionTime", obj [("precision", toJson 6)])])]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
   | .float, .null => lit [("null", fp64Type)]
   | .str, .null => lit [("null", obj [("string", obj [])])]
@@ -162,6 +167,12 @@ def writeLit (k : WKind) (v : Value) : Json :=
   | .date, .null => lit [("null", obj [("date", obj [])])]
   | .interval, .null => lit [("null", obj [("intervalDayToSecond", obj [("precision", toJson 6)])])]
   | _, v => obj [("literal", writeValue v)]
+
+/-- An interval of `m` months. -/
+def writeMonths (m : Int) : Json :=
+  obj [("literal", obj [("intervalCompound", obj [
+    ("intervalYearToMonth", obj [("months", toJson m)]),
+    ("intervalDayToSecond", obj [("precision", toJson 6)])])])]
 
 /-- A double the model has one zero and one NaN for, as IEEE engines compute
 it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
@@ -199,8 +210,18 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
-  | .un (.datePart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .time a]
+  | .un (.datePart p) a =>
+    let k := if wkind cols a == .tod then .tod else .time
+    call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols k a]
+  | .un .timeOfDay a => obj [("cast", obj [("type", obj [("precisionTime", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .time a)])]
+  | .un .asTime a => obj [("cast", obj [("type", obj [("precisionTimestamp", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]), ("input", writeExpr cols .int a)])]
+  | .un (.strftime fmt) a => call 61 [writeExpr cols .time a, obj [("literal", writeValue (.str fmt))]]
   | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
+  | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
+  | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
+  | .un (.addMonths m t) a => call 4 [writeExpr cols (if t then .time else .date) a, writeMonths m]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
@@ -214,6 +235,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       -- `timestamp ± constant`: the constant is an interval in microseconds.
       let (ka, kb) := sumKinds (f matches .sub) cols ctx a b
       call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+    -- Days added to a date: an interval of days, or a count of them.
+    | .dateAdd => match b with
+      | .lit (.int k) => call 4 [writeExpr cols .date a, writeInterval (k * Time.usPerDay)]
+      | _ => call 4 [writeExpr cols .date a, call 6 [writeExpr cols .int b, writeInterval Time.usPerDay]]
+    | .dateDiff => call 60 [writeExpr cols .date a, writeExpr cols .date b]
     | .substr (some n) =>
       call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
     | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]

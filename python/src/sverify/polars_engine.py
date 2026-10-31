@@ -185,6 +185,8 @@ def null_type(t: dict) -> DType:
         return US
     if "date" in t:
         return pl.Date
+    if "precisionTime" in t:
+        return pl.Time
     if "i64" in t:
         return pl.Null
     raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
@@ -214,10 +216,17 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return _int(v), pl.Date
     if kind == "intervalDayToSecond":
         return _int(interval_micros(v)), INTERVAL
+    if kind == "precisionTime":
+        if int(v.get("precision", 0)) != 6:
+            raise Unsupported("only microsecond times are supported")
+        return _int(v["value"]), pl.Time
     raise Unsupported(f"unsupported literal {json.dumps(lit)}")
 
 
 def lit_expr(value: Any, dtype: DType) -> pl.Expr:
+    if value is not None and dtype == pl.Time:
+        # Polars' times are nanoseconds.
+        return pl.lit(value * 1000, pl.Int64).cast(pl.Time)
     if value is not None and dtype in (US, INTERVAL, pl.Date):
         # Temporal literals are given as their integer encoding.
         return pl.lit(value, pl.Int64 if dtype != pl.Date else pl.Int32).cast(dtype)
@@ -475,7 +484,14 @@ CALENDAR_UNITS = {"month": "1mo", "quarter": "1q", "year": "1y"}
 
 
 def date_part(part: str, v: Val) -> Val:
-    """`Time.datePart`: NULL outside the dates chrono represents."""
+    """`Time.datePart`: NULL outside the dates chrono represents. A time of
+    day is a timestamp on 1970-01-01, for its clock parts."""
+    if v.dtype == pl.Time:
+        if part not in CLOCK_PARTS:
+            raise Unsupported(f"date_part {part!r} of a time of day")
+        m, d = CLOCK_PARTS[part]
+        tod = v.expr.to_physical().cast(pl.Int64) // 1000
+        return Val((tod % m // d).cast(pl.Int64), pl.Int64, v.issues)
     us = v.expr.dt.epoch("us")
     if part in CLOCK_PARTS:
         m, d = CLOCK_PARTS[part]
@@ -517,6 +533,121 @@ def date_trunc(unit: str, v: Val) -> Val:
     bad = (us > NS_MAX) | (us < NS_MIN) | (t < NS_MIN)
     value = pl.when(bad).then(None).otherwise(t).cast(pl.Int64).cast(US)
     return Val(value, US, (*v.issues, issue(bad, Overflow, f"date_trunc to a {unit} overflows")))
+
+
+#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
+#: within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
+DAY_MIN, DAY_MAX = -96465292, 95026236
+NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
+
+
+def _days(v: Val) -> pl.Expr:
+    """A DATE as days since 1970-01-01 (`Int64`)."""
+    return v.expr.to_physical().cast(pl.Int64)
+
+
+def _month_index(d: Any) -> tuple[Any, Any]:
+    """`Time.monthIndex` of days `d` (`12 · year + month - 1`), and the day
+    of the month from 0: the civil calendar in integer arithmetic (on NumPy
+    arrays, floor division as Lean's)."""
+    z = d + 719468
+    era = z // 146097
+    doe = z - era * 146097
+    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    dom = doy - (153 * mp + 2) // 5
+    # March-based years: months from March, so January and February are 10, 11.
+    return 12 * (yoe + era * 400) + mp + 2, dom
+
+
+def _month_start(i: Any) -> Any:
+    """`Time.monthStart`: the first day of month `i`."""
+    y, mp = (i - 2) // 12, (i - 2) % 12
+    era = y // 400
+    yoe = y - era * 400
+    doe = yoe * 365 + yoe // 4 - yoe // 100 + (153 * mp + 2) // 5
+    return era * 146097 + doe - 719468
+
+
+def _on_days(f: Any, d: pl.Expr) -> pl.Expr:
+    """`f` on an `Int64` expression of days, as one NumPy step (NULLs kept)."""
+
+    def apply(s: pl.Series) -> pl.Series:
+        nulls = s.is_null()
+        out = pl.Series(f(s.fill_null(0).to_numpy().astype(np.int64)), dtype=pl.Int64)
+        return pl.select(pl.when(nulls).then(None).otherwise(out)).to_series()
+
+    return d.cast(pl.Int64).map_batches(apply, return_dtype=pl.Int64)
+
+
+def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
+    """`Time.addMonths`: the same day `m` months later, or that month's last."""
+
+    def f(x: Any) -> Any:
+        i, dom = _month_index(x)
+        return np.minimum(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
+
+    return _on_days(f, d)
+
+
+def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
+    """`Time.truncDay`."""
+    if unit == "day":
+        return d
+    if unit == "week":
+        return d - (d + 3) % 7
+    k = {"month": 1, "quarter": 3, "year": 12}.get(unit)
+    if k is None:
+        raise Unsupported(f"date_trunc of a date to a {unit} is not supported")
+    return _on_days(lambda x: _month_start(_month_index(x)[0] // k * k), d)
+
+
+def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -> Val:
+    """`rangeIssue`: the DATE `days` computed from `v`, an error (`Overflow`)
+    unless both are within `[lo, hi]` days."""
+    x = _days(v)
+    bad = (x < lo) | (x > hi) | (days < lo) | (days > hi)
+    value = pl.when(bad).then(None).otherwise(days).cast(pl.Int32).cast(pl.Date)
+    message = f"{what} outside the dates DataFusion computes"
+    return Val(value, pl.Date, (*issues(v, *vals), issue(bad, Overflow, message)))
+
+
+def day_part(part: str, v: Val) -> Val:
+    """`UnFn.dayPart`: the part of the date's midnight."""
+    x = _days(v)
+    inside = (x >= DAY_MIN) & (x <= DAY_MAX)
+    ts = (pl.when(inside).then(x) * US_PER_DAY).cast(US)
+    return date_part(part, Val(ts, US, v.issues))
+
+
+def add_months(m: int, v: Val) -> Val:
+    """`UnFn.addMonths` of a date or a timestamp, with its `rangeIssue`."""
+    if v.dtype == pl.Date:
+        return date_range(v, add_months_days(m, _days(v)), DAY_MIN, DAY_MAX, "adding months")
+    us = wide(v)
+    r = add_months_days(m, us // US_PER_DAY) * US_PER_DAY + us % US_PER_DAY
+    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX)
+    value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
+    message = "adding months outside the years chrono represents"
+    return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
+
+
+def chrono_only(v: Val, value: pl.Expr, dtype: DType, what: str) -> Val:
+    """`value`, an error (`Overflow`) where the timestamp `v` is outside the
+    years chrono represents."""
+    us = wide(v)
+    bad = (us < PART_MIN) | (us > PART_MAX)
+    message = f"{what} outside the years chrono represents"
+    safe = pl.when(bad).then(None).otherwise(value)
+    return Val(safe, dtype, (*v.issues, issue(bad, Overflow, message)))
+
+
+def strftime(fmt: str, v: Val) -> Val:
+    """`Time.strftime`: chrono's formatting, as DataFusion's."""
+    inside = (wide(v) >= PART_MIN) & (wide(v) <= PART_MAX)
+    safe = pl.when(inside).then(v.expr)
+    return chrono_only(v, safe.dt.strftime(fmt), pl.String, "strftime")
 
 
 def ftoi(v: Val) -> Val:
@@ -583,9 +714,34 @@ class Exprs:
                 return self.regex_match(arg_js[0])
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:
                 which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
-                if not isinstance(which, str) or ts.dtype != US:
+                if not isinstance(which, str) or ts.dtype not in (US, pl.Date, pl.Time):
                     raise Unsupported(f"{name} of {ts.dtype} by {which!r}")
+                if ts.dtype == pl.Time and name == "date_part":
+                    return date_part(which.lower(), ts)
+                if ts.dtype == pl.Time:
+                    raise Unsupported("date_trunc of a time of day")
+                if ts.dtype == pl.Date:
+                    if name == "date_part":
+                        return day_part(which.lower(), ts)
+                    x = _days(ts)
+                    safe = pl.when((x >= NS_DAY_MIN) & (x <= NS_DAY_MAX)).then(x)
+                    t = trunc_days(which.lower(), safe)
+                    return date_range(ts, t, NS_DAY_MIN, NS_DAY_MAX, f"date_trunc to a {which}")
                 return (date_part if name == "date_part" else date_trunc)(which.lower(), ts)
+            if name == "add" and len(arg_js) == 2:
+                months = self.months(arg_js[1])
+                if months is not None:
+                    return add_months(months, self(arg_js[0]))
+            if name == "strftime" and len(arg_js) == 2:
+                ts, fmt = self(arg_js[0]), self.constant(arg_js[1], "a strftime format")
+                if ts.dtype != US or not isinstance(fmt, str):
+                    raise Unsupported(f"strftime of {ts.dtype} by {fmt!r}")
+                return strftime(fmt, ts)
+            if name == "date_diff" and len(arg_js) == 2:
+                a, b = self(arg_js[0]), self(arg_js[1])
+                if a.dtype != pl.Date or b.dtype not in (pl.Date, pl.Null):
+                    raise Unsupported(f"date_diff of {a.dtype} and {b.dtype}")
+                return Val(_days(a) - _days(b), pl.Int64, issues(a, b))
             if name == "substring" and len(arg_js) == 3:
                 n = self.constant(arg_js[2], "substring length")
                 if not isinstance(n, int) or isinstance(n, bool) or n < 0:
@@ -593,6 +749,18 @@ class Exprs:
                 return self.substring(self(arg_js[0]), self(arg_js[1]), n)
             return self.call(name, [self(a) for a in arg_js])
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
+
+    @staticmethod
+    def months(j: dict) -> int | None:
+        """The months of a compound interval literal (Lean writes month
+        intervals only added to a date or timestamp)."""
+        c = j.get("literal", {}).get("intervalCompound")
+        if c is None:
+            return None
+        if interval_micros(c.get("intervalDayToSecond", {})) != 0:
+            raise Unsupported("an interval of months and days")
+        ym = c.get("intervalYearToMonth", {})
+        return 12 * int(ym.get("years", 0)) + int(ym.get("months", 0))
 
     @staticmethod
     def constant(j: dict, what: str) -> Any:
@@ -639,6 +807,13 @@ class Exprs:
             return narrow_int(v, bits)
         if "string" in target and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.String), pl.String, v.issues)
+        if "precisionTime" in target and v.dtype == US:
+            # `UnFn.timeOfDay`; Polars' times are nanoseconds.
+            tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
+            return chrono_only(v, tod, pl.Time, "CAST to TIME")
+        if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
+            # `UnFn.asTime`: microseconds since 1970-01-01.
+            return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
         if "date" in target and v.dtype == US:
             # `UnFn.toDate`: days since 1970-01-01, rounding down.
             days = v.expr.dt.epoch("us") // US_PER_DAY
@@ -729,6 +904,18 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
             return Val(ops[name], pl.Float64, issues(a, b))
+        if name == "add" and ta == pl.Date:
+            # `BinFn.dateAdd`: days, as an interval or a count.
+            if tb == INTERVAL:
+                n = wide(b) // US_PER_DAY
+            elif tb in (pl.Int64, pl.Null):
+                n = wide(b)
+            else:
+                raise Unsupported(f"add of {ta} and {tb}")
+            return date_range(a, _days(a) + n, DAY_MIN, DAY_MAX, "date + days", b)
+        if name == "multiply" and tb == INTERVAL and ta in (pl.Int64, pl.Null):
+            # A count of days (`add(d, multiply(n, INTERVAL '1' DAY))`).
+            return narrow(wide(a) * wide(b), INTERVAL, name, a, b)
         if name in ("add", "subtract", "multiply"):
             out = arith_type(name, ta, tb)
             x, y = wide(a), wide(b)
@@ -756,7 +943,7 @@ class Exprs:
             return self.string(name, a, b)
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
-            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Float64, pl.Null):
+            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
                 # `BinFn.lt` is only defined on integers (and the codes of
                 # doubles and times); strings would differ from SQL.
                 raise Unsupported(f"lt of {t}")
@@ -845,6 +1032,8 @@ def type_of(t: dict) -> DType:
         return US
     if "date" in t:
         return pl.Date
+    if "precisionTime" in t or "time" in t:
+        return pl.Time
     if "intervalDayToSecond" in t:
         return INTERVAL
     raise Unsupported(f"unsupported column type {json.dumps(t)}")

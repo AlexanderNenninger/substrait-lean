@@ -36,6 +36,9 @@ def literal(v: object) -> dict:
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, dt.date):
         return {"literal": {"date": (v - EPOCH.date()).days}}
+    if isinstance(v, dt.time):
+        micros = ((v.hour * 60 + v.minute) * 60 + v.second) * 1_000_000 + v.microsecond
+        return {"literal": {"precisionTime": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, float):
         # The model's one zero and one NaN: -0.0 is 0.0, a negative NaN is NaN.
         text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"

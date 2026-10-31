@@ -49,6 +49,7 @@ def kindType (k : Kind) : Json :=
   | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", n)]
+  | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
   | .str => obj [("string", n)]
   | .bool => obj [("bool", n)]
   | .int | .other => i64Type

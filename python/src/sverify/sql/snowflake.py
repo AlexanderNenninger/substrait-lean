@@ -41,7 +41,8 @@ documentation they rest on:
   forms (`DAYOFWEEKISO`, `WEEKISO`) and truncates to Monday itself. There is
   no sub-minute millisecond part: it is `SECOND` and `NANOSECOND` combined.
   `TIMESTAMP_NTZ` stays within the years chrono represents, so `date_part`
-  is never NULL for a non-NULL timestamp, as in Lean.
+  is never NULL for a non-NULL timestamp, as in Lean. `DATEADD(MONTH, …)`
+  clamps to the end of a shorter month, as `Time.addMonths` does.
 * **Windows**: `LAG`/`LEAD` take the default when the offset leaves the
   partition, as in Lean; `ORDER BY` is required. Tables have no row order
   (no `rowid`), so nothing can stand for Lean's list order, which FETCH and
@@ -67,6 +68,7 @@ _TYPES: dict[str, str] = {
     "int": "NUMBER(38,0)",
     "float": "FLOAT",
     "time": "TIMESTAMP_NTZ(6)",
+    "tod": "TIME(9)",
     "interval": "NUMBER(38,0)",
     "date": "DATE",
     "str": "VARCHAR",
@@ -211,6 +213,26 @@ class SnowflakeDialect(Dialect):
             day = f"DATE_TRUNC('DAY', {ts})"
             return f"DATEADD(DAY, 1 - DAYOFWEEKISO({ts}), {day})"
         return f"DATE_TRUNC('{unit.upper()}', {ts})"
+
+    def time_micros(self, ts: str) -> str:
+        return f"DATE_PART(EPOCH_MICROSECOND, {ts})"
+
+    def time_part(self, part: str, t: str) -> str:
+        # HOUR, SECOND and EXTRACT(NANOSECOND …) take a TIME.
+        return self.date_part(part, t)
+
+    def as_time(self, us: str) -> str:
+        return f"TO_TIMESTAMP_NTZ({us}, 6)"
+
+    def date_days(self, d: str) -> str:
+        return f"DATEDIFF(DAY, CAST('1970-01-01' AS DATE), {d})"
+
+    def date_add_days(self, d: str, n: str) -> str:
+        return f"DATEADD(DAY, {n}, {d})"
+
+    def add_months(self, x: str, months: int, kind: Kind) -> str:
+        # Clamps to the end of a shorter month, as `Time.addMonths`.
+        return f"DATEADD(MONTH, {months}, {x})"
 
     # Aggregates
 
