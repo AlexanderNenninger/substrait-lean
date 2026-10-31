@@ -14,11 +14,14 @@ import SubstraitLean.Write
 import SubstraitLean.Check
 import SubstraitLean.Contracts
 import SubstraitLean.Safety
+import SubstraitLean.Partition
+import SubstraitLean.Guards
 import SubstraitLean.Keys
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Completeness
 import SubstraitLean.ContractCheck
+import SubstraitLean.ShardCheck
 import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples

@@ -156,6 +156,11 @@ class Report:
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors and wrap-arounds Lean could not rule out; when empty,
     the transformation provably runs without them."""
+    guard_free: bool = False
+    """The only issues are integer `SUM`s that may wrap: on data that meets
+    the preconditions, the transformation's SQL (`sverify.sql.to_sql`) and
+    Polars plan (`polars_engine.run`) give the same result with
+    `guards=False`, without per-row checks (`Rel.guardFree_sound`)."""
 
     @property
     def proved(self) -> bool:
@@ -448,6 +453,7 @@ def verify(
         facts={f["name"]: describe(f) for f in out["facts"]},
         deterministic=out["deterministic"],
         issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
+        guard_free=out["guard_free"],
     )
 
 

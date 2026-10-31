@@ -860,7 +860,7 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
     if fn == "sum":
         total = sum(vs)
         if not I64_MIN <= total <= I64_MAX:
-            # DataFusion wraps around; Lean's sum is the true one (`Issue.wraps`).
+            # DataFusion wraps around; Lean's sum is the true one (`Issue.sumWraps`).
             raise IntegerOverflow("SUM leaves 64 bits")
         return total
     if fn in ("fsum", "avg"):
@@ -912,13 +912,17 @@ class Measure:
 
 
 class Translator:
-    def __init__(self, plan: dict, tables: Tables):
+    def __init__(self, plan: dict, tables: Tables, guards: bool = True):
         self.functions = {
             int(e["extensionFunction"].get("functionAnchor", 0)): e["extensionFunction"]["name"]
             for e in plan.get("extensions", [])
             if "extensionFunction" in e
         }
         self.tables = tables
+        self.guards = guards
+
+    def guard(self, lf: pl.LazyFrame, vals: list[Val]) -> pl.LazyFrame:
+        return guard(lf, vals) if self.guards else lf
 
     def exprs(self, dtypes: list[DType]) -> Exprs:
         return Exprs(self.functions, dtypes)
@@ -1006,7 +1010,7 @@ class Translator:
         cond = self.exprs(dtypes)(r["condition"])
         if cond.dtype not in (pl.Boolean, pl.Null):
             raise Unsupported(f"filter condition of type {cond.dtype}")
-        return guard(lf, [cond]).filter(is_true(cond.expr)), dtypes
+        return self.guard(lf, [cond]).filter(is_true(cond.expr)), dtypes
 
     def project(self, r: dict) -> Frame:
         lf, dtypes = self.rel(r["input"])
@@ -1023,7 +1027,7 @@ class Translator:
         out = [v.dtype for v in new]
         n = len(dtypes)
         # Every expression is evaluated on every row, used later or not.
-        lf = guard(lf, new).with_columns(
+        lf = self.guard(lf, new).with_columns(
             [
                 v.expr.cast(t).alias(col(n + k))
                 for k, (v, t) in enumerate(zip(new, out, strict=True))
@@ -1130,7 +1134,7 @@ class Translator:
         ms = [self.measure(m, ex) for m in measures]
         # Grouping expressions and every measure's argument and filter are
         # evaluated on every input row (`Rel.HasIssue`).
-        lf = guard(lf, [*groups, *(v for m in ms for v in m.vals)])
+        lf = self.guard(lf, [*groups, *(v for m in ms for v in m.vals)])
         keys = [f"__sv_g{k}" for k in range(len(groups))]
         lf = lf.with_columns(
             [ordered(g.expr, g.dtype).alias(k) for g, k in zip(groups, keys, strict=True)]
@@ -1264,7 +1268,7 @@ class Translator:
             on = conds[0].expr
             for c in conds[1:]:
                 on = and3(on, c.expr)
-            matches = guard(matches, conds).filter(is_true(on))
+            matches = self.guard(matches, conds).filter(is_true(on))
         if how in ("semi", "anti"):
             # `Rel.semi`: the left rows with (`anti`: without) a match, in order.
             left_cols = [col(i) for i in range(n)]
@@ -1336,14 +1340,18 @@ class Translator:
         return pl.concat(frames, how="vertical"), out
 
 
-def to_lazy(plan: str | dict, tables: Tables) -> pl.LazyFrame:
+def to_lazy(plan: str | dict, tables: Tables, *, guards: bool = True) -> pl.LazyFrame:
     """The `LazyFrame` for a plan in Lean's written form, over `tables`
-    (by name; columns in schema order). Columns are named by `RelRoot.names`."""
+    (by name; columns in schema order). Columns are named by `RelRoot.names`.
+
+    `guards=False` leaves out the per-row checks for runtime issues (`guard`);
+    only for a plan whose contract report is `guard_free`, on data that meets
+    its preconditions (`Rel.guardFree_sound`). Integer `SUM` keeps its check."""
     p = json.loads(plan) if isinstance(plan, str) else plan
     roots = [r["root"] for r in p.get("relations", []) if "root" in r]
     if len(roots) != 1:
         raise Unsupported("plan must have exactly one root relation")
-    lf, dtypes = Translator(p, tables).rel(roots[0]["input"])
+    lf, dtypes = Translator(p, tables, guards).rel(roots[0]["input"])
     names = roots[0].get("names") or [col(i) for i in range(len(dtypes))]
     if len(names) != len(dtypes):
         raise Unsupported(f"root names {names} do not match arity {len(dtypes)}")
@@ -1362,6 +1370,6 @@ def collect(lf: pl.LazyFrame) -> pl.DataFrame:
     return lf.collect(optimizations=pl.QueryOptFlags(predicate_pushdown=False))
 
 
-def run(plan: str | dict, tables: Tables) -> pa.Table:
-    """Run a plan in Lean's written form on Polars."""
-    return collect(to_lazy(plan, tables)).to_arrow()
+def run(plan: str | dict, tables: Tables, *, guards: bool = True) -> pa.Table:
+    """Run a plan in Lean's written form on Polars (`guards`: see `to_lazy`)."""
+    return collect(to_lazy(plan, tables, guards=guards)).to_arrow()

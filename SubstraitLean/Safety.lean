@@ -49,6 +49,10 @@ inductive Issue where
   | badRegex
   /-- `+`, `-`, `*` or negation leaving 64 bits: DataFusion wraps around. -/
   | wraps
+  /-- An integer `SUM` leaving 64 bits: DataFusion wraps around. Kept apart
+  from `wraps` because it comes from a group's rows, not from one row:
+  `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
+  | sumWraps
   deriving Repr, DecidableEq
 
 def Issue.name : Issue → String
@@ -57,11 +61,11 @@ def Issue.name : Issue → String
   | .badCast => "cast out of range"
   | .negExponent => "negative exponent"
   | .badRegex => "invalid regular expression"
-  | .wraps => "may wrap around"
+  | .wraps | .sumWraps => "may wrap around"
 
 /-- Errors stop the query; wrapping silently gives a different result. -/
 def Issue.isError : Issue → Bool
-  | .wraps => false
+  | .wraps | .sumWraps => false
   | _ => true
 
 def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)
@@ -527,7 +531,7 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .aggregate r gs ms, p => r.HasIssue cat u p ∨
       (∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ gs ++ ms.flatMap Measure.exprs,
         p ∈ e.issues row) ∨
-      ∃ m ∈ ms, m.fn = .sum ∧ p = (.wraps, m.arg) ∧
+      ∃ m ∈ ms, m.fn = .sum ∧ p = (.sumWraps, m.arg) ∧
         ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false
 
 /-- The issues the abstract evaluation cannot rule out. -/
@@ -551,7 +555,7 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++
       (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T)) ++
-      ms.filterMap fun m => if m.fn = .sum then some (.wraps, m.arg) else none
+      ms.filterMap fun m => if m.fn = .sum then some (.sumWraps, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
 
