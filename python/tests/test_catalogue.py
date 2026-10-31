@@ -64,9 +64,17 @@ def con():
     return connect()
 
 
+#: Pitfalls under which DataFusion running Ibis's SQL gives a wrong answer.
+DATAFUSION_WRONG = {"duration_vs_interval"}
+
+
 @pytest.mark.parametrize("query", QUERIES, ids=lambda q: q.id)
 def test_status_holds(con, query):
     got = cat.probe(con, query, SCHEMAS)
     assert got == STATUS[query.id]
+    # Where a pitfall makes DataFusion's own answer wrong, the engines differ
+    # from it rightly (they run the plan Lean checked).
+    if any(p.split(":")[0] in DATAFUSION_WRONG for p in query.pitfalls):
+        return
     for engine, result in cat.effective(got).get("engines", {}).items():
         assert result != "differs", f"{engine} disagrees with DataFusion"
