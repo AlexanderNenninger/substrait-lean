@@ -93,7 +93,7 @@ def test_batches_are_checked_without_reading_the_tables(monkeypatch):
         checked.append(table.get_name())
         return real(table, cond, *args)
 
-    monkeypatch.setattr(sv.incremental, "violations", spy)
+    monkeypatch.setattr(sv.contracts, "violations", spy)
     view.apply({"orders": sv.Changes(inserts=[(3, "cy", 1)])})
     assert checked == ["orders$inserts"]
 

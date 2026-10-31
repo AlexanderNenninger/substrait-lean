@@ -156,6 +156,25 @@ plus_one(orders)
 * **Not tracked yet:** string contents, DECIMAL columns, relations between columns
   beyond "column plus constant", and counts across rows.
 
+## Delta Lake and Iceberg
+
+`sverify.io` uses Delta Lake and Iceberg tables as change sources, as sources
+of preconditions, and as sinks that carry proved contracts between jobs:
+
+```python
+from sverify.io import DeltaSink, DeltaSource
+
+pipe = sv.Pipeline(sv.connect())
+big = pipe.view("big", doubled(pipe.source("orders", DeltaSource("orders"))))
+pipe.preconditions  # each with its source: schema, Delta constraint, file stats @v1, ...
+sink = DeltaSink("big", big)
+sink.write()  # NOT NULL / CHECK constraints from `ensures`, contract in the commit
+pipe.refresh()  # orders@v1→v3: ...; Δ trusted as coming from Delta CDF v1→v3
+sink.write()  # one MERGE commit, exactly once
+```
+
+See the main README for the full example and what is trusted versus proved.
+
 ## How do I know it's right?
 
 * **Proofs.** The delta plan comes from a Lean function, with a theorem saying
