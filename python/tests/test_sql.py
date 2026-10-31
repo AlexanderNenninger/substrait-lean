@@ -45,9 +45,6 @@ ACCEPTED = sorted(
     if f.with_suffix(".expected").read_text().rstrip().endswith("[exit 0]")
 )
 REFUSED = sorted(f.stem for f in FIXTURES.glob("*.json") if f.stem not in ACCEPTED)
-#: Accepted by Lean with relations the SQL generator does not have yet
-#: (aggregates with measures): it must refuse them, not translate them wrongly.
-NOT_IN_SQL = {"df_aggregate"}
 
 
 #: The Wheels workflow runs these tests against the installed wheel, with only
@@ -232,14 +229,6 @@ def test_fixture_lists_are_complete():
     assert set(REFUSED) == {"bad_field_ref"}
 
 
-@needs_fixtures
-@pytest.mark.parametrize("name", sorted(NOT_IN_SQL))
-def test_fixtures_beyond_the_sql_generator_are_refused(name):
-    assert name in ACCEPTED
-    with pytest.raises(Unsupported, match="aggregate functions"):
-        to_sql(fixture(name), DUCKDB)
-
-
 @pytest.mark.parametrize("name", REFUSED)
 def test_refused_fixtures_are_refused(name):
     with pytest.raises(Unsupported):
@@ -261,9 +250,7 @@ def test_virtual_fixtures_match_the_golden_rows(name):
     agree(plan, df, duck, parse_rows(golden(name)))
 
 
-@pytest.mark.parametrize(
-    "name", [n for n in ACCEPTED if schemas(fixture(n)) and n not in NOT_IN_SQL]
-)
+@pytest.mark.parametrize("name", [n for n in ACCEPTED if schemas(fixture(n))])
 @settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_fixtures_agree_on_random_tables(name, data):
@@ -273,7 +260,7 @@ def test_fixtures_agree_on_random_tables(name, data):
     agree(plan, df, duck, lean_on(plan, tables) if lean_printable(plan) else None)
 
 
-@pytest.mark.parametrize("name", [n for n in ACCEPTED if n not in NOT_IN_SQL])
+@pytest.mark.parametrize("name", ACCEPTED)
 def test_lean_written_fixtures_give_the_same_sql_results(name):
     """The plan `substrait-check --write` makes of a fixture means the same."""
     plan = fixture(name)
@@ -619,7 +606,7 @@ def test_unsupported_constructs_raise():
     r = ints(a=[1], b=[2])
     s = pa.table({"name": ["a"]})
     for sql, tables, match in [
-        ("SELECT a, SUM(b) AS s FROM r GROUP BY a", {"r": r}, "aggregate functions"),
+        ("SELECT a, STDDEV(b) AS s FROM r GROUP BY a", {"r": r}, "unsupported aggregate"),
         ("SELECT name FROM s WHERE name < 'b'", {"s": s}, "ordering comparisons of str"),
         ("SELECT a FROM r WHERE a < 1 IS TRUE", {"r": r}, "unsupported function is_true"),
     ]:

@@ -387,6 +387,18 @@ class Dialect:
         own dialect, which agrees with Rust's on simple patterns."""
         raise Unsupported(f"{self.name}: regular expressions are not implemented")
 
+    # Aggregates
+
+    def int_sum(self, v: str) -> str:
+        """`SUM` of the BIGINT column `v`, exactly; a sum outside 64 bits
+        raises (DataFusion wraps around, Lean's sum is the true one)."""
+        raise Unsupported(f"{self.name}: integer SUM is not implemented")
+
+    def float_sum(self, v: str, o: str) -> str:
+        """`floatSum`: the doubles of `v` added one by one in the order of the
+        ordinal `o`, from +0.0 (rounding depends on the order)."""
+        raise Unsupported(f"{self.name}: SUM of doubles in row order is not implemented")
+
     # Three-valued logic and comparisons (NULL-propagating)
 
     def eq(self, a: str, b: str) -> str:
@@ -653,9 +665,28 @@ class Distinct:
     input: Rel
 
 
+@dataclass(frozen=True)
+class Measure:
+    """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
+
+    fn: Literal["count", "sum", "fsum", "avg", "min", "max"]
+    arg: Expr
+    distinct: bool = False
+    filter: Expr | None = None
+
+
+@dataclass(frozen=True)
+class Aggregate:
+    """`GROUP BY groups`, then one column per measure."""
+
+    input: Rel
+    groups: tuple[Expr, ...]
+    measures: tuple[Measure, ...]
+
+
 Rel = (
     Read | Values | Filter | Project | Emit | Cross | Join | Fetch | UnionAll | Window | Semi
-    | OrderBy | Distinct
+    | OrderBy | Distinct | Aggregate
 )  # fmt: skip
 
 
@@ -671,6 +702,9 @@ def kinds(r: Rel) -> list[Kind | None]:
             return kinds(i)
         case Semi(left=a):
             return kinds(a)
+        case Aggregate(input=i, groups=gs, measures=ms):
+            ks = kinds(i)
+            return [expr_kind(g, ks) for g in gs] + [_measure_kind(m, ks, expr_kind) for m in ms]
         case Project(input=i, exprs=es):
             ks = kinds(i)
             return ks + [expr_kind(e, ks) for e in es]
@@ -697,6 +731,11 @@ def lean_kinds(r: Rel) -> list[LeanKind]:
             return lean_kinds(i)
         case Semi(left=a):
             return lean_kinds(a)
+        case Aggregate(input=i, groups=gs, measures=ms):
+            ks = lean_kinds(i)
+            return [lean_expr_kind(g, ks) for g in gs] + [
+                _measure_kind(m, ks, lean_expr_kind) for m in ms
+            ]
         case Project(input=i, exprs=es):
             ks = lean_kinds(i)
             return ks + [lean_expr_kind(e, ks) for e in es]
@@ -717,6 +756,13 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> K | Literal["int"]:
     if f.fn == "row_number":
         return "int"
     return cols[f.col] if f.col < len(cols) else unknown
+
+
+def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
+    """`Measure.kind`."""
+    if m.fn in ("count", "sum"):
+        return "int"
+    return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
 
 
 def _get(ks: list, i: int) -> Any:
@@ -1596,40 +1642,92 @@ class _Parser:
         return core
 
     def aggregate(self, r: dict) -> Rel:
-        """An aggregate without measures, grouping by columns, is `DISTINCT` (of
-        its grouping keys). Lean also models aggregates with measures
-        (`Rel.aggregate`), which are not translated to SQL yet."""
+        """`AggregateRel`, as `parseRel` reads it: `DISTINCT` when there are no
+        measures and the groups are columns, else `Rel.aggregate`."""
         inp = self.rel(_req(r, "input"))
         cols = self.cols(inp)
-        todo = "aggregate functions (GROUP BY with measures or expressions) are not translated yet"
-        if _arr(r, "measures"):
-            raise Unsupported(todo)
+        measures = _arr(r, "measures")
         groupings = _arr(r, "groupings")
-        if len(groupings) != 1:
-            raise Unsupported(todo if not groupings else "grouping sets are not supported")
-        g = groupings[0]
-        refs, exprs = _field(g, "expressionReferences"), _field(g, "groupingExpressions")
-        if refs is None and exprs is None:
-            # DataFusion writes `DISTINCT` as one empty grouping: all columns.
-            keys = list(range(len(cols.lean)))
+        groups: list[Expr] | None
+        if not groupings:
+            groups = []
+        elif len(groupings) > 1:
+            raise Unsupported("grouping sets are not supported")
         else:
-            top = _arr(r, "groupingExpressions")
-            if refs is not None:
-                js = []
-                for i in _arr(g, "expressionReferences"):
-                    k = _nat(i)
-                    if k >= len(top):
-                        raise Unsupported(f"grouping expression {k} does not exist")
-                    js.append(top[k])
+            g = groupings[0]
+            refs, exprs = _field(g, "expressionReferences"), _field(g, "groupingExpressions")
+            if refs is None and exprs is None:
+                # DataFusion writes `DISTINCT` as one empty grouping (which its
+                # own consumer rejects); without measures it can only mean all columns.
+                groups = None if not measures else []
             else:
-                js = _arr(g, "groupingExpressions")
-            groups = [self.expr(e, cols) for e in js]
-            if not all(isinstance(e, Field) for e in groups):
-                raise Unsupported(todo)
-            keys = [e.index for e in groups if isinstance(e, Field)]
-        if keys == list(range(len(cols.lean))):
+                top = _arr(r, "groupingExpressions")
+                if refs is not None:
+                    js = []
+                    for k in _arr(g, "expressionReferences"):
+                        k = _nat(k)
+                        if k >= len(top):
+                            raise Unsupported(f"grouping expression {k} does not exist")
+                        js.append(top[k])
+                else:
+                    js = _arr(g, "groupingExpressions")
+                groups = [self.expr(e, cols) for e in js]
+        if groups is None:
             return Distinct(inp)
-        return Distinct(Emit(inp, tuple(keys)))
+        if not measures:
+            if not groups:
+                raise Unsupported("an aggregate without groupings needs measures")
+            if all(isinstance(e, Field) for e in groups):
+                keys = tuple(e.index for e in groups if isinstance(e, Field))
+                if keys == tuple(range(len(cols.lean))):
+                    return Distinct(inp)
+                return Distinct(Emit(inp, keys))
+        return Aggregate(inp, tuple(groups), tuple(self.measure(m, cols) for m in measures))
+
+    def measure(self, mj: dict, cols: _Cols) -> Measure:
+        """`parseMeasure`. `AVG` of integers averages their conversions to
+        double; `COUNT(*)` may come with no argument."""
+        m = _req(mj, "measure")
+        name = _base_name(self.name(_nat_d(m, "functionReference")))
+        if _arr(m, "sorts"):
+            raise Unsupported(f"ordered aggregates are not supported: {name}")
+        inv = _field(m, "invocation")
+        if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
+                       "AGGREGATION_INVOCATION_DISTINCT"):  # fmt: skip
+            raise Unsupported(f"unsupported aggregate invocation: {inv}")
+        f = _field(mj, "filter")
+        cond = None if f is None else self.expr(f, cols)
+        args = [_req(a, "value") for a in _arr(m, "arguments")]
+        if len(args) == 1:
+            arg = self.expr(args[0], cols)
+        elif not args and name == "count":
+            arg = Lit(1, "int")
+        elif not args:
+            raise Unsupported(f"{name} needs an argument")
+        else:
+            raise Unsupported(f"{name} takes one argument")
+        k = lean_expr_kind(arg, cols.lean)
+        fn: Literal["count", "sum", "fsum", "avg", "min", "max"]
+        match name, k:
+            case "count", _:
+                fn = "count"
+            case "sum", "int":
+                fn = "sum"
+            case "sum", "float":
+                fn = "fsum"
+            case "avg", "int":
+                fn, arg = "avg", Un("itof", arg)
+            case "avg", "float":
+                fn = "avg"
+            case (("min" | "max"), "float"):
+                raise Unsupported(f"{name} of doubles is not supported")
+            case (("min" | "max"), ("int" | "str" | "bool" | "time" | "date")):
+                fn = name
+            case (("min" | "max" | "sum" | "avg"), _):
+                raise Unsupported(f"{name} of this type is not supported")
+            case _:
+                raise Unsupported(f"unsupported aggregate function: {name}")
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -1875,7 +1973,10 @@ def order_matters(r: Rel) -> bool:
             return True
         case Read() | Values():
             return False
-        case Filter(input=i) | Project(input=i) | Emit(input=i) | Distinct(input=i):
+        case (
+            Filter(input=i) | Project(input=i) | Emit(input=i) | Distinct(input=i)
+            | Aggregate(input=i)
+        ):  # fmt: skip
             return order_matters(i)
         case Semi(left=a):
             return order_matters(a)
@@ -2087,7 +2188,105 @@ class _Writer:
                 return self.select(items, d.subquery(self.rel(i, needs), a))
             case Distinct(input=i):
                 return self.distinct(i, ordered)
+            case Aggregate(input=i, groups=gs, measures=ms):
+                return self.aggregate(i, gs, ms, ordered)
         raise Unsupported(f"unsupported relation {type(r).__name__}")
+
+    def aggregate(
+        self, i: Rel, groups: Sequence[Expr], measures: Sequence[Measure], ordered: bool
+    ) -> str:
+        """`aggregateEval`. Three steps: the grouping expressions and each
+        measure's argument (NULL on rows its filter drops) on every input row;
+        for `DISTINCT` measures, the argument only on the first row of each
+        value in its group; then `GROUP BY` the groups, as `Value`s (doubles
+        also by the sign bit). Groups come in order of their first row."""
+        d = self.d
+        ks = kinds(i)
+        m = len(ks)
+        for e in [*groups, *(x for ms in measures for x in (ms.arg, ms.filter) if x is not None)]:
+            self.check_refs(e, m)
+        # Double sums add in Lean's list order, which needs the ordinal.
+        sums = any(ms.fn in ("fsum", "avg") for ms in measures)
+        needs = ordered or sums
+        a = self.alias()
+
+        def ref(j: int) -> str:
+            return self.ref(a, self.c(j))
+
+        g_cols = [d.quote(f"g{k}") for k in range(len(groups))]
+        m_cols = [d.quote(f"m{k}") for k in range(len(measures))]
+        # A DISTINCT measure's argument on the first row of each of its values.
+        d_cols = [d.quote(f"d{k}") for k in range(len(measures))]
+        g_kinds = [expr_kind(g, ks) for g in groups]
+        items = [
+            f"{self.expr(g, ref, ks, k)} AS {c}"
+            for g, k, c in zip(groups, g_kinds, g_cols, strict=True)
+        ]
+        for ms, c in zip(measures, m_cols, strict=True):
+            k = expr_kind(ms.arg, ks)
+            x = self.expr(ms.arg, ref, ks, k)
+            if ms.filter is not None:
+                keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
+                x = d.case_when(keep, x, d.null(k))
+            items.append(f"{x} AS {c}")
+        if needs:
+            items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
+        level = self.select(items, d.subquery(self.rel(i, needs), a))
+        b = self.alias()
+
+        def col(c: str) -> str:
+            return self.ref(b, c)
+
+        keys = [
+            x for c, k in zip(g_cols, g_kinds, strict=True) for x in d.partition_keys(col(c), k)
+        ]
+        if any(ms.distinct for ms in measures):
+            # The first row of each value of a DISTINCT measure's argument.
+            items = [f"{col(c)} AS {c}" for c in g_cols + m_cols]
+            if needs:
+                items.append(f"{self.ordinal(b)} AS {d.quote(ORD)}")
+            for ms, c, dc in zip(measures, m_cols, d_cols, strict=True):
+                if not ms.distinct:
+                    continue
+                part = keys + d.partition_keys(col(c), expr_kind(ms.arg, ks))
+                order = [self.asc(self.ordinal(b))] if needs else part
+                first = f"{d.row_number(d.over(part, order))} = {d.int_lit(1)}"
+                value = d.case_when(first, col(c), d.null(expr_kind(ms.arg, ks)))
+                items.append(f"{value} AS {dc}")
+            level = self.select(items, d.subquery(level, b))
+            b = self.alias()
+            keys = [
+                x for c, k in zip(g_cols, g_kinds, strict=True) for x in d.partition_keys(col(c), k)
+            ]
+        out = [f"{col(c)} AS {self.c(k)}" for k, c in enumerate(g_cols)]
+        for k, ms in enumerate(measures):
+            v = col(d_cols[k] if ms.distinct else m_cols[k])
+            sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
+            out.append(f"{sql} AS {self.c(len(groups) + k)}")
+        if ordered:
+            out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")
+        rest = f"GROUP BY {', '.join(keys)}" if keys else ""
+        return self.select(out, d.subquery(level, b), rest)
+
+    def measure(self, m: Measure, v: str, kind: Kind | None, o: str) -> str:
+        """`Measure.eval` of the column `v` (NULL where the measure skips a row)."""
+        d = self.d
+        match m.fn:
+            case "count":
+                return f"COUNT({v})"
+            case "sum":
+                return d.int_sum(v)
+            case "fsum" | "avg":
+                total = d.float_sum(v, o)
+                if m.fn == "avg":
+                    total = d.float_div(total, d.int_to_float(f"COUNT({v})"))
+                return d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
+        # `Value.le`: strings by code point (no collation), FALSE < TRUE.
+        f = "MIN" if m.fn == "min" else "MAX"
+        if kind == "bool":
+            as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
+            return f"({f}({d.case_when(f'{v} IS NULL', d.null('int'), as_int)}) = {d.int_lit(1)})"
+        return f"{f}({v})"
 
     def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
         """ORDER BY keys for `sortLe sort` over subquery `a`, ties broken by its
