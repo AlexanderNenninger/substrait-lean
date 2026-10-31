@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.Rel
+import SubstraitLean.Keys
 
 /-!
 # Parsing Substrait JSON plans
@@ -103,9 +103,11 @@ Doubles, timestamps and dates all become integers in the model (see
 inductive Kind where
   /-- `tod`: a time of day (`TIME`), in microseconds since midnight. -/
   | int | float | time | date | str | bool | tod | other
-  deriving Repr, BEq, DecidableEq
+  /-- A list of values of the element kind. -/
+  | list (elem : Kind)
+  deriving Repr, BEq, DecidableEq, Inhabited
 
-def typeKind (ty : Json) : Kind :=
+partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if ["i8", "i16", "i32", "i64"].any has then .int
   else if ["fp32", "fp64"].any has then .float
@@ -120,6 +122,8 @@ def typeKind (ty : Json) : Kind :=
     if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .tod else .other
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
+  else if let some l := (ty.getObjVal? "list").toOption then
+    .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
   else .other
 
 def schemaKinds (schema : Json) : List Kind :=
@@ -151,6 +155,8 @@ def litKind : Value → Kind
   | .str _ => .str
   | .bool _ => .bool
   | .null => .other
+  | .list [] => .list .other
+  | .list (v :: _) => .list (litKind v)
 
 def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
@@ -197,6 +203,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .count | .sum => .int
   | .fsum | .avg => .float
   | .min | .max => m.arg.kind cols
+  | .collect => .list (m.arg.kind cols)
 
 def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
   | .rowNumber | .rank _ | .denseRank _ | .ntile _ => .int
@@ -226,6 +233,9 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
       ks ++ fns.map (WinFn.kind ks)
   | .semi a _ _ _ => a.kinds tables
   | .orderBy r _ | .distinct r => r.kinds tables
+  | .unnest r c =>
+      let ks := r.kinds tables
+      ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
   | .aggregate r gs ms =>
       let ks := r.kinds tables
       gs.map (·.kind ks) ++ ms.map (·.kind ks)
@@ -795,6 +805,13 @@ def mkFloatCall : String → List Expr → J Expr
 
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json) : J Expr := do
+  -- List literals: their elements are literals (without the `literal` key).
+  if let some l := field? j "literal" then
+    if let some lj := field? l "list" then
+      let vs ← (← arrD lj "values").mapM fun e => do
+        return (← parseExpr fns [] (Json.mkObj [("literal", e)])).eval []
+      return .lit (.list vs)
+    if (field? l "emptyList").isSome then return .lit (.list [])
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"
@@ -944,6 +961,21 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     | e :: es => return es.foldl (.bin .or) e
   | (k, _) => throw s!"unsupported expression: {k}"
 
+def parseColumn (fns : List (Nat × String)) (cols : List Kind) (what : String) (j : Json) : J Nat := do
+  match ← parseExpr fns cols j with
+  | .field i => pure i
+  | _ => throw s!"window {what} must be columns"
+
+def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J SortKey := do
+  let col ← parseColumn fns cols "sort keys" (← field s "expr")
+  let (desc, nullsFirst) ← match field? s "direction" with
+    | some (.str "SORT_DIRECTION_ASC_NULLS_FIRST") => pure (false, true)
+    | some (.str "SORT_DIRECTION_ASC_NULLS_LAST") => pure (false, false)
+    | some (.str "SORT_DIRECTION_DESC_NULLS_FIRST") => pure (true, true)
+    | some (.str "SORT_DIRECTION_DESC_NULLS_LAST") => pure (true, false)
+    | d => throw s!"unsupported sort direction: {(d.map (·.compress)).getD "unspecified"}"
+  return { col, desc, nullsFirst }
+
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
 def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J Measure := do
@@ -952,7 +984,10 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  if !(← arrD m "sorts").isEmpty then throw s!"ordered aggregates are not supported: {name}"
+  -- Only `ARRAY_AGG` depends on the order of its rows.
+  let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
+  if !sort.isEmpty && name != "array_agg" then
+    throw s!"ordered aggregates are not supported: {name}"
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
@@ -984,25 +1019,21 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
     | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
     | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
     | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
+    -- NULLs are skipped (`Measure.inputs`), as with Ibis's
+    -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
+    | "array_agg", _ => pure (.collect, arg)
     | n, _ => throw s!"unsupported aggregate function: {n}"
-  return { fn, arg, distinct, filter }
+  if fn == .collect then
+    if distinct then throw "array_agg(DISTINCT …) is not supported"
+    let skipsNull := match filter with
+      | some f => f == .un .not (.un .isNull arg) ||
+          (match f with | .bin .and _ (.un .not (.un .isNull a)) => a == arg | _ => false)
+      | none => false
+    if !skipsNull then
+      throw "array_agg keeps NULLs; only array_agg(x) FILTER (WHERE x IS NOT NULL) is supported"
+  return { fn, arg, distinct, filter, sort }
 
 /-! ## Window functions -/
-
-def parseColumn (fns : List (Nat × String)) (cols : List Kind) (what : String) (j : Json) : J Nat := do
-  match ← parseExpr fns cols j with
-  | .field i => pure i
-  | _ => throw s!"window {what} must be columns"
-
-def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J SortKey := do
-  let col ← parseColumn fns cols "sort keys" (← field s "expr")
-  let (desc, nullsFirst) ← match field? s "direction" with
-    | some (.str "SORT_DIRECTION_ASC_NULLS_FIRST") => pure (false, true)
-    | some (.str "SORT_DIRECTION_ASC_NULLS_LAST") => pure (false, false)
-    | some (.str "SORT_DIRECTION_DESC_NULLS_FIRST") => pure (true, true)
-    | some (.str "SORT_DIRECTION_DESC_NULLS_LAST") => pure (true, false)
-    | d => throw s!"unsupported sort direction: {(d.map (·.compress)).getD "unspecified"}"
-  return { col, desc, nullsFirst }
 
 /-- A frame bound (Substrait's `WindowFunction.Bound`); `CURRENT ROW` is
 `preceding 0`. -/
@@ -1112,26 +1143,36 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
       pure (.agg m sort fr)
   return (part, sort, f)
 
-/-- The window functions inside an expression, in the order `replaceWindows`
-visits them. A window function's own arguments are not searched. -/
-partial def windowsIn : Json → List Json
-  | .arr a => a.toList.flatMap windowsIn
-  | j@(.obj kvs) => match field? j "windowFunction" with
+/-- The nodes under `key` inside an expression, in the order `replaceNodes`
+visits them. A node's own contents are not searched. -/
+partial def nodesIn (key : String) : Json → List Json
+  | .arr a => a.toList.flatMap (nodesIn key)
+  | j@(.obj kvs) => match field? j key with
     | some w => [w]
-    | none => kvs.toList.flatMap (windowsIn ·.2)
+    | none => kvs.toList.flatMap (nodesIn key ·.2)
   | _ => []
 
-/-- Replace the `k`-th window function (from `k₀`) by `col k`. -/
-partial def replaceWindows (col : Nat → Json) : Json → StateM Nat Json
-  | .arr a => return .arr (← a.mapM (replaceWindows col))
+/-- Replace the `k`-th node under `key` (from `k₀`) by `col k`. -/
+partial def replaceNodes (key : String) (col : Nat → Json) : Json → StateM Nat Json
+  | .arr a => return .arr (← a.mapM (replaceNodes key col))
   | j@(.obj kvs) => do
-    if (field? j "windowFunction").isSome then
+    if (field? j key).isSome then
       let k ← get
       set (k + 1)
       return col k
-    let kvs' ← kvs.toList.mapM fun (k, v) => do return (k, ← replaceWindows col v)
+    let kvs' ← kvs.toList.mapM fun (k, v) => do return (k, ← replaceNodes key col v)
     return Json.mkObj kvs'
   | j => return j
+
+/-- The window functions inside an expression. -/
+def windowsIn : Json → List Json := nodesIn "windowFunction"
+
+def replaceWindows (col : Nat → Json) : Json → StateM Nat Json := replaceNodes "windowFunction" col
+
+/-- A reference to input column `i`. -/
+def fieldJson (i : Nat) : Json :=
+  Json.mkObj [("selection", Json.mkObj [("directReference", Json.mkObj
+    [("structField", Json.mkObj [("field", (i : Int))])])])]
 
 /-- A `ProjectRel` whose expressions use window functions, at the top or
 nested (`ROW_NUMBER() OVER (…) - 1`). The windows are hoisted into
@@ -1161,10 +1202,7 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
       if p' == part && s' == sort then return off + before
       off := off + fs.length
     return off
-  let field (i : Nat) : Json :=
-    Json.mkObj [("selection", Json.mkObj [("directReference", Json.mkObj
-      [("structField", Json.mkObj [("field", (i : Int))])])])]
-  let (rewritten, _) := (es.mapM (replaceWindows (field ∘ column))).run 0
+  let (rewritten, _) := (es.mapM (replaceWindows (fieldJson ∘ column))).run 0
   let wcols := cols ++ (windowed.kinds []).drop n
   -- Bare window functions are their columns; other expressions are computed
   -- after the windows.
@@ -1240,6 +1278,77 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   | some m => return .emit filtered (← parseMask m)
   | none => return filtered
 
+/-! ## Subqueries
+
+A subquery expression (`Expression.subquery`) in a filter or a projection
+becomes a column appended to the input, computed by joining the subquery's
+relation; the expression then reads that column. Outer references are
+refused, so only uncorrelated subqueries get here. -/
+
+/-- Does `r` have at most one row, on every catalog with the tables' arities?
+`Rel.keys` derives the empty key (`Rel.keys_sound`, `KeyOn.nil_iff`). -/
+def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  (r.keys cat (fun _ => []) (fun _ => []) (fun _ => [])).contains []
+
+/-- `inp` with one more column: the value of the subquery `sq` on each row.
+
+* `(SELECT …)`: a left join on `TRUE`. DataFusion fails when the subquery
+  has several rows, so it must provably have at most one (`atMostOneRow`);
+  with none, the value is `NULL`.
+* `x IN (SELECT y …)`: `TRUE` if some `y = x`; otherwise `NULL` if `x` is
+  `NULL` (and there are `y`s) or some `y` is, else `FALSE`. A left join with
+  the distinct non-`NULL` `y`s finds the match (at most one per row), and a
+  cross join with `COUNT(*)` and `COUNT(y)` (one row) says the rest.
+* `EXISTS (…)`: a cross join with its `COUNT(*)` (one row), compared with 0. -/
+def liftSubquery (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Rel) (sq : Json) :
+    P Rel := do
+  let cols := inp.kinds (← get)
+  let n := cols.length
+  let oneColumn (what : String) (q : Rel) : P Unit := do
+    if (q.kinds (← get)).length != 1 then throw s!"{what} must return one column"
+  let count (e : Expr) : Measure := { fn := .count, arg := e }
+  match ← oneof "subquery" sq ["scalar", "inPredicate", "setPredicate"] with
+  | ("scalar", s) =>
+    let q ← parse (← field s "input")
+    oneColumn "a scalar subquery" q
+    if !atMostOneRow (← get) q then
+      throw "a scalar subquery must have at most one row (DataFusion fails on more), \
+        and the checker cannot prove it (it can for an aggregate without groups, or LIMIT 1)"
+    return .join inp q .left (.lit (.bool true))
+  | ("inPredicate", ip) =>
+    let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
+    let x ← parseExpr fns cols nj
+    let hay ← parse (← field ip "haystack")
+    oneColumn "an IN subquery" hay
+    let ys := Rel.distinct (.filter hay (.un .not (.un .isNull (.field 0))))
+    let counts := Rel.aggregate hay [] [count (.lit (.int 1)), count (.field 0)]
+    let both := Rel.cross (.join inp ys .left (.bin .eq x (.field n))) counts
+    let (y, c, cy) := (Expr.field n, Expr.field (n + 1), Expr.field (n + 2))
+    let value := Expr.ifThen (.un .not (.un .isNull y)) (.lit (.bool true))
+      (.ifThen (.bin .eq c (.lit (.int 0))) (.lit (.bool false))
+        (.ifThen (.bin .or (.un .isNull x) (.bin .lt cy c)) (.lit .null) (.lit (.bool false))))
+    return .emit (.project both [value]) (List.range n ++ [n + 3])
+  | (_, sp) =>
+    if field? sp "predicateOp" != some (.str "PREDICATE_OP_EXISTS") then
+      throw "only EXISTS set predicates are supported"
+    let q ← parse (← field sp "tuples")
+    let exists_ := Expr.bin .lt (.lit (.int 0)) (.field n)
+    return .emit (.project (.cross inp (.aggregate q [] [count (.lit (.int 1))])) [exists_])
+      (List.range n ++ [n + 1])
+
+/-- Parse the expressions `es` over `inp`, lifting their subqueries
+(`liftSubquery`): the lifted input, and the expressions over it. -/
+def parseLifted (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Rel) (es : List Json) :
+    P (Rel × List Expr) := do
+  let n := (inp.kinds (← get)).length
+  let lifted ← (es.flatMap (nodesIn "subquery")).foldlM (liftSubquery fns parse) inp
+  let (rewritten, _) := (es.mapM (replaceNodes "subquery" (fieldJson ∘ (n + ·)))).run 0
+  let cols := lifted.kinds (← get)
+  return (lifted, ← rewritten.mapM fun e => (parseExpr fns cols e : J Expr))
+
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
   if let some f := field? j "scalarFunction" then
@@ -1250,16 +1359,18 @@ partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) :=
 
 partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
   let (kind, r) ← oneof "relation" j
-    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"]
+    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate",
+      "extensionSingle"]
   let input := fun (k : String) => do parseRel fns (← field r k)
   let core ← match kind with
     | "read" => parseRead fns r
     | "filter" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
-      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter.
+      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
+      -- with other subqueries lifted into columns that an emit drops after.
       let mut base := inp
-      let mut rest : List Expr := []
+      let mut rest : List Json := []
       for c in ← conjuncts fns (← field r "condition") do
         match (field? c "subquery").bind (field? · "inPredicate") with
         | some ip =>
@@ -1268,16 +1379,25 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
           let hay ← parseRel fns (← field ip "haystack")
           if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
           base := .semi base hay false (.bin .eq needle (.field cols.length))
-        | none => rest := rest ++ [← parseExpr fns cols c]
-      match rest with
-      | [] => pure base
-      | e :: es => pure (.filter base (es.foldl (.bin .and) e))
+        | none => rest := rest ++ [c]
+      let (lifted, conds) ← parseLifted fns (parseRel fns) base rest
+      let filtered := match conds with
+        | [] => lifted
+        | e :: es => .filter lifted (es.foldl (.bin .and) e)
+      if (rest.flatMap (nodesIn "subquery")).isEmpty then pure filtered
+      else pure (.emit filtered (List.range cols.length))
     | "project" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
       let ejs ← arrD r "expressions"
+      let k := (ejs.flatMap (nodesIn "subquery")).length
       if !(ejs.flatMap windowsIn).isEmpty then
+        if k != 0 then throw "a projection with window functions and subqueries is not supported"
         parseWindowProject fns inp cols ejs
+      else if k != 0 then
+        let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
+        let n := cols.length
+        pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols e)
         -- A project that appends nothing is the identity (used to carry `emit`).
@@ -1367,6 +1487,18 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         | none => pure (.aggregate inp gs [])
       | some gs, ms =>
         pure (.aggregate inp gs (← ms.mapM fun m => (parseMeasure fns cols m : J Measure)))
+    | "extensionSingle" =>
+      -- `UNNEST`, our own extension (`docs/nested-values.md`).
+      let d ← field r "detail"
+      if field? d "@type" != some (.str "type.googleapis.com/sverify.Unnest") then
+        throw "unsupported ExtensionSingleRel"
+      if field? d "keepEmpty" == some (.bool true) then
+        throw "UNNEST keeping empty lists is not supported"
+      let inp ← input "input"
+      let c ← natD d "column"
+      match (inp.kinds (← get)).getD c .other with
+      | .list _ => pure (.unnest inp c)
+      | _ => throw s!"UNNEST of column {c}, which is not a list"
     | _ =>
       let inputs ← (← arrD r "inputs").mapM (parseRel fns)
       let union ← match inputs with
