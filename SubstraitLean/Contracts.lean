@@ -565,11 +565,13 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
        intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || (a.str && b.str),
        intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || (a.str && b.str), false⟩
   | .lt, a, b =>
-      -- Two strings may compare either way.
+      -- Two strings may compare either way; FALSE < TRUE.
       let s := a.str && b.str
+      let t := s || (a.ff && b.tt)
+      let f := s || (a.tt && (b.tt || b.ff)) || (a.ff && b.ff)
       match a.int, b.int with
-      | some x, some y => ⟨a.nonInt || b.nonInt, none, canLt x y || s, canGe x y || s, false⟩
-      | _, _ => ⟨true, none, s, s, false⟩
+      | some x, some y => ⟨a.nonInt || b.nonInt, none, canLt x y || t, canGe x y || f, false⟩
+      | _, _ => ⟨true, none, t, f, false⟩
 
 def Expr.abs (env : List AVal) : Expr → AVal
   | .lit v => AVal.ofValue v
@@ -992,12 +994,12 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
 /-- A column known to be a non-NULL integer, with its interval transformed. -/
 def AVal.nonNullInt (a : AVal) (f : Bound → Bound) : AVal := ⟨false, a.int.map f, false, false, false⟩
 
-/-- `a` without NULL and the booleans: what an operand of a TRUE `<` can be. -/
-def AVal.nonNullOrd (a : AVal) : AVal := ⟨false, a.int, false, false, a.str⟩
+/-- `a` without NULL: what an operand of a TRUE `<` can be. -/
+def AVal.nonNullOrd (a : AVal) : AVal := ⟨false, a.int, a.tt, a.ff, a.str⟩
 
-/-- An integer or a string: what `<` compares. -/
+/-- An integer, a string or a boolean: what `<` compares. -/
 def Value.isOrd : Value → Bool
-  | .int _ | .str _ => true
+  | .int _ | .str _ | .bool _ => true
   | _ => false
 
 /-- What a value known to equal (SQL `=`, so non-NULL) a value in `b` can be. -/
@@ -1146,7 +1148,9 @@ theorem not_lt_fields_ord {v w : Value}
 
 theorem nonNullOrd_mem {a : AVal} {v : Value} (h : a.Mem v) (hv : v.isOrd = true) :
     a.nonNullOrd.Mem v := by
-  cases v <;> simp_all [Value.isOrd, AVal.nonNullOrd, AVal.Mem]
+  cases v with
+  | bool x => cases x <;> simp_all [AVal.nonNullOrd, AVal.Mem]
+  | _ => simp_all [Value.isOrd, AVal.nonNullOrd, AVal.Mem]
 
 theorem nonNullInt_mem {a : AVal} {x : Int} {f : Bound → Bound} (h : a.Mem (.int x))
     (hf : ∀ b, b.Mem x → (f b).Mem x) : (a.nonNullInt f).Mem (.int x) := by
@@ -2407,8 +2411,9 @@ theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVa
     generalize hva : a.eval row = va at hbase haa ⊢
     generalize hvb : b.eval row = vb at hbase ⊢
     cases va <;> cases vb <;> simp only [BinFn.apply] at hbase ⊢ <;> try exact hbase
-    -- Strings are ruled out by `hint`.
+    -- Strings and booleans are ruled out by `hint`.
     all_goals try (simp_all [AVal.intOrNull, AVal.Mem]; done)
+    all_goals try (rename_i x y; cases x <;> cases y <;> simp_all [AVal.intOrNull, AVal.Mem]; done)
     rename_i u w
     have hm := termDiff_sound hd hfs hva hvb
     by_cases hlt : u < w

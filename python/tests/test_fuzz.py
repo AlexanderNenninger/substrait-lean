@@ -69,9 +69,19 @@ def finding(sql: str, oracle: str, tables: dict) -> list[Finding]:
     return check(Query(sql, {}), tables, oracles=(oracle,))
 
 
-@pytest.mark.xfail(strict=True, reason="#96: a bare double literal is written as an i64 code")
-def test_written_bare_double_literal():
-    assert not finding("SELECT 1.5 AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
+@pytest.mark.parametrize("value", ["1.5", "-2.0", "0.25"])
+def test_written_bare_double_literal(value):
+    """#96: a bare double is written as an `fp64` literal, not its code."""
+    assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
+
+
+@pytest.mark.xfail(strict=True, reason="#96: 0.0 and a double NULL are an integer and NULL")
+@pytest.mark.parametrize("value", ["0.0", "CAST(NULL AS DOUBLE)"])
+def test_written_bare_double_zero_or_null(value):
+    """The model has `0.0` as code 0 and a double NULL as NULL, so the writer
+    cannot tell them from an integer: the engines give the right value with
+    an integer type. Needs the parser to keep a literal's kind."""
+    assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
 
 
 def test_written_typed_null():
@@ -101,12 +111,10 @@ def test_smallest_bigint_is_printed_as_an_integer():
     assert not finding("SELECT MIN(j) AS c0 FROM t AS q", "rows", {"t": [row]})
 
 
-@pytest.mark.xfail(strict=True, reason="#97: literal double arithmetic is integer arithmetic")
 def test_double_literal_arithmetic():
     assert not finding("SELECT 3.0 / 2.0 AS c0 FROM t AS q", "rows", {"t": [T_ROW]})
 
 
-@pytest.mark.xfail(strict=True, reason="#97: verify proves a false postcondition")
 def test_double_literal_arithmetic_proofs():
     q = Query("SELECT 1.5 * 2.0 AS c0 FROM t AS q", {"c0": fuzz.DOUBLE})
     assert not check_contract(q, {"t": [T_ROW]}, None, "c0 <> 3.0")
@@ -135,7 +143,6 @@ def test_null_divided_by_zero_on_duckdb():
     assert not finding("SELECT j / i AS c0 FROM t AS q", "engines", {"t": [row]})
 
 
-@pytest.mark.xfail(strict=True, reason="#17: ordering comparisons of booleans are NULL in Lean")
 def test_boolean_ordering():
     row = (1, 2, 0.5, "a", False, None)
     assert not finding("SELECT (b <= b) AS c0 FROM t AS q", "rows", {"t": [row]})
@@ -155,8 +162,6 @@ def test_known_findings_name_their_issue(f):
 
 def test_known_findings_need_the_symptom():
     assert known(Finding("rows", "q", {}, "Lean: [] DataFusion: [(1,)]")) is None
-    plan = {"Lean's plan": "Project +[(1.500000d * 2.000000d)]"}
-    assert known(Finding("rows", "q", {}, "", plan)) == 97
 
 
 def test_findings_print_a_reproduction():
