@@ -22,7 +22,7 @@ import pytest
 
 import sverify as sv
 from sverify import duckdb_engine, polars_engine
-from sverify.engine import connect, put_table, read_tables, substrait_json, written_plan
+from sverify.engine import connect, read_tables, substrait_json, written_plan
 
 
 def ints(**cols: list) -> pa.Table:
@@ -53,9 +53,11 @@ def positional(t: pa.Table) -> list[tuple]:
 
 @pytest.fixture(scope="module")
 def con():
+    """DataFusion with the tables as they are: `put_table` would make every
+    -0.0 zero and every NaN positive, as the model has them."""
     c = connect()
     for name, t in TABLES.items():
-        put_table(c, name, t)
+        c.con.register_record_batches(name, [t.to_batches()])
     return c
 
 

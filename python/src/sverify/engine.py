@@ -21,6 +21,7 @@ from typing import Any, Literal
 import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
+import pyarrow.compute as pc
 import sqlglot as sg
 from datafusion import substrait as ss
 from google.protobuf import json_format
@@ -104,7 +105,22 @@ def run_substrait_json(con: Backend, plan_json: str) -> pa.Table:
     logical = ss.Consumer.from_substrait_plan(
         con.con, ss.Serde.deserialize_bytes(proto.SerializeToString())
     )
-    return con.con.create_dataframe_from_logical_plan(logical).to_arrow_table()
+    return canonical(con.con.create_dataframe_from_logical_plan(logical).to_arrow_table())
+
+
+def canonical(table: pa.Table) -> pa.Table:
+    """Doubles as the model has them: `-0.0` as `0.0` and every NaN as the
+    positive one. DataFusion orders doubles by `f64::total_cmp`, where both
+    signs show, so its inputs and results go through this, and the plans Lean
+    writes canonicalize what an operation computes (`Write.canonical`)."""
+    columns = []
+    for c in table.columns:
+        if pa.types.is_floating(c.type):
+            nan = pa.scalar(float("nan"), c.type)
+            zero = pc.call_function("add", [c, pa.scalar(0.0, c.type)])
+            c = pc.call_function("if_else", [pc.call_function("is_nan", [c]), nan, zero])
+        columns.append(c)
+    return pa.Table.from_arrays(columns, schema=table.schema)
 
 
 def checker_path() -> Path:
@@ -227,7 +243,8 @@ def run_plan(con: Backend, plan_json: str, engine: Engine = "datafusion") -> pa.
 
 
 def run_sql(con: Backend, sql: str) -> pa.Table:
-    return con.con.sql(sql).to_arrow_table()
+    """Run SQL on DataFusion; doubles in the result as `canonical` makes them."""
+    return canonical(con.con.sql(sql).to_arrow_table())
 
 
 def put_table(con: Backend, name: str, table: pa.Table) -> None:
@@ -236,11 +253,12 @@ def put_table(con: Backend, name: str, table: pa.Table) -> None:
     Ibis 12's `create_table` is broken on DataFusion (it issues an empty
     `DROP TABLE`). Tables are registered as record batches rather than PyArrow
     datasets: DataFusion pushes filters into datasets, where PyArrow compares
-    doubles by IEEE rules instead of DataFusion's total order (NaN = NaN).
+    doubles by IEEE rules (NaN <> NaN). Doubles are stored as the model has
+    them (`canonical`).
     """
     if con.con.table_exist(name):
         con.con.deregister_table(name)
-    table = table.cast(plain_schema(table.schema))
+    table = canonical(table.cast(plain_schema(table.schema)))
     batches = table.to_batches() or [pa.RecordBatch.from_pylist([], schema=table.schema)]
     con.con.register_record_batches(name, [batches])
 

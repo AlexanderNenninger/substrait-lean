@@ -90,15 +90,15 @@ def delta_plans(plan_json: str) -> list[str]:
 
 
 def _value_key(x: object) -> object:
-    # Python's float equality differs from DataFusion's total order: there
-    # NaN equals itself, and -0.0 and 0.0 (or -NaN and NaN) are different.
-    if isinstance(x, float) and (math.isnan(x) or x == 0):
-        return ("NaN" if math.isnan(x) else "zero", math.copysign(1.0, x))
+    # The model has one NaN, equal to itself (Python's is not), and one zero
+    # (`-0.0 + 0.0` is `0.0`).
+    if isinstance(x, float):
+        return "NaN" if math.isnan(x) else x + 0.0
     return x
 
 
 def row_key(row: Row) -> tuple:
-    """Rows compare as DataFusion compares them (see `_value_key`)."""
+    """Rows compare as the model compares them (see `_value_key`)."""
     return tuple(_value_key(x) for x in row)
 
 

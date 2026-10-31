@@ -245,14 +245,17 @@ class PostconditionError(Exception):
 
 # Doubles, timestamps and dates are integer codes in the Lean model
 # (SubstraitLean/Float.lean). A double with magnitude m = |x| * 2^1074 has
-# code ±(2m + 1), which orders codes like DataFusion orders doubles
-# (-NaN < -inf < ... < -0.0 < +0.0 < ... < +inf < NaN). Timestamps are
-# microseconds, dates days.
+# code ±(2m + 1), and zero (-0.0 too) has code 0, which orders codes like SQL
+# engines order doubles (-inf < ... < 0.0 < ... < +inf < NaN, one NaN).
+# Timestamps are microseconds, dates days.
 MAX_MAG = (2**53 - 1) * 2**2045
 INF_MAG, NAN_MAG = MAX_MAG + 1, MAX_MAG + 2
 
 
 def decode_double(code: int) -> float:
+    """The double of a code (`FloatCode.toFloat`): zero is `0`, NaN the one NaN."""
+    if code == 0:
+        return 0.0
     sign = -1.0 if code < 0 else 1.0
     mag = (abs(code) - 1) // 2
     if mag >= NAN_MAG:
@@ -294,12 +297,26 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         elif lo is not None and hi is not None and lo == hi:
             parts.append(f"{noun} = {show(lo)}")
         elif dtype.is_floating():
-            # Valid codes are odd; an even bound lies strictly between two doubles.
+            # Codes are 0 and odd numbers of magnitude 3 or more; a bound
+            # between two codes reads best against its neighbour, zero first.
+            def valid(k: int) -> bool:
+                return k == 0 or (k % 2 == 1 and abs(k) >= 3)
+
+            def up(k: int) -> int:
+                """The smallest code ≥ k."""
+                return k if valid(k) else 0 if k in (-2, -1) else 3 if k in (1, 2) else k + 1
+
+            def down(k: int) -> int:
+                """The largest code ≤ k."""
+                return k if valid(k) else 0 if k in (1, 2) else -3 if k in (-2, -1) else k - 1
+
             def ge(k: int) -> str:
-                return f"≥ {show(k)}" if k % 2 else f"> {show(k - 1)}"
+                n = up(k)
+                return f"≥ {show(n)}" if n in (k, 0) else f"> {show(down(k - 1))}"
 
             def le(k: int) -> str:
-                return f"≤ {show(k)}" if k % 2 else f"< {show(k + 1)}"
+                p = down(k)
+                return f"≤ {show(p)}" if p in (k, 0) else f"< {show(up(k + 1))}"
 
             if hi is None:
                 parts.append(f"{noun} {ge(lo)}")  # type: ignore[arg-type]

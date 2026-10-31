@@ -388,8 +388,8 @@ def _(mo):
 
     * **Proved in Lean**: the interval and NULL analysis behind every ✅, the
       key analysis behind `unique`, and that the delta plans compute exactly
-      the change to the view. Floats follow DataFusion's semantics bit for
-      bit, NaN and −0.0 included.
+      the change to the view. Doubles are modelled bit for bit, with SQL's
+      one NaN and one zero (−0.0 is 0.0).
     * **Trusted**: the translation from DataFusion's Substrait JSON into the
       Lean model, DataFusion itself, and the small amount of Python that
       stores the view and merges changes. The last chapter draws the line

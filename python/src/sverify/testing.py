@@ -35,10 +35,9 @@ def literal(v: object) -> dict:
         micros = (v - EPOCH) // dt.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, float):
-        if math.copysign(1.0, v) < 0 and (math.isnan(v) or v == 0):
-            raise ValueError("Substrait JSON literals cannot hold -0.0 or -NaN")
+        # The model's one zero and one NaN: -0.0 is 0.0, a negative NaN is NaN.
         text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"
-        return {"literal": {"fp64": v if math.isfinite(v) else text}}
+        return {"literal": {"fp64": v + 0.0 if math.isfinite(v) else text}}
     raise TypeError(f"no literal for {v!r}")
 
 

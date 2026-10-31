@@ -410,8 +410,10 @@ plus_one(orders)
 * **Doubles, timestamps, dates:** comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()`, `INTERVAL '60' SECOND` and ranges like `v > 0.5`.
   Double arithmetic (`v * 2.5`) is only known to give "some double", because rounding
-  isn't modelled. Comparisons follow DataFusion's total order: NaN equals itself
-  and sorts above every number (so `v > 0` keeps NaN rows), and −0.0 < +0.0.
+  isn't modelled; negation, `ABS`, `FLOOR`, `CEIL` and `ROUND` keep bounds. Doubles compare as SQL engines compare them: there is one
+  zero (−0.0 *is* 0.0, so `-0.0 >= 0` holds and −0.0 never shows in a result)
+  and one NaN, which equals itself and sorts above every number (so `v > 0`
+  keeps NaN rows). See [Doubles](#doubles-one-zero-and-one-nan).
 * **Not tracked yet:** relations that need more than "column plus constant"
   (`a < 2 * b`), string contents, DECIMAL columns, and counts across rows.
   Strict window order needs a single `ORDER BY` column (with several, rows
@@ -748,8 +750,32 @@ entry point stays covered.
 connect to 52 and later. Ibis's `create_table` is broken on DataFusion, so
 `sverify` registers Arrow tables directly (`sv.create_table`). They are
 registered as record batches, not datasets: DataFusion pushes filters into
-datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
-total order, which would make filters and projections disagree on NaN.
+datasets, where PyArrow compares doubles by IEEE rules, which would make
+filters and projections disagree on NaN. Their doubles are stored as the model
+has them, with one zero and one NaN.
+
+#### Doubles: one zero and one NaN
+
+The model has the doubles users expect from SQL (PostgreSQL, DuckDB, Spark,
+Snowflake): −0.0 is 0.0, and every NaN is one NaN, equal to itself and above
+`inf`. `-1 * 0.0` is `0.0`, `-0.0 >= 0` is TRUE, and `GROUP BY`, `DISTINCT`,
+joins, partitions and sorts put the two zeros (and all NaNs) together. Each
+engine is made to agree:
+
+* DuckDB, Polars, Snowflake and Spark already compare this way. Their SQL (or
+  Polars expressions) makes a table's −0.0 zero on read, and adds `0.0` after
+  every operation that IEEE lets produce −0.0 (negation, `*`, `/`, `POWER`,
+  rounding, `AVG`): `-0.0 + 0.0` is `0.0`, and other values stay.
+* DataFusion orders doubles by `f64::total_cmp` (−0.0 < 0.0, a negative NaN
+  first), so its tables are stored canonical (`sverify.engine.canonical`), its
+  results are canonicalized, and the plans Lean writes wrap every double
+  operation in `nanvl(x + 0.0, 'NaN')`, which DataFusion evaluates and every
+  parser reads back as `x`. One gap remains: a `SUM` or `AVG` of doubles
+  inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
+  `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
+  in the same plan, follows DataFusion's order.
+* Ibis queries on DataFusion (and runtime checks through Ibis) read the
+  canonical tables, but compute with DataFusion's own order inside a query.
 
 ### The Ibis producer
 
@@ -795,10 +821,10 @@ translator pins the semantics instead of taking Polars defaults:
   are stable, so ties keep their input order, and `DISTINCT` keeps the first
   of each set of equal rows in place. So `FetchRel` takes the same rows as
   Lean, and the tests compare Polars with Lean row for row.
-* Doubles compare, join, partition and sort by DataFusion's total order
-  (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
-  Sorts place NULLs as each key says. `DISTINCT` compares rows as `Value`s:
-  NULLs are equal, and -0.0 and +0.0 (or -NaN and NaN) are not.
+* Doubles compare, join, partition and sort with one zero and one NaN
+  (`-inf < … < 0.0 < … < inf < NaN`), like the float codes. Sorts place NULLs
+  as each key says. `DISTINCT` compares rows as `Value`s: NULLs are equal,
+  and so are -0.0 and 0.0, and all NaNs.
 * Aggregates (`aggregateEval`): one row per group, in order of first
   occurrence (or exactly one without `GROUP BY`), grouping as `DISTINCT`
   compares. Each measure skips NULLs and the rows its `FILTER` drops;
@@ -875,13 +901,14 @@ the engine:
 * division and remainder truncate; where DataFusion fails at run time
   (division by zero, `MIN / -1`, bad `POWER` or `CAST(double AS BIGINT)`),
   Lean's value is NULL and the SQL raises;
-* doubles compare by the model's total order (`-NaN < -inf < … < -0.0 < +0.0
-  < … < inf < NaN`) in comparisons, joins, partitions and sorts;
+* doubles have one zero and one NaN (`-inf < … < 0.0 < … < inf < NaN`) in
+  comparisons, joins, partitions and sorts, and −0.0 is made 0.0 wherever it
+  could arise;
 * every `ORDER BY` key says `NULLS FIRST`/`LAST`;
 * filters keep only TRUE rows; semi and anti joins are `[NOT] EXISTS` over
   the rows where the condition is TRUE;
-* `DISTINCT` groups by the same keys as a window partition (doubles also by
-  the sign bit), so equal means equal as `Value`s;
+* `DISTINCT` groups by the same keys as a window partition, so equal means
+  equal as `Value`s;
 * aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
   counts the first row of each value, integer `SUM` raises outside 64 bits,
   and doubles are added in Lean's order (`list_reduce` over a list ordered
@@ -936,11 +963,6 @@ raises instead of answering differently:
   `deterministic` says so for windows).
 * Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
   interval type.
-* Snowflake has one NaN, which stands for Lean's +NaN. A negative-NaN literal
-  is refused, and negating a NaN raises.
-* Lean orders −0.0 below +0.0, and Snowflake doesn't document whether the sign
-  of a zero is visible. So comparing two zeros raises, and so does sorting,
-  partitioning or `DISTINCT` on a double column that holds a zero.
 
 Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
 collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
@@ -971,11 +993,7 @@ Spark differs:
   Spark raises when a partial sum overflows even if the total fits;
 * doubles divided by zero give ±inf or NaN (ANSI mode raises);
   `CAST(double AS BIGINT)` is range-checked first (Spark saturates at 2⁶³);
-  `FLOOR`, `CEIL` and `ROUND` keep NaN, ±inf and the sign of a zero;
-* −0.0 sorts below +0.0: its sign is read from its text (`'-0.0'`).
-  `GROUP BY` turns −0.0 into +0.0, so the sign is put back, and a `CASE`
-  between the literals −0.0 and +0.0 (which Spark's optimizer takes for
-  equal) is written as arithmetic;
+  `FLOOR` and `CEIL` (which return `BIGINT`) keep NaN, ±inf and large values;
 * timestamps are `TIMESTAMP_NTZ` and intervals `INTERVAL DAY TO SECOND`;
   `date_trunc` returns a time-zone timestamp, so truncation is computed on
   `TIMESTAMP_NTZ` and `DATE` values;
@@ -985,8 +1003,7 @@ Spark differs:
 Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
 table without `tie_free=True` (tables have no row order), and so `SUM` or
 `AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
-`Math.pow` (within 1 ulp of C's), and negative-NaN literals (Spark has one
-NaN, read as Lean's +NaN; negating a NaN raises).
+`Math.pow` (within 1 ulp of C's).
 
 String columns must use the default `UTF8_BINARY` collation (code point
 order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
@@ -1235,21 +1252,21 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   `ORDER BY … LIMIT` the checker's claims hold for every row the engine could keep.
 * **Semi joins and `DISTINCT` are their own operators.** `Rel.semi` keeps the left
   rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
-  the first occurrence of every row (NULLs equal, doubles by their codes, as in
-  DataFusion). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  the first occurrence of every row (NULLs equal, doubles by their codes: one
+  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
   `DISTINCT` as an aggregate with one empty grouping, which its own consumer
   rejects; the parser reads it as "all columns".
 * **Aggregates have one grouping set.** `Rel.aggregate` outputs one row per
   distinct grouping value (NULLs group together; doubles by their codes, so
-  -0.0 and 0.0 are two groups, as in DataFusion), or exactly one row without
+  -0.0 and 0.0 are one group), or exactly one row without
   grouping expressions, even on an empty input. Measures skip NULLs; on no
   values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
   wraps around, which is a warning), double `SUM`/`AVG` add with native floats
   (DataFusion promises no order; contracts only say "a double"), and `AVG` of
   integers is the `AVG` of their conversion to double. `MIN`/`MAX` of doubles
   are refused: DataFusion's grouped version turns a group of +∞ into the largest
-  finite double, skips NaN next to other values, and lets the row order pick
-  between -0.0 and 0.0. The grouping columns are a key of the result.
+  finite double and skips NaN next to other values. The grouping columns are a
+  key of the result.
 * **Ill-typed calls evaluate to `null`.** This keeps `eval` total. `Rel.WF` rules out
   out-of-range field references.
 * **Some operations are rewrites in the parser.** `IN` lists become `OR`s of

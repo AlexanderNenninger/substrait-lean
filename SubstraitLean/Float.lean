@@ -1,14 +1,20 @@
 /-!
 # Floats and timestamps as integers
 
-**Floats.** DataFusion compares doubles by Arrow's *total order*
-(`f64::total_cmp`): `-NaN < -∞ < negatives < -0.0 < +0.0 < positives < +∞ < NaN`,
-and NaN equals NaN. A double is represented by an integer *code* with exactly
-that order: for magnitude `m` (`|x| · 2¹⁰⁷⁴` for finite `x`, which is an exact
-integer; `M + 1` for ∞, `M + 2` for NaN) the code is `±(2m + 1)`. Comparing
-doubles is then comparing codes, so filters such as `v > 0.5` or
+**Floats.** Doubles compare as SQL engines compare them (PostgreSQL, DuckDB,
+Spark, Snowflake): `-∞ < negatives < 0.0 < positives < +∞ < NaN`, where
+`-0.0` *is* `0.0` and every NaN is the same NaN, equal to itself. The model
+has one zero and one NaN, so `-0.0` never appears in a result (`-1 · 0.0` is
+`0.0`) and `-0.0 >= 0` holds. (DataFusion's own order, `f64::total_cmp`,
+puts `-0.0` below `+0.0` and negative NaNs first; `sverify` canonicalizes
+DataFusion's inputs and results instead.)
+
+A double is represented by an integer *code* with exactly that order: for
+magnitude `m` (`|x| · 2¹⁰⁷⁴` for finite `x`, which is an exact integer;
+`M + 1` for ∞, `M + 2` for NaN) the code is `±(2m + 1)`, and zero is `0`.
+Comparing doubles is then comparing codes, so filters such as `v > 0.5` or
 `v <> -9999.0` are modelled exactly and reuse all of the integer reasoning,
-and negation is code negation.
+and negation is code negation (the parser keeps NaN fixed under it).
 
 Float *arithmetic* rounds; it is computed with Lean's native `Float` and
 treated as "some double" by the contract checker, so no rounding facts are
@@ -26,14 +32,15 @@ namespace Substrait.FloatCode
 def infMag : Nat := maxMag + 1
 def nanMag : Nat := maxMag + 2
 
+/-- The code of magnitude `m`: zero has one code, `0`, and NaN is never
+negative. -/
 def ofMag (negative : Bool) (m : Nat) : Int :=
   let c : Int := 2 * m + 1
-  if negative then -c else c
+  if m = 0 then 0 else if negative ∧ m ≠ nanMag then -c else c
 
 def posInf : Int := ofMag false infMag
 def negInf : Int := ofMag true infMag
 def nan : Int := ofMag false nanMag
-def negNan : Int := ofMag true nanMag
 
 /-- The code of a native double. -/
 def ofFloat (f : Float) : Int :=
@@ -67,12 +74,21 @@ def roundTo (d : Int) (c : Int) : Int :=
   let p := Float.pow 10.0 (Float.ofInt d)
   ofFloat ((toFloat c * p).round / p)
 
-/-- Negation flips the sign, also of zero and NaN. -/
+/-- Negation flips the sign; zero (code `0`) stays zero. Code negation would
+turn NaN into a code below `-∞`, so the parser writes `negate` as
+`CASE WHEN x = NaN THEN x ELSE -x END`, as SQL engines have one NaN. -/
 def neg (c : Int) : Int := -c
 
 def ofInt (i : Int) : Int := ofFloat (Float.ofInt i)
 
-def isNan (c : Int) : Bool := c == nan || c == negNan
+def isNan (c : Int) : Bool := c == nan
+
+-- One zero and one NaN: `-0.0` and a negative NaN (as x86 computes `0/0`)
+-- have the codes of `0.0` and NaN, and negation keeps zero.
+#guard ofFloat (Float.ofBits 0x8000000000000000) == 0 && ofFloat 0.0 == 0
+#guard ofFloat (Float.ofBits 0xFFF8000000000000) == nan && ofFloat (0.0 / 0.0) == nan
+#guard neg (ofFloat 0.0) == 0 && neg (ofFloat 1.5) == ofFloat (-1.5)
+#guard ofFloat (-1.0 * 0.0) == 0 && negInf < ofFloat (-1.0) && ofFloat 5e-324 > 0 && posInf < nan
 
 /-- `(-1)^s · m · 2⁻¹⁰⁷⁴` for a finite code, as `(negative, m)`. -/
 def finiteParts (c : Int) : Bool × Nat := (c < 0, (c.natAbs - 1) / 2)

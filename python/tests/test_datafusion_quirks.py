@@ -19,7 +19,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_substrait_json, substrait_json
+from sverify.engine import connect, run_substrait_json, substrait_json
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows
 
@@ -64,9 +64,11 @@ TABLES = {
 
 @pytest.fixture(scope="module")
 def con():
+    """DataFusion with the tables as they are: `put_table` would make every
+    -0.0 zero and every NaN positive, as the model has them."""
     c = connect()
     for name, t in TABLES.items():
-        put_table(c, name, t)
+        c.con.register_record_batches(name, [t.to_batches()])
     return c
 
 

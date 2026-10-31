@@ -124,8 +124,9 @@ def _(mo):
     One small table per topic. They are registered both in DataFusion (via
     `sverify`) and in DuckDB, and are available as Polars frames. Lean gets
     the same rows, inlined into the plan as a Substrait virtual table.
-    Substrait JSON literals cannot hold `-0.0` or `-NaN`, so the float table
-    has no negative zero or negative NaN. The queries make them with `-v`.
+    `sverify` stores doubles as the model has them (one zero, one NaN), so
+    the float table has no negative zero or negative NaN. The queries make
+    them with `-v`.
     """)
     return
 
@@ -537,14 +538,24 @@ def _(mo):
 
     `-NaN < -∞ < … < -0.0 < 0.0 < … < ∞ < NaN`, and `NaN = NaN`.
 
-    Lean's `Float.lean` models doubles as integer *codes* with exactly this
-    order, so it agrees. The surprises are about what this means:
+    The model does not follow DataFusion here. SQL engines (PostgreSQL,
+    DuckDB, Spark, Snowflake) have **one NaN**, equal to itself and above
+    `∞`, and **one zero**, and so does Lean's `Float.lean` (chapter 5): the
+    least surprising choice. So:
 
-    * **F1–F2**: `NaN = NaN` is true, `NaN > ∞` is true, `-0.0 = 0.0` is
-      **false**, and a negative NaN sorts *first*. DuckDB treats NaN as
-      larger than everything too, but says `-0.0 = 0.0`.
-    * **F3**: so `WHERE v > 1e308` keeps `NaN` rows, and a join or `DISTINCT`
-      on a double keeps `-0.0` and `0.0` apart.
+    * **F1–F2**: `NaN = NaN` and `NaN > ∞` are true everywhere. DataFusion
+      says `-0.0 = 0.0` is **false** and sorts a negative NaN *first*; the
+      model says `-0.0` is `0.0`, and a negative NaN is NaN.
+    * **F3**: `WHERE v > 1e308` keeps `NaN` rows; DataFusion's `DISTINCT`
+      keeps `-0.0` and `0.0` apart, the model's keeps one zero.
+
+    `sverify` stores DataFusion's tables canonical (no `-0.0`, positive NaN),
+    and the plans Lean writes wrap each double operation in
+    `nanvl(x + 0.0, 'NaN')`, so its engines, DataFusion's included, compute
+    what the model says. What remains a **GAP** is DataFusion running a query
+    itself (Ibis's `execute`, or a transform's output): a zero or NaN it
+    *computes* is compared by the total order inside that query, so
+    `filter(-x < 0)` keeps `x = 0` there and the model drops it.
     * **F4**: dividing a double by zero is not an error: you get ±∞ or NaN.
       (Integer division by zero *is* an error, see §3.)
     * **F5**: `CAST(2.7 AS BIGINT)` truncates to 2. DuckDB rounds it to 3.
@@ -566,8 +577,8 @@ def _(mo):
       with rounding, so `2^53 + 1` and `2^53` become the same double. Lean
       agrees.
     * **F7**: the total order also tells apart NaNs with different *payloads*
-      (the unused bits of a NaN). The model has a single NaN code, so it
-      cannot express this.
+      (the unused bits of a NaN). The model has a single NaN, and `sverify`
+      stores every NaN as that one, so DataFusion sees them equal.
     * **F8**: `MIN`/`MAX` follow the total order too, so `MAX` of a column
       with a NaN is NaN. The model has no aggregates yet.
     """)
@@ -581,8 +592,9 @@ def _(P, Q, pl, prove, render):
             "F1",
             "NaN and -0.0 comparisons",
             "SELECT v, v = v AS self, -v = v AS neg_eq, -v < v AS neg_lt FROM f WHERE v = 0 OR isnan(v)",
-            "agree",
-            "Total order: NaN = NaN, -0.0 < 0.0. Codes in Float.lean have exactly this order (Lean prints 0.0 as its code 1).",
+            "GAP",
+            "DataFusion's total order: -0.0 < 0.0. The model has one zero (code 0): -v = v for v = 0. "
+            "sverify's engines canonicalize; DataFusion running the query itself does not.",
             std="IEEE: NaN ≠ NaN, -0.0 = 0.0",
             duck="SELECT v, v = v, -v = v, -v < v FROM f WHERE v = 0 OR isnan(v)",
             polars=lambda P: (
@@ -599,17 +611,17 @@ def _(P, Q, pl, prove, render):
             "F2",
             "ORDER BY with NaN, -NaN, ±0, ±∞",
             "SELECT w FROM (SELECT v AS w FROM f UNION ALL SELECT -v FROM f) ORDER BY w",
-            "agree",
-            "-NaN sorts first, NULL last; Lean's sort uses the same codes.",
+            "GAP",
+            "DataFusion sorts -NaN first and -0.0 before 0.0; the model has one NaN (last) and one zero.",
             duck="same",
             polars=lambda P: pl.concat([P["f"], P["f"].select(-pl.col("v"))]).sort("v"),
         ),
         Q(
             "F3",
-            "NaN passes `> big`; ±0 keys differ",
+            "NaN passes `> big`; DataFusion's ±0 keys differ",
             "SELECT DISTINCT w FROM (SELECT v AS w FROM f UNION ALL SELECT -v FROM f) WHERE w > 1e308 OR w = 0",
-            "agree",
-            "Filters and DISTINCT on doubles compare codes, so Lean keeps NaN and both zeros.",
+            "GAP",
+            "Lean keeps NaN and one zero; DataFusion's DISTINCT keeps -0.0 and 0.0 apart.",
             std="IEEE: NaN fails every comparison; -0.0 and 0.0 are one value",
             duck="same",
         ),
@@ -665,10 +677,9 @@ def _(P, Q, pl, prove, render):
             "F7",
             "NaN payloads are distinct",
             "SELECT a.v = b.v AS eq FROM nanp a CROSS JOIN nanp b",
-            "GAP",
-            "DataFusion: two NaNs with different payloads are unequal (and DISTINCT keeps both). "
-            "Lean has one NaN code, so `=` is true for any two positive NaNs. Rare in practice, "
-            "but a proof can rely on `v = 'NaN'` after `isnan(v) AND v >= 0`.",
+            "handled",
+            "DataFusion tells NaN payloads apart (and DISTINCT keeps both), but `sverify` stores "
+            "every NaN as the one NaN (`engine.canonical`), as the model has it, so all are equal.",
             std="IEEE: NaN ≠ NaN always",
             duck="same",
             lean="all true (both values decode to the one positive NaN code)",
@@ -1421,8 +1432,8 @@ def _(mo):
       `power` with a constant exponent of 0.
     * **Zoned timestamps (T3)**: refuse interval arithmetic on
       `precisionTimestampTz`.
-    * **NaN payloads (F7)**: canonicalize NaNs on input, or give up NaN
-      equality in the model (refuse `= NaN`).
+    * **Doubles a query computes (F1–F3)**: run plans through `sverify`'s
+      engines, which canonicalize them, or keep transforms off DataFusion.
 
     `python/tests/test_datafusion_quirks.py` pins every DataFusion behaviour
     this notebook relies on, so a DataFusion upgrade that changes one of them
