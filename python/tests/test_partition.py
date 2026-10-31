@@ -3,6 +3,7 @@ the combined result of a plan run shard by shard equals its result on all
 the data, and plans whose result would depend on the split are refused."""
 
 import json
+from collections.abc import Sequence
 
 import ibis
 import pyarrow as pa
@@ -19,6 +20,7 @@ pytestmark = pytest.mark.backend("polars")
 
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "string"})
+Q = ibis.schema({"b": "int64", "e": "int64"})
 S_ROWS = [(0, "zero"), (1, "one"), (2, "two"), (2, "deux")]
 
 LINEAR = [
@@ -32,6 +34,27 @@ TWO_PHASE = [
     "SELECT COUNT(a) AS n, SUM(a) AS s, MAX(c) AS hi FROM r",
     "SELECT b, SUM(a) * 2 AS s2 FROM r WHERE c > 0 GROUP BY b HAVING SUM(a) > 3",
     "SELECT s.d, COUNT(*) AS n, MIN(r.a) AS lo FROM r JOIN s ON r.b = s.b GROUP BY s.d",
+    "SELECT b, MIN(DISTINCT c) AS lo, MAX(DISTINCT a) AS hi FROM r GROUP BY b",
+]
+#: With `r` split on `b`: (query, mode).
+KEYED = [
+    ("SELECT b, COUNT(DISTINCT a) AS n, SUM(DISTINCT c) AS s FROM r GROUP BY b", "linear"),
+    ("SELECT DISTINCT b, a FROM r", "linear"),
+    ("SELECT b, n FROM (SELECT b, a, COUNT(*) AS n FROM r GROUP BY b, a) t WHERE n > 1", "linear"),
+    ("SELECT x, COUNT(*) AS k FROM (SELECT DISTINCT b AS x, c FROM r) t GROUP BY x", "linear"),
+    ("SELECT COUNT(DISTINCT b) AS n, SUM(DISTINCT b) AS s FROM r", "two_phase"),
+    ("SELECT c, COUNT(DISTINCT b) AS n FROM r GROUP BY c", "two_phase"),
+]
+KEYED_REFUSED = [
+    ("SELECT COUNT(DISTINCT a) AS n FROM r", "unless its argument is the split key"),
+    ("SELECT DISTINCT a FROM r", "include the split key"),
+    ("SELECT b, SUM(CAST(a AS DOUBLE)) AS s FROM r GROUP BY b", "not associative"),
+]
+#: Sums of doubles, split only with `float_order="any"`.
+FLOATS = [
+    "SELECT b, SUM(CAST(a AS DOUBLE)) AS s, AVG(CAST(c AS DOUBLE)) AS m, COUNT(*) AS n"
+    " FROM r GROUP BY b",
+    "SELECT AVG(CAST(a AS DOUBLE)) AS m FROM r",
 ]
 REFUSED = [
     ("SELECT AVG(CAST(a AS DOUBLE)) AS m FROM r", "not associative"),
@@ -52,14 +75,16 @@ def plan_of(sql: str) -> str:
     con = connect()
     create_table(con, "r", R)
     create_table(con, "s", S)
+    create_table(con, "q", Q)
     return substrait_json(con, sql)
 
 
-def reference(plan: str, rows: list[tuple]) -> list[str]:
+def reference(plan: str, rows: list[tuple], q_rows: Sequence[tuple] = ()) -> list[str]:
     """The plan on all the data, on Polars."""
     con = connect()
     create_table(con, "r", R, rows)
     create_table(con, "s", S, S_ROWS)
+    create_table(con, "q", Q, list(q_rows))
     got = run_plan(con, written_plan(plan), "polars")
     return canonical(tuple(r.values()) for r in got.to_pylist())
 
@@ -107,6 +132,117 @@ def test_aggregates_run_in_two_phases(sql: str):
 def test_refused_with_a_reason(sql: str, why: str):
     with pytest.raises(NotShardable, match=why):
         split(plan_of(sql), ["r"])
+
+
+@pytest.mark.parametrize(("sql", "mode"), KEYED)
+@SETTINGS
+@given(rows=r_rows)
+def test_split_keys(sql: str, mode: str, rows):
+    """Shard `i` holds the rows with `b = i`."""
+    plan = plan_of(sql)
+    s = split(plan, ["r"], keys={"r": ["b"]})
+    assert (s.mode, s.proved) == (mode, True)
+    shards = [{"r": arrow([row for row in rows if row[1] == i])} for i in range(4)]
+    got = run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]})
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+@pytest.mark.parametrize(("sql", "why"), KEYED_REFUSED)
+def test_split_keys_refuse_the_rest(sql: str, why: str):
+    with pytest.raises(NotShardable, match=why):
+        split(plan_of(sql), ["r"], keys={"r": ["b"]})
+
+
+def test_split_keys_are_checked_on_the_data():
+    plan = plan_of("SELECT DISTINCT b, a FROM r")
+    shards = [{"r": arrow([(1, 2, 0)])}, {"r": arrow([(1, 2, 0), (3, 1, 0)])}]
+    with pytest.raises(ValueError, match=r"split key \(2,\) .* on shards 0 and 1"):
+        run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]})
+
+
+@pytest.mark.parametrize("sql", FLOATS)
+@SETTINGS
+@given(data=rows_and_shards)
+def test_float_order_any(sql: str, data):
+    """Unproved, but small integers add exactly as doubles, so here the
+    result is still Lean's."""
+    rows, where = data
+    plan = plan_of(sql)
+    with pytest.raises(NotShardable, match="not associative"):
+        split(plan, ["r"])
+    assert not split(plan, ["r"], float_order="any").proved
+    pairs = list(zip(rows, where, strict=True))
+    shards = [{"r": arrow([row for row, k in pairs if k == i])} for i in range(4)]
+    got = run_sharded(plan, shards, sharded=["r"], float_order="any")
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+#: `r` and `q` both split on `b` (co-partitioned).
+CO_PARTITIONED = [
+    "SELECT r.a, q.e FROM r JOIN q ON r.b = q.b",
+    "SELECT r.a, q.e FROM r LEFT JOIN q ON r.b = q.b AND r.a < q.e",
+    "SELECT a FROM r WHERE b IN (SELECT b FROM q)",
+    "SELECT r.b, COUNT(*) AS n, SUM(q.e) AS s FROM r JOIN q ON r.b = q.b GROUP BY r.b",
+]
+
+
+def q_arrow(rows: list[tuple]) -> pa.Table:
+    return pa.table({n: pa.array([r[i] for r in rows], pa.int64()) for i, n in enumerate("be")})
+
+
+@pytest.mark.parametrize("sql", CO_PARTITIONED)
+@SETTINGS
+@given(rows=r_rows, q_rows=st.lists(st.tuples(st.integers(0, 3), small), max_size=8))
+def test_co_partitioned_joins(sql: str, rows, q_rows):
+    plan = plan_of(sql)
+    keys = {"r": ["b"], "q": ["b"]}
+    assert split(plan, ["r", "q"], keys=keys).mode == "linear"
+    shards = [
+        {"r": arrow([x for x in rows if x[1] == i]), "q": q_arrow([y for y in q_rows if y[0] == i])}
+        for i in range(4)
+    ]
+    got = run_sharded(plan, shards, sharded=["r", "q"], keys=keys)
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows, q_rows)
+
+
+def test_joins_on_other_columns_are_not_co_partitioned():
+    with pytest.raises(NotShardable, match="co-partitioning"):
+        split(
+            plan_of("SELECT r.a FROM r JOIN q ON r.a = q.e"),
+            ["r", "q"],
+            keys={"r": ["b"], "q": ["b"]},
+        )
+
+
+WINDOWS = [
+    "SELECT a, b, ROW_NUMBER() OVER (PARTITION BY b ORDER BY a) AS k FROM r",
+    "SELECT a, b, LAG(c, 1) OVER (PARTITION BY b ORDER BY a) AS prev FROM r",
+]
+#: Rows of `r` with no two equal on `(a, b)`.
+unique_rows = st.lists(
+    st.tuples(small, st.integers(0, 3), small | st.none()), max_size=12, unique_by=lambda r: r[:2]
+)
+
+
+@pytest.mark.parametrize("sql", WINDOWS)
+@SETTINGS
+@given(rows=unique_rows)
+def test_windows_on_the_split_key(sql: str, rows):
+    plan = plan_of(sql)
+    with pytest.raises(NotShardable, match="window"):
+        split(plan, ["r"], keys={"r": ["b"]})
+    unique = {"r": [["a", "b"]]}
+    assert split(plan, ["r"], keys={"r": ["b"]}, unique=unique).mode == "linear"
+    shards = [{"r": arrow([x for x in rows if x[1] == i])} for i in range(4)]
+    got = run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]}, unique=unique)
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+def test_unique_is_checked_on_the_data():
+    plan = plan_of(WINDOWS[0])
+    shards = [{"r": arrow([(1, 2, 0), (1, 2, 5)])}]
+    with pytest.raises(ValueError, match="two rows"):
+        run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]}, unique={"r": [["a", "b"]]})
 
 
 def test_broadcast_tables_are_not_split():

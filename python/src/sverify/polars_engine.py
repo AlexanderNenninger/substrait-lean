@@ -15,10 +15,12 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   row with its matches in right order, a left join's unmatched row in its
   place), unions concatenate and windows emit rows in their sort order.
   `FetchRel` then takes the same rows as Lean.
-* Doubles compare by DataFusion's total order, as the float codes of
-  `SubstraitLean/Float.lean` do: `-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`,
-  NaN equal to itself. Comparisons, join keys, window partitions and sort keys
-  use an integer key with that order (`_float_key`).
+* Doubles have one zero and one NaN, as the float codes of
+  `SubstraitLean/Float.lean` do: `-inf < … < 0.0 < … < inf < NaN`, `-0.0` is
+  `0.0` and NaN equals itself. Comparisons, join keys, window partitions and
+  sort keys use an integer key with that order (`_float_key`), and doubles
+  read from a table or made by an operation that can give `-0.0` go through
+  `canon`.
 * Integers are unbounded in Lean. Columns are widened to `Int64` on read, and
   arithmetic runs on 128 bits. A result outside 64 bits raises
   `IntegerOverflow` instead of wrapping as DataFusion does. Division and
@@ -109,17 +111,22 @@ def col(i: int) -> str:
     return f"c{i}"
 
 
-# --- Doubles in total order ------------------------------------------------
+# --- Doubles: one zero, one NaN ---------------------------------------------
 
 
-def _total_order_bits(s: pl.Series) -> pl.Series:
-    """IEEE bits mapped so that integer order is `f64::total_cmp`, with every
-    NaN payload collapsed to one NaN per sign (the model has one NaN code per
-    sign). Nulls are masked by the caller."""
-    x = s.cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+def canon(e: pl.Expr) -> pl.Expr:
+    """`-0.0` as `0.0`. (Not `e + 0.0`: eager Polars skips adding a zero.)"""
+    return pl.when(e == 0.0).then(pl.lit(0.0, pl.Float64)).otherwise(e)
+
+
+def _order_bits(s: pl.Series) -> pl.Series:
+    """IEEE bits mapped so that integer order is the model's: `-0.0` is
+    `0.0`, and every NaN is one NaN above `inf`. Nulls are masked by the
+    caller."""
+    x = s.cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64) + 0.0
     bits = x.view(np.int64)
     key = np.where(bits < 0, bits ^ np.int64(I64_MAX), bits)
-    key = np.where(np.isnan(x), np.where(bits < 0, np.int64(I64_MIN), np.int64(I64_MAX)), key)
+    key = np.where(np.isnan(x), np.int64(I64_MAX), key)
     return pl.Series(key, dtype=pl.Int64)
 
 
@@ -127,7 +134,7 @@ def _float_key(e: pl.Expr) -> pl.Expr:
     return (
         pl.when(e.is_null())
         .then(pl.lit(None, pl.Int64))
-        .otherwise(e.map_batches(_total_order_bits, return_dtype=pl.Int64, is_elementwise=True))
+        .otherwise(e.map_batches(_order_bits, return_dtype=pl.Int64, is_elementwise=True))
     )
 
 
@@ -152,7 +159,7 @@ def _double(v: Any) -> float:
         if v not in named:
             raise Unsupported(f"malformed double literal {v!r}")
         return float(named[v])
-    return float(v)
+    return float(v) + 0.0  # the one zero
 
 
 def interval_micros(d: dict) -> int:
@@ -684,7 +691,7 @@ class Exprs:
             return Val(e.is_null(), pl.Boolean, a.issues)
         if name in ("negate", "subtract"):
             if t == pl.Float64:
-                return Val(-e, t, a.issues)  # flips the sign bit, also of zeros and NaN
+                return Val(canon(-e), t, a.issues)  # NaN stays NaN
             if t in (pl.Int64, INTERVAL, pl.Null):
                 return narrow(
                     pl.lit(0, pl.Int128) - wide(a), pl.Int64 if t == pl.Null else t, "negation", a
@@ -698,24 +705,29 @@ class Exprs:
                 return Val(e.str.len_chars().cast(pl.Int64), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
-            # The sign of a zero result is kept, as `onMag` keeps it.
+            # A zero result is the one zero, as in `onMag`.
             if name == "floor":
-                return Val(e.floor(), t, a.issues)
+                return Val(canon(e.floor()), t, a.issues)
             if name == "ceil":
-                return Val(e.ceil(), t, a.issues)
+                return Val(canon(e.ceil()), t, a.issues)
             if name == "round":
-                return Val(e.round(0, mode="half_away_from_zero"), t, a.issues)
+                return Val(canon(e.round(0, mode="half_away_from_zero")), t, a.issues)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
 
     def binary(self, name: str, a: Val, b: Val) -> Val:
         ta, tb = a.dtype, b.dtype
+        if name == "nanvl" and unify(ta, tb, name) == pl.Float64:
+            # The writer's `canonical`: NaN becomes the fallback.
+            x, y = a.expr, b.expr
+            return Val(pl.when(x.is_nan()).then(y).otherwise(x), pl.Float64, issues(a, b))
         floats = ("add", "subtract", "multiply", "divide", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             x, y = a.expr, b.expr
-            ops = {"add": x + y, "subtract": x - y, "multiply": x * y, "divide": fdiv(x, y),
-                   "power": x.pow(y)}  # fmt: skip
+            # A sum or difference is never -0.0 here; the others can be.
+            ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
+                   "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
             return Val(ops[name], pl.Float64, issues(a, b))
         if name in ("add", "subtract", "multiply"):
             out = arith_type(name, ta, tb)
@@ -782,7 +794,7 @@ class Exprs:
             raise Unsupported(f"round of {a.dtype}")
         p = math.pow(10.0, float(literal(digits["literal"])[0]))
         r = fdiv((a.expr * p).round(0, mode="half_away_from_zero"), pl.lit(p, pl.Float64))
-        return Val(r, pl.Float64, a.issues)
+        return Val(canon(r), pl.Float64, a.issues)
 
 
 # --- Relations ---------------------------------------------------------------
@@ -840,13 +852,14 @@ def type_of(t: dict) -> DType:
 
 def conform(e: pl.Expr, have: DType, want: DType, where: str) -> pl.Expr:
     """Load a table column as the model sees it: integers widened to 64 bits,
-    single floats to doubles. Anything that would change values is refused."""
+    single floats to doubles, `-0.0` as `0.0`. Anything else that would change
+    values is refused."""
+    if want == pl.Float64 and have in (pl.Float64, pl.Float32):
+        return canon(e.cast(pl.Float64))
     if have == want:
         return e
     if want == pl.Int64 and have.is_integer() and have not in (pl.UInt64, pl.Int128):
         return e.cast(pl.Int64)
-    if want == pl.Float64 and have == pl.Float32:
-        return e.cast(pl.Float64)
     if want == pl.String and have == pl.Categorical:
         raise Unsupported(f"{where}: categorical strings are not supported")
     if have == pl.Null:
@@ -860,10 +873,9 @@ def materialize(t: DType) -> DType:
 
 
 def _dedup_key(v: Any) -> Any:
-    """Values as `Value` equality tells them apart: doubles by their codes
-    (-0.0 is not 0.0; one NaN per sign)."""
+    """Values as `Value` equality tells them apart: one zero and one NaN."""
     if isinstance(v, float):
-        return ("nan", math.copysign(1.0, v)) if math.isnan(v) else (v, math.copysign(1.0, v))
+        return "nan" if math.isnan(v) else v + 0.0
     return v
 
 
@@ -886,7 +898,7 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
-        return acc / len(vs) if fn == "avg" else acc
+        return acc / len(vs) + 0.0 if fn == "avg" else acc
     # `pickFold` keeps the first extreme; equal values are the same value here.
     return min(vs) if fn == "min" else max(vs)
 

@@ -424,9 +424,10 @@ def datePartAbs (p : Time.DatePart) (a : AVal) : AVal :=
 def UnFn.abs : UnFn → AVal → AVal
   | .not, a => ⟨a.nonBool, none, a.ff, a.tt, false⟩
   | .isNull, a => ⟨false, none, a.null, a.int.isSome || a.tt || a.ff || a.str, false⟩
-  | .neg, a => ⟨a.nonInt, a.int.map Bound.neg, false, false, false⟩
+  -- Double negation is code negation too (zero is `0`).
+  | .neg, a | .fneg, a => ⟨a.nonInt, a.int.map Bound.neg, false, false, false⟩
   -- Float results: some double (any code), or NULL.
-  | .itof, a | .fneg, a | .froundTo _, a =>
+  | .itof, a | .froundTo _, a =>
       ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
   | .ffloor, a => monoAbs FloatCode.floor a
   | .fceil, a => monoAbs FloatCode.ceil a
@@ -616,7 +617,6 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · exact absurd (Bound.fitsBits_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
-  case fneg => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case itos =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
@@ -634,7 +634,8 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   all_goals match v, h with
     | .null, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
     | .int i, ⟨b, hb, hm⟩ =>
-        simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt, Bound.mem_neg]
+        simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt, Bound.mem_neg,
+          FloatCode.neg]
     | .bool true, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
     | .bool false, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
     | .str _, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]

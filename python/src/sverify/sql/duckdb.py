@@ -1,10 +1,10 @@
 """The DuckDB dialect.
 
 DuckDB already raises on BIGINT overflow (`+`, `-`, `*` and negation), divides
-doubles by IEEE 754 rules, has `isnan` and `signbit`, and numbers a table's
-rows in insertion order with `rowid`. Its `=` and `<` on doubles treat NaN as
-equal to itself and largest, but -0.0 as equal to +0.0 and -NaN as NaN, so
-comparisons go through the core's total order. Its `//` truncates BIGINTs
+doubles by IEEE 754 rules, has `isnan`, and numbers a table's rows in insertion
+order with `rowid`. Its `=` and `<` on doubles are the model's: NaN equals
+itself and is largest, and -0.0 equals 0.0 (`canon` keeps -0.0 out of
+results). Its `//` truncates BIGINTs
 (and is plain `/` on doubles), so integer division is built from `%`, which
 truncates, and is exact whichever way `//` rounds; `error()` raises where
 DataFusion fails at run time.
@@ -44,8 +44,11 @@ class DuckDBDialect(Dialect):
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
 
-    def sign_bit(self, x: str) -> str:
-        return f"signbit({x})"
+    def float_eq(self, a: str, b: str) -> str:
+        return f"({a} = {b})"
+
+    def float_lt(self, a: str, b: str) -> str:
+        return f"({a} < {b})"
 
     def raise_(self, message: str, dep: str, kind: Kind) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"

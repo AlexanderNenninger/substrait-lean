@@ -9,7 +9,7 @@ newer than…") is fast, but it tends to go wrong silently: deletes are missed,
 late rows are skipped, a join gets a new match.
 
 This project gives you a third option. You write the query once, in Ibis or SQL,
-and `sverify` maintains the result in DataFusion from the inserts and deletes alone.
+and `sverify` maintains the result from the inserts and deletes alone.
 The update logic comes from a delta plan that is **mathematically proven to give
 the same result as a full recompute**. The proof is in [Lean](https://lean-lang.org),
 a proof assistant: a program that checks every step of a proof, so you don't
@@ -22,16 +22,33 @@ view.apply({"orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 3
 ```
 
 Underneath, queries travel as [Substrait](https://substrait.io), an open,
-engine-neutral format for query plans. [DataFusion](https://datafusion.apache.org)
-writes your query as a Substrait plan, Lean checks it and computes the proven
-update plan, and DataFusion runs that plan.
+engine-neutral format for query plans. `sverify` writes your query as a
+Substrait plan, Lean checks it and computes the proven update plan, and
+[DuckDB](https://duckdb.org) runs that plan (or Polars, DataFusion or Spark).
+
+The same checker does more than incremental views:
+
+* **Contracts.** State what you assume about the inputs (`requires`) and what
+  the output guarantees (`ensures`); the postconditions are proved before the
+  pipeline runs, including that no division by zero, overflow or bad cast can
+  happen. Contracts compose across steps and travel with Delta Lake and
+  Iceberg tables.
+* **Several engines, one semantics.** A checked plan runs on DuckDB,
+  Polars, DataFusion or Spark, or is written as Snowflake SQL. Each translation
+  either keeps the Lean semantics (NULLs, integer division, NaN, ties) or
+  refuses the plan, and differential tests compare every engine with Lean.
+* **Proved optimizations.** A plan can be split across shards (Delta or
+  Iceberg partitions, files) and combined, with a proof that the result is the
+  same; run-time checks can be dropped where a contract proves them
+  unnecessary. See [docs/optimizations.md](docs/optimizations.md).
 
 **New here?** [The tour](notebooks/00_start_here.py) is a series of interactive
 [marimo](https://marimo.io) notebooks, one per feature, that you can work through
 in order: plans and proofs, the checker, contracts, keys, doubles and time,
 runtime errors, windows and ASOF joins, composition, incremental views,
 pipelines, engines, a complete pipeline end to end, and what exactly is
-proved. No prior knowledge of formal verification or data engineering is
+proved, with two appendices on how DataFusion and the other engines differ
+from the model. No prior knowledge of formal verification or data engineering is
 assumed. See [The tour](#the-tour) for how to open it.
 
 ## Setup
@@ -68,7 +85,7 @@ lake build                       # checks every proof and builds the substrait-c
 cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
-uv run pytest                    # should end with "161 passed"
+uv run pytest                    # all pass; the Spark tests skip without a JVM
 ```
 
 `uv sync` installs `sverify` in editable mode, with every extra (below). Its build hook runs
@@ -175,6 +192,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 12 | [A complete pipeline](notebooks/12_fitness.py) | heart rate during workouts, end to end |
 | 13 | [What is proved, what is trusted](notebooks/13_trust.py) | the trusted boundary, a glossary and a map of the code |
 | 14 | [DataFusion's surprising semantics](notebooks/14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
+| 15 | [One expression, many engines](notebooks/15_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
 
 `poe notebooks` (part of `poe qa`) checks every chapter with `marimo check` and
 runs it headless. The chapters' tables come from `sverify.display`, which needs
@@ -411,8 +429,10 @@ plus_one(orders)
 * **Doubles, timestamps, dates:** comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()`, `INTERVAL '60' SECOND` and ranges like `v > 0.5`.
   Double arithmetic (`v * 2.5`) is only known to give "some double", because rounding
-  isn't modelled. Comparisons follow DataFusion's total order: NaN equals itself
-  and sorts above every number (so `v > 0` keeps NaN rows), and −0.0 < +0.0.
+  isn't modelled; negation, `ABS`, `FLOOR`, `CEIL` and `ROUND` keep bounds. Doubles compare as SQL engines compare them: there is one
+  zero (−0.0 *is* 0.0, so `-0.0 >= 0` holds and −0.0 never shows in a result)
+  and one NaN, which equals itself and sorts above every number (so `v > 0`
+  keeps NaN rows). See [Doubles](#doubles-one-zero-and-one-nan).
 * **Not tracked yet:** relations that need more than "column plus constant"
   (`a < 2 * b`), string contents, DECIMAL columns, and counts across rows.
   Strict window order needs a single `ORDER BY` column (with several, rows
@@ -610,6 +630,35 @@ snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
 the table and an append's rows (`stats_table`, `stats_append`); and each
 precondition follows from the metadata facts (`contract_sound`).
 
+### Sharded evaluation
+
+`sverify.partition` runs a plan on each shard of its data (a Delta or Iceberg
+partition, a file, a worker's slice) and combines the results. Lean splits
+the plan and proves the combined result equals the plan's result on all the
+data (`Rel.shardSplit_sound`):
+
+```python
+import sverify.partition as sp
+
+sp.split(plan, sharded=["orders"])            # Split(mode='two_phase', ...) or NotShardable
+sp.run_sharded(plan, shards, sharded=["orders"], broadcast={"customers": customers})
+```
+
+Filters, projections, sorts, unions and joins with a broadcast table run on
+every shard and are concatenated. `COUNT`, integer `SUM`, `MIN` and `MAX` run
+in two phases: each shard aggregates, then the partial rows are combined.
+Refused, with the reason: `SUM`/`AVG` of doubles (the rounding would depend
+on the split; issue #85), `DISTINCT`, windows, `FETCH` and joins of two
+sharded tables. A partial integer sum that leaves 64 bits is an error, never a
+wrong answer. Shards run on Polars, in parallel threads.
+
+Run-time checks are the other proved optimization: the SQL and the Polars
+expressions guard every operation that could overflow or fail. When the
+contract report says `guard_free`, `to_sql(..., guards=False)` (and
+`guards=False` for the Polars and DuckDB runners) leaves them out
+(`Rel.guardFree_sound`). [docs/optimizations.md](docs/optimizations.md)
+compares these with what the engines already do, and ranks what is next.
+
 ### Checking a query plan
 
 `substrait-check` reads any Substrait JSON plan, shows it in readable form,
@@ -752,7 +801,8 @@ tables (`sv.create_table`, `con.arrow`), the engine plans run on, and Ibis
 tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
 contracts find a table's data). `con.datafusion` is a DataFusion session with
-the same tables, created on first use.
+the same tables, created on first use. Tables are stored with their doubles as
+the model has them (below).
 
 **DataFusion is optional** (`pip install 'sverify[datafusion]'`): it runs plans
 with `engine="datafusion"` and compiles SQL strings unless Isthmus does, and
@@ -760,9 +810,31 @@ nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
 51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
 registered there as record batches, not datasets: DataFusion pushes filters
-into datasets, where PyArrow compares doubles by IEEE rules instead of
-DataFusion's total order, which would make filters and projections disagree on
-NaN.
+into datasets, where PyArrow compares doubles by IEEE rules, which would make
+filters and projections disagree on NaN.
+
+#### Doubles: one zero and one NaN
+
+The model has the doubles users expect from SQL (PostgreSQL, DuckDB, Spark,
+Snowflake): −0.0 is 0.0, and every NaN is one NaN, equal to itself and above
+`inf`. `-1 * 0.0` is `0.0`, `-0.0 >= 0` is TRUE, and `GROUP BY`, `DISTINCT`,
+joins, partitions and sorts put the two zeros (and all NaNs) together. Each
+engine is made to agree:
+
+* DuckDB, Polars, Snowflake and Spark already compare this way. Their SQL (or
+  Polars expressions) makes a table's −0.0 zero on read, and adds `0.0` after
+  every operation that IEEE lets produce −0.0 (negation, `*`, `/`, `POWER`,
+  rounding, `AVG`): `-0.0 + 0.0` is `0.0`, and other values stay. Ibis
+  queries on a connection run on DuckDB, so they agree too.
+* DataFusion orders doubles by `f64::total_cmp` (−0.0 < 0.0, a negative NaN
+  first), so connections store canonical tables (`sverify.engine.canonical`),
+  its results are canonicalized, and the plans Lean writes wrap every double
+  operation in `nanvl(x + 0.0, 'NaN')`, which DataFusion evaluates and every
+  parser reads back as `x`. Two gaps remain: a `SUM` or `AVG` of doubles
+  inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
+  `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
+  in the same plan, follows DataFusion's order; and so does SQL run on
+  DataFusion directly (`run_sql`, a query on `con.datafusion`).
 
 ### The Ibis producer
 
@@ -829,10 +901,10 @@ translator pins the semantics instead of taking Polars defaults:
   are stable, so ties keep their input order, and `DISTINCT` keeps the first
   of each set of equal rows in place. So `FetchRel` takes the same rows as
   Lean, and the tests compare Polars with Lean row for row.
-* Doubles compare, join, partition and sort by DataFusion's total order
-  (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
-  Sorts place NULLs as each key says. `DISTINCT` compares rows as `Value`s:
-  NULLs are equal, and -0.0 and +0.0 (or -NaN and NaN) are not.
+* Doubles compare, join, partition and sort with one zero and one NaN
+  (`-inf < … < 0.0 < … < inf < NaN`), like the float codes. Sorts place NULLs
+  as each key says. `DISTINCT` compares rows as `Value`s: NULLs are equal,
+  and so are -0.0 and 0.0, and all NaNs.
 * Aggregates (`aggregateEval`): one row per group, in order of first
   occurrence (or exactly one without `GROUP BY`), grouping as `DISTINCT`
   compares. Each measure skips NULLs and the rows its `FILTER` drops;
@@ -909,13 +981,14 @@ the engine:
 * division and remainder truncate; where DataFusion fails at run time
   (division by zero, `MIN / -1`, bad `POWER` or `CAST(double AS BIGINT)`),
   Lean's value is NULL and the SQL raises;
-* doubles compare by the model's total order (`-NaN < -inf < … < -0.0 < +0.0
-  < … < inf < NaN`) in comparisons, joins, partitions and sorts;
+* doubles have one zero and one NaN (`-inf < … < 0.0 < … < inf < NaN`) in
+  comparisons, joins, partitions and sorts, and −0.0 is made 0.0 wherever it
+  could arise;
 * every `ORDER BY` key says `NULLS FIRST`/`LAST`;
 * filters keep only TRUE rows; semi and anti joins are `[NOT] EXISTS` over
   the rows where the condition is TRUE;
-* `DISTINCT` groups by the same keys as a window partition (doubles also by
-  the sign bit), so equal means equal as `Value`s;
+* `DISTINCT` groups by the same keys as a window partition, so equal means
+  equal as `Value`s;
 * aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
   counts the first row of each value, integer `SUM` raises outside 64 bits,
   and doubles are added in Lean's order (`list_reduce` over a list ordered
@@ -970,11 +1043,6 @@ raises instead of answering differently:
   `deterministic` says so for windows).
 * Interval-valued expressions (`ts1 - ts0`) are refused: Snowflake has no
   interval type.
-* Snowflake has one NaN, which stands for Lean's +NaN. A negative-NaN literal
-  is refused, and negating a NaN raises.
-* Lean orders −0.0 below +0.0, and Snowflake doesn't document whether the sign
-  of a zero is visible. So comparing two zeros raises, and so does sorting,
-  partitioning or `DISTINCT` on a double column that holds a zero.
 
 Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
 collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
@@ -1005,11 +1073,7 @@ Spark differs:
   Spark raises when a partial sum overflows even if the total fits;
 * doubles divided by zero give ±inf or NaN (ANSI mode raises);
   `CAST(double AS BIGINT)` is range-checked first (Spark saturates at 2⁶³);
-  `FLOOR`, `CEIL` and `ROUND` keep NaN, ±inf and the sign of a zero;
-* −0.0 sorts below +0.0: its sign is read from its text (`'-0.0'`).
-  `GROUP BY` turns −0.0 into +0.0, so the sign is put back, and a `CASE`
-  between the literals −0.0 and +0.0 (which Spark's optimizer takes for
-  equal) is written as arithmetic;
+  `FLOOR` and `CEIL` (which return `BIGINT`) keep NaN, ±inf and large values;
 * timestamps are `TIMESTAMP_NTZ` and intervals `INTERVAL DAY TO SECOND`;
   `date_trunc` returns a time-zone timestamp, so truncation is computed on
   `TIMESTAMP_NTZ` and `DATE` values;
@@ -1019,8 +1083,7 @@ Spark differs:
 Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
 table without `tie_free=True` (tables have no row order), and so `SUM` or
 `AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
-`Math.pow` (within 1 ulp of C's), and negative-NaN literals (Spark has one
-NaN, read as Lean's +NaN; negating a NaN raises).
+`Math.pow` (within 1 ulp of C's).
 
 String columns must use the default `UTF8_BINARY` collation (code point
 order). `python/tests/test_sql_spark.py` snapshots the SQL, parses it with
@@ -1041,6 +1104,7 @@ round trips and the differential tests instead.
 | File | Contents |
 |---|---|
 | `SubstraitLean/Value.lean` | Nullable values, rows, bag-semantics relations |
+| `SubstraitLean/Float.lean` | Doubles as exact integer codes (multiples of 2⁻¹⁰⁷⁴), NaN and −0.0 |
 | `SubstraitLean/Rounding.lean` | Exact `FLOOR`/`CEIL`/`ROUND` and casts to `BIGINT` on double codes; monotonicity |
 | `SubstraitLean/Text.lean` | String functions, `LIKE`; black-box `UPPER`/`LOWER`/regexes; patterns that certainly compile |
 | `SubstraitLean/Time.lean` | Exact `date_part` and `date_trunc` on the proleptic Gregorian calendar; monotonicity |
@@ -1054,6 +1118,8 @@ round trips and the differential tests instead.
 | `SubstraitLean/Weighted.lean` | Weight-column encoding for bag engines; `isIncremental` |
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
 | `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
+| `SubstraitLean/Keys.lean` | Derived keys (`Rel.keys_sound`), window tie-breaking (`Rel.window_deterministic`) |
+| `SubstraitLean/Completeness.lean` | The converse of contracts for the IoT example: no window is lost (`IoT.window_complete`) |
 | `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
@@ -1065,7 +1131,10 @@ round trips and the differential tests instead.
 | `SubstraitLean/Parse.lean` | Substrait protobuf-JSON → `Rel` (trusted) |
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
-| `python/` | `sverify`: contracts and incremental views on DuckDB, Polars or DataFusion, differential tests |
+| `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
+| `notebooks/` | The tour: 16 marimo chapters |
+| `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
+| `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
 | `SubstraitLean/Examples.lean` | Concrete plans checked with `#guard` at build time, plus `#print axioms` |
 
@@ -1082,8 +1151,10 @@ round trips and the differential tests instead.
 * `filter_cross_pushdown_left`: a filter that only reads left columns can be pushed into the left side of a `CrossRel`.
 * `emit_project_identity`: emitting only the input columns of a `ProjectRel` removes the projection.
 * `Rel.eval_sharded`, `twoPhase_correct`, `Rel.shardSplit_sound`: a plan linear in the sharded
-  tables is the union of its results on the shards, and decomposable aggregates combine in two
-  phases ([docs/optimizations.md](docs/optimizations.md)).
+  tables is the union of its results on the shards (with split keys, also aggregates grouped by
+  the key, `DISTINCT` over it, co-partitioned joins and tie-free windows partitioned by it), and
+  decomposable aggregates combine in two phases
+  ([docs/optimizations.md](docs/optimizations.md)).
 * `Rel.evalI_eq`, `Rel.guardFree_sound`: a plan whose only possible issues are integer `SUM`s
   runs correctly without per-row checks.
 
@@ -1269,21 +1340,21 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   `ORDER BY … LIMIT` the checker's claims hold for every row the engine could keep.
 * **Semi joins and `DISTINCT` are their own operators.** `Rel.semi` keeps the left
   rows with some (or, for anti joins, no) matching right row; `Rel.distinct` keeps
-  the first occurrence of every row (NULLs equal, doubles by their codes, as in
-  DataFusion). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
+  the first occurrence of every row (NULLs equal, doubles by their codes: one
+  zero and one NaN). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
   `DISTINCT` as an aggregate with one empty grouping, which its own consumer
   rejects; the parser reads it as "all columns".
 * **Aggregates have one grouping set.** `Rel.aggregate` outputs one row per
   distinct grouping value (NULLs group together; doubles by their codes, so
-  -0.0 and 0.0 are two groups, as in DataFusion), or exactly one row without
+  -0.0 and 0.0 are one group), or exactly one row without
   grouping expressions, even on an empty input. Measures skip NULLs; on no
   values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
   wraps around, which is a warning), double `SUM`/`AVG` add with native floats
   (DataFusion promises no order; contracts only say "a double"), and `AVG` of
   integers is the `AVG` of their conversion to double. `MIN`/`MAX` of doubles
   are refused: DataFusion's grouped version turns a group of +∞ into the largest
-  finite double, skips NaN next to other values, and lets the row order pick
-  between -0.0 and 0.0. The grouping columns are a key of the result.
+  finite double and skips NaN next to other values. The grouping columns are a
+  key of the result.
 * **Ill-typed calls evaluate to `null`.** This keeps `eval` total. `Rel.WF` rules out
   out-of-range field references.
 * **Some operations are rewrites in the parser.** `IN` lists become `OR`s of
@@ -1348,23 +1419,30 @@ No existing formal semantics for Substrait came up in my search. The closest wor
 
 ## Possible next steps
 
-0. **Completeness for ASOF and windows.** Contracts say what every output row
-   satisfies; the converse ("every accelerometer sample with a gyroscope sample
-   within 10 ms is matched") is a Lean theorem per plan today
-   (`IoT.window_complete`), not something the checker reports. Still missing for
-   windows: framed aggregates (`AVG(v) OVER (ROWS 5 PRECEDING)`) and
-   incremental maintenance.
-1. **Non-linear operators.** Incremental aggregates (SUM/COUNT per group are
-   linear over Z-sets), DISTINCT, semi and left joins; grouping sets, `STDDEV`
-   and `ARRAY_AGG`.
-2. **Translation validation.** Given a plan and its optimized form, have Lean
+The open work is tracked on GitHub:
+
+* [#29, the roadmap](https://github.com/AlexanderNenninger/substrait-lean/issues/29):
+  closing the gaps between the model and the engines, engine profiles, and the
+  optimizations of [docs/optimizations.md](docs/optimizations.md).
+* [#60, Ibis API coverage](https://github.com/AlexanderNenninger/substrait-lean/issues/60):
+  the operations the coverage table above marks ✗, ranked by how many queries
+  of the [catalogue](catalogue/FINDINGS.md) they block.
+* [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85): proved
+  error bounds, so that sharded `SUM` and `AVG` of doubles can be allowed.
+* [#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63): testing
+  the Snowflake SQL on a real account; today it only runs on an emulator.
+
+Longer-term directions:
+
+1. **Non-linear incremental operators.** Aggregates (SUM and COUNT per group
+   are linear over Z-sets), `DISTINCT`, semi and left joins, windows.
+2. **Completeness.** Contracts say what every output row satisfies; the
+   converse ("no window is lost") is a Lean theorem per plan today
+   (`IoT.window_complete`), not something the checker reports.
+3. **Translation validation.** Given a plan and its optimized form, have Lean
    check that they are equivalent. A decision procedure for the conjunctive
    fragment would mirror Cosette and HoTTSQL.
-3. **Real types.** Add a typing judgement over Substrait types (integer overflow,
-   decimals, nullability) and prove `eval` respects it.
-4. **Mathlib `Multiset` or K-relations.** Move bag equivalence to quotients, or
+4. **Real types.** A typing judgement over Substrait types (decimals, dates,
+   nullability), with `eval` proven to respect it.
+5. **Mathlib `Multiset` or K-relations.** Move bag equivalence to quotients, or
    generalize to semiring-annotated relations as HoTTSQL and provenance do.
-5. **Compare the Lean evaluator with the engine.** The differential tests
-   compare incremental and full evaluation, both on DataFusion. For windows and
-   ASOF joins, `sverify.testing` already runs Lean's `eval` against DataFusion on
-   generated tables; the other operators could get the same.

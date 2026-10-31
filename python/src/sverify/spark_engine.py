@@ -69,7 +69,7 @@ def spark_type(t: pa.DataType) -> str:
 
 def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None) -> None:
     """Register each table as a temporary view of that name. Rows go in as
-    Python values, so NULL, NaN and -0.0 stay apart."""
+    Python values, so NULL and NaN stay apart."""
     spark = spark or session()
     for name, table in tables.items():
         schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)

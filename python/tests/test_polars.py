@@ -355,15 +355,15 @@ def test_left_join_keeps_lean_order():
     assert polars_rows(con, sql) == [(1, 20), (1, 10), (2, None), (3, 20), (3, 10)]
 
 
-def test_float_join_keys_use_the_total_order():
-    """As in DataFusion and the float codes: NaN matches NaN, -0.0 not 0.0."""
+def test_float_join_keys_have_one_zero_and_one_nan():
+    """As the float codes have it: NaN matches NaN, and -0.0 matches 0.0."""
     con = connect()
     schema = ibis.schema({"k": "float64", "v": "int64"})
     create_table(con, "a", schema, [(math.nan, 1), (-0.0, 2), (0.0, 3), (None, 4)])
     create_table(con, "b", schema, [(math.nan, 10), (0.0, 30), (None, 40)])
     sql = "SELECT a.v, b.v AS w FROM a JOIN b ON a.k = b.k"
     df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
-    assert pl_rows == [(1, 10), (3, 30)]
+    assert pl_rows == [(1, 10), (2, 30), (3, 30)]
     assert same_bag(df, pl_rows)
 
 
@@ -413,8 +413,9 @@ def test_null_order_in_windows(direction):
     assert first == ([None] if "NULLS FIRST" in direction else [0 if "ASC" in direction else 2])
 
 
-def test_float_window_order_is_total():
-    """-NaN < -inf < -0.0 < 0.0 < inf < NaN, as DataFusion sorts doubles."""
+def test_float_window_order_has_one_zero_and_one_nan():
+    """-inf < 0.0 < inf < NaN: -0.0 is 0.0 and -NaN is NaN, so they tie and
+    keep their input order (DataFusion's total order would split them)."""
     con = connect()
     schema = ibis.schema({"x": "float64"})
     xs = [math.nan, 0.0, -math.inf, -0.0, math.inf, -math.nan, None]
@@ -423,11 +424,11 @@ def test_float_window_order_is_total():
     df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
     assert repr(pl_rows) == repr(
         [
-            (-math.nan, 1),
-            (-math.inf, 2),
-            (-0.0, 3),
-            (0.0, 4),
-            (math.inf, 5),
+            (-math.inf, 1),
+            (0.0, 2),
+            (0.0, 3),
+            (math.inf, 4),
+            (math.nan, 5),
             (math.nan, 6),
             (None, 7),
         ]
@@ -537,7 +538,7 @@ def test_integer_functions_match_lean_in_order(sql, rows):
 
 
 def test_rounding_matches_datafusion_bit_for_bit():
-    """Halves away from zero, `CEIL(-0.5)` is -0.0, NaN and ±∞ stay."""
+    """Halves away from zero, `CEIL(-0.5)` is 0.0, NaN and ±∞ stay."""
     con = connect()
     xs = [*DOUBLES, -0.0, -0.4, math.nan, math.inf, -math.inf, None]
     create_table(con, "r", F, [(x,) for x in xs])

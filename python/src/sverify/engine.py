@@ -32,6 +32,7 @@ import ibis
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
+import pyarrow.compute as pc
 import sqlglot as sg
 from google.protobuf import json_format
 from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
@@ -176,8 +177,9 @@ class Connection:
         return name in self.arrow
 
     def put(self, name: str, table: pa.Table) -> None:
-        """Add or replace table `name`."""
-        table = table.cast(plain_schema(table.schema))
+        """Add or replace table `name`, with doubles as the model has them
+        (`canonical`: one zero, one NaN)."""
+        table = canonical(table.cast(plain_schema(table.schema)))
         self.drop(name)
         self.arrow[name] = table
         self.ibis.con.register(name, table)
@@ -333,7 +335,23 @@ def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
     logical = ss.Consumer.from_substrait_plan(
         ctx, ss.Serde.deserialize_bytes(proto.SerializeToString())
     )
-    return ctx.create_dataframe_from_logical_plan(logical).to_arrow_table()
+    return canonical(ctx.create_dataframe_from_logical_plan(logical).to_arrow_table())
+
+
+def canonical(table: pa.Table) -> pa.Table:
+    """Doubles as the model has them: `-0.0` as `0.0` and every NaN as the
+    positive one. Connections store tables this way; DataFusion orders
+    doubles by `f64::total_cmp`, where both signs show, so its results go
+    through this too, and the plans Lean writes canonicalize what an
+    operation computes (`Write.canonical`)."""
+    columns = []
+    for c in table.columns:
+        if pa.types.is_floating(c.type):
+            nan = pa.scalar(float("nan"), c.type)
+            zero = pc.call_function("add", [c, pa.scalar(0.0, c.type)])
+            c = pc.call_function("if_else", [pc.call_function("is_nan", [c]), nan, zero])
+        columns.append(c)
+    return pa.Table.from_arrays(columns, schema=table.schema)
 
 
 def checker_path() -> Path:
@@ -457,8 +475,8 @@ def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> p
 
 
 def run_sql(con: Connection, sql: str) -> pa.Table:
-    """Run SQL on DataFusion."""
-    return con.datafusion.sql(sql).to_arrow_table()
+    """Run SQL on DataFusion; doubles in the result as `canonical` makes them."""
+    return canonical(con.datafusion.sql(sql).to_arrow_table())
 
 
 def put_table(con: Connection, name: str, table: pa.Table) -> None:

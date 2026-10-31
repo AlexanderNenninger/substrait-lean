@@ -184,6 +184,11 @@ end Substrait.Examples
 #print axioms Substrait.stats_append
 #print axioms Substrait.stats_bounds
 #print axioms Substrait.Rel.eval_sharded
+#print axioms Substrait.Rel.keyRows
+#print axioms Substrait.Sharding.coDisjoint
+#print axioms Substrait.windowEval_sharded
+#print axioms Substrait.aggregateEval_flatten_disjoint
+#print axioms Substrait.Measure.combine_eval
 #print axioms Substrait.twoPhase_correct
 #print axioms Substrait.Rel.shardSplit_sound
 #print axioms Substrait.inI64_partial

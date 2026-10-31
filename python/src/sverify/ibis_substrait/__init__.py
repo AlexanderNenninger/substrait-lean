@@ -95,11 +95,7 @@ def literal(value: Any, dtype: Any) -> Json:
         name = next(iter(key))
         return {"literal": {name: str(value) if name == "i64" else int(value)}}
     if dtype.is_float64():
-        x = float(value)
-        if math.copysign(1.0, x) < 0 and (x == 0 or math.isnan(x)):
-            # JSON has no -0.0 or negative NaN: write them negated, as the
-            # Lean writer does (the parser folds them back).
-            return call("negate", [literal(-x if x == 0 else math.nan, dtype)])
+        x = float(value) + 0.0  # the model's one zero (and one NaN, below)
         text: Any = "NaN" if math.isnan(x) else x
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"

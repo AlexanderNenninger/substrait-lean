@@ -228,9 +228,9 @@ def test_float_literals():
     assert parses(SNOWFLAKE.float_lit(math.nan)) == "CAST('NaN' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-inf' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(0.1)) == "CAST('0.1' AS FLOAT)"
-    assert parses(SNOWFLAKE.float_lit(-0.0)) == "(- CAST('0' AS FLOAT))"
-    with pytest.raises(Unsupported, match="single NaN"):
-        SNOWFLAKE.float_lit(-math.nan)
+    # The model's one zero and one NaN.
+    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
+    assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
 
 
 def test_temporal_literals():
@@ -394,10 +394,10 @@ def run_semantics(cur) -> None:
     d = SNOWFLAKE
     nan, inf, zero = d.float_lit(math.nan), d.float_lit(math.inf), d.float_lit(0.0)
     one = d.float_lit(1.0)
-    row = cur.execute(
-        f"SELECT {d.float_eq(nan, nan)}, {d.float_lt(inf, nan)}, {d.float_lt(nan, one)}, "
-        f"{d.is_nan(nan)}, {d.float_eq(zero, one)}, {d.float_lt(one, nan)}"
-    ).fetchone()
+    exprs = [d.float_eq(nan, nan), d.float_lt(inf, nan), d.float_lt(nan, one)]
+    exprs += [d.is_nan(nan), d.float_eq(zero, one), d.float_lt(one, nan)]
+    # Aliased: two of these are the same SQL, and would share a column name.
+    row = cur.execute("SELECT " + ", ".join(f"{e} AS c{i}" for i, e in enumerate(exprs))).fetchone()
     assert row == (True, True, False, True, False, True)
     # Kleene logic, and COALESCE(…, FALSE) for IS TRUE.
     null = d.null("bool")
@@ -409,12 +409,10 @@ def run_semantics(cur) -> None:
     assert cur.execute(f"SELECT {d.str_lit('a\\b')}").fetchone() == ("a\\b",)
     ts = d.time_add_interval(d.timestamp_lit(0), d.interval_lit(86_400_000_001))
     assert str(cur.execute(f"SELECT {ts}").fetchone()[0]) == "1970-01-02 00:00:00.000001"
-    signs = f"{d.sign_bit(d.float_lit(-2.5))}, {d.sign_bit(nan)}, {d.sign_bit(d.null('float'))}"
-    assert cur.execute(f"SELECT {signs}").fetchone() == (True, False, None)
-    # Divergences fail loudly instead of answering differently.
-    for sql in (d.float_eq(zero, d.float_lit(-0.0)), d.float_neg(nan), d.sign_bit(zero)):
-        with pytest.raises(Exception, match="sverify"):
-            cur.execute(f"SELECT {sql}").fetchall()
+    # One zero: -0.0 equals 0.0, and `canon` makes a computed -0.0 zero.
+    neg0 = d.float_neg(zero)
+    row = cur.execute(f"SELECT {d.float_eq(neg0, zero)}, {d.canon(neg0)}").fetchone()
+    assert row[0] is True and math.copysign(1.0, row[1]) == 1.0
     big = d.int_lit(2**62)
     with pytest.raises(Exception, match="(?i)overflow"):
         cur.execute(f"SELECT {d.int_add(big, big)}").fetchall()

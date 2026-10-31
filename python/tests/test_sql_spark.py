@@ -72,9 +72,9 @@ def parses(sql: str) -> str:
 
 def test_literals():
     assert parses(SPARK.float_lit(math.nan)) == "CAST('NaN' AS DOUBLE)"
-    assert parses(SPARK.float_lit(-0.0)) == "(- CAST('0' AS DOUBLE))"
-    with pytest.raises(Unsupported, match="single NaN"):
-        SPARK.float_lit(-math.nan)
+    # The model's one zero and one NaN.
+    assert parses(SPARK.float_lit(-0.0)) == "CAST('0' AS DOUBLE)"
+    assert SPARK.float_lit(-math.nan) == SPARK.float_lit(math.nan)
     assert parses(SPARK.str_lit("it's a\\b\n")) == "'it\\'s a\\\\b\\u000a'"
     assert parses(SPARK.timestamp_lit(1_500)) == "TIMESTAMP_NTZ '1970-01-01 00:00:00.001500'"
     assert SPARK.int_lit(-(2**63)) == "CAST(-9223372036854775808 AS BIGINT)"
@@ -134,51 +134,44 @@ def test_matches_lean(spark):
 def test_floats(spark):
     d = SPARK
     nan, inf, ninf = d.float_lit(math.nan), d.float_lit(math.inf), d.float_lit(-math.inf)
-    zero, neg0, one_ = d.float_lit(0.0), d.float_lit(-0.0), d.float_lit(1.0)
-    # The total order: NaN largest and equal to itself, -0.0 < +0.0.
+    zero, one_ = d.float_lit(0.0), d.float_lit(1.0)
+    neg0 = f"(- {zero})"
+    # One zero and one NaN: NaN largest and equal to itself, -0.0 = 0.0.
     assert one(
         d.float_eq(nan, nan),
         d.float_lt(inf, nan),
         d.float_lt(neg0, zero),
         d.float_eq(neg0, zero),
         d.float_lt(ninf, neg0),
-        d.sign_bit(neg0),
-        d.sign_bit(nan),
-        d.sign_bit(d.null("float")),
-    ) == (True, True, True, False, True, True, False, None)
-    # Division by a zero of either sign is IEEE, not an error.
-    got = one(*(d.float_div(a, b) for a, b in [(one_, zero), (one_, neg0), (neg0, zero)]))
+    ) == (True, True, False, True, True)
+    # Division by zero is IEEE, not an error.
+    got = one(*(d.float_div(a, zero) for a in (one_, f"(- {one_})", zero)))
     assert got[:2] == (math.inf, -math.inf) and math.isnan(got[2])
     assert one(d.float_div(d.null("float"), zero)) == (None,)
-    # FLOOR, CEIL and ROUND keep the sign of a zero, NaN, ±inf and big values.
-    x = [d.float_lit(v) for v in (-0.4, 0.3, -0.0, 2.5, 1e300)]
+    # FLOOR, CEIL and ROUND keep NaN, ±inf and big values; zeros are zero.
+    x = [d.float_lit(v) for v in (-0.4, 0.3, 2.5, 1e300)]
     got = one(
-        d.float_round(x[0]),
-        d.float_floor(x[1]),
-        d.float_ceil(x[0]),
-        d.float_floor(x[2]),
-        d.float_round(x[3]),
-        d.float_floor(x[4]),
+        d.canon(d.float_round(x[0])),
+        d.canon(d.float_floor(x[1])),
+        d.canon(d.float_ceil(x[0])),
+        d.float_round(x[2]),
+        d.float_floor(x[3]),
         d.float_ceil(ninf),
     )
-    assert repr(got) == repr((-0.0, 0.0, -0.0, -0.0, 3.0, 1e300, -math.inf))
+    assert repr(got) == repr((0.0, 0.0, 0.0, 3.0, 1e300, -math.inf))
     assert math.isnan(one(d.float_round(nan))[0])
     assert one(d.float_to_int(d.float_lit(-2.9))) == (-2,)
     for bad in (2.0**63, math.nan, -math.inf):
         with pytest.raises(Exception, match="sverify"):
             one(d.float_to_int(d.float_lit(bad)))
-    with pytest.raises(Exception, match="sverify"):
-        one(d.float_neg(nan))
-    # The optimizer takes the literals -0.0 and +0.0 for equal; a CASE
-    # between them must keep the sign (on a table: VALUES are evaluated
-    # without the optimizer).
+    # `canon` survives the optimizer on a table (VALUES skip it), and a
+    # computed -0.0 comes out as 0.0.
     spark.range(3).selectExpr("CAST(id AS DOUBLE) - 1 AS x").createOrReplaceTempView("signs")
-    pick = d.case_when("(x > 0)", neg0, zero)
-    got = query(f"SELECT x, {pick}, {d.float_round('(x * 0.25D)')} FROM signs ORDER BY x")
-    assert repr(got) == repr([(-1.0, 0.0, -0.0), (0.0, 0.0, 0.0), (1.0, -0.0, 0.0)])
+    got = query(f"SELECT x, {d.canon('(x * -0.0D)')} FROM signs ORDER BY x")
+    assert repr(got) == repr([(-1.0, 0.0), (0.0, 0.0), (1.0, 0.0)])
 
 
-def test_groups_keep_the_sign_of_zero(spark):
+def test_groups_have_one_zero_and_one_nan(spark):
     """Through `sverify.spark_engine.run`, Arrow in and out."""
     from sverify import spark_engine
 
@@ -189,7 +182,7 @@ def test_groups_keep_the_sign_of_zero(spark):
     got = [tuple(r.values()) for r in spark_engine.run(plan, {"z": z}, spark).to_pylist()]
     duck = [tuple(r.values()) for r in run_plan(con, plan, "duckdb").to_pylist()]
     assert canonical(got) == canonical(duck)
-    assert {repr(x) for x, _ in got} == {"-0.0", "0.0", "None", "nan"}
+    assert sorted(repr(r) for r in got) == ["(0.0, 3)", "(None, 1)", "(nan, 1)"]
 
 
 def test_integers(spark):

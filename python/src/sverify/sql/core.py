@@ -15,9 +15,11 @@ defaults:
   (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
   Lean's value is NULL and `SubstraitLean/Safety.lean` says when that can
   happen; the SQL raises there too (`Dialect.raise_`).
-* Doubles compare by the total order of `SubstraitLean/Float.lean`
-  (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`, NaN equal to itself), in
-  comparisons, join conditions, window partitions and sort keys.
+* Doubles have one zero and one NaN (`SubstraitLean/Float.lean`): `-0.0` is
+  `0.0`, NaN equals itself and is above `inf`, in comparisons, join
+  conditions, groups, window partitions and sort keys. Every double read
+  from a table, and every one an operation could make `-0.0`, goes through
+  `Dialect.canon`, so `-0.0` never reaches a result.
 * Filters keep a row only when the condition is TRUE, `AND`/`OR`/`NOT` are
   Kleene's, and every `ORDER BY` key says where NULLs go.
 * Row order follows `Rel.eval`'s list order wherever it matters. Below a
@@ -113,10 +115,11 @@ class Dialect:
         return self.cast(str(i), "int")
 
     def float_lit(self, f: float) -> str:
-        """A double, including NaN and -NaN (sign bit set), ±inf and -0.0."""
-        if math.isnan(f) or f == 0:
-            positive = self.cast("'NaN'" if math.isnan(f) else "'0'", "float")
-            return self.float_neg(positive) if math.copysign(1.0, f) < 0 else positive
+        """A double: NaN, ±inf, or a number (`-0.0` is `0.0`)."""
+        if math.isnan(f):
+            return self.cast("'NaN'", "float")
+        if f == 0:
+            return self.cast("'0'", "float")
         if math.isinf(f):
             return self.cast("'Infinity'" if f > 0 else "'-Infinity'", "float")
         return self.cast(f"'{f!r}'", "float")
@@ -250,7 +253,13 @@ class Dialect:
         return f"({a} / {b})"
 
     def float_neg(self, a: str) -> str:
+        """IEEE negation; NaN stays NaN (`canon` makes `-0.0` zero)."""
         return f"(- {a})"
+
+    def canon(self, x: str) -> str:
+        """`x` with `-0.0` made `0.0`, the model's one zero: IEEE's
+        `-0.0 + 0.0` is `0.0`, and other values stay (`x` appears once)."""
+        return f"({x} + {self.float_lit(0.0)})"
 
     def int_to_float(self, a: str) -> str:
         return self.cast(a, "float")
@@ -260,15 +269,15 @@ class Dialect:
         return self.cast(a, "str")
 
     def float_floor(self, x: str) -> str:
-        """Exact; keeps the sign of a zero result and NaN/±inf as they are."""
+        """Exact; NaN/±inf stay (a zero result goes through `canon`)."""
         return f"FLOOR({x})"
 
     def float_ceil(self, x: str) -> str:
-        """Exact; `CEIL(-0.5)` is -0.0; NaN/±inf stay."""
+        """Exact; NaN/±inf stay."""
         return f"CEIL({x})"
 
     def float_round(self, x: str) -> str:
-        """To an integer, halves away from zero; `ROUND(-0.4)` is -0.0."""
+        """To an integer, halves away from zero; NaN/±inf stay."""
         return f"ROUND({x})"
 
     def float_round_to(self, x: str, digits: int) -> str:
@@ -286,36 +295,22 @@ class Dialect:
         raise Unsupported(f"{self.name}: CAST(double AS BIGINT) is not implemented")
 
     def is_nan(self, x: str) -> str:
-        """TRUE for NaN of either sign, NULL for NULL."""
+        """TRUE for NaN, NULL for NULL."""
         return f"({x} <> {x})"
 
-    def sign_bit(self, x: str) -> str:
-        """TRUE when the sign bit is set (also for -0.0 and -NaN), NULL for NULL."""
-        raise Unsupported(f"{self.name} has no way to read the sign bit of a double")
-
     def float_rank(self, x: str) -> str:
-        """-1 for -NaN, 1 for NaN, 0 for other doubles, NULL for NULL: the
-        coarse part of the total order."""
-        return (
-            f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN "
-            f"(CASE WHEN {self.sign_bit(x)} THEN -1 ELSE 1 END) ELSE 0 END)"
-        )
+        """1 for NaN, 0 for other doubles, NULL for NULL: NaN is above `inf`."""
+        return f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN 1 ELSE 0 END)"
 
     def float_eq(self, a: str, b: str) -> str:
-        """Equality in the total order: NaN = NaN, -0.0 <> +0.0."""
+        """Equality of doubles: NaN = NaN (IEEE has NaN <> NaN)."""
         ra, rb = self.float_rank(a), self.float_rank(b)
-        return (
-            f"({ra} = {rb} AND ({ra} <> 0 OR {a} = {b}) "
-            f"AND {self.sign_bit(a)} = {self.sign_bit(b)})"
-        )
+        return f"({ra} = {rb} AND ({ra} = 1 OR {a} = {b}))"
 
     def float_lt(self, a: str, b: str) -> str:
-        """`<` in the total order: -NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN."""
+        """`<` of doubles: NaN is above everything else."""
         ra, rb = self.float_rank(a), self.float_rank(b)
-        return (
-            f"({ra} < {rb} OR ({ra} = 0 AND {rb} = 0 AND ({a} < {b} OR ({a} = {b} "
-            f"AND {self.sign_bit(a)} AND NOT {self.sign_bit(b)}))))"
-        )
+        return f"({ra} < {rb} OR ({ra} = 0 AND {rb} = 0 AND {a} < {b}))"
 
     # Timestamps and intervals
 
@@ -448,20 +443,8 @@ class Dialect:
 
     def sort_key(self, expr: str, desc: bool, nulls_first: bool, kind: Kind | None = None) -> str:
         """One ORDER BY key; `kind` is what `expr` is (a double's sort is
-        already split into rank, value and sign keys)."""
+        already split into rank and value keys)."""
         return f"{expr} {'DESC' if desc else 'ASC'} NULLS {'FIRST' if nulls_first else 'LAST'}"
-
-    def partition_keys(self, x: str, kind: Kind | None) -> list[str]:
-        """PARTITION BY expressions grouping rows equal on column `x` (NULLs
-        together): doubles also split on the sign, so -0.0 and +0.0 (and -NaN
-        and NaN) are different partitions."""
-        return [x, self.sign_bit(x)] if kind == "float" else [x]
-
-    def group_value(self, x: str, kind: Kind | None) -> str:
-        """The value of column `x` in the output of a `GROUP BY` on
-        `partition_keys(x, kind)`: `x` itself, unless the engine rewrites
-        grouped values (a double's sign, say)."""
-        return x
 
     def over(self, partition: Sequence[str], order: Sequence[str]) -> str:
         parts = []
@@ -1221,7 +1204,8 @@ def _fold_call(name: str, cs: list[Const]) -> Const | None:
             return Const("int", -c.value, kind=c.kind)
         case "negate", [c]:
             f = c.to_float()
-            return None if f is None else Const("flt", -f, kind="float")
+            # One zero and one NaN: negating either gives itself.
+            return None if f is None else Const("flt", -f if f == f and f != 0 else f, kind="float")
         case "trunc", [c]:
             f = c.to_float()
             return None if f is None else Const("flt", _trunc(f), kind="float")
@@ -1868,9 +1852,14 @@ def _call(name: str, args: list[Expr]) -> Expr:
         case "normalized_interval", [a]:
             return a
         case (("is_nan" | "isnan"), [a]):
-            return Bin(
-                "or", Bin("eq", a, Lit(math.nan, "float")), Bin("eq", a, Lit(-math.nan, "float"))
-            )
+            return Bin("eq", a, Lit(math.nan, "float"))
+        # `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
+        # zero: Lean's `canonical`, read back as `Parse.mkCall` reads it.
+        case "nanvl", [a, Lit(value=float(v))] if math.isnan(v):
+            match a:
+                case Bin(op="fadd", left=x, right=Lit(value=0 | 0.0)):
+                    return x
+            return a
         case (("and" | "or"), [a, *rest]):
             for b in rest:
                 a = Bin(name, a, b)  # type: ignore[arg-type]
@@ -1977,10 +1966,7 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
         case (("subtract" | "negate"), [a]):
             return Un("fneg", a)
         case "abs", [a]:
-            neg_zero, pos_zero = Lit(-0.0, "float"), Lit(0.0, "float")
-            return If(
-                Bin("lt", a, neg_zero), Un("fneg", a), If(Bin("lt", a, pos_zero), pos_zero, a)
-            )
+            return If(Bin("lt", a, Lit(0.0, "float")), Un("fneg", a), a)
         case "power", [a, b]:
             return Bin("fpow", a, b)
         case "floor", [a]:
@@ -2091,7 +2077,11 @@ class _Writer:
                     raise Unsupported(
                         f"table {'.'.join(name)} needs one name per column in its baseSchema"
                     )
-                items = [f"{d.quote(col)} AS {self.c(i)}" for i, col in enumerate(columns)]
+                # A table's `-0.0` is the model's one zero.
+                items = [
+                    f"{d.canon(d.quote(col)) if k == 'float' else d.quote(col)} AS {self.c(i)}"
+                    for i, (col, k) in enumerate(zip(columns, r.kinds, strict=True))
+                ]
                 if ordered:
                     items.append(f"{d.row_ordinal()} AS {d.quote(ORD)}")
                 return self.select(items, ".".join(d.quote(p) for p in name))
@@ -2254,8 +2244,8 @@ class _Writer:
         """`aggregateEval`. Three steps: the grouping expressions and each
         measure's argument (NULL on rows its filter drops) on every input row;
         for `DISTINCT` measures, the argument only on the first row of each
-        value in its group; then `GROUP BY` the groups, as `Value`s (doubles
-        also by the sign bit). Groups come in order of their first row."""
+        value in its group; then `GROUP BY` the groups, as `Value`s. Groups
+        come in order of their first row."""
         d = self.d
         ks = kinds(i)
         m = len(ks)
@@ -2293,9 +2283,7 @@ class _Writer:
         def col(c: str) -> str:
             return self.ref(b, c)
 
-        keys = [
-            x for c, k in zip(g_cols, g_kinds, strict=True) for x in d.partition_keys(col(c), k)
-        ]
+        keys = [col(c) for c in g_cols]
         if any(ms.distinct for ms in measures):
             # The first row of each value of a DISTINCT measure's argument.
             items = [f"{col(c)} AS {c}" for c in g_cols + m_cols]
@@ -2304,20 +2292,15 @@ class _Writer:
             for ms, c, dc in zip(measures, m_cols, d_cols, strict=True):
                 if not ms.distinct:
                     continue
-                part = keys + d.partition_keys(col(c), expr_kind(ms.arg, ks))
+                part = [*keys, col(c)]
                 order = [self.asc(self.ordinal(b))] if needs else part
                 first = f"{d.row_number(d.over(part, order))} = {d.int_lit(1)}"
                 value = d.case_when(first, col(c), d.null(expr_kind(ms.arg, ks)))
                 items.append(f"{value} AS {dc}")
             level = self.select(items, d.subquery(level, b))
             b = self.alias()
-            keys = [
-                x for c, k in zip(g_cols, g_kinds, strict=True) for x in d.partition_keys(col(c), k)
-            ]
-        out = [
-            f"{d.group_value(col(c), k)} AS {self.c(i)}"
-            for i, (c, k) in enumerate(zip(g_cols, g_kinds, strict=True))
-        ]
+            keys = [col(c) for c in g_cols]
+        out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
             sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
@@ -2338,7 +2321,7 @@ class _Writer:
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
-                    total = d.float_div(total, d.int_to_float(f"COUNT({v})"))
+                    total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v})")))
                 return d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
         # `Value.le`: strings by code point (no collation), FALSE < TRUE.
         f = "MIN" if m.fn == "min" else "MAX"
@@ -2359,20 +2342,17 @@ class _Writer:
         return keys
 
     def distinct(self, i: Rel, ordered: bool) -> str:
-        """`dedup`: rows equal as `Value`s (NULLs equal, doubles by their codes,
-        so -0.0 and +0.0 differ) are one; the first of them stays, in place."""
+        """`dedup`: rows equal as `Value`s (NULLs equal, one zero and one NaN)
+        are one; the first of them stays, in place."""
         d = self.d
         a = self.alias()
         ks = kinds(i)
         n = len(ks)
-        keys = [x for j in range(n) for x in d.partition_keys(self.ref(a, self.c(j)), ks[j])]
+        keys = [self.ref(a, self.c(j)) for j in range(n)]
         if not ordered:
             # Any row of a group stands for it: they are all the same value.
-            items = [
-                f"{d.group_value(self.ref(a, self.c(j)), ks[j])} AS {self.c(j)}" for j in range(n)
-            ]
             return self.select(
-                items,
+                self.passthrough(a, n, False),
                 d.subquery(self.rel(i, False), a),
                 "GROUP BY " + ", ".join(keys),
             )
@@ -2401,7 +2381,7 @@ class _Writer:
         def col(j: int) -> str:
             return self.ref(a, self.c(j))
 
-        partition = [x for p in part for x in d.partition_keys(col(p), ks[p])]
+        partition = [col(p) for p in part]
         keys: list[str] = []
         for k in sort:
             for x, kind in self.sort_exprs(col(k.col), ks[k.col]):
@@ -2433,9 +2413,7 @@ class _Writer:
         NULL exactly when the value is NULL."""
         if kind != "float":
             return [(x, kind)]
-        d = self.d
-        zero_sign = f"(CASE WHEN {d.sign_bit(x)} THEN 0 ELSE 1 END)"
-        return [(d.float_rank(x), "int"), (x, "float"), (zero_sign, "int")]
+        return [(self.d.float_rank(x), "int"), (x, "float")]
 
     def check_refs(self, e: Expr, n: int) -> None:
         match e:
@@ -2504,13 +2482,15 @@ class _Writer:
                 return d.int_neg(self.int_operand(a, ref, cols, "negation"))
             case Un(op="itof", arg=a):
                 return d.int_to_float(self.int_operand(a, ref, cols, "CAST to DOUBLE"))
+            # IEEE makes `-0.0` here from the one zero (negation, rounding
+            # up to zero, a negative times zero, underflow): `canon` it.
             case Un(op="fneg", arg=a):
-                return d.float_neg(self.float_operand(a, ref, cols))
+                return d.canon(d.float_neg(self.float_operand(a, ref, cols)))
             case Un(op="ffloor" | "fceil" | "fround" as op, arg=a):
                 f = {"ffloor": d.float_floor, "fceil": d.float_ceil, "fround": d.float_round}[op]
-                return f(self.float_operand(a, ref, cols))
+                return d.canon(f(self.float_operand(a, ref, cols)))
             case Un(op="froundTo", arg=a, digits=digits):
-                return d.float_round_to(self.float_operand(a, ref, cols), digits)
+                return d.canon(d.float_round_to(self.float_operand(a, ref, cols), digits))
             case Un(op="ftoi", arg=a):
                 return d.float_to_int(self.float_operand(a, ref, cols))
             case Un(op="narrow", arg=a, digits=bits):
@@ -2531,7 +2511,9 @@ class _Writer:
                     "fdiv": d.float_div,
                     "fpow": d.float_pow,
                 }[op]
-                return f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
+                sql = f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
+                # A sum or difference of doubles other than -0.0 is never -0.0.
+                return sql if op in ("fadd", "fsub") else d.canon(sql)
             case Bin(op="add" | "sub" | "mul" as op, left=a, right=b):
                 return self.arith(op, a, b, ref, cols)
             case Bin(op="idiv" | "imod" as op, left=a, right=b):

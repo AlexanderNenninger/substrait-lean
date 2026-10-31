@@ -4,6 +4,7 @@ import datetime as dt
 import math
 
 import ibis
+import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -128,12 +129,42 @@ def test_incremental_view_with_integer_constants(engine):
 
 
 @pytest.mark.parametrize("engine", sv.ENGINES)
-def test_signed_zeros_are_different_rows(engine):
-    """DataFusion keeps -0.0 and 0.0 apart; so must the view's bookkeeping."""
+def test_signed_zeros_are_one_row(engine):
+    """The model has one zero: -0.0 is stored as 0.0, and deleting -0.0
+    deletes it."""
     con = sv.connect()
     t = dt.datetime(2024, 1, 1)
-    sv.create_table(con, "s1", s1.schema(), [(t, -0.0)])
+    sv.create_table(con, "s1", s1.schema(), [(t, -0.0), (t, 1.0)])
     table = con.table("s1")
-    view = sv.IncrementalView(con, table.filter(table.value.notnull()), "v", engine)
-    view.apply({"s1": sv.Changes(inserts=[(t, 0.0)], deletes=[(t, -0.0)])})
-    assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0)])
+    view = sv.IncrementalView(con, table.filter(table.value >= 0), "v", engine)
+    assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0), (t, 1.0)])
+    view.apply({"s1": sv.Changes(inserts=[(t, 2.0)], deletes=[(t, -0.0)])})
+    assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
+
+
+@pytest.mark.parametrize("engine", sv.ENGINES)
+def test_computed_zeros_and_nans_are_canonical(engine):
+    """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `inf - inf` is the one NaN,
+    sorted last, though x86 computes a negative NaN (on DataFusion, which
+    orders by `total_cmp`, Lean's written plans make both canonical)."""
+    con = sv.connect()
+    sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf])}))
+
+    def run(sql: str) -> list[tuple]:
+        plan = sv.engine.written_plan(sv.engine.substrait_json(con, sql))
+        return [tuple(r.values()) for r in sv.engine.run_plan(con, plan, engine).to_pylist()]
+
+    got = run("SELECT -x AS y FROM f WHERE -x >= 0")
+    assert repr(got) == repr([(0.0,)])
+    sql = "SELECT x, ROW_NUMBER() OVER (ORDER BY d ASC NULLS LAST, x) AS n "
+    got = run(sql + "FROM (SELECT x, x - x AS d FROM f)")
+    assert sorted(got) == [(0.0, 1), (1.0, 2), (math.inf, 3)]
+
+
+def test_negating_a_non_positive_double_gives_a_non_negative_one():
+    """With one zero, `-v >= 0` follows from `v <= 0` (in DataFusion's total
+    order `-(0.0)` would be -0.0, which is below 0.0)."""
+    t = s1.filter(s1.value <= 0).select(y=-s1.value)
+    report = sv.verify(t, ensures=[_.y >= 0])
+    assert report.proved, str(report)
+    assert report.facts["y"] == "a double ≥ 0.0"
