@@ -516,7 +516,8 @@ engines already do.
 ### What is supported
 
 How much of the Ibis API gets through, from
-[`sverify/coverage.py`](python/src/sverify/coverage.py) (regenerate with
+[`sverify/coverage.py`](python/src/sverify/coverage.py) and its cases in
+[`sverify/coverage_cases/`](python/src/sverify/coverage_cases) (regenerate with
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->

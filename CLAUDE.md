@@ -54,3 +54,19 @@ ssh homelab 'export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
 ```
 
 Run long QA commands there in the background, not in the foreground shell.
+
+## Adding functions and coverage cases
+
+Parallel PRs used to conflict in two shared lists; both are now split by area.
+
+- **Substrait function** (`SubstraitLean/Write.lean`): add `(anchor, name)` at
+  the end of its area's list (`coreFns`, `stringFns`, `temporalFns`,
+  `nestedFns`, `aggregateFns`, `windowFns`) with the next free anchor in that
+  area's range (100s core, 200s strings, 300s temporal, 400s nested, 500s
+  aggregates, 600s windows), and the matching arm in `UnFn`/`BinFn`/`AggFn.anchor`
+  under the area's comment. `lake build` rejects duplicate anchors or names,
+  out-of-range anchors and anchors that are not declared.
+- **Coverage case** (`python/src/sverify/coverage_cases/<area>.py`): append to
+  that module's `CASES`, and put its refusals in the same module's `REFUSED`,
+  `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
+  listed in `coverage_cases.AREAS`.
