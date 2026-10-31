@@ -54,6 +54,7 @@ TABLES = {
     "i32": pa.table({"a": pa.array([2**31 - 1], pa.int32()), "b": pa.array([1], pa.int32())}),
     "u8": pa.table({"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}),
     "str": pa.table({"s": ["b", "B", "a", "", "é", "z"]}),
+    "bools": pa.table({"b": [False, True, None]}),
     "str5": pa.table({"s": ["5", "05"]}),
     "is": pa.table({"a": pa.array([10, 10, -3, None], pa.int64()), "s": ["10", "010", "-3", "x"]}),
     "nanp": pa.table(
@@ -348,6 +349,22 @@ def test_int_concat_string():
     """N7: `x || 'a'` is '1a'; the analysed plan casts the integer to text."""
     report = verify("SELECT x || 'a' AS p FROM n", "n", {"x": "int64"}, ensures=["p IS NULL"])
     assert not report.ensures[0].proved
+
+
+def test_boolean_order_is_datafusions(con):
+    """FALSE < TRUE, as in DataFusion."""
+    sql = "SELECT b, b < TRUE AS lt, b >= FALSE AS ge, b > b AS gt FROM bools"
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(False,), (True,), (None,)]
+    assert lean_rows(json.dumps(inline_tables(plan, {"bools": rows_}))) == rows(con, sql)
+
+
+def test_double_literal_arithmetic(con):
+    """#97: arithmetic on double literals alone is double arithmetic."""
+    sql = "SELECT 3.0 / 2.0 AS q, CASE WHEN b THEN 1.5 ELSE 2.5 END + 1.0 AS c FROM bools"
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(False,), (True,), (None,)]
+    assert lean_values(json.dumps(inline_tables(plan, {"bools": rows_}))) == rows(con, sql)
 
 
 def test_string_order_is_datafusions(con):

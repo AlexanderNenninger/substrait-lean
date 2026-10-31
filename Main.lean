@@ -84,7 +84,9 @@ def check (plan : Plan) : IO UInt32 := do
   -- Lean's evaluator panics at the black boxes it does not evaluate
   -- (`Text.lean`: non-ASCII `UPPER`/`LOWER`, regular expressions) and goes
   -- on with a placeholder; refuse such rows rather than print them (#70).
-  let kinds := plan.root.kinds plan.tables
+  -- The writer's kinds, which call a bare double literal's column a double
+  -- where `Rel.kinds` calls it an integer (#96).
+  let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
   let (panics, rows) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
     -- `lazyPure`: evaluated here, not hoisted out of the isolated streams.
     IO.lazyPure fun _ => (plan.root.eval cat).map fun row =>
