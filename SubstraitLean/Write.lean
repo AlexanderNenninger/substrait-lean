@@ -336,6 +336,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un (.dayPart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .date a]
   | .un (.dayTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .date a]
   | .un (.addMonths m t) a => call 4 [writeExpr cols (if t then .time else .date) a, writeMonths m]
+  -- The argument's kind from the function, for a bare `NULL` (#96).
+  | .un .not a => call (UnFn.anchor .not) [writeExpr cols .bool a]
+  | .un .upper a => call (UnFn.anchor .upper) [writeExpr cols .str a]
+  | .un .lower a => call (UnFn.anchor .lower) [writeExpr cols .str a]
+  | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
@@ -484,9 +489,13 @@ for where DataFusion's semantics differ from `Rel.eval` (#24): an integer
 `SUM` wraps around in DataFusion, so it is summed as `DECIMAL(38,0)` and cast
 back, which fails outside 64 bits instead. Such a plan does not parse back to
 the same `Rel`. -/
-def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
-    Rel → Option (List Nat) → Json
-  | .emit r m, out => writeRel schemas cat df r (some (match out with
+def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
+    (hint : List WKind := []) : Rel → Option (List Nat) → Json
+  | .emit r m, out =>
+    -- `hint` is for the emitted columns; `r`'s column `c` is emitted at `m.idxOf c`.
+    let h := (List.range (relKinds schemas cat r).length).map fun c =>
+      ((m.idxOf? c).bind (hint[·]?)).getD .other
+    writeRel schemas cat df h r (some (match out with
       | none => m
       | some o => o.map (m.getD · 0)))
   | .read t, out => withCommon "read" [
@@ -503,40 +512,45 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
         obj [("fields", Json.arr (row.zipIdx.map fun (v, i) =>
           valuesLit (tys.getD i i64Type) v).toArray)]).toArray)])] out
   | .filter r c, out => withCommon "filter" [
-      ("input", writeRel schemas cat df r none),
+      ("input", writeRel schemas cat df [] r none),
       ("condition", writeExpr (relKinds schemas cat r) .bool c)] out
   | .project r es, out => withCommon "project" [
-      ("input", writeRel schemas cat df r none),
+      ("input", writeRel schemas cat df [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
-        Json.arr (es.map fun e => writeExpr ks (wkind ks e) e).toArray)] out
+        Json.arr (es.zipIdx.map fun (e, i) =>
+          let k := wkind ks e
+          writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
-      ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none)] out
+      ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none)] out
   | .join a b ty on, out => withCommon "join" [
-      ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none),
+      ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", match ty with | .inner => "JOIN_TYPE_INNER" | .left => "JOIN_TYPE_LEFT")] out
   -- The current encoding, `offsetExpr`/`countExpr`: DataFusion's protobuf no
   -- longer has the deprecated `offset`/`count`.
   | .fetch r off cnt, out => withCommon "fetch" ([
-      ("input", writeRel schemas cat df r none),
+      ("input", writeRel schemas cat df [] r none),
       ("offsetExpr", obj [("literal", writeValue (.int off))])] ++
       (cnt.map fun c => [("countExpr", obj [("literal", writeValue (.int c))])]).getD []) out
+  -- A branch's bare `NULL`s take the other branch's column kinds: a FULL
+  -- JOIN's padding (#96).
   | .unionAll a b, out => withCommon "set" [
-      ("inputs", Json.arr #[writeRel schemas cat df a none, writeRel schemas cat df b none]),
+      ("inputs", Json.arr #[writeRel schemas cat df (relKinds schemas cat b) a none,
+        writeRel schemas cat df (relKinds schemas cat a) b none]),
       ("op", "SET_OP_UNION_ALL")] out
   | .semi a b anti on, out => withCommon "join" [
-      ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none),
+      ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none),
       ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
       ("type", if anti then "JOIN_TYPE_LEFT_ANTI" else "JOIN_TYPE_LEFT_SEMI")] out
   | .orderBy r keys, out => withCommon "sort" [
-      ("input", writeRel schemas cat df r none),
+      ("input", writeRel schemas cat df [] r none),
       ("sorts", Json.arr (keys.map (writeSortKey (relKinds schemas cat r))).toArray)] out
   -- Grouping by every column, with no measures.
   | .distinct r, out =>
       let ks := relKinds schemas cat r
       withCommon "aggregate" [
-        ("input", writeRel schemas cat df r none),
+        ("input", writeRel schemas cat df [] r none),
         ("groupingExpressions", Json.arr ((List.range ks.length).map fun i =>
           writeExpr ks .other (.field i)).toArray),
         ("groupings", Json.arr #[obj [("expressionReferences",
@@ -544,7 +558,7 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
   | .aggregate r gs ms, out =>
       let ks := relKinds schemas cat r
       let agg := withCommon "aggregate" [
-        ("input", writeRel schemas cat df r none),
+        ("input", writeRel schemas cat df [] r none),
         ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
         ("groupings", if gs.isEmpty then Json.arr #[] else
           Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
@@ -564,10 +578,10 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
             | none => cols
             | some o => o.map (cols.getD · 0)))
   | .unnest r c, out => withCommon "extensionSingle" [
-      ("input", writeRel schemas cat df r none),
+      ("input", writeRel schemas cat df [] r none),
       ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out
   | .window r part sort fns, out => withCommon "project" [
-      ("input", writeRel schemas cat df r none),
+      ("input", writeRel schemas cat df [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
         Json.arr (fns.map (writeWindow ks part sort)).toArray)] out
@@ -578,7 +592,7 @@ def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List Str
     ("extensions", Json.arr (functions.map fun (a, n) => obj [("extensionFunction", obj [
       ("functionAnchor", toJson a), ("name", toJson n)])]).toArray),
     ("relations", Json.arr #[obj [("root", obj [
-      ("input", writeRel schemas cat df root none), ("names", toJson names)])]])]
+      ("input", writeRel schemas cat df [] root none), ("names", toJson names)])]])]
 
 /-- Schemas recorded by the parser, falling back to placeholders. -/
 def planSchemas (p : Parse.Plan) : Schemas := fun t n =>
