@@ -240,8 +240,19 @@ def put_table(con: Backend, name: str, table: pa.Table) -> None:
     """
     if con.con.table_exist(name):
         con.con.deregister_table(name)
+    table = table.cast(plain_schema(table.schema))
     batches = table.to_batches() or [pa.RecordBatch.from_pylist([], schema=table.schema)]
     con.con.register_record_batches(name, [batches])
+
+
+def plain_schema(schema: pa.Schema) -> pa.Schema:
+    """`schema` with large and view strings as plain `string`: the type the
+    plans name (Substrait has one string type), which DataFusion's consumer
+    checks against the registered table. Table formats such as Iceberg read
+    strings as `large_string`."""
+    plain = (pa.types.is_large_string, getattr(pa.types, "is_string_view", lambda _: False))
+    fields = [f.with_type(pa.string()) if any(p(f.type) for p in plain) else f for f in schema]
+    return pa.schema(fields, metadata=schema.metadata)
 
 
 def to_arrow(rows, schema: pa.Schema) -> pa.Table:

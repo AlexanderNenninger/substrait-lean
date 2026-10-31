@@ -1,8 +1,9 @@
 """Every Ibis operation the checker verifies runs on every engine.
 
 Each `verified` case of the coverage harness (`sverify.coverage`) runs on
-random tables: on DataFusion as Ibis compiles it, and on Polars and DuckDB as
-the plan Lean writes back out (`written_plan`). The results agree as bags with
+random tables: on DataFusion as Ibis compiles it to SQL, and on Polars and
+DuckDB as the plan Lean writes back out (`written_plan`) from the Ibis
+producer's plan. The results agree as bags with
 DataFusion's, and Polars and DuckDB, which both follow `Rel.eval`'s list
 order, agree row for row where the order is part of the result (below a
 FETCH, a window or a sort). Where a FETCH takes "the first rows" of an unsorted
@@ -23,7 +24,16 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify import coverage, polars_engine
-from sverify.engine import put_table, run_plan, run_sql, substrait_json, to_sql, written_plan
+from sverify.engine import (
+    connect,
+    create_table,
+    put_table,
+    run_plan,
+    run_sql,
+    to_sql,
+    written_plan,
+)
+from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import Unsupported, parse_plan
 from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Fetch, Rel, order_matters
@@ -93,7 +103,10 @@ def has_fetch(r: Rel) -> bool:
 
 @pytest.fixture(scope="module")
 def con():
-    return coverage.setup()
+    con = connect()
+    for table in (coverage.T, coverage.U):
+        create_table(con, table.get_name(), table.schema())
+    return con
 
 
 @pytest.mark.parametrize("case", VERIFIED, ids=lambda c: c.label)
@@ -102,8 +115,9 @@ def con():
 def test_engines_agree(con, case, data):
     for name, table in data.items():
         put_table(con, name, table)
-    sql = to_sql(case.build())
-    plan = written_plan(substrait_json(con, sql))
+    expr = case.build()
+    sql = to_sql(expr)
+    plan = written_plan(to_substrait_json(expr))
     refused = REFUSED.get(case.label, {})
     results, failed = {}, set()
     for engine in ("polars", "duckdb"):
@@ -128,14 +142,16 @@ def test_engines_agree(con, case, data):
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
     if not has_fetch(root):
-        df = canonical(rows(run_sql(con, sql)))
+        # As Ibis returns it: DataFusion's SQL result in the expression's
+        # types (`POW` of integers is an integer there, a double in Ibis).
+        df = canonical(rows(run_sql(con, sql).cast(expr.schema().to_pyarrow())))
         for got in results.values():
             assert canonical(got) == df
 
 
 @pytest.mark.parametrize("case", VERIFIED, ids=lambda c: c.label)
-def test_snowflake_sql(con, case):
-    plan = json.loads(written_plan(substrait_json(con, to_sql(case.build()))))
+def test_snowflake_sql(case):
+    plan = json.loads(written_plan(to_substrait_json(case.build())))
     if "snowflake" in REFUSED.get(case.label, {}):
         with pytest.raises(Unsupported, match=REFUSED[case.label]["snowflake"]):
             plan_sql(plan, SNOWFLAKE)
