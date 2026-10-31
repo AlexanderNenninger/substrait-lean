@@ -9,7 +9,7 @@ by what engines cannot already do. Two of them are prototyped:
 * **sharded evaluation**: `SubstraitLean/Partition.lean`,
   `substrait-check --shard` and `sverify.partition`.
 
-The rest are filed as issues under the roadmap epic #29.
+The rest are filed as issues under the roadmap epic #29 (#74–#83).
 
 ## What engines already do
 
@@ -40,10 +40,10 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | Issues |
-| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved |
-| 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | Issue |
-| 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | Issue (later) |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | #75–#80 |
+| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved; keyed splits #74 |
+| 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
+| 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
 
 ## 1. Guard elimination (prototype)
 
@@ -86,7 +86,7 @@ stay; `test_filtered_right_side_of_a_left_join_keeps_guards` covers this
 case. `Rel.mayIssues` itself is probably still sound on such plans, because
 the abstract left join always allows padded rows. But `mayIssues_sound` is
 stated against `HasIssue`, so it does not cover them. Strengthening
-`HasIssue` to cover every evaluated row is a follow-up.
+`HasIssue` to cover every evaluated row is a follow-up (#83).
 
 **Wiring.** `Report.guard_free`. `to_sql(plan, dialect, guards=False)` drops
 the division-by-zero `CASE`s, the `date_trunc` range check, Snowflake's
@@ -107,7 +107,7 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 **Limits found on the way.** `Bound.mul` of two non-constant ranges is ⊤, so
 `a * b` keeps its overflow guard even when both columns are bounded. Interval
 multiplication would let more plans go guard-free. The elimination is also
-all or nothing per plan; per-expression elimination is a follow-up.
+all or nothing per plan; per-expression elimination is a follow-up. Both are in #83.
 
 ## 2. Sharded evaluation (prototype)
 
@@ -154,7 +154,7 @@ other table is broadcast (`Sharding S cat cs`). The question is when
   (`test_partial_sum_may_overflow_where_the_total_does_not`). A spurious
   failure is ruled out when all values have one sign (`inI64_partial`),
   which a contract bound such as `_.amount >= 0` gives. Wiring that bound
-  into `--shard`, to say "cannot fail spuriously", is a follow-up.
+  into `--shard`, to say "cannot fail spuriously", is a follow-up (#83).
   The reverse case is caught: a total that leaves 64 bits fails in the
   combining `SUM`.
 * **Float sums are not associative.** `SUM` and `AVG` of doubles add in list
@@ -172,7 +172,7 @@ other table is broadcast (`Sharding S cat cs`). The question is when
   aggregates split on their grouping keys and windows split on their
   `PARTITION BY` keys. These need a statement of the form "rows in different
   shards differ on the key", which `Delta` and `Iceberg` partition columns
-  give. This is filed as an issue.
+  give. This is #74.
 
 **Wiring.** `substrait-check --shard {"plan", "sharded"}` returns the
 partial and combining plans in Lean's written form, or exit code 5 with the
@@ -200,33 +200,33 @@ optimizer. DataFusion uses primary keys for functional dependencies in
 or proved through composition, so each rewrite below rests on facts we know
 hold:
 
-* **Join elimination.** Take `R ⋈ S` on an FK `R.k → S.pk`, with `S.pk` a key
+* **Join elimination** (#75). Take `R ⋈ S` on an FK `R.k → S.pk`, with `S.pk` a key
   (`Keys.lean`) and `R.k` NOT NULL (`AVal.null = false`), where the output
   needs no column of `S`. Then the join is `R`. A left join on a key needs no
   FK at all. Proof obligation: a bag equation stating that each left row has
   exactly one match.
-* **DISTINCT elimination.** If `Rel.keys` proves a key among the output
+* **DISTINCT elimination** (#76). If `Rel.keys` proves a key among the output
   columns, then `DISTINCT r ~ r`. The ingredients exist already: `KeyOn` and
   `dedup` of a `Pairwise ≠` list.
-* **Outer-to-inner join conversion.** A filter above a left join that
+* **Outer-to-inner join conversion** (#77). A filter above a left join that
   rejects NULLs on a right column turns it into an inner join. With an FK and
   NOT NULL, every left row matches, so the conversion holds without a filter.
   Engines do the filter case; the FK case needs our facts.
-* **Filters implied by CHECK constraints.** If `aeval` proves the condition
+* **Filters implied by CHECK constraints** (#78). If `aeval` proves the condition
   certainly TRUE on the input (`AVal.certainlyTrue`), then `filter r c ~ r`.
   This is nearly free given `contract_sound`, and it composes: a downstream
   re-check of an upstream guarantee disappears.
-* **GROUP BY simplification through functional dependencies.** If a key
+* **GROUP BY simplification through functional dependencies** (#79). If a key
   `k ⊆ gs` determines the other grouping columns, group by `k` alone and
   carry the rest through `MIN` (or `ANY_VALUE`). This needs functional
   dependencies, which follow from keys plus projections.
-* **Eager aggregation below joins.** Push `GROUP BY` below a join on a key
+* **Eager aggregation below joins** (#80). Push `GROUP BY` below a join on a key
   (Yan and Larson), using the two-phase lemmas of `Partition.lean`
   (`AggFn.combine_apply`). Multiplicities make it subtle: `COUNT` and `SUM`
   must be scaled by match counts unless the join is on a key, which is where
   our keys come in.
 
-## 4. Partition and file pruning (issue)
+## 4. Partition and file pruning (#81)
 
 `sverify.io` reads Delta and Iceberg with per-file statistics, and
 `TableFormat.lean` already proves that statistics bound a file's rows
@@ -242,7 +242,7 @@ hold:
   imply a predicate on a base column (for example `ts >= start` after a join
   on a key). We can push it to the scan, and engines do not derive it.
 
-## 5. View matching and shared subplans (later)
+## 5. View matching and shared subplans (#82, later)
 
 Pipelines often recompute the same subplan, such as one filtered fact table
 feeding several aggregates. The checker could find subplans equal up to
