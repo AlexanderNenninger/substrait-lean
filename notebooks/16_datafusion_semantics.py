@@ -1265,10 +1265,15 @@ def _(mo):
       plan. Lean reads it as "group by all columns", and its rewrite runs.
     * **R2**: the "spec rename". Substrait renamed `FetchRel.offset`/`count`
       to `offset_expr`/`count_expr`, and DataFusion's protobuf no longer has
-      the old fields. Lean's parser reads both, but its writer still emits the
-      old ones, so a Lean-written `LIMIT` plan does not load into DataFusion.
-      `tests/test_sql.py::written` renames them, and no `sverify` path runs a
-      Lean-written `FETCH` on DataFusion.
+      the old fields. Lean's parser reads both, and its writer emits the new
+      ones, so a Lean-written `LIMIT` plan loads into DataFusion.
+    * **R2b**: Lean used to write a `VirtualTable` with placeholder `i64`
+      columns, which DataFusion checks the rows against; it now writes the
+      parsed schema and literals of its types. DataFusion runs every plan in
+      the form Lean writes for it (`run_plan(..., "datafusion")`,
+      `substrait-check --write-datafusion`), which also sums integers as
+      `DECIMAL(38,0)` so that `SUM` fails past 64 bits instead of wrapping
+      around (#24).
     * **R3**: Lean writes a `FULL JOIN` as a left join plus an anti join.
       DataFusion's consumer loses table qualifiers at a union, and then
       rejects the plan. For delta plans this is why `Terms.lean` splits plans
