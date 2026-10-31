@@ -54,6 +54,7 @@ TABLES = {
     "i32": pa.table({"a": pa.array([2**31 - 1], pa.int32()), "b": pa.array([1], pa.int32())}),
     "u8": pa.table({"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}),
     "str": pa.table({"s": ["b", "B", "a", "", "é", "z"]}),
+    "bools": pa.table({"b": [False, True, None]}),
     "str5": pa.table({"s": ["5", "05"]}),
     "is": pa.table({"a": pa.array([10, 10, -3, None], pa.int64()), "s": ["10", "010", "-3", "x"]}),
     "nanp": pa.table(
@@ -209,6 +210,7 @@ def test_lean_writes_the_current_fetch_fields(con):
     assert arrow_rows(run_substrait_json(con, plan)) == [(1,)]
 
 
+@pytest.mark.skipif(not FIXTURES.is_dir(), reason="the repository's tests/fixtures is not here")
 def test_lean_writes_virtual_tables_with_their_types(con):
     """A VirtualTable's `baseSchema` used to be placeholder `i64` columns,
     which DataFusion checks the rows against."""
@@ -262,6 +264,27 @@ def test_union_batches_differ_in_nullability(con, sql, expected):
     if "RECURSIVE" not in sql:  # DataFusion's producer has no recursive queries
         plan = substrait_json(con, sql)
         assert sorted(arrow_rows(run_substrait_json(con, plan)), key=str) == expected
+
+
+@pytest.mark.parametrize("join", ["JOIN", "LEFT JOIN"])
+@pytest.mark.parametrize("cond", ["l.a = l.b", "r.y = r.y", "l.a + 0 = l.b AND r.y = r.y"])
+def test_join_conditions_over_one_input(con, join, cond):
+    """#98: DataFusion's consumer takes every `=` of a join condition for a key
+    pair across the inputs, and fails on one over a single input. The plan
+    Lean writes for DataFusion filters that input instead, or (the left input
+    of a left join) writes the conjunct as a `CASE`."""
+    tables = {"l": ints(a=[1, 1, 2, None], b=[1, 2, 2, 3]), "r": ints(y=[1, 2, None])}
+    for name, t in tables.items():
+        put_table(con, name, t)
+    sql = f"SELECT l.a, l.b, r.y FROM l {join} r ON l.a = r.y AND {cond}"
+    plan = sv.written_plan(substrait_json(con, sql))
+    with pytest.raises(Exception, match="FieldNotFound"):
+        run_substrait_json(con, plan)
+    rows = {name: arrow_rows(t) for name, t in tables.items()}
+    lean = lean_rows(json.dumps(inline_tables(json.loads(plan), rows)))
+    got = arrow_rows(run_plan(con, plan, "datafusion"))
+    assert sorted(got, key=str) == sorted(lean, key=str)
+    assert any(r[2] is not None for r in lean)
 
 
 def test_not_in_subquery_means_what_sql_means(con):
@@ -326,6 +349,22 @@ def test_int_concat_string():
     """N7: `x || 'a'` is '1a'; the analysed plan casts the integer to text."""
     report = verify("SELECT x || 'a' AS p FROM n", "n", {"x": "int64"}, ensures=["p IS NULL"])
     assert not report.ensures[0].proved
+
+
+def test_boolean_order_is_datafusions(con):
+    """FALSE < TRUE, as in DataFusion."""
+    sql = "SELECT b, b < TRUE AS lt, b >= FALSE AS ge, b > b AS gt FROM bools"
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(False,), (True,), (None,)]
+    assert lean_rows(json.dumps(inline_tables(plan, {"bools": rows_}))) == rows(con, sql)
+
+
+def test_double_literal_arithmetic(con):
+    """#97: arithmetic on double literals alone is double arithmetic."""
+    sql = "SELECT 3.0 / 2.0 AS q, CASE WHEN b THEN 1.5 ELSE 2.5 END + 1.0 AS c FROM bools"
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(False,), (True,), (None,)]
+    assert lean_values(json.dumps(inline_tables(plan, {"bools": rows_}))) == rows(con, sql)
 
 
 def test_string_order_is_datafusions(con):
