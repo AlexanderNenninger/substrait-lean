@@ -80,6 +80,8 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
+from sverify.counterexample import Counterexample
+from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
     Connection,
     Engine,
@@ -116,7 +118,33 @@ def unique(*cols: str) -> Unique:
     return Unique(tuple(cols))
 
 
-Condition = Deferred | ir.BooleanValue | str | Unique | Callable[[ir.Table], ir.BooleanValue]
+@dataclass(frozen=True)
+class References:
+    """A foreign key: every non-NULL value of `col` occurs in column `other`
+    of table `table` (see `references`)."""
+
+    col: str
+    table: str
+    other: str
+
+
+def references(col: str, table: str, other: str) -> References:
+    """A foreign key: every non-NULL value of `col` occurs in `table.other`.
+
+    Only for `requires`, where it is checked on the data like `unique` (the
+    referenced table must be bound to the same backend). With a key on the
+    referenced column it lets `Rel.optimize` turn a left join on it into an
+    inner join (`Report.optimized`). Not supported by incremental views.
+    """
+    return References(col, table, other)
+
+
+TableCondition = (Unique, References)
+"""Conditions on a whole table, not on each row."""
+
+Condition = (
+    Deferred | ir.BooleanValue | str | Unique | References | Callable[[ir.Table], ir.BooleanValue]
+)
 Transform = ir.Table | str
 
 
@@ -126,6 +154,9 @@ class CheckedCondition:
     proved: bool
     value: str
     """What Lean established about the condition, e.g. "TRUE or NULL"."""
+    counterexample: Counterexample | None = None
+    """For an unproved condition: inputs meeting the preconditions on which
+    it fails, if the search (`sverify.counterexample`) found one."""
 
 
 @dataclass(frozen=True)
@@ -164,6 +195,15 @@ class Report:
     the preconditions, the transformation's SQL (`sverify.sql.to_sql`) and
     Polars plan (`polars_engine.run`) give the same result with
     `guards=False`, without per-row checks (`Rel.guardFree_sound`)."""
+    optimized: dict | None = None
+    """The transformation as a Substrait JSON plan, rewritten with the facts
+    and keys of the preconditions (`Rel.optimize` in
+    `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
+    gone. On data that meets the preconditions it gives the same rows
+    (`Rel.optimize_sound`); pass it to `sverify.sql.to_sql` or an engine's
+    `run` instead of the transformation."""
+    rewrites: list[str] = field(default_factory=list)
+    """The rewrites in `optimized`, such as "DISTINCT on a key"."""
 
     @property
     def proved(self) -> bool:
@@ -189,6 +229,8 @@ class Report:
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
             lines.append(f"ensures {c.label}: {mark}")
+            if c.counterexample is not None:
+                lines.append(f"  counterexample: {c.counterexample}")
         lines += [f"may fail: {i}" for i in self.errors]
         lines += [f"warning: {i}" for i in self.warnings]
         if not self.deterministic:
@@ -199,10 +241,14 @@ class Report:
         return "\n".join(lines)
 
     def _repr_markdown_(self) -> str:
-        rows = [
-            f"| `{c.label}` | {'✅ proved' if c.proved else '❌ ' + c.value} |"
-            for c in self.ensures
-        ]
+        def status(c: CheckedCondition) -> str:
+            if c.proved:
+                return "✅ proved"
+            if c.counterexample is None:
+                return f"❌ {c.value}"
+            return f"❌ {c.value}; fails on `{c.counterexample}`".replace("|", "\\|")
+
+        rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
         rows += [f"| runtime | ⚠️ {str(i).replace('|', '\\|')} |" for i in self.warnings]
@@ -341,6 +387,8 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
 def label(cond: Condition) -> str:
     if isinstance(cond, Unique):
         return f"unique({', '.join(cond.cols)})"
+    if isinstance(cond, References):
+        return f"references({cond.col}, {cond.table}.{cond.other})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
@@ -382,11 +430,23 @@ def verify(
     requires: Mapping[str, Sequence[Condition]] | None = None,
     ensures: Sequence[Condition] = (),
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
+    counterexamples: int = 200,
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
 
     `tables` gives the input schemas; it is only needed for SQL transforms.
+    For each unproved postcondition, up to `counterexamples` small inputs are
+    tried for one that breaks it (`sverify.counterexample`); 0 skips that.
+
+    A proof is about the plan `transform` compiles to, under `Rel.eval`. An
+    Ibis expression compiles with sverify's own producer, so it means what
+    `docs/ibis-semantics.md` says, whichever Ibis backend it came from; where
+    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
+    no backend's `execute` is guaranteed to match. `run_plan` runs the
+    verified plan with that meaning (or fails) on DataFusion, DuckDB and
+    Polars. A SQL string means what the SQL producer (DataFusion's or
+    Isthmus) makes of it.
     """
     schemas = {
         name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
@@ -405,15 +465,13 @@ def verify(
     def table_ref(name: str) -> Transform:
         return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
 
-    req_plans = [
-        plan(condition_query(table_ref(t), c))
-        for t, cs in requires.items()
-        for c in cs
-        if not isinstance(c, Unique)
+    req_conds = [
+        (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
+    req_plans = [plan(condition_query(table_ref(t), c)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
-        if isinstance(c, Unique):
+        if isinstance(c, TableCondition):
             continue
         p = plan(condition_query(transform, c))
         p["relations"][0]["root"]["names"] = [label(c)]
@@ -432,12 +490,25 @@ def verify(
         for t, cs in requires.items()
     }
     ensures_keys = [positions(c.cols, out_cols) for c in ensures if isinstance(c, Unique)]
+
+    def foreign_key(t: str, c: References) -> list:
+        if c.table not in schemas:
+            raise ValueError(f"references() names an unknown table: {c.table!r}")
+        [col] = positions([c.col], column_names(schemas[t]))
+        [other] = positions([c.other], column_names(schemas[c.table]))
+        return [col, c.table, other]
+
+    foreign_keys = {
+        t: [foreign_key(t, c) for c in cs if isinstance(c, References)]
+        for t, cs in requires.items()
+    }
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
         "transform": transform_plan,
         "keys": keys,
         "ensures_keys": ensures_keys,
+        "references": foreign_keys,
     }
 
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -452,6 +523,23 @@ def verify(
 
     rows = iter(out["ensures"])
     key_results = iter(out["keys"])
+    req_named = [(t, p) for (t, _), p in zip(req_conds, req_plans, strict=True)]
+    ens_iter = iter(ens_plans)
+    key_iter = iter(ensures_keys)
+
+    def find(target: dict | Sequence[int]) -> Counterexample | None:
+        if not counterexamples:
+            return None
+        return search_counterexample(
+            schemas,
+            req_named,
+            keys,
+            transform_plan,
+            target,
+            budget=counterexamples,
+            references=foreign_keys,
+        )
+
     checked = []
     for c in ensures:
         if isinstance(c, Unique):
@@ -463,10 +551,16 @@ def verify(
                 if out["deterministic"]
                 else "undetermined: rows may tie in a window's ORDER BY"
             )
-            checked.append(CheckedCondition(label(c), ok, value))
+            cols = next(key_iter)
+            cex = None if ok else find(cols)
+            checked.append(CheckedCondition(label(c), ok, value, cex))
+        elif isinstance(c, References):
+            checked.append(CheckedCondition(label(c), False, "foreign keys are not proved"))
         else:
             e = next(rows)
-            checked.append(CheckedCondition(e["name"], e["proved"], e["value"]))
+            p = next(ens_iter)
+            cex = None if e["proved"] else find(p)
+            checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
     return Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
@@ -474,6 +568,8 @@ def verify(
         deterministic=out["deterministic"],
         issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
         guard_free=out["guard_free"],
+        optimized=out["optimized"],
+        rewrites=out["rewrites"],
     )
 
 
@@ -484,12 +580,17 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     With an engine named, the condition's plan runs there, over the tables of
     the connection `table` is bound to; otherwise Ibis counts on that
     connection."""
-    if not isinstance(cond, Unique) and engine is not None:
+    if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
             raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
         plan = written_plan(plan_json(con, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
+    if isinstance(cond, References):
+        other = ibis.get_backend(table).table(cond.table)
+        present = table.filter(table[cond.col].notnull())
+        missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
+        return int(missing.execute())
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
@@ -567,7 +668,7 @@ def _prove_from(table: ir.Table, facts: Sequence[str], conds: Sequence[Condition
     key = (name, str(table.schema()), tuple(facts), tuple(label(c) for c in conds))
     if key not in _proved_from:
         try:
-            report = verify(table, requires={name: list(facts)}, ensures=conds)
+            report = verify(table, requires={name: list(facts)}, ensures=conds, counterexamples=0)
             _proved_from[key] = frozenset(c.label for c in report.ensures if c.proved)
         except Exception:
             _proved_from[key] = frozenset()
@@ -596,7 +697,7 @@ def discharge(
             stages.setdefault(f.source, []).append(f.condition)
         assumed: list[str] = []
         for source, extra in stages.items():
-            rowwise = [c for c in todo if not isinstance(c, Unique)]
+            rowwise = [c for c in todo if not isinstance(c, TableCondition)]
             if not rowwise:
                 break
             assumed += extra

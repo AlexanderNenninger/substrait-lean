@@ -19,7 +19,9 @@ shards of some of its tables (see `SubstraitLean/ShardCheck.lean`), or say
 why it cannot be split.
 
 `substrait-check --write plan.json`: print the plan in Lean's written form
-(the plan `Rel.eval` runs, as Substrait JSON).
+(the plan `Rel.eval` runs, as Substrait JSON). `--write-datafusion`: the same
+plan for DataFusion to run, compensating for where its semantics differ
+(`Write.writeRel`); it does not parse back to the same `Rel`.
 
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
@@ -71,14 +73,25 @@ def check (plan : Plan) : IO UInt32 := do
   IO.println s!"roundtrip: {if Write.roundtrips plan then "ok" else "FAILED"}"
   -- Named tables have no data in the schema-only catalog, so only
   -- `VirtualTable` rows show up here.
-  let rows := plan.root.eval cat
+  -- Lean's evaluator panics at the black boxes it does not evaluate
+  -- (`Text.lean`: non-ASCII `UPPER`/`LOWER`, regular expressions) and goes
+  -- on with a placeholder; refuse such rows rather than print them (#70).
+  let (panics, rows) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
+    -- `lazyPure`: evaluated here, not hoisted out of the isolated streams.
+    IO.lazyPure fun _ => (plan.root.eval cat).map Row.render
+  if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
+    IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
+    return 1
   IO.println s!"rows ({rows.length}):"
   for row in rows do
-    IO.println s!"  {Row.render row}"
+    IO.println s!"  {row}"
   return 0
 
-def write (plan : Plan) : IO UInt32 := do
-  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names).compress
+def write (df : Bool) (plan : Plan) : IO UInt32 := do
+  if df then
+    if let some (code, msg) := checkPlan plan then
+      IO.eprintln msg; return code
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names df).compress
   return 0
 
 /-- One request of `--serve`: the mode flag (empty for the default check)
@@ -101,7 +114,8 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
   let mode ← match flag with
     | "" => pure check
     | "--delta" => pure delta
-    | "--write" => pure write
+    | "--write" => pure (write false)
+    | "--write-datafusion" => pure (write true)
     | _ => IO.eprintln s!"unknown mode {flag}"; return 1
   match parsePlan input with
   | .ok plan => mode plan
@@ -151,11 +165,11 @@ def main (args : List String) : IO UInt32 := do
   | ["--serve"] => serve
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--shard"].contains flag then
+    if ["--delta", "--contract", "--write", "--write-datafusion", "--shard"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard] <file.json> | --serve"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve"
     return 1

@@ -26,7 +26,7 @@ def Rel.hasUnion : Rel → Bool
   | .unionAll _ _ => true
   | .read _ | .values _ _ => false
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
-  | .distinct r | .aggregate r _ _ => r.hasUnion
+  | .distinct r | .aggregate r _ _ | .unnest r _ => r.hasUnion
   | .cross a b | .join a b _ _ | .semi a b _ _ => a.hasUnion || b.hasUnion
 
 theorem perm_flatMap_congr {α β : Type} {L : List α} {f g : α → List β}
@@ -94,6 +94,6 @@ theorem Rel.zeval_terms {Z : ZCatalog} :
         (perm_flatMap_congr fun _ _ => (List.mergeSort_perm _ _).symm))
   | .join _ _ .left _, h => h.elim
   | .fetch _ _ _, h | .window _ _ _ _, h | .semi _ _ _ _, h | .distinct _, h
-  | .aggregate _ _ _, h => h.elim
+  | .aggregate _ _ _, h | .unnest _ _, h => h.elim
 
 end Substrait
