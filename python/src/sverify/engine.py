@@ -1,5 +1,8 @@
 """Substrait producers, and DuckDB, Polars or DataFusion as consumer.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 `connect()` gives a `Connection`: named Arrow tables, the engine that runs
 plans over them (DuckDB by default), and Ibis tables bound to them
 (`con.table(name)`). `plan_json` compiles Ibis expressions with the vendored
@@ -596,11 +599,14 @@ def to_arrow(rows, schema: pa.Schema) -> pa.Table:
 
 
 def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
+    """Add table `name` to `con` with `schema` (Ibis or Arrow) and `rows`
+    (tuples in schema order), replacing any table of that name."""
     arrow_schema = schema if isinstance(schema, pa.Schema) else schema.to_pyarrow()
     put_table(con, name, to_arrow(rows, arrow_schema))
 
 
 def table_rows(con: Connection, name: str) -> list[tuple]:
+    """The rows of table `name` of `con`, as tuples in schema order."""
     t = con.arrow[name]
     return [tuple(r.values()) for r in t.to_pylist()]
 

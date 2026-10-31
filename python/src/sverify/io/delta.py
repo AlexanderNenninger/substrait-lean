@@ -1,5 +1,8 @@
 """Delta Lake tables (delta-rs) as change sources and sinks.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 A `DeltaSource` hands a pipeline Arrow tables: the snapshot at a version,
 and the change between two versions from the Change Data Feed, where
 `insert` and `update_postimage` rows have weight +1 and `delete` and

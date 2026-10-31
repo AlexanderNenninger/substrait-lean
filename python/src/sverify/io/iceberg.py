@@ -1,5 +1,8 @@
 """Iceberg tables (pyiceberg) as change sources and sinks.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 Versions are snapshot sequence numbers. An `IcebergSource` reads the
 change between two versions from the data files the snapshots in between
 added, when all of them are appends (trusted, like a Delta change feed).

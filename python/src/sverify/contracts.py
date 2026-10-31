@@ -1,5 +1,8 @@
 """Pre- and postconditions for transformations, with postconditions proved in Lean.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
     from ibis import _
     import sverify as sv
 

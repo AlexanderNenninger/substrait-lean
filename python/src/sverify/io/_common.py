@@ -1,5 +1,9 @@
 """What Delta and Iceberg have in common: file statistics as facts,
-contracts as SQL, and the record a sink stores with each commit."""
+contracts as SQL, and the record a sink stores with each commit.
+
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+"""
 
 from __future__ import annotations
 

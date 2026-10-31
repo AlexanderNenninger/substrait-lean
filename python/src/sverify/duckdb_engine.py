@@ -1,5 +1,8 @@
 """DuckDB as an engine, through SQL generated from the plan.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 `run` writes the plan as SQL with `sverify.sql.to_sql` (whose semantics are
 Lean's `Rel.eval`, see `sverify.sql.core`) and runs it on an in-process
 DuckDB database holding the given tables. DuckDB's Substrait extension is not

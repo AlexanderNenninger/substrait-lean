@@ -1,6 +1,9 @@
 """Run a plan through Lean's own semantics, for differential tests against
 DataFusion and DuckDB.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 `inline_tables` replaces each named-table read by a Substrait virtual table
 holding given rows (integers, strings, booleans, timestamps, dates, doubles
 and NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`

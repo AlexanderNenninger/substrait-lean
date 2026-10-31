@@ -1,5 +1,8 @@
 """Incrementally maintained views on DataFusion or Polars, with delta plans from Lean.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 The verified part is the delta plan: `substrait-check --delta` compiles the
 view's Substrait plan with `Rel.delta`, splits it into union-free terms
 (`Rel.terms`) and applies the weight-column encoding (`Rel.weighted`). Lean

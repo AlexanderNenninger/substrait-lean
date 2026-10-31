@@ -1,5 +1,8 @@
 """Compact tables for marimo notebooks, as the tour in `notebooks/` uses them.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 Tables are small static HTML, so NULL can be dimmed and Z-set weights
 coloured green or red, which `mo.ui.table` can't do. Needs marimo, which is
 not a dependency of sverify.

@@ -1,6 +1,9 @@
 """Spark as an engine, through SQL generated from the plan (`pip install
 'sverify[spark]'`, and a JVM: Java 17 or 21 on `PATH` or in `JAVA_HOME`).
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 `run` writes the plan as Spark SQL with `sverify.sql.to_sql` (whose semantics
 are Lean's `Rel.eval`, see `sverify.sql.spark`) and runs it on a Spark
 session holding the given tables as temporary views. `session()` is a local

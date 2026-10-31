@@ -1,5 +1,8 @@
 """The cases of `sverify.coverage`, one module per area of the Ibis API.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 Each area module defines `CASES`, the area's cases in README order, and, where
 it has any, the area's entries of `REFUSED`, `TIE_FREE`, `NO_DATAFUSION_SQL`,
 `DATAFUSION_SQL` and `UNORDERED_LISTS` (`sverify.coverage` says what each

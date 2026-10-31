@@ -1,5 +1,8 @@
 """Counterexamples for unproved postconditions.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 When Lean cannot prove a postcondition, `verify` searches for small input
 tables that meet the preconditions and make the postcondition fail: a row
 where it is FALSE or NULL, or for `unique`, two output rows with the same

@@ -1,5 +1,8 @@
 """Sharded evaluation: run a plan on each shard of its data, then combine.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
     import sverify.partition as sp
 
     s = sp.split(plan_json, sharded=["orders"])      # or NotShardable, saying why
