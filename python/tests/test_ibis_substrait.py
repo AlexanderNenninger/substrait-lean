@@ -21,8 +21,17 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.coverage import CASES, NO_DATAFUSION_SQL, T, U
-from sverify.engine import connect, create_table, run_sql, to_sql
+from sverify.coverage import (
+    CASES,
+    DATAFUSION_SQL,
+    MEMTABLES,
+    NO_DATAFUSION_SQL,
+    UNORDERED_LISTS,
+    L,
+    T,
+    U,
+)
+from sverify.engine import connect, create_table, put_table, run_sql, to_sql
 from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.testing import EPOCH, canonical, inline_tables, lean_values
 
@@ -60,6 +69,7 @@ def t_rows(draw: st.DrawFn) -> list[tuple]:
 
 
 u_rows = st.lists(st.tuples(names, st.sampled_from(["north", "south", None])), max_size=4)
+l_rows = st.lists(st.tuples(small, st.one_of(st.none(), st.lists(small, max_size=3))), max_size=4)
 
 
 def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]:
@@ -85,6 +95,8 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
                 return v.date()
         if isinstance(v, dt.datetime):
             return v.replace(tzinfo=None)
+        if isinstance(t, idt.Array) and isinstance(v, list):
+            return [value(x, t.value_type) for x in v]
         return v
 
     types: list[idt.DataType] = [schema[name] for name in schema]
@@ -105,18 +117,31 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
-@given(t=t_rows(), u=u_rows)
-def test_plans_mean_what_ibis_means(case, t, u):
+@given(t=t_rows(), u=u_rows, lr=l_rows)
+def test_plans_mean_what_ibis_means(case, t, u, lr):
     expr = case.build()
     con = connect()
     create_table(con, "t", T.schema(), t)
     create_table(con, "u", U.schema(), u)
-    out = run_sql(con, to_sql(expr))
+    create_table(con, "l", L.schema(), lr)
+    for name, table in MEMTABLES.items():
+        put_table(con, name, table)
+    if case.label in DATAFUSION_SQL:
+        # DataFusion means something else: SQL's meaning, as DuckDB computes it.
+        out = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
+    else:
+        out = run_sql(con, to_sql(expr))
     schema = expr.schema()
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     expected = normalize(rows, schema, lean=False)
-    plan = inline_tables(to_substrait(expr), {"t": t, "u": u})
+    plan = inline_tables(to_substrait(expr), {"t": t, "u": u, "l": lr})
     got = normalize(lean_values(json.dumps(plan)), schema, lean=True)
+    if case.label in UNORDERED_LISTS:
+        # The order inside each list is the engine's: compare them as bags.
+        def bags(rs: list[tuple]) -> list[tuple]:
+            return [tuple(sorted(v, key=repr) if isinstance(v, list) else v for v in r) for r in rs]
+
+        got, expected = bags(got), bags(expected)
     if case.label in UNORDERED:
         assert len(got) == len(expected)
     else:

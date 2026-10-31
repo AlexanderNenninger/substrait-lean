@@ -130,7 +130,10 @@ def Measure.inputsI (I : Impl) (m : Measure) (rows : Relation) : List Value :=
   let vs := ((m.keptI I rows).map (m.arg.evalI I)).filter (· != .null)
   if m.distinct then dedup vs else vs
 
-def Measure.evalI (I : Impl) (rows : Relation) (m : Measure) : Value := m.fn.apply (m.inputsI I rows)
+def Measure.evalI (I : Impl) (rows : Relation) (m : Measure) : Value :=
+  match m.fn with
+  | .collect => AggFn.collect.apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
+  | f => f.apply (m.inputsI I rows)
 
 def groupKeyI (I : Impl) (gs : List Expr) (row : Row) : Row := gs.map (·.evalI I row)
 
@@ -161,6 +164,7 @@ def Rel.evalI (I : Impl) (cat : Catalog) : Rel → Relation
   | .semi a b anti on => (a.evalI I cat).filter fun x => hasMatchI I on (b.evalI I cat) x != anti
   | .orderBy r keys => (r.evalI I cat).mergeSort (sortLe keys)
   | .distinct r => dedup (r.evalI I cat)
+  | .unnest r c => (r.evalI I cat).flatMap (unnestRow c)
   | .aggregate r gs ms => aggregateEvalI I gs ms (r.evalI I cat)
 
 /-! ## Congruence -/
@@ -171,7 +175,8 @@ theorem aggregateEvalI_eq {I : Impl} {gs : List Expr} {ms : List Measure} {rows 
   have hk : ∀ row ∈ rows, groupKeyI I gs row = groupKey gs row := fun row hr =>
     List.map_congr_left fun g hg => h row hr g (List.mem_append_left _ hg)
   -- A measure on rows of `rows`.
-  have hm : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) → m.evalI I sub = m.eval sub := by
+  have hin : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) →
+      m.inputsI I sub = m.inputs sub := by
     intro m hm sub hsub
     have he : ∀ row ∈ sub, ∀ e ∈ m.exprs, e.evalI I row = e.eval row := fun row hr e he =>
       h row (hsub row hr) e (List.mem_append_right _ (List.mem_flatMap.mpr ⟨m, hm, he⟩))
@@ -186,8 +191,14 @@ theorem aggregateEvalI_eq {I : Impl} {gs : List Expr} {ms : List Measure} {rows 
       unfold Measure.kept at hr; split at hr
       · exact hr
       · exact (List.mem_filter.mp hr).1
-    simp only [Measure.evalI, Measure.eval, Measure.inputsI, Measure.inputs, hkept]
+    simp only [Measure.inputsI, Measure.inputs, hkept]
     rw [List.map_congr_left fun row hr => he row (hsub' row hr) m.arg (by simp [Measure.exprs])]
+  have hm : ∀ m ∈ ms, ∀ sub : Relation, (∀ row ∈ sub, row ∈ rows) → m.evalI I sub = m.eval sub := by
+    intro m hm sub hsub
+    cases hf : m.fn
+    all_goals simp only [Measure.evalI, Measure.eval, hf]
+    case collect => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
+    all_goals rw [hin m hm sub hsub]
   unfold aggregateEvalI aggregateEval
   split
   · exact congrArg (fun x => [x]) (List.map_congr_left fun m hmm => hm m hmm rows fun _ h => h)
@@ -260,6 +271,8 @@ def Rel.looseSub : Rel → Bool
   | .orderBy r _ | .distinct r => r.looseSub
   | .cross a b | .unionAll a b | .join a b .inner _ | .semi a b _ _ => a.looseSub && b.looseSub
   | .join a b .left _ => a.looseSub && b.looseExact
+  -- Guards are not eliminated through an `UNNEST`.
+  | .unnest _ _ => false
 
 /-- `loose` gives the same rows (as a set), and keeps all the rows below. -/
 def Rel.looseExact : Rel → Bool
@@ -268,14 +281,15 @@ def Rel.looseExact : Rel → Bool
   | .fetch r _ _ | .window r _ _ _ | .aggregate r _ _ => r.looseSub
   | .project r _ | .emit r _ | .orderBy r _ | .distinct r => r.looseExact
   | .cross a b | .unionAll a b | .join a b .left _ => a.looseExact && b.looseExact
-  | .filter _ _ | .join _ _ .inner _ | .semi _ _ _ _ => false
+  | .filter _ _ | .join _ _ .inner _ | .semi _ _ _ _ | .unnest _ _ => false
 end
 
 theorem Rel.looseExact_mem {cat : Catalog} :
     ∀ {r : Rel}, r.looseExact = true → ∀ row, row ∈ r.loose.eval cat ↔ row ∈ r.eval cat
   | .read _, _, _ | .values _ _, _, _ | .fetch _ _ _, _, _ | .window _ _ _ _, _, _
   | .aggregate _ _ _, _, _ => .rfl
-  | .filter _ _, h, _ | .join _ _ .inner _, h, _ | .semi _ _ _ _, h, _ => by simp [looseExact] at h
+  | .filter _ _, h, _ | .join _ _ .inner _, h, _ | .semi _ _ _ _, h, _ | .unnest _ _, h, _ => by
+    simp [looseExact] at h
   | .project r es, h, row => by
     simp only [loose, eval, List.mem_map]
     exact ⟨fun ⟨x, hx, e⟩ => ⟨x, (looseExact_mem (r := r) h x).mp hx, e⟩,

@@ -396,3 +396,82 @@ def test_group_by_on_the_key_runs_agree(data):
     for run in (duckdb_engine.run, polars_engine.run):
         got = run(report.optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
+
+
+# Eager aggregation below a join on a key (#80).
+
+EAGER = (
+    LINES.join(ORDS, LINES.l_orderkey == ORDS.o_orderkey)
+    .group_by(LINES.l_orderkey)
+    .agg(rev=LINES.l_price.sum(), n=LINES.l_line.count(), hi=LINES.l_price.max())
+)
+
+
+def test_aggregate_goes_below_a_join_on_a_key():
+    report = sv.verify(EAGER, requires=ORD_KEY)
+    assert report.rewrites == ["aggregate below a join on a key"]
+    assert report.optimized is not None
+    sql = to_sql(report.optimized, DUCKDB)
+    # The join reads the grouped rows.
+    assert sql.index("GROUP BY") < sql.index("JOIN")
+
+
+@pytest.mark.parametrize(
+    ("expr", "requires"),
+    [
+        (EAGER, {}),
+        # The condition reads a left column that is not grouped.
+        (
+            LINES.join(ORDS, LINES.l_line == ORDS.o_orderkey)
+            .group_by(LINES.l_orderkey)
+            .agg(n=LINES.l_price.sum()),
+            ORD_KEY,
+        ),
+        # A measure reads a right column.
+        (
+            LINES.join(ORDS, LINES.l_orderkey == ORDS.o_orderkey)
+            .group_by(LINES.l_orderkey)
+            .agg(d=ORDS.o_date.max()),
+            ORD_KEY,
+        ),
+    ],
+)
+def test_aggregate_stays_above_the_join(expr, requires):
+    assert "aggregate below a join on a key" not in sv.verify(expr, requires=requires).rewrites
+
+
+@SETTINGS
+@given(data=q3_tables)
+def test_eager_aggregation_runs_agree(data):
+    ords, lines = data
+    tables = {
+        "lineitem": pa.table(
+            {
+                "l_orderkey": [r[0] for r in lines],
+                "l_line": list(range(len(lines))),
+                "l_price": [r[1] for r in lines],
+            },
+            schema=pa.schema(
+                [("l_orderkey", pa.int64()), ("l_line", pa.int64()), ("l_price", pa.int64())]
+            ),
+        ),
+        "ord": pa.table(
+            {
+                "o_orderkey": list(range(len(ords))),
+                "o_date": [o[0] for o in ords],
+                "o_prio": [o[1] for o in ords],
+            },
+            schema=pa.schema(
+                [("o_orderkey", pa.int64()), ("o_date", pa.int64()), ("o_prio", pa.string())]
+            ),
+        ),
+    }
+    report = sv.verify(EAGER, requires=ORD_KEY)
+    assert report.optimized is not None
+    want = canonical(
+        tuple(r.values())
+        for r in duckdb_engine.run(plan_json(connect(), EAGER), tables).to_pylist()
+    )
+    for run in (duckdb_engine.run, polars_engine.run):
+        got = run(report.optimized, tables)
+        assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
