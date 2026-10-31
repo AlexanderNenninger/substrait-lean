@@ -1,8 +1,10 @@
 # The operators and features a catalogued query may need.
 #
-# `lean` is what the Lean model and `substrait-check` cover today, found by
-# probing (`sverify.coverage` and the catalogue's own probes), not by reading:
-#   yes      the checker parses it and `Rel.eval` gives it SQL's meaning;
+# `lean` is what `sverify` covers today on the way into Lean (its Ibis
+# producer for Ibis expressions, DataFusion's for SQL) and in the Lean model
+# and `substrait-check`, found by probing (`sverify.coverage` and the
+# catalogue's own probes), not by reading:
+#   yes      it reaches the checker, which parses it and `Rel.eval` gives it SQL's meaning;
 #   partial  some forms only (the note says which);
 #   no       the checker rejects it, or DataFusion cannot produce a plan.
 # `tests/test_catalogue.py` keeps these honest: a verified query may not need a
@@ -27,6 +29,7 @@ union_distinct = { lean = "yes", description = "UNION (distinct)" }
 intersect_except = { lean = "yes", description = "INTERSECT / EXCEPT" }
 distinct = { lean = "yes", description = "SELECT DISTINCT" }
 values = { lean = "yes", description = "inline VALUES table" }
+sort_by_expression = { lean = "no", description = "ORDER BY an expression rather than a column", note = "the Ibis producer refuses it (\"sort by a column\")" }
 order_by = { lean = "yes", description = "ORDER BY in the result" }
 limit = { lean = "yes", description = "LIMIT / top-N after a sort" }
 offset = { lean = "yes", description = "OFFSET (pagination)" }
@@ -51,11 +54,12 @@ avg = { lean = "yes", description = "AVG" }
 min_max = { lean = "partial", description = "MIN / MAX", note = "integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused" }
 count_distinct = { lean = "yes", description = "COUNT(DISTINCT x)" }
 agg_filter = { lean = "yes", description = "conditional aggregate: FILTER (WHERE …) or SUM(CASE …)" }
+agg_arithmetic = { lean = "no", description = "arithmetic on aggregate results inside one aggregation (SUM(a) / SUM(b), MAX - MIN, 100 * SUM(x))", note = "the Ibis producer refuses it (\"aggregate Divide is not supported\"); DataFusion's SQL path, which projects after the aggregate, verified it" }
 having = { lean = "yes", description = "HAVING" }
 grouping_sets = { lean = "no", description = "ROLLUP / CUBE / GROUPING SETS" }
 stddev_var = { lean = "no", description = "STDDEV / VARIANCE" }
 corr = { lean = "no", description = "CORR / COVAR / REGR_*" }
-percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "Ibis cannot even compile quantile for DataFusion" }
+percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL" }
 approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }
 string_agg = { lean = "no", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect" }
 arg_max = { lean = "no", description = "ARG_MAX / first or last value of a group, ordered aggregates", note = "first_value aggregates are refused" }
@@ -79,7 +83,7 @@ dedup_latest = { lean = "yes", description = "keep one row per key, the latest (
 arithmetic_int = { lean = "yes", description = "+ - * on integers" }
 arithmetic_float = { lean = "yes", description = "+ - * / on doubles" }
 integer_division = { lean = "yes", description = "integer / or % (truncating), or Ibis floor //" }
-decimal = { lean = "partial", description = "DECIMAL(p, s) columns and arithmetic", note = "columns pass through and compare; SUM/AVG/MIN/MAX of DECIMAL and DECIMAL literals are refused (\"cast them to DOUBLE\"); the Polars translation refuses DECIMAL columns. The catalogue also probes each failing query with DOUBLE in their place" }
+decimal = { lean = "no", description = "DECIMAL(p, s) columns and arithmetic", note = "sverify's Ibis producer refuses any DECIMAL column (\"type decimal(15, 2) is not supported\"); through DataFusion's SQL producer, columns pass through and compare but SUM/AVG/MIN/MAX and literals are refused. The catalogue also probes each failing query with DOUBLE in their place" }
 case_when = { lean = "yes", description = "CASE WHEN / ifelse" }
 coalesce_nullif = { lean = "yes", description = "COALESCE / NULLIF / fill_null" }
 in_list = { lean = "yes", description = "x IN (literal list)" }
@@ -94,14 +98,14 @@ string_split = { lean = "no", description = "SPLIT_PART / CONCAT_WS / string spl
 string_compare = { lean = "partial", description = "<, > on strings (also MIN/MAX of strings)", note = "MIN/MAX yes; < and > are NULL in the model, and every engine refuses them" }
 math_funcs = { lean = "yes", description = "round, floor, ceil, abs, power, greatest, least" }
 hash = { lean = "no", description = "MD5 / hashing (surrogate keys)" }
-date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "Ibis's ibis.date('…') compiles to DATE_TRUNC('DAY', '…'), which the checker refuses; the catalogue writes ibis.literal('…').cast('date')" }
+date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "with sverify's Ibis producer ibis.date(…) works; through Ibis's DataFusion SQL it compiled to DATE_TRUNC('DAY', …), which the checker refuses. The catalogue writes D(…), a cast, which works both ways" }
 date_part = { lean = "partial", description = "EXTRACT(year / month / dow … FROM x)", note = "timestamps only; EPOCH and DATE columns refused" }
-time_bucket = { lean = "no", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "Ibis cannot compile TimestampBucket for DataFusion; DATE_BIN is refused by the checker" }
+time_bucket = { lean = "no", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "refused by the Ibis producer (TimestampBucket), which Ibis cannot compile to DataFusion SQL either; DATE_BIN is refused by the checker" }
 date_trunc = { lean = "partial", description = "DATE_TRUNC / truncate", note = "timestamps only" }
-interval_day_time = { lean = "yes", description = "x ± INTERVAL in days, hours, minutes" }
-dynamic_interval = { lean = "no", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "Ibis as_interval compiles to CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), refused as a string cast" }
-interval_month = { lean = "no", description = "x ± INTERVAL in months or years", note = "\"month and year intervals are not supported\"" }
-date_diff = { lean = "yes", description = "difference of two dates or timestamps" }
+interval_day_time = { lean = "partial", description = "x ± INTERVAL in days, hours, minutes", note = "timestamps yes; DATE ± interval is refused by the Ibis producer (DateAdd/DateSub)" }
+dynamic_interval = { lean = "no", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "refused by the Ibis producer (IntervalFromInteger); through SQL, Ibis wrote CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), refused as a string cast" }
+interval_month = { lean = "no", description = "x ± INTERVAL in months or years", note = "refused by the checker (\"month and year intervals are not supported\") and the Ibis producer (\"intervals in months\")" }
+date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps yes; DATE - DATE is refused by the Ibis producer (DateDiff)" }
 interval_to_number = { lean = "no", description = "a duration as a number of seconds (time weighting, rates per second)", note = "casting an interval to a number is refused; Ibis delta() and epoch_seconds() do not compile or are refused" }
 math_transcendental = { lean = "no", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "unsupported function ln/1" }
 epoch = { lean = "no", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "unsupported date part 'EPOCH'" }

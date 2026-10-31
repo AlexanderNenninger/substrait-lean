@@ -180,7 +180,7 @@ title = "TPC-DS Q89: monthly sales deviating from the yearly average"
 intent = "Find store, brand and month combinations whose sales deviate more than 10% from their yearly monthly average."
 domain = "benchmark"
 source = { name = "TPC-DS v4.0.0, query 89", url = "https://github.com/gregrahn/tpcds-kit/tree/master/query_templates", licence = "TPC EULA" }
-features = ["filter", "inner_join", "multi_join", "group_by", "sum", "window_over_aggregate", "window_partition_agg", "avg", "in_list", "case_when", "math_funcs", "order_by", "limit", "decimal", "arithmetic_float"]
+features = ["filter", "inner_join", "multi_join", "group_by", "sum", "window_over_aggregate", "window_partition_agg", "avg", "in_list", "case_when", "math_funcs", "order_by", "limit", "decimal", "arithmetic_float", "sort_by_expression"]
 pitfalls = ["division_by_zero: the ratio divides by the average, guarded by CASE WHEN avg <> 0 (see eager_evaluation)", "eager_evaluation: DataFusion may evaluate the division before the guard"]
 ibis = '''
 j = (

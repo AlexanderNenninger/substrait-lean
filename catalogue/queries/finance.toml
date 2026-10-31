@@ -42,7 +42,7 @@ title = "Impossible travel"
 intent = "Flag pairs of transactions of one card in different countries less than an hour apart."
 domain = "finance"
 source = { name = "Azure Stream Analytics: real-time fraud detection (self-join)", url = "https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection", licence = "CC-BY-4.0 (code samples MIT)" }
-features = ["self_join", "range_join", "non_equi_join", "filter", "interval_day_time"]
+features = ["self_join", "range_join", "non_equi_join", "filter", "interval_day_time", "decimal"]
 pitfalls = ["null_join_keys: a NULL country compares as unknown, so the pair is not flagged", "gap_threshold: exactly one hour"]
 ibis = '''
 a, b = transactions, transactions.view()
@@ -179,7 +179,7 @@ title = "Dormant accounts that became active again"
 intent = "Find transactions that follow more than 90 days of inactivity on their account."
 domain = "finance"
 source = { name = "RisingWave blog: AML transaction monitoring (dormancy alerts)", url = "https://risingwave.com/blog/aml-transaction-monitoring-streaming-database", licence = "no licence stated; paraphrased" }
-features = ["lag_lead", "date_diff", "interval_day_time", "filter"]
+features = ["lag_lead", "date_diff", "interval_day_time", "filter", "decimal"]
 pitfalls = ["gap_threshold: exactly 90 days", "tie_order: none, the gap is between distinct instants"]
 ibis = '''
 prev = transactions.ts.lag().over(ibis.window(group_by="account_id", order_by="ts"))
@@ -193,7 +193,7 @@ title = "Volume-weighted average price per minute"
 intent = "Compute each symbol's volume-weighted average price and volume per minute."
 domain = "finance"
 source = { name = "QuestDB cookbook: VWAP", url = "https://questdb.com/docs/cookbook/sql/finance/vwap/", licence = "Apache-2.0" }
-features = ["date_trunc", "group_by", "sum", "arithmetic_float", "cast_numeric"]
+features = ["date_trunc", "group_by", "sum", "arithmetic_float", "cast_numeric", "agg_arithmetic"]
 pitfalls = ["division_by_zero: a minute whose trades have zero size", "float_sum_order: price * size sums"]
 ibis = '''
 q = ticks.group_by(["symbol", _.ts.truncate("m").name("minute")]).aggregate(
@@ -290,7 +290,7 @@ title = "Daily realised volatility"
 intent = "Compute each symbol's daily realised volatility as the standard deviation of its tick log returns, annualised."
 domain = "finance"
 source = { name = "QuestDB cookbook: realized volatility", url = "https://questdb.com/docs/cookbook/sql/finance/realized-volatility/", licence = "Apache-2.0" }
-features = ["lag_lead", "math_transcendental", "cast_date", "group_by", "stddev_var", "arithmetic_float"]
+features = ["lag_lead", "math_transcendental", "cast_date", "group_by", "stddev_var", "arithmetic_float", "agg_arithmetic"]
 pitfalls = ["float_nan: LN of a non-positive ratio", "percentile_method: none, but sample vs population standard deviation differ between engines' STDDEV defaults", "tie_order: ticks at the same instant"]
 ibis = '''
 prev = ticks.price.lag().over(ibis.window(group_by="symbol", order_by="ts"))

@@ -288,7 +288,7 @@ title = "TPC-H Q11: important stock identification"
 intent = "Find the parts whose stock value in one nation exceeds a fixed fraction of that nation's total stock value."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q11", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "cross_join", "group_by", "global_aggregate", "sum", "having", "order_by", "decimal"]
+features = ["filter", "inner_join", "cross_join", "group_by", "global_aggregate", "sum", "having", "order_by", "decimal", "agg_arithmetic"]
 rewrites = ["scalar_subquery -> cross join with the one-row total"]
 ibis = '''
 de = (
@@ -341,7 +341,7 @@ title = "TPC-H Q13: customer distribution"
 intent = "Show how many customers have placed each number of (non-complaint) orders, including customers with none."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q13", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["left_join", "like", "group_by", "count", "order_by"]
+features = ["left_join", "like", "group_by", "count", "order_by", "decimal"]
 pitfalls = ["null_aggregate: COUNT(o_orderkey) counts 0 for customers without orders; COUNT(*) would count 1", "like_escape: the pattern '%special%requests%' has no escapes but crosses word boundaries"]
 ibis = '''
 o = orders.filter(~orders.o_comment.like("%special%requests%"))
@@ -363,7 +363,7 @@ title = "TPC-H Q14: promotion effect"
 intent = "Compute the percentage of a month's revenue that came from promotional parts."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q14", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "global_aggregate", "sum", "agg_filter", "case_when", "like", "decimal", "date_literal", "interval_month", "arithmetic_float"]
+features = ["filter", "inner_join", "global_aggregate", "sum", "agg_filter", "case_when", "like", "decimal", "date_literal", "interval_month", "arithmetic_float", "agg_arithmetic"]
 pitfalls = ["division_by_zero: no qualifying line makes the denominator NULL, not zero, so the result is NULL", "empty_aggregate: one row even for an empty month"]
 ibis = '''
 start = D("1995-09-01")
@@ -429,7 +429,7 @@ title = "TPC-H Q17: small-quantity-order revenue"
 intent = "Estimate the yearly revenue lost if small orders (under a fifth of a part's average quantity) were no longer taken."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q17", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "group_by", "avg", "global_aggregate", "sum", "decimal", "arithmetic_float"]
+features = ["filter", "inner_join", "group_by", "avg", "global_aggregate", "sum", "decimal", "arithmetic_float", "agg_arithmetic"]
 rewrites = ["correlated_subquery -> join with the average quantity per part"]
 ibis = '''
 avg_qty = lineitem.group_by(k=lineitem.l_partkey).aggregate(avg_qty=_.l_quantity.mean())
@@ -527,7 +527,7 @@ title = "TPC-H Q21: suppliers who kept orders waiting"
 intent = "Find the suppliers of one nation who were the only late supplier on multi-supplier orders."
 domain = "benchmark"
 source = { name = "TPC-H v3.0.1, Q21", url = "https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf", licence = "TPC EULA v2.2.0" }
-features = ["filter", "inner_join", "multi_join", "semi_join", "anti_join", "non_equi_join", "self_join", "group_by", "count", "order_by", "limit"]
+features = ["filter", "inner_join", "multi_join", "semi_join", "anti_join", "non_equi_join", "self_join", "group_by", "count", "order_by", "limit", "decimal"]
 rewrites = ["exists_subquery -> semi and anti joins with a <> predicate"]
 pitfalls = ["tie_order: top 100 by numwait DESC, s_name"]
 ibis = '''

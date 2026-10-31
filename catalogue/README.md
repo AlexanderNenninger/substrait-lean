@@ -67,9 +67,10 @@ uv run python -m sverify.catalogue tpch win-dedup-latest   # probe a suite or qu
 uv run python -m sverify.catalogue --write         # probe all; rewrite status.json, INDEX.md, FINDINGS.md tables
 ```
 
-A probe compiles the query as `sverify` compiles everything (Ibis → DataFusion
-SQL → DataFusion's Substrait producer → `substrait-check`) over small seeded
-synthetic tables, and runs the SQL on DataFusion. When the checker accepts the
+A probe compiles the query as `sverify` compiles everything (an Ibis
+expression through `sverify`'s vendored producer, SQL through DataFusion's,
+then `substrait-check`) and runs it on DataFusion (Ibis's own SQL for an
+expression) over small seeded synthetic tables. When the checker accepts the
 plan it runs Lean's written plan (`substrait-check --write`) on Polars and
 DuckDB and compares their rows with DataFusion's, and writes Snowflake SQL
 (parsed with sqlglot, not run). Where the plan has a FETCH or a window, ties in
@@ -84,6 +85,6 @@ probes: no verified query may need a feature marked `no`, and every failure
 message must point at a feature the query lists as not fully supported. After
 a change in coverage, run `--write` and review the diff.
 
-Ibis's `ibis.date("1994-01-01")` compiles to `DATE_TRUNC('DAY', '1994-01-01')`
-for DataFusion, which the checker refuses, so the catalogue writes date
-literals as `D("1994-01-01")`, a cast of a string.
+Date literals are written `D("1994-01-01")`, a cast of a string. Through
+Ibis's DataFusion SQL, `ibis.date("…")` compiled to `DATE_TRUNC('DAY', '…')`,
+which the checker refuses; `sverify`'s own producer handles both.

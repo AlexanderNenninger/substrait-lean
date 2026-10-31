@@ -73,7 +73,7 @@ title = "H2O groupby q9: squared correlation of v1 and v2 by id2, id4"
 intent = "Compute the squared Pearson correlation of two measures per pair of keys."
 domain = "benchmark"
 source = { name = "db-benchmark groupby q9", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
-features = ["group_by", "corr", "math_funcs"]
+features = ["group_by", "corr", "math_funcs", "agg_arithmetic"]
 pitfalls = ["division_by_zero: a group with constant v1 has no correlation (NULL or NaN by engine)"]
 ibis = '''
 q = x.group_by(["id2", "id4"]).aggregate(r2=_.v1.corr(_.v2) ** 2)

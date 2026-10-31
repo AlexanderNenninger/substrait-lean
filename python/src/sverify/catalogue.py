@@ -10,9 +10,9 @@ The catalogue is hand-written TOML:
 * `catalogue/queries/*.toml`: the queries, each with its intent, source,
   licence, features, pitfalls and an Ibis expression (or SQL).
 
-`probe` runs a query the way `sverify` runs everything (Ibis → SQL →
-DataFusion → Substrait → `substrait-check`) and runs the SQL on DataFusion over
-small synthetic tables. When the checker accepts the plan, it also runs Lean's
+`probe` runs a query the way `sverify` runs everything (an Ibis expression
+through `sverify`'s producer, SQL through DataFusion's, then `substrait-check`)
+and runs it on DataFusion over small synthetic tables. When the checker accepts the plan, it also runs Lean's
 written plan on Polars and DuckDB, compares their rows with DataFusion's, and
 writes Snowflake SQL for it. `catalogue/status.json` holds the results,
 `catalogue/INDEX.md` the readable index and `catalogue/FINDINGS.md` the
@@ -46,14 +46,15 @@ from ibis import _
 from sverify.engine import (
     Backend,
     connect,
+    plan_json,
     put_table,
     run_checker,
     run_plan,
     run_sql,
-    substrait_json,
     to_sql,
     written_plan,
 )
+from sverify.ibis_substrait import Unsupported
 
 ROOT = Path(__file__).resolve().parents[3] / "catalogue"
 
@@ -274,8 +275,8 @@ def date_literal(s: str) -> ir.DateValue:
     return ibis.literal(s).cast("date")  # pyrefly: ignore
 
 
-def build(q: Query, schemas: dict[str, Any], profile: Profile) -> str:
-    """The query's DataFusion SQL."""
+def build(q: Query, schemas: dict[str, Any], profile: Profile) -> ir.Table | str:
+    """The query: an Ibis expression, or its DataFusion SQL."""
     if q.sql is not None:
         return q.sql
     assert q.ibis is not None
@@ -284,7 +285,7 @@ def build(q: Query, schemas: dict[str, Any], profile: Profile) -> str:
     ns: dict[str, Any] = {"ibis": ibis, "_": _, "sv": sverify, "D": date_literal}
     ns.update(tables(schemas, q.dataset, profile))
     exec(q.ibis, ns)  # noqa: S102 - the catalogue's own code
-    return to_sql(ns["q"])
+    return ns["q"]
 
 
 def _value_of(v: object) -> object:
@@ -332,7 +333,8 @@ def probe_engines(con: Backend, plan: str, reference: list[tuple] | None) -> dic
     import sqlglot
 
     from sverify import polars_engine
-    from sverify.sql import Unsupported, parse_plan
+    from sverify.sql import Unsupported as Untranslatable
+    from sverify.sql import parse_plan
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.core import Fetch, Window, order_matters
     from sverify.sql.snowflake import SNOWFLAKE
@@ -342,7 +344,7 @@ def probe_engines(con: Backend, plan: str, reference: list[tuple] | None) -> dic
     for engine in ("polars", "duckdb"):
         try:
             results[engine] = _rows(run_plan(con, plan, engine))  # pyrefly: ignore
-        except (polars_engine.Unsupported, Unsupported) as e:
+        except (polars_engine.Unsupported, Untranslatable) as e:
             out[engine] = f"refused: {_first_line(e)}"
         except Exception as e:  # noqa: BLE001 - runtime errors of either engine
             out[engine] = f"error: {_first_line(e)}"
@@ -371,11 +373,11 @@ def probe_engines(con: Backend, plan: str, reference: list[tuple] | None) -> dic
     try:
         text = plan_sql(json.loads(plan), SNOWFLAKE)
         out["snowflake"] = "sql"
-    except Unsupported as e:
+    except Untranslatable as e:
         try:
             text = plan_sql(json.loads(plan), SNOWFLAKE, tie_free=True)
             out["snowflake"] = "sql (tie_free)"
-        except Unsupported:
+        except Untranslatable:
             text = None
             out["snowflake"] = f"refused: {_first_line(e)}"
     if text is not None:
@@ -388,30 +390,41 @@ def probe_profile(
 ) -> dict[str, Any]:
     """The query's status on one profile of its dataset.
 
-    `checker` is `verified`, `rejected` (by `substrait-check`) or `upstream`,
-    in which case `stage` says where it failed: `ibis` (compiling to SQL),
+    Ibis expressions go through `sverify`'s own producer (`plan_json`), SQL
+    through DataFusion's. `checker` is `verified`, `rejected` (by
+    `substrait-check`, or with `stage: producer` by the producer, which
+    refuses what Lean does not model) or `upstream`, in which case `stage`
+    says where it failed: `ibis` (building the expression), `producer`,
     `datafusion` (planning the SQL) or `substrait` (DataFusion's Substrait
-    producer). `datafusion` says whether DataFusion runs the SQL itself on
-    the synthetic tables, verified or not."""
+    producer). `datafusion` says whether DataFusion runs the query itself
+    (Ibis's own SQL for an expression) on the synthetic tables, verified or
+    not."""
     for name, table in synthetic(schemas, q.dataset, profile).items():
         put_table(con, name, table)
     try:
-        sql = build(q, schemas, profile)
+        query = build(q, schemas, profile)
     except Exception as e:  # noqa: BLE001 - any Ibis failure counts
         return {"checker": "upstream", "stage": "ibis", "detail": _first_line(e)}
+    # DataFusion runs the query itself: Ibis's own SQL for an expression.
     try:
+        sql = query if isinstance(query, str) else to_sql(query)
         reference: list[tuple] | None = _rows(run_sql(con, sql))
         ran = "runs"
     except Exception as e:  # noqa: BLE001 - DataFusion's own failures are findings
         reference, ran = None, f"error: {_first_line(e)}"
+    if isinstance(query, str):
+        try:
+            con.con.sql(query).logical_plan()
+        except Exception as e:  # noqa: BLE001
+            return {"checker": "upstream", "stage": "datafusion", "detail": _first_line(e)}
     try:
-        con.con.sql(sql).logical_plan()
+        plan = plan_json(con, query)
+    except Unsupported as e:
+        return {"checker": "rejected", "stage": "producer", "detail": _first_line(e),
+                "datafusion": ran}  # fmt: skip
     except Exception as e:  # noqa: BLE001
-        return {"checker": "upstream", "stage": "datafusion", "detail": _first_line(e)}
-    try:
-        plan = substrait_json(con, sql)
-    except Exception as e:  # noqa: BLE001
-        return {"checker": "upstream", "stage": "substrait", "detail": _first_line(e),
+        stage = "substrait" if isinstance(query, str) else "producer"
+        return {"checker": "upstream", "stage": stage, "detail": _first_line(e),
                 "datafusion": ran}  # fmt: skip
     code, stdout, stderr = run_checker((), plan)
     out = stdout + stderr
@@ -480,6 +493,8 @@ def consistency(
         s = status[q.id]
         e = effective(s)
         bad = [f for f in q.features if features[f].lean == "no"]
+        if e is not s:  # verified only with DOUBLE in place of DECIMAL
+            bad = [f for f in bad if f != "decimal"]
         if e["checker"] == "verified" and bad:
             problems.append(f"{q.id}: verified, yet uses {bad} (lean = 'no')")
         if e["checker"] in ("rejected", "upstream") and not blockers(q, features):
@@ -533,6 +548,34 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"inPredicate", {"not_in_subquery"}),
     (r"RecursiveQuery", {"recursive_cte"}),
     (r"Unnest", {"unnest", "generate_series"}),
+    # sverify's Ibis producer
+    (r"type decimal\(", {"decimal"}),
+    (r"DateAdd|DateSub", {"interval_month", "interval_day_time", "dynamic_interval"}),
+    (r"intervals in months", {"interval_month"}),
+    (r"IntervalFromInteger", {"dynamic_interval"}),
+    (r"DateDiff", {"date_diff"}),
+    (r"aggregate (Add|Subtract|Multiply|Divide|Power) is not", {"agg_arithmetic"}),
+    (r"sorting by an expression", {"sort_by_expression"}),
+    (
+        r"window frames are not supported",
+        {"running_agg", "rows_frame", "range_frame", "first_last_value"},
+    ),
+    (r"window function (Mean|Sum|Count|Max|Min|StandardDev)", {"window_partition_agg"}),
+    (r"window function (DenseRank|MinRank)", {"rank"}),
+    (r"window function (NTile|PercentRank|CumeDist)", {"ntile"}),
+    (r"window function (First|Last)", {"first_last_value"}),
+    (r"aggregate (ArgMin|ArgMax|First|Last|Arbitrary)", {"arg_max"}),
+    (r"aggregate (Median|Quantile)", {"percentile"}),
+    (r"aggregate (StandardDev|Variance)", {"stddev_var"}),
+    (r"aggregate (Correlation|Covariance)", {"corr"}),
+    (r"aggregate GroupConcat", {"string_agg"}),
+    (r"^(Ln|Exp|Log|Log10|Log2|Sqrt) is not", {"math_transcendental"}),
+    (r"ExtractEpochSeconds", {"epoch", "interval_to_number"}),
+    (r"ScalarSubquery", {"scalar_subquery", "correlated_subquery"}),
+    (r"InSubquery", {"not_in_subquery"}),
+    (r"RegexReplace|RegexExtract", {"regex_replace"}),
+    (r"^Hash is not", {"hash"}),
+    (r"TimestampBucket is not", {"time_bucket"}),
 ]
 
 

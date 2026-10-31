@@ -11,7 +11,7 @@ title = "Time-weighted average temperature"
 intent = "Average each device's temperature weighted by how long each reading stayed current."
 domain = "iot"
 source = { name = "TigerData (TimescaleDB) docs: time-weighted averages", url = "https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages", licence = "no licence stated (timescale/docs); paraphrased" }
-features = ["lag_lead", "epoch", "interval_to_number", "group_by", "sum", "arithmetic_float"]
+features = ["lag_lead", "epoch", "interval_to_number", "group_by", "sum", "arithmetic_float", "agg_arithmetic"]
 pitfalls = ["tie_order: two readings at the same instant get zero weight in either order", "division_by_zero: a device with a single reading has total weight 0", "float_sum_order: weighted sums of doubles"]
 ibis = '''
 w = ibis.window(group_by="device_id", order_by="ts")
@@ -178,7 +178,7 @@ title = "Daily energy consumption from a cumulative meter"
 intent = "Compute each meter's energy use per day as the difference between its highest and lowest cumulative reading that day."
 domain = "iot"
 source = { name = "TigerData (TimescaleDB) tutorial: analyze energy consumption", url = "https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption", licence = "no licence stated (timescale/docs); paraphrased" }
-features = ["cast_date", "group_by", "min_max", "arithmetic_float"]
+features = ["cast_date", "group_by", "min_max", "arithmetic_float", "agg_arithmetic"]
 pitfalls = ["timezone_dst: the day boundary depends on the zone", "empty_aggregate: usage across midnight is lost unless the last reading of the previous day is included"]
 ibis = '''
 q = meters.group_by(["device_id", _.ts.date().name("day")]).aggregate(
