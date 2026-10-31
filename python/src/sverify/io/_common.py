@@ -15,7 +15,7 @@ import ibis
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify.contracts import Condition, Fact, Unique, resolve
+from sverify.contracts import Condition, Fact, TableCondition, Unique, resolve
 from sverify.engine import to_sql
 from sverify.incremental import IncrementalView
 
@@ -91,8 +91,8 @@ def stats_facts(
 
 def condition_sql(cond: Condition, schema: ibis.Schema) -> str | None:
     """A row condition as a standalone SQL expression over the columns, or
-    None if it has none (`unique`)."""
-    if isinstance(cond, Unique):
+    None if it has none (`unique`, `references`)."""
+    if isinstance(cond, TableCondition):
         return None
     if isinstance(cond, str):
         return cond

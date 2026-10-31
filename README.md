@@ -376,6 +376,14 @@ plus_one(orders)
   row per `ts` (checked on the data when bound). In `ensures` it is proved, since
   keys survive filters, projections and joins whose condition pins down the other
   side's key (`a.ts = b.ts`, `w1.ts = w0.ts + 60`).
+* **Foreign keys:** `sv.references("cust", "customers", "id")` in `requires`
+  says every non-NULL `cust` occurs in `customers.id` (checked on the data, like
+  `unique`). It is only an assumption: nothing proves it in `ensures`.
+* **Rewrites:** `sv.verify(...).optimized` is the transformation rewritten with
+  what the preconditions establish (`Rel.optimize_sound`), and `rewrites` names
+  the changes: a `DISTINCT` over a key goes, a filter the preconditions imply goes,
+  and a left join on a NOT NULL foreign key becomes an inner join. Run it instead
+  of the transformation on data that meets the preconditions.
 * **Window functions:** `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY …`
   (any directions, NULLs first or last, offsets and defaults). Lean knows that
   `LAG(ts)` comes from an earlier row of the same partition, that a lagged
@@ -1187,6 +1195,8 @@ interval, possible booleans, and whether it can be a string.
   meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
   goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
   A filter the preconditions imply goes; one they rule out empties the plan.
+  A left join on a NOT NULL foreign key (`sv.references`) becomes an inner
+  join, and so does one under a filter that rejects its padded rows.
   `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL

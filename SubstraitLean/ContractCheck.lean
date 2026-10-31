@@ -18,7 +18,10 @@ Input (JSON):
   "ensures": [<plan>, ...],    -- each: the transformation, select of postconditions
   "transform": <plan>,         -- the transformation, to report facts and keys
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
-  "ensures_keys": [[<col>, ...], ...] }       -- keys to prove on the output
+  "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
+  "references": {"<table>": [[<col>, "<table>", <col>], ...]} }
+      -- input foreign keys: every non-NULL value of the column occurs in the
+      -- other table's column (`ForeignKeys.Hold`)
 ```
 
 Output: a JSON report (`Report.json`). Besides what is proved, it carries
@@ -139,6 +142,13 @@ def natLists (j : Json) : List (List Nat) :=
   ((j.getArr?).toOption.getD #[]).toList.map fun k =>
     ((k.getArr?).toOption.getD #[]).toList.filterMap fun c => (c.getNat?).toOption
 
+def foreignKeys (j : Json) : ForeignKeys := fun t =>
+  (((j.getObjVal? t).toOption.bind (·.getArr?.toOption)).getD #[]).toList.filterMap fun fk =>
+    match fk.getArr?.toOption.map Array.toList with
+    | some [c, s, p] => do
+      pure ((← c.getNat?.toOption), (← s.getStr?.toOption), (← p.getNat?.toOption))
+    | _ => none
+
 def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
 
 def check (input : Json) : Except String Report := do
@@ -210,7 +220,8 @@ def check (input : Json) : Except String Report := do
     | some p =>
       if !p.root.checkWF cat then (.null, [])
       else
-        let (q, log) := p.root.optimize cat A F inputKeys
+        let R := foreignKeys ((input.getObjVal? "references").toOption.getD (.obj {}))
+        let (q, log) := p.root.optimize cat A F inputKeys R
         (Write.writePlan (Write.planSchemas p) cat q p.names, log)
     | none => (.null, [])
   return {

@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78); #75, #77, #79, #80 open |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77); #75, #79, #80 open |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -261,10 +261,17 @@ the same bag). `substrait-check --contract` reports the rewritten plan as
 Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
 `polars_engine.run`) only on data that meets the preconditions, as with
 `guards=False`.
-* **Outer-to-inner join conversion** (#77). A filter above a left join that
-  rejects NULLs on a right column turns it into an inner join. With an FK and
-  NOT NULL, every left row matches, so the conversion holds without a filter.
-  Engines do the filter case; the FK case needs our facts.
+* **Outer-to-inner join conversion** (#77, done). A filter above a left
+  join that is never TRUE on a padded row (`Expr.absD` with the right
+  columns NULL) turns it into an inner join; engines do this case too. With a
+  foreign key and NOT NULL, every left row matches, so the conversion holds
+  without a filter. `sv.references(col, table, other)` declares the foreign
+  key (`ForeignKeys.Hold`), checked on the data like `unique`. `Rel.origin`
+  follows the join column back to a table column and `Rel.cover` checks that
+  the right side keeps every value of the referenced one. The inner join is
+  in the incremental fragment (`--delta`), which excludes left joins. Incremental
+  views do not take `references` preconditions yet: they would have to check
+  deletes from the referenced table.
 * **Filters implied by CHECK constraints** (#78, done). If `Expr.absD`
   shows the condition certainly TRUE on the input's abstract rows
   (`AVal.certainlyTrue`, as for a postcondition), `filter r c` is `r`. If it
