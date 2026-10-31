@@ -1,0 +1,1 @@
+-- Unsupported: aggregate functions (GROUP BY with measures or expressions) are not translated yet

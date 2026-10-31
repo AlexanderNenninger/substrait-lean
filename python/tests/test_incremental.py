@@ -81,7 +81,7 @@ def test_left_join_is_rejected():
 
 def test_aggregate_is_rejected():
     con = setup([], [])
-    with pytest.raises(ValueError, match="aggregate functions are not supported"):
+    with pytest.raises(sv.NotIncremental):
         sv.IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 

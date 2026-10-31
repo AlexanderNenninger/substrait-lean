@@ -1031,18 +1031,18 @@ class Translator:
         no measures: the first of each set of equal rows (`dedup`), in order.
         Rows are equal as `Value`s: NULLs equal, doubles by their codes."""
         if r.get("measures"):
-            raise Unsupported("aggregate functions are not in Lean's written form")
+            raise Unsupported("aggregate functions (GROUP BY with measures) are not translated yet")
         lf, dtypes = self.rel(r["input"])
         n = len(dtypes)
         ex = self.exprs(dtypes)
         top = r.get("groupingExpressions", [])
         groupings = r.get("groupings", [])
         refs = groupings[0].get("expressionReferences", []) if len(groupings) == 1 else None
-        if refs is None or [int(i) for i in refs] != list(range(n)) or len(top) != n:
-            raise Unsupported("an aggregate is written as DISTINCT over all its columns")
-        for i, e in enumerate(top):
-            if "selection" not in e or ex.field(e["selection"]) != i:
-                raise Unsupported("an aggregate is written as DISTINCT over all its columns")
+        distinct = refs is not None and [int(i) for i in refs] == list(range(n)) and len(top) == n
+        if not distinct or any(
+            "selection" not in e or ex.field(e["selection"]) != i for i, e in enumerate(top)
+        ):
+            raise Unsupported("aggregate functions (GROUP BY expressions) are not translated yet")
         keys = [f"__sv_key{i}" for i in range(n)]
         return (
             lf.with_columns(

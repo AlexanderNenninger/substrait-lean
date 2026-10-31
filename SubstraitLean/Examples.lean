@@ -115,6 +115,23 @@ def withPrev : Rel := .window readings [0] [{ col := 1 }] [.lag 2 1 .null, .rowN
    [.int 1, .int 10, .int 3, .null, .int 1],
    [.int 1, .int 20, .int 7, .int 3, .int 2]]
 
+/-! ## Aggregates -/
+
+/-- `SELECT customer, COUNT(*), SUM(amount), MAX(amount) FROM orders GROUP BY customer`:
+`ada`'s NULL amount counts as a row but not as a value. -/
+def totals : Rel :=
+  .aggregate (read "orders") [.field 1]
+    [{ fn := .count, arg := .lit (.int 1) }, { fn := .sum, arg := .field 2 },
+     { fn := .max, arg := .field 2 }]
+
+#guard totals.eval cat ==
+  [[.str "ada", .int 2, .int 30, .int 30],
+   [.str "bob", .int 1, .int 5, .int 5]]
+
+-- Without grouping there is one row, even for no input.
+#guard (Rel.aggregate (.values 1 []) [] [{ fn := .count, arg := .field 0 },
+    { fn := .sum, arg := .field 0 }]).eval cat == [[.int 0, .null]]
+
 end Substrait.Examples
 
 -- Proofs rely only on Lean's standard axioms (no `sorry`).
@@ -135,6 +152,8 @@ end Substrait.Examples
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak
 #print axioms Substrait.Rel.window_deterministic
+#print axioms Substrait.Measure.abs_sound
+#print axioms Substrait.aggregateEval_key
 #print axioms Substrait.Triple.compose
 #print axioms Substrait.Triple.compose_spec
 #print axioms Substrait.Triple.of_contract

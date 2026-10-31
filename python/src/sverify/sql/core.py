@@ -1596,14 +1596,17 @@ class _Parser:
         return core
 
     def aggregate(self, r: dict) -> Rel:
-        """An aggregate without measures is `DISTINCT` (of its grouping keys)."""
+        """An aggregate without measures, grouping by columns, is `DISTINCT` (of
+        its grouping keys). Lean also models aggregates with measures
+        (`Rel.aggregate`), which are not translated to SQL yet."""
         inp = self.rel(_req(r, "input"))
         cols = self.cols(inp)
+        todo = "aggregate functions (GROUP BY with measures or expressions) are not translated yet"
         if _arr(r, "measures"):
-            raise Unsupported("aggregate functions are not supported yet")
+            raise Unsupported(todo)
         groupings = _arr(r, "groupings")
         if len(groupings) != 1:
-            raise Unsupported("grouping sets are not supported")
+            raise Unsupported(todo if not groupings else "grouping sets are not supported")
         g = groupings[0]
         refs, exprs = _field(g, "expressionReferences"), _field(g, "groupingExpressions")
         if refs is None and exprs is None:
@@ -1620,7 +1623,10 @@ class _Parser:
                     js.append(top[k])
             else:
                 js = _arr(g, "groupingExpressions")
-            keys = [self.column(e, cols, "grouping keys") for e in js]
+            groups = [self.expr(e, cols) for e in js]
+            if not all(isinstance(e, Field) for e in groups):
+                raise Unsupported(todo)
+            keys = [e.index for e in groups if isinstance(e, Field)]
         if keys == list(range(len(cols.lean))):
             return Distinct(inp)
         return Distinct(Emit(inp, tuple(keys)))

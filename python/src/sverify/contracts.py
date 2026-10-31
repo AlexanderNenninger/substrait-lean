@@ -132,8 +132,8 @@ class Issue:
 
     kind: str
     """"division by zero", "overflow", "cast out of range", "negative exponent",
-    or "may wrap around" (64-bit overflow of `+`, `-`, `*`, which DataFusion
-    does not report)."""
+    or "may wrap around" (64-bit overflow of `+`, `-`, `*` or an integer
+    `SUM`, which DataFusion does not report)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
@@ -195,8 +195,9 @@ class Report:
             f"| `{c.label}` | {'✅ proved' if c.proved else '❌ ' + c.value} |"
             for c in self.ensures
         ]
-        rows += [f"| runtime | ❌ may fail: {i} |" for i in self.errors]
-        rows += [f"| runtime | ⚠️ {i} |" for i in self.warnings]
+        # Issues quote expressions, which may contain `|` (a regex, an OR).
+        rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
+        rows += [f"| runtime | ⚠️ {str(i).replace('|', '\\|')} |" for i in self.warnings]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         return "\n".join(

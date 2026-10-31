@@ -298,6 +298,8 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .orderBy r _ => r.keys cat A F K
   -- After `DISTINCT`, all columns together are a key.
   | .distinct r => List.range (r.arity cat) :: r.keys cat A F K
+  -- The grouping columns are a key (without them, there is one row).
+  | .aggregate _ gs _ => [List.range gs.length]
 
 theorem crossRows_key {A B : Relation} {n : Nat} {ka kb : List Nat}
     (hA : ∀ x ∈ A, x.length = n) (hka : ∀ c ∈ ka, c < n)
@@ -454,6 +456,26 @@ theorem keyOf_range {x : Row} {n : Nat} (h : x.length = n) : keyOf (List.range n
   intro i h₁ h₂
   simp [keyOf, List.getD, List.getElem?_eq_getElem h₂]
 
+theorem keyOf_range_append {k rest : Row} : keyOf (List.range k.length) (k ++ rest) = k := by
+  apply List.ext_getElem (by simp [keyOf])
+  intro i h₁ h₂
+  simp [keyOf, List.getD, List.getElem?_append_left h₂, List.getElem?_eq_getElem h₂]
+
+theorem aggregateEval_key (gs : List Expr) (ms : List Measure) (rows : Relation) :
+    KeyOn (List.range gs.length) (aggregateEval gs ms rows) := by
+  unfold aggregateEval KeyOn
+  split
+  · simp
+  · rw [List.pairwise_map]
+    refine (dedup_pairwise _).imp_of_mem fun hx hy hne => ?_
+    obtain ⟨x, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hx)
+    obtain ⟨y, _, rfl⟩ := List.mem_map.mp (mem_dedup.mp hy)
+    have hlx : (groupKey gs x).length = gs.length := by simp [groupKey]
+    have hly : (groupKey gs y).length = gs.length := by simp [groupKey]
+    rw [← hlx, keyOf_range_append]
+    rw [hlx, ← hly, keyOf_range_append]
+    exact hne
+
 /-- **Soundness of key derivation.** -/
 theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
@@ -561,6 +583,10 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
           keyOf_range (eval_arity hcat (r := r) hwf _ (mem_dedup.mp hy))]
         exact hne
       · exact (keys_sound hcat hA hF hK (r := r) hwf k hk).sublist (dedup_sublist _)
+  | .aggregate r gs ms, _, k, hk => by
+      simp only [Rel.keys, List.mem_singleton] at hk
+      subst hk
+      exact aggregateEval_key gs ms (r.eval cat)
   | .window r part sort fns, hwf, k, hk => by
       simp only [Rel.keys, List.mem_append] at hk
       rcases hk with hk | hk
@@ -719,8 +745,8 @@ its input? -/
 def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
-  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r =>
-      r.windowsTotal cat A F K
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
+  | .aggregate r _ _ => r.windowsTotal cat A F K
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort _ =>

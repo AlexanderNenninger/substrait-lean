@@ -13,22 +13,31 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="A verified fitness pipeline")
+app = marimo.App(width="medium", app_title="12. A complete pipeline")
 
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
+    from sverify import display
 
-    return (mo,)
+    return display, mo
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # A verified fitness pipeline
+    ← 11. [Engines and SQL](?file=11_engines.py) · [Contents](?file=00_start_here.py) · 13. [What is proved, what is trusted](?file=13_trust.py) →
+    """)
+    return
 
-    A watch streams heart-rate samples, and users log workouts in an app. For
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # 12. A complete pipeline: heart rate during workouts
+
+    This chapter puts the tour together on one realistic pipeline. A watch streams heart-rate samples, and users log workouts in an app. For
     training a model we want **the heart rate during each workout**, with
     sensor glitches removed. The pipeline is a few lines of Ibis; the
     interesting part is the *contract* on it:
@@ -40,9 +49,9 @@ def _(mo):
 
     Lean checks every `ensures` against the pipeline's Substrait plan *before
     any data runs*. A ✅ is a proof for **all** possible inputs that satisfy
-    `requires`, not a test on the rows below. Then the same pipeline runs as
-    an incrementally maintained view whose update rules are proved correct
-    too.
+    `requires`, not a test on the rows below (chapters 3–5). Then the same
+    pipeline runs as an incrementally maintained view whose update rules are
+    proved correct too (chapter 9).
     """)
     return
 
@@ -65,7 +74,6 @@ def _():
     import warnings
 
     import ibis
-
     import sverify as sv
 
     def t(h, m):
@@ -89,7 +97,9 @@ def _():
     sv.create_table(
         con,
         "workouts",
-        ibis.schema({"user_id": "int64", "kind": "string", "start": "timestamp", "end": "timestamp"}),
+        ibis.schema(
+            {"user_id": "int64", "kind": "string", "start": "timestamp", "end": "timestamp"}
+        ),
         [(1, "run", t(7, 0), t(7, 30)), (2, "bike", t(7, 0), t(8, 0))],
     )
     hr, workouts = con.table("heart_rate"), con.table("workouts")
@@ -97,14 +107,9 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(hr, mo, workouts):
-    mo.hstack(
-        [
-            mo.vstack([mo.md("**heart_rate**"), mo.ui.table(hr.to_pyarrow().to_pylist(), selection=None)]),
-            mo.vstack([mo.md("**workouts**"), mo.ui.table(workouts.to_pyarrow().to_pylist(), selection=None)]),
-        ],
-        justify="start",
-        gap=2,
+def _(display, hr, workouts):
+    display.side_by_side(
+        display.arrow(hr, title="heart_rate"), display.arrow(workouts, title="workouts")
     )
     return
 
@@ -161,6 +166,11 @@ def _(hr, warnings, workout_heart_rate, workouts):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         expr = workout_heart_rate(hr, workouts)
+    caught = [
+        w
+        for w in caught
+        if issubclass(w.category, UserWarning) and "could not prove" in str(w.message)
+    ]
     report = workout_heart_rate.last_report
     return caught, expr, report
 
@@ -170,7 +180,9 @@ def _(caught, mo, report):
     mo.vstack(
         [
             mo.md(report._repr_markdown_()),
-            mo.callout(mo.md(f"**Warning:** {caught[0].message}"), kind="warn") if caught else mo.md(""),
+            mo.callout(mo.md(f"**Warning:** {str(caught[0].message).splitlines()[0]}"), kind="warn")
+            if caught
+            else mo.md(""),
         ]
     )
     return
@@ -233,7 +245,9 @@ def _(hr, keep_upper, lower, mo, sv, workouts):
     _valid = hr.filter(_cond)
     _expr = _valid.join(
         workouts,
-        (_valid.user_id == workouts.user_id) & (_valid.ts >= workouts.start) & (_valid.ts < workouts.end),
+        (_valid.user_id == workouts.user_id)
+        & (_valid.ts >= workouts.start)
+        & (_valid.ts < workouts.end),
     ).select(_valid.user_id, workouts.kind, _valid.ts, _valid.bpm, workouts.start, workouts.end)
     _report = sv.verify(
         _expr,
@@ -272,9 +286,14 @@ def _(con, expr, sv):
 
 @app.cell(hide_code=True)
 def _(mo):
-    stream = mo.ui.button(value=0, on_click=lambda n: n + 1, label="Stream the next two samples", kind="success")
+    stream = mo.ui.button(
+        value=0, on_click=lambda n: n + 1, label="Stream the next two samples", kind="success"
+    )
     overlap = mo.ui.button(
-        value=0, on_click=lambda n: n + 1, label="Log an overlapping workout (user 1, stretch 07:10–07:20)", kind="warn"
+        value=0,
+        on_click=lambda n: n + 1,
+        label="Log an overlapping workout (user 1, stretch 07:10–07:20)",
+        kind="warn",
     )
     mo.hstack([stream, overlap], justify="start")
     return overlap, stream
@@ -312,13 +331,13 @@ def _(overlap, sample_batch, stream, sv, t, view, view_log):
 
 
 @app.cell(hide_code=True)
-def _(applied, mo, view, view_log):
+def _(applied, display, mo, view, view_log):
     from collections import Counter as _Counter
 
     _cols = ["user_id", "kind", "ts", "bpm"]
 
     def _rows(rows):
-        return [dict(zip(_cols, r[:4])) for r in sorted(rows, key=lambda r: (r[0], r[2], r[1]))]
+        return [r[:4] for r in sorted(rows, key=lambda r: (r[0], r[2], r[1]))]
 
     _dupes = [k for k, n in _Counter((r[0], r[2]) for r in view.rows()).items() if n > 1]
     _equal = view.rows() == view.recompute()
@@ -333,13 +352,9 @@ def _(applied, mo, view, view_log):
     mo.vstack(
         [
             _last,
-            mo.hstack(
-                [
-                    mo.vstack([mo.md("**maintained incrementally**"), mo.ui.table(_rows(view.rows()), selection=None)]),
-                    mo.vstack([mo.md("**recomputed from scratch**"), mo.ui.table(_rows(view.recompute()), selection=None)]),
-                ],
-                justify="start",
-                gap=2,
+            display.side_by_side(
+                display.table(_rows(view.rows()), _cols, title="maintained incrementally"),
+                display.table(_rows(view.recompute()), _cols, title="recomputed from scratch"),
             ),
             mo.callout(
                 mo.md(
@@ -377,8 +392,16 @@ def _(mo):
       bit, NaN and −0.0 included.
     * **Trusted**: the translation from DataFusion's Substrait JSON into the
       Lean model, DataFusion itself, and the small amount of Python that
-      stores the view and merges changes. The intro notebook
-      (`notebooks/intro.py`) explains the formal side step by step.
+      stores the view and merges changes. The last chapter draws the line
+      precisely.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ← 11. [Engines and SQL](?file=11_engines.py) · [Contents](?file=00_start_here.py) · 13. [What is proved, what is trusted](?file=13_trust.py) →
     """)
     return
 

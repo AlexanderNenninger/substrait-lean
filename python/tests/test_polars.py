@@ -164,6 +164,10 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
 #: its own consumer rejects.
 DATAFUSION_CANNOT_READ = {"df_distinct"}
 
+#: Fixtures Lean accepts with relations the Polars translator does not have yet
+#: (aggregates with measures): it must refuse them, not run them wrongly.
+NOT_IN_POLARS = {"df_aggregate"}
+
 
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
     return canonical(a) == canonical(b)
@@ -194,6 +198,10 @@ def test_golden_fixtures(fixture, data):
     tables = {t: data.draw(table_data(s)) for t, s in schemas.items()}
     for t, table in tables.items():
         put_table(con, t, table)
+    if fixture.stem in NOT_IN_POLARS:
+        with pytest.raises(polars_engine.Unsupported, match="aggregate functions"):
+            rows_of(run_plan(con, plan, "polars"))
+        return
     if '"fetch"' in plan:
         # DataFusion reads the current `offsetExpr`/`countExpr`, not the
         # deprecated fields Lean writes: it runs the fixture itself.
@@ -499,8 +507,9 @@ def test_unknown_function_is_refused():
 def test_aggregates_are_refused():
     con = connect()
     create_tables(con)
-    with pytest.raises(ValueError, match="aggregate functions are not supported"):
-        written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
+    plan = written_plan(substrait_json(con, "SELECT customer, sum(amount) FROM orders GROUP BY 1"))
+    with pytest.raises(polars_engine.Unsupported, match="aggregate functions"):
+        polars_engine.to_lazy(plan, {"orders": con.con.table("orders").to_arrow_table()})
 
 
 def test_checker_writes_what_polars_reads():

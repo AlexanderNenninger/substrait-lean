@@ -29,7 +29,11 @@ def functions : List (Nat × String) :=
    (18, "modulus"), (19, "power"), (20, "upper"), (21, "lower"), (22, "character_length"),
    (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
-   (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim")]
+   (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
+   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max")]
+
+def AggFn.anchor : AggFn → Nat
+  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
 
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
@@ -181,6 +185,9 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List Parse.Kind
   | .window r _ _ fns =>
       let ks := relKinds schemas cat r
       ks ++ fns.map (WinFn.kind ks)
+  | .aggregate r gs ms =>
+      let ks := relKinds schemas cat r
+      gs.map (·.kind ks) ++ ms.map (·.kind ks)
 
 def writeSortKey (cols : List Parse.Kind) (k : SortKey) : Json :=
   let dir : Json := match k.desc, k.nullsFirst with
@@ -206,6 +213,15 @@ def writeWindow (cols : List Parse.Kind) (part : List Nat) (sort : List SortKey)
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
     ("lowerBound", obj [("unbounded", obj [])]), ("upperBound", obj [("unbounded", obj [])]),
     ("boundsType", "BOUNDS_TYPE_ROWS")])]
+
+/-- An `AggregateRel` measure over input columns of kinds `cols`. -/
+def writeMeasure (cols : List Parse.Kind) (m : Measure) : Json :=
+  let measure := obj [
+    ("functionReference", toJson (AggFn.anchor m.fn)),
+    ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
+    ("arguments", Json.arr #[obj [("value", writeExpr cols (m.arg.kind cols) m.arg)]])]
+  obj ([("measure", measure)] ++
+    (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 
 /-- Write a relation; `emit` is an output mapping to put on its `RelCommon`. -/
 def writeRel (schemas : Schemas) (cat : Catalog) : Rel → Option (List Nat) → Json
@@ -255,6 +271,14 @@ def writeRel (schemas : Schemas) (cat : Catalog) : Rel → Option (List Nat) →
           writeExpr ks .other (.field i)).toArray),
         ("groupings", Json.arr #[obj [("expressionReferences",
           Json.arr ((List.range ks.length).map toJson).toArray)]])] out
+  | .aggregate r gs ms, out =>
+      let ks := relKinds schemas cat r
+      withCommon "aggregate" [
+        ("input", writeRel schemas cat r none),
+        ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (g.kind ks) g).toArray),
+        ("groupings", if gs.isEmpty then Json.arr #[] else
+          Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
+        ("measures", Json.arr (ms.map (writeMeasure ks)).toArray)] out
   | .window r part sort fns, out => withCommon "project" [
       ("input", writeRel schemas cat r none),
       ("expressions",
