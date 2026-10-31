@@ -2,8 +2,9 @@
 
 **Data pipelines with proofs: incremental views and pre/postconditions,
 checked in [Lean](https://lean-lang.org), run on
-[DataFusion](https://datafusion.apache.org), [Polars](https://pola.rs) or
-[DuckDB](https://duckdb.org), or written as Snowflake or Spark SQL.**
+[DataFusion](https://datafusion.apache.org), [Polars](https://pola.rs),
+[DuckDB](https://duckdb.org) or [Spark](https://spark.apache.org), or written as
+Snowflake SQL.**
 
 You write a query once, in [Ibis](https://ibis-project.org) or SQL. `sverify`
 then does two things with it:
@@ -25,6 +26,11 @@ neither Lean nor any other toolchain to use it.
 ```bash
 pip install sverify          # or: uv add sverify
 ```
+
+The core runs on DataFusion. Other engines and table formats are extras:
+`polars`, `duckdb`, `spark` (needs Java 17 or 21), `delta`, `iceberg`, or
+`all`, as in `pip install 'sverify[polars,delta]'`. SQL for DuckDB, Snowflake
+and Spark is generated without any of them.
 
 Wheels are available for Linux (x86_64, aarch64) and macOS (arm64, x86_64),
 on Python 3.12 and later. Elsewhere pip builds from the sdist, which needs
@@ -182,15 +188,17 @@ See the main README for the full example and what is trusted versus proved.
 ## Engines
 
 ```python
-sv.run_plan(con, plan, "polars")              # or "duckdb"; DataFusion by default
+sv.run_plan(con, plan, "polars")              # or "duckdb"; DataFusion by default (extras: polars, duckdb)
 from sverify.sql import to_sql
 from sverify.sql.snowflake import SNOWFLAKE   # also sverify.sql.duckdb, sverify.sql.spark
 to_sql(plan, SNOWFLAKE)                       # or sverify.sql.Unsupported, saying why
 ```
 
-Snowflake and Spark tables have no row order, so sorts, `LIMIT` and windows
-are refused there unless you pass `tie_free=True`. The coverage table in the
-main README lists what each engine runs.
+`sverify.spark_engine.run(plan, tables)` runs the Spark SQL on a local
+session or on one you pass (extra: `spark`). Snowflake and Spark tables have
+no row order, so sorts, `LIMIT` and windows are refused there unless you pass
+`tie_free=True`. The coverage table in the main README lists what each engine
+runs.
 
 ## Sharded evaluation
 

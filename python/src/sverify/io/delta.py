@@ -22,7 +22,11 @@ from datetime import timedelta
 from typing import Literal
 
 import pyarrow as pa
-from deltalake import CommitProperties, DeltaTable, Transaction, write_deltalake
+
+try:
+    from deltalake import CommitProperties, DeltaTable, Transaction, write_deltalake
+except ImportError as e:
+    raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
 from sverify.contracts import Fact
 from sverify.incremental import (

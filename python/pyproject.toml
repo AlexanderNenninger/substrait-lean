@@ -9,15 +9,20 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "datafusion==51.0.0",
-    "deltalake>=1.6.6",
-    "duckdb>=2.0.0",
     "ibis-framework[datafusion]>=12.0.0",
-    "numpy>=2.5.4",
-    "polars>=2.1.0",
     "pyarrow>=26.0.0",
-    "pyiceberg[pyarrow]>=0.12.0",
     "substrait>=0.37.0",
 ]
+
+# Engines and table formats beyond DataFusion. The SQL dialects (DuckDB,
+# Snowflake, Spark) need nothing; an extra adds what runs the SQL.
+[project.optional-dependencies]
+polars = ["numpy>=2.5.4", "polars>=2.1.0"]
+duckdb = ["duckdb>=2.0.0"]
+spark = ["pyspark>=4.0"]
+delta = ["deltalake>=1.6.6"]
+iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
+all = ["sverify[polars,duckdb,spark,delta,iceberg]"]
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
@@ -51,13 +56,13 @@ exclude = ["build", "src/sverify/_bin"]
 
 [dependency-groups]
 dev = [
+    "sverify[all]",
     "fakesnow>=0.12.1",
     "hypothesis>=6.170.14",
     "marimo>=0.25.2",
     "poethepoet>=0.49.0",
     "pyiceberg[sql-sqlite]>=0.12.0",
     "pyrefly>=1.4.0",
-    "pyspark>=4.0",
     "pytest>=9.2.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.17.3",

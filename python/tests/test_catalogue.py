@@ -14,6 +14,10 @@ import pytest
 
 from sverify import catalogue as cat
 
+if not cat.ROOT.is_dir():
+    # An installed wheel (as the Wheels workflow tests it) has no repository.
+    pytest.skip("the catalogue lives in the repository, not in the wheel", allow_module_level=True)
+
 QUERIES = cat.load_queries()
 FEATURES = cat.load_features()
 SCHEMAS = cat.load_schemas()
