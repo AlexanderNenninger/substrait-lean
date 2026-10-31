@@ -1603,7 +1603,8 @@ class _Parser:
 
                 out_ty = _field(v, "outputType")
                 # `Parse.wideIntDecimal`: other decimal results are not modelled.
-                if isinstance(out_ty, dict) and "decimal" in out_ty and not _wide_int_decimal(out_ty):
+                decimal = isinstance(out_ty, dict) and "decimal" in out_ty
+                if decimal and not _wide_int_decimal(out_ty):
                     raise Unsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (

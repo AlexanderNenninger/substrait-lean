@@ -339,7 +339,7 @@ def test_string_order_is_datafusions(con):
 def test_int_compared_with_string_compares_text(con):
     """DataFusion casts the integer to text, so `10 = '010'` is false; the
     analysed plan has the cast."""
-    sql = "SELECT a, s, a = s AS e FROM \"is\""
+    sql = 'SELECT a, s, a = s AS e FROM "is"'
     plan = json.loads(substrait_json(con, sql))
     rows_ = [(10, "10"), (10, "010"), (-3, "-3"), (None, "x")]
     assert lean_rows(json.dumps(inline_tables(plan, {"is": rows_}))) == rows(con, sql)
