@@ -13,7 +13,7 @@ import sverify as sv
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.engine import Engine
 from sverify.incremental import AuditError
-from sverify.io import DeltaSink, DeltaSource
+from sverify.io import DeltaSource
 
 SCHEMA_ORDERS = pa.schema(
     [
@@ -190,7 +190,9 @@ def test_views_over_views_record_source_versions(tmp_path):
 
 
 def test_timestamps_and_nulls_round_trip(tmp_path):
-    schema = pa.schema([pa.field("k", pa.int64(), nullable=False), pa.field("ts", pa.timestamp("us"))])
+    schema = pa.schema(
+        [pa.field("k", pa.int64(), nullable=False), pa.field("ts", pa.timestamp("us"))]
+    )
     t1 = datetime(2024, 1, 1, 0, 0, 0, 123456)
     write_deltalake(
         tmp_path / "ev",
@@ -205,4 +207,116 @@ def test_timestamps_and_nulls_round_trip(tmp_path):
     )
     pipe.refresh()
     assert view.rows() == view.recompute() == [(1, t1), (2, None)]
-    assert ibis is not None and SCHEMA and ON_DATA and DeltaSink
+
+
+# -- Step 2: preconditions from table metadata --------------------------------
+
+
+@sv.transform(
+    requires={
+        "orders": [
+            _.id.notnull(),
+            _.amount >= 0,
+            _.amount <= 100,
+            _.customer.notnull(),
+            _.customer != "eve",
+            sv.unique("id"),
+        ]
+    },
+    ensures=[_.amount >= 0],
+)
+def checked(orders):
+    return orders.select(orders.id, orders.amount)
+
+
+def test_preconditions_come_from_metadata(tmp_path):
+    src = make_orders(
+        tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)], constraints={"pos": "amount >= 0"}
+    )
+    pipe = sv.Pipeline(sv.connect())
+    orders = pipe.source("orders", src)
+    checked(orders)
+    assert sources(checked.last_preconditions) == {
+        ("orders", "_.id.notnull()"): SCHEMA,
+        ("orders", "(_.amount >= 0)"): "Delta constraint",
+        ("orders", "(_.amount <= 100)"): "file stats @v2",
+        # NULL counts are exact, even for strings ...
+        ("orders", "_.customer.notnull()"): "file stats @v2",
+        # ... but string bounds are not used.
+        ("orders", "(_.customer != 'eve')"): ON_DATA,
+        # Neither format enforces keys.
+        ("orders", "unique(id)"): ON_DATA,
+    }
+    view = pipe.view("v", checked(orders))
+    assert sources(pipe.preconditions)[("orders", "(_.amount <= 100)")] == "file stats @v2"
+    assert "orders: (_.amount <= 100) (file stats @v2)" in [str(p) for p in pipe.preconditions]
+    # A batch is discharged from the statistics of the files it added.
+    write_deltalake(src.uri, orders_table([(3, "cy", 50)]), mode="append")
+    report = pipe.refresh()
+    found = sources(report.preconditions)
+    assert found[("orders", "(_.amount <= 100)")] == "file stats @v3 (new files)"
+    assert found[("orders", "(_.amount >= 0)")] == "Delta constraint"
+    assert found[("orders", "unique(id)")] == ON_DATA
+    assert "requires orders: (_.amount <= 100) (file stats @v3 (new files))" in str(report)
+    # Statistics that do not bound the batch leave it to the data.
+    write_deltalake(src.uri, orders_table([(4, "dan", 500)]), mode="append")
+    with pytest.raises(sv.PreconditionError, match=r"inserted row\(s\) of orders violate"):
+        pipe.refresh()
+    assert view.versions == {"orders": 3}
+
+
+def test_missing_statistics_are_unknown(tmp_path):
+    path = tmp_path / "orders"
+    write_deltalake(
+        path,
+        orders_table([(1, "ada", 5)]),
+        configuration={"delta.dataSkippingNumIndexedCols": "0"},
+    )
+    checked(sv.Pipeline(sv.connect()).source("orders", DeltaSource(str(path))))
+    found = sources(checked.last_preconditions)
+    assert found[("orders", "(_.amount <= 100)")] == ON_DATA
+    assert found[("orders", "_.id.notnull()")] == SCHEMA
+
+
+def test_one_file_without_statistics_makes_a_column_unknown(tmp_path):
+    src = make_orders(tmp_path / "orders", [(1, "ada", 5)])
+    DeltaTable(src.uri).alter.set_table_properties({"delta.dataSkippingNumIndexedCols": "0"})
+    write_deltalake(src.uri, orders_table([(2, "bob", 6)]), mode="append")
+    checked(sv.Pipeline(sv.connect()).source("orders", src))
+    assert sources(checked.last_preconditions)[("orders", "(_.amount <= 100)")] == ON_DATA
+
+
+def test_truncated_timestamp_statistics_are_widened(tmp_path):
+    schema = pa.schema([pa.field("ts", pa.timestamp("us"), nullable=False)])
+    t1 = datetime(2024, 1, 1, 0, 0, 0, 123456)
+    write_deltalake(tmp_path / "ev", pa.Table.from_pylist([{"ts": t1}], schema=schema))
+    ev = sv.Pipeline(sv.connect()).source("ev", DeltaSource(str(tmp_path / "ev")))
+
+    @sv.transform(
+        requires={
+            "t": [
+                _.ts >= datetime(2024, 1, 1),
+                _.ts <= datetime(2024, 1, 1, 0, 0, 0, 124000),
+                _.ts <= t1,
+            ]
+        }
+    )
+    def f(t):
+        return t
+
+    f(ev)
+    # Delta keeps the maximum as ...00.123000; the true maximum is up to
+    # 999 µs later, so only the weaker bound follows from the statistics.
+    assert [p.source for p in f.last_preconditions] == ["file stats @v0", "file stats @v0", ON_DATA]
+
+
+def test_tables_without_metadata_are_checked_on_data():
+    con = sv.connect()
+    sv.create_table(
+        con,
+        "orders",
+        ibis.schema({"id": "!int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 5)],
+    )
+    checked(con.table("orders"))
+    assert set(sources(checked.last_preconditions).values()) == {ON_DATA}
