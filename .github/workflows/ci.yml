@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests each group of queued PRs on top of main, so PRs
+  # need not be up to date with main themselves.
+  merge_group:
 
 concurrency:
   group: ci-${{ github.ref }}
