@@ -179,6 +179,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   -- Lists are equal element by element, NULL elements equal (DataFusion, DuckDB).
   | .eq, .list a, .list b => .bool (decide (a = b))
   | .lt, .int a, .int b => .bool (decide (a < b))
+  -- Strings by code point, which is UTF-8 byte order (as `Value.le`).
+  | .lt, .str a, .str b => .bool (decide (a < b))
   | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
