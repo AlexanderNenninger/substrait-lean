@@ -613,6 +613,10 @@ class Exprs:
             return ftoi(v)
         if "string" in target and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.String), pl.String, v.issues)
+        if "date" in target and v.dtype == US:
+            # `UnFn.toDate`: days since 1970-01-01, rounding down.
+            days = v.expr.dt.epoch("us") // US_PER_DAY
+            return Val(days.cast(pl.Int32).cast(pl.Date), pl.Date, v.issues)
         raise Unsupported(f"unsupported cast from {v.dtype} to {json.dumps(target)}")
 
     def if_then(self, t: dict) -> Val:
@@ -836,6 +840,77 @@ def materialize(t: DType) -> DType:
     return pl.Int64 if t == pl.Null else t
 
 
+def _dedup_key(v: Any) -> Any:
+    """Values as `Value` equality tells them apart: doubles by their codes
+    (-0.0 is not 0.0; one NaN per sign)."""
+    if isinstance(v, float):
+        return ("nan", math.copysign(1.0, v)) if math.isnan(v) else (v, math.copysign(1.0, v))
+    return v
+
+
+def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
+    """`Measure.eval` on the values a measure aggregates (NULLs dropped)."""
+    if distinct:
+        seen: set = set()
+        vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
+    if fn == "count":
+        return len(vs)
+    if not vs:
+        return None
+    if fn == "sum":
+        total = sum(vs)
+        if not I64_MIN <= total <= I64_MAX:
+            # DataFusion wraps around; Lean's sum is the true one (`Issue.wraps`).
+            raise IntegerOverflow("SUM leaves 64 bits")
+        return total
+    if fn in ("fsum", "avg"):
+        acc = 0.0
+        for v in vs:  # in list order, with native doubles (`floatSum`)
+            acc = acc + v
+        return acc / len(vs) if fn == "avg" else acc
+    # `pickFold` keeps the first extreme; equal values are the same value here.
+    return min(vs) if fn == "min" else max(vs)
+
+
+@dataclass(frozen=True)
+class Measure:
+    """An aggregate measure: `fn` of `arg` over the rows `filter` keeps."""
+
+    fn: str
+    arg: Val
+    distinct: bool
+    filter: Val | None
+
+    @property
+    def vals(self) -> list[Val]:
+        return [self.arg] if self.filter is None else [self.arg, self.filter]
+
+    @property
+    def dtype(self) -> DType:
+        if self.fn in ("count", "sum"):
+            return pl.Int64
+        return pl.Float64 if self.fn in ("fsum", "avg") else materialize(self.arg.dtype)
+
+    @property
+    def values(self) -> pl.Expr:
+        """The argument on the kept rows, NULL elsewhere (times as integers)."""
+        a = self.arg.expr.to_physical() if self.arg.dtype in (US, pl.Date) else self.arg.expr
+        return a if self.filter is None else pl.when(is_true(self.filter.expr)).then(a)
+
+    def result(self, values: pl.Expr) -> pl.Expr:
+        """The measure from the list of each group's values."""
+        fn, distinct = self.fn, self.distinct
+        t = self.arg.dtype
+        physical = pl.Int64 if t == US else pl.Int32 if t == pl.Date else None
+        out = physical or self.dtype
+
+        def apply(s: pl.Series) -> pl.Series:
+            return pl.Series([_aggregate(fn, distinct, vs) for vs in s.to_list()], dtype=out)
+
+        r = values.map_batches(apply, return_dtype=out)
+        return r.cast(self.arg.dtype) if physical else r
+
+
 class Translator:
     def __init__(self, plan: dict, tables: Tables):
         self.functions = {
@@ -1027,22 +1102,57 @@ class Translator:
         return self.sorted(lf, self.exprs(dtypes), r.get("sorts", [])), dtypes
 
     def aggregate(self, r: dict) -> Frame:
-        """`Rel.distinct`, written as a grouping by every column in order with
-        no measures: the first of each set of equal rows (`dedup`), in order.
-        Rows are equal as `Value`s: NULLs equal, doubles by their codes."""
-        if r.get("measures"):
-            raise Unsupported("aggregate functions (GROUP BY with measures) are not translated yet")
+        """`Rel.distinct` (a grouping by every column in order, no measures) or
+        `Rel.aggregate` (`aggregateEval`): one row per distinct key, in order
+        of first occurrence, or exactly one row without grouping expressions.
+        Keys are equal as `Value`s: NULLs equal, doubles by their codes."""
         lf, dtypes = self.rel(r["input"])
         n = len(dtypes)
         ex = self.exprs(dtypes)
         top = r.get("groupingExpressions", [])
         groupings = r.get("groupings", [])
-        refs = groupings[0].get("expressionReferences", []) if len(groupings) == 1 else None
-        distinct = refs is not None and [int(i) for i in refs] == list(range(n)) and len(top) == n
-        if not distinct or any(
-            "selection" not in e or ex.field(e["selection"]) != i for i, e in enumerate(top)
-        ):
-            raise Unsupported("aggregate functions (GROUP BY expressions) are not translated yet")
+        measures = r.get("measures", [])
+        if len(groupings) > 1:
+            raise Unsupported("grouping sets are not in Lean's written form")
+        if groupings:
+            refs = [int(k) for k in groupings[0].get("expressionReferences", [])]
+            if any(k >= len(top) for k in refs):
+                raise Unsupported("grouping expression out of range")
+            group_js = [top[k] for k in refs]
+        elif measures:
+            group_js = []
+        else:
+            raise Unsupported("an aggregate without groupings needs measures")
+        groups = [ex(g) for g in group_js]
+        fields = [ex.field(g["selection"]) if "selection" in g else -1 for g in group_js]
+        if not measures and fields == list(range(n)):
+            return self.distinct(lf, dtypes)
+        ms = [self.measure(m, ex) for m in measures]
+        # Grouping expressions and every measure's argument and filter are
+        # evaluated on every input row (`Rel.HasIssue`).
+        lf = guard(lf, [*groups, *(v for m in ms for v in m.vals)])
+        keys = [f"__sv_g{k}" for k in range(len(groups))]
+        lf = lf.with_columns(
+            [ordered(g.expr, g.dtype).alias(k) for g, k in zip(groups, keys, strict=True)]
+            + [g.expr.alias(f"__sv_v{k}") for k, g in enumerate(groups)]
+            + [m.values.alias(f"__sv_m{j}") for j, m in enumerate(ms)]
+        )
+        values = [pl.col(f"__sv_m{j}").drop_nulls() for j in range(len(ms))]
+        if groups:
+            firsts = [pl.col(f"__sv_v{k}").first() for k in range(len(groups))]
+            out = lf.group_by(keys, maintain_order=True).agg(firsts + values)
+        else:
+            out = lf.select([v.implode() for v in values])
+        out = out.select(
+            [pl.col(f"__sv_v{k}").alias(col(k)) for k in range(len(groups))]
+            + [m.result(pl.col(f"__sv_m{j}")).alias(col(len(groups) + j)) for j, m in enumerate(ms)]
+        )
+        return out, [materialize(g.dtype) for g in groups] + [m.dtype for m in ms]
+
+    @staticmethod
+    def distinct(lf: pl.LazyFrame, dtypes: list[DType]) -> Frame:
+        """`dedup`: the first of each set of equal rows, in order."""
+        n = len(dtypes)
         keys = [f"__sv_key{i}" for i in range(n)]
         return (
             lf.with_columns(
@@ -1055,6 +1165,37 @@ class Translator:
             .select([col(i) for i in range(n)]),
             dtypes,
         )
+
+    def measure(self, j: dict, ex: Exprs) -> Measure:
+        """A `Measure` as Lean writes it: one argument, `DISTINCT` or `ALL`, and
+        an optional `FILTER`."""
+        m = j.get("measure", {})
+        name = ex.function(m.get("functionReference"))
+        if m.get("sorts"):
+            raise Unsupported(f"ordered aggregates are not supported: {name}")
+        invocation = m.get("invocation", "AGGREGATION_INVOCATION_ALL")
+        if invocation not in ("AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_DISTINCT"):
+            raise Unsupported(f"unsupported aggregate invocation {invocation}")
+        args = [a["value"] for a in m.get("arguments", [])]
+        if len(args) != 1:
+            raise Unsupported(f"{name} takes one argument in Lean's written form")
+        arg = ex(args[0])
+        cond = ex(j["filter"]) if "filter" in j else None
+        if cond is not None and cond.dtype not in (pl.Boolean, pl.Null):
+            raise Unsupported(f"aggregate filter of type {cond.dtype}")
+        t = arg.dtype
+        fn: str | None = None
+        if name == "count":
+            fn = "count"
+        elif name == "sum" and t in (pl.Int64, pl.Float64):
+            fn = "sum" if t == pl.Int64 else "fsum"
+        elif name == "avg" and t == pl.Float64:
+            fn = "avg"
+        elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
+            fn = name
+        if fn is None:
+            raise Unsupported(f"unsupported aggregate {name} of {t}")
+        return Measure(fn, arg, invocation == "AGGREGATION_INVOCATION_DISTINCT", cond)
 
     @staticmethod
     def column(ex: Exprs, j: dict) -> Val:
