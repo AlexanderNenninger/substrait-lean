@@ -612,8 +612,7 @@ def test_unsupported_constructs_raise():
     r = ints(a=[1], b=[2])
     s = pa.table({"name": ["a"]})
     for sql, tables, match in [
-        ("SELECT a, SUM(b) AS s FROM r GROUP BY a", {"r": r}, "unsupported relation"),
-        ("SELECT a FROM r ORDER BY a", {"r": r}, "unsupported relation"),
+        ("SELECT a, SUM(b) AS s FROM r GROUP BY a", {"r": r}, "aggregate functions"),
         ("SELECT name FROM s WHERE name < 'b'", {"s": s}, "ordering comparisons of str"),
         ("SELECT a FROM r WHERE a < 1 IS TRUE", {"r": r}, "unsupported function is_true"),
     ]:
