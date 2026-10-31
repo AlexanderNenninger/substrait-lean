@@ -20,6 +20,7 @@ def UnFn.render : UnFn → String
   | .ftoi => "BIGINT" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
+  | .toDate => "DATE"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"

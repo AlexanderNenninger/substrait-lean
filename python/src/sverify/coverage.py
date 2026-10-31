@@ -1,13 +1,14 @@
 """Which parts of the Ibis API reach the Lean checker.
 
 Each case is an Ibis expression over two unbound tables. It is compiled the way
-`sverify` compiles everything (Ibis → SQL → DataFusion → Substrait) and handed
-to `substrait-check`:
+`sverify` compiles Ibis expressions (the vendored producer,
+`sverify.ibis_substrait`) and handed to `substrait-check`:
 
 * `verified`: parsed into the Lean model and well-formed, so contracts and
   (where `incremental`) incremental views apply;
-* `rejected`: the checker refuses the plan (an operation outside the model);
-* `upstream`: Ibis or DataFusion fails before a plan exists.
+* `rejected`: the producer or the checker refuses it (an operation outside
+  the model);
+* `upstream`: Ibis fails before a plan exists.
 
 `tests/test_coverage.py` pins every case to its `expected` status, so a change
 in coverage is a deliberate edit here. Regenerate the README table with
@@ -28,14 +29,8 @@ import ibis
 import ibis.expr.types as ir
 from ibis import _
 
-from sverify.engine import (
-    Backend,
-    connect,
-    create_table,
-    run_checker,
-    substrait_json,
-    to_sql,
-)
+from sverify.engine import run_checker
+from sverify.ibis_substrait import Unsupported, to_substrait_json
 
 Status = Literal["verified", "rejected", "upstream"]
 
@@ -132,11 +127,11 @@ CASES: list[Case] = [
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
     case("aggregation", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
-    case("aggregation", "scalar subquery", X, lambda: t.filter(t.qty > t.qty.mean())),
+    case("aggregation", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
     case(
         "aggregation",
         "unnest",
-        X,
+        R,
         lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs"),
     ),
     # Window functions
@@ -169,7 +164,7 @@ CASES: list[Case] = [
     case(
         "windows",
         "rolling mean (interval)",
-        X,
+        R,
         lambda: t.mutate(
             m=t.amount.mean().over(
                 ibis.range_window(order_by="ts", preceding=ibis.interval(minutes=5), following=0)
@@ -234,18 +229,15 @@ class Result:
     detail: str
 
 
-def setup() -> Backend:
-    con = connect()
-    for table in (T, U):
-        create_table(con, table.get_name(), table.schema())
-    return con
-
-
-def check(con: Backend, c: Case) -> Result:
+def check(c: Case) -> Result:
     try:
-        plan = substrait_json(con, to_sql(c.build()))
-    except Exception as e:  # noqa: BLE001 - any producer failure counts
+        expr = c.build()
+    except Exception as e:  # noqa: BLE001 - any Ibis failure counts
         return Result(c, "upstream", False, str(e).splitlines()[0])
+    try:
+        plan = to_substrait_json(expr)
+    except Unsupported as e:
+        return Result(c, "rejected", False, str(e))
     code, stdout, stderr = run_checker((), plan)
     out = stdout + stderr
     if code == 0:
@@ -255,8 +247,7 @@ def check(con: Backend, c: Case) -> Result:
 
 
 def results() -> list[Result]:
-    con = setup()
-    return [check(con, c) for c in CASES]
+    return [check(c) for c in CASES]
 
 
 SYMBOL = {"verified": "✓", "rejected": "✗", "upstream": "–"}
