@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77); #75, #79, #80 open |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75); #79, #80 open |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -239,11 +239,12 @@ optimizer. DataFusion uses primary keys for functional dependencies in
 or proved through composition, so each rewrite below rests on facts we know
 hold:
 
-* **Join elimination** (#75). Take `R ⋈ S` on an FK `R.k → S.pk`, with `S.pk` a key
-  (`Keys.lean`) and `R.k` NOT NULL (`AVal.null = false`), where the output
-  needs no column of `S`. Then the join is `R`. A left join on a key needs no
-  FK at all. Proof obligation: a bag equation stating that each left row has
-  exactly one match.
+* **Join elimination** (#75, done). Take `R ⋈ S` on a condition that
+  determines a key of `S` (`Keys.determines`), so each left row has at most
+  one partner. A left join then gives exactly one row per left row, and so
+  does an inner join on a NOT NULL foreign key (`sv.references`, as in
+  #77). When an emit, a projection or an aggregate above reads no column of
+  `S`, the join goes (`Rel.joinElim`, `flatMap_single`, `aggregateEval_map`).
 * **DISTINCT elimination** (#76, done). If `Rel.keys` proves any key of
   `r`, its rows are pairwise distinct and `DISTINCT r` is `r`
   (`dedup_of_nodup`). The same goes for a `GROUP BY` without measures whose

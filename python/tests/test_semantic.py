@@ -18,6 +18,7 @@ from sverify.engine import connect, plan_json, run_checker
 from sverify.examples import orders
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
+from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import canonical
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -247,3 +248,71 @@ def test_foreign_keys_are_checked_on_the_data():
     sv.create_table(con, "c", CUSTOMERS.schema(), [(1, "x")])
     sv.create_table(con, "o", ORDERS.schema(), [(1, 1, 5), (2, None, 6), (3, 2, 7)])
     assert violations(con.table("o"), sv.references("cust", "c", "cid")) == 1
+
+
+# Joins that only check a key (#75).
+
+KEYED_FK = {
+    "o": [_.cust.notnull(), sv.references("cust", "c", "cid")],
+    "c": [sv.unique("cid")],
+}
+ON = ORDERS.cust == CUSTOMERS.cid
+ELIMINATED = [
+    (ORDERS.left_join(CUSTOMERS, ON).select(ORDERS.id, ORDERS.amount), {"c": [sv.unique("cid")]}),
+    (ORDERS.join(CUSTOMERS, ON).select(ORDERS.id, x=ORDERS.amount + 1), KEYED_FK),
+    (ORDERS.join(CUSTOMERS, ON).group_by(ORDERS.cust).agg(n=ORDERS.amount.sum()), KEYED_FK),
+    (ORDERS.left_join(CUSTOMERS, ON).select(ORDERS.cust).distinct(), {"c": [sv.unique("cid")]}),
+]
+
+
+@pytest.mark.parametrize(("expr", "requires"), ELIMINATED)
+def test_join_that_only_checks_a_key_goes(expr, requires):
+    report = sv.verify(expr, requires=requires)
+    assert any("no column used" in r for r in report.rewrites)
+    assert report.optimized is not None
+    for dialect in (DUCKDB, SNOWFLAKE):
+        assert "JOIN" not in to_sql(report.optimized, dialect).upper()
+
+
+@pytest.mark.parametrize(
+    ("expr", "requires"),
+    [
+        (ELIMINATED[0][0], {}),
+        (ELIMINATED[1][0], {"c": [sv.unique("cid")]}),
+        (ELIMINATED[1][0], {"o": [sv.references("cust", "c", "cid")], "c": [sv.unique("cid")]}),
+        (ELIMINATED[1][0], {"o": [_.cust.notnull(), sv.references("cust", "c", "cid")]}),
+        (ORDERS.left_join(CUSTOMERS, ON).select(ORDERS.id, CUSTOMERS.name), KEYED_FK),
+    ],
+)
+def test_join_stays_without_the_contract(expr, requires):
+    report = sv.verify(expr, requires=requires)
+    assert not any("no column used" in r for r in report.rewrites)
+
+
+@pytest.mark.parametrize(("expr", "requires"), ELIMINATED)
+@SETTINGS
+@given(data=fk_tables)
+def test_eliminated_join_runs_agree(expr, requires, data):
+    names, rows = data
+    tables = {
+        "o": pa.table(
+            {
+                "id": list(range(len(rows))),
+                "cust": [r[1] for r in rows],
+                "amount": [r[0] for r in rows],
+            },
+            schema=pa.schema([("id", pa.int64()), ("cust", pa.int64()), ("amount", pa.int64())]),
+        ),
+        "c": pa.table(
+            {"cid": list(range(len(names))), "name": names},
+            schema=pa.schema([("cid", pa.int64()), ("name", pa.string())]),
+        ),
+    }
+    report = sv.verify(expr, requires=requires)
+    assert report.optimized is not None
+    want = canonical(
+        tuple(r.values()) for r in duckdb_engine.run(plan_json(connect(), expr), tables).to_pylist()
+    )
+    for run in (duckdb_engine.run, polars_engine.run):
+        got = run(report.optimized, tables)
+        assert canonical(tuple(r.values()) for r in got.to_pylist()) == want

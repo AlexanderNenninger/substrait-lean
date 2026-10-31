@@ -382,7 +382,8 @@ plus_one(orders)
 * **Rewrites:** `sv.verify(...).optimized` is the transformation rewritten with
   what the preconditions establish (`Rel.optimize_sound`), and `rewrites` names
   the changes: a `DISTINCT` over a key goes, a filter the preconditions imply goes,
-  and a left join on a NOT NULL foreign key becomes an inner join. Run it instead
+  a left join on a NOT NULL foreign key becomes an inner join, and a join to a
+  dimension whose columns nothing reads goes. Run it instead
   of the transformation on data that meets the preconditions.
 * **Window functions:** `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY …`
   (any directions, NULLs first or last, offsets and defaults). Lean knows that
@@ -1196,7 +1197,9 @@ interval, possible booleans, and whether it can be a string.
   goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
   A filter the preconditions imply goes; one they rule out empties the plan.
   A left join on a NOT NULL foreign key (`sv.references`) becomes an inner
-  join, and so does one under a filter that rejects its padded rows.
+  join, and so does one under a filter that rejects its padded rows. A join
+  whose condition hits a key of the right side goes when nothing reads the
+  right side's columns (for an inner join, given a NOT NULL foreign key).
   `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
