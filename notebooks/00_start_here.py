@@ -138,7 +138,7 @@ def _(mo):
     | 8 | [Composing contracts](?file=08_composition.py) | proving one step's preconditions from the previous step |
     | 9 | [Incremental views](?file=09_incremental_views.py) | Z-sets, delta rules, `IncrementalView` |
     | 10 | [Pipelines](?file=10_pipelines.py) | views over views, fallbacks, contracts that hold in every state |
-    | 11 | [Engines and SQL](?file=11_engines.py) | DataFusion, Polars, DuckDB; SQL for DuckDB and Snowflake |
+    | 11 | [Engines and SQL](?file=11_engines.py) | DataFusion, Polars, DuckDB; SQL for DuckDB, Snowflake and Spark |
     | 12 | [A complete pipeline](?file=12_fitness.py) | heart rate during workouts, end to end |
     | 13 | [What is proved, what is trusted](?file=13_trust.py) | the trusted boundary, a glossary and a map of the code |
     | 14 | [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |

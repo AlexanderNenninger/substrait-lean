@@ -27,8 +27,6 @@ from sverify.engine import connect, put_table, run_plan, substrait_json, written
 from sverify.sql import Unsupported, to_sql
 from sverify.sql.spark import SPARK
 from sverify.testing import canonical
-
-pytestmark = pytest.mark.backend("spark")
 from test_sql_snowflake import (
     ALL_PLANS,
     NAMED_ORDERED,
@@ -40,6 +38,8 @@ from test_sql_snowflake import (
     run_differential,
 )
 from test_time import DAY, MAX, MIN, NS_MAX, NS_MIN, PARTS, UNITS, anywhere
+
+pytestmark = pytest.mark.backend("spark")
 
 
 def spark_sql(plan: dict, tie_free: bool = False) -> str:
