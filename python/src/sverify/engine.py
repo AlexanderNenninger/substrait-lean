@@ -335,7 +335,35 @@ def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
     logical = ss.Consumer.from_substrait_plan(
         ctx, ss.Serde.deserialize_bytes(proto.SerializeToString())
     )
-    return canonical(ctx.create_dataframe_from_logical_plan(logical).to_arrow_table())
+    return canonical(collect(ctx.create_dataframe_from_logical_plan(logical)))
+
+
+def collect(df: Any) -> pa.Table:
+    """A DataFusion DataFrame's result as one Arrow table.
+
+    DataFusion 51 can return record batches whose schemas differ only in
+    nullability: the branches of a `UNION ALL` (`SELECT 'x' UNION ALL SELECT
+    NULL`, a recursive CTE's anchor and step) each keep their own, and its
+    `to_arrow_table()` then fails to concatenate them. A recursive CTE's
+    batches can also differ in column names. The result has the first batch's
+    names and types, and a column is nullable if it is in any batch."""
+    batches = df.collect()
+    if not batches:
+        return df.to_arrow_table()
+    first = batches[0].schema
+    nullable = [any(b.schema.field(i).nullable for b in batches) for i in range(len(first))]
+    schema = pa.schema(
+        [f.with_nullable(n) for f, n in zip(first, nullable, strict=True)], first.metadata
+    )
+    return pa.Table.from_batches(
+        [
+            pa.RecordBatch.from_arrays(
+                [c.cast(f.type) for c, f in zip(b.columns, schema, strict=True)], schema=schema
+            )
+            for b in batches
+        ],
+        schema,
+    )
 
 
 def canonical(table: pa.Table) -> pa.Table:
@@ -489,7 +517,7 @@ def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> p
 
 def run_sql(con: Connection, sql: str) -> pa.Table:
     """Run SQL on DataFusion; doubles in the result as `canonical` makes them."""
-    return canonical(con.datafusion.sql(sql).to_arrow_table())
+    return canonical(collect(con.datafusion.sql(sql)))
 
 
 def put_table(con: Connection, name: str, table: pa.Table) -> None:

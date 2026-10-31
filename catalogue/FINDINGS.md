@@ -114,10 +114,11 @@ practitioner idioms:
      compiles `pivot_longer` to UNNEST and `pivot_wider`'s default to
      `first_value`, has no ROLLUP and no recursion, and refuses three tables
      that each have an `id` column.
-   * DataFusion fails at run time on a UNION whose branches differ only in
-     nullability ("Schema at index 1 was different"): dbt-style unions of
-     sources and the recursive hierarchy query. The plan verifies, Polars and
-     DuckDB run it, DataFusion does not (#64). It also rejects the RANGE frame
+   * DataFusion's Python bindings failed to collect a UNION whose branches
+     differ only in nullability ("Schema at index 1 was different"): dbt-style
+     unions of sources and the recursive hierarchy query. DataFusion computes
+     the rows; `engine.collect` now gives the batches one schema (#64,
+     quirk R8 of chapter 14). DataFusion also rejects the RANGE frame
      Ibis writes for an interval, and recursive CTEs with a column list.
    * The engine translations refused `ts - lag(ts) > INTERVAL …` and `ts <
      now - INTERVAL …`, which Lean verifies (session starts, dormant accounts,
@@ -205,8 +206,8 @@ semi-structured data.
 
 * **DataFusion (reference).** For SQL input, produce Substrait from the
   *analysed* plan, so implicit coercions are explicit casts (quirks F6, I10,
-  I11), and decorrelate subqueries before Substrait; unify branch nullability
-  in unions; guard against the eager CASE/COALESCE rewrite where a branch can
+  I11), and decorrelate subqueries before Substrait; collect union results
+  with one schema (done, #64); guard against the eager CASE/COALESCE rewrite where a branch can
   fail (E4, E5). It has no ASOF join, so `sverify.asof_join`'s
   range join + ROW_NUMBER is the portable form.
 * **Polars.** Read DECIMAL columns; always pass `nulls_last` explicitly; never
@@ -235,9 +236,9 @@ semi-structured data.
    `date_part`/`date_trunc` on DATE (#51).
 4. Window aggregates with frames, then RANK/DENSE_RANK/NTILE/FIRST_VALUE
    (#28): 20 more on top of the above.
-5. Front-end and engine fixes: union nullability on DataFusion (#64), the
-   timestamp and interval kinds in the engine translations (#65), SQL from
-   the analysed plan for SQL queries (#16).
+5. Front-end and engine fixes: the timestamp and interval kinds in the
+   engine translations (#65), SQL from the analysed plan for SQL queries
+   (#16).
 
 ## Caveats
 
@@ -266,14 +267,14 @@ semi-structured data.
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 6 | 0 | 6 | 0 | 12 | 6 | 6 | 6 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 10 | 0 | 2 | 2 | 11 | 10 | 10 | 9 |
+| modelling | 14 | 10 | 0 | 2 | 2 | 13 | 10 | 10 | 9 |
 | product | 13 | 7 | 0 | 6 | 0 | 12 | 7 | 7 | 7 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 8 | 0 | 7 | 0 | 13 | 8 | 8 | 6 |
 | tpcds | 8 | 0 | 3 | 5 | 0 | 8 | 3 | 3 | 0 |
 | tpch | 22 | 0 | 5 | 17 | 0 | 22 | 5 | 5 | 2 |
 | windows | 13 | 5 | 0 | 8 | 0 | 13 | 5 | 5 | 2 |
-| **all** | 139 | 57 | 15 | 65 | 2 | 132 | 72 | 72 | 55 |
+| **all** | 139 | 57 | 15 | 65 | 2 | 134 | 72 | 72 | 55 |
 
 ### Feature frequency
 
