@@ -9,9 +9,12 @@ plan in Lean's written form (`substrait-check --write`, `--delta`) on the
 engine a call names, reading the tables from `con`.
 """
 
+import atexit
+import functools
 import json
 import os
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Literal
 
@@ -115,6 +118,61 @@ def checker_path() -> Path:
     return bundled
 
 
+class _Checker:
+    """One `substrait-check --serve` process, started on first use."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.proc: subprocess.Popen[bytes] | None = None
+        self.path: str | None = None
+
+    def ask(self, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
+        path = str(checker_path())
+        flag = " ".join(flags) or "-"
+        data = stdin.encode()
+        with self.lock:
+            if self.proc is None or self.proc.poll() is not None or self.path != path:
+                self.close()
+                self.proc = subprocess.Popen(
+                    [path, "--serve"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
+                )
+                self.path = path
+            assert self.proc.stdin is not None and self.proc.stdout is not None
+            self.proc.stdin.write(f"{flag} {len(data)}\n".encode() + data)
+            self.proc.stdin.flush()
+            header = self.proc.stdout.readline()
+            if not header:
+                self.close()
+                raise RuntimeError("substrait-check --serve exited")
+            code, m, k = map(int, header.split())
+            out, err = self.proc.stdout.read(m), self.proc.stdout.read(k)
+        return code, out.decode(), err.decode()
+
+    def close(self) -> None:
+        if self.proc is not None:
+            self.proc.kill()
+            self.proc.wait()
+            self.proc = None
+
+
+_CHECKER = _Checker()
+atexit.register(_CHECKER.close)
+
+
+@functools.lru_cache(maxsize=8192)
+def _run_checker(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
+    return _CHECKER.ask(flags, stdin)
+
+
+def run_checker(flags: tuple[str, ...], stdin: str) -> tuple[int, str, str]:
+    """`substrait-check <flags>` on `stdin`: exit code, stdout, stderr.
+
+    Requests go to one long-lived `substrait-check --serve` process (a process
+    start costs ~20 ms, most of it Lean's module initialization; a request
+    ~0.04 ms) and are memoized: the checker is a pure function of its input."""
+    return _run_checker(str(checker_path()), flags, stdin)
+
+
 def read_tables(plan: dict) -> list[str]:
     """Named tables a Substrait plan reads."""
     found: list[str] = []
@@ -141,16 +199,11 @@ def written_plan(plan_json: str) -> str:
     the checker has found it well-formed."""
 
     def check(*flags: str) -> str:
-        proc = subprocess.run(
-            [str(checker_path()), *flags, "/dev/stdin"],
-            input=plan_json,
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode != 0:
-            msg = (proc.stderr or proc.stdout).strip().splitlines()[-1:]
+        code, out, err = run_checker(flags, plan_json)
+        if code != 0:
+            msg = (err or out).strip().splitlines()[-1:]
             raise ValueError(f"substrait-check {' '.join(flags)} rejects the plan: {msg}")
-        return proc.stdout
+        return out
 
     check()
     return check("--write")

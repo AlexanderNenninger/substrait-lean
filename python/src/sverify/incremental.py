@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -47,10 +46,10 @@ from sverify.contracts import (
 from sverify.engine import (
     Backend,
     Engine,
-    checker_path,
     plan_json,
     put_table,
     read_tables,
+    run_checker,
     run_plan,
     to_arrow,
     written_plan,
@@ -67,17 +66,12 @@ class NotIncremental(Exception):
 def delta_plans(plan_json: str) -> list[str]:
     """Ask Lean for the weighted delta plans of a Substrait JSON plan; the
     change to the view is the concatenation of their outputs."""
-    proc = subprocess.run(
-        [str(checker_path()), "--delta", "/dev/stdin"],
-        input=plan_json,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode == 3:
-        raise NotIncremental(proc.stderr.strip())
-    if proc.returncode != 0:
-        raise ValueError(f"substrait-check --delta failed: {proc.stderr.strip()}")
-    return proc.stdout.splitlines()
+    code, out, err = run_checker(("--delta",), plan_json)
+    if code == 3:
+        raise NotIncremental(err.strip())
+    if code != 0:
+        raise ValueError(f"substrait-check --delta failed: {err.strip()}")
+    return out.splitlines()
 
 
 def _value_key(x: object) -> object:

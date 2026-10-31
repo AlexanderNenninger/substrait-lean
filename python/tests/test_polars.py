@@ -9,7 +9,6 @@ which is what makes `FetchRel` and windows meaningful.
 import datetime as dt
 import json
 import math
-import subprocess
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,11 +21,11 @@ from hypothesis import strategies as st
 import sverify as sv
 from sverify import polars_engine
 from sverify.engine import (
-    checker_path,
     connect,
     create_table,
     put_table,
     read_tables,
+    run_checker,
     run_plan,
     run_sql,
     run_substrait_json,
@@ -508,14 +507,9 @@ def test_checker_writes_what_polars_reads():
     con = connect()
     create_table(con, "r", WINDOW_SCHEMA, [])
     once = written_plan(substrait_json(con, WINDOW_QUERIES[-1]))
-    proc = subprocess.run(
-        [str(checker_path()), "--write", "/dev/stdin"],
-        input=once,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert json.loads(proc.stdout) == json.loads(once)
+    code, twice, err = run_checker(("--write",), once)
+    assert code == 0, err
+    assert json.loads(twice) == json.loads(once)
 
 
 # --- Integer division, powers, rounding and runtime errors --------------------

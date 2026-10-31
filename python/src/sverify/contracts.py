@@ -65,8 +65,6 @@ import functools
 import inspect
 import json
 import math
-import subprocess
-import tempfile
 import warnings
 import weakref
 from collections.abc import Callable, Mapping, Sequence
@@ -83,10 +81,10 @@ from ibis.common.graph import Node
 
 from sverify.engine import (
     Engine,
-    checker_path,
     connect,
     create_table,
     plan_json,
+    run_checker,
     run_plan,
     to_sql,
     written_plan,
@@ -416,15 +414,10 @@ def verify(
         "ensures_keys": ensures_keys,
     }
 
-    with tempfile.NamedTemporaryFile("w", suffix=".json") as f:
-        json.dump(contract, f)
-        f.flush()
-        proc = subprocess.run(
-            [str(checker_path()), "--contract", f.name], capture_output=True, text=True
-        )
-    if proc.returncode not in (0, 4):
-        raise ValueError(f"substrait-check --contract failed: {proc.stderr.strip()}")
-    out = json.loads(proc.stdout)
+    code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
+    if code not in (0, 4):
+        raise ValueError(f"substrait-check --contract failed: {stderr.strip()}")
+    out = json.loads(stdout)
     dtypes = {} if isinstance(transform, str) else dict(transform.schema().items())
 
     def describe(f: dict) -> str:
