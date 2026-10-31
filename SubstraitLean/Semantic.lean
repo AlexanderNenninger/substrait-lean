@@ -170,6 +170,106 @@ def Rel.condVal (cat : Catalog) (A : String → List AVal) (F : String → List 
   let T := Rel.keyedWindows cat A F K
   c.absD (r.aeval cat A F T) (r.facts cat F T)
 
+/-! ## Functional dependencies -/
+
+/-- On `rows`, the columns `k` determine column `c`. -/
+def FD (k : List Nat) (c : Nat) (rows : Relation) : Prop :=
+  ∀ x ∈ rows, ∀ y ∈ rows, keyOf k x = keyOf k y → x.getD c .null = y.getD c .null
+
+/-- A key determines every column. -/
+def keyFds (ks : List (List Nat)) (n : Nat) : List (List Nat × Nat) :=
+  ks.flatMap fun k => (List.range n).map (k, ·)
+
+/-- Columns a condition equates determine each other. -/
+def eqFds (ps : List (Nat × Nat)) : List (List Nat × Nat) :=
+  ps.flatMap fun p => [([p.1], p.2), ([p.2], p.1)]
+
+def inRange (n : Nat) (fd : List Nat × Nat) : Bool := fd.1.all (· < n) && decide (fd.2 < n)
+
+def shiftFd (n : Nat) (fd : List Nat × Nat) : List Nat × Nat := (fd.1.map (n + ·), n + fd.2)
+
+/-- A position of column `x` in an emit. -/
+def emitPos? (m : List Nat) (x : Nat) : Option Nat := (List.range m.length).find? (m[·]? == some x)
+
+/-- A dependency through an emit, for every position of its column. -/
+def emitFd (m : List Nat) (fd : List Nat × Nat) : List (List Nat × Nat) :=
+  if fd.1.all fun x => (emitPos? m x).isSome then
+    ((List.range m.length).filter (m[·]? == some fd.2)).map
+      fun p => (fd.1.map fun x => (emitPos? m x).getD 0, p)
+  else []
+
+/-- A projected column `$j` and its copy determine each other. -/
+def copyFds (n : Nat) (es : List Expr) : List (List Nat × Nat) :=
+  es.zipIdx.flatMap fun (e, q) => match e with
+    | .field j => if j < n then [([j], n + q), ([n + q], j)] else []
+    | _ => []
+
+/-- Functional dependencies of a plan's output: from the input keys, the
+grouping columns of an aggregate, equalities in filters and inner joins, and
+copied columns. -/
+def Rel.fds (cat : Catalog) (K : String → List (List Nat)) : Rel → List (List Nat × Nat)
+  | .read t => keyFds (K t) (cat t).arity
+  | .aggregate _ gs ms => keyFds [List.range gs.length] (gs.length + ms.length)
+  | .filter r c => r.fds cat K ++ eqFds c.eqCols
+  | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => r.fds cat K
+  | .project r es => (r.fds cat K).filter (inRange (r.arity cat)) ++ copyFds (r.arity cat) es
+  | .window r _ _ _ => (r.fds cat K).filter (inRange (r.arity cat))
+  | .emit r m => (r.fds cat K).flatMap (emitFd m)
+  | .cross a b => (a.fds cat K).filter (inRange (a.arity cat)) ++
+      (b.fds cat K).map (shiftFd (a.arity cat))
+  | .join a b .inner on => (a.fds cat K).filter (inRange (a.arity cat)) ++
+      (b.fds cat K).map (shiftFd (a.arity cat)) ++ eqFds on.eqCols
+  | .join a _ .left _ => (a.fds cat K).filter (inRange (a.arity cat))
+  | .values _ _ | .unionAll _ _ => []
+
+/-- The columns that `X` determines, `fuel` rounds deep. -/
+def fdClosure (fds : List (List Nat × Nat)) : Nat → List Nat → List Nat
+  | 0, X => X
+  | fuel + 1, X => fdClosure fds fuel (X ++ (fds.filter fun fd => fd.1.all (X.contains ·)).map (·.2))
+
+def fieldsOf (es : List Expr) : List Nat := es.filterMap fun | .field j => some j | _ => none
+
+/-- Grouping positions to keep: drop a column the others determine (greedy;
+`Rel.fdAgg` checks the result). -/
+def keepCols (fds : List (List Nat × Nat)) (gs : List Expr) : List Nat :=
+  (List.range gs.length).foldl (fun keep q =>
+    let others := keep.filter (· != q)
+    match gs.getD q (.lit .null) with
+    | .field c =>
+      if (fdClosure fds (fds.length + 1) (fieldsOf (others.map (gs.getD · (.lit .null))))).contains c
+      then others else keep
+    | _ => keep) (List.range gs.length)
+
+/-- The `q`-th grouping expression. -/
+def gAt (gs : List Expr) (q : Nat) : Expr := gs.getD q (.lit .null)
+
+def determinedBy (cl : List Nat) (gs : List Expr) (q : Nat) : Bool :=
+  match gAt gs q with
+  | .field c => cl.contains c
+  | _ => false
+
+def minOf (gs : List Expr) (q : Nat) : Measure := { fn := .min, arg := gAt gs q }
+
+/-- Where the original columns are in the rewritten aggregate. -/
+def fdEmit (qs drops : List Nat) (n m : Nat) : List Nat :=
+  (List.range n).map (fun q => if qs.contains q then qs.idxOf q else qs.length + m + drops.idxOf q) ++
+    (List.range m).map (qs.length + ·)
+
+/-- `GROUP BY gs` as `GROUP BY` the kept columns, carrying the ones they
+determine through `MIN` (all values of a group agree on them). -/
+def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (ms : List Measure) :
+    Option (String × Rel) :=
+  let fds := r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat)
+  let qs := keepCols fds gs
+  let drops := (List.range gs.length).filter (!qs.contains ·)
+  let cl := fdClosure fds (fds.length + 1) (fieldsOf (qs.map (gAt gs)))
+  if !qs.isEmpty && !drops.isEmpty && drops.all (determinedBy cl gs) then
+    some ("GROUP BY columns that others determine",
+      .emit (.aggregate r (qs.map (gAt gs)) (ms ++ drops.map (minOf gs)))
+        (fdEmit qs drops gs.length ms.length))
+  else none
+
 /-- One rewrite at the root, and its name for the report. -/
 def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (R : ForeignKeys) : Rel → Option (String × Rel)
@@ -199,7 +299,7 @@ def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fac
         if gs.all (·.refsLtb (a.arity cat)) && ms.all (·.exprs.all (·.refsLtb (a.arity cat))) then
           some (name, .aggregate a gs ms)
         else none
-      | none => none
+      | none => Rel.fdAgg cat A F K r gs ms
   | .emit r m =>
     match r.joinElim cat A F K R with
     | some (name, a, _) => if m.all (· < a.arity cat) then some (name, .emit a m) else none
@@ -631,12 +731,396 @@ theorem aggregateEval_map {gs : List Expr} {ms : List Measure} {A : Relation} {g
     exact List.map_congr_left fun k _ => by
       rw [hrows, hmeas (groupRows gs A k) fun x hx => (List.mem_filter.mp hx).1]
 
+/-! ### Functional dependencies -/
+
+theorem dedupN_parallel {α β : Type} [DecidableEq β] {f g : α → β} :
+    ∀ (n : Nat) (l : List α), l.length ≤ n → (∀ x ∈ l, ∀ y ∈ l, f x = f y ↔ g x = g y) →
+    ∃ L : List α, (∀ x ∈ L, x ∈ l) ∧ dedupN n (l.map f) = L.map f ∧ dedupN n (l.map g) = L.map g
+  | _, [], _, _ => ⟨[], by simp, by cases ‹Nat› <;> simp [dedupN], by cases ‹Nat› <;> simp [dedupN]⟩
+  | 0, _ :: _, h, _ => by simp at h
+  | n + 1, x :: xs, hl, he => by
+    have hfg : xs.filter ((· != f x) ∘ f) = xs.filter ((· != g x) ∘ g) :=
+      List.filter_congr fun y hy => by
+        rw [Bool.eq_iff_iff]
+        simp only [Function.comp_apply, bne_iff_ne, ne_eq]
+        exact not_congr (he y (by simp [hy]) x (by simp))
+    have hlen : (xs.filter ((· != f x) ∘ f)).length ≤ n := by
+      have := List.length_filter_le ((· != f x) ∘ f) xs; simp at hl; omega
+    obtain ⟨L, hL, hf, hg⟩ := dedupN_parallel n _ hlen fun y hy z hz =>
+      he y (by simp [(List.mem_filter.mp hy).1]) z (by simp [(List.mem_filter.mp hz).1])
+    refine ⟨x :: L, fun y hy => ?_, ?_, ?_⟩
+    · rcases List.mem_cons.mp hy with rfl | hy
+      · simp
+      · exact List.mem_cons_of_mem _ (List.mem_filter.mp (hL y hy)).1
+    · simp only [List.map_cons, dedupN, List.filter_map, hf]
+    · simp only [List.map_cons, dedupN, List.filter_map, ← hfg, hg]
+
+theorem dedup_parallel {α β : Type} [DecidableEq β] {f g : α → β} {l : List α}
+    (he : ∀ x ∈ l, ∀ y ∈ l, f x = f y ↔ g x = g y) :
+    ∃ L : List α, (∀ x ∈ L, x ∈ l) ∧ dedup (l.map f) = L.map f ∧ dedup (l.map g) = L.map g := by
+  have := dedupN_parallel (f := f) (g := g) l.length l (Nat.le_refl _) he
+  simpa [dedup] using this
+
+/-- `MIN` of an expression constant on the group is its value. -/
+theorem Measure.eval_min_const {e : Expr} {grp : Relation} {x : Row} (hx : x ∈ grp)
+    (h : ∀ y ∈ grp, e.eval y = e.eval x) : ({ fn := .min, arg := e } : Measure).eval grp = e.eval x := by
+  simp only [Measure.eval, Measure.inputs, Measure.kept, Bool.false_eq_true, ↓reduceIte]
+  have hall : ∀ v ∈ (grp.map e.eval).filter (· != .null), v = e.eval x := fun v hv => by
+    obtain ⟨⟨y, hy, rfl⟩, _⟩ := by simpa only [List.mem_filter, List.mem_map] using hv
+    exact h y hy
+  by_cases hv : e.eval x = .null
+  · have : (grp.map e.eval).filter (· != .null) = [] :=
+      List.filter_eq_nil_iff.2 fun v hv' => by
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hv'
+        simp [h y hy, hv]
+    rw [this, hv]; rfl
+  · have hm : e.eval x ∈ (grp.map e.eval).filter (· != .null) :=
+      List.mem_filter.mpr ⟨List.mem_map_of_mem hx, by simpa using hv⟩
+    obtain ⟨a, as, has⟩ := List.exists_cons_of_ne_nil (List.ne_nil_of_mem hm)
+    rw [has] at hall ⊢
+    exact hall _ (pickFold_mem _ a as)
+
+theorem FD.of_key {k : List Nat} {rows : Relation} (h : KeyOn k rows) (c : Nat) : FD k c rows :=
+  fun _ hx _ hy he => by rw [KeyOn.eq_of_keyOf h hx hy he]
+
+theorem FD.mono {k : List Nat} {c : Nat} {rows rows' : Relation} (hsub : ∀ x ∈ rows', x ∈ rows)
+    (h : FD k c rows) : FD k c rows' := fun x hx y hy => h x (hsub x hx) y (hsub y hy)
+
+theorem keyFds_sound {ks : List (List Nat)} {n : Nat} {rows : Relation} (h : ∀ k ∈ ks, KeyOn k rows) :
+    ∀ fd ∈ keyFds ks n, FD fd.1 fd.2 rows := by
+  intro fd hfd
+  simp only [keyFds, List.mem_flatMap, List.mem_map] at hfd
+  obtain ⟨k, hk, c, _, rfl⟩ := hfd
+  exact FD.of_key (h k hk) c
+
+/-- Columns that agree on every row determine each other. -/
+theorem FD.of_eq {i j : Nat} {rows : Relation}
+    (h : ∀ x ∈ rows, ∀ y ∈ rows, x.getD i .null = y.getD i .null → x.getD j .null = y.getD j .null) :
+    FD [i] j rows := fun x hx y hy he => h x hx y hy (by simpa [keyOf] using he)
+
+theorem eqFds_sound {c : Expr} {rows : Relation} (ht : ∀ x ∈ rows, (c.eval x).isTrue = true) :
+    ∀ fd ∈ eqFds c.eqCols, FD fd.1 fd.2 rows := by
+  intro fd hfd
+  simp only [eqFds, List.mem_flatMap, List.mem_cons, List.not_mem_nil, or_false] at hfd
+  obtain ⟨p, hp, rfl | rfl⟩ := hfd
+  · exact FD.of_eq fun x hx y hy => (Expr.eqCols_det (ht x hx) (ht y hy) p hp).1
+  · exact FD.of_eq fun x hx y hy => (Expr.eqCols_det (ht x hx) (ht y hy) p hp).2
+
+/-- A dependency of the left rows holds on rows extending them. -/
+theorem FD.left {rows A : Relation} {n : Nat} (hA : ∀ x ∈ A, x.length = n)
+    (hrows : ∀ r ∈ rows, ∃ x ∈ A, ∃ w, r = x ++ w) {fd : List Nat × Nat}
+    (hr : inRange n fd = true) (h : FD fd.1 fd.2 A) : FD fd.1 fd.2 rows := by
+  simp only [inRange, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hr
+  intro r hr' s hs he
+  obtain ⟨x, hx, w, rfl⟩ := hrows r hr'
+  obtain ⟨y, hy, v, rfl⟩ := hrows s hs
+  rw [keyOf_append_left (by rw [hA x hx]; exact hr.1), keyOf_append_left (by rw [hA y hy]; exact hr.1)] at he
+  rw [getD_append_left' (by rw [hA x hx]; exact hr.2), getD_append_left' (by rw [hA y hy]; exact hr.2)]
+  exact h x hx y hy he
+
+/-- A dependency of the right rows holds, shifted, on rows extending them. -/
+theorem FD.right {rows B : Relation} {n : Nat}
+    (hrows : ∀ r ∈ rows, ∃ x w, x.length = n ∧ w ∈ B ∧ r = x ++ w) {fd : List Nat × Nat}
+    (h : FD fd.1 fd.2 B) : FD (shiftFd n fd).1 (shiftFd n fd).2 rows := by
+  intro r hr s hs he
+  obtain ⟨x, w, hx, hw, rfl⟩ := hrows r hr
+  obtain ⟨y, v, hy, hv, rfl⟩ := hrows s hs
+  simp only [shiftFd] at he ⊢
+  have e1 := keyOf_shift fd.1 x w
+  have e2 := keyOf_shift fd.1 y v
+  rw [hx] at e1; rw [hy] at e2
+  rw [e1, e2] at he
+  have g1 := getD_append_right' (x := x) (y := w) fd.2
+  have g2 := getD_append_right' (x := y) (y := v) fd.2
+  rw [hx] at g1; rw [hy] at g2
+  rw [g1, g2]
+  exact h w hw v hv he
+
+theorem fdClosure_sound {fds : List (List Nat × Nat)} {rows : Relation}
+    (h : ∀ fd ∈ fds, FD fd.1 fd.2 rows) {x y : Row} (hx : x ∈ rows) (hy : y ∈ rows) :
+    ∀ (fuel : Nat) (X : List Nat), (∀ i ∈ X, x.getD i .null = y.getD i .null) →
+      ∀ i ∈ fdClosure fds fuel X, x.getD i .null = y.getD i .null
+  | 0, _, hX => hX
+  | fuel + 1, X, hX => fdClosure_sound h hx hy fuel _ fun i hi => by
+    rcases List.mem_append.mp hi with hi | hi
+    · exact hX i hi
+    · simp only [List.mem_map, List.mem_filter, List.all_eq_true, List.contains_iff_mem] at hi
+      obtain ⟨fd, ⟨hfd, hsub⟩, rfl⟩ := hi
+      exact h fd hfd x hx y hy (List.map_inj_left.mpr fun c hc => hX c (hsub c hc))
+
+theorem emitPos?_spec {m : List Nat} {x p : Nat} (h : emitPos? m x = some p) : m[p]? = some x := by
+  have := List.find?_some h
+  simpa using this
+
+theorem getD_emit {m : List Nat} {y : Row} {p x : Nat} (h : m[p]? = some x) :
+    (m.map (y.getD · .null)).getD p .null = y.getD x .null := by
+  simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]
+
 section
 variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
   (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
   (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
   (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {R : ForeignKeys} (hR : R.Hold cat)
 include hcat hA hF hK hR
+
+omit hA hF hR in
+theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD fd.1 fd.2 (r.eval cat)
+  | .read t, _ => keyFds_sound (hK t)
+  | .aggregate _ gs ms, _ => keyFds_sound fun k hk => by
+      simp only [List.mem_singleton] at hk; subst hk; exact aggregateEval_key gs ms _
+  | .values _ _, _ | .unionAll _ _, _ => fun _ h => by simp [fds] at h
+  | .filter r c, hwf => fun fd hfd => by
+      simp only [fds, List.mem_append] at hfd
+      rcases hfd with h | h
+      · exact (fds_sound hwf.1 fd h).mono fun x hx => (List.mem_filter.mp hx).1
+      · exact eqFds_sound (fun x hx => (List.mem_filter.mp hx).2) fd h
+  | .fetch r _ _, hwf => fun fd hfd => by
+      simp only [fds] at hfd
+      refine (fds_sound (r := r) hwf fd hfd).mono fun x hx => ?_
+      simp only [eval] at hx
+      split at hx
+      · exact List.mem_of_mem_drop hx
+      · exact List.mem_of_mem_drop (List.mem_of_mem_take hx)
+  | .orderBy r _, hwf => fun fd hfd => by
+      simp only [fds] at hfd
+      exact (fds_sound hwf.1 fd hfd).mono fun x hx => by simpa [eval, List.mem_mergeSort] using hx
+  | .distinct r, hwf => fun fd hfd => by
+      simp only [fds] at hfd
+      exact (fds_sound (r := r) hwf fd hfd).mono fun x hx => by simpa [eval, mem_dedup] using hx
+  | .semi r _ _ _, hwf => fun fd hfd => by
+      simp only [fds] at hfd
+      exact (fds_sound hwf.1 fd hfd).mono fun x hx => (List.mem_filter.mp hx).1
+  | .window r _ _ _, hwf => fun fd hfd => by
+      simp only [fds, List.mem_filter] at hfd
+      refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) hfd.2 (fds_sound hwf.1 fd hfd.1)
+      obtain ⟨_, y, _, _, hy, rfl⟩ := mem_windowEval hrow
+      exact ⟨y, hy, _, rfl⟩
+  | .project r es, hwf => fun fd hfd => by
+      simp only [fds, List.mem_append, List.mem_filter] at hfd
+      rcases hfd with h | h
+      · refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) h.2 (fds_sound hwf.1 fd h.1)
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hrow
+        exact ⟨y, hy, _, rfl⟩
+      · simp only [copyFds, List.mem_flatMap] at h
+        obtain ⟨⟨e, q⟩, hq, h⟩ := h
+        have heq := List.mem_zipIdx_iff_getElem?.mp hq
+        cases e with
+        | field j =>
+          simp only at h
+          split at h
+          · rename_i hj
+            -- The copy and its column agree on every row.
+            have hc : ∀ row ∈ (Rel.project r es).eval cat,
+                row.getD (r.arity cat + q) .null = row.getD j .null := fun row hrow => by
+              obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hrow
+              have hl := eval_arity hcat hwf.1 y hy
+              rw [← hl, getD_append_right', getD_append_left' (by omega)]
+              simp [List.getD_eq_getElem?_getD, List.getElem?_map, heq, Expr.eval]
+            simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+            rcases h with rfl | rfl
+            · exact FD.of_eq fun x hx y hy he => by rw [hc x hx, hc y hy]; exact he
+            · exact FD.of_eq fun x hx y hy he => by rw [← hc x hx, ← hc y hy]; exact he
+          · simp at h
+        | _ => simp at h
+  | .emit r m, hwf => fun fd hfd => by
+      simp only [fds, List.mem_flatMap] at hfd
+      obtain ⟨fd₀, h₀, hfd⟩ := hfd
+      have ih := fds_sound hwf.1 fd₀ h₀
+      unfold emitFd at hfd
+      split at hfd
+      · rename_i hall
+        obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hfd
+        have hp' : m[p]? = some fd₀.2 := by simpa using (List.mem_filter.mp hp).2
+        have hk : ∀ y : Row, keyOf (fd₀.1.map fun x => (emitPos? m x).getD 0)
+            (m.map (y.getD · .null)) = keyOf fd₀.1 y := fun y => by
+          simp only [keyOf, List.map_map]
+          refine List.map_congr_left fun x hx => ?_
+          have := List.all_eq_true.mp hall x hx
+          obtain ⟨p', hp''⟩ := Option.isSome_iff_exists.mp this
+          simp only [Function.comp_apply, hp'', Option.getD_some]
+          exact getD_emit (emitPos?_spec hp'')
+        intro o ho o' ho' he
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp ho
+        obtain ⟨y', hy', rfl⟩ := List.mem_map.mp ho'
+        rw [hk, hk] at he
+        rw [getD_emit hp', getD_emit hp']
+        exact ih y hy y' hy' he
+      · simp at hfd
+  | .cross a b, hwf => fun fd hfd => by
+      simp only [fds, List.mem_append, List.mem_filter, List.mem_map] at hfd
+      rcases hfd with h | ⟨fd₀, h₀, rfl⟩
+      · refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) h.2 (fds_sound hwf.1 fd h.1)
+        obtain ⟨x, hx, y, _, rfl⟩ := mem_crossRows.mp hrow
+        exact ⟨x, hx, y, rfl⟩
+      · refine FD.right (fun row hrow => ?_) (fds_sound hwf.2 fd₀ h₀)
+        obtain ⟨x, hx, y, hy, rfl⟩ := mem_crossRows.mp hrow
+        exact ⟨x, y, eval_arity hcat hwf.1 x hx, hy, rfl⟩
+  | .join a b .inner on, hwf => fun fd hfd => by
+      simp only [fds, List.mem_append, List.mem_filter, List.mem_map] at hfd
+      rcases hfd with (h | ⟨fd₀, h₀, rfl⟩) | h
+      · refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) h.2 (fds_sound hwf.1 fd h.1)
+        obtain ⟨x, hx, y, _, rfl⟩ := mem_crossRows.mp (List.mem_filter.mp hrow).1
+        exact ⟨x, hx, y, rfl⟩
+      · refine FD.right (fun row hrow => ?_) (fds_sound hwf.2.1 fd₀ h₀)
+        obtain ⟨x, hx, y, hy, rfl⟩ := mem_crossRows.mp (List.mem_filter.mp hrow).1
+        exact ⟨x, y, eval_arity hcat hwf.1 x hx, hy, rfl⟩
+      · exact eqFds_sound (fun x hx => (List.mem_filter.mp hx).2) fd h
+  | .join a b .left on, hwf => fun fd hfd => by
+      simp only [fds, List.mem_filter] at hfd
+      refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) hfd.2 (fds_sound hwf.1 fd hfd.1)
+      simp only [eval, List.mem_flatMap] at hrow
+      obtain ⟨x, hx, hrow⟩ := hrow
+      unfold leftJoinRow at hrow
+      simp only [] at hrow
+      split at hrow
+      · exact ⟨x, hx, _, List.mem_singleton.mp hrow⟩
+      · obtain ⟨⟨y, _, rfl⟩, _⟩ := by simpa only [List.mem_filter, List.mem_map] using hrow
+        exact ⟨x, hx, y, rfl⟩
+
+omit hR in
+theorem Rel.fdAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : String}
+    (hwf : (Rel.aggregate r gs ms).WF cat) (h : r.fdAgg cat A F K gs ms = some (name, s)) :
+    Same cat (.aggregate r gs ms) s := by
+  have hfds : ∀ fd ∈ r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat),
+      FD fd.1 fd.2 (r.eval cat) := fun fd hfd => by
+    rcases List.mem_append.mp hfd with h | h
+    · exact fds_sound hcat hK hwf.1 fd h
+    · exact keyFds_sound (fun k hk => keys_sound hcat hA hF hK hwf.1 k hk) fd h
+  unfold Rel.fdAgg at h
+  simp only at h
+  generalize r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat) = fds at h hfds
+  generalize keepCols fds gs = qs at h
+  generalize hD : (List.range gs.length).filter (!qs.contains ·) = drops at h
+  split at h
+  · rename_i hc
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true]
+      at hc
+    obtain ⟨⟨hqs, hdr⟩, hdet⟩ := hc
+    have hmemD : ∀ q, q ∈ drops ↔ q < gs.length ∧ q ∉ qs := fun q => by
+      rw [← hD]; simp
+    have gd_mem : ∀ q, q < gs.length → gAt gs q ∈ gs := fun q hq => by
+      simp only [gAt, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hq, Option.getD_some]
+      exact List.getElem_mem hq
+    have gd_ge : ∀ q, ¬ q < gs.length → gAt gs q = .lit .null := fun q hq => by
+      simp [gAt, List.getD_eq_getElem?_getD, List.getElem?_eq_none (by omega : gs.length ≤ q)]
+    have gd_refs : ∀ q, (gAt gs q).refsLt (r.arity cat) := fun q => by
+      by_cases hq : q < gs.length
+      · exact hwf.2.1 _ (gd_mem q hq)
+      · rw [gd_ge q hq]; trivial
+    have hgs_q : ∀ x y : Row, groupKey gs x = groupKey gs y → ∀ q, (gAt gs q).eval x = (gAt gs q).eval y :=
+      fun x y he q => by
+        by_cases hq : q < gs.length
+        · exact List.map_inj_left.mp he _ (gd_mem q hq)
+        · rw [gd_ge q hq]; rfl
+    have hcore : ∀ x : Row, groupKey (qs.map (gAt gs)) x = qs.map fun q => (gAt gs q).eval x := fun x => by
+      simp [groupKey, List.map_map, Function.comp_def]
+    -- The kept columns determine the dropped ones.
+    have hiff : ∀ x ∈ r.eval cat, ∀ y ∈ r.eval cat,
+        groupKey gs x = groupKey gs y ↔ groupKey (qs.map (gAt gs)) x = groupKey (qs.map (gAt gs)) y := fun x hx y hy => by
+      constructor
+      · intro he
+        rw [hcore, hcore]
+        exact List.map_congr_left fun q _ => hgs_q x y he q
+      · intro he
+        rw [hcore, hcore] at he
+        have hq := List.map_inj_left.mp he
+        have hf : ∀ j ∈ fieldsOf (qs.map (gAt gs)), x.getD j .null = y.getD j .null := fun j hj => by
+          simp only [fieldsOf, List.mem_filterMap] at hj
+          obtain ⟨e, he', hej⟩ := hj
+          obtain ⟨q, hq', rfl⟩ := List.mem_map.mp he'
+          have := hq q hq'
+          cases hg : gAt gs q <;> simp_all [Expr.eval]
+        have hcl := fdClosure_sound hfds hx hy (fds.length + 1) _ hf
+        refine List.map_inj_left.mpr fun g hg => ?_
+        obtain ⟨q, hq', rfl⟩ := List.mem_iff_getElem.mp hg
+        have hgd : gAt gs q = gs[q] := by
+          simp [gAt, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hq']
+        rw [← hgd]
+        by_cases hk : q ∈ qs
+        · exact hq q hk
+        · have hd := hdet q ((hmemD q).mpr ⟨hq', hk⟩)
+          unfold determinedBy at hd
+          cases hg : gAt gs q with
+          | field c =>
+            rw [hg] at hd
+            simpa [Expr.eval] using hcl c (List.contains_iff_mem.mp hd)
+          | _ => rw [hg] at hd; simp at hd
+    obtain ⟨L, hL, hLg, hLc⟩ := dedup_parallel hiff
+    have hgsne : gs ≠ [] := by
+      obtain ⟨q, hq⟩ := List.exists_mem_of_ne_nil _ hdr
+      intro h0; have := ((hmemD q).mp hq).1; simp [h0] at this
+    have hcorene : (qs.map (gAt gs)) ≠ [] := by simpa using hqs
+    refine ⟨⟨⟨hwf.1, ?_, ?_⟩, ?_⟩, by simp [fdEmit, arity], ?_⟩
+    · intro e he
+      obtain ⟨q, _, rfl⟩ := List.mem_map.mp he
+      exact gd_refs q
+    · intro m hm
+      rcases List.mem_append.mp hm with hm | hm
+      · exact hwf.2.2 m hm
+      · obtain ⟨q, _, rfl⟩ := List.mem_map.mp hm
+        exact ⟨gd_refs q, fun c hc => by simp [minOf] at hc⟩
+    · intro i hi
+      simp only [fdEmit, List.mem_append, List.mem_map, List.mem_range] at hi
+      simp only [arity, List.length_append, List.length_map]
+      rcases hi with ⟨q, hq, rfl⟩ | ⟨j, hj, rfl⟩
+      · by_cases hk : q ∈ qs
+        · simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          have := List.idxOf_lt_length_of_mem hk; omega
+        · have hd : q ∈ drops := (hmemD q).mpr ⟨hq, hk⟩
+          simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          have := List.idxOf_lt_length_of_mem hd; omega
+      · omega
+    · simp only [eval, aggregateEval, List.isEmpty_iff, hgsne, hcorene, ↓reduceIte, hLg, hLc,
+        List.map_map]
+      refine List.map_congr_left fun x hx => ?_
+      have hxr := hL x hx
+      have hG : groupRows (qs.map (gAt gs)) (r.eval cat) (groupKey (qs.map (gAt gs)) x) =
+          groupRows gs (r.eval cat) (groupKey gs x) :=
+        List.filter_congr fun y hy => by
+          rw [Bool.eq_iff_iff]; simp only [beq_iff_eq]; exact (hiff y hy x hxr).symm
+      simp only [Function.comp_apply, hG]
+      generalize hGdef : groupRows gs (r.eval cat) (groupKey gs x) = G
+      have hxG : x ∈ G := by rw [← hGdef]; exact List.mem_filter.mpr ⟨hxr, by simp⟩
+      have hGc : ∀ y ∈ G, ∀ q, (gAt gs q).eval y = (gAt gs q).eval x := fun y hy q => by
+        rw [← hGdef] at hy
+        exact hgs_q y x (by simpa using (List.mem_filter.mp hy).2) q
+      have hlc : (groupKey (qs.map (gAt gs)) x).length = qs.length := by simp [groupKey]
+      have hlg : (groupKey gs x).length = gs.length := by simp [groupKey]
+      simp only [fdEmit, List.map_append]
+      congr 1
+      · conv => rhs; rw [← keyOf_range hlg]
+        simp only [keyOf, List.map_map]
+        refine List.map_congr_left fun q hq => ?_
+        have hq' := List.mem_range.mp hq
+        have hgq : (groupKey gs x).getD q .null = (gAt gs q).eval x := by
+          simp [groupKey, gAt, List.getD_eq_getElem?_getD, List.getElem?_map,
+            List.getElem?_eq_getElem hq']
+        simp only [Function.comp_apply, hgq]
+        by_cases hk : q ∈ qs
+        · simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          have hi := List.idxOf_lt_length_of_mem hk
+          rw [getD_append_left' (by omega), hcore]
+          simp [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hi,
+            List.getElem_idxOf hi]
+        · have hd : q ∈ drops := (hmemD q).mpr ⟨hq', hk⟩
+          have hi := List.idxOf_lt_length_of_mem hd
+          simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          rw [show qs.length + ms.length + drops.idxOf q =
+              (groupKey (qs.map (gAt gs)) x).length + ((ms.map (·.eval G)).length + drops.idxOf q) by
+                simp [hlc]; omega,
+            getD_append_right', getD_append_right']
+          simp only [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hi,
+            List.getElem_idxOf hi, Option.map_some, Option.getD_some]
+          exact Measure.eval_min_const hxG fun y hy => hGc y hy q
+      · conv => rhs; rw [← keyOf_range (x := ms.map (·.eval G)) (n := ms.length) (by simp)]
+        simp only [keyOf, List.map_map]
+        refine List.map_congr_left fun j hj => ?_
+        have hj' := List.mem_range.mp hj
+        simp only [Function.comp_apply]
+        rw [← hlc, getD_append_right', getD_append_left' (by simpa using hj')]
+  · simp at h
 
 theorem Rel.fkMatch_sound {a b : Rel} {on : Expr} (hm : Rel.fkMatch cat A F K R a b on = true)
     (ha : a.WF cat) (hb : b.WF cat) :
@@ -848,7 +1332,7 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
             exact (aggregateEval_map (fun x hx e he' => hext x hx e (hgs e he'))
               (fun x hx m hm e he' => hext x hx e (hms m hm e he'))).symm
           · simp at h
-        · simp at h
+        · exact fdAgg_sound hcat hA hF hK hwf h
   | .emit r m, hwf, h =>
     simp only [rule] at h
     split at h

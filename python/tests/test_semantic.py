@@ -316,3 +316,83 @@ def test_eliminated_join_runs_agree(expr, requires, data):
     for run in (duckdb_engine.run, polars_engine.run):
         got = run(report.optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
+
+
+# GROUP BY columns that others determine (#79).
+
+LINES = ibis.table({"l_orderkey": "int64", "l_line": "int64", "l_price": "int64"}, name="lineitem")
+ORDS = ibis.table({"o_orderkey": "int64", "o_date": "int64", "o_prio": "string"}, name="ord")
+Q3 = (
+    LINES.join(ORDS, LINES.l_orderkey == ORDS.o_orderkey)
+    .group_by([LINES.l_orderkey, ORDS.o_date, ORDS.o_prio])
+    .agg(rev=LINES.l_price.sum(), n=LINES.l_line.count())
+)
+ORD_KEY = {"ord": [sv.unique("o_orderkey")]}
+
+
+def test_group_by_shrinks_to_the_key():
+    report = sv.verify(Q3, requires=ORD_KEY)
+    assert report.rewrites == ["GROUP BY columns that others determine"]
+    assert report.optimized is not None
+    sql = to_sql(report.optimized, DUCKDB)
+    assert sql.count("MIN(") == 2
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        Q3,
+        # The date does not determine the order key.
+        LINES.join(ORDS, LINES.l_orderkey == ORDS.o_orderkey)
+        .group_by([ORDS.o_date, ORDS.o_prio])
+        .agg(n=LINES.l_line.count()),
+    ],
+)
+def test_group_by_stays_without_a_dependency(expr):
+    requires = {} if expr is Q3 else ORD_KEY
+    assert sv.verify(expr, requires=requires).rewrites == []
+
+
+q3_tables = st.lists(
+    st.tuples(st.integers(0, 3), st.sampled_from([None, "x", "y"])), min_size=1, max_size=4
+).flatmap(
+    lambda ords: st.lists(
+        st.tuples(st.integers(0, len(ords)), st.integers(-5, 5)), max_size=15
+    ).map(lambda lines: (ords, lines))
+)
+
+
+@SETTINGS
+@given(data=q3_tables)
+def test_group_by_on_the_key_runs_agree(data):
+    ords, lines = data
+    tables = {
+        "lineitem": pa.table(
+            {
+                "l_orderkey": [r[0] for r in lines],
+                "l_line": list(range(len(lines))),
+                "l_price": [r[1] for r in lines],
+            },
+            schema=pa.schema(
+                [("l_orderkey", pa.int64()), ("l_line", pa.int64()), ("l_price", pa.int64())]
+            ),
+        ),
+        "ord": pa.table(
+            {
+                "o_orderkey": list(range(len(ords))),
+                "o_date": [o[0] for o in ords],
+                "o_prio": [o[1] for o in ords],
+            },
+            schema=pa.schema(
+                [("o_orderkey", pa.int64()), ("o_date", pa.int64()), ("o_prio", pa.string())]
+            ),
+        ),
+    }
+    report = sv.verify(Q3, requires=ORD_KEY)
+    assert report.optimized is not None
+    want = canonical(
+        tuple(r.values()) for r in duckdb_engine.run(plan_json(connect(), Q3), tables).to_pylist()
+    )
+    for run in (duckdb_engine.run, polars_engine.run):
+        got = run(report.optimized, tables)
+        assert canonical(tuple(r.values()) for r in got.to_pylist()) == want

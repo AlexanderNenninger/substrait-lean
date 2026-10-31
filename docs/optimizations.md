@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75); #79, #80 open |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79); #80 open |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -279,10 +279,20 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   shows the condition never TRUE (`tt = false`), the filter is an empty
   `VALUES`. This composes: a downstream re-check of an upstream guarantee
   disappears (`test_composed_pipeline_drops_the_downstream_check`).
-* **GROUP BY simplification through functional dependencies** (#79). If a key
-  `k ⊆ gs` determines the other grouping columns, group by `k` alone and
-  carry the rest through `MIN` (or `ANY_VALUE`). This needs functional
-  dependencies, which follow from keys plus projections.
+* **GROUP BY simplification through functional dependencies** (#79, done).
+  `Rel.fds` derives dependencies: input keys and aggregate groups determine
+  every column, equalities in filters and inner joins and copied columns
+  determine each other, and they follow emits, projections and joins
+  (`Rel.fds_sound`). `Rel.fdAgg` drops each grouping column that the closure
+  of the others determines and carries it through `MIN`, which is the
+  group's one value, NULL included (`Measure.eval_min_const`). The groups
+  stay the same (`dedup_parallel`), so the result is the same list of rows.
+  **Benchmark** (`scripts/bench_optimizations.py`, laptop, 10⁶ line items,
+  TPC-H Q3-style `GROUP BY l_orderkey, o_date, o_prio` after a join on the
+  order key): DuckDB 57 ms as written, 67 ms by key; Polars 420 ms and
+  600 ms. Neither engine gains: both hash a few more key columns more
+  cheaply than they compute the `MIN`s. The rewrite may pay off on engines
+  with costly wide hash keys or spilling, which is not measured here.
 * **Eager aggregation below joins** (#80). Push `GROUP BY` below a join on a key
   (Yan and Larson), using the two-phase lemmas of `Partition.lean`
   (`AggFn.combine_apply`). Multiplicities make it subtle: `COUNT` and `SUM`
