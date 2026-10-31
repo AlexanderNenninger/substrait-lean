@@ -1285,6 +1285,12 @@ def _(mo):
       pushes filters into PyArrow, which compares doubles by IEEE rules, so
       `v = 'NaN'` stops matching. `put_table` registers record batches
       instead.
+    * **R8**: the branches of a `UNION ALL` keep their own nullability (and,
+      in a recursive CTE, their own column names), so `SELECT 'x' UNION ALL
+      SELECT NULL` returns record batches with different schemas, and
+      `to_arrow_table()` fails ("Schema at index 1 was different"). DataFusion
+      computes the rows; only collecting them fails. `engine.collect` gives
+      the batches one schema, nullable where any branch is.
     """)
     return
 

@@ -19,7 +19,13 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_substrait_json, substrait_json
+from sverify.engine import (
+    connect,
+    put_table,
+    run_sql,
+    run_substrait_json,
+    substrait_json,
+)
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows
 
@@ -179,6 +185,34 @@ def test_lean_writes_the_deprecated_fetch_fields(con):
     plan = sv.written_plan(substrait_json(con, "SELECT x FROM n ORDER BY x LIMIT 1"))
     with pytest.raises(Exception, match='no field named "count"'):
         run_substrait_json(con, plan)
+
+
+@pytest.mark.parametrize(
+    "sql, expected",
+    [
+        (
+            "SELECT 'x' AS c FROM s UNION ALL SELECT CAST(NULL AS VARCHAR) FROM s",
+            ["x", "x", None, None],
+        ),
+        (
+            "WITH RECURSIVE r AS (SELECT 0 AS d UNION ALL SELECT d + 1 FROM r WHERE d < 2) "
+            "SELECT d FROM r",
+            [0, 1, 2],
+        ),
+    ],
+)
+def test_union_batches_differ_in_nullability(con, sql, expected):
+    """A `UNION ALL` gives record batches whose schemas differ in nullability
+    (and, for a recursive CTE, in column names), which DataFusion's own
+    `to_arrow_table()` fails to concatenate; `run_sql` (`engine.collect`)
+    reconciles them, here and for plans (`run_substrait_json`)."""
+    with pytest.raises(Exception, match="Schema at index 1 was different"):
+        con.datafusion.sql(sql).to_arrow_table()
+    expected = sorted([(v,) for v in expected], key=str)
+    assert sorted(arrow_rows(run_sql(con, sql)), key=str) == expected
+    if "RECURSIVE" not in sql:  # DataFusion's producer has no recursive queries
+        plan = substrait_json(con, sql)
+        assert sorted(arrow_rows(run_substrait_json(con, plan)), key=str) == expected
 
 
 def test_not_in_subquery_is_refused(con):
