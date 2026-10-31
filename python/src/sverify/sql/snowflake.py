@@ -25,8 +25,10 @@ documentation they rest on:
 * **Timestamps** are `TIMESTAMP_NTZ(6)`: wall-clock microseconds like Lean.
   Plain `TIMESTAMP` follows `TIMESTAMP_TYPE_MAPPING` and defaults to
   nanoseconds; `LTZ` would depend on the session time zone. There is no
-  interval type, only interval constants added to a timestamp, so
-  interval-valued expressions are refused.
+  interval type (only constants added to a timestamp), so an interval is a
+  NUMBER of microseconds, as in Lean: `DATEADD(MICROSECOND, …)` adds one to
+  a timestamp and `DATEDIFF(MICROSECOND, …)` (exact for microsecond
+  timestamps) subtracts two. A result column cannot be an interval.
 * **Strings**: a backslash is an escape character in a quoted literal, so
   it is doubled. Without a collation, strings compare by UTF-8 bytes, which
   is Lean's code point order; `LENGTH`, `POSITION` and `SUBSTR` count
@@ -65,6 +67,7 @@ _TYPES: dict[str, str] = {
     "int": "NUMBER(38,0)",
     "float": "FLOAT",
     "time": "TIMESTAMP_NTZ(6)",
+    "interval": "NUMBER(38,0)",
     "date": "DATE",
     "str": "VARCHAR",
     "bool": "BOOLEAN",
@@ -74,9 +77,13 @@ _TYPES: dict[str, str] = {
 @dataclass(frozen=True)
 class SnowflakeDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
-        if kind not in _TYPES:
-            raise Unsupported(f"Snowflake has no {kind} type (intervals are only constants)")
         return _TYPES[kind]
+
+    def result_kind(self, kind: Kind | None) -> None:
+        if kind == "interval":
+            raise Unsupported(
+                "Snowflake has no interval type, so an interval result column is refused"
+            )
 
     def raise_(self, message: str, dep: str, kind: Kind) -> str:
         """An expression of type `kind` that fails with `message`. Snowflake
@@ -120,12 +127,7 @@ class SnowflakeDialect(Dialect):
         return f"CAST('{d:%Y-%m-%d}' AS DATE)"
 
     def interval_lit(self, micros: int) -> str:
-        # One constant in microseconds: exact, and the documentation's own
-        # examples use counts above 2³² ('5000000001 nanoseconds'). Constants
-        # take no sign inside, so a negative one is `- INTERVAL …`, which only
-        # the two timestamp hooks below consume.
-        sign = "- " if micros < 0 else ""
-        return f"{sign}INTERVAL '{abs(micros)} microseconds'"
+        return str(micros)
 
     # Integers: exact NUMBER(38,0) arithmetic, then the i64 range check.
 
@@ -183,23 +185,13 @@ class SnowflakeDialect(Dialect):
     # Temporal
 
     def time_add_interval(self, ts: str, iv: str) -> str:
-        if iv.startswith("- "):
-            return f"({ts} - {iv[2:]})"
-        return f"({ts} + {iv})"
+        return f"DATEADD(MICROSECOND, {iv}, {ts})"
 
     def time_sub_interval(self, ts: str, iv: str) -> str:
-        if iv.startswith("- "):
-            return f"({ts} + {iv[2:]})"
-        return f"({ts} - {iv})"
+        return f"DATEADD(MICROSECOND, - ({iv}), {ts})"
 
     def time_diff(self, a: str, b: str) -> str:
-        raise Unsupported("Snowflake has no interval values, so timestamp - timestamp is refused")
-
-    def interval_add(self, a: str, b: str) -> str:
-        raise Unsupported("Snowflake has no interval values to add")
-
-    def interval_sub(self, a: str, b: str) -> str:
-        raise Unsupported("Snowflake has no interval values to subtract")
+        return f"DATEDIFF(MICROSECOND, {b}, {a})"
 
     def date_part(self, part: str, ts: str) -> str:
         fn = {"week": "WEEKISO", "doy": "DAYOFYEAR"}.get(part, part.upper())

@@ -23,6 +23,7 @@ from sverify import polars_engine
 from sverify.engine import (
     connect,
     create_table,
+    plan_json,
     put_table,
     read_tables,
     run_checker,
@@ -42,6 +43,7 @@ from test_numeric import R as NUMERIC_R
 from test_numeric import values as numeric_values
 from test_rewrites import QUERIES as REWRITE_QUERIES
 from test_rewrites import R, S
+from test_sql import EVENTS, interval_queries, lean_on
 from test_windows import QUERIES as WINDOW_QUERIES
 from test_windows import SCHEMA as WINDOW_SCHEMA
 
@@ -649,3 +651,14 @@ def test_polars_fails_only_where_reported(i, rows):
     except Exception:  # noqa: BLE001 - DataFusion evaluates more rows (`Rel.loose`)
         return
     assert same_bag(df, polars)
+
+
+@pytest.mark.parametrize("name", ["lag_gap", "before_constant"])
+def test_timestamp_differences_compare_with_intervals(name):
+    """#65: Polars compares a Duration with an interval literal, not a Datetime."""
+    con = connect()
+    put_table(con, "events", EVENTS)
+    plan = written_plan(plan_json(con, interval_queries(con.table("events"))[name]))
+    lean = lean_on(json.loads(plan), {"events": EVENTS})
+    got = run_plan(con, plan, "polars")
+    assert canonical([tuple(r.values()) for r in got.to_pylist()]) == canonical(lean)
