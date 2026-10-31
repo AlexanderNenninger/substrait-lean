@@ -212,14 +212,15 @@ but not maintained incrementally yet):
 ```python
 sv.IncrementalView(con, orders.limit(5), "top5")
 # NotIncremental: not incrementally maintainable (left, semi or anti join, DISTINCT,
-# fetch or window)
+# fetch, window or aggregate)
 
 totals = orders.group_by("customer").aggregate(total=orders.amount.sum())
 sv.IncrementalView(con, totals, "totals")
-# ValueError: ... aggregate functions are not supported yet
+# NotIncremental: ...
 ```
 
-Aggregates (`GROUP BY` with `SUM`/`COUNT`) are the next thing to add; see
+Aggregates (`GROUP BY` with `SUM`, `COUNT`, …) can be verified with contracts,
+but are not maintained incrementally yet; see
 [Possible next steps](#possible-next-steps).
 
 How much of the Ibis API gets through, from
@@ -227,13 +228,13 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-61 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+68 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✗ count() · ✗ group_by sum · ✗ count, max, mean · ✗ nunique · ✗ sum(where=) · ✗ having · ✗ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
 | windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · – rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
@@ -744,7 +745,8 @@ round trips and the differential tests instead.
 | `SubstraitLean/Time.lean` | Exact `date_part` and `date_trunc` on the proleptic Gregorian calendar; monotonicity |
 | `SubstraitLean/Expr.lean` | `Literal`, `FieldReference`, scalar functions, `IfThen`, Kleene 3-valued logic |
 | `SubstraitLean/Window.lean` | Sort orders, `ROW_NUMBER`/`LAG`/`LEAD` semantics over partitions |
-| `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left), `Fetch`, `UnionAll`, `Window`; arity, well-formedness, `eval`; **type soundness** |
+| `SubstraitLean/Aggregate.lean` | `GROUP BY` with `COUNT`/`SUM`/`MIN`/`MAX`/`AVG` (`DISTINCT`, `FILTER`) semantics |
+| `SubstraitLean/Rel.lean` | `Read`, `VirtualTable`, `Filter`, `Project`, `Emit`, `Cross`, `Join` (inner/left/semi/anti), `Sort`, `Aggregate`, `Fetch`, `UnionAll`, `Window`; arity, well-formedness, `eval`; **type soundness** |
 | `SubstraitLean/Rewrites.lean` | Verified rewrites (below) |
 | `SubstraitLean/Incremental.lean` | Z-set semantics, delta rules, delta plans (incremental view maintenance) |
 | `SubstraitLean/Terms.lean` | Splitting a plan into union-free terms (for DataFusion's consumer) |
@@ -859,7 +861,8 @@ runtime errors, or reports what may go wrong. `sverify` reports these as
   `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
   that may not compile, and `date_trunc` to a week, month, quarter or year outside
   ±2⁶³ nanoseconds (DataFusion panics or returns garbage there).
-* Warnings: `+`, `-`, `*` and negation leaving 64 bits, and `date_trunc` to a day or
+* Warnings: `+`, `-`, `*` and negation leaving 64 bits, an integer `SUM` (nothing
+  bounds how many rows a group has), and `date_trunc` to a day or
   less below `-2⁶³` µs. DataFusion wraps around silently, so the result is not the
   mathematical one.
 * `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
@@ -891,8 +894,8 @@ against 64-bit limits, so its overflow is not caught.
 
 Table updates are Z-sets: rows with signed weights, where a deletion has weight `-1` and an
 update is a delete plus an insert. This follows DBSP (Budiu et al., VLDB 2023).
-It covers every operator except left, semi and anti joins, `DISTINCT`, fetch and
-windows (`Rel.Incremental`):
+It covers every operator except left, semi and anti joins, `DISTINCT`, aggregates,
+fetch and windows (`Rel.Incremental`):
 
 * `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
   are linear (a sort only orders the bag), and cross and inner join use the bilinear rule
@@ -938,6 +941,17 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   DataFusion). `DISTINCT` rows are a key (`Rel.keys`). DataFusion writes
   `DISTINCT` as an aggregate with one empty grouping, which its own consumer
   rejects; the parser reads it as "all columns".
+* **Aggregates have one grouping set.** `Rel.aggregate` outputs one row per
+  distinct grouping value (NULLs group together; doubles by their codes, so
+  -0.0 and 0.0 are two groups, as in DataFusion), or exactly one row without
+  grouping expressions, even on an empty input. Measures skip NULLs; on no
+  values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
+  wraps around, which is a warning), double `SUM`/`AVG` add with native floats
+  (DataFusion promises no order; contracts only say "a double"), and `AVG` of
+  integers is the `AVG` of their conversion to double. `MIN`/`MAX` of doubles
+  are refused: DataFusion's grouped version turns a group of +∞ into the largest
+  finite double, skips NaN next to other values, and lets the row order pick
+  between -0.0 and 0.0. The grouping columns are a key of the result.
 * **Ill-typed calls evaluate to `null`.** This keeps `eval` total. `Rel.WF` rules out
   out-of-range field references.
 * **Some operations are rewrites in the parser.** `IN` lists become `OR`s of
@@ -1008,9 +1022,9 @@ No existing formal semantics for Substrait came up in my search. The closest wor
    (`IoT.window_complete`), not something the checker reports. Still missing for
    windows: framed aggregates (`AVG(v) OVER (ROWS 5 PRECEDING)`) and
    incremental maintenance.
-1. **Non-linear operators.** Aggregates (SUM/COUNT per group are linear over
-   Z-sets), and incremental DISTINCT, semi and left joins. Real plans use
-   `AggregateRel` a lot.
+1. **Non-linear operators.** Incremental aggregates (SUM/COUNT per group are
+   linear over Z-sets), DISTINCT, semi and left joins; grouping sets, `STDDEV`
+   and `ARRAY_AGG`.
 2. **Translation validation.** Given a plan and its optimized form, have Lean
    check that they are equivalent. A decision procedure for the conjunctive
    fragment would mirror Cosette and HoTTSQL.

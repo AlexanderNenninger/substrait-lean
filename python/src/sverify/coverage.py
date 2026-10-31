@@ -105,29 +105,29 @@ CASES: list[Case] = [
     case("joins", "intersect", V, lambda: t.select("name").intersect(u.select("name"))),
     case("joins", "difference", V, lambda: t.select("name").difference(u.select("name"))),
     # Aggregation
-    case("aggregation", "count()", R, lambda: t.aggregate(n=t.count())),
-    case("aggregation", "group_by sum", R, lambda: t.group_by("name").aggregate(s=t.qty.sum())),
+    case("aggregation", "count()", V, lambda: t.aggregate(n=t.count())),
+    case("aggregation", "group_by sum", V, lambda: t.group_by("name").aggregate(s=t.qty.sum())),
     case(
         "aggregation",
         "count, max, mean",
-        R,
+        V,
         lambda: t.group_by("name").aggregate(n=t.count(), m=t.qty.max(), a=t.amount.mean()),
     ),
-    case("aggregation", "nunique", R, lambda: t.group_by("name").aggregate(n=t.id.nunique())),
+    case("aggregation", "nunique", V, lambda: t.group_by("name").aggregate(n=t.id.nunique())),
     case(
         "aggregation",
         "sum(where=)",
-        R,
+        V,
         lambda: t.group_by("name").aggregate(s=t.qty.sum(where=t.flag)),
     ),
     case(
         "aggregation",
         "having",
-        R,
+        V,
         # Ibis types `having` too narrowly; it accepts deferred conditions.
         lambda: t.group_by("name").having(_.count() > 1).aggregate(n=t.count()),  # pyrefly: ignore
     ),
-    case("aggregation", "value_counts", R, lambda: t.name.value_counts()),
+    case("aggregation", "value_counts", V, lambda: t.name.value_counts()),
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
