@@ -1075,6 +1075,15 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             throw s!"{baseName name} with an interval of days or months is not supported: \
               DataFusion compares durations with it as (months, days, nanoseconds); \
               write it in hours or seconds"
+    -- DataFusion casts a DATE argument of `date_part`/`date_trunc` to a
+    -- timestamp (midnight); the model has these functions of dates.
+    let argJs ← if !["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name)
+      then pure argJs else argJs.mapM fun j => do
+        let some c := field? j "cast" | return j
+        let inp ← field c "input"
+        if typeKind ((field? c "type").getD .null) != .time then return j
+        if argKind cols inp (← parseExpr fns cols bits inp) == .date then return inp
+        return j
     let parsed ← argJs.mapM (parseExpr fns cols bits)
     if baseName name == "date_diff" then
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then

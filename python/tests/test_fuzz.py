@@ -81,7 +81,6 @@ def test_written_typed_null():
     )
 
 
-@pytest.mark.xfail(strict=True, reason="#96: a bare timestamp literal is written as an integer")
 def test_written_timestamp_literal_in_case():
     sql = (
         "SELECT CASE WHEN b THEN CASE WHEN b THEN TIMESTAMP '2024-01-01 00:00:00' "
