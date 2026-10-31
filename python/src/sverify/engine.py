@@ -456,12 +456,25 @@ def written_plan(plan_json: str) -> str:
     return check("--write")
 
 
+def datafusion_plan(plan_json: str) -> str:
+    """The plan for DataFusion to run (`substrait-check --write-datafusion`):
+    Lean's written form, compensating for where DataFusion's semantics differ
+    from `Rel.eval` (an integer `SUM` fails outside 64 bits instead of
+    wrapping around)."""
+    code, out, err = run_checker(("--write-datafusion",), plan_json)
+    if code != 0:
+        msg = (err or out).strip().splitlines()[-1:]
+        raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
+    return out
+
+
 def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> pa.Table:
     """Run a plan in Lean's written form on `engine` (default: the
-    connection's), over the tables of `con`."""
+    connection's), over the tables of `con`. DataFusion runs it as
+    `datafusion_plan` writes it."""
     engine = engine or con.engine
     if engine == "datafusion":
-        return run_substrait_json(con, plan_json)
+        return run_substrait_json(con, datafusion_plan(plan_json))
     tables = {t: con.arrow[t] for t in read_tables(json.loads(plan_json))}
     if engine == "polars":
         from sverify import polars_engine

@@ -13,17 +13,20 @@ the run until the marker is removed.
 
 import datetime as dt
 import json
+from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_substrait_json, substrait_json
+from sverify.engine import connect, put_table, run_plan, run_substrait_json, substrait_json
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows
 
 pytestmark = pytest.mark.backend("datafusion")
+
+FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
 
 def ints(**cols: list) -> pa.Table:
@@ -173,12 +176,39 @@ def test_distinct_plan_is_not_readable_by_datafusion(con):
     ]
 
 
-def test_lean_writes_the_deprecated_fetch_fields(con):
-    """Lean writes `FetchRel.offset`/`count`, which DataFusion's protobuf no
-    longer has (`tests/test_sql.py::written` renames them)."""
+def test_lean_writes_the_current_fetch_fields(con):
+    """R2: DataFusion's protobuf no longer has the deprecated
+    `FetchRel.offset`/`count`; Lean writes `offsetExpr`/`countExpr`."""
     plan = sv.written_plan(substrait_json(con, "SELECT x FROM n ORDER BY x LIMIT 1"))
-    with pytest.raises(Exception, match='no field named "count"'):
-        run_substrait_json(con, plan)
+    assert '"countExpr"' in plan and '"count":' not in plan
+    assert arrow_rows(run_substrait_json(con, plan)) == [(1,)]
+
+
+def test_lean_writes_virtual_tables_with_their_types(con):
+    """A VirtualTable's `baseSchema` used to be placeholder `i64` columns,
+    which DataFusion checks the rows against."""
+    plan = (FIXTURES / "virtual_left_join.json").read_text()
+    rows = arrow_rows(run_substrait_json(con, sv.written_plan(plan)))
+    assert sorted(rows, key=str) == sorted(lean_rows(plan), key=str)
+
+
+def test_integer_sum_fails_instead_of_wrapping(con):
+    """DataFusion's integer SUM wraps around past 64 bits, where `Rel.eval`'s
+    is exact. The plan Lean writes for DataFusion sums as DECIMAL(38,0) and
+    casts back, which fails instead (#24); within range it agrees."""
+    twice = "SELECT a FROM mx UNION ALL SELECT a FROM mx"
+    over = sv.written_plan(substrait_json(con, f"SELECT sum(a) AS s FROM ({twice})"))
+    assert arrow_rows(run_substrait_json(con, over)) == [(-2,)]  # wrapped around
+    with pytest.raises(Exception, match="out of range Int64"):
+        run_plan(con, over, "datafusion")
+    sql = "SELECT b, sum(a) AS s, count(*) AS c FROM dm GROUP BY b"
+    within = sv.written_plan(substrait_json(con, sql))
+    translated = sorted(arrow_rows(run_plan(con, within, "datafusion")))
+    assert (
+        translated
+        == sorted(arrow_rows(run_substrait_json(con, within)))
+        == [(-2, 7, 1), (2, -7, 1)]
+    )
 
 
 def test_not_in_subquery_is_refused(con):

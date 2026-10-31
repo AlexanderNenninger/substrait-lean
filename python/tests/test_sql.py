@@ -26,7 +26,13 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_checker, run_substrait_json, substrait_json
+from sverify.engine import (
+    connect,
+    put_table,
+    run_checker,
+    run_plan,
+    substrait_json,
+)
 from sverify.examples import PIPELINES
 from sverify.incremental import arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
@@ -147,28 +153,10 @@ def table_for(draw, schema: dict, weight: bool = False) -> pa.Table:
 
 
 def written(plan_json: str) -> str:
-    """The plan as `substrait-check --write` writes it back out, with FETCH in
-    the current encoding (Lean writes the deprecated `offset`/`count`, which
-    DataFusion's protobuf no longer has; the parser reads both alike)."""
+    """The plan as `substrait-check --write` writes it back out."""
     code, out, err = run_checker(("--write",), plan_json)
     assert code == 0, err
-
-    def walk(node: object) -> None:
-        if isinstance(node, dict):
-            fetch = node.get("fetch")
-            if isinstance(fetch, dict):
-                for key in ("offset", "count"):
-                    if key in fetch:
-                        fetch[key + "Expr"] = {"literal": {"i64": fetch.pop(key)}}
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    plan = json.loads(out)
-    walk(plan)
-    return json.dumps(plan)
+    return out
 
 
 def integral(v: object) -> object:
@@ -177,13 +165,14 @@ def integral(v: object) -> object:
 
 
 def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list[tuple]]:
-    """The plan's rows on DataFusion and on DuckDB. DataFusion runs Lean's
-    rewrite of the plan: some fixtures are hand-written in encodings its
-    protobuf parser no longer reads."""
+    """The plan's rows on DataFusion and on DuckDB. DataFusion runs the plan
+    as Lean writes it for DataFusion (`run_plan`, `--write-datafusion`): some
+    fixtures are hand-written in encodings its protobuf parser no longer
+    reads, and the translation compensates for its quirks (#24)."""
     con = connect()
     for name, t in tables.items():
         put_table(con, name, t)
-    df = [tuple(map(integral, r)) for r in arrow_rows(run_substrait_json(con, written(plan_json)))]
+    df = [tuple(map(integral, r)) for r in arrow_rows(run_plan(con, plan_json, "datafusion"))]
     return df, duckdb_rows(plan_json, tables)
 
 

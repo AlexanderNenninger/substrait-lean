@@ -200,6 +200,9 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return bool(v), pl.Boolean
     if kind == "i64":
         return _int(v), pl.Int64
+    if kind in ("i8", "i16", "i32"):
+        # A virtual table's narrow column (Lean writes its rows typed).
+        return _int(v), {"i8": pl.Int8, "i16": pl.Int16, "i32": pl.Int32}[kind]
     if kind == "string":
         return str(v), pl.String
     if kind == "fp64":
@@ -1341,11 +1344,23 @@ class Translator:
         return ordered(pl.col(col(i)), dtypes[i]), ordered(pl.col(col(k)), dtypes[k])
 
     def fetch(self, r: dict) -> Frame:
-        if "offsetExpr" in r or "countExpr" in r:
-            raise Unsupported("FetchRel offsetExpr/countExpr are not in Lean's written form")
         lf, dtypes = self.rel(r["input"])
-        offset = int(r.get("offset", 0))
-        count = int(r["count"]) if "count" in r else -1
+
+        def constant(key: str) -> int | None:
+            """`offsetExpr`/`countExpr` (Lean writes integer literals), or the
+            deprecated `offset`/`count`."""
+            if key + "Expr" in r:
+                lit = r[key + "Expr"].get("literal", {})
+                if "null" in lit:
+                    return None
+                if "i64" not in lit:
+                    raise Unsupported(f"FetchRel.{key}Expr must be an integer literal")
+                return int(lit["i64"])
+            return int(r[key]) if key in r else None
+
+        offset = constant("offset") or 0
+        count = constant("count")
+        count = -1 if count is None else count
         if offset < 0:
             raise Unsupported("negative FetchRel offset")
         return lf.slice(offset, None if count < 0 else count), dtypes
