@@ -18,4 +18,5 @@ def test_coverage_is_as_recorded(c: Case):
     for engine, why in r.refused.items():
         assert re.search(expected[engine], why), why
     if c.label in TIE_FREE:
-        assert refusal(c, "snowflake", tie_free=True) is None
+        for engine in ("snowflake", "spark"):
+            assert refusal(c, engine, tie_free=True) is None

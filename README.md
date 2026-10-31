@@ -249,6 +249,7 @@ Every engine runs the plans of the 68 verified operations, except:
 | Polars | 67 | non-equi join |
 | DuckDB | 67 | non-equi join |
 | Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Spark | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
