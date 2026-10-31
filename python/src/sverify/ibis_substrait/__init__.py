@@ -233,7 +233,10 @@ def _common(*types: Any) -> Any:
 
 def _field(x: Exprs, op: Any) -> Json:
     if op.rel not in x.offsets:
-        raise Unsupported(f"column {op.name} refers to a relation outside its input")
+        raise Unsupported(
+            f"column {op.name} refers to a relation outside its input "
+            "(correlated subqueries are only supported in EXISTS)"
+        )
     return field_ref(x.offsets[op.rel] + op.rel.schema.names.index(op.name))
 
 
@@ -427,6 +430,27 @@ def _string_find(x: Exprs, op: Any) -> Json:
     return call("subtract", [call("strpos", [x(op.arg), x(op.substr)]), literal(1, dt.int64)])
 
 
+# Subqueries are uncorrelated here (a column of the outer query is outside
+# their input); the checker lifts them into joins. A correlated EXISTS in a
+# filter becomes a semi or anti join (`_filter`).
+
+
+def _scalar_subquery(x: Exprs, op: Any) -> Json:
+    return {"subquery": {"scalar": {"input": rel(op.rel)}}}
+
+
+def _exists_subquery(x: Exprs, op: Any) -> Json:
+    tuples = rel(op.rel)
+    return {"subquery": {"setPredicate": {"predicateOp": "PREDICATE_OP_EXISTS", "tuples": tuples}}}
+
+
+def _in_subquery(x: Exprs, op: Any) -> Json:
+    (column,) = op.rel.schema.types
+    if not same_type(op.needle.dtype, column):
+        raise Unsupported(f"IN of {op.needle.dtype} in a subquery of {column}")
+    return {"subquery": {"inPredicate": {"needles": [x(op.needle)], "haystack": rel(op.rel)}}}
+
+
 _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Field: _field,
     ops.Literal: _literal,
@@ -494,6 +518,9 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.IsNan: _is_nan,
     ops.StringFind: _string_find,
     ops.ExtractWeekOfYear: _date_part("week"),
+    ops.ScalarSubquery: _scalar_subquery,
+    ops.ExistsSubquery: _exists_subquery,
+    ops.InSubquery: _in_subquery,
 }
 
 
@@ -590,16 +617,36 @@ def _read(op: Any) -> Json:
     return {"read": {"baseSchema": schema, "namedTable": {"names": [op.name]}}}
 
 
+def _exists(p: Any) -> tuple[Any, bool] | None:
+    """The subquery of `EXISTS (…)` or `NOT EXISTS (…)`, and whether it is negated."""
+    if isinstance(p, ops.ExistsSubquery):
+        return p.rel, False
+    if isinstance(p, ops.Not) and isinstance(p.arg, ops.ExistsSubquery):
+        return p.arg.rel, True
+    return None
+
+
 def _filter(op: Any) -> Json:
+    # `[NOT] EXISTS (SELECT … FROM s WHERE c)` conjuncts become semi (anti)
+    # joins with `s` on `c`, which may refer to the outer row, as DataFusion
+    # decorrelates them.
     x = Exprs({op.parent: 0})
+    n = len(op.parent.schema)
+    input = rel(op.parent)
     conds: list[Json] = []
     for p in op.predicates:
-        if isinstance(p, ops.InSubquery):
-            inside = {"needles": [x(p.needle)], "haystack": rel(p.rel)}
-            conds.append({"subquery": {"inPredicate": inside}})
-        else:
+        if (found := _exists(p)) is None:
             conds.append(x(p))
-    return {"filter": {"input": rel(op.parent), "condition": chain("and", conds)}}
+            continue
+        sub, anti = found
+        inner, preds = (sub.parent, sub.predicates) if isinstance(sub, ops.Filter) else (sub, ())
+        y = Exprs({op.parent: 0, inner: n})
+        on = chain("and", [y(q) for q in preds] or [literal(True, dt.boolean)])
+        kind = "JOIN_TYPE_LEFT_ANTI" if anti else "JOIN_TYPE_LEFT_SEMI"
+        input = {"join": {"left": input, "right": rel(inner), "expression": on, "type": kind}}
+    if not conds:
+        return input
+    return {"filter": {"input": input, "condition": chain("and", conds)}}
 
 
 def _window_functions(values: Iterable[Any]) -> list[Any]:

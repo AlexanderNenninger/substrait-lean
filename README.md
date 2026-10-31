@@ -280,27 +280,27 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-68 of 82 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+76 of 91 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
-| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
+| joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ isin subquery in select · ✓ notin subquery · ✓ scalar subquery in select · ✓ scalar subquery, one row · ✗ scalar subquery, many rows · ✓ exists · ✓ not exists · ✓ exists, uncorrelated · ✗ correlated scalar subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✓ scalar subquery · ✗ unnest |
 | windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* |
 
-Every engine runs the plans of the 68 verified operations, except:
+Every engine runs the plans of the 76 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 67 | non-equi join |
-| DuckDB | 67 | non-equi join |
-| Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
-| Spark | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Polars | 75 | non-equi join |
+| DuckDB | 75 | non-equi join |
+| Snowflake | 66 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · scalar subquery, one row · count, max, mean · scalar subquery · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Spark | 66 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · scalar subquery, one row · count, max, mean · scalar subquery · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
@@ -851,6 +851,20 @@ left an integer next to a double's code (#16). Upstream's mistakes are fixed
 literals were read in local time), and anything outside the model raises
 `Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
 coverage case against DataFusion running Ibis's SQL on random tables.
+
+Subqueries: a correlated `[NOT] EXISTS` in a filter becomes a semi (anti) join
+on the subquery's condition, as DataFusion decorrelates it; other correlated
+subqueries are refused. Uncorrelated ones go into the plan as Substrait
+subquery expressions, which the checker lifts into joins (`liftSubquery` in
+`SubstraitLean/Parse.lean`): a scalar subquery is a left join on `TRUE`, and
+because DataFusion fails when one returns several rows, the checker accepts it
+only where `Rel.keys` proves at most one row (an aggregate without groups,
+`LIMIT 1`); `x IN (subquery)` outside a filter's conjuncts is a left join with
+the subquery's distinct values plus a count of its `NULL`s, which gives SQL's
+three-valued answer; `EXISTS` compares a `COUNT(*)` with 0. DataFusion 51
+cannot run `IN` or `EXISTS` subqueries in a projection, and its
+`NOT IN (subquery)` ignores the subquery's `NULL`s, so those cases are
+compared with DuckDB running Ibis's SQL (`coverage.DATAFUSION_SQL`).
 
 ### SQL producers
 

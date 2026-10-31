@@ -30,9 +30,10 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis import _
 
@@ -54,6 +55,12 @@ T = ibis.table(
 )
 U = ibis.table({"name": "string", "region": "string"}, name="u")
 t, u = T, U
+
+
+def exists(table: ir.Table) -> ir.BooleanValue:
+    """`EXISTS (table)`; Ibis builds it only from a correlated `.any()`."""
+    rel: Any = table.op()
+    return ops.ExistsSubquery(rel).to_expr()
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,40 @@ CASES: list[Case] = [
     case("joins", "semi join", V, lambda: t.semi_join(u, "name")),
     case("joins", "anti join", V, lambda: t.anti_join(u, "name")),
     case("joins", "isin subquery", V, lambda: t.filter(t.name.isin(u.name))),
+    case("joins", "isin subquery in select", V, lambda: t.select("id", x=t.name.isin(u.name))),
+    case(
+        "joins",
+        "notin subquery",
+        V,
+        lambda: t.filter(t.name.notin(u.name) | t.flag),
+    ),
+    case("joins", "scalar subquery in select", V, lambda: t.select("id", n=u.count())),
+    case(
+        "joins",
+        "scalar subquery, one row",
+        V,
+        lambda: t.select("id", r=u.order_by("name").limit(1).name.as_scalar()),
+    ),
+    case(
+        "joins",
+        "scalar subquery, many rows",
+        R,
+        lambda: t.select("id", r=u.filter(u.region == "eu").name.as_scalar()),
+    ),
+    case("joins", "exists", V, lambda: t.filter((u.name == t.name).any())),
+    case("joins", "not exists", V, lambda: t.filter(~(u.name == t.name).any())),
+    case(
+        "joins",
+        "exists, uncorrelated",
+        V,
+        lambda: t.select("id", e=exists(u.filter(u.region == "eu"))),
+    ),
+    case(
+        "joins",
+        "correlated scalar subquery",
+        R,
+        lambda: t.filter(u.filter(u.name == t.name).count() > 0),  # pyrefly: ignore
+    ),
     case("joins", "union all", V, lambda: t.select("name").union(u.select("name"))),
     case(
         "joins",
@@ -134,7 +175,7 @@ CASES: list[Case] = [
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
     case("aggregation", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
-    case("aggregation", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
+    case("aggregation", "scalar subquery", V, lambda: t.filter(t.qty > t.qty.mean())),
     case(
         "aggregation",
         "unnest",
@@ -250,6 +291,8 @@ REFUSED: dict[str, dict[str, str]] = {
         "spark": "ordering comparisons of str values",
     },
     "order_by": NO_ROW_ORDER,
+    "scalar subquery": NO_ROW_ORDER,
+    "scalar subquery, one row": NO_ROW_ORDER,
     "limit": NO_ROW_ORDER,
     "limit with offset": NO_ROW_ORDER,
     "order_by + limit": NO_ROW_ORDER,
@@ -258,6 +301,15 @@ REFUSED: dict[str, dict[str, str]] = {
 }
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
 TIE_FREE = {"order_by", "row_number", "lag"}
+
+#: Verified cases where DataFusion running Ibis's own SQL means something else
+#: than the plan (and SQL), or fails: the tests compare them with DuckDB
+#: running Ibis's DuckDB SQL instead.
+DATAFUSION_SQL = {
+    "isin subquery in select": "DataFusion 51 cannot run IN (subquery) outside a filter",
+    "exists, uncorrelated": "DataFusion 51 cannot run EXISTS (subquery) outside a filter",
+    "notin subquery": "DataFusion 51's NOT IN (subquery) ignores NULLs in the subquery",
+}
 
 
 def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:

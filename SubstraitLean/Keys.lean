@@ -7,7 +7,8 @@ A **key** of a relation is a list of columns on which no two rows agree. If
 each input table has a key (the data producer guarantees one reading per
 sensor and timestamp, say), `Rel.keys` derives keys of a plan's output.
 
-* filters, fetches: keep every key (fewer rows);
+* filters, fetches: keep every key (fewer rows); a fetch of at most one row,
+  and a literal table of at most one row, have the empty key;
 * windows: keep every key (the same rows, reordered, with columns appended);
 * projections: keep keys on input columns; emits: re-index them;
 * cross products: combine a key of each side;
@@ -20,6 +21,21 @@ values, so two NULLs count as equal: a stronger requirement than SQL `UNIQUE`.
 -/
 
 namespace Substrait
+
+/-- At most one row: the empty list is a key. -/
+theorem KeyOn.of_length_le_one {rows : Relation} (h : rows.length ≤ 1) : KeyOn [] rows := by
+  match rows, h with
+  | [], _ => exact List.Pairwise.nil
+  | [_], _ => exact List.pairwise_singleton _ _
+
+/-- The empty key holds exactly when there is at most one row. -/
+theorem KeyOn.nil_iff {rows : Relation} : KeyOn [] rows ↔ rows.length ≤ 1 := by
+  refine ⟨fun h => ?_, KeyOn.of_length_le_one⟩
+  match rows, h with
+  | [], _ | [_], _ => simp
+  | x :: y :: _, h =>
+    simp only [KeyOn, keyOf, List.map_nil, ne_eq, not_true_eq_false, List.pairwise_cons] at h
+    exact absurd (List.mem_cons_self ..) (h.1 y)
 
 /-- A superset of a key is a key. -/
 theorem KeyOn.superset {k k' : List Nat} {rows : Relation} (hk : KeyOn k rows)
@@ -280,7 +296,7 @@ def crossKeys (n : Nat) (ka kb : List (List Nat)) : List (List Nat) :=
 def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → List (List Nat)
   | .read t => K t
-  | .values _ _ => []
+  | .values _ rows => if rows.length ≤ 1 then [[]] else []
   -- Columns the condition pins to a constant are redundant in a key.
   | .filter r c => (r.keys cat A F K).map (·.filter (!c.pinned.contains ·))
   -- A key may use any copy of its columns (DataFusion copies join columns this way).
@@ -290,7 +306,7 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .emit r m => (r.keys cat A F K).filterMap (emitKey m)
   | .cross a b => crossKeys (a.arity cat) (a.keys cat A F K) (b.keys cat A F K)
   | .join a b _ on => joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K)
-  | .fetch r _ _ => r.keys cat A F K
+  | .fetch r _ cnt => (if cnt.any (· ≤ 1) then [[]] else []) ++ r.keys cat A F K
   | .unionAll _ _ => []
   | .window r part _ fns =>
       (r.keys cat A F K).filter (·.all (· < r.arity cat)) ++ windowKeys part (r.arity cat) fns
@@ -484,7 +500,13 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
     (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
     ∀ {r : Rel}, r.WF cat → ∀ k ∈ r.keys cat A F K, KeyOn k (r.eval cat)
   | .read t, _, k, hk => hK t k hk
-  | .values _ _, _, k, hk => by simp [Rel.keys] at hk
+  | .values _ rows, _, k, hk => by
+      simp only [Rel.keys] at hk
+      split at hk
+      · simp only [List.mem_singleton] at hk
+        subst hk
+        exact KeyOn.of_length_le_one ‹_›
+      · simp at hk
   | .filter r c, hwf, k, hk => by
       simp only [Rel.keys, List.mem_map] at hk
       obtain ⟨k₀, hk₀, rfl⟩ := hk
@@ -562,7 +584,17 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
         split
         · exact List.pairwise_singleton _ _
         · exact match_block (hA' x hx) (keys_sound hcat hA hF hK hwf.2.1 kb hkb)
-  | .fetch r _ _, hwf, k, hk => by
+  | .fetch r _ cnt, hwf, k, hk => by
+      simp only [Rel.keys, List.mem_append] at hk
+      rcases hk with hk | hk
+      · split at hk
+        · simp only [List.mem_singleton] at hk
+          subst hk
+          obtain ⟨n, rfl, hn⟩ : ∃ n, cnt = some n ∧ n ≤ 1 := by
+            cases cnt <;> simp_all
+          simp only [eval]
+          exact KeyOn.of_length_le_one (Nat.le_trans (List.length_take_le _ _) hn)
+        · simp at hk
       simp only [eval]
       have := keys_sound hcat hA hF hK (r := r) hwf k hk
       split
