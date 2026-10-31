@@ -61,7 +61,8 @@ def _(mo):
       the SQL (Lean prints doubles with a `d`, ±0.0 as their codes ±1, and
       timestamps as microseconds). Then the plan Lean writes back out
       (`written_plan`), run by sverify's own translators to **Polars** and
-      **DuckDB**, plus whether the **Snowflake** SQL generator accepts it.
+      **DuckDB**, plus whether the **Snowflake** and **Spark** SQL generators
+      accept it (chapter 11 runs the Spark SQL on a real Spark session).
       These translators are meant to reproduce `Rel.eval` exactly, whatever
       the native engine would do.
 
@@ -211,6 +212,7 @@ def _(dt, tables):
     from sverify.sql import Unsupported
     from sverify.sql import to_sql as plan_sql
     from sverify.sql.snowflake import SNOWFLAKE
+    from sverify.sql.spark import SPARK
     from sverify.testing import inline_tables
 
     con = sv.connect()
@@ -268,9 +270,9 @@ def _(dt, tables):
         text = ", ".join(r[1:-1] if "," not in r else r for r in got) or "(no rows)"
         return text if len(text) < 140 else text[:137] + "…"
 
-    def snowflake_sql(plan: str) -> str:
+    def generated(plan: str, dialect) -> str:
         try:
-            plan_sql(json.loads(plan), SNOWFLAKE)
+            plan_sql(json.loads(plan), dialect)
         except Unsupported as e:
             return "refused: " + str(e).split(" (")[0][:90]
         return "SQL generated"
@@ -350,7 +352,8 @@ def _(dt, tables):
                 attempt(lambda run=run: positional(run(wp, tabs)), self.unordered)
                 for run in (polars_engine.run, duckdb_engine.run)
             )
-            o["sv"] = [("Polars", pt), ("DuckDB", dt_), ("Snowflake", snowflake_sql(wp))]
+            o["sv"] = [("Polars", pt), ("DuckDB", dt_)]
+            o["sql"] = [("Snowflake", generated(wp, SNOWFLAKE)), ("Spark", generated(wp, SPARK))]
             # The translators agree when both fail or both give the same rows.
             o["sv_agree"] = pv == dv or (pv[:1] == dv[:1] == ("error",))
             return self
@@ -415,10 +418,8 @@ def _(mo):
                 )
             lean = f"<i>Lean</i>: {html.escape(o['lean'])}"
             if o["sv"]:
-                lean += "<br>" + _lines(
-                    [(f"sverify→{k}", v) for k, v in o["sv"] if k != "Snowflake"]
-                )
-                lean += f"<br><i>sverify→Snowflake</i>: {html.escape(o['sv'][2][1])}"
+                lean += "<br>" + _lines([(f"sverify→{k}", v) for k, v in o["sv"]])
+                lean += "<br>" + _lines([(f"sverify→{k}", v) for k, v in o["sql"]])
                 if not o["sv_agree"]:
                     lean += "<br><b>the two translators disagree</b>"
             tags = " · ".join(
