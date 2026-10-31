@@ -269,27 +269,33 @@ def test_narrowing_cast_may_fail():
     assert verify("SELECT CAST(a AS INT) AS x FROM t", "t", I64, fits).proved
 
 
-@gap
-def test_gap_abs_of_min_fails():
+def test_abs_of_min_fails():
     """I4: `abs(MIN)` raises; it does not wrap."""
     assert verify("SELECT abs(a) AS x FROM t", "t", I64).errors
 
 
-@gap
-def test_gap_boolean_case_is_not_lazy():
+def test_boolean_case_is_not_lazy():
     """E4: the simplifier turns the CASE into `b <> 0 AND a / b > 1`."""
     sql = "SELECT a FROM t WHERE CASE WHEN b <> 0 THEN a / b > 1 ELSE false END"
     assert verify(sql, "t", I64, ["a >= 0"]).errors
 
 
-@gap
-def test_gap_coalesce_is_eager():
+def test_lazy_and_eager_conditionals_that_are_safe():
+    """A numeric `CASE` stays lazy; `ABS` is safe above the smallest integer
+    and keeps its sign."""
+    sql = "SELECT CASE WHEN b <> 0 THEN a / b END AS q FROM t"
+    assert verify(sql, "t", I64, ["a >= 0"]).errors == []
+    assert verify("SELECT coalesce(b, a / 2) AS c FROM t", "t", I64).errors == []
+    report = verify("SELECT abs(a) AS x FROM t", "t", I64, ["a > -10"], ["x >= 0"])
+    assert report.proved and report.issues == []
+
+
+def test_coalesce_is_eager():
     """E5: DataFusion evaluates `a / b` even where b is not NULL."""
     assert verify("SELECT coalesce(b, a / b) AS c FROM t", "t", I64, ["b IS NOT NULL"]).errors
 
 
-@gap
-def test_gap_power_of_null_to_zero(con):
+def test_power_of_null_to_zero(con):
     """I9: `power(NULL, 0)` is 1 on DataFusion, NULL in `Rel.eval`."""
     plan = json.loads(substrait_json(con, "SELECT power(a, 0) AS p FROM pn"))
     lean = lean_rows(json.dumps(inline_tables(plan, {"pn": [(None,), (2,)]})))

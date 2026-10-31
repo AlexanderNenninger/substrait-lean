@@ -18,6 +18,12 @@ they wrap around silently, so the result differs from `Rel.eval`'s
 * `CASE` evaluates a branch only on rows that take it, so
   `CASE WHEN b <> 0 THEN a / b END` and `a / NULLIF(b, 0)` are safe.
 * `AND` and `OR` evaluate both sides: `b <> 0 AND a / b > 1` fails on `b = 0`.
+* Not every `CASE` is lazy, though. `COALESCE` evaluates all its arguments,
+  and the simplifier rewrites a `CASE` with a boolean value into `AND`/`OR`,
+  so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END` fails on `b = 0`. The
+  parser makes those eager (`Parse.eagerly`); `Expr.ifThen` itself is lazy.
+* `ABS` fails on the smallest integer (the parser writes `-a` as `a / -1`),
+  and the simplifier makes `POWER(x, 0)` the constant 1, so it never fails.
 * The optimizer merges filters and pushes them down through projections and
   joins, so a filter condition may be evaluated on rows that a filter below it
   would remove: `t.filter(b != 0).filter(a / b > 1)` fails on `b = 0`.

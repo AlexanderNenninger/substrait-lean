@@ -523,6 +523,34 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
 #guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
 
+/-! ## Eager conditionals
+
+`Expr.ifThen` evaluates only the branch it takes (`SubstraitLean/Safety.lean`),
+as DataFusion's `CASE` does. Two conditionals are eager in DataFusion, though:
+`COALESCE` evaluates all its arguments, and the simplifier rewrites a `CASE`
+with a boolean value into `AND`/`OR`, which evaluate both sides. The parser
+makes these eager by evaluating the other branches in the condition as well:
+`c AND (x IS NULL OR … OR TRUE)` is true exactly where `c` is, and evaluates
+every `x` on every row. -/
+
+/-- Does evaluating the expression always evaluate `x`? (Not when `x` is only
+in a branch of a conditional.) -/
+def evaluates (x : Expr) : Expr → Bool
+  | e@(.lit _) | e@(.field _) => e == x
+  | e@(.un _ a) => e == x || evaluates x a
+  | e@(.bin _ a b) => e == x || evaluates x a || evaluates x b
+  | e@(.ifThen c _ _) => e == x || evaluates x c
+
+/-- The condition `c`, also evaluating each of `xs` on every row. Expressions
+it evaluates already are left out, so the parser reads its own written plans
+back unchanged. -/
+def eagerly (c : Expr) (xs : List Expr) : Expr :=
+  match xs.filter fun x => !(x matches .lit _) && !evaluates x c with
+  | [] => c
+  | x :: rest =>
+    let tail := rest.foldl (fun acc y => .bin .or acc (.un .isNull y)) (.un .isNull x)
+    .bin .and c (.bin .or tail (.lit (.bool true)))
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -563,13 +591,17 @@ def mkCall : String → List Expr → J Expr
   | "or", a :: as => pure (as.foldl (.bin .or) a)
   -- Null handling and `GREATEST`/`LEAST`, as conditionals. These duplicate
   -- their arguments, which is harmless: expressions have no side effects.
-  | "coalesce", a :: as => pure (coalesce a as)
+  -- Eager: every argument is evaluated on every row.
+  | "coalesce", a :: as => pure <| match coalesce a as with
+    | .ifThen c x r => .ifThen (eagerly c as) x r
+    | e => e
   | "nullif", [a, b] => pure (.ifThen (.bin .eq a b) (.lit .null) a)
   | "greatest", a :: as | "greatest_skip_null", a :: as =>
     pure (as.foldl (pick fun x y => .bin .lt x y) a)
   | "least", a :: as | "least_skip_null", a :: as =>
     pure (as.foldl (pick fun x y => .bin .lt y x) a)
-  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .neg a) a)
+  -- `-a` as `a / -1`, which fails on the smallest integer as `ABS` does.
+  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .idiv a (.lit (.int (-1)))) a)
   -- Equality where `NULL` equals `NULL`: never `NULL` itself.
   | "is_not_distinct_from", [a, b] => pure (notDistinct a b)
   | "is_distinct_from", [a, b] => pure (.un .not (notDistinct a b))
@@ -708,6 +740,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
       if (hasFloat || floatCall) && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.int (FloatCode.ofInt i))
       return e
+    -- DataFusion's simplifier makes `power(x, 0)` a constant 1, even for a
+    -- NULL `x`.
+    if baseName name == "power" then
+      if let [_, Expr.lit (.int 0)] := args then
+        return .lit (.int (if floatCall then FloatCode.ofFloat 1.0 else 1))
     if floatCall then
       let args := args.zipIdx.map fun (e, k) =>
         if e.kind cols == .int && !keepInt k && !(e matches .lit _) then Expr.un .itof e else e
@@ -718,9 +755,17 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     let els ← match field? t "else" with
       | some e => parseExpr fns cols e
       | none => pure (.lit .null)
-    (← arrD t "ifs").foldrM (init := els) fun clause acc => do
-      return .ifThen (← parseExpr fns cols (← field clause "if"))
-        (← parseExpr fns cols (← field clause "then")) acc
+    let clauses ← (← arrD t "ifs").mapM fun clause => do
+      return (← parseExpr fns cols (← field clause "if"), ← parseExpr fns cols (← field clause "then"))
+    match clauses with
+    | [] => return els
+    | (c, x) :: rest =>
+      let rest' := rest.foldr (fun (c, x) acc => .ifThen c x acc) els
+      -- A boolean `CASE` may become `AND`/`OR`: every branch is evaluated.
+      let thens := els :: clauses.map (·.2)
+      if thens.any (·.kind cols == .bool) then
+        return .ifThen (eagerly c (thens ++ rest.map (·.1))) x rest'
+      return .ifThen c x rest'
   | ("cast", c) =>
     let e ← parseExpr fns cols (← field c "input")
     let target := typeKind (← field c "type")
