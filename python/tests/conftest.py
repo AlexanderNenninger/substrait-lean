@@ -39,7 +39,6 @@ SCALE = float(os.environ.get("SVERIFY_EXAMPLES", "1"))
 def _compare_sql_producers(path: str) -> None:
     """Wrap `sverify.engine.substrait_json` before the test modules import it."""
     from sverify import engine
-    from sverify.incremental import arrow_rows
     from sverify.testing import canonical
 
     datafusion_json = engine.substrait_json
@@ -51,7 +50,9 @@ def _compare_sql_producers(path: str) -> None:
         if code != 0:
             return "rejected", None
         try:
-            rows = canonical(arrow_rows(engine.run_plan(con, engine.written_plan(plan), "duckdb")))
+            out = engine.run_plan(con, engine.written_plan(plan), "duckdb")
+            # Positional: `SELECT *` over a join may repeat column names.
+            rows = canonical(zip(*(c.to_pylist() for c in out.columns), strict=True))
         except Exception:  # noqa: BLE001 - recorded, not raised
             return "verified", None
         return "verified", rows

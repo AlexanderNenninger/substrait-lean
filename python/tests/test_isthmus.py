@@ -3,8 +3,7 @@
 The tests that compile SQL need the Isthmus binary (`$SVERIFY_ISTHMUS`, or
 `isthmus` on `PATH`) and are skipped without it; CI downloads a pinned
 release. Each query here is standard SQL that DataFusion and Calcite both
-read: Isthmus's plan must verify and run on DuckDB to DataFusion's own
-result, and so must DataFusion's plan where Lean reads it.
+read: both plans must verify and run on DuckDB to DataFusion's own result.
 """
 
 import datetime as dt
@@ -102,10 +101,6 @@ AGREE = {
 }
 
 
-#: DataFusion's plans Lean does not read: it types `TIMESTAMP '…'` in nanoseconds.
-DATAFUSION_REFUSED = {"timestamp_literal"}
-
-
 def checked(plan: str) -> str:
     code, out, err = run_checker((), plan)
     assert code == 0, (out + err).strip().splitlines()[-3:]
@@ -126,10 +121,7 @@ def test_isthmus_agrees_with_datafusion(con, name):
     sql = AGREE[name]
     reference = rows(run_sql(con, sql))
     assert rows(run_plan(con, checked(isthmus_json(con, sql)), "duckdb")) == reference
-    if name in DATAFUSION_REFUSED:
-        assert run_checker((), substrait_json(con, sql))[0] != 0
-    else:
-        assert rows(run_plan(con, checked(substrait_json(con, sql)), "duckdb")) == reference
+    assert rows(run_plan(con, checked(substrait_json(con, sql)), "duckdb")) == reference
 
 
 @needs_isthmus

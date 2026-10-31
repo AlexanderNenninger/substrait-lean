@@ -1,2 +1,2 @@
-error: only microsecond timestamp columns are supported
+error: timestamp columns coarser than microseconds are not supported
 [exit 1]

@@ -1,0 +1,1 @@
+-- Unsupported: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)

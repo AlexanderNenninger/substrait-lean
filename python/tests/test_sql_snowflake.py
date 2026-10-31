@@ -102,6 +102,15 @@ def accepted_fixtures() -> list[Path]:
     ]
 
 
+def fixture_plan(path: Path) -> dict:
+    """A fixture's plan; Isthmus's in the form Lean writes them, which is
+    what the engines get (they use encodings only Lean reads)."""
+    text = path.read_text()
+    if path.stem.startswith("isthmus_"):
+        text = sv.written_plan(text)
+    return json.loads(text)
+
+
 def pipeline_plans() -> dict[str, dict]:
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
@@ -194,7 +203,7 @@ def check_snapshot(name: str, sql: str, dialect: str = "snowflake") -> None:
 
 @pytest.mark.parametrize("path", accepted_fixtures(), ids=lambda p: p.stem)
 def test_fixture_snapshot(path: Path):
-    check_snapshot(path.stem, snowflake_sql(json.loads(path.read_text())))
+    check_snapshot(path.stem, snowflake_sql(fixture_plan(path)))
 
 
 ALL_PLANS = {**PLANS, **DELTA_PLANS, **ORDERED_PLANS, **TIE_FREE}

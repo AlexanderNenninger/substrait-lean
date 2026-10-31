@@ -1,14 +1,27 @@
 """Summarise a `SVERIFY_COMPARE_SQL` run (see `tests/conftest.py`): how many
 of the tests' SQL strings each producer's plan verifies for, and the queries
-where both verify but the rows differ (exit status 1 if there are any, or
-no records at all).
+where both verify but the rows differ. Some of those are differences between
+the SQL dialects, listed in `DIALECT`: each plan means what its own SQL means.
+The exit status is 1 if any other query differs, or nothing was recorded.
 
 Usage: uv run python scripts/compare_sql_producers.py <records.jsonl>
 """
 
 import json
+import re
 import sys
 from collections import Counter
+
+#: Where Calcite's SQL means something else than DataFusion's.
+DIALECT = {
+    r"\bpower\(": "Calcite's POWER is a DOUBLE; DataFusion's of integers an integer",
+    r"\b(GREATEST|LEAST)\(": "Calcite's GREATEST/LEAST are NULL if any argument is",
+    r"\bsubstr\(s, (0|-)": "Calcite's SUBSTR counts a negative start from the end",
+}
+
+
+def dialect(sql: str) -> str | None:
+    return next((why for pat, why in DIALECT.items() if re.search(pat, sql)), None)
 
 
 def main() -> int:
@@ -34,9 +47,13 @@ def main() -> int:
     differ = [r["sql"] for r in records.values() if r.get("same_rows") is False]
     same = sum(r.get("same_rows") is True for r in records.values())
     print(f"both verify and run: {same} agree, {len(differ)} differ")
+    unexplained = []
     for sql in differ:
-        print("  DIFFERENT ROWS:", sql)
-    return 1 if differ else 0
+        why = dialect(sql)
+        print(f"  {'dialect' if why else 'DIFFERENT ROWS'}: {sql}" + (f"  ({why})" if why else ""))
+        if why is None:
+            unexplained.append(sql)
+    return 1 if unexplained else 0
 
 
 if __name__ == "__main__":

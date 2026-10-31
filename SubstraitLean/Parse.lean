@@ -108,10 +108,11 @@ def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if ["i8", "i16", "i32", "i64"].any has then .int
   else if ["fp32", "fp64"].any has then .float
-  -- Times are microseconds; a column of another precision is not modelled.
+  -- Times are microseconds; a coarser precision (Calcite's `TIMESTAMP` is
+  -- seconds) would truncate, which is not modelled.
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
-    if (t.getObjValAs? Nat "precision").toOption == some 6 then .time else .other
+    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
   else if has "date" then .date
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
@@ -330,7 +331,19 @@ def castConst (ty : Json) (c : Const) : J Const := do
     match c with
     | .str s => return .str s
     | _ => throw "casts to strings are not supported"
-  | _ => throw "unsupported cast type"
+  | _ =>
+    -- A constant cast to a timestamp coarser than microseconds: only where it
+    -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
+    if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
+      let p := (t.getObjValAs? Nat "precision").toOption.getD 0
+      let us ← match c with
+        | .str s => match Time.parseTimestamp? s with
+          | some us => pure us
+          | none => throw s!"cannot parse timestamp '{s}'"
+        | _ => throw "cannot cast this value to a timestamp"
+      if us % 10 ^ (6 - p) == 0 then return .int us
+      else throw s!"cast to a timestamp of precision {p} truncates"
+    throw "unsupported cast type"
 
 /-- A day/second interval in microseconds. -/
 def intervalMicros (d : Json) : J Int := do
@@ -446,8 +459,8 @@ integer type for integers, doubles (as codes), timestamps (µs), dates (days)
 and intervals (µs). So the arguments' kinds must be checked: `add:date_iday`
 would otherwise add days and microseconds. A signature suffix (`date_iday`, as
 Isthmus writes) is checked against the arguments the parser sees; a literal
-argument has no kind of its own (a timestamp literal is an integer), so only
-the signature speaks for it. -/
+argument (or one built only from literals) has no kind of its own (a
+timestamp literal is an integer), so only the signature speaks for it. -/
 
 /-- Functions whose arguments are numbers, timestamps or intervals. -/
 def arithmeticFns : List String :=
@@ -457,11 +470,20 @@ def arithmeticFns : List String :=
 def comparisonFns : List String :=
   ["equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from"]
 
+/-- Does the expression read a column? One that doesn't is built from
+literals, whose kinds say nothing (a timestamp literal is an integer). -/
+def _root_.Substrait.Expr.readsField : Expr → Bool
+  | .lit _ => false
+  | .field _ => true
+  | .un _ a => a.readsField
+  | .bin _ a b => a.readsField || b.readsField
+  | .ifThen c t e => c.readsField || t.readsField || e.readsField
+
 def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
   let base := baseName name
   let sigs := (sigTokens name).map argSig
-  -- `none` for literals.
-  let ks := args.map fun e => if e matches .lit _ then none else some (e.kind cols)
+  -- `none` for expressions of literals.
+  let ks := args.map fun e => if e.readsField then some (e.kind cols) else none
   let strict := arithmeticFns.contains base || comparisonFns.contains base
   if strict then
     if let some t := sigs.findSome? (fun | .unknown t => some t | _ => none) then
@@ -493,6 +515,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
 #guard (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false
 #guard (checkArgKinds "lt" [.date, .time] [.field 0, .field 1]).toBool == false
+#guard (checkArgKinds "lt" [.time] [.field 0, .bin .sub (.lit (.int 9)) (.lit (.int 1))]).toBool
 #guard (checkArgKinds "add:pts_iday" [.time] [.field 0, .lit (.int 1)]).toBool
 #guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
 #guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
@@ -533,8 +556,10 @@ def mkCall : String → List Expr → J Expr
   -- their arguments, which is harmless: expressions have no side effects.
   | "coalesce", a :: as => pure (coalesce a as)
   | "nullif", [a, b] => pure (.ifThen (.bin .eq a b) (.lit .null) a)
-  | "greatest", a :: as => pure (as.foldl (pick fun x y => .bin .lt x y) a)
-  | "least", a :: as => pure (as.foldl (pick fun x y => .bin .lt y x) a)
+  | "greatest", a :: as | "greatest_skip_null", a :: as =>
+    pure (as.foldl (pick fun x y => .bin .lt x y) a)
+  | "least", a :: as | "least_skip_null", a :: as =>
+    pure (as.foldl (pick fun x y => .bin .lt y x) a)
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .neg a) a)
   -- Equality where `NULL` equals `NULL`: never `NULL` itself.
   | "is_not_distinct_from", [a, b] => pure (notDistinct a b)
@@ -586,7 +611,9 @@ where
     | [] => a
     | b :: bs => .ifThen (.un .not (.un .isNull a)) a (coalesce b bs)
   /-- `GREATEST`/`LEAST` of two values, where `better x y` says `y` wins. Like
-  DataFusion, they skip `NULL`s: the result is `NULL` only if both are. -/
+  DataFusion (whose producer writes them as bare `greatest`/`least`), they skip
+  `NULL`s: the result is `NULL` only if both are. Substrait's typed
+  `greatest`/`least` propagate `NULL`s instead (`parseExpr`). -/
   pick (better : Expr → Expr → Expr) (a b : Expr) : Expr :=
     .ifThen (.un .isNull a) b (.ifThen (.un .isNull b) a (.ifThen (better a b) b a))
 
@@ -640,6 +667,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
             return .un (.regexMatch p) (← parseExpr fns cols sj)
     let parsed ← argJs.mapM (parseExpr fns cols)
     checkArgKinds name cols parsed
+    -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
+    -- writes its `NULL`-skipping ones untyped (`mkCall`).
+    if ["greatest", "least"].contains (baseName name) && !(sigTokens name).isEmpty then
+      let call ← mkCall (baseName name) parsed
+      return parsed.foldr (fun a acc => .ifThen (.un .isNull a) (.lit .null) acc) call
     if (comparisonFns ++ ["like", "starts_with", "ends_with"]).contains (baseName name) &&
         argJs.any (fun j => ((field? j "literal").bind (field? · "fixedChar")).isSome) then
       throw s!"{baseName name} with a CHAR literal is not supported (blank-padded comparison)"
@@ -853,8 +885,8 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   -- The model's times are microseconds (`typeKind`).
   for ty in ← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types" do
     if let some t := field? ty "precisionTimestamp" then
-      if (← natD t "precision") != 6 then
-        throw "only microsecond timestamp columns are supported"
+      if (← natD t "precision") < 6 then
+        throw "timestamp columns coarser than microseconds are not supported"
   let base ← match ← oneof "read type" r ["namedTable", "virtualTable"] with
     | ("namedTable", t) =>
       let names ← (← arrD t "names").mapM (·.getStr?)

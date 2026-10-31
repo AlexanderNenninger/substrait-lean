@@ -953,9 +953,9 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
     if "timestamp" in ty:
         return "time", "time"
     if "precisionTimestamp" in ty:
-        # Times are microseconds; another precision is not modelled.
+        # Times are microseconds; a coarser precision is not modelled.
         pts = ty["precisionTimestamp"]
-        if isinstance(pts, dict) and pts.get("precision") == 6:
+        if isinstance(pts, dict) and pts.get("precision", 0) >= 6:
             return "time", "time"
         return "other", None
     if "date" in ty:
@@ -1310,7 +1310,8 @@ class _Parser:
                     raise Unsupported("nested field references are not supported")
                 return Field(_nat_d(sf, "field"))
             case "scalarFunction":
-                name = _base_name(self.name(_nat_d(v, "functionReference")))
+                full_name = self.name(_nat_d(v, "functionReference"))
+                name = _base_name(full_name)
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 # `array_length(regexp_match(s, p))`: NULL if `p` does not match.
                 if name == "array_length" and len(arg_js) == 1:
@@ -1334,20 +1335,27 @@ class _Parser:
                     # `ROUND(x, d)`: the digits stay an integer.
                     return name == "round" and k == 1
 
-                # An integer constant next to a double stands for that double.
-                if any(lean_expr_kind(e, cols.lean) == "float" for e in parsed):
-                    parsed = [
-                        e if keep_int(k) else self._as_double(a, e)
-                        for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
-                    ]
                 out = _lean_type_kind(_field(v, "outputType"))
                 floats = (
                     "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
                     "ceil", "round",
                 )  # fmt: skip
-                if name in floats and (
-                    out == "float" or any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
-                ):
+                has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
+                float_call = name in floats and (out == "float" or has_float)
+                # An integer constant next to a double, or in a double
+                # function, stands for that double.
+                if has_float or float_call:
+                    parsed = [
+                        e if keep_int(k) else self._as_double(a, e)
+                        for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
+                    ]
+                # Substrait's typed `greatest`/`least` are NULL if any argument is.
+                if name in ("greatest", "least") and ":" in full_name:
+                    out_e = _call(name, parsed)
+                    for a in reversed(parsed):
+                        out_e = If(Un("is_null", a), Lit(None, None), out_e)
+                    return out_e
+                if float_call:
                     # Integer arguments of a double function are converted.
                     parsed = [
                         Un("itof", e)
@@ -1871,11 +1879,11 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return _coalesce(a, rest)
         case "nullif", [a, b]:
             return If(Bin("eq", a, b), Lit(None, None), a)
-        case "greatest", [a, *rest]:
+        case (("greatest" | "greatest_skip_null"), [a, *rest]):
             for b in rest:
                 a = _pick(lambda x, y: Bin("lt", x, y), a, b)
             return a
-        case "least", [a, *rest]:
+        case (("least" | "least_skip_null"), [a, *rest]):
             for b in rest:
                 a = _pick(lambda x, y: Bin("lt", y, x), a, b)
             return a
