@@ -41,7 +41,7 @@ the checker know that the engine does not?** The checker knows three things:
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
 | 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | #75–#80 |
-| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved; keyed splits #74 |
+| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved; split keys for aggregates and `DISTINCT` done, co-partitioned joins and windows #74 |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
 
@@ -112,7 +112,11 @@ all or nothing per plan; per-expression elimination is a follow-up. Both are in 
 ## 2. Sharded evaluation (prototype)
 
 **Setting.** The sharded tables `S` are split over shards `cs`, and every
-other table is broadcast (`Sharding S cat cs`). The question is when
+other table is broadcast (`Sharding S K cat cs`). A table may have a
+**split key** `K t`: columns on which rows of different shards never agree,
+across all keyed tables (`Sharding.keyDisj`). All rows with one key value are
+then on one shard, as a Delta or Iceberg partition column (or a hash of it)
+guarantees. The question is when
 `eval q (D₁ ⊎ … ⊎ Dₙ) ~ eval q D₁ ⊎ … ⊎ eval q Dₙ`, or something close to it.
 
 **Proved** (`SubstraitLean/Partition.lean`, all without `sorry`):
@@ -124,8 +128,22 @@ other table is broadcast (`Sharding S cat cs`). The question is when
   reads only broadcast tables. For inner and cross joins that side can be
   either one; for left and semi joins it must be the right side. Literal
   tables (`VALUES`) are not linear, because every shard would repeat them.
-* `twoPhase_correct`. Take `COUNT`, integer `SUM`, `MIN` and `MAX`, without
-  `DISTINCT` and with or without `FILTER`. Aggregating each part by the
+* **With split keys,** `Rel.linear` also accepts an aggregate whose
+  `GROUP BY` contains the key, and a `DISTINCT` whose columns do. No group,
+  and no duplicate row, spans two shards (`aggregateEval_flatten_disjoint`,
+  `dedup_flatten_disjoint`), so each shard's result is final, for every
+  measure except `SUM`/`AVG` of doubles (they add in row order, and neither
+  sharding nor engines keep the order). `COUNT(DISTINCT …)` grouped by the
+  key is therefore fine. `Rel.keyCols` follows the key's columns through
+  filters, projections (and their copies of a column, which DataFusion's
+  `SELECT` lists emit), emits, joins with broadcast tables, unions and
+  aggregates. `Rel.keyRows` proves that every output row carries the key of
+  a row on its own shard.
+* `twoPhase_correct`. Take `COUNT`, integer `SUM`, `MIN` and `MAX`, with or
+  without `FILTER`. `MIN(DISTINCT x)` and `MAX(DISTINCT x)` are allowed too,
+  since `DISTINCT` changes nothing for them (`AggFn.apply_minMax_mem`).
+  `COUNT(DISTINCT k)` and `SUM(DISTINCT k)` are allowed when `k` is the whole
+  split key, because then no value is on two shards (`Measure.SplitOk`). Aggregating each part by the
   grouping keys and then aggregating the partial rows by their keys
   (`keyFields`, `combineMeasures`: `COUNT` combines by `SUM`) gives the
   aggregate of the whole. This holds with and without `GROUP BY`. The NULL
@@ -160,25 +178,32 @@ other table is broadcast (`Sharding S cat cs`). The question is when
 * **Float sums are not associative.** `SUM` and `AVG` of doubles add in list
   order in Lean (`floatSum`), and engines already return results that depend
   on their thread partitioning. A different split rounds differently, so
-  `--shard` **refuses** these aggregates. Rewriting `AVG` as `SUM / COUNT`
+  `--shard` **refuses** these aggregates by default. With
+  `float_order="any"` it splits them anyway (`floatCombine`: `SUM` of
+  partial sums, `AVG` as summed sums over summed counts). The result is
+  marked `proved: false`: the double sums round as the split makes them,
+  and everything else is still Lean's value. Rewriting `AVG` as `SUM / COUNT`
   does not help for doubles. For integers, `AVG(x)` is defined as the `AVG`
   of the converted doubles (`Aggregate.lean`), which is not
   `CAST(SUM(x)) / COUNT(x)` either. Supporting it needs an exact accumulator.
-* **`DISTINCT` aggregates** are refused: a value in two shards counts once
-  in the whole and twice in the parts. `DISTINCT` itself, windows and
-  `FETCH` are refused because they look at rows of other shards.
+  A proved error bound for the two-phase sum, which would let these run
+  sharded with a stated tolerance, is the epic #85.
+* **Other `DISTINCT` aggregates** are refused: a value in two shards counts
+  once in the whole and twice in the parts. `DISTINCT` without the split
+  key, windows and `FETCH` are refused because they look at rows of other
+  shards.
 * **Joins of two sharded tables** are refused. They are correct only when
-  both sides are split on the join key (co-partitioning). The same holds for
-  aggregates split on their grouping keys and windows split on their
-  `PARTITION BY` keys. These need a statement of the form "rows in different
-  shards differ on the key", which `Delta` and `Iceberg` partition columns
-  give. This is #74.
+  both sides are split on the join key (co-partitioning). Windows split on
+  their `PARTITION BY` keys need the same key facts. Both remain in #74.
 
-**Wiring.** `substrait-check --shard {"plan", "sharded"}` returns the
-partial and combining plans in Lean's written form, or exit code 5 with the
-reason. The schema of `__partials` is trusted. `sverify.partition.split` and
-`run_sharded(plan, shards, sharded=…, broadcast=…)` run the shards on Polars
-in parallel threads. `tests/test_partition.py` compares the sharded result
+**Wiring.** `substrait-check --shard {"plan", "sharded", "keys",
+"float_order"}` returns the partial and combining plans in Lean's written
+form and whether the result is proved, or exit code 5 with the reason. The
+schema of `__partials` is trusted. `sverify.partition.split` and
+`run_sharded(plan, shards, sharded=…, broadcast=…, keys=…, float_order=…)`
+run the shards on Polars in parallel threads. `run_sharded` checks a split
+key on the data before relying on it (`check_keys`), comparing doubles by
+their bits as Lean does. `tests/test_partition.py` compares the sharded result
 with the whole on random data and random splits.
 
 **Benchmark.** On one machine, a grouped aggregate over 10⁶ rows in 8 shards

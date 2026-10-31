@@ -207,7 +207,7 @@ def _(dt, pa, tables):
     import polars as pl
     import sverify as sv
     from sverify import duckdb_engine, polars_engine
-    from sverify.engine import read_tables, run_checker, substrait_json, written_plan
+    from sverify.engine import put_table, read_tables, run_checker, substrait_json, written_plan
     from sverify.incremental import arrow_rows
     from sverify.sql import Unsupported
     from sverify.sql import to_sql as plan_sql
@@ -218,8 +218,11 @@ def _(dt, pa, tables):
     con = sv.connect()
     duck = duckdb.connect()
     for _name, _t in tables.items():
+        put_table(con, _name, _t)
+        # DataFusion gets the table as it is, to show its own order.
         _batches = _t.to_batches() or [pa.RecordBatch.from_pylist([], schema=_t.schema)]
-        con.con.register_record_batches(_name, [_batches])
+        con.datafusion.deregister_table(_name)
+        con.datafusion.register_record_batches(_name, [_batches])
         duck.register(_name, _t)
     P = {k: pl.from_arrow(t) for k, t in tables.items()}
     MEM = {k: ibis.memtable(t) for k, t in tables.items()}
@@ -295,7 +298,7 @@ def _(dt, pa, tables):
 
         def run(self) -> "E":
             o = self.out
-            o["df"] = attempt(lambda: positional(con.con.sql(self.sql).to_arrow_table()))[0]
+            o["df"] = attempt(lambda: positional(con.datafusion.sql(self.sql).to_arrow_table()))[0]
             duck_sql = self.sql if self.duck == "same" else self.duck
             o["duck"] = attempt(lambda: duck.sql(duck_sql).fetchall())[0] if duck_sql else None
             with warnings.catch_warnings():

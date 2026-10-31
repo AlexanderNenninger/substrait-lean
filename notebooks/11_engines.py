@@ -41,13 +41,14 @@ def _(mo):
     model says is a separate question, and engines disagree with each other
     more than you'd think: about NULL join keys, NaN, integer overflow, the
     rounding of integer division, the order of ties. So plans in `sverify`
-    always come from DataFusion, but they can **run** on three engines:
+    come from one producer (the vendored Ibis producer, or DataFusion's for
+    SQL strings), but they can **run** on three engines:
 
     | engine | how the plan runs |
     |:---|:---|
-    | `"datafusion"` (default) | DataFusion's own Substrait consumer |
+    | `"duckdb"` (default) | `sverify.sql` writes the plan as DuckDB SQL |
     | `"polars"` | `sverify.polars_engine` translates the plan to a Polars `LazyFrame` |
-    | `"duckdb"` | `sverify.sql` writes the plan as DuckDB SQL |
+    | `"datafusion"` | DataFusion's own Substrait consumer (the `sverify[datafusion]` extra) |
 
     Polars and DuckDB run **Lean's written form** of the plan (`sv.written_plan`,
     chapter 2), so what runs is exactly what was checked. Their translators

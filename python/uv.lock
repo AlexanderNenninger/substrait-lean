@@ -670,8 +670,8 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-datafusion = [
-    { name = "datafusion" },
+duckdb = [
+    { name = "duckdb" },
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas" },
@@ -2149,26 +2149,26 @@ name = "sverify"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "datafusion" },
-    { name = "ibis-framework", extra = ["datafusion"] },
+    { name = "duckdb" },
+    { name = "ibis-framework", extra = ["duckdb"] },
     { name = "pyarrow" },
     { name = "substrait" },
 ]
 
 [package.optional-dependencies]
 all = [
+    { name = "datafusion" },
     { name = "deltalake" },
-    { name = "duckdb" },
     { name = "numpy" },
     { name = "polars" },
     { name = "pyiceberg", extra = ["pyarrow"] },
     { name = "pyspark" },
 ]
+datafusion = [
+    { name = "datafusion" },
+]
 delta = [
     { name = "deltalake" },
-]
-duckdb = [
-    { name = "duckdb" },
 ]
 iceberg = [
     { name = "pyiceberg", extra = ["pyarrow"] },
@@ -2199,19 +2199,19 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datafusion", specifier = "==51.0.0" },
+    { name = "datafusion", marker = "extra == 'datafusion'", specifier = "==51.0.0" },
     { name = "deltalake", marker = "extra == 'delta'", specifier = ">=1.6.6" },
-    { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=2.0.0" },
-    { name = "ibis-framework", extras = ["datafusion"], specifier = ">=12.0.0" },
+    { name = "duckdb", specifier = ">=2.0.0" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
     { name = "numpy", marker = "extra == 'polars'", specifier = ">=2.5.4" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["polars", "duckdb", "spark", "delta", "iceberg"], marker = "extra == 'all'" },
+    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg"], marker = "extra == 'all'" },
 ]
-provides-extras = ["polars", "duckdb", "spark", "delta", "iceberg", "all"]
+provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "all"]
 
 [package.metadata.requires-dev]
 dev = [

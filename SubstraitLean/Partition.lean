@@ -12,14 +12,21 @@ shard on its own, with the results combined afterwards.
   (`Rel.linear`) gives the union of its results on the shards:
   `Q(D₁ ⊎ … ⊎ Dₙ) ~ Q(D₁) ⊎ … ⊎ Q(Dₙ)`. Filters, projections, sorts and
   unions are linear; a join, semi or anti join is linear when one side reads
-  only broadcast tables (a copy on every shard). A join of two sharded
-  tables is not: it needs co-partitioning on the join key.
-* `twoPhase_correct`: `COUNT`, `SUM` of integers, `MIN` and `MAX` (without
-  `DISTINCT`) aggregate in two phases. Every shard aggregates its rows by the
-  grouping keys; the partial rows are then grouped again by the keys and
-  combined (`COUNT` by `SUM`, the others by themselves). Both phases skip
-  NULLs, so a group a shard lacks, or whose values are all NULL, changes
-  nothing.
+  only broadcast tables (a copy on every shard).
+* **Split keys.** When rows with equal values on some columns of each sharded
+  table are always on the same shard (`Sharding.keyDisj`: a Delta or
+  Iceberg partition column, or a hash of it), more is linear: an aggregate
+  whose `GROUP BY` contains the key, with any measure but the
+  order-dependent `SUM`/`AVG` of doubles, and a `DISTINCT` whose columns
+  contain it (`Rel.keyCols` follows the key through the plan).
+* `twoPhase_correct`: `COUNT`, `SUM` of integers, `MIN` and `MAX` aggregate
+  in two phases. Every shard aggregates its rows by the grouping keys; the
+  partial rows are then grouped again by the keys and combined (`COUNT` by
+  `SUM`, the others by themselves). Both phases skip NULLs, so a group a
+  shard lacks, or whose values are all NULL, changes nothing. `MIN` and
+  `MAX` may be `DISTINCT` (it changes nothing); `COUNT` and `SUM` may be
+  when their argument is the whole split key, so that no value is on two
+  shards (`Measure.SplitOk`).
 * `Rel.shardSplit_sound`: `Rel.shardSplit` turns a plan into the plan each
   shard runs and the plan that combines their outputs, with filters,
   projections and sorts above the aggregate moved to the combining plan.
@@ -28,16 +35,19 @@ Refused, because the result depends on how the rows are split:
 
 * `SUM` and `AVG` of doubles: floating-point addition is not associative,
   so a different split rounds differently (`floatSum` adds in list order).
-* `COUNT(DISTINCT …)` and friends: a value in two shards counts once in the
-  whole and twice in the parts.
-* `DISTINCT`, windows and `FETCH`: they look at rows of other shards.
+  `Rel.splitAgg` with `floats` splits them anyway (`floatCombine`), with no
+  theorem: `--shard` reports the result as not proved.
+* `COUNT(DISTINCT x)` and `SUM(DISTINCT x)` unless `x` is the split key: a
+  value in two shards counts once in the whole and twice in the parts.
+* `DISTINCT` without the split key, windows and `FETCH`: they look at rows
+  of other shards.
 
 In this model integer sums are exact. Engines compute them in 64 bits, so
 a partial sum may leave 64 bits when the total does not (a shard of large
 positive values next to one of large negative values). The SQL each dialect
 writes raises instead of wrapping (`Dialect.int_sum`), so two-phase
-evaluation either gives the right answer or fails; `intSum_partial_le`
-shows that it cannot fail spuriously when all values have the same sign.
+evaluation either gives the right answer or fails; `inI64_partial` shows
+that it cannot fail spuriously when all values have the same sign.
 -/
 
 namespace Substrait
@@ -85,6 +95,93 @@ theorem crossRows_flatMap_right {α : Type} (xs : Relation) (l : List α) (f : �
     simp only [List.flatMap_cons]
     exact (crossRows_append_right _ _ _).trans (List.Perm.append_left _ ih)
 
+theorem flatMap_eq_flatten_map {α β : Type} (l : List α) (f : α → List β) :
+    l.flatMap f = (l.map f).flatten := List.flatMap_def
+
+theorem dedup_perm_of_mem {α : Type} [DecidableEq α] {l l' : List α} (h : ∀ y, y ∈ l ↔ y ∈ l') :
+    (dedup l).Perm (dedup l') :=
+  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l))
+    (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l'))).mpr fun y => by
+      rw [mem_dedup, mem_dedup]; exact h y
+
+theorem dedup_append_disjoint {α : Type} [DecidableEq α] {A B : List α}
+    (h : ∀ a ∈ A, ∀ b ∈ B, a ≠ b) : (dedup (A ++ B)).Perm (dedup A ++ dedup B) :=
+  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _))
+    (List.nodup_append.mpr ⟨List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _),
+      List.nodup_iff_pairwise_ne.mpr (dedup_pairwise _),
+      fun a ha b hb => h a (mem_dedup.mp ha) b (mem_dedup.mp hb)⟩)).mpr fun y => by
+    simp only [mem_dedup, List.mem_append]
+
+/-- `DISTINCT` of parts with no row in common: the parts' `DISTINCT`s. -/
+theorem dedup_flatten_disjoint {α : Type} [DecidableEq α] :
+    ∀ {L : List (List α)}, L.Pairwise (fun A B => ∀ a ∈ A, ∀ b ∈ B, a ≠ b) →
+      (dedup L.flatten).Perm (L.map dedup).flatten
+  | [], _ => by simp [dedup, dedupN]
+  | A :: L, h => by
+    rw [List.pairwise_cons] at h
+    simp only [List.flatten_cons, List.map_cons]
+    refine (dedup_append_disjoint fun a ha b hb => ?_).trans
+      (List.Perm.append_left _ (dedup_flatten_disjoint h.2))
+    obtain ⟨B, hB, hb⟩ := List.mem_flatten.mp hb
+    exact h.1 B hB a ha b hb
+
+/-- The first position of `a` in `l`. -/
+def posOf {α : Type} [DecidableEq α] (a : α) : List α → Option Nat
+  | [] => none
+  | b :: l => if b = a then some 0 else (posOf a l).map (· + 1)
+
+/-- The positions of `ks` in `l`, if all occur. -/
+def posAll {α : Type} [DecidableEq α] (l : List α) : List α → Option (List Nat)
+  | [] => some []
+  | k :: ks => (posOf k l).bind fun p => (posAll l ks).map (p :: ·)
+
+theorem posOf_spec {α : Type} [DecidableEq α] {a : α} :
+    ∀ {l : List α} {p : Nat}, posOf a l = some p → p < l.length ∧ ∀ d, l.getD p d = a
+  | [], _, h => by simp [posOf] at h
+  | b :: l, p, h => by
+    simp only [posOf] at h
+    split at h
+    · rename_i hb
+      simp only [Option.some.injEq] at h
+      subst h
+      exact ⟨by simp, fun d => by simp [hb]⟩
+    · obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
+      obtain ⟨h1, h2⟩ := posOf_spec hq
+      exact ⟨by simp; omega, fun d => by simp only [List.getD_cons_succ]; exact h2 d⟩
+
+theorem posAll_spec {α : Type} [DecidableEq α] {l : List α} :
+    ∀ {ks : List α} {ps : List Nat}, posAll l ks = some ps →
+      (∀ p ∈ ps, p < l.length) ∧ ∀ d, ps.map (l.getD · d) = ks
+  | [], ps, h => by
+    simp only [posAll, Option.some.injEq] at h
+    subst h
+    simp
+  | k :: ks, ps, h => by
+    simp only [posAll, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨p, hp, qs, hqs, rfl⟩ := h
+    obtain ⟨h1, h2⟩ := posOf_spec hp
+    obtain ⟨h3, h4⟩ := posAll_spec hqs
+    refine ⟨fun x hx => ?_, fun d => by simp only [List.map_cons, List.cons.injEq]; exact ⟨h2 d, h4 d⟩⟩
+    simp only [List.mem_cons] at hx
+    rcases hx with rfl | hx
+    · exact h1
+    · exact h3 x hx
+
+theorem keyOf_append {k : List Nat} {x : Row} (y : Row) (h : ∀ i ∈ k, i < x.length) :
+    keyOf k (x ++ y) = keyOf k x :=
+  List.map_congr_left fun i hi => by
+    simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (h i hi)]
+
+theorem leftJoinRow_prefix {on : Expr} {n : Nat} {ys : Relation} {x row : Row}
+    (h : row ∈ leftJoinRow on n ys x) : ∃ z, row = x ++ z := by
+  unfold leftJoinRow at h
+  simp only [] at h
+  split at h
+  · exact ⟨_, List.mem_singleton.mp h⟩
+  · simp only [List.mem_filter, List.mem_map] at h
+    obtain ⟨⟨y, _, rfl⟩, _⟩ := h
+    exact ⟨y, rfl⟩
+
 /-! ## Plans depend only on the tables they read -/
 
 theorem Rel.arity_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arity) :
@@ -111,95 +208,6 @@ theorem Rel.eval_congr {c cat : Catalog} (ha : ∀ t, (c t).arity = (cat t).arit
       simp only [tables, List.mem_append] at h
       cases ty <;> simp only [eval, arity_congr ha b, eval_congr ha (r := a) (fun t ht => h t (.inl ht)),
         eval_congr ha (r := b) (fun t ht => h t (.inr ht))]
-
-/-! ## Shards -/
-
-/-- `cs` splits the tables `S` of `cat` into shards: every shard has the same
-schemas, the rows of a sharded table are spread over the shards, and every
-other table is copied to each shard (broadcast). -/
-structure Sharding (S : String → Bool) (cat : Catalog) (cs : List Catalog) : Prop where
-  arity : ∀ c ∈ cs, ∀ t, (c t).arity = (cat t).arity
-  split : ∀ t, S t = true → (cat t).rows.Perm (cs.flatMap fun c => (c t).rows)
-  bcast : ∀ t, S t = false → ∀ c ∈ cs, (c t).rows = (cat t).rows
-
-/-- Reads no sharded table. -/
-def Rel.const (S : String → Bool) (r : Rel) : Bool := r.tables.all (!S ·)
-
-/-- Linear in the sharded tables: the result on a union of shards is the union
-of the results. -/
-def Rel.linear (S : String → Bool) : Rel → Bool
-  | .read t => S t
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.linear S
-  | .unionAll a b => a.linear S && b.linear S
-  | .cross a b | .join a b .inner _ =>
-      (a.linear S && b.const S) || (a.const S && b.linear S)
-  | .join a b .left _ | .semi a b _ _ => a.linear S && b.const S
-  -- A literal table would be repeated on every shard.
-  | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .distinct _ | .aggregate _ _ _ => false
-
-theorem Sharding.const_eval {S : String → Bool} {cat : Catalog} {cs : List Catalog}
-    (hs : Sharding S cat cs) {r : Rel} (h : r.const S = true) : ∀ c ∈ cs, r.eval c = r.eval cat :=
-  fun c hc => Rel.eval_congr (hs.arity c hc) fun t ht => by
-    simp only [Rel.const, List.all_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
-    exact hs.bcast t (h t ht) c hc
-
-theorem Sharding.cross {S : String → Bool} {cat : Catalog} {cs : List Catalog}
-    (hs : Sharding S cat cs) {a b : Rel}
-    (ha : a.linear S = true → (a.eval cat).Perm (cs.flatMap a.eval))
-    (hb : b.linear S = true → (b.eval cat).Perm (cs.flatMap b.eval))
-    (h : (a.linear S && b.const S || a.const S && b.linear S) = true) :
-    (crossRows (a.eval cat) (b.eval cat)).Perm
-      (cs.flatMap fun c => crossRows (a.eval c) (b.eval c)) := by
-  simp only [Bool.or_eq_true, Bool.and_eq_true] at h
-  rcases h with ⟨hl, hc⟩ | ⟨hc, hl⟩
-  · refine ((ha hl).flatMap_right _).trans ?_
-    rw [List.flatMap_assoc]
-    exact .of_eq (flatMap_congr fun c hm => by rw [hs.const_eval hc c hm]; rfl)
-  · refine (crossRows_perm_right (hb hl)).trans ((crossRows_flatMap_right _ _ _).trans ?_)
-    exact .of_eq (flatMap_congr fun c hm => by rw [hs.const_eval hc c hm])
-
-/-- **Sharded evaluation**: a linear plan's result on the whole tables is the
-union of its results on the shards. -/
-theorem Rel.eval_sharded {S : String → Bool} {cat : Catalog} {cs : List Catalog}
-    (hs : Sharding S cat cs) : ∀ {r : Rel}, r.linear S = true → (r.eval cat).Perm (cs.flatMap r.eval)
-  | .read t, h => hs.split t h
-  | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h | .distinct _, h | .aggregate _ _ _, h => by
-      simp [linear] at h
-  | .filter r _, h => by
-      simp only [eval]
-      exact ((eval_sharded hs (r := r) h).filter _).trans (.of_eq List.filter_flatMap)
-  | .project r _, h | .emit r _, h => by
-      simp only [eval]
-      exact ((eval_sharded hs (r := r) h).map _).trans (.of_eq List.map_flatMap)
-  | .orderBy r _, h => by
-      simp only [eval]
-      exact (List.mergeSort_perm _ _).trans ((eval_sharded hs (r := r) h).trans
-        (flatMap_perm_congr fun _ _ => (List.mergeSort_perm _ _).symm))
-  | .unionAll a b, h => by
-      simp only [linear, Bool.and_eq_true] at h
-      simp only [eval]
-      exact ((eval_sharded hs (r := a) h.1).append (eval_sharded hs (r := b) h.2)).trans
-        (flatMap_append_perm _ _ _)
-  | .cross a b, h => by
-      simp only [eval]
-      exact hs.cross (eval_sharded hs (r := a)) (eval_sharded hs (r := b)) h
-  | .join a b .inner _, h => by
-      simp only [eval]
-      exact ((hs.cross (eval_sharded hs (r := a)) (eval_sharded hs (r := b)) h).filter _).trans
-        (.of_eq List.filter_flatMap)
-  | .join a b .left on, h => by
-      simp only [linear, Bool.and_eq_true] at h
-      simp only [eval]
-      refine ((eval_sharded hs (r := a) h.1).flatMap_right _).trans ?_
-      rw [List.flatMap_assoc]
-      exact .of_eq (flatMap_congr fun c hm => by
-        rw [hs.const_eval h.2 c hm, arity_congr (hs.arity c hm) b])
-  | .semi a b _ _, h => by
-      simp only [linear, Bool.and_eq_true] at h
-      simp only [eval]
-      refine ((eval_sharded hs (r := a) h.1).filter _).trans ?_
-      rw [List.filter_flatMap]
-      exact .of_eq (flatMap_congr fun c hm => by rw [hs.const_eval h.2 c hm])
 
 /-! ## Values of decomposable aggregates -/
 
@@ -286,14 +294,22 @@ def AggFn.decomposable : AggFn → Bool
 theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) : f.apply [] = .null := by
   cases f <;> first | rfl | exact (hf rfl).elim
 
-theorem AggFn.apply_minMax_perm {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min))
-    {vs ws : List Value} (h : vs.Perm ws) : f.apply vs = f.apply ws := by
+/-- `MIN` and `MAX` only depend on which values occur. -/
+theorem AggFn.apply_minMax_mem {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min))
+    {vs ws : List Value} (h : ∀ v, v ∈ vs ↔ v ∈ ws) : f.apply vs = f.apply ws := by
   by_cases hv : vs = []
-  · subst hv; rw [← h.nil_eq]
-  · have hw : ws ≠ [] := fun hw => hv (h.trans (by rw [hw])).eq_nil
+  · have hw : ws = [] := List.eq_nil_iff_forall_not_mem.mpr fun w hw => by
+      have := (h w).mpr hw; simp [hv] at this
+    rw [hv, hw]
+  · have hw : ws ≠ [] := fun hw => hv (List.eq_nil_iff_forall_not_mem.mpr fun v hv' => by
+      have := (h v).mp hv'; simp [hw] at this)
     have hl := apply_minMax hf hv
     exact IsLeast.unique (minMaxLe_antisymm max)
-      ⟨h.mem_iff.mp hl.1, fun w hw' => hl.2 w (h.mem_iff.mpr hw')⟩ (apply_minMax hf hw)
+      ⟨(h _).mp hl.1, fun w hw' => hl.2 w ((h w).mpr hw')⟩ (apply_minMax hf hw)
+
+theorem AggFn.apply_minMax_perm {f : AggFn} {max : Bool} (hf : f = (if max then .max else .min))
+    {vs ws : List Value} (h : vs.Perm ws) : f.apply vs = f.apply ws :=
+  apply_minMax_mem hf fun _ => h.mem_iff
 
 /-- Decomposable aggregates do not depend on the order of their values. -/
 theorem AggFn.apply_perm {f : AggFn} (hf : f.decomposable = true) {vs ws : List Value}
@@ -409,9 +425,23 @@ theorem AggFn.combine_apply {f : AggFn} (hf : f.decomposable = true) {L : List (
   · exact minMax_combine (max := false) rfl hnn
   · exact minMax_combine (max := true) rfl hnn
 
-/-! ## Decomposable measures -/
+/-! ## Measures that combine -/
 
-def Measure.decomposable (m : Measure) : Bool := m.fn.decomposable && !m.distinct
+/-- The value depends only on the bag of rows: not `SUM` or `AVG` of
+doubles, which add in row order. -/
+def Measure.orderFree (m : Measure) : Bool := m.fn.decomposable
+
+/-- Combines in two phases whatever the split: `DISTINCT` only for `MIN` and
+`MAX`, where it changes nothing. -/
+def Measure.decomposable (m : Measure) : Bool :=
+  m.fn.decomposable && (!m.distinct || m.fn == .min || m.fn == .max)
+
+/-- The values a measure aggregates, repeats included. -/
+def Measure.vals (m : Measure) (rows : Relation) : List Value :=
+  ((m.kept rows).map m.arg.eval).filter (· != .null)
+
+theorem Measure.inputs_eq (m : Measure) (rows : Relation) :
+    m.inputs rows = if m.distinct then dedup (m.vals rows) else m.vals rows := rfl
 
 theorem Measure.kept_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
     (m.kept xs).Perm (m.kept ys) := by
@@ -423,56 +453,103 @@ theorem Measure.kept_append (m : Measure) (xs ys : Relation) :
     m.kept (xs ++ ys) = m.kept xs ++ m.kept ys := by
   unfold kept; split <;> simp [List.filter_append]
 
-theorem Measure.inputs_nil (m : Measure) : m.inputs [] = [] := by
-  unfold inputs kept; cases m.filter <;> cases m.distinct <;> simp [dedup, dedupN]
+theorem Measure.vals_perm (m : Measure) {xs ys : Relation} (h : xs.Perm ys) :
+    (m.vals xs).Perm (m.vals ys) := ((m.kept_perm h).map _).filter _
 
-theorem Measure.inputs_append {m : Measure} (hd : m.distinct = false) (xs ys : Relation) :
-    m.inputs (xs ++ ys) = m.inputs xs ++ m.inputs ys := by
-  simp only [inputs, hd, Bool.false_eq_true, ↓reduceIte, kept_append, List.map_append,
-    List.filter_append]
+theorem Measure.vals_nil (m : Measure) : m.vals [] = [] := by
+  unfold vals kept; cases m.filter <;> simp
 
-theorem Measure.inputs_flatten {m : Measure} (hd : m.distinct = false) :
-    ∀ ss : List Relation, m.inputs ss.flatten = (ss.map m.inputs).flatten
-  | [] => inputs_nil m
-  | s :: ss => by simp only [List.flatten_cons, inputs_append hd, inputs_flatten hd ss, List.map_cons]
+theorem Measure.vals_append (m : Measure) (xs ys : Relation) :
+    m.vals (xs ++ ys) = m.vals xs ++ m.vals ys := by
+  simp only [vals, kept_append, List.map_append, List.filter_append]
 
-theorem Measure.decomposable_iff {m : Measure} :
-    m.decomposable = true ↔ m.fn.decomposable = true ∧ m.distinct = false := by
-  simp [decomposable]
+theorem Measure.vals_flatten (m : Measure) :
+    ∀ ss : List Relation, m.vals ss.flatten = (ss.map m.vals).flatten
+  | [] => m.vals_nil
+  | s :: ss => by simp only [List.flatten_cons, List.map_cons, vals_append, vals_flatten m ss]
 
-theorem Measure.eval_perm {m : Measure} (hm : m.decomposable = true) {xs ys : Relation}
+theorem Measure.mem_vals {m : Measure} {rows : Relation} {v : Value} (h : v ∈ m.vals rows) :
+    v ≠ .null ∧ ∃ row ∈ rows, m.arg.eval row = v := by
+  simp only [vals, List.mem_filter, List.mem_map, bne_iff_ne, ne_eq] at h
+  obtain ⟨⟨row, hrow, rfl⟩, hn⟩ := h
+  refine ⟨hn, row, ?_, rfl⟩
+  unfold kept at hrow; split at hrow
+  · exact hrow
+  · exact (List.mem_filter.mp hrow).1
+
+theorem Measure.eval_perm {m : Measure} (hm : m.orderFree = true) {xs ys : Relation}
     (h : xs.Perm ys) : m.eval xs = m.eval ys := by
-  obtain ⟨hf, hd⟩ := decomposable_iff.mp hm
-  simp only [eval]
-  refine AggFn.apply_perm hf ?_
-  simp only [inputs, hd, Bool.false_eq_true, ↓reduceIte]
-  exact ((m.kept_perm h).map _).filter _
+  simp only [eval, inputs_eq]
+  refine AggFn.apply_perm hm ?_
+  split
+  · exact dedup_perm_of_mem fun _ => (m.vals_perm h).mem_iff
+  · exact m.vals_perm h
+
+/-- Rows of different parts give `e` different values. -/
+def ValDisjoint (e : Expr) (A B : Relation) : Prop := ∀ a ∈ A, ∀ b ∈ B, e.eval a ≠ e.eval b
+
+/-- What combining `m` needs of the parts: for `COUNT(DISTINCT x)` and
+`SUM(DISTINCT x)`, that no value of `x` is in two of them. -/
+def Measure.SplitOk (m : Measure) (ss : List Relation) : Prop :=
+  m.distinct = true → m.fn ≠ .min → m.fn ≠ .max → ss.Pairwise (ValDisjoint m.arg)
+
+theorem Measure.splitOk_of_decomposable {m : Measure} (hm : m.decomposable = true)
+    (ss : List Relation) : m.SplitOk ss := fun hd h₁ h₂ => by
+  simp [decomposable, hd, h₁, h₂] at hm
+
+theorem Measure.SplitOk.filter_map {m : Measure} {ss : List Relation} (h : m.SplitOk ss)
+    (p : Relation → Bool) (f : Relation → Relation) (hf : ∀ s, ∀ x ∈ f s, x ∈ s) :
+    m.SplitOk ((ss.filter p).map f) := fun hd h₁ h₂ =>
+  List.pairwise_map.mpr (((h hd h₁ h₂).filter p).imp fun hab a ha b hb =>
+    hab a (hf _ a ha) b (hf _ b hb))
 
 /-- The combining aggregate of a measure's results on the parts is its result
 on the whole. -/
-theorem Measure.combine_eval {m : Measure} (hm : m.decomposable = true) {ss : List Relation}
-    (hne : ss ≠ []) :
+theorem Measure.combine_eval {m : Measure} (hm : m.orderFree = true) {ss : List Relation}
+    (hne : ss ≠ []) (hs : m.SplitOk ss) :
     m.fn.combine.apply ((ss.map m.eval).filter (· != .null)) = m.eval ss.flatten := by
-  obtain ⟨hf, hd⟩ := decomposable_iff.mp hm
-  have : ss.map m.eval = (ss.map m.inputs).map m.fn.apply := by simp [eval, Function.comp_def]
-  rw [this, AggFn.combine_apply hf (by simpa using hne) fun vs hvs v hv => ?_]
-  · simp only [eval, inputs_flatten hd]
-  · obtain ⟨s, _, rfl⟩ := List.mem_map.mp hvs
+  have hL : ss.map m.inputs ≠ [] := by simpa using hne
+  have hnn : ∀ vs ∈ ss.map m.inputs, ∀ v ∈ vs, v ≠ .null := fun vs hvs v hv => by
+    obtain ⟨s, _, rfl⟩ := List.mem_map.mp hvs
     exact (mem_inputs hv).1
+  have hmap : ss.map m.eval = (ss.map m.inputs).map m.fn.apply := by
+    simp [eval, Function.comp_def]
+  rw [hmap, AggFn.combine_apply hm hL hnn]
+  simp only [eval]
+  by_cases hd : m.distinct = true
+  · have hdd : ss.map m.inputs = (ss.map m.vals).map dedup := by
+      simp [inputs_eq, hd, Function.comp_def]
+    rw [hdd, inputs_eq]
+    simp only [hd, ↓reduceIte]
+    rw [vals_flatten]
+    have hmem : ∀ v, v ∈ ((ss.map m.vals).map dedup).flatten ↔ v ∈ dedup (ss.map m.vals).flatten := by
+      intro v
+      simp only [mem_dedup, List.mem_flatten, List.mem_map]
+      constructor
+      · rintro ⟨_, ⟨l, hl, rfl⟩, hv⟩; exact ⟨l, hl, mem_dedup.mp hv⟩
+      · rintro ⟨l, hl, hv⟩; exact ⟨_, ⟨l, hl, rfl⟩, mem_dedup.mpr hv⟩
+    by_cases hmin : m.fn = .min
+    · exact AggFn.apply_minMax_mem (max := false) (by simp [hmin]) hmem
+    by_cases hmax : m.fn = .max
+    · exact AggFn.apply_minMax_mem (max := true) (by simp [hmax]) hmem
+    refine AggFn.apply_perm hm (dedup_flatten_disjoint (List.pairwise_map.mpr
+      ((hs hd hmin hmax).imp fun hab a ha b hb => ?_))).symm
+    obtain ⟨_, x, hx, rfl⟩ := mem_vals ha
+    obtain ⟨_, y, hy, rfl⟩ := mem_vals hb
+    exact hab x hx y hy
+  · have hdd : ss.map m.inputs = ss.map m.vals := by simp [inputs_eq, hd]
+    rw [hdd, inputs_eq]
+    simp only [Bool.not_eq_true] at hd
+    simp only [hd, Bool.false_eq_true, ↓reduceIte]
+    rw [vals_flatten]
 
 /-! ## Aggregates do not depend on the order of their input -/
-
-theorem dedup_perm_of_mem {α : Type} [DecidableEq α] {l l' : List α} (h : ∀ y, y ∈ l ↔ y ∈ l') :
-    (dedup l).Perm (dedup l') :=
-  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l))
-    (List.nodup_iff_pairwise_ne.mpr (dedup_pairwise l'))).mpr fun y => by
-      rw [mem_dedup, mem_dedup]; exact h y
 
 theorem groupRows_perm {gs : List Expr} {xs ys : Relation} (h : xs.Perm ys) (k : Row) :
     (groupRows gs xs k).Perm (groupRows gs ys k) := h.filter _
 
 theorem aggregateEval_perm {gs : List Expr} {ms : List Measure}
-    (hms : ∀ m ∈ ms, m.decomposable = true) {xs ys : Relation} (h : xs.Perm ys) :
+    (hms : ∀ m ∈ ms, m.orderFree = true) {xs ys : Relation} (h : xs.Perm ys) :
     (aggregateEval gs ms xs).Perm (aggregateEval gs ms ys) := by
   unfold aggregateEval
   split
@@ -482,6 +559,68 @@ theorem aggregateEval_perm {gs : List Expr} {ms : List Measure}
       exact ⟨fun ⟨x, hx, e⟩ => ⟨x, h.mem_iff.mp hx, e⟩, fun ⟨x, hx, e⟩ => ⟨x, h.mem_iff.mpr hx, e⟩⟩
     · congr 1
       exact List.map_congr_left fun m hm => Measure.eval_perm (hms m hm) (groupRows_perm h k)
+
+/-! ## Aggregates of parts with no group in common -/
+
+theorem aggregateEval_append_disjoint {gs : List Expr} {ms : List Measure} (hg : gs ≠ [])
+    {A B : Relation} (h : ∀ a ∈ A, ∀ b ∈ B, groupKey gs a ≠ groupKey gs b) :
+    (aggregateEval gs ms (A ++ B)).Perm (aggregateEval gs ms A ++ aggregateEval gs ms B) := by
+  have hge : gs.isEmpty = false := by simpa using hg
+  simp only [aggregateEval, hge, Bool.false_eq_true, ↓reduceIte, List.map_append]
+  refine ((dedup_append_disjoint fun ka hka kb hkb => ?_).map _).trans (.of_eq ?_)
+  · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hka
+    obtain ⟨b, hb, rfl⟩ := List.mem_map.mp hkb
+    exact h a ha b hb
+  · rw [List.map_append]
+    congr 1
+    · refine List.map_congr_left fun k hk => ?_
+      obtain ⟨a, ha, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+      have : groupRows gs B (groupKey gs a) = [] :=
+        List.filter_eq_nil_iff.mpr fun b hb he =>
+          h a ha b hb (by simpa using he : groupKey gs b = groupKey gs a).symm
+      simp only [groupRows, List.filter_append] at this ⊢
+      rw [this, List.append_nil]
+    · refine List.map_congr_left fun k hk => ?_
+      obtain ⟨b, hb, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+      have : groupRows gs A (groupKey gs b) = [] :=
+        List.filter_eq_nil_iff.mpr fun a ha he =>
+          h a ha b hb (by simpa using he : groupKey gs a = groupKey gs b)
+      simp only [groupRows, List.filter_append] at this ⊢
+      rw [this, List.nil_append]
+
+/-- **Groups within parts**: when no group spans two parts, aggregating the
+whole is aggregating each part, for every measure. -/
+theorem aggregateEval_flatten_disjoint {gs : List Expr} {ms : List Measure} (hg : gs ≠ []) :
+    ∀ {ss : List Relation},
+      ss.Pairwise (fun A B => ∀ a ∈ A, ∀ b ∈ B, groupKey gs a ≠ groupKey gs b) →
+        (aggregateEval gs ms ss.flatten).Perm (ss.flatMap (aggregateEval gs ms))
+  | [], _ => by
+    have hge : gs.isEmpty = false := by simpa using hg
+    simp [aggregateEval, hge, dedup, dedupN]
+  | s :: ss, h => by
+    rw [List.pairwise_cons] at h
+    simp only [List.flatten_cons, List.flatMap_cons]
+    refine (aggregateEval_append_disjoint hg fun a ha b hb => ?_).trans
+      (List.Perm.append_left _ (aggregateEval_flatten_disjoint hg h.2))
+    obtain ⟨B, hB, hb⟩ := List.mem_flatten.mp hb
+    exact h.1 B hB a ha b hb
+
+theorem groupKey_eq_mem : ∀ {gs : List Expr} {a b : Row}, groupKey gs a = groupKey gs b →
+    ∀ e ∈ gs, e.eval a = e.eval b
+  | [], _, _, _, e, he => by simp at he
+  | g :: gs, a, b, h, e, he => by
+    simp only [groupKey, List.map_cons, List.cons.injEq] at h
+    simp only [List.mem_cons] at he
+    rcases he with rfl | he
+    · exact h.1
+    · exact groupKey_eq_mem (gs := gs) h.2 e he
+
+theorem keyOf_eq_of_groupKey {gs : List Expr} {kc : List Nat} {a b : Row}
+    (hkc : ∀ c ∈ kc, gs.contains (.field c) = true) (h : groupKey gs a = groupKey gs b) :
+    keyOf kc a = keyOf kc b :=
+  List.map_congr_left fun c hc => by
+    have := groupKey_eq_mem h (.field c) (by simpa using hkc c hc)
+    simpa [Expr.eval] using this
 
 /-! ## Two-phase aggregation -/
 
@@ -567,13 +706,15 @@ theorem aggregateEval_keys {gs : List Expr} {ms : List Measure} (hg : gs ≠ [])
 /-- **Two-phase aggregation**: aggregating each part, then combining the
 partial rows grouped by their keys, gives the aggregate of the whole. -/
 theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
-    (hms : ∀ m ∈ ms, m.decomposable = true) {ss : List Relation} (hne : ss ≠ []) :
+    (hms : ∀ m ∈ ms, m.orderFree = true) {ss : List Relation} (hne : ss ≠ [])
+    (hs : ∀ m ∈ ms, m.SplitOk ss) :
     (aggregateEval (keyFields gs.length) (combineMeasures gs.length ms)
       (ss.flatMap (aggregateEval gs ms))).Perm (aggregateEval gs ms ss.flatten) := by
   have hlen : ∀ k, (combineMeasures k ms).length = ms.length := fun k => by simp [combineMeasures]
   by_cases hg : gs = []
   · subst hg
     have hP : ss.flatMap (aggregateEval [] ms) = ss.map fun s => ms.map (·.eval s) := by
+      clear hs hne
       induction ss with
       | nil => rfl
       | cons s ss ih => cases ss <;> simp_all [aggregateEval]
@@ -582,7 +723,8 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
     refine .of_eq (congrArg (fun x => [x]) (List.ext_getElem (by simp [hlen]) fun i h₁ h₂ => ?_))
     simp only [List.length_map] at h₂
     simp only [List.getElem_map]
-    rw [combineMeasures_eval h₂, ← Measure.combine_eval (hms _ (List.getElem_mem h₂)) hne]
+    rw [combineMeasures_eval h₂, ← Measure.combine_eval (hms _ (List.getElem_mem h₂)) hne
+      (hs _ (List.getElem_mem h₂))]
     simp [Function.comp_def, List.getD, Nat.zero_add, h₂]
   · have hk : (keyFields gs.length).isEmpty = false := by
       cases gs with
@@ -621,7 +763,9 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
       refine List.ext_getElem (by simp [hlen]) fun i h₁ h₂ => ?_
       simp only [List.length_map] at h₂
       simp only [List.getElem_map]
-      rw [combineMeasures_eval h₂, ← Measure.combine_eval (hms _ (List.getElem_mem h₂)) hne',
+      rw [combineMeasures_eval h₂, ← Measure.combine_eval (hms _ (List.getElem_mem h₂)) hne'
+        ((hs _ (List.getElem_mem h₂)).filter_map p (groupRows gs · k)
+          fun _ _ hx => (List.mem_filter.mp hx).1),
         List.map_map, List.map_map]
       congr 2
       refine List.map_congr_left fun s _ => ?_
@@ -629,50 +773,449 @@ theorem twoPhase_correct {gs : List Expr} {ms : List Measure}
         List.getElem?_append_right (Nat.le_add_right _ _), Nat.add_sub_cancel_left,
         List.getElem?_map, List.getElem?_eq_getElem h₂, Option.map_some, Option.getD_some]
 
+/-! ## Shards -/
+
+/-- Where `ProjectRel`'s output has column `c` of its `n`-column input: its
+first copy among `es`, else `c` itself. -/
+def copyPos (n : Nat) (es : List Expr) (c : Nat) : Nat :=
+  match posOf (.field c) es with
+  | some i => n + i
+  | none => c
+
+theorem Rel.wf_congr {c cat : Catalog} (h : ∀ t, (c t).arity = (cat t).arity) :
+    ∀ {r : Rel}, r.WF cat → r.WF c
+  | .read _, _ => trivial
+  | .values _ _, hw => hw
+  | .fetch r _ _, hw | .distinct r, hw => wf_congr h (r := r) hw
+  | .filter r _, hw | .project r _, hw | .emit r _, hw | .window r _ _ _, hw
+  | .orderBy r _, hw | .aggregate r _ _, hw =>
+    ⟨wf_congr h (r := r) hw.1, by rw [arity_congr h r]; exact hw.2⟩
+  | .cross a b, hw => ⟨wf_congr h (r := a) hw.1, wf_congr h (r := b) hw.2⟩
+  | .join a b _ _, hw | .semi a b _ _, hw | .unionAll a b, hw =>
+    ⟨wf_congr h (r := a) hw.1, wf_congr h (r := b) hw.2.1,
+      by rw [arity_congr h a, arity_congr h b]; exact hw.2.2⟩
+
+/-- `cs` splits the tables `S` of `cat` into shards: every shard has the same
+schemas, the rows of a sharded table are spread over the shards, and every
+other table is copied to each shard (broadcast). A split key `K t` of a
+sharded table names columns that rows of different shards never agree on,
+across all keyed tables (`keyDisj`): all rows with the same key are on one
+shard. With no keys (`K = fun _ => none`) the last two fields say nothing. -/
+structure Sharding (S : String → Bool) (K : String → Option (List Nat)) (cat : Catalog)
+    (cs : List Catalog) : Prop where
+  wf : ∀ c ∈ cs, c.WF
+  arity : ∀ c ∈ cs, ∀ t, (c t).arity = (cat t).arity
+  split : ∀ t, S t = true → (cat t).rows.Perm (cs.flatMap fun c => (c t).rows)
+  bcast : ∀ t, S t = false → ∀ c ∈ cs, (c t).rows = (cat t).rows
+  keyLen : ∀ c ∈ cs, ∀ t kt, S t = true → K t = some kt → ∀ x ∈ (c t).rows, ∀ i ∈ kt, i < x.length
+  keyDisj : cs.Pairwise fun c c' => ∀ t t' kt kt', S t = true → S t' = true → K t = some kt →
+    K t' = some kt' → ∀ x ∈ (c t).rows, ∀ y ∈ (c' t').rows, keyOf kt x ≠ keyOf kt' y
+
+/-- Reads no sharded table. -/
+def Rel.const (S : String → Bool) (r : Rel) : Bool := r.tables.all (!S ·)
+
+mutual
+/-- Linear in the sharded tables: the result on a union of shards is the union
+of the results. Aggregates and `DISTINCT` are, when the split key is among
+their grouping columns. -/
+def Rel.linear (S : String → Bool) (K : String → Option (List Nat)) (cat : Catalog) : Rel → Bool
+  | .read t => S t
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.linear S K cat
+  | .unionAll a b => a.linear S K cat && b.linear S K cat
+  | .cross a b | .join a b .inner _ =>
+      (a.linear S K cat && b.const S) || (a.const S && b.linear S K cat)
+  | .join a b .left _ | .semi a b _ _ => a.linear S K cat && b.const S
+  | .distinct r => r.linear S K cat && (r.keyCols S K cat).isSome
+  | .aggregate r gs ms => r.linear S K cat && !gs.isEmpty && ms.all (·.orderFree) &&
+      match r.keyCols S K cat with
+      | some kc => kc.all fun c => gs.contains (.field c)
+      | none => false
+  -- A literal table would be repeated on every shard.
+  | .values _ _ | .fetch _ _ _ | .window _ _ _ _ => false
+
+/-- Where the split key is in the output of a linear plan (`Rel.keyRows`). -/
+def Rel.keyCols (S : String → Bool) (K : String → Option (List Nat)) (cat : Catalog) :
+    Rel → Option (List Nat)
+  | .read t => if S t then K t else none
+  | .filter r _ | .orderBy r _ | .distinct r | .semi r _ _ _ | .join r _ .left _ =>
+      r.keyCols S K cat
+  -- A key column the projection copies: the copy (an emit may keep only it).
+  | .project r es => (r.keyCols S K cat).map (·.map (copyPos (r.arity cat) es))
+  | .emit r m => (r.keyCols S K cat).bind (posAll m)
+  | .cross a b | .join a b .inner _ =>
+      if a.linear S K cat && b.const S then a.keyCols S K cat else none
+  | .unionAll a b => if a.keyCols S K cat == b.keyCols S K cat then a.keyCols S K cat else none
+  | .aggregate r gs _ => (r.keyCols S K cat).bind fun kc => posAll gs (kc.map .field)
+  | .values _ _ | .fetch _ _ _ | .window _ _ _ _ => none
+end
+
+theorem Sharding.const_eval {S : String → Bool} {K : String → Option (List Nat)} {cat : Catalog}
+    {cs : List Catalog} (hs : Sharding S K cat cs) {r : Rel} (h : r.const S = true) :
+    ∀ c ∈ cs, r.eval c = r.eval cat :=
+  fun c hc => Rel.eval_congr (hs.arity c hc) fun t ht => by
+    simp only [Rel.const, List.all_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
+    exact hs.bcast t (h t ht) c hc
+
+theorem Sharding.cross {S : String → Bool} {K : String → Option (List Nat)} {cat : Catalog}
+    {cs : List Catalog} (hs : Sharding S K cat cs) {a b : Rel}
+    (ha : a.linear S K cat = true → (a.eval cat).Perm (cs.flatMap a.eval))
+    (hb : b.linear S K cat = true → (b.eval cat).Perm (cs.flatMap b.eval))
+    (h : (a.linear S K cat && b.const S || a.const S && b.linear S K cat) = true) :
+    (crossRows (a.eval cat) (b.eval cat)).Perm
+      (cs.flatMap fun c => crossRows (a.eval c) (b.eval c)) := by
+  simp only [Bool.or_eq_true, Bool.and_eq_true] at h
+  rcases h with ⟨hl, hc⟩ | ⟨hc, hl⟩
+  · refine ((ha hl).flatMap_right _).trans ?_
+    rw [List.flatMap_assoc]
+    exact .of_eq (flatMap_congr fun c hm => by rw [hs.const_eval hc c hm]; rfl)
+  · refine (crossRows_perm_right (hb hl)).trans ((crossRows_flatMap_right _ _ _).trans ?_)
+    exact .of_eq (flatMap_congr fun c hm => by rw [hs.const_eval hc c hm])
+
+/-- A row's split key (at `kc`) is that of a row of a sharded table on the
+same shard. -/
+def KeyFrom (S : String → Bool) (K : String → Option (List Nat)) (c : Catalog) (kc : List Nat)
+    (row : Row) : Prop :=
+  (∀ i ∈ kc, i < row.length) ∧
+    ∃ t kt, S t = true ∧ K t = some kt ∧ ∃ x ∈ (c t).rows, keyOf kc row = keyOf kt x
+
+theorem KeyFrom.append {S : String → Bool} {K : String → Option (List Nat)} {c : Catalog}
+    {kc : List Nat} {x : Row} (h : KeyFrom S K c kc x) (y : Row) : KeyFrom S K c kc (x ++ y) := by
+  obtain ⟨hl, t, kt, h₁, h₂, x', hx', he⟩ := h
+  refine ⟨fun i hi => ?_, t, kt, h₁, h₂, x', hx', by rw [keyOf_append y hl, he]⟩
+  have := hl i hi
+  simp only [List.length_append]
+  omega
+
+/-- On each shard, the rows of a linear plan with a split key carry the key
+of a row of that shard. -/
+theorem Rel.keyRows {S : String → Bool} {K : String → Option (List Nat)} {cat : Catalog}
+    {cs : List Catalog} (hs : Sharding S K cat cs) {c : Catalog} (hc : c ∈ cs) :
+    ∀ {r : Rel} {kc : List Nat}, r.WF cat → r.linear S K cat = true →
+      r.keyCols S K cat = some kc → ∀ row ∈ r.eval c, KeyFrom S K c kc row
+  | .read t, kc, _, hl, hk, row, h => by
+    simp only [linear] at hl
+    simp only [keyCols, hl, ↓reduceIte] at hk
+    exact ⟨fun i hi => hs.keyLen c hc t kc hl hk row h i hi, t, kc, hl, hk, row, h, rfl⟩
+  | .values _ _, _, _, hl, _, _, _ | .fetch _ _ _, _, _, hl, _, _, _
+  | .window _ _ _ _, _, _, hl, _, _, _ => by
+    simp [linear] at hl
+  | .filter r _, kc, hw, hl, hk, row, h => by
+    simp only [linear] at hl
+    simp only [keyCols] at hk
+    simp only [eval, List.mem_filter] at h
+    exact keyRows hs hc (r := r) hw.1 hl hk row h.1
+  | .orderBy r _, kc, hw, hl, hk, row, h => by
+    simp only [linear] at hl
+    simp only [keyCols] at hk
+    simp only [eval, List.mem_mergeSort] at h
+    exact keyRows hs hc (r := r) hw.1 hl hk row h
+  | .semi r _ _ _, kc, hw, hl, hk, row, h => by
+    simp only [linear, Bool.and_eq_true] at hl
+    simp only [keyCols] at hk
+    simp only [eval, List.mem_filter] at h
+    exact keyRows hs hc (r := r) hw.1 hl.1 hk row h.1
+  | .distinct r, kc, hw, hl, hk, row, h => by
+    simp only [linear, Bool.and_eq_true] at hl
+    simp only [keyCols] at hk
+    simp only [eval, mem_dedup] at h
+    exact keyRows hs hc (r := r) hw hl.1 hk row h
+  | .project r es, kc, hw, hl, hk, row, h => by
+    simp only [linear] at hl
+    simp only [keyCols, Option.map_eq_some_iff] at hk
+    obtain ⟨kc₀, hk₀, rfl⟩ := hk
+    simp only [eval, List.mem_map] at h
+    obtain ⟨x, hx, rfl⟩ := h
+    obtain ⟨hlt, t, kt, h₁, h₂, x', hx', he⟩ := keyRows hs hc (r := r) hw.1 hl hk₀ x hx
+    have hxl : x.length = r.arity cat := by
+      rw [eval_arity (hs.wf c hc) (wf_congr (hs.arity c hc) hw.1) x hx, arity_congr (hs.arity c hc)]
+    -- Each key column, at its copy or in place, holds the same value.
+    have hcol : ∀ k ∈ kc₀, copyPos (r.arity cat) es k < (x ++ es.map (·.eval x)).length ∧
+        (x ++ es.map (·.eval x)).getD (copyPos (r.arity cat) es k) .null = x.getD k .null := by
+      intro k hk
+      unfold copyPos
+      split
+      · rename_i i hi
+        obtain ⟨hil, hes⟩ := posOf_spec hi
+        have hes' : es[i] = .field k := by
+          have := hes (.lit .null); rwa [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hil,
+            Option.getD_some] at this
+        refine ⟨by simp; omega, ?_⟩
+        rw [← hxl, List.getD_eq_getElem?_getD, List.getElem?_append_right (by omega)]
+        simp [List.getElem?_eq_getElem hil, hes', Expr.eval]
+      · exact ⟨by simp; have := hlt k hk; omega, by
+          rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (hlt k hk),
+            ← List.getD_eq_getElem?_getD]⟩
+    refine ⟨fun i hi => ?_, t, kt, h₁, h₂, x', hx', ?_⟩
+    · obtain ⟨k, hk, rfl⟩ := List.mem_map.mp hi
+      exact (hcol k hk).1
+    · rw [← he]
+      simp only [keyOf, List.map_map]
+      exact List.map_congr_left fun k hk => (hcol k hk).2
+  | .emit r m, kc, hw, hl, hk, row, h => by
+    simp only [linear] at hl
+    simp only [keyCols, Option.bind_eq_some_iff] at hk
+    obtain ⟨kc₀, hk₀, hp⟩ := hk
+    simp only [eval, List.mem_map] at h
+    obtain ⟨x, hx, rfl⟩ := h
+    obtain ⟨_, t, kt, h₁, h₂, x', hx', he⟩ := keyRows hs hc (r := r) hw.1 hl hk₀ x hx
+    obtain ⟨hlt, hmap⟩ := posAll_spec hp
+    refine ⟨fun i hi => by simpa using hlt i hi, t, kt, h₁, h₂, x', hx', ?_⟩
+    rw [← he, ← hmap 0]
+    simp only [keyOf, List.map_map]
+    exact List.map_congr_left fun p hp => by
+      simp [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem (hlt p hp)]
+  | .cross a b, kc, hw, hl, hk, row, h => by
+    simp only [keyCols] at hk
+    split at hk
+    · rename_i hab
+      simp only [Bool.and_eq_true] at hab
+      simp only [eval, mem_crossRows] at h
+      obtain ⟨x, hx, y, _, rfl⟩ := h
+      exact (keyRows hs hc (r := a) hw.1 hab.1 hk x hx).append y
+    · simp at hk
+  | .join a b .inner _, kc, hw, hl, hk, row, h => by
+    simp only [keyCols] at hk
+    split at hk
+    · rename_i hab
+      simp only [Bool.and_eq_true] at hab
+      simp only [eval, List.mem_filter, mem_crossRows] at h
+      obtain ⟨⟨x, hx, y, _, rfl⟩, _⟩ := h
+      exact (keyRows hs hc (r := a) hw.1 hab.1 hk x hx).append y
+    · simp at hk
+  | .join a b .left _, kc, hw, hl, hk, row, h => by
+    simp only [linear, Bool.and_eq_true] at hl
+    simp only [keyCols] at hk
+    simp only [eval, List.mem_flatMap] at h
+    obtain ⟨x, hx, h⟩ := h
+    obtain ⟨z, rfl⟩ := leftJoinRow_prefix h
+    exact (keyRows hs hc (r := a) hw.1 hl.1 hk x hx).append z
+  | .unionAll a b, kc, hw, hl, hk, row, h => by
+    simp only [linear, Bool.and_eq_true] at hl
+    simp only [keyCols] at hk
+    split at hk
+    · rename_i hab
+      have hb : b.keyCols S K cat = some kc := by rw [← beq_iff_eq.mp hab]; exact hk
+      simp only [eval, List.mem_append] at h
+      rcases h with h | h
+      · exact keyRows hs hc (r := a) hw.1 hl.1 hk row h
+      · exact keyRows hs hc (r := b) hw.2.1 hl.2 hb row h
+    · simp at hk
+  | .aggregate r gs ms, kc, hw, hl, hk, row, h => by
+    simp only [linear, Bool.and_eq_true] at hl
+    obtain ⟨⟨⟨hl, hg⟩, _⟩, _⟩ := hl
+    have hg' : gs ≠ [] := by intro he; simp [he] at hg
+    simp only [keyCols, Option.bind_eq_some_iff] at hk
+    obtain ⟨kc₀, hk₀, hp⟩ := hk
+    obtain ⟨k, grp, rfl, _, hkx⟩ := mem_aggregateEval h
+    rcases hkx with ⟨hgs, _⟩ | ⟨x, hx, rfl⟩
+    · exact absurd hgs hg'
+    obtain ⟨_, t, kt, h₁, h₂, x', hx', he⟩ := keyRows hs hc (r := r) hw.1 hl hk₀ x hx
+    obtain ⟨hlt, hmap⟩ := posAll_spec hp
+    have hlen : ∀ i ∈ kc, i < (groupKey gs x).length := fun i hi => by
+      rw [groupKey_length]; exact hlt i hi
+    refine ⟨fun i hi => by have := hlen i hi; simp only [List.length_append]; omega,
+      t, kt, h₁, h₂, x', hx', ?_⟩
+    rw [keyOf_append _ hlen, ← he]
+    have hm := hmap (.lit .null)
+    calc keyOf kc (groupKey gs x)
+        = (kc.map (gs.getD · (.lit .null))).map (·.eval x) := by
+          simp only [keyOf, groupKey, List.map_map]
+          exact List.map_congr_left fun p hp => by
+            simp [List.getD_eq_getElem?_getD, List.getElem?_map,
+              List.getElem?_eq_getElem (hlt p hp)]
+      _ = keyOf kc₀ x := by rw [hm]; simp [keyOf, Expr.eval]
+
+/-- Rows of a linear plan on different shards differ on the split key. -/
+theorem Sharding.rows_disjoint {S : String → Bool} {K : String → Option (List Nat)} {cat : Catalog}
+    {cs : List Catalog} (hs : Sharding S K cat cs) {r : Rel} {kc : List Nat} (hw : r.WF cat)
+    (hl : r.linear S K cat = true) (hk : r.keyCols S K cat = some kc) :
+    (cs.map r.eval).Pairwise fun A B => ∀ a ∈ A, ∀ b ∈ B, keyOf kc a ≠ keyOf kc b :=
+  List.pairwise_map.mpr (hs.keyDisj.imp_of_mem fun hc hc' hd a ha b hb he => by
+    obtain ⟨_, t, kt, h₁, h₂, x, hx, ex⟩ := Rel.keyRows hs hc hw hl hk a ha
+    obtain ⟨_, t', kt', h₁', h₂', y, hy, ey⟩ := Rel.keyRows hs hc' hw hl hk b hb
+    exact hd t t' kt kt' h₁ h₁' h₂ h₂' x hx y hy (by rw [← ex, ← ey, he]))
+
+/-- **Sharded evaluation**: a linear plan's result on the whole tables is the
+union of its results on the shards. -/
+theorem Rel.eval_sharded {S : String → Bool} {K : String → Option (List Nat)} {cat : Catalog}
+    {cs : List Catalog} (hs : Sharding S K cat cs) :
+    ∀ {r : Rel}, r.WF cat → r.linear S K cat = true → (r.eval cat).Perm (cs.flatMap r.eval)
+  | .read t, _, h => hs.split t h
+  | .values _ _, _, h | .fetch _ _ _, _, h | .window _ _ _ _, _, h => by
+      simp [linear] at h
+  | .filter r _, hw, h => by
+      simp only [linear] at h
+      simp only [eval]
+      exact ((eval_sharded hs (r := r) hw.1 h).filter _).trans (.of_eq List.filter_flatMap)
+  | .project r _, hw, h | .emit r _, hw, h => by
+      simp only [linear] at h
+      simp only [eval]
+      exact ((eval_sharded hs (r := r) hw.1 h).map _).trans (.of_eq List.map_flatMap)
+  | .orderBy r _, hw, h => by
+      simp only [linear] at h
+      simp only [eval]
+      exact (List.mergeSort_perm _ _).trans ((eval_sharded hs (r := r) hw.1 h).trans
+        (flatMap_perm_congr fun _ _ => (List.mergeSort_perm _ _).symm))
+  | .unionAll a b, hw, h => by
+      simp only [linear, Bool.and_eq_true] at h
+      simp only [eval]
+      exact ((eval_sharded hs (r := a) hw.1 h.1).append (eval_sharded hs (r := b) hw.2.1 h.2)).trans
+        (flatMap_append_perm _ _ _)
+  | .cross a b, hw, h => by
+      simp only [linear] at h
+      simp only [eval]
+      exact hs.cross (eval_sharded hs (r := a) hw.1) (eval_sharded hs (r := b) hw.2) h
+  | .join a b .inner _, hw, h => by
+      simp only [linear] at h
+      simp only [eval]
+      exact ((hs.cross (eval_sharded hs (r := a) hw.1) (eval_sharded hs (r := b) hw.2.1) h).filter
+        _).trans (.of_eq List.filter_flatMap)
+  | .join a b .left on, hw, h => by
+      simp only [linear, Bool.and_eq_true] at h
+      simp only [eval]
+      refine ((eval_sharded hs (r := a) hw.1 h.1).flatMap_right _).trans ?_
+      rw [List.flatMap_assoc]
+      exact .of_eq (flatMap_congr fun c hm => by
+        rw [hs.const_eval h.2 c hm, arity_congr (hs.arity c hm) b])
+  | .semi a b _ _, hw, h => by
+      simp only [linear, Bool.and_eq_true] at h
+      simp only [eval]
+      refine ((eval_sharded hs (r := a) hw.1 h.1).filter _).trans ?_
+      rw [List.filter_flatMap]
+      exact .of_eq (flatMap_congr fun c hm => by rw [hs.const_eval h.2 c hm])
+  | .distinct r, hw, h => by
+      simp only [linear, Bool.and_eq_true, Option.isSome_iff_exists] at h
+      obtain ⟨hl, kc, hk⟩ := h
+      simp only [eval]
+      refine (dedup_perm_of_mem fun _ => (eval_sharded hs (r := r) hw hl).mem_iff).trans ?_
+      rw [flatMap_eq_flatten_map]
+      refine (dedup_flatten_disjoint ((hs.rows_disjoint (r := r) hw hl hk).imp
+        fun hab a ha b hb he => hab a ha b hb (by rw [he]))).trans (.of_eq ?_)
+      simp [flatMap_eq_flatten_map, Function.comp_def]
+  | .aggregate r gs ms, hw, h => by
+      simp only [linear] at h
+      cases hk : r.keyCols S K cat with
+      | none => simp [hk] at h
+      | some kc =>
+        simp only [hk, Bool.and_eq_true, List.all_eq_true] at h
+        obtain ⟨⟨⟨hl, hg⟩, hms⟩, hkc⟩ := h
+        have hg' : gs ≠ [] := by intro he; simp [he] at hg
+        simp only [eval]
+        refine (aggregateEval_perm hms (eval_sharded hs hw.1 hl)).trans ?_
+        rw [flatMap_eq_flatten_map]
+        refine (aggregateEval_flatten_disjoint hg' ((hs.rows_disjoint hw.1 hl hk).imp
+          fun hab a ha b hb he => hab a ha b hb (keyOf_eq_of_groupKey hkc he))).trans (.of_eq ?_)
+        simp [flatMap_eq_flatten_map, Function.comp_def]
+
 /-! ## Plans -/
 
-theorem flatMap_eq_flatten_map {α β : Type} (l : List α) (f : α → List β) :
-    l.flatMap f = (l.map f).flatten := List.flatMap_def
+/-- `m` combines in two phases over the shards of a plan whose split key is
+at `kc`: `COUNT`/`SUM(DISTINCT x)` too when `x` is the whole split key. -/
+def Measure.twoPhase (kc : Option (List Nat)) (m : Measure) : Bool :=
+  m.decomposable || (m.orderFree && match kc with
+    | some [c] => m.arg == .field c
+    | _ => false)
+
+theorem Measure.orderFree_of_twoPhase {kc : Option (List Nat)} {m : Measure}
+    (h : m.twoPhase kc = true) : m.orderFree = true := by
+  simp only [twoPhase, Bool.or_eq_true, Bool.and_eq_true] at h
+  rcases h with h | ⟨h, _⟩
+  · simp only [decomposable, Bool.and_eq_true] at h; exact h.1
+  · exact h
+
+theorem Measure.splitOk_of_twoPhase {S : String → Bool} {K : String → Option (List Nat)}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) {r : Rel} (hw : r.WF cat)
+    (hl : r.linear S K cat = true) {m : Measure} (hm : m.twoPhase (r.keyCols S K cat) = true) :
+    m.SplitOk (cs.map r.eval) := by
+  intro hd h₁ h₂
+  simp only [twoPhase, Bool.or_eq_true, Bool.and_eq_true] at hm
+  rcases hm with hm | ⟨_, hm⟩
+  · exact splitOk_of_decomposable hm _ hd h₁ h₂
+  · split at hm
+    · rename_i c hk
+      have harg : m.arg = .field c := by simpa using hm
+      exact (hs.rows_disjoint hw hl hk).imp fun hab a ha b hb he =>
+        hab a ha b hb (by
+          simp only [harg, Expr.eval] at he
+          show [a.getD c .null] = [b.getD c .null]
+          rw [he])
+    · simp at hm
 
 /-- **Two-phase aggregation over shards**: aggregate each shard, then combine. -/
-theorem Rel.eval_twoPhase {S : String → Bool} {cat : Catalog} {cs : List Catalog}
-    (hs : Sharding S cat cs) (hne : cs ≠ []) {r : Rel} {gs : List Expr} {ms : List Measure}
-    (hr : r.linear S = true) (hms : ∀ m ∈ ms, m.decomposable = true) :
+theorem Rel.eval_twoPhase {S : String → Bool} {K : String → Option (List Nat)} {cat : Catalog}
+    {cs : List Catalog} (hs : Sharding S K cat cs) (hne : cs ≠ []) {r : Rel} {gs : List Expr}
+    {ms : List Measure} (hw : r.WF cat) (hr : r.linear S K cat = true) (hms : ∀ m ∈ ms, m.twoPhase (r.keyCols S K cat) = true) :
     (aggregateEval gs ms (r.eval cat)).Perm
       (aggregateEval (keyFields gs.length) (combineMeasures gs.length ms)
         (cs.flatMap fun c => aggregateEval gs ms (r.eval c))) := by
-  refine (aggregateEval_perm hms (eval_sharded hs hr)).trans ?_
-  have := twoPhase_correct (gs := gs) hms (ss := cs.map r.eval) (by simpa using hne)
+  have hof := fun m hm => Measure.orderFree_of_twoPhase (hms m hm)
+  refine (aggregateEval_perm hof (eval_sharded hs hw hr)).trans ?_
+  have := twoPhase_correct (gs := gs) hof (ss := cs.map r.eval) (by simpa using hne)
+    fun m hm => Measure.splitOk_of_twoPhase hs hw hr (hms m hm)
   rw [List.flatMap_map] at this
   rw [flatMap_eq_flatten_map]
   exact this.symm
 
+/-! ### Doubles, unproved -/
+
+/-- The partial measures for splitting `SUM`/`AVG` of doubles: `AVG` as a
+`SUM` and a `COUNT`. -/
+def floatPartial (m : Measure) : List Measure :=
+  if m.fn = .avg then [{ m with fn := .fsum }, { m with fn := .count }] else [m]
+
+/-- Splits with `floatCombine`: the measures of `Measure.twoPhase`, and
+`SUM`/`AVG` of doubles (not `DISTINCT`). -/
+def Measure.floatSplittable (kc : Option (List Nat)) (m : Measure) : Bool :=
+  m.twoPhase kc || ((m.fn == .fsum || m.fn == .avg) && !m.distinct)
+
+/-- Combine the partial rows of `floatPartial` (keys first): `SUM` of the
+partial sums, and an `AVG` as the sum of its sums over the sum of its
+counts. There is no theorem: the rounding of the sums depends on the split. -/
+def floatCombine (k : Nat) (ms : List Measure) (input : Rel) : Rel :=
+  let widths := ms.map fun m => if m.fn = .avg then 2 else 1
+  let offs := (List.range ms.length).map fun i => (widths.take i).sum
+  let total := widths.sum
+  let cms := (ms.zip offs).flatMap fun (m, o) =>
+    if m.fn = .avg then
+      [{ fn := .fsum, arg := .field (k + o) }, { fn := .sum, arg := .field (k + o + 1) : Measure }]
+    else [{ fn := m.fn.combine, arg := .field (k + o) }]
+  let avgs := (ms.zip offs).filter (·.1.fn = .avg)
+  let divs := avgs.map fun (_, o) => Expr.bin .fdiv (.field (k + o)) (.un .itof (.field (k + o + 1)))
+  let out := (ms.zip offs).map fun (m, o) =>
+    if m.fn = .avg then k + total + avgs.findIdx (·.2 == o) else k + o
+  .emit (.project (.aggregate input (keyFields k) cms) divs) (List.range k ++ out)
+
 /-- The aggregate below the filters, projections and sorts at the top of a plan,
 split into the plan each shard runs and the plan that combines their
-results, which reads them from the table `P`. -/
-def Rel.splitAgg (S : String → Bool) (P : String) : Rel → Option (Rel × Rel)
+results, which reads them from the table `P`. With `floats`, `SUM` and `AVG`
+of doubles split too (`floatCombine`, unproved). -/
+def Rel.splitAgg (S : String → Bool) (K : String → Option (List Nat)) (cat : Catalog) (P : String)
+    (floats : Bool) : Rel → Option (Rel × Rel)
   | .aggregate r gs ms =>
-      if r.linear S && ms.all (·.decomposable) then
+      if r.linear S K cat && ms.all (·.twoPhase (r.keyCols S K cat)) then
         some (.aggregate r gs ms,
           .aggregate (.read P) (keyFields gs.length) (combineMeasures gs.length ms))
+      else if floats && r.linear S K cat && ms.all (·.floatSplittable (r.keyCols S K cat)) then
+        some (.aggregate r gs (ms.flatMap floatPartial), floatCombine gs.length ms (.read P))
       else none
-  | .filter r c => (r.splitAgg S P).map fun pq => (pq.1, .filter pq.2 c)
-  | .project r es => (r.splitAgg S P).map fun pq => (pq.1, .project pq.2 es)
-  | .emit r m => (r.splitAgg S P).map fun pq => (pq.1, .emit pq.2 m)
-  | .orderBy r keys => (r.splitAgg S P).map fun pq => (pq.1, .orderBy pq.2 keys)
+  | .filter r c => (r.splitAgg S K cat P floats).map fun pq => (pq.1, .filter pq.2 c)
+  | .project r es => (r.splitAgg S K cat P floats).map fun pq => (pq.1, .project pq.2 es)
+  | .emit r m => (r.splitAgg S K cat P floats).map fun pq => (pq.1, .emit pq.2 m)
+  | .orderBy r keys => (r.splitAgg S K cat P floats).map fun pq => (pq.1, .orderBy pq.2 keys)
   | _ => none
 
 /-- Sharded evaluation of `r`: the plan each shard runs, and the plan that
 combines their results (read from the table `P`). A linear plan's results
 are just concatenated. -/
-def Rel.shardSplit (S : String → Bool) (P : String) (r : Rel) : Option (Rel × Rel) :=
-  if r.linear S then some (r, .read P) else r.splitAgg S P
+def Rel.shardSplit (S : String → Bool) (K : String → Option (List Nat)) (cat : Catalog) (P : String)
+    (floats : Bool) (r : Rel) : Option (Rel × Rel) :=
+  if r.linear S K cat then some (r, .read P) else r.splitAgg S K cat P floats
 
-theorem Rel.splitAgg_sound {S : String → Bool} {P : String} {cat : Catalog} {cs : List Catalog}
-    (hs : Sharding S cat cs) (hne : cs ≠ []) {C : Catalog} :
-    ∀ {r p q : Rel}, r.splitAgg S P = some (p, q) → (C P).rows = cs.flatMap p.eval →
-      (r.eval cat).Perm (q.eval C)
-  | .aggregate r gs ms, p, q, h, hC => by
+theorem Rel.splitAgg_sound {S : String → Bool} {K : String → Option (List Nat)} {P : String}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hne : cs ≠ []) {C : Catalog} :
+    ∀ {r p q : Rel}, r.WF cat → r.splitAgg S K cat P false = some (p, q) →
+      (C P).rows = cs.flatMap p.eval → (r.eval cat).Perm (q.eval C)
+  | .aggregate r gs ms, p, q, hw, h, hC => by
     simp only [splitAgg] at h
     split at h
     · rename_i hc
@@ -680,47 +1223,49 @@ theorem Rel.splitAgg_sound {S : String → Bool} {P : String} {cat : Catalog} {c
       simp only [Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       simp only [eval, hC]
-      exact eval_twoPhase hs hne hc.1 hc.2
-    · simp at h
-  | .filter r c, p, q, h, hC | .project r c, p, q, h, hC | .emit r c, p, q, h, hC => by
+      exact eval_twoPhase hs hne hw.1 hc.1 hc.2
+    · split at h
+      · rename_i hc; simp at hc
+      · simp at h
+  | .filter r c, p, q, hw, h, hC | .project r c, p, q, hw, h, hC | .emit r c, p, q, hw, h, hC => by
     simp only [splitAgg] at h
-    cases hr : r.splitAgg S P with
+    cases hr : r.splitAgg S K cat P false with
     | none => simp [hr] at h
     | some pq =>
       simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      have ih := splitAgg_sound hs hne (r := r) hr hC
+      have ih := splitAgg_sound hs hne (r := r) hw.1 hr hC
       simp only [eval]
       first | exact ih.filter _ | exact ih.map _
-  | .orderBy r keys, p, q, h, hC => by
+  | .orderBy r keys, p, q, hw, h, hC => by
     simp only [splitAgg] at h
-    cases hr : r.splitAgg S P with
+    cases hr : r.splitAgg S K cat P false with
     | none => simp [hr] at h
     | some pq =>
       simp only [hr, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       simp only [eval]
-      exact (List.mergeSort_perm _ _).trans ((splitAgg_sound hs hne (r := r) hr hC).trans
+      exact (List.mergeSort_perm _ _).trans ((splitAgg_sound hs hne (r := r) hw.1 hr hC).trans
         (List.mergeSort_perm _ _).symm)
-  | .read _, _, _, h, _ | .values _ _, _, _, h, _ | .cross _ _, _, _, h, _
-  | .join _ _ _ _, _, _, h, _ | .fetch _ _ _, _, _, h, _ | .unionAll _ _, _, _, h, _
-  | .window _ _ _ _, _, _, h, _ | .semi _ _ _ _, _, _, h, _ | .distinct _, _, _, h, _ => by
+  | .read _, _, _, _, h, _ | .values _ _, _, _, _, h, _ | .cross _ _, _, _, _, h, _
+  | .join _ _ _ _, _, _, _, h, _ | .fetch _ _ _, _, _, _, h, _ | .unionAll _ _, _, _, _, h, _
+  | .window _ _ _ _, _, _, _, h, _ | .semi _ _ _ _, _, _, _, h, _ | .distinct _, _, _, _, h, _ => by
     simp [splitAgg] at h
 
 /-- **Sharded evaluation is sound**: run `p` on every shard, put the results
 in table `P`, and `q` gives the plan's result. -/
-theorem Rel.shardSplit_sound {S : String → Bool} {P : String} {cat : Catalog} {cs : List Catalog}
-    (hs : Sharding S cat cs) (hne : cs ≠ []) {C : Catalog} {r p q : Rel}
-    (h : r.shardSplit S P = some (p, q)) (hC : (C P).rows = cs.flatMap p.eval) :
-    (r.eval cat).Perm (q.eval C) := by
+theorem Rel.shardSplit_sound {S : String → Bool} {K : String → Option (List Nat)} {P : String}
+    {cat : Catalog} {cs : List Catalog} (hs : Sharding S K cat cs) (hne : cs ≠ []) {C : Catalog}
+    {r p q : Rel} (hw : r.WF cat) (h : r.shardSplit S K cat P false = some (p, q))
+    (hC : (C P).rows = cs.flatMap p.eval) : (r.eval cat).Perm (q.eval C) := by
   unfold shardSplit at h
   split at h
   · rename_i hl
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl⟩ := h
     simp only [eval, hC]
-    exact eval_sharded hs hl
-  · exact splitAgg_sound hs hne h hC
+    exact eval_sharded hs hw hl
+  · exact splitAgg_sound hs hne hw h hC
 
 /-! ## 64-bit partial sums -/
 
@@ -761,3 +1306,4 @@ theorem inI64_partial {L : List (List Value)}
   exact ⟨decide_eq_true (by omega), decide_eq_true (by omega)⟩
 
 end Substrait
+

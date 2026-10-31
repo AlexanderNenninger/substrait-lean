@@ -19,7 +19,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, run_substrait_json, substrait_json
+from sverify.engine import connect, put_table, run_substrait_json, substrait_json
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows
 
@@ -64,16 +64,20 @@ TABLES = {
 
 @pytest.fixture(scope="module")
 def con():
-    """DataFusion with the tables as they are: `put_table` would make every
-    -0.0 zero and every NaN positive, as the model has them."""
+    """The tables as the model has them (`put_table`: one zero, one NaN), and
+    in DataFusion as they are, so that its own answers show its own order."""
     c = connect()
     for name, t in TABLES.items():
-        c.con.register_record_batches(name, [t.to_batches()])
+        put_table(c, name, t)
+    ctx = c.datafusion
+    for name, t in TABLES.items():
+        ctx.deregister_table(name)
+        ctx.register_record_batches(name, [t.to_batches()])
     return c
 
 
 def rows(con, sql: str) -> list[tuple]:
-    return arrow_rows(con.con.sql(sql).to_arrow_table())
+    return arrow_rows(con.datafusion.sql(sql).to_arrow_table())
 
 
 def nan_aware(rows: list[tuple]) -> list[tuple]:

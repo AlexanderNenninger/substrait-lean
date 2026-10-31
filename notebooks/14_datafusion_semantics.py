@@ -201,7 +201,7 @@ def _(dt, pa, tables):
     for _name, _t in tables.items():
         if _name == "big":
             # Several partitions, as a real table would have.
-            con.con.register_record_batches(
+            con.datafusion.register_record_batches(
                 _name, [[b] for b in _t.to_batches(max_chunksize=len(_t) // 8)]
             )
         else:
@@ -238,7 +238,7 @@ def _(dt, pa, tables):
     def run_df(sql: str) -> str:
         """The query's rows on DataFusion, through SQL."""
         try:
-            return fmt(arrow_rows(con.con.sql(sql).to_arrow_table()))
+            return fmt(arrow_rows(con.datafusion.sql(sql).to_arrow_table()))
         except Exception as e:
             return short_error(e)
 
@@ -1090,7 +1090,7 @@ def _(P, Q, con, pl, prove, render):
         runs = [
             [
                 r["i"]
-                for r in con.con.sql("SELECT i FROM big ORDER BY k")
+                for r in con.datafusion.sql("SELECT i FROM big ORDER BY k")
                 .to_arrow_table()
                 .slice(0, 6)
                 .to_pylist()

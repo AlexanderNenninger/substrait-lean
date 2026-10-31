@@ -59,7 +59,7 @@ from sverify.contracts import (
     view_contract,
 )
 from sverify.engine import (
-    Backend,
+    Connection,
     Engine,
     plan_json,
     put_table,
@@ -232,10 +232,11 @@ class AuditError(Exception):
 class IncrementalView:
     """A query result kept up to date from table changes instead of recomputed.
 
-    `query` is an Ibis expression or SQL over tables of `con`, an Ibis
-    DataFusion backend. The view is also registered as table `name`.
-    `engine` runs the plans: the view's plan as Lean read it
-    (`written_plan`) and the delta plans, all over the tables of `con`.
+    `query` is an Ibis expression or SQL over tables of `con` (`connect()`).
+    The view is also registered as table `name`. `engine` (default: the
+    connection's) runs the plans: the view's plan as Lean read it
+    (`written_plan`) and the delta plans, all over the tables of `con`; with
+    an engine named, preconditions are also checked there.
 
     If `query` is the result of contracted transformations, `guarantees` are
     its proved postconditions; they hold in every state of the view, because
@@ -246,14 +247,15 @@ class IncrementalView:
 
     def __init__(
         self,
-        con: Backend,
+        con: Connection,
         query: ir.Table | str,
         name: str,
-        engine: Engine = "datafusion",
+        engine: Engine | None = None,
         *,
         pipeline: Pipeline | None = None,
     ):
-        self.con, self.name, self.engine = con, name, engine
+        self.con, self.name = con, name
+        self.engine: Engine = engine or con.engine
         contract = None if isinstance(query, str) else view_contract(query)
         plan = json.loads(plan_json(con, query))
         self.columns: list[str] = plan["relations"][0]["root"]["names"]
@@ -274,7 +276,7 @@ class IncrementalView:
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.pipeline = pipeline or Pipeline(con, engine)
         self.pipeline._check_new_requires(self.requires)
-        result = run_plan(con, self.plan, engine)
+        result = run_plan(con, self.plan, self.engine)
         self.schema = result.schema
         self.counts: Counter[tuple] = Counter()
         self.examples: dict[tuple, Row] = {}
@@ -337,14 +339,13 @@ class IncrementalView:
                     examples.setdefault(k, r[:-1])
         finally:
             for t in self.tables:
-                if con.con.table_exist(t + "$delta"):
-                    con.con.deregister_table(t + "$delta")
+                con.drop(t + "$delta")
         return delta, examples
 
     def _diff(self, new_tables: Mapping[str, pa.Table]) -> tuple[Counter[tuple], dict[tuple, Row]]:
         """The view's change by recomputing it on the new inputs and diffing."""
         con = self.con
-        old = {t: con.con.table(t).to_arrow_table() for t in self.tables if t in new_tables}
+        old = {t: con.arrow[t] for t in self.tables if t in new_tables}
         try:
             for t in old:
                 put_table(con, t, new_tables[t])
@@ -366,8 +367,8 @@ ZRows = list[tuple[Row, int]]
 """A change as rows with weights (positive: inserted, negative: deleted)."""
 
 
-def _load_delta_table(con: Backend, t: str, rows: ZRows) -> None:
-    base = con.con.table(t).schema()
+def _load_delta_table(con: Connection, t: str, rows: ZRows) -> None:
+    base = con.arrow[t].schema
     schema = pa.schema([*base, pa.field(WEIGHT, pa.int64())])
     put_table(con, t + "$delta", to_arrow([(*r, w) for r, w in rows], schema))
 
@@ -390,8 +391,11 @@ class Pipeline:
     change only through `refresh`.
     """
 
-    def __init__(self, con: Backend, engine: Engine = "datafusion"):
-        self.con, self.engine = con, engine
+    def __init__(self, con: Connection, engine: Engine | None = None):
+        self.con = con
+        self.engine: Engine | None = engine
+        """The engine for plans and precondition checks; None: the
+        connection's for plans, Ibis on the connection for checks."""
         self._views: list[IncrementalView] = []
         self.requires: dict[str, list[Condition]] = {}
         """Preconditions on base tables, of every contracted view."""
@@ -477,7 +481,7 @@ class Pipeline:
             rowwise = [c for c in conds if not isinstance(c, Unique)]
             if rowwise and ch.inserts:
                 name = t + "$inserts"
-                put_table(self.con, name, to_arrow(ch.inserts, self.con.con.table(t).schema()))
+                put_table(self.con, name, to_arrow(ch.inserts, self.con.arrow[t].schema))
                 try:
                     found += discharge(
                         self.con.table(name),
@@ -488,7 +492,7 @@ class Pipeline:
                         f"inserted row(s) of {t}",
                     )
                 finally:
-                    self.con.con.deregister_table(name)
+                    self.con.drop(name)
             for c in conds:
                 if not isinstance(c, Unique):
                     continue
@@ -534,7 +538,7 @@ class Pipeline:
             if batch.end == start:
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
-            current = self.con.con.table(t).to_arrow_table()
+            current = self.con.arrow[t]
             if batch.changes is None:
                 assert batch.snapshot is not None
                 ch = snapshot_diff(current, batch.snapshot)
@@ -631,12 +635,12 @@ class Pipeline:
         return found
 
 
-def _rows(con: Backend, t: str) -> list[Row]:
-    return arrow_rows(con.con.table(t).to_arrow_table())
+def _rows(con: Connection, t: str) -> list[Row]:
+    return arrow_rows(con.arrow[t])
 
 
-def _positions(con: Backend, t: str, key: Unique) -> list[int]:
-    names = con.con.table(t).schema().names
+def _positions(con: Connection, t: str, key: Unique) -> list[int]:
+    names = con.arrow[t].schema.names
     return [names.index(c) for c in key.cols]
 
 
@@ -644,8 +648,8 @@ def _key_of(row: Row, positions: Sequence[int]) -> tuple:
     return row_key(tuple(row[i] for i in positions))
 
 
-def _apply_to_table(con: Backend, t: str, ch: Changes) -> pa.Table:
-    current = con.con.table(t).to_arrow_table()
+def _apply_to_table(con: Connection, t: str, ch: Changes) -> pa.Table:
+    current = con.arrow[t]
     rows = arrow_rows(current)
     for r in ch.deletes:
         k = row_key(tuple(r))
