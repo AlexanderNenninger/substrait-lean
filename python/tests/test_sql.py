@@ -440,10 +440,9 @@ def test_integer_powers_are_exact():
     r = ints(a=[-3, 2, 0, 1, -1, None, 3037000499])
     rows = check_three_ways("SELECT power(a, 2) AS s FROM r", {"r": r})
     assert rows[-1][0] == 3037000499**2
-    # DataFusion gives `power(NULL, 0)` = 1; Lean (and so the SQL) gives NULL.
-    plan_json = plan_of("SELECT power(a, 0) AS z FROM r", {"r": r})
-    lean = lean_on(json.loads(plan_json), {"r": r})
-    assert duckdb_rows(plan_json, {"r": r}) == lean == [(1,)] * 5 + [(None,), (1,)]
+    # DataFusion's simplifier gives `power(NULL, 0)` = 1; Lean and the SQL follow it.
+    zero = check_three_ways("SELECT power(a, 0) AS z FROM r", {"r": r})
+    assert zero == [(1,)] * 7
     check_three_ways("SELECT power(a, 3) AS c FROM r", {"r": ints(a=[-3, 2, 0, 1, -1, None])})
     # Beyond 64, only -1, 0 and 1 have powers that fit.
     units = ints(a=[0, 1, -1, None])
