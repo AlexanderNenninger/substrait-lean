@@ -41,7 +41,7 @@ the checker know that the engine does not?** The checker knows three things:
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
 | 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | #75–#80 |
-| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved; split keys for aggregates and `DISTINCT` done, co-partitioned joins and windows #74 |
+| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
 
@@ -139,6 +139,19 @@ guarantees. The question is when
   `SELECT` lists emit), emits, joins with broadcast tables, unions and
   aggregates. `Rel.keyRows` proves that every output row carries the key of
   a row on its own shard.
+* **Co-partitioned joins.** An inner, left, semi or anti join of two linear
+  plans, both with split keys that the condition equates (`ON r.k = s.k`,
+  possibly among other conjuncts: `Expr.eqFields`, `coCond`), runs on each
+  shard. A row of one shard never matches a row of another
+  (`Sharding.coDisjoint`), so the cross product keeps only same-shard pairs
+  (`cross_filter_diag`), and a left join's padding and a semi join's test only
+  see the row's own shard (`flatMap_rowwise`, `filter_rowwise`).
+* **Windows.** A window whose `PARTITION BY` contains the split key runs on
+  each shard, when its partition and sort columns form a key of its input
+  (`windowEval_sharded`). The key is needed because Lean breaks ties in a
+  window's sort by row order, which neither sharding nor engines keep.
+  `--shard` derives the key with `Rel.keyedWindows` from `unique` columns
+  declared for the tables, which `run_sharded` checks on the data.
 * `twoPhase_correct`. Take `COUNT`, integer `SUM`, `MIN` and `MAX`, with or
   without `FILTER`. `MIN(DISTINCT x)` and `MAX(DISTINCT x)` are allowed too,
   since `DISTINCT` changes nothing for them (`AggFn.apply_minMax_mem`).
@@ -192,18 +205,19 @@ guarantees. The question is when
   once in the whole and twice in the parts. `DISTINCT` without the split
   key, windows and `FETCH` are refused because they look at rows of other
   shards.
-* **Joins of two sharded tables** are refused. They are correct only when
-  both sides are split on the join key (co-partitioning). Windows split on
-  their `PARTITION BY` keys need the same key facts. Both remain in #74.
+* **Joins of two sharded tables** that are not co-partitioned are refused,
+  and so are windows without the split key in `PARTITION BY`, or with
+  possible ties.
 
-**Wiring.** `substrait-check --shard {"plan", "sharded", "keys",
+**Wiring.** `substrait-check --shard {"plan", "sharded", "keys", "unique",
 "float_order"}` returns the partial and combining plans in Lean's written
 form and whether the result is proved, or exit code 5 with the reason. The
 schema of `__partials` is trusted. `sverify.partition.split` and
-`run_sharded(plan, shards, sharded=…, broadcast=…, keys=…, float_order=…)`
-run the shards on Polars in parallel threads. `run_sharded` checks a split
-key on the data before relying on it (`check_keys`), comparing doubles by
-their bits as Lean does. `tests/test_partition.py` compares the sharded result
+`run_sharded(plan, shards, sharded=…, broadcast=…, keys=…, unique=…,
+float_order=…)` run the shards on Polars in parallel threads. `run_sharded`
+checks split keys and `unique` columns on the data before relying on them
+(`check_keys`, `check_unique`), comparing doubles by their bits as Lean
+does. `tests/test_partition.py` compares the sharded result
 with the whole on random data and random splits.
 
 **Benchmark.** On one machine, a grouped aggregate over 10⁶ rows in 8 shards

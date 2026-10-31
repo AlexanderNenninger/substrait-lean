@@ -3,6 +3,7 @@ the combined result of a plan run shard by shard equals its result on all
 the data, and plans whose result would depend on the split are refused."""
 
 import json
+from collections.abc import Sequence
 
 import ibis
 import pyarrow as pa
@@ -19,6 +20,7 @@ pytestmark = pytest.mark.backend("polars")
 
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "string"})
+Q = ibis.schema({"b": "int64", "e": "int64"})
 S_ROWS = [(0, "zero"), (1, "one"), (2, "two"), (2, "deux")]
 
 LINEAR = [
@@ -73,14 +75,16 @@ def plan_of(sql: str) -> str:
     con = connect()
     create_table(con, "r", R)
     create_table(con, "s", S)
+    create_table(con, "q", Q)
     return substrait_json(con, sql)
 
 
-def reference(plan: str, rows: list[tuple]) -> list[str]:
+def reference(plan: str, rows: list[tuple], q_rows: Sequence[tuple] = ()) -> list[str]:
     """The plan on all the data, on Polars."""
     con = connect()
     create_table(con, "r", R, rows)
     create_table(con, "s", S, S_ROWS)
+    create_table(con, "q", Q, list(q_rows))
     got = run_plan(con, written_plan(plan), "polars")
     return canonical(tuple(r.values()) for r in got.to_pylist())
 
@@ -171,6 +175,74 @@ def test_float_order_any(sql: str, data):
     shards = [{"r": arrow([row for row, k in pairs if k == i])} for i in range(4)]
     got = run_sharded(plan, shards, sharded=["r"], float_order="any")
     assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+#: `r` and `q` both split on `b` (co-partitioned).
+CO_PARTITIONED = [
+    "SELECT r.a, q.e FROM r JOIN q ON r.b = q.b",
+    "SELECT r.a, q.e FROM r LEFT JOIN q ON r.b = q.b AND r.a < q.e",
+    "SELECT a FROM r WHERE b IN (SELECT b FROM q)",
+    "SELECT r.b, COUNT(*) AS n, SUM(q.e) AS s FROM r JOIN q ON r.b = q.b GROUP BY r.b",
+]
+
+
+def q_arrow(rows: list[tuple]) -> pa.Table:
+    return pa.table({n: pa.array([r[i] for r in rows], pa.int64()) for i, n in enumerate("be")})
+
+
+@pytest.mark.parametrize("sql", CO_PARTITIONED)
+@SETTINGS
+@given(rows=r_rows, q_rows=st.lists(st.tuples(st.integers(0, 3), small), max_size=8))
+def test_co_partitioned_joins(sql: str, rows, q_rows):
+    plan = plan_of(sql)
+    keys = {"r": ["b"], "q": ["b"]}
+    assert split(plan, ["r", "q"], keys=keys).mode == "linear"
+    shards = [
+        {"r": arrow([x for x in rows if x[1] == i]), "q": q_arrow([y for y in q_rows if y[0] == i])}
+        for i in range(4)
+    ]
+    got = run_sharded(plan, shards, sharded=["r", "q"], keys=keys)
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows, q_rows)
+
+
+def test_joins_on_other_columns_are_not_co_partitioned():
+    with pytest.raises(NotShardable, match="co-partitioning"):
+        split(
+            plan_of("SELECT r.a FROM r JOIN q ON r.a = q.e"),
+            ["r", "q"],
+            keys={"r": ["b"], "q": ["b"]},
+        )
+
+
+WINDOWS = [
+    "SELECT a, b, ROW_NUMBER() OVER (PARTITION BY b ORDER BY a) AS k FROM r",
+    "SELECT a, b, LAG(c, 1) OVER (PARTITION BY b ORDER BY a) AS prev FROM r",
+]
+#: Rows of `r` with no two equal on `(a, b)`.
+unique_rows = st.lists(
+    st.tuples(small, st.integers(0, 3), small | st.none()), max_size=12, unique_by=lambda r: r[:2]
+)
+
+
+@pytest.mark.parametrize("sql", WINDOWS)
+@SETTINGS
+@given(rows=unique_rows)
+def test_windows_on_the_split_key(sql: str, rows):
+    plan = plan_of(sql)
+    with pytest.raises(NotShardable, match="window"):
+        split(plan, ["r"], keys={"r": ["b"]})
+    unique = {"r": [["a", "b"]]}
+    assert split(plan, ["r"], keys={"r": ["b"]}, unique=unique).mode == "linear"
+    shards = [{"r": arrow([x for x in rows if x[1] == i])} for i in range(4)]
+    got = run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]}, unique=unique)
+    assert canonical(tuple(r.values()) for r in got.to_pylist()) == reference(plan, rows)
+
+
+def test_unique_is_checked_on_the_data():
+    plan = plan_of(WINDOWS[0])
+    shards = [{"r": arrow([(1, 2, 0), (1, 2, 5)])}]
+    with pytest.raises(ValueError, match="two rows"):
+        run_sharded(plan, shards, sharded=["r"], keys={"r": ["b"]}, unique={"r": [["a", "b"]]})
 
 
 def test_broadcast_tables_are_not_split():
