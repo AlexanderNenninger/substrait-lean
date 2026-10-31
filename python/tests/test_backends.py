@@ -129,7 +129,6 @@ def test_engines_agree(con, case, data):
     for name, table in data.items():
         put_table(con, name, table)
     expr = case.build()
-    sql = to_sql(expr)
     plan = written_plan(to_substrait_json(expr))
     refused = REFUSED.get(case.label, {})
     results, failed = {}, set()
@@ -157,7 +156,7 @@ def test_engines_agree(con, case, data):
     if not order_dependent(root) and case.label not in coverage.NO_DATAFUSION_SQL:
         # As Ibis returns it: DataFusion's SQL result in the expression's
         # types (`POW` of integers is an integer there, a double in Ibis).
-        df = canonical(rows(run_sql(con, sql).cast(expr.schema().to_pyarrow())))
+        df = canonical(rows(run_sql(con, to_sql(expr)).cast(expr.schema().to_pyarrow())))
         for got in results.values():
             assert canonical(got) == df
 
