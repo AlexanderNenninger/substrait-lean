@@ -127,7 +127,7 @@ def ordered_plans() -> dict[str, dict]:
 
 
 def feature_plans() -> dict[str, dict]:
-    """Sorts, DISTINCT, semi, anti and outer joins and string functions."""
+    """DISTINCT, aggregates, semi, anti and outer joins and string functions."""
     o, c = sv.examples.orders, sv.examples.customers
     exprs = {
         "distinct": o.select("customer", "amount").distinct(),
@@ -135,6 +135,10 @@ def feature_plans() -> dict[str, dict]:
         "anti_join": o.anti_join(c, o.customer == c.name),
         "outer_join": o.outer_join(c, o.customer == c.name),
         "union_distinct": o.select(x=o.customer).union(c.select(x=c.city), distinct=True),
+        "aggregate": o.group_by("customer").aggregate(
+            n=o.count(), s=o.amount.sum(), m=o.amount.max(), u=o.id.nunique()
+        ),
+        "global_aggregate": o.aggregate(n=o.amount.count(), lo=o.customer.min()),
         "strings": c.select(
             u=c.name.upper(),
             n=c.city.length(),

@@ -3,7 +3,10 @@
 * Lean's semantics (`aggregateEval`) agrees with DataFusion on random tables,
   including NULLs, empty tables (a global aggregate still gives one row),
   `DISTINCT` and `FILTER (WHERE …)` measures, and `HAVING`.
-* Integer `SUM` wraps around in DataFusion, so it comes with a warning.
+* Polars and DuckDB, which run the plan Lean writes, give Lean's rows, with
+  doubles added in Lean's list order, so the same bits.
+* Integer `SUM` wraps around in DataFusion, so it comes with a warning; the
+  engines raise instead.
 * The grouping columns are a key of the result, and contracts see through
   `COUNT`, `MIN`/`MAX` and the sign of a `SUM`.
 """
@@ -11,6 +14,7 @@
 import json
 import math
 
+import duckdb
 import ibis
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -18,8 +22,16 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify import polars_engine
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, run_sql, substrait_json
+from sverify.engine import (
+    connect,
+    create_table,
+    run_plan,
+    run_sql,
+    substrait_json,
+    written_plan,
+)
 from sverify.examples import orders
 from sverify.testing import canonical, inline_tables, lean_values
 
@@ -73,6 +85,38 @@ def test_aggregates_match_datafusion(sql, t):
     assert canonical(got) == canonical(expected)
 
 
+def engine_rows(sql: str, schema: ibis.Schema, rows: list) -> dict[str, list[tuple]]:
+    con = connect()
+    create_table(con, "t", schema, rows)
+    plan = written_plan(substrait_json(con, sql))
+    return {
+        e: [tuple(r.values()) for r in run_plan(con, plan, e).to_pylist()]
+        for e in ("polars", "duckdb")
+    }
+
+
+@pytest.mark.parametrize("sql", EXACT)
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(t=t_rows)
+def test_engines_match_datafusion(sql, t):
+    out = engine_rows(sql, T, t)
+    assert canonical(out["polars"]) == canonical(out["duckdb"])
+    assert canonical(out["polars"]) == canonical(datafusion_rows(sql, T, t))
+
+
+def test_engines_raise_where_sum_wraps():
+    rows = [(1, 2**62, "x"), (1, 2**62, "y")]
+    sql = "SELECT a, SUM(b) FROM t GROUP BY a"
+    with pytest.raises(polars_engine.IntegerOverflow):
+        engine_rows(sql, T, rows)
+    con = connect()
+    create_table(con, "t", T, rows)
+    with pytest.raises(duckdb.Error, match="overflow in SUM"):
+        run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")
+
+
 def close(x: object, y: object) -> bool:
     """Lean prints doubles with six decimals."""
     if isinstance(x, float) and isinstance(y, float):
@@ -107,6 +151,23 @@ def test_double_aggregates_match_datafusion(sql, t):
     ]
     # Group keys are exact: sort both by them (rendered), then compare loosely.
     got, expected = sorted(got, key=repr), sorted(expected, key=repr)
+    assert len(got) == len(expected)
+    for g, e in zip(got, expected, strict=True):
+        assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)
+
+
+@pytest.mark.parametrize("sql", FLOATS)
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(t=f_rows)
+def test_engines_add_doubles_in_lean_order(sql, t):
+    """Both engines add in Lean's list order, so they agree bit for bit; with
+    DataFusion, whose order is its own, only approximately."""
+    out = engine_rows(sql, F, t)
+    assert canonical(out["polars"]) == canonical(out["duckdb"])  # bit for bit
+    expected = sorted(datafusion_rows(sql, F, t), key=repr)
+    got = sorted(out["polars"], key=repr)
     assert len(got) == len(expected)
     for g, e in zip(got, expected, strict=True):
         assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)

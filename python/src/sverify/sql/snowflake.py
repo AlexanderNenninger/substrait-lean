@@ -240,6 +240,18 @@ class SnowflakeDialect(Dialect):
             return f"DATEADD(DAY, 1 - DAYOFWEEKISO({ts}), {day})"
         return f"DATE_TRUNC('{unit.upper()}', {ts})"
 
+    # Aggregates
+
+    def int_sum(self, v: str) -> str:
+        # NUMBER(38,0) sums are exact far beyond 64 bits.
+        return f"CAST({self.checked(f'SUM({v})')} AS NUMBER(38,0))"
+
+    def float_sum(self, v: str, o: str) -> str:
+        raise Unsupported(
+            "Snowflake does not add doubles in a given order, and the rounding of a SUM or "
+            "AVG of doubles depends on it"
+        )
+
     # Strings
 
     def char_length(self, s: str) -> str:

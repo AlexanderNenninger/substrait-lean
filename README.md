@@ -234,8 +234,8 @@ How much of the Ibis API gets through, from
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · – scalar subquery · – unnest |
-| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · – rolling mean (interval) · ✗ ntile · ✗ first |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
+| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
@@ -245,16 +245,16 @@ Every engine runs the plans of the 68 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 60 | non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts |
-| DuckDB | 60 | non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts |
-| Snowflake | 54 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count() · group_by sum · count, max, mean · nunique · sum(where=) · having · value_counts · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
+| Polars | 67 | non-equi join |
+| DuckDB | 67 | non-equi join |
+| Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
 undefined in the model (it is NULL there, while SQL compares), and Snowflake
 tables have no row order for FETCH, or for the ties of a sort or a window, to
-follow. See [Engines](#engines). Aggregates with measures are verified but not
-translated to the engines yet.
+follow, nor for the order a `SUM` or `AVG` of doubles adds in. See
+[Engines](#engines).
 
 ### Pre- and postconditions on a transformation
 
@@ -627,7 +627,8 @@ There are no dependencies beyond Lean core (no Mathlib yet), so the build takes 
 ## Checking real plans
 
 `substrait-check plan.json` reads a Substrait plan in protobuf-JSON form, as
-produced by DataFusion's Substrait producer (Substrait 0.77). It then:
+produced by `sverify`'s Ibis producer or DataFusion's Substrait producer
+(Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
 2. decides `Rel.WF` with `checkWF`, which is proven equivalent (`checkWF_iff`), and
@@ -690,8 +691,8 @@ The query can be an Ibis expression or a SQL string.
 
 How it works:
 
-1. Ibis writes the query as DataFusion SQL, and DataFusion's Substrait producer
-   turns it into a plan.
+1. The query becomes a Substrait plan: an Ibis expression through the vendored
+   Ibis producer (below), a SQL string through DataFusion's Substrait producer.
 2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
    union-free terms (`Rel.terms`) and applies the weight-column encoding
    (`Rel.weighted`). It prints one Substrait plan per term, after checking each
@@ -716,9 +717,27 @@ registered as record batches, not datasets: DataFusion pushes filters into
 datasets, where PyArrow compares doubles by IEEE rules instead of DataFusion's
 total order, which would make filters and projections disagree on NaN.
 
+### The Ibis producer
+
+Ibis expressions become Substrait directly, without SQL:
+`sverify/ibis_substrait` is [ibis-substrait](https://github.com/ibis-project/ibis-substrait)
+(Apache 2.0, last released for Ibis 9), vendored and ported to Ibis 12. It
+writes the functions and encodings the Lean parser reads, and each operation
+means what Ibis's own DataFusion SQL compiler makes of it, with Ibis's type
+promotions written as explicit casts. That makes plans typed: `qty > amount`
+compares as doubles, where DataFusion's producer (from its unanalysed plan)
+left an integer next to a double's code (#16). Upstream's mistakes are fixed
+(integer `/` divided integers, `where=` filters were dropped, sorts were always
+`NULLS FIRST`, promotions could cast a double down to an integer, timestamp
+literals were read in local time), and anything outside the model raises
+`Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
+coverage case against DataFusion running Ibis's SQL on random tables.
+
+SQL strings still go through DataFusion's producer.
+
 ### Engines
 
-Plans always come from DataFusion's Substrait producer, but they can run on
+Plans come from the Ibis producer or DataFusion's Substrait producer, and they can run on
 DataFusion, [Polars](https://pola.rs) or DuckDB (below). Pass `engine="polars"` to
 `IncrementalView` or `sv.run_plan(con, plan, "polars")`. The tables stay in
 `con` and are handed to Polars as Arrow. The point is differential testing,
@@ -746,6 +765,12 @@ translator pins the semantics instead of taking Polars defaults:
   (`-NaN < -inf < … < -0.0 < +0.0 < … < inf < NaN`), like the float codes.
   Sorts place NULLs as each key says. `DISTINCT` compares rows as `Value`s:
   NULLs are equal, and -0.0 and +0.0 (or -NaN and NaN) are not.
+* Aggregates (`aggregateEval`): one row per group, in order of first
+  occurrence (or exactly one without `GROUP BY`), grouping as `DISTINCT`
+  compares. Each measure skips NULLs and the rows its `FILTER` drops;
+  `DISTINCT` measures keep the first of equal values. Integer `SUM` is exact
+  and raises `IntegerOverflow` outside 64 bits, where DataFusion wraps. `SUM`
+  and `AVG` of doubles add one by one in Lean's list order.
 * Strings are sequences of Unicode scalar values: `character_length`,
   `strpos` and `substring` count characters, not bytes, and `substring` with
   a start below 1 keeps only the positions that exist. `LIKE` escapes with a
@@ -823,6 +848,10 @@ the engine:
   the rows where the condition is TRUE;
 * `DISTINCT` groups by the same keys as a window partition (doubles also by
   the sign bit), so equal means equal as `Value`s;
+* aggregates group by the same keys as `DISTINCT`; a `DISTINCT` measure
+  counts the first row of each value, integer `SUM` raises outside 64 bits,
+  and doubles are added in Lean's order (`list_reduce` over a list ordered
+  by the ordinal), so the result has Lean's bits, not DataFusion's;
 * strings: lengths and positions count characters, a `substring` start below
   1 is handled before it reaches the engine (which would count it from the
   end), and `LIKE` names its escape character;
@@ -866,6 +895,8 @@ Where Snowflake can't match, the plan is refused (`Unsupported`) or the query
 raises instead of answering differently:
 
 * FETCH over a named table is refused: Snowflake tables have no row order.
+  So is a `SUM` or `AVG` of doubles, whose rounding depends on the order of
+  the additions.
   Windows and sorts are refused too, unless you pass `tie_free=True` to
   promise there are no ties on their keys (a contract report's
   `deterministic` says so for windows).
@@ -881,7 +912,8 @@ Time columns must be `TIMESTAMP_NTZ`, and string columns must have no
 collation. `python/tests/test_sql_snowflake.py` snapshots the SQL for every
 fixture and delta plan, parses it with sqlglot's Snowflake parser, and runs it
 on [fakesnow](https://github.com/tekumara/fakesnow) against Lean's `Rel.eval`,
-along with sorts, `DISTINCT`, semi, anti and outer joins and string functions.
+along with sorts, `DISTINCT`, aggregates, semi, anti and outer joins and
+string functions.
 fakesnow emulates Snowflake on DuckDB, so this checks the SQL, not Snowflake's
 behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 `SNOWFLAKE_USER`, a credential (`SNOWFLAKE_PASSWORD`,
