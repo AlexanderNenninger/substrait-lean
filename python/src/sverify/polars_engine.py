@@ -185,6 +185,8 @@ def null_type(t: dict) -> DType:
         return US
     if "date" in t:
         return pl.Date
+    if "precisionTime" in t:
+        return pl.Time
     if "i64" in t:
         return pl.Null
     if "list" in t:
@@ -219,6 +221,10 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return _int(v), pl.Date
     if kind == "intervalDayToSecond":
         return _int(interval_micros(v)), INTERVAL
+    if kind == "precisionTime":
+        if int(v.get("precision", 0)) != 6:
+            raise Unsupported("only microsecond times are supported")
+        return _int(v["value"]), pl.Time
     if kind == "emptyList":
         return [], pl.List(materialize(null_type(v.get("type", {"i64": {}}))))
     if kind == "list":
@@ -231,6 +237,9 @@ def literal(lit: dict) -> tuple[Any, DType]:
 
 
 def lit_expr(value: Any, dtype: DType) -> pl.Expr:
+    if value is not None and dtype == pl.Time:
+        # Polars' times are nanoseconds.
+        return pl.lit(value * 1000, pl.Int64).cast(pl.Time)
     if value is not None and dtype in (US, INTERVAL, pl.Date):
         # Temporal literals are given as their integer encoding.
         return pl.lit(value, pl.Int64 if dtype != pl.Date else pl.Int32).cast(dtype)
@@ -488,7 +497,14 @@ CALENDAR_UNITS = {"month": "1mo", "quarter": "1q", "year": "1y"}
 
 
 def date_part(part: str, v: Val) -> Val:
-    """`Time.datePart`: NULL outside the dates chrono represents."""
+    """`Time.datePart`: NULL outside the dates chrono represents. A time of
+    day is a timestamp on 1970-01-01, for its clock parts."""
+    if v.dtype == pl.Time:
+        if part not in CLOCK_PARTS:
+            raise Unsupported(f"date_part {part!r} of a time of day")
+        m, d = CLOCK_PARTS[part]
+        tod = v.expr.to_physical().cast(pl.Int64) // 1000
+        return Val((tod % m // d).cast(pl.Int64), pl.Int64, v.issues)
     us = v.expr.dt.epoch("us")
     if part in CLOCK_PARTS:
         m, d = CLOCK_PARTS[part]
@@ -530,6 +546,121 @@ def date_trunc(unit: str, v: Val) -> Val:
     bad = (us > NS_MAX) | (us < NS_MIN) | (t < NS_MIN)
     value = pl.when(bad).then(None).otherwise(t).cast(pl.Int64).cast(US)
     return Val(value, US, (*v.issues, issue(bad, Overflow, f"date_trunc to a {unit} overflows")))
+
+
+#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
+#: within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
+DAY_MIN, DAY_MAX = -96465292, 95026236
+NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
+
+
+def _days(v: Val) -> pl.Expr:
+    """A DATE as days since 1970-01-01 (`Int64`)."""
+    return v.expr.to_physical().cast(pl.Int64)
+
+
+def _month_index(d: Any) -> tuple[Any, Any]:
+    """`Time.monthIndex` of days `d` (`12 · year + month - 1`), and the day
+    of the month from 0: the civil calendar in integer arithmetic (on NumPy
+    arrays, floor division as Lean's)."""
+    z = d + 719468
+    era = z // 146097
+    doe = z - era * 146097
+    yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    dom = doy - (153 * mp + 2) // 5
+    # March-based years: months from March, so January and February are 10, 11.
+    return 12 * (yoe + era * 400) + mp + 2, dom
+
+
+def _month_start(i: Any) -> Any:
+    """`Time.monthStart`: the first day of month `i`."""
+    y, mp = (i - 2) // 12, (i - 2) % 12
+    era = y // 400
+    yoe = y - era * 400
+    doe = yoe * 365 + yoe // 4 - yoe // 100 + (153 * mp + 2) // 5
+    return era * 146097 + doe - 719468
+
+
+def _on_days(f: Any, d: pl.Expr) -> pl.Expr:
+    """`f` on an `Int64` expression of days, as one NumPy step (NULLs kept)."""
+
+    def apply(s: pl.Series) -> pl.Series:
+        nulls = s.is_null()
+        out = pl.Series(f(s.fill_null(0).to_numpy().astype(np.int64)), dtype=pl.Int64)
+        return pl.select(pl.when(nulls).then(None).otherwise(out)).to_series()
+
+    return d.cast(pl.Int64).map_batches(apply, return_dtype=pl.Int64)
+
+
+def add_months_days(m: int, d: pl.Expr) -> pl.Expr:
+    """`Time.addMonths`: the same day `m` months later, or that month's last."""
+
+    def f(x: Any) -> Any:
+        i, dom = _month_index(x)
+        return np.minimum(_month_start(i + m) + dom, _month_start(i + m + 1) - 1)
+
+    return _on_days(f, d)
+
+
+def trunc_days(unit: str, d: pl.Expr) -> pl.Expr:
+    """`Time.truncDay`."""
+    if unit == "day":
+        return d
+    if unit == "week":
+        return d - (d + 3) % 7
+    k = {"month": 1, "quarter": 3, "year": 12}.get(unit)
+    if k is None:
+        raise Unsupported(f"date_trunc of a date to a {unit} is not supported")
+    return _on_days(lambda x: _month_start(_month_index(x)[0] // k * k), d)
+
+
+def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -> Val:
+    """`rangeIssue`: the DATE `days` computed from `v`, an error (`Overflow`)
+    unless both are within `[lo, hi]` days."""
+    x = _days(v)
+    bad = (x < lo) | (x > hi) | (days < lo) | (days > hi)
+    value = pl.when(bad).then(None).otherwise(days).cast(pl.Int32).cast(pl.Date)
+    message = f"{what} outside the dates DataFusion computes"
+    return Val(value, pl.Date, (*issues(v, *vals), issue(bad, Overflow, message)))
+
+
+def day_part(part: str, v: Val) -> Val:
+    """`UnFn.dayPart`: the part of the date's midnight."""
+    x = _days(v)
+    inside = (x >= DAY_MIN) & (x <= DAY_MAX)
+    ts = (pl.when(inside).then(x) * US_PER_DAY).cast(US)
+    return date_part(part, Val(ts, US, v.issues))
+
+
+def add_months(m: int, v: Val) -> Val:
+    """`UnFn.addMonths` of a date or a timestamp, with its `rangeIssue`."""
+    if v.dtype == pl.Date:
+        return date_range(v, add_months_days(m, _days(v)), DAY_MIN, DAY_MAX, "adding months")
+    us = wide(v)
+    r = add_months_days(m, us // US_PER_DAY) * US_PER_DAY + us % US_PER_DAY
+    bad = (us < PART_MIN) | (us > PART_MAX) | (r < PART_MIN) | (r > PART_MAX)
+    value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
+    message = "adding months outside the years chrono represents"
+    return Val(value, US, (*v.issues, issue(bad, Overflow, message)))
+
+
+def chrono_only(v: Val, value: pl.Expr, dtype: DType, what: str) -> Val:
+    """`value`, an error (`Overflow`) where the timestamp `v` is outside the
+    years chrono represents."""
+    us = wide(v)
+    bad = (us < PART_MIN) | (us > PART_MAX)
+    message = f"{what} outside the years chrono represents"
+    safe = pl.when(bad).then(None).otherwise(value)
+    return Val(safe, dtype, (*v.issues, issue(bad, Overflow, message)))
+
+
+def strftime(fmt: str, v: Val) -> Val:
+    """`Time.strftime`: chrono's formatting, as DataFusion's."""
+    inside = (wide(v) >= PART_MIN) & (wide(v) <= PART_MAX)
+    safe = pl.when(inside).then(v.expr)
+    return chrono_only(v, safe.dt.strftime(fmt), pl.String, "strftime")
 
 
 def ftoi(v: Val) -> Val:
@@ -604,9 +735,46 @@ class Exprs:
                 return self.regex_match(arg_js[0])
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:
                 which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
-                if not isinstance(which, str) or ts.dtype != US:
+                if not isinstance(which, str) or ts.dtype not in (US, pl.Date, pl.Time):
                     raise Unsupported(f"{name} of {ts.dtype} by {which!r}")
+                if ts.dtype == pl.Time and name == "date_part":
+                    return date_part(which.lower(), ts)
+                if ts.dtype == pl.Time:
+                    raise Unsupported("date_trunc of a time of day")
+                if ts.dtype == pl.Date:
+                    if name == "date_part":
+                        return day_part(which.lower(), ts)
+                    x = _days(ts)
+                    safe = pl.when((x >= NS_DAY_MIN) & (x <= NS_DAY_MAX)).then(x)
+                    t = trunc_days(which.lower(), safe)
+                    return date_range(ts, t, NS_DAY_MIN, NS_DAY_MAX, f"date_trunc to a {which}")
                 return (date_part if name == "date_part" else date_trunc)(which.lower(), ts)
+            if name == "add" and len(arg_js) == 2:
+                months = self.months(arg_js[1])
+                if months is not None:
+                    return add_months(months, self(arg_js[0]))
+            if name == "date_bin" and len(arg_js) == 3:
+                # `Time.bucket`; DataFusion's nanoseconds wrap outside ±2⁶³.
+                iv, ts = self(arg_js[0]), self(arg_js[1])
+                k, origin = self.constant(arg_js[0], "a bin"), self.constant(arg_js[2], "an origin")
+                if iv.dtype != INTERVAL or ts.dtype != US or not isinstance(origin, int) or k <= 0:
+                    raise Unsupported(f"date_bin of {ts.dtype} by {k!r} from {origin!r}")
+                us = wide(ts)
+                r = us - (us - origin) % k
+                bad = (us < NS_MIN) | (us > NS_MAX) | (r < NS_MIN) | (r > NS_MAX)
+                value = pl.when(bad).then(None).otherwise(r).cast(pl.Int64).cast(US)
+                found = issue(bad, Overflow, "date_bin outside ±2^63 ns")
+                return Val(value, US, (*ts.issues, found))
+            if name == "strftime" and len(arg_js) == 2:
+                ts, fmt = self(arg_js[0]), self.constant(arg_js[1], "a strftime format")
+                if ts.dtype != US or not isinstance(fmt, str):
+                    raise Unsupported(f"strftime of {ts.dtype} by {fmt!r}")
+                return strftime(fmt, ts)
+            if name == "date_diff" and len(arg_js) == 2:
+                a, b = self(arg_js[0]), self(arg_js[1])
+                if a.dtype != pl.Date or b.dtype not in (pl.Date, pl.Null):
+                    raise Unsupported(f"date_diff of {a.dtype} and {b.dtype}")
+                return Val(_days(a) - _days(b), pl.Int64, issues(a, b))
             if name == "substring" and len(arg_js) == 3:
                 n = self.constant(arg_js[2], "substring length")
                 if not isinstance(n, int) or isinstance(n, bool) or n < 0:
@@ -614,6 +782,18 @@ class Exprs:
                 return self.substring(self(arg_js[0]), self(arg_js[1]), n)
             return self.call(name, [self(a) for a in arg_js])
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
+
+    @staticmethod
+    def months(j: dict) -> int | None:
+        """The months of a compound interval literal (Lean writes month
+        intervals only added to a date or timestamp)."""
+        c = j.get("literal", {}).get("intervalCompound")
+        if c is None:
+            return None
+        if interval_micros(c.get("intervalDayToSecond", {})) != 0:
+            raise Unsupported("an interval of months and days")
+        ym = c.get("intervalYearToMonth", {})
+        return 12 * int(ym.get("years", 0)) + int(ym.get("months", 0))
 
     @staticmethod
     def constant(j: dict, what: str) -> Any:
@@ -660,6 +840,13 @@ class Exprs:
             return narrow_int(v, bits)
         if "string" in target and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.String), pl.String, v.issues)
+        if "precisionTime" in target and v.dtype == US:
+            # `UnFn.timeOfDay`; Polars' times are nanoseconds.
+            tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
+            return chrono_only(v, tod, pl.Time, "CAST to TIME")
+        if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
+            # `UnFn.asTime`: microseconds since 1970-01-01.
+            return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
         if "date" in target and v.dtype == US:
             # `UnFn.toDate`: days since 1970-01-01, rounding down.
             days = v.expr.dt.epoch("us") // US_PER_DAY
@@ -750,6 +937,18 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
             return Val(ops[name], pl.Float64, issues(a, b))
+        if name == "add" and ta == pl.Date:
+            # `BinFn.dateAdd`: days, as an interval or a count.
+            if tb == INTERVAL:
+                n = wide(b) // US_PER_DAY
+            elif tb in (pl.Int64, pl.Null):
+                n = wide(b)
+            else:
+                raise Unsupported(f"add of {ta} and {tb}")
+            return date_range(a, _days(a) + n, DAY_MIN, DAY_MAX, "date + days", b)
+        if name == "multiply" and tb == INTERVAL and ta in (pl.Int64, pl.Null):
+            # A count of days (`add(d, multiply(n, INTERVAL '1' DAY))`).
+            return narrow(wide(a) * wide(b), INTERVAL, name, a, b)
         if name in ("add", "subtract", "multiply"):
             out = arith_type(name, ta, tb)
             x, y = wide(a), wide(b)
@@ -777,7 +976,7 @@ class Exprs:
             return self.string(name, a, b)
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
-            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Float64, pl.Null):
+            if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
                 # `BinFn.lt` is only defined on integers (and the codes of
                 # doubles and times); strings would differ from SQL.
                 raise Unsupported(f"lt of {t}")
@@ -866,6 +1065,8 @@ def type_of(t: dict) -> DType:
         return US
     if "date" in t:
         return pl.Date
+    if "precisionTime" in t or "time" in t:
+        return pl.Time
     if "intervalDayToSecond" in t:
         return INTERVAL
     if "list" in t:
@@ -977,6 +1178,172 @@ class Measure:
 
         r = values.map_batches(apply, return_dtype=out)
         return r.cast(self.arg.dtype) if physical else r
+
+
+@dataclass(frozen=True)
+class WindowSpec:
+    """A window function `python_windows` computes: ranks, NTILE, aggregates
+    and FIRST/LAST/NTH_VALUE over a frame (`Window.lean`)."""
+
+    fn: str
+    dtype: DType
+    n: int = 0
+    col: int | None = None
+    agg: str = ""
+    frame: tuple = (False, ("unbounded", 0), ("unbounded", 0))
+
+
+def window_frame(w: dict) -> tuple:
+    """`(range, lo, hi)` of a window (`Parse.parseFrame`)."""
+    bt = w.get("boundsType", "BOUNDS_TYPE_RANGE")
+    if bt not in ("BOUNDS_TYPE_ROWS", "BOUNDS_TYPE_RANGE", "BOUNDS_TYPE_UNSPECIFIED"):
+        raise Unsupported(f"unsupported window bounds type {bt}")
+
+    def bound(b: dict | None) -> tuple[str, int]:
+        if not b or "unbounded" in b:
+            return ("unbounded", 0)
+        if "currentRow" in b:
+            return ("preceding", 0)
+        side = "preceding" if "preceding" in b else "following"
+        return (side, int(b[side].get("offset", 0)))
+
+    return (bt != "BOUNDS_TYPE_ROWS", bound(w.get("lowerBound")), bound(w.get("upperBound")))
+
+
+def _key(v: Any) -> Any:
+    """A value as `Value.le` and `samePart` see it (one zero, one NaN)."""
+    return _dedup_key(v)
+
+
+def _le(a: Any, b: Any, desc: bool, nulls_first: bool) -> bool:
+    """`SortKey.le` on one key's values."""
+    if a is None or b is None:
+        ra = (0 if nulls_first else 1) if a is None else (1 if nulls_first else 0)
+        rb = (0 if nulls_first else 1) if b is None else (1 if nulls_first else 0)
+        return ra <= rb
+    if isinstance(a, float):
+        a, b = _float_rank(a), _float_rank(b)
+    return b <= a if desc else a <= b
+
+
+def _float_rank(x: float) -> tuple:
+    return (1, 0.0) if math.isnan(x) else (0, x + 0.0)
+
+
+def _frame_rows(frame: tuple, sort: list, rows: list, i: int) -> list[int]:
+    """`Frame.rows`: the indexes (into the partition `rows`) of row `i`'s frame."""
+    rng, lo, hi = frame
+    if not rng:
+        lo_i = 0 if lo[0] == "unbounded" else i + (lo[1] if lo[0] == "following" else -lo[1])
+        hi_i = (
+            len(rows) - 1
+            if hi[0] == "unbounded"
+            else i + (hi[1] if hi[0] == "following" else -hi[1])
+        )
+        return [j for j in range(len(rows)) if lo_i <= j <= hi_i]
+    x = rows[i]
+
+    def sort_le(a: tuple, b: tuple) -> bool:
+        for c, desc, nf in sort:
+            if not _le(a[c], b[c], desc, nf):
+                return False
+            if not _le(b[c], a[c], desc, nf):
+                return True
+        return True
+
+    def ok(y: tuple, b: tuple[str, int], lower: bool) -> bool:
+        side, k = b
+        if side == "unbounded":
+            return True
+        if k == 0:
+            return sort_le(x, y) if lower else sort_le(y, x)
+        d = k if side == "following" else -k
+        c, desc, nf = sort[0]
+        vx, vy = x[c], y[c]
+        if vx is None and vy is None:
+            return True
+        if vx is None or vy is None:
+            # NULLs are at one end: `y` is in the frame only on the unbounded side.
+            rx, ry = (
+                (0 if nf else 1) if vx is None else (1 if nf else 0),
+                (0 if nf else 1) if vy is None else (1 if nf else 0),
+            )
+            return rx < ry if lower else ry < rx
+        if lower:
+            return vy <= vx - d if desc else vx + d <= vy
+        return vx - d <= vy if desc else vy <= vx + d
+
+    return [j for j, y in enumerate(rows) if ok(y, lo, True) and ok(y, hi, False)]
+
+
+def python_windows(
+    lf: pl.LazyFrame,
+    dtypes: list[DType],
+    part: list[int],
+    sort: list,
+    fns: list[tuple[int, WindowSpec]],
+    n_in: int,
+) -> pl.LazyFrame:
+    """Window functions of `fns` (output column, spec) over the sorted frame
+    of `n_in` input columns, computed row by row as `WinFn.valueIn` does."""
+    schema = {col(i): materialize(t) for i, t in enumerate(dtypes)}
+
+    def compute(df: pl.DataFrame) -> pl.DataFrame:
+        cols = [df[col(i)].to_physical().to_list() for i in range(n_in)]
+        rows = list(zip(*cols, strict=True)) if cols else [() for _ in range(df.height)]
+        groups: dict[tuple, list[int]] = {}
+        for r, row in enumerate(rows):
+            groups.setdefault(tuple(_key(row[p]) for p in part), []).append(r)
+        out: dict[int, list] = {i: [None] * len(rows) for i, _ in fns}
+        for idx in groups.values():
+            prows = [rows[r] for r in idx]
+            keys = [tuple(_key(y[c]) for c, _, _ in sort) for y in prows]
+            m = len(prows)
+            for i, r in enumerate(idx):
+                before = [keys[j] for j in range(i) if keys[j] != keys[i]]
+                peers_after = sum(1 for j in range(i + 1, m) if keys[j] == keys[i])
+                for o, f in fns:
+                    if f.fn == "rank":
+                        v: Any = len(before) + 1
+                    elif f.fn == "dense_rank":
+                        v = len(set(before)) + 1
+                    elif f.fn == "percent_rank":
+                        v = 0.0 if m <= 1 else len(before) / (m - 1)
+                    elif f.fn == "cume_dist":
+                        v = (i + 1 + peers_after) / m
+                    elif f.fn == "ntile":
+                        v = i * min(f.n, m) // m + 1
+                    else:
+                        frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
+                        vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
+                        if f.fn == "agg":
+                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
+                        elif f.fn == "first_value":
+                            v = vals[0] if vals else None
+                        elif f.fn == "last_value":
+                            v = vals[-1] if vals else None
+                        else:
+                            v = vals[f.n - 1] if f.n <= len(vals) else None
+                    out[o][r] = v
+        new = []
+        for o, f in fns:
+            t = f.dtype
+            physical = (
+                pl.Int64
+                if t == US
+                else pl.Int32
+                if t == pl.Date
+                else pl.Int64
+                if t == pl.Time
+                else t
+            )
+            s = pl.Series(col(o), out[o], dtype=physical)
+            new.append(s.cast(t) if physical != t else s)
+        return df.with_columns(new).select(list(schema))
+
+    for o, f in fns:
+        schema[col(o)] = f.dtype
+    return lf.map_batches(compute, schema=schema)
 
 
 class Translator:
@@ -1134,6 +1501,7 @@ class Translator:
         keys = [ordered(v.expr, v.dtype) for v in (self.column(ex, p) for p in part)]
         n = len(dtypes)
         new, out = [], []
+        py: list[tuple[int, WindowSpec]] = []
         for k, w in enumerate(ws):
             name = ex.function(w.get("functionReference"))
             args = [a["value"] for a in w.get("arguments", [])]
@@ -1159,10 +1527,76 @@ class Translator:
                     default = lit_expr(v, t if dt == pl.Null else dt)
                 e = c.shift(offset if name == "lag" else -offset, fill_value=default)
             else:
-                raise Unsupported(f"unsupported window function {name}/{len(args)}")
+                spec = self.window_spec(ex, name, args, w, dtypes, sorts)
+                py.append((n + k, spec))
+                out.append(spec.dtype)
+                continue
             new.append((e.over(keys) if keys else e).cast(materialize(t)).alias(col(n + k)))
             out.append(materialize(t))
-        return lf.with_columns(new), dtypes + out
+        lf = lf.with_columns(new)
+        if py:
+            part_idx = [ex.field(p["selection"]) for p in part]
+            lf = python_windows(lf, dtypes + out, part_idx, self.sort_specs(ex, sorts), py, n)
+        return lf, dtypes + out
+
+    def sort_specs(self, ex: Exprs, sorts: list[dict]) -> list[tuple[int, bool, bool]]:
+        """`(column, desc, nulls_first)` of each sort key."""
+        directions = {
+            "SORT_DIRECTION_ASC_NULLS_FIRST": (False, True),
+            "SORT_DIRECTION_ASC_NULLS_LAST": (False, False),
+            "SORT_DIRECTION_DESC_NULLS_FIRST": (True, True),
+            "SORT_DIRECTION_DESC_NULLS_LAST": (True, False),
+        }
+        out: list[tuple[int, bool, bool]] = []
+        for s in sorts:
+            d = directions.get(s.get("direction", ""))
+            if "selection" not in s["expr"] or d is None:
+                raise Unsupported("window sort keys must be columns with a direction")
+            out.append((ex.field(s["expr"]["selection"]), d[0], d[1]))
+        return out
+
+    def window_spec(
+        self, ex: Exprs, name: str, args: list[dict], w: dict, dtypes: list[DType], sorts: list
+    ) -> WindowSpec:
+        """A window function computed row by row (`WinFn.valueIn`)."""
+
+        def int_arg(j: dict, what: str) -> int:
+            if "literal" not in j or literal(j["literal"])[1] != pl.Int64:
+                raise Unsupported(f"{what} must be an integer literal")
+            v = literal(j["literal"])[0]
+            if v <= 0:
+                raise Unsupported(f"{what} must be positive")
+            return v
+
+        frame = window_frame(w)
+        if name in ("rank", "dense_rank", "percent_rank", "cume_dist") and not args:
+            t = pl.Float64 if name in ("percent_rank", "cume_dist") else pl.Int64
+            return WindowSpec(name, t)
+        if name == "ntile" and len(args) == 1:
+            return WindowSpec(name, pl.Int64, n=int_arg(args[0], "NTILE's buckets"))
+        if name in ("first_value", "last_value", "nth_value"):
+            c = self.column(ex, args[0])
+            n = int_arg(args[1], "NTH_VALUE's n") if name == "nth_value" else 0
+            idx = ex.field(args[0]["selection"])
+            return WindowSpec(name, materialize(c.dtype), col=idx, n=n, frame=frame)
+        if name in ("count", "sum", "avg", "min", "max") and len(args) <= 1:
+            if not args:
+                return WindowSpec("agg", pl.Int64, agg="count", col=None, frame=frame)
+            a = args[0]
+            itof = "cast" in a and "selection" in a["cast"].get("input", {})
+            sel = a["cast"]["input"] if itof else a
+            if "selection" not in sel and "literal" not in sel:
+                raise Unsupported("window aggregates of expressions are not supported")
+            if "literal" in sel:
+                return WindowSpec("agg", pl.Int64, agg="count", col=None, frame=frame)
+            idx = ex.field(sel["selection"])
+            t = dtypes[idx]
+            fn = {"sum": "fsum" if t == pl.Float64 or itof else "sum"}.get(name, name)
+            if name in ("min", "max") and t == pl.Float64:
+                raise Unsupported(f"{name} of doubles is not supported")
+            out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64}
+            return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
+        raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
     def sorted(self, lf: pl.LazyFrame, ex: Exprs, sorts: list[dict]) -> pl.LazyFrame:
         """`mergeSort (sortLe keys)`: stable, each key with its direction and

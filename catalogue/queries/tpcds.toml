@@ -144,7 +144,7 @@ title = "TPC-DS Q51: cumulative web vs store sales"
 intent = "Find the days on which an item's cumulative web sales overtook its cumulative store sales within a year."
 domain = "benchmark"
 source = { name = "TPC-DS v4.0.0, query 51", url = "https://github.com/gregrahn/tpcds-kit/tree/master/query_templates", licence = "TPC EULA" }
-features = ["filter", "inner_join", "full_join", "group_by", "sum", "running_agg", "cte", "coalesce_nullif", "between", "order_by", "limit", "decimal", "window_over_aggregate"]
+features = ["filter", "inner_join", "full_join", "group_by", "sum", "running_agg", "cte", "coalesce_nullif", "between", "order_by", "limit", "decimal", "window_over_aggregate", "min_max"]
 pitfalls = ["window_default_frame: the cumulative sums use the default RANGE frame, so two rows on one date share a total", "null_join_keys: the FULL JOIN keeps a side's NULLs, and MAX over the running totals skips them"]
 ibis = '''
 def cumulative(sales, item_col, date_col, price_col):

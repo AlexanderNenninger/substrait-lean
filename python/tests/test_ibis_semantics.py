@@ -113,5 +113,13 @@ def test_refused_operations(con):
     t = con.table("t")
     code, out, err = run_checker((), plan_json(con, t.aggregate(r=t.v.max())))
     assert code != 0 and "max of doubles is not supported" in err + out
-    with pytest.raises(Unsupported, match="DayOfWeekIndex"):
-        plan_json(con, t.select(r=ibis.timestamp("2024-05-05 00:00:00").day_of_week.index()))
+    ts = ibis.timestamp("2024-05-05 00:00:00")
+    with pytest.raises(Unsupported, match="TimestampDelta"):
+        plan_json(con, t.select(r=ts.delta(ibis.timestamp("2024-05-06 00:00:00"), unit="hour")))
+
+
+def test_day_of_week_index_starts_on_monday(con):
+    t = con.table("t")
+    sunday, monday = ibis.timestamp("2024-05-05 00:00:00"), ibis.timestamp("2024-05-06 00:00:00")
+    expr = t.select(s=sunday.day_of_week.index(), m=monday.day_of_week.index())
+    assert lean(con, expr) == [(6, 0)] * 3
