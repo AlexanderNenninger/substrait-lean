@@ -185,7 +185,8 @@ def test_engines_agree(con, case, data):
         assert root is not None
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
-    if root is None or not order_dependent(root):
+    no_reference = case.label in coverage.NO_DATAFUSION_SQL
+    if (root is None or not order_dependent(root)) and not no_reference:
         # As Ibis returns it: DataFusion's SQL result in the expression's
         # types (`POW` of integers is an integer there, a double in Ibis),
         # or DuckDB's where DataFusion means something else.
