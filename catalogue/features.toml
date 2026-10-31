@@ -68,13 +68,13 @@ bool_agg = { lean = "no", description = "BOOL_AND / BOOL_OR / EVERY" }
 [windows]
 row_number = { lean = "yes", description = "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)" }
 lag_lead = { lean = "yes", description = "LAG / LEAD" }
-rank = { lean = "no", description = "RANK / DENSE_RANK" }
-ntile = { lean = "no", description = "NTILE / PERCENT_RANK / CUME_DIST" }
-first_last_value = { lean = "no", description = "FIRST_VALUE / LAST_VALUE / NTH_VALUE over a window" }
-window_partition_agg = { lean = "no", description = "aggregate over a whole partition (SUM(x) OVER (PARTITION BY g)), incl. percent of total" }
-running_agg = { lean = "no", description = "running aggregate (ROWS/RANGE UNBOUNDED PRECEDING to CURRENT ROW)" }
-rows_frame = { lean = "no", description = "bounded ROWS frame (moving average over n rows)" }
-range_frame = { lean = "no", description = "RANGE frame over an interval (last 7 days)" }
+rank = { lean = "yes", description = "RANK / DENSE_RANK", note = "peers by the sort keys (`WinFn.rank`): independent of the order of ties" }
+ntile = { lean = "yes", description = "NTILE / PERCENT_RANK / CUME_DIST", note = "NTILE as DataFusion computes it, ⌊i·min(k, n)/n⌋ + 1 (not the SQL standard's buckets; the SQL engines compute it from ROW_NUMBER and COUNT)" }
+first_last_value = { lean = "yes", description = "FIRST_VALUE / LAST_VALUE / NTH_VALUE over a window", note = "over ROWS or RANGE frames; they follow the order of ties" }
+window_partition_agg = { lean = "yes", description = "aggregate over a whole partition (SUM(x) OVER (PARTITION BY g)), incl. percent of total", note = "of a column (an expression is refused); integer sums may wrap around (`Issue.sumWraps`)" }
+running_agg = { lean = "yes", description = "running aggregate (ROWS/RANGE UNBOUNDED PRECEDING to CURRENT ROW)" }
+rows_frame = { lean = "partial", description = "bounded ROWS frame (moving average over n rows)", note = "SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding)" }
+range_frame = { lean = "partial", description = "RANGE frame over an interval (last 7 days)", note = "offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). DataFusion's Substrait producer drops RANGE offsets, so such SQL is refused, and DataFusion cannot run Ibis's SQL for an interval frame. Sliding AVG/MIN as for rows_frame" }
 window_over_aggregate = { lean = "yes", description = "window over a grouped result (LAG of a monthly sum, SUM(SUM(x)) OVER ())", note = "the plan shape is fine; the window function itself must be supported" }
 qualify = { lean = "yes", description = "filter on a window result (QUALIFY, or a subquery)" }
 dedup_latest = { lean = "yes", description = "keep one row per key, the latest (ROW_NUMBER = 1)" }

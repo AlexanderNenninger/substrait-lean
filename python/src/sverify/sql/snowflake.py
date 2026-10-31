@@ -248,6 +248,9 @@ class SnowflakeDialect(Dialect):
         # NUMBER(38,0) sums are exact far beyond 64 bits.
         return f"CAST({self.checked(f'SUM({v})', row=False)} AS NUMBER(38,0))"
 
+    def window_int_sum(self, v: str, over: str) -> str:
+        return f"CAST({self.checked(f'SUM({v}) {over}', row=False)} AS NUMBER(38,0))"
+
     def float_sum(self, v: str, o: str) -> str:
         raise Unsupported(
             "Snowflake does not add doubles in a given order, and the rounding of a SUM or "

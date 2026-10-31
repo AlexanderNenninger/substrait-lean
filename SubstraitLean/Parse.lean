@@ -192,15 +192,18 @@ def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
   | .bin g a b => .bin g (a.mapFields f) (b.mapFields f)
   | .ifThen c t e => .ifThen (c.mapFields f) (t.mapFields f) (e.mapFields f)
 
-def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
-  | .rowNumber => .int
-  | .lag c _ _ | .lead c _ _ => cols.getD c .other
-
 def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   match m.fn with
   | .count | .sum => .int
   | .fsum | .avg => .float
   | .min | .max => m.arg.kind cols
+
+def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => .int
+  | .percentRank _ | .cumeDist _ => .float
+  | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
+    cols.getD c .other
+  | .agg m _ _ => m.kind cols
 
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
@@ -941,6 +944,49 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     | e :: es => return es.foldl (.bin .or) e
   | (k, _) => throw s!"unsupported expression: {k}"
 
+/-- One `AggregateRel` measure. `AVG` of integers averages their conversions
+to double; `COUNT(*)` may come with no argument. -/
+def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J Measure := do
+  let m ← field mj "measure"
+  let anchor ← natD m "functionReference"
+  let some name := fns.lookup anchor
+    | throw s!"function reference {anchor} is not declared in extensions"
+  let name := baseName name
+  if !(← arrD m "sorts").isEmpty then throw s!"ordered aggregates are not supported: {name}"
+  let distinct ← match field? m "invocation" with
+    | none | some (.str "AGGREGATION_INVOCATION_ALL")
+    | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
+    | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
+    | some i => throw s!"unsupported aggregate invocation: {i.compress}"
+  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols c : J Expr)
+  let args ← (← arrD m "arguments").mapM fun a => field a "value"
+  let arg ← match args with
+    | [a] => parseExpr fns cols a
+    | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
+    | _ => throw s!"{name} takes one argument"
+  let k := arg.kind cols
+  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
+  -- (`avg:i64` with an `i64` result), which it is not.
+  if name == "avg" then
+    if let some ty := field? m "outputType" then
+      if typeKind ty != .float then throw "avg with a non-double result is not supported"
+  let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
+  let (fn, arg) ← match name, k with
+    | "count", _ => pure (AggFn.count, arg)
+    | "sum", .int => pure (.sum, arg)
+    | "sum", .float => pure (.fsum, arg)
+    | "avg", .int => pure (.avg, .un .itof arg)
+    | "avg", .float => pure (.avg, arg)
+    -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
+    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
+    -- to other values.
+    | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
+    | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
+    | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
+    | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
+    | n, _ => throw s!"unsupported aggregate function: {n}"
+  return { fn, arg, distinct, filter }
+
 /-! ## Window functions -/
 
 def parseColumn (fns : List (Nat × String)) (cols : List Kind) (what : String) (j : Json) : J Nat := do
@@ -958,8 +1004,46 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J 
     | d => throw s!"unsupported sort direction: {(d.map (·.compress)).getD "unspecified"}"
   return { col, desc, nullsFirst }
 
+/-- A frame bound (Substrait's `WindowFunction.Bound`); `CURRENT ROW` is
+`preceding 0`. -/
+def parseBound (lower : Bool) (b : Option Json) : J FrameBound := do
+  let unbounded : FrameBound := if lower then .unboundedPreceding else .unboundedFollowing
+  let some b := b | return unbounded
+  let offset (j : Json) : J Nat := do
+    let k ← (field? j "offset").elim (pure 0) getInt
+    if k < 0 then throw "negative frame offsets are not supported" else return k.toNat
+  match ← oneof "frame bound" b ["unbounded", "currentRow", "preceding", "following"] with
+  | ("unbounded", _) => return unbounded
+  | ("currentRow", _) => return .preceding 0
+  | ("preceding", j) => return .preceding (← offset j)
+  | (_, j) => return .following (← offset j)
+
+/-- A window's frame. Offsets of a `RANGE` frame are in the unit of its one
+sort key, an integer, timestamp (microseconds) or date (days). -/
+def parseFrame (cols : List Kind) (sort : List SortKey) (w : Json) : J Frame := do
+  let range ← match field? w "boundsType" with
+    | some (.str "BOUNDS_TYPE_ROWS") => pure false
+    | none | some (.str "BOUNDS_TYPE_RANGE") | some (.str "BOUNDS_TYPE_UNSPECIFIED") => pure true
+    | some b => throw s!"unsupported window bounds type: {b.compress}"
+  let fr : Frame := ⟨range, ← parseBound true (field? w "lowerBound"),
+    ← parseBound false (field? w "upperBound")⟩
+  if range && ([fr.lo.offset, fr.hi.offset].any fun o => o.any (· != 0)) then
+    let [k] := sort | throw "RANGE frames with offsets need exactly one sort key"
+    if ![Kind.int, .time, .date].contains (cols.getD k.col .other) then
+      throw "RANGE frames with offsets need an integer, timestamp or date sort key"
+  return fr
+
+/-- An expression evaluating it cannot fail: columns, constants and their
+conversions to doubles. Window aggregates only take these, so their rows
+raise nothing (`Safety.lean` counts only sums wrapping around). -/
+def issueFree : Expr → Bool
+  | .lit _ | .field _ => true
+  | .un .itof a => issueFree a
+  | _ => false
+
 /-- A `windowFunction` expression: its `PARTITION BY`, `ORDER BY` and function.
-The frame is ignored: it doesn't affect `ROW_NUMBER`, `LAG` or `LEAD`. -/
+The frame matters to aggregates and `FIRST_VALUE`/`LAST_VALUE`/`NTH_VALUE`
+only; ranks and `ROW_NUMBER`, `LAG`, `LEAD` ignore it. -/
 def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
     J (List Nat × List SortKey × WinFn) := do
   let anchor ← natD w "functionReference"
@@ -986,12 +1070,46 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
           | _ => throw s!"{name} defaults must be constants"
         | none => throw s!"{name} defaults must be constants"
     return (c, offset, dflt)
-  let f ← match baseName name with
-    | "row_number" =>
-      if args.isEmpty then pure WinFn.rowNumber else throw "row_number takes no arguments"
-    | "lag" => do let (c, k, d) ← shifted args; pure (.lag c k d)
-    | "lead" => do let (c, k, d) ← shifted args; pure (.lead c k d)
-    | n => throw s!"unsupported window function: {n}"
+  let positive (j : Json) : J Nat := do
+    match ← constOf? fns j with
+    | some (.int k) => if 0 < k then pure k.toNat else throw s!"{name} needs a positive constant"
+    | _ => throw s!"{name} needs a positive constant"
+  let noArgs (f : WinFn) : J WinFn :=
+    if args.isEmpty then pure f else throw s!"{baseName name} takes no arguments"
+  let f ← match baseName name, args with
+    | "row_number", _ => noArgs .rowNumber
+    | "rank", _ => noArgs (.rank sort)
+    | "dense_rank", _ => noArgs (.denseRank sort)
+    | "percent_rank", _ => noArgs (.percentRank sort)
+    | "cume_dist", _ => noArgs (.cumeDist sort)
+    | "ntile", [k] => pure (.ntile (← positive k))
+    | "lag", _ => do let (c, k, d) ← shifted args; pure (.lag c k d)
+    | "lead", _ => do let (c, k, d) ← shifted args; pure (.lead c k d)
+    | "first_value", [c] =>
+      pure (.firstValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w))
+    | "last_value", [c] =>
+      pure (.lastValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w))
+    | "nth_value", [c, n] =>
+      pure (.nthValue (← parseColumn fns cols "function arguments" c) (← positive n) sort
+        (← parseFrame cols sort w))
+    | n, _ =>
+      if !["count", "sum", "avg", "min", "max"].contains n then
+        throw s!"unsupported window function: {n}"
+      -- The window's own sort keys order the frame, not the aggregate.
+      let m ← parseMeasure fns cols (Json.mkObj [("measure", Json.mkObj [
+        ("functionReference", (field? w "functionReference").getD .null),
+        ("arguments", (field? w "arguments").getD (.arr #[])),
+        ("outputType", (field? w "outputType").getD .null)])])
+      if m.distinct then throw "DISTINCT window aggregates are not supported"
+      if !issueFree m.arg then throw "window aggregates of expressions are not supported; use a column"
+      let fr ← parseFrame cols sort w
+      -- DataFusion slides a frame by retracting the rows that leave it: a
+      -- sum of doubles then rounds differently from adding up the frame, an
+      -- average of a frame that has become empty is NaN, and a `MIN` of one
+      -- with only NULLs left is the last minimum.
+      if (m.fn == .fsum || m.fn == .avg || m.fn == .min) && fr.lo != .unboundedPreceding then
+        throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
+      pure (.agg m sort fr)
   return (part, sort, f)
 
 /-- The window functions inside an expression, in the order `replaceWindows`
@@ -1121,49 +1239,6 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   match field? r "projection" with
   | some m => return .emit filtered (← parseMask m)
   | none => return filtered
-
-/-- One `AggregateRel` measure. `AVG` of integers averages their conversions
-to double; `COUNT(*)` may come with no argument. -/
-def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J Measure := do
-  let m ← field mj "measure"
-  let anchor ← natD m "functionReference"
-  let some name := fns.lookup anchor
-    | throw s!"function reference {anchor} is not declared in extensions"
-  let name := baseName name
-  if !(← arrD m "sorts").isEmpty then throw s!"ordered aggregates are not supported: {name}"
-  let distinct ← match field? m "invocation" with
-    | none | some (.str "AGGREGATION_INVOCATION_ALL")
-    | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
-    | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
-    | some i => throw s!"unsupported aggregate invocation: {i.compress}"
-  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols c : J Expr)
-  let args ← (← arrD m "arguments").mapM fun a => field a "value"
-  let arg ← match args with
-    | [a] => parseExpr fns cols a
-    | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
-    | _ => throw s!"{name} takes one argument"
-  let k := arg.kind cols
-  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
-  -- (`avg:i64` with an `i64` result), which it is not.
-  if name == "avg" then
-    if let some ty := field? m "outputType" then
-      if typeKind ty != .float then throw "avg with a non-double result is not supported"
-  let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
-  let (fn, arg) ← match name, k with
-    | "count", _ => pure (AggFn.count, arg)
-    | "sum", .int => pure (.sum, arg)
-    | "sum", .float => pure (.fsum, arg)
-    | "avg", .int => pure (.avg, .un .itof arg)
-    | "avg", .float => pure (.avg, arg)
-    -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
-    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
-    -- to other values.
-    | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
-    | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
-    | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
-    | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
-    | n, _ => throw s!"unsupported aggregate function: {n}"
-  return { fn, arg, distinct, filter }
 
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do

@@ -198,7 +198,7 @@ def test_timestamp_literals_are_not_local_time():
         (lambda: t.select(x=t.qty.cast("uint8")), "unsigned"),
         (lambda: t.select(x=t.amount.cast("float32")), "float32"),
         (lambda: t.sample(0.5), "Sample"),
-        (lambda: t.mutate(c=t.qty.cumsum(order_by="ts")), "window"),
+        (lambda: t.mutate(c=(t.qty + 1).cumsum(order_by="ts")), "window aggregates"),
     ],
 )
 def test_what_lean_does_not_model_is_refused(build, message):

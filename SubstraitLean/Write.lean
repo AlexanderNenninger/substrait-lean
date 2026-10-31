@@ -31,7 +31,9 @@ def functions : List (Nat × String) :=
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
    (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
-   (60, "date_diff"), (61, "strftime")]
+   (60, "date_diff"), (61, "strftime"),
+   (70, "rank"), (71, "dense_rank"), (72, "percent_rank"), (73, "cume_dist"), (74, "ntile"),
+   (75, "first_value"), (76, "last_value"), (77, "nth_value")]
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
@@ -240,22 +242,37 @@ def writeSortKey (cols : List Parse.Kind) (k : SortKey) : Json :=
     | true, false => "SORT_DIRECTION_DESC_NULLS_LAST"
   obj [("expr", writeExpr cols .other (.field k.col)), ("direction", dir)]
 
+def writeBound : FrameBound → Json
+  | .unboundedPreceding | .unboundedFollowing => obj [("unbounded", obj [])]
+  | .preceding 0 => obj [("currentRow", obj [])]
+  | .preceding k => obj [("preceding", obj [("offset", toJson (toString k))])]
+  | .following k => obj [("following", obj [("offset", toJson (toString k))])]
+
 /-- A window function over input columns of kinds `cols`. -/
 def writeWindow (cols : List Parse.Kind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
   let col (i : Nat) := writeExpr cols .other (.field i)
-  let (anchor, args) := match f with
-    | .rowNumber => (12, [])
+  let (anchor, args, fr) : Nat × List Json × Frame := match f with
+    | .rowNumber => (12, [], .all)
     | .lag c k d | .lead c k d =>
       let base := [col c, writeLit .int (.int k)]
       (if f matches .lag .. then 13 else 14,
-        if d == Value.null then base else base ++ [writeLit (cols.getD c .other) d])
+        if d == Value.null then base else base ++ [writeLit (cols.getD c .other) d], .all)
+    | .rank _ => (70, [], .all)
+    | .denseRank _ => (71, [], .all)
+    | .percentRank _ => (72, [], .all)
+    | .cumeDist _ => (73, [], .all)
+    | .ntile k => (74, [writeLit .int (.int k)], .all)
+    | .agg m _ fr => (Write.AggFn.anchor m.fn, [writeExpr cols (m.arg.kind cols) m.arg], fr)
+    | .firstValue c _ fr => (75, [col c], fr)
+    | .lastValue c _ fr => (76, [col c], fr)
+    | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
   obj [("windowFunction", obj [
     ("functionReference", toJson anchor),
     ("partitions", Json.arr (part.map col).toArray),
     ("sorts", Json.arr (sort.map (writeSortKey cols)).toArray),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
-    ("lowerBound", obj [("unbounded", obj [])]), ("upperBound", obj [("unbounded", obj [])]),
-    ("boundsType", "BOUNDS_TYPE_ROWS")])]
+    ("lowerBound", writeBound fr.lo), ("upperBound", writeBound fr.hi),
+    ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")])]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
 def writeMeasure (cols : List Parse.Kind) (m : Measure) : Json :=

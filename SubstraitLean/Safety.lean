@@ -66,6 +66,10 @@ def Issue.name : Issue → String
   | .badRegex => "invalid regular expression"
   | .wraps | .sumWraps => "may wrap around"
 
+/-- The arguments of a list of window functions' integer `SUM`s. -/
+def WinFn.sumArg? (fns : List WinFn) : List Expr :=
+  fns.filterMap fun | .agg m _ _ => if m.fn = .sum then some m.arg else none | _ => none
+
 /-- Errors stop the query; wrapping silently gives a different result. -/
 def Issue.isError : Issue → Bool
   | .wraps | .sumWraps => false
@@ -593,8 +597,11 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | _, .filter r c, p => r.HasIssue cat true p ∨ ∃ row ∈ r.loose.eval cat, p ∈ c.issues row
   | u, .project r es, p => r.HasIssue cat u p ∨
       ∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ es, p ∈ e.issues row
-  | u, .emit r _, p | u, .fetch r _ _, p | u, .window r _ _ _, p | u, .orderBy r _, p
+  | u, .emit r _, p | u, .fetch r _ _, p | u, .orderBy r _, p
   | u, .distinct r, p => r.HasIssue cat u p
+  -- A window `SUM` of integers may wrap around (its argument is a column:
+  -- `Parse.issueFree`).
+  | u, .window r _ _ fns, p => r.HasIssue cat u p ∨ p ∈ (WinFn.sumArg? fns).map (.sumWraps, ·)
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
   | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
@@ -613,8 +620,9 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | u, .project r es =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T))
-  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ | u, .orderBy r _ | u, .distinct r =>
+  | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r =>
     r.mayIssues cat A F T u
+  | u, .window r _ _ fns => r.mayIssues cat A F T u ++ (WinFn.sumArg? fns).map (.sumWraps, ·)
   | u, .cross a b | u, .unionAll a b => a.mayIssues cat A F T u ++ b.mayIssues cat A F T u
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
@@ -674,7 +682,12 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩
   | _, .emit r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .fetch r _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
-  | _, .window r _ _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
+  | _, .window r _ _ _, hwf, p, h => by
+    simp only [HasIssue] at h
+    simp only [mayIssues, List.mem_append]
+    rcases h with h | h
+    · exact .inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h)
+    · exact .inr h
   | _, .orderBy r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .distinct r, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
   | _, .cross a b, hwf, p, h => by

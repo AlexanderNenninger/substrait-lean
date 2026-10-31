@@ -71,10 +71,14 @@
   "detail": "type decimal(18, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "window frames are not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+   }
   }
  },
  "fin-velocity-check": {
@@ -195,10 +199,14 @@
   "detail": "type decimal(18, 2) is not supported",
   "datafusion": "runs",
   "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "window function NTile is not supported",
-   "datafusion": "runs"
+   "checker": "verified",
+   "incremental": false,
+   "datafusion": "runs",
+   "engines": {
+    "duckdb": "runs",
+    "polars": "runs",
+    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+   }
   }
  },
  "fin-dormant-reactivation": {
@@ -244,24 +252,22 @@
  "fin-bollinger": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "window frames are not supported",
+  "detail": "aggregate StandardDev is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "window frames are not supported",
+   "detail": "aggregate StandardDev is not supported",
    "datafusion": "runs"
   }
  },
  "fin-max-drawdown": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
+  "detail": "error: max of doubles is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "stage": "producer",
-   "detail": "window frames are not supported",
+   "detail": "error: max of doubles is not supported",
    "datafusion": "runs"
   }
  },
@@ -278,15 +284,13 @@
   }
  },
  "fin-fifo-pnl": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "window frames are not supported",
-   "datafusion": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
  "fin-realized-volatility": {
@@ -304,12 +308,12 @@
  "fin-volume-spike": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "window frames are not supported",
+  "detail": "frame offsets must be non-negative integer constants",
   "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "window frames are not supported",
+   "detail": "frame offsets must be non-negative integer constants",
    "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")"
   }
  },
@@ -422,10 +426,14 @@
   }
  },
  "iot-condition-duration": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "iot-time-in-state": {
   "checker": "verified",
@@ -448,10 +456,14 @@
   }
  },
  "iot-gapfill-locf": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "iot-downsample": {
   "checker": "rejected",
@@ -738,7 +750,7 @@
  "pa-zscore-outliers": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "window function Mean is not supported",
+  "detail": "aggregate StandardDev is not supported",
   "datafusion": "runs"
  },
  "pa-histogram": {
@@ -758,16 +770,24 @@
   "datafusion": "runs"
  },
  "pa-ntile-free-spenders": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window function PercentRank is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "pa-cumulative-signups": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "ssb-q1.1": {
   "checker": "verified",
@@ -847,8 +867,7 @@
  },
  "ts-rolling-time-window": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
+  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
   "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for RANGE must be either a numeric value, a string value or an interval\")"
  },
  "ts-rolling-7day-calendar": {
@@ -902,10 +921,14 @@
   }
  },
  "ts-sessionize": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "refused: comparison of time with interval; cast one side first",
+   "polars": "refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us')",
+   "snowflake": "refused: comparison of time with interval; cast one side first"
+  }
  },
  "ts-session-starts": {
   "checker": "verified",
@@ -934,7 +957,7 @@
  },
  "ts-pack-intervals": {
   "checker": "rejected",
-  "detail": "error: unsupported window function: max",
+  "detail": "error: window aggregates of expressions are not supported; use a column",
   "datafusion": "runs"
  },
  "tpcds-q03": {
@@ -1012,8 +1035,7 @@
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "stage": "producer",
-   "detail": "window frames are not supported",
+   "detail": "error: max of doubles is not supported",
    "datafusion": "runs"
   }
  },
@@ -1391,28 +1413,39 @@
   }
  },
  "win-top-n-with-ties": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window function DenseRank is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "win-running-total": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+  }
  },
  "win-moving-average": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
+  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
   "datafusion": "runs"
  },
  "win-percent-of-total": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window function Mean is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
+  }
  },
  "win-above-group-average": {
   "checker": "verified",
@@ -1425,10 +1458,14 @@
   }
  },
  "win-ntile-quartiles": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window function NTile is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "win-gaps-and-islands": {
   "checker": "verified",
@@ -1441,10 +1478,14 @@
   }
  },
  "win-forward-fill": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window frames are not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "win-lag-change": {
   "checker": "verified",

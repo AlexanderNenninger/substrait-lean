@@ -934,7 +934,8 @@ def refineCol (env : List AVal) (i : Nat) (f : AVal → AVal) : List AVal :=
   env.set i (f (env.getD i AVal.top))
 
 /-- What a row that makes `e` TRUE satisfies. Recognizes conjunctions,
-comparisons of a column with an integer constant, and `IS NOT NULL`. -/
+disjunctions, comparisons of a column with an integer constant, `IS NULL`
+and `IS NOT NULL`. -/
 def Expr.refine (env : List AVal) : Expr → List AVal
   | .bin .and p q => q.refine (p.refine env)
   | .bin .lt (.field i) (.lit (.int k)) => refineCol env i (·.nonNullInt (·.atMost (k - 1)))
@@ -962,6 +963,8 @@ def Expr.refine (env : List AVal) : Expr → List AVal
       (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
   -- `p OR q` (e.g. `x IN (1, 2)`): what `p` gives, or what `q` gives.
   | .bin .or p q => List.zipWith AVal.join (p.refine env) (q.refine env)
+  -- `x IS NULL`: only NULL (so `x IS NULL OR x >= 0` keeps the bound).
+  | .un .isNull (.field i) => refineCol env i fun a => ⟨a.null, none, false, false, false⟩
   | _ => env
 termination_by e => sizeOf e
 
@@ -1027,6 +1030,9 @@ theorem eq_int {v : Value} {k : Int} (h : (BinFn.apply .eq v (.int k)).isTrue = 
     v = .int k := by
   cases v <;> simp_all [BinFn.apply, Value.isTrue]
   rename_i x; by_cases hx : x = k <;> simp_all
+
+theorem isNull_true {v : Value} (h : (UnFn.apply .isNull v).isTrue = true) : v = .null := by
+  cases v <;> simp_all [UnFn.apply, Value.isTrue]
 
 theorem not_isNull {v : Value} (h : (UnFn.apply .not (UnFn.apply .isNull v)).isTrue = true) :
     v ≠ .null := by
@@ -1163,7 +1169,14 @@ theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem e
     rcases ht with ht | ht
     · exact EnvMem.zip_left (ihp h ht)
     · exact EnvMem.zip_right (ihq h ht)
-  case case16 => exact h
+  case case16 env i =>
+    have hn : row.getD i .null = .null := by
+      simpa [List.getD_eq_getElem?_getD] using isNull_true (by simpa [eval] using ht)
+    refine refineCol_sound h ?_
+    have := h i
+    rw [hn] at this ⊢
+    simpa [AVal.Mem] using this
+  case case17 => exact h
 
 /-! ## What a condition says about one expression
 
@@ -1618,6 +1631,7 @@ def winFact (part : List Nat) (sort : List SortKey) (strict : Bool) (w : Nat) : 
       if d = .null then orderFact sort c w true (strictGap strict sort k) ++ partFact part c w else []
   | .lead c k d =>
       if d = .null then orderFact sort c w false (strictGap strict sort k) ++ partFact part c w else []
+  | _ => []
 
 /-- Facts about the window columns appended after `n` input columns. -/
 def winFacts (part : List Nat) (sort : List SortKey) (strict : Bool) (n : Nat) (fns : List WinFn) :
@@ -1912,7 +1926,8 @@ theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n
       keyOf (part ++ sort.map (·.col)) y ≠ keyOf (part ++ sort.map (·.col)) x) :
     FactsHold (winFact part sort strict w f) row := by
   cases f with
-  | rowNumber => intro g hg; simp [winFact] at hg
+  | rowNumber | rank _ | denseRank _ | percentRank _ | cumeDist _ | ntile _ | agg _ _ _
+  | firstValue _ _ _ | lastValue _ _ _ | nthValue _ _ _ _ => intro g hg; simp [winFact] at hg
   | lag c k d =>
     simp only [winFact]
     split
@@ -2143,6 +2158,45 @@ conditions such as `prev IS NULL OR prev <= ts`. -/
 def orSplit (ap bq : AVal) : AVal :=
   (if ap.tt then AVal.ofValue (.bool true) else AVal.bot).join (if ap.ff then bq.orFalse else AVal.bot)
 
+/-- An interval with values in it. -/
+def Bound.nonEmpty (b : Bound) : Bool :=
+  match b.lo, b.hi with
+  | some l, some h => decide (l ≤ h)
+  | _, _ => true
+
+/-- `a` without an empty interval: such a value is no integer. -/
+def AVal.prune (a : AVal) : AVal := { a with int := a.int.filter Bound.nonEmpty }
+
+theorem AVal.prune_mem {a : AVal} : ∀ {v : Value}, a.Mem v → a.prune.Mem v
+  | .int i, ⟨b, hb, hm⟩ => by
+      refine ⟨b, ?_, hm⟩
+      have : b.nonEmpty = true := by
+        unfold Bound.nonEmpty
+        split
+        · rename_i l h hl hh
+          exact decide_eq_true (Int.le_trans (hm.1 l hl) (hm.2 h hh))
+        · rfl
+      simp [AVal.prune, hb, Option.filter, this]
+  | .null, h | .bool true, h | .bool false, h | .str _, h => h
+
+theorem EnvMem.prune {env : List AVal} {row : Row} (h : EnvMem env row) :
+    EnvMem (env.map AVal.prune) row := by
+  intro i
+  have htop : AVal.top.prune = AVal.top := by
+    simp [AVal.prune, AVal.top, Bound.top, Option.filter, Bound.nonEmpty]
+  have := AVal.prune_mem (h i)
+  rw [← htop] at this ⊢
+  cases hi : env[i]? <;> simp_all [List.getD_eq_getElem?_getD]
+
+/-- `NULL OR v`: TRUE where `v` is, else NULL. -/
+def AVal.orNull (a : AVal) : AVal := ⟨a.null || a.ff || a.int.isSome || a.str, none, a.tt, false, false⟩
+
+/-- `p OR q` for a `p` that is a boolean or NULL: as `orSplit`, and where `p`
+is NULL, TRUE only where `q` is (`bq` is `q` where `p` is not TRUE). This
+proves `x >= 0 OR x IS NULL` for a column `x` that may be NULL. -/
+def orSplitNull (ap bq : AVal) : AVal :=
+  (orSplit ap bq).join (if ap.null then bq.orNull else AVal.bot)
+
 def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr → AVal
   | .lit v => AVal.ofValue v
   | .field i => narrowAll ks (.field i) (env.getD i AVal.top)
@@ -2150,6 +2204,9 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
   | .bin f a b => narrowAll ks (.bin f a b) <|
       if f = .or ∧ (a.absD env fs ks).nonBool = false then
         orSplit (a.absD env fs ks) (b.absD ((Expr.un .not a).refine env) fs (a.cstrs false ++ ks))
+      else if f = .or ∧ (a.absD env fs ks).int.isNone = true ∧ (a.absD env fs ks).str = false then
+        orSplitNull (a.absD env fs ks)
+          (b.absD ((a.refineNeg env).map AVal.prune) fs (a.cstrs false ++ ks))
       else sharpen fs f a b (a.absD env fs ks) (f.abs (a.absD env fs ks) (b.absD env fs ks))
   -- Each branch is evaluated knowing whether `c` is TRUE.
   | .ifThen c t e => narrowAll ks (.ifThen c t e) <|
@@ -2361,6 +2418,37 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rcases mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ <;>
             rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem]
         · simp [AVal.nonBool, hs] at hnb
+      split
+      · rename_i _ hc
+        obtain ⟨rfl, hni, hns⟩ := hc
+        have ha := Expr.absD_sound h hfs hks a
+        rcases mem_cases ha with ⟨hv, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩
+        · have hnt : (a.eval row).isTrue = false := by simp [hv, Value.isTrue]
+          have hq := Expr.absD_sound (Expr.refineNeg_sound env a h hnt).prune hfs
+            (KsHold.cons_cstrs (c := a) (pos := false) hnt hks) b
+          rw [hv]
+          apply AVal.mem_join_right
+          rw [ite_eq_left hn]
+          rcases mem_cases hq with ⟨hv', hn'⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
+              ⟨_, hv', hs⟩ <;>
+            rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orNull, AVal.Mem]
+        · simp [hb] at hni
+        · rw [hv]
+          apply AVal.mem_join_left
+          apply AVal.mem_join_left
+          rw [ite_eq_left ht]
+          exact AVal.mem_ofValue _
+        · have hnt : (a.eval row).isTrue = false := by simp [hv, Value.isTrue]
+          have hq := Expr.absD_sound (Expr.refineNeg_sound env a h hnt).prune hfs
+            (KsHold.cons_cstrs (c := a) (pos := false) hnt hks) b
+          rw [hv]
+          apply AVal.mem_join_left
+          apply AVal.mem_join_right
+          rw [ite_eq_left hf]
+          rcases mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ |
+              ⟨_, hv', hs⟩ <;>
+            rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem]
+        · simp [hs] at hns
       · exact sharpen_sound f a b hfs (Expr.absD_sound h hfs hks a)
           (BinFn.abs_sound f (Expr.absD_sound h hfs hks a) (Expr.absD_sound h hfs hks b))
   | .ifThen c t e => by
@@ -2395,10 +2483,14 @@ def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD 
 
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
-/-- `ROW_NUMBER` is a positive integer; `LAG`/`LEAD` read a value of the same
-column of another input row, or give the default. -/
+/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
+value of the same column of another input row, or give the default;
+`PERCENT_RANK` and `CUME_DIST` are doubles. Aggregates over frames and
+`FIRST_VALUE` and friends may be anything. -/
 def WinFn.abs (env : List AVal) : WinFn → AVal
-  | .rowNumber => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
+  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
   | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Sums of integers in `b` keep their sign. -/
@@ -2608,7 +2700,20 @@ produces is described by `Rel.aeval`, provided the tables are. -/
 theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x : Row}
     (hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem env y) :
     ∀ f : WinFn, (f.abs env).Mem (f.value part b a x)
-  | .rowNumber => ⟨_, rfl, by simp [Bound.Mem]; omega⟩
+  | .rowNumber | .rank _ | .denseRank _ => ⟨_, rfl, by simp [Bound.Mem]; omega⟩
+  | .ntile k => ⟨_, rfl, by
+      simp only [Bound.Mem, Option.some.injEq, reduceCtorEq]
+      refine ⟨fun l hl => ?_, fun _ h => h.elim⟩
+      subst hl
+      have : 1 ≤ ntileOf (List.filter (samePart part x) b).length k
+        ((List.filter (samePart part x) b).length + 1 + (List.filter (samePart part x) a).length) :=
+        Nat.le_add_left 1 _
+      omega⟩
+  | .percentRank _ => by
+      simp only [WinFn.abs, WinFn.value, WinFn.valueIn, floatRatio]
+      split <;> exact ⟨_, rfl, Bound.mem_top _⟩
+  | .cumeDist _ => ⟨_, rfl, Bound.mem_top _⟩
+  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
   | .lag c k d => by
       simp only [WinFn.abs]
       rcases WinFn.value_lag (part := part) (b := b) (a := a) (x := x) (c := c) (k := k)

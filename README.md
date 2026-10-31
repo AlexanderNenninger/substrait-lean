@@ -280,27 +280,27 @@ How much of the Ibis API gets through, from
 `uv run python -m sverify.coverage --write-readme` in `python/`):
 
 <!-- coverage:start -->
-90 of 114 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+80 of 90 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference |
 | aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✗ collect · ✗ scalar subquery · ✗ unnest |
-| windows | ✓ row_number · ✓ lag · ✗ rank · ✗ dense_rank · ✗ cumsum · ✗ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✗ ntile · ✗ first |
+| windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✗ min over a sliding frame · ✗ window sum of an expression |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
-| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✗ bucket · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✗ date from columns · ✗ string to timestamp · ✗ time + interval · ✗ time truncate · ✗ strftime other directives · – between_time |
+| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* |
 
-Every engine runs the plans of the 90 verified operations, except:
+Every engine runs the plans of the 80 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 89 | non-equi join |
-| DuckDB | 89 | non-equi join |
-| Snowflake | 82 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) |
-| Spark | 79 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · time of day · time parts · compare times |
+| Polars | 79 | non-equi join |
+| DuckDB | 79 | non-equi join |
+| Snowflake | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) |
+| Spark | 60 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · non-equi join · count, max, mean · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
@@ -539,10 +539,18 @@ table format plays three roles:
   reading it are recomputed, and the report says so.
 * **A source of preconditions.** `requires` conditions are proved from
   metadata where possible: schema nullability (`nullable=false`, Iceberg
-  `required`), Delta CHECK constraints, and per-file statistics (min/max for
-  integers, dates and timestamps; NULL counts for every column). A batch only
+  `required`), Delta CHECK constraints, and per-file statistics: min/max for
+  integers, doubles, dates and timestamps, NULL counts for every column. A
+  column with NULLs gets the fact `c IS NULL OR (c >= lo AND c <= hi)`, so
+  conditions such as `amount >= 0 OR amount IS NULL` are proved from it. A
+  double's maximum is used only where the files count no NaN (NaN sorts above
+  every number; Delta has no NaN count). Strings (truncated bounds, no string
+  order in the model), decimals and zoned timestamps get no bounds. A batch only
   uses the statistics of the files it added. Keys are always checked on the
-  data, since neither format enforces them.
+  data, since neither format enforces them. Delta tables with deletion vectors
+  are read through delta-rs's DataFusion reader. Their statistics describe
+  all physical rows, deleted ones included; bounds of a superset of the rows
+  still hold.
 * **A sink that carries the contract.** `DeltaSink` writes a view in one
   commit per state, exactly once (Delta's transaction identifiers, keyed by
   the sum of the source versions). The proved guarantees become NOT NULL
@@ -611,24 +619,66 @@ for p in job2.preconditions: print(p)
 # big: (_.doubled >= 0) (Delta constraint)
 ```
 
-`pipe.refresh(audit=True)` also compares the batch with the new snapshot
-before committing, and every view with its recomputation afterwards
-(`AuditError`). Iceberg works the same way with `IcebergSource(catalog,
+`pipe.refresh(audit=True)` also compares the batch with the new snapshot,
+and every view with its recomputation on the new tables, before committing
+anything (`AuditError`): after a mismatch the state, the versions and any sink
+are as they were. When a source's schema changes, a batch whose data fits the
+old schema (added columns, widened types whose values still fit) is read in
+it and the report names the change. Otherwise the views reading the source
+are planned again on the new schema and recomputed. A view with a contract is
+not re-planned, because its proof was for the old schema: `refresh` raises
+`SchemaError` and changes nothing.
+
+A sink writes exactly once because its transaction id is built from the
+source versions, so every base table needs a version. A table that is not in
+a table format, such as a small lookup table, becomes a source with
+`pipe.source("regions", sv.StaticSource(table, version=1))`. The version is
+yours to pick (a release number). The sink records the table's content
+digest next to it and refuses to skip a commit made from other contents at
+the same version. `regions.replace(new_table, version=2)` and a `refresh`
+recompute the views that read it.
+
+A restarted job can resume from its sink instead of recomputing:
+
+```python
+stored = DeltaSource("big").stored()      # the state the sink's last commit holds
+orders = pipe.source("orders", DeltaSource("orders"), version=stored.sources["orders"])
+big = pipe.view("big", doubled(orders), resume=stored)
+big.resumed                               # 'resumed from big@v3'
+sink = DeltaSink("big", big)              # its next write is a MERGE
+pipe.refresh()                            # incremental from orders@v3
+```
+
+The view takes the stored rows only if its plan has the digest the sink
+recorded and the pipeline holds the view's sources at the recorded versions
+(and static tables with the recorded digests). Otherwise it is computed, and
+`big.resumed` says why. Resuming trusts that the sink's table holds exactly
+the view's rows, so `stored()` returns the state only when the table's last
+commit is the sink's own. Iceberg works the same way with `IcebergSource(catalog,
 "db.orders")` and `IcebergSink`: versions are snapshot sequence numbers, a
 run of appends is read from the files those snapshots added, and anything
-else (row-level deletes, overwrites) is a diff of the two snapshots, which the
-report names. Iceberg has no CHECK constraints, so the sink keeps the
-contract in the table properties and every snapshot summary, and a reader
-uses it only while every snapshot of the table was written under it.
+else (row-level deletes, overwrites, delete files) is a diff of the two
+snapshots on only the data files that changed between them (removed, added,
+or with other delete files), which the report names
+(`ChangeFeed.of_changed_files`). Iceberg has no CHECK constraints, so the sink
+keeps the contract in the table properties and every snapshot summary, and a
+reader uses it only while every snapshot of the table was written under it.
+After its first write, the sink writes each change as one snapshot of
+position delete files (one copy per deleted row, so duplicates are exact) and
+a data file of the new rows. pyiceberg 0.12 writes no delete files, so
+`sverify.io` writes them itself; it reads position deletes, but not equality
+deletes (a table with those cannot be read).
 
 What is trusted: that the change feed turns the old snapshot into the new
 one (each report says "Δ trusted as coming from …"), that writers enforce
 nullability and constraints, and that file statistics are correct (Delta's
 millisecond timestamp maxima are widened by 999 µs). What is proved: given a
 correct feed, the views are maintained correctly (`Rel.cdf_sound`); a
-snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
-the table and an append's rows (`stats_table`, `stats_append`); and each
-precondition follows from the metadata facts (`contract_sound`).
+snapshot diff is a correct feed (`ChangeFeed.of_diff`), also on the changed
+files alone (`ChangeFeed.of_changed_files`); per-file bounds bound
+the table and an append's rows (`stats_table`, `stats_append`), and the facts
+stated from them follow (`stats_bounds`, `stats_fact`, `stats_all_null`); and
+each precondition follows from the metadata facts (`contract_sound`).
 
 ### Sharded evaluation
 
@@ -1177,8 +1227,11 @@ interval, possible booleans, and whether it can be a string.
   `IS NULL` and comparisons with constants into constraints on the tested
   expression (or its negation), and `Expr.refineNeg_sound` refines columns
   where a condition is not TRUE. This is how `clip`, `abs`, `greatest` and
-  `least` get their bounds. `Expr.refine_sound` also covers `OR`, so a filter
-  `x IN (1, 2, 3)` gives `x ∈ [1, 3]`.
+  `least` get their bounds. `Expr.refine_sound` also covers `OR` and
+  `IS NULL`, so a filter `x IN (1, 2, 3)` gives `x ∈ [1, 3]` and
+  `x IS NULL OR x >= 0` gives "NULL or ≥ 0". `p OR q` is evaluated with `q`
+  refined where `p` is not TRUE, also when `p` may be NULL (`orSplitNull`),
+  which proves `x >= 0 OR x IS NULL` for a nullable `x`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
@@ -1315,11 +1368,14 @@ hypotheses:
   `Rel.delta_correct`), the old view plus the delta plan's output has the
   weights of the view on the new snapshot. `ChangeFeed.of_diff`: the diff of
   two snapshots is such a feed, so the fallback needs no trust in the feed.
+  `ChangeFeed.of_changed_files`: so is the diff of only the files that
+  changed, if the unchanged files are the same rows in both snapshots.
 * `stats_table`: with correct per-file statistics (`ColStats.Correct`,
   trusted), every row of the table lies in the join of the files' bounds;
   `stats_append`: the files an append added bound its rows; `stats_bounds`:
   that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
-  contract checker.
+  contract checker; `stats_fact`: with NULLs or a missing side it is
+  `c IS NULL OR (…)`; `stats_all_null`: files that are all NULL give `c IS NULL`.
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 
