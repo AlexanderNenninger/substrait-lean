@@ -946,7 +946,7 @@
  },
  "ts-local-day-revenue": {
   "checker": "rejected",
-  "detail": "error: unsupported cast from Substrait.Parse.Kind.time to Substrait.Parse.Kind.other",
+  "detail": "error: unsupported cast from Substrait.Parse.Kind.time to Substrait.Parse.Kind.timeTz",
   "datafusion": "runs"
  },
  "ts-overlapping-bookings": {
