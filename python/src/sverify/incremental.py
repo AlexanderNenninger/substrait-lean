@@ -38,6 +38,7 @@ recomputed (`SchemaChange`).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from collections import Counter
@@ -297,6 +298,69 @@ def _facts_within(facts: Sequence[Fact], names: Sequence[str]) -> list[Fact]:
     return out
 
 
+def plan_digest(plan: str) -> str:
+    """sha256 of a plan as Lean wrote it; sinks record it."""
+    return hashlib.sha256(plan.encode()).hexdigest()
+
+
+def table_digest(table: pa.Table) -> str:
+    """sha256 of a table's schema and bag of rows (in no particular order)."""
+    rows = sorted(repr(row_key(r)) for r in arrow_rows(table))
+    return hashlib.sha256(repr((str(table.schema), rows)).encode()).hexdigest()
+
+
+@dataclass
+class Stored:
+    """A view's state as a sink stored it, to resume a restarted pipeline
+    from (`Pipeline.view(..., resume=...)`). Trusted: the sink's table holds
+    exactly the view's rows at `sources`; it does while the sink is the only
+    writer, and the sources check that the last commit is the sink's."""
+
+    where: str
+    """E.g. "data/big@v7"."""
+    where_key: str
+    """The table the sink writes (its uri or identifier)."""
+    plan: str
+    """`plan_digest` of the view's plan."""
+    sources: dict[str, int]
+    digests: dict[str, str]
+    """`table_digest` of each static table the view read."""
+    table: pa.Table
+
+
+class StaticSource:
+    """A table that is not in a table format, such as a small lookup table,
+    as a pipeline source: its `version` is the caller's (a release number, a
+    batch id), and its `digest` is recorded next to it, so a sink can write
+    a pipeline reading it exactly once. `replace` swaps the table; the next
+    `refresh` diffs the two."""
+
+    def __init__(self, table: pa.Table, version: int = 0):
+        self.replace(table, version)
+
+    def replace(self, table: pa.Table, version: int) -> None:
+        if hasattr(self, "version") and version <= self.version:
+            raise ValueError(f"a new table needs a version above {self.version}")
+        self.table, self.version, self.digest = table, version, table_digest(table)
+
+    def snapshot(self, version: int | None = None) -> Snapshot:
+        if version not in (None, self.version):
+            raise ValueError(f"a static table only has version {self.version}")
+        return Snapshot(self.version, self.table, [])
+
+    def changes(self, since: int) -> SourceBatch:
+        if since == self.version:
+            return SourceBatch(since, since, [])
+        return SourceBatch(
+            since,
+            self.version,
+            [],
+            snapshot=self.table,
+            fallback="static table replaced",
+            schema=self.table.schema,
+        )
+
+
 @dataclass
 class SourceRefresh:
     table: str
@@ -370,6 +434,7 @@ class IncrementalView:
         engine: Engine | None = None,
         *,
         pipeline: Pipeline | None = None,
+        resume: Stored | None = None,
     ):
         self.con, self.name = con, name
         self.engine: Engine = engine or con.engine
@@ -380,11 +445,28 @@ class IncrementalView:
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.pipeline = pipeline or Pipeline(con, engine)
         self.pipeline._check_new_requires(self.requires)
-        result = run_plan(con, self.plan, self.engine)
+        self.resumed: str | None = None
+        """How the view got its first state from `resume`, or why it could
+        not and was computed instead."""
+        self.stored: tuple[str, Counter[tuple]] | None = None
+        """Where the view's state was restored from, and that state."""
+        reason = None if resume is None else self._mismatch(resume)
+        if resume is not None and reason is None:
+            # The schema the engine gives the view, from a run on no rows.
+            empty = {t: con.arrow[t].schema.empty_table() for t in self.tables}
+            schema = self._result_on(empty).schema
+            result = resume.table.select(schema.names).cast(schema)
+            self.resumed = f"resumed from {resume.where}"
+        else:
+            result = run_plan(con, self.plan, self.engine)
+            if resume is not None:
+                self.resumed = f"computed: {reason} (stored at {resume.where})"
         self.schema = result.schema
         self.counts: Counter[tuple] = Counter()
         self.examples: dict[tuple, Row] = {}
         self._add(arrow_rows(result), 1)
+        if resume is not None and reason is None:
+            self.stored = (resume.where_key, Counter(self.counts))
         self._publish()
         self.table: ir.Table = con.table(name)
         """The view as a table for other queries; contracted transformations
@@ -409,6 +491,23 @@ class IncrementalView:
                 raise
             self.deltas, self.fallback = [], str(e)
         self.plan = written_plan(json.dumps(plan))
+
+    def _mismatch(self, stored: Stored) -> str | None:
+        """Why `stored` is not this view's state at the versions the pipeline
+        holds its inputs at, or None if it is."""
+        if stored.plan != plan_digest(self.plan):
+            return "the plan changed"
+        lineage: dict[str, int] = {}
+        for t in self.tables:
+            lineage.update(self.pipeline.lineage(t))
+        if stored.sources != lineage:
+            have = ", ".join(f"{t}@v{n}" for t, n in lineage.items())
+            want = ", ".join(f"{t}@v{n}" for t, n in stored.sources.items())
+            return f"stored from {want}, the pipeline holds {have}"
+        digests = self.pipeline.digests(self.name)
+        if stored.digests != digests:
+            return f"static tables changed ({', '.join(sorted(digests))})"
+        return None
 
     @property
     def contracted(self) -> bool:
@@ -484,17 +583,20 @@ class IncrementalView:
                 con.drop(t + "$delta")
         return delta, examples
 
-    def _run_on(self, new_tables: Mapping[str, pa.Table]) -> list[Row]:
+    def _result_on(self, new_tables: Mapping[str, pa.Table]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
         con = self.con
         old = {t: con.arrow[t] for t in self.tables if t in new_tables}
         try:
             for t in old:
                 put_table(con, t, new_tables[t])
-            return arrow_rows(run_plan(con, self.plan, self.engine))
+            return run_plan(con, self.plan, self.engine)
         finally:
             for t, table in old.items():
                 put_table(con, t, table)
+
+    def _run_on(self, new_tables: Mapping[str, pa.Table]) -> list[Row]:
+        return arrow_rows(self._result_on(new_tables))
 
     def _diff(self, new_tables: Mapping[str, pa.Table]) -> tuple[Counter[tuple], dict[tuple, Row]]:
         """The view's change by recomputing it on the new inputs and diffing."""
@@ -552,22 +654,30 @@ class Pipeline:
         self.versions: dict[str, int] = {}
         """The version of each source table the pipeline's state reflects."""
 
-    def source(self, name: str, source: Source) -> ir.Table:
-        """Load the latest snapshot of `source` as base table `name`, record
-        its version and what its metadata says about it."""
+    def source(self, name: str, source: Source, *, version: int | None = None) -> ir.Table:
+        """Load the snapshot of `source` at `version` (default: the latest)
+        as base table `name`, record its version and what its metadata says
+        about it."""
         if name in self.sources or name in self.views:
             raise ValueError(f"the pipeline already has a table {name!r}")
-        snap = source.snapshot()
+        snap = source.snapshot(version)
         put_table(self.con, name, snap.table)
         register_facts(self.con, name, snap.facts)
         self.sources[name] = source
         self.versions[name] = snap.version
         return self.con.table(name)
 
-    def view(self, name: str, query: ir.Table | str) -> IncrementalView:
+    def view(
+        self, name: str, query: ir.Table | str, *, resume: Stored | None = None
+    ) -> IncrementalView:
+        """Add a view. With `resume` (what a sink stored, e.g.
+        `DeltaSource(uri).stored()`), its first state is the stored one
+        instead of a computation, if the plan is the same and the pipeline
+        holds the view's sources at the stored versions (`pipe.source(...,
+        version=stored.sources[name])`); `view.resumed` says which."""
         if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
-        return IncrementalView(self.con, query, name, self.engine, pipeline=self)
+        return IncrementalView(self.con, query, name, self.engine, pipeline=self, resume=resume)
 
     @property
     def views(self) -> dict[str, IncrementalView]:
@@ -587,6 +697,17 @@ class Pipeline:
         if (v := self.views.get(name)) is not None:
             for t in v.tables:
                 out.update(self.lineage(t))
+        return out
+
+    def digests(self, name: str) -> dict[str, str]:
+        """The content digest of every static table (`StaticSource`) that
+        `name` is computed from."""
+        if isinstance(src := self.sources.get(name), StaticSource):
+            return {name: src.digest}
+        out: dict[str, str] = {}
+        if (v := self.views.get(name)) is not None:
+            for t in v.tables:
+                out.update(self.digests(t))
         return out
 
     def _check_new_requires(self, requires: Mapping[str, Sequence[Condition]]) -> None:

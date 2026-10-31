@@ -38,6 +38,7 @@ from sverify.incremental import (
     IncrementalView,
     Snapshot,
     SourceBatch,
+    Stored,
     arrow_rows,
     first_line,
     snapshot_diff,
@@ -45,6 +46,7 @@ from sverify.incremental import (
 from sverify.io._common import (
     ColumnStats,
     Contract,
+    check_same_state,
     q,
     sink_schema,
     stats_facts,
@@ -144,6 +146,19 @@ class IcebergSource:
     def contract(self) -> Contract | None:
         text = self.table().properties.get(KEY)
         return None if text is None else Contract.from_json(text)
+
+    def stored(self) -> Stored | None:
+        """The view state the current snapshot stored, if an `IcebergSink`
+        wrote it under the table's contract (to resume a pipeline from)."""
+        t = self.table()
+        s, text = t.current_snapshot(), t.properties.get(KEY)
+        if s is None or s.summary is None or text is None:
+            return None
+        c = Contract.from_json(text)
+        if s.summary.get(PLAN) != c.plan or s.summary.get(EPOCH) != str(c.epoch):
+            return None
+        where = f"{self.identifier}@v{_version(s)}"
+        return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
 
     def changes(self, since: int) -> SourceBatch:
         t = self.table()
@@ -247,6 +262,8 @@ class IcebergSink:
         self.catalog, self.identifier, self.view = catalog, identifier, view
         self.app_id = app_id or f"sverify:{view.name}"
         self._written: Counter[tuple] | None = None
+        if view.stored is not None and view.stored[0] == identifier:
+            self._written = view.stored[1]
 
     def write(self) -> IcebergWrite:
         contract = view_contract_record(self.view)
@@ -262,6 +279,9 @@ class IcebergSink:
             t = self.catalog.load_table(self.identifier)
             mine = [s for s in _ancestry(t) if s.summary and s.summary.get(APP) == self.app_id]
             if mine and int(mine[0].summary.get(EPOCH, "-1")) >= contract.epoch:  # type: ignore[union-attr]
+                text = t.properties.get(KEY)
+                committed = None if text is None else Contract.from_json(text)
+                check_same_state(self.identifier, committed, contract)
                 self._written = Counter(self.view.counts)
                 return IcebergWrite("skipped", _version(t.current_snapshot()), contract)
             mode = "overwrite"

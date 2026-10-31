@@ -619,7 +619,34 @@ old schema (added columns, widened types whose values still fit) is read in
 it and the report names the change. Otherwise the views reading the source
 are planned again on the new schema and recomputed. A view with a contract is
 not re-planned, because its proof was for the old schema: `refresh` raises
-`SchemaError` and changes nothing. Iceberg works the same way with `IcebergSource(catalog,
+`SchemaError` and changes nothing.
+
+A sink writes exactly once because its transaction id is built from the
+source versions, so every base table needs a version. A table that is not in
+a table format, such as a small lookup table, becomes a source with
+`pipe.source("regions", sv.StaticSource(table, version=1))`. The version is
+yours to pick (a release number). The sink records the table's content
+digest next to it and refuses to skip a commit made from other contents at
+the same version. `regions.replace(new_table, version=2)` and a `refresh`
+recompute the views that read it.
+
+A restarted job can resume from its sink instead of recomputing:
+
+```python
+stored = DeltaSource("big").stored()      # the state the sink's last commit holds
+orders = pipe.source("orders", DeltaSource("orders"), version=stored.sources["orders"])
+big = pipe.view("big", doubled(orders), resume=stored)
+big.resumed                               # 'resumed from big@v3'
+sink = DeltaSink("big", big)              # its next write is a MERGE
+pipe.refresh()                            # incremental from orders@v3
+```
+
+The view takes the stored rows only if its plan has the digest the sink
+recorded and the pipeline holds the view's sources at the recorded versions
+(and static tables with the recorded digests). Otherwise it is computed, and
+`big.resumed` says why. Resuming trusts that the sink's table holds exactly
+the view's rows, so `stored()` returns the state only when the table's last
+commit is the sink's own. Iceberg works the same way with `IcebergSource(catalog,
 "db.orders")` and `IcebergSink`: versions are snapshot sequence numbers, a
 run of appends is read from the files those snapshots added, and anything
 else (row-level deletes, overwrites) is a diff of the two snapshots, which the

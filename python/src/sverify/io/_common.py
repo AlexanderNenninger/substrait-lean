@@ -3,11 +3,10 @@ contracts as SQL, and the record a sink stores with each commit."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -17,7 +16,7 @@ import sqlglot as sg
 
 from sverify.contracts import Condition, Fact, Unique, resolve
 from sverify.engine import to_sql
-from sverify.incremental import IncrementalView
+from sverify.incremental import IncrementalView, plan_digest
 
 
 @dataclass(frozen=True)
@@ -142,6 +141,8 @@ class Contract:
     checks: dict[str, str]
     """Constraint name -> SQL."""
     unique: list[list[str]]
+    digests: dict[str, str] = field(default_factory=dict)
+    """Content digest of each static table (`StaticSource`) the view read."""
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__, sort_keys=True)
@@ -151,10 +152,6 @@ class Contract:
         return Contract(**json.loads(text))
 
 
-def plan_hash(view: IncrementalView) -> str:
-    return hashlib.sha256(view.plan.encode()).hexdigest()
-
-
 def view_contract_record(view: IncrementalView) -> Contract:
     versions = view.versions
     bases = _base_tables(view)
@@ -162,7 +159,8 @@ def view_contract_record(view: IncrementalView) -> Contract:
     if missing:
         raise ValueError(
             f"view {view.name} reads tables without a source ({missing}): a sink needs "
-            "source versions to write exactly once"
+            "source versions to write exactly once; read a table that is not in a table "
+            "format with pipe.source(name, sv.StaticSource(table, version))"
         )
     schema = ibis.Schema.from_pyarrow(view.schema)
     not_null: list[str] = []
@@ -182,13 +180,30 @@ def view_contract_record(view: IncrementalView) -> Contract:
             checks[f"sverify_{len(checks) + 1}"] = sql
     return Contract(
         view=view.name,
-        plan=plan_hash(view),
+        plan=plan_digest(view.plan),
         sources=versions,
         epoch=sum(versions.values()),
         not_null=not_null,
         checks=checks,
         unique=unique,
+        digests=view.pipeline.digests(view.name),
     )
+
+
+def check_same_state(uri: str, committed: Contract | None, contract: Contract) -> None:
+    """A sink skips a state whose epoch it has committed; that is only right
+    if the static tables were the same then."""
+    if committed is not None and committed.epoch == contract.epoch:
+        changed = sorted(
+            t
+            for t in committed.digests.keys() | contract.digests.keys()
+            if committed.digests.get(t) != contract.digests.get(t)
+        )
+        if changed:
+            raise ValueError(
+                f"{uri} has a commit at epoch {contract.epoch} from other contents of "
+                f"{changed}: give the changed static table a new version"
+            )
 
 
 def _base_tables(view: IncrementalView) -> set[str]:
