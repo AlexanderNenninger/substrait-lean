@@ -24,6 +24,7 @@ import math
 from decimal import Decimal
 
 import duckdb
+import ibis
 import pyarrow as pa
 import pytest
 import sqlglot
@@ -31,6 +32,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify import coverage, polars_engine
+from sverify.engine import canonical as canonical_table
 from sverify.engine import (
     connect,
     create_table,
@@ -84,9 +86,19 @@ def tables(draw) -> dict[str, pa.Table]:
         "region": draw(st.lists(st.sampled_from([None, "eu", "us"]), min_size=m, max_size=m)),
     }
     schema = {name: s.to_pyarrow() for name, s in coverage.T.schema().items()}
+    nl = draw(st.integers(0, 4))
+    lists = st.one_of(st.none(), st.lists(ints, max_size=3))
     return {
         "t": pa.table({k: pa.array(v, schema[k]) for k, v in t.items()}),
         "u": pa.table({k: pa.array(v, pa.string()) for k, v in u.items()}),
+        "l": pa.table(
+            {
+                "k": pa.array(draw(st.lists(ints, min_size=nl, max_size=nl)), pa.int64()),
+                "xs": pa.array(
+                    draw(st.lists(lists, min_size=nl, max_size=nl)), pa.list_(pa.int64())
+                ),
+            }
+        ),
     }
 
 
@@ -96,6 +108,11 @@ def rows(table: pa.Table) -> list[tuple]:
         tuple(int(v) if isinstance(v, Decimal) else v for v in r.values())
         for r in table.to_pylist()
     ]
+
+
+def bags(rs: list[tuple]) -> list[tuple]:
+    """Lists compared as bags: a list built from rows in no fixed order."""
+    return [tuple(sorted(v, key=repr) if isinstance(v, list) else v for v in r) for r in rs]
 
 
 def same(a: list[tuple], b: list[tuple]) -> bool:
@@ -117,8 +134,10 @@ def order_dependent(r: Rel) -> bool:
 @pytest.fixture(scope="module")
 def con():
     con = connect()
-    for table in (coverage.T, coverage.U):
+    for table in coverage.TABLES:
         create_table(con, table.get_name(), table.schema())
+    for name, table in coverage.MEMTABLES.items():
+        put_table(con, name, table)
     return con
 
 
@@ -129,7 +148,6 @@ def test_engines_agree(con, case, data):
     for name, table in data.items():
         put_table(con, name, table)
     expr = case.build()
-    sql = to_sql(expr)
     plan = written_plan(to_substrait_json(expr))
     refused = REFUSED.get(case.label, {})
     results, failed = {}, set()
@@ -141,7 +159,13 @@ def test_engines_agree(con, case, data):
             continue
         try:
             results[engine] = rows(run_plan(con, plan, engine))
-        except (polars_engine.RuntimeIssue, duckdb.Error):
+        except duckdb.Error as e:
+            if "non-ASCII text differs between engines" in str(e):
+                # UPPER, LOWER, regex classes: DuckDB raises where its
+                # Unicode tables could differ from Rust's (#70).
+                continue
+            failed.add(engine)
+        except polars_engine.RuntimeIssue:
             # A runtime error of `SubstraitLean/Safety.lean` (the data has
             # NaN and ±inf to cast): both engines raise it.
             failed.add(engine)
@@ -150,14 +174,30 @@ def test_engines_agree(con, case, data):
         return
     if not results:
         return
-    root = parse_plan(json.loads(plan)).root
+    if case.label in coverage.UNORDERED_LISTS:
+        results = {e: bags(r) for e, r in results.items()}
+    try:
+        root = parse_plan(json.loads(plan)).root
+    except Unsupported:
+        # The SQL dialects cannot read it (lists); only Polars ran it.
+        root = None
     if "polars" in results and "duckdb" in results:
+        assert root is not None
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
-    if not order_dependent(root):
+    if root is None or not order_dependent(root):
         # As Ibis returns it: DataFusion's SQL result in the expression's
-        # types (`POW` of integers is an integer there, a double in Ibis).
-        df = canonical(rows(run_sql(con, sql).cast(expr.schema().to_pyarrow())))
+        # types (`POW` of integers is an integer there, a double in Ibis),
+        # or DuckDB's where DataFusion means something else.
+        if case.label in coverage.DATAFUSION_SQL:
+            duck_sql = ibis.to_sql(expr, dialect="duckdb")
+            out = canonical_table(con.ibis.con.sql(duck_sql).to_arrow_table())
+        else:
+            out = run_sql(con, to_sql(expr))
+        expected = rows(out.cast(expr.schema().to_pyarrow()))
+        if case.label in coverage.UNORDERED_LISTS:
+            expected = bags(expected)
+        df = canonical(expected)
         for got in results.values():
             assert canonical(got) == df
 

@@ -1,0 +1,12 @@
+name = "float-bounds"
+defaultTargets = ["FloatBounds"]
+
+# Kept apart from the core package so that `SubstraitLean` stays free of
+# Mathlib (see docs/float-bounds.md).
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.35.0"
+
+[[lean_lib]]
+name = "FloatBounds"

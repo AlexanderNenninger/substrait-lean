@@ -34,6 +34,7 @@ import re
 import sys
 import tomllib
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -46,6 +47,7 @@ from ibis import _
 
 from sverify.engine import (
     Connection,
+    canonical,
     connect,
     plan_json,
     put_table,
@@ -321,9 +323,17 @@ def _first_line(e: BaseException | str) -> str:
     return (text.splitlines() or [type(e).__name__])[0][:200]
 
 
-def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> dict[str, str]:
+def probe_engines(
+    con: Connection,
+    plan: str,
+    reference: list[tuple] | None,
+    second: Callable[[], list[tuple] | None] = lambda: None,
+) -> dict[str, str]:
     """Run Lean's written plan on each engine and compare with DataFusion's
-    rows (`reference`, None if DataFusion failed).
+    rows (`reference`, None if DataFusion failed). Where they differ but agree
+    with DuckDB running the query itself (`second`), DataFusion is wrong
+    (its `NOT IN (subquery)` ignores NULLs, say): `runs (DataFusion's SQL
+    differs)`.
 
     Polars and DuckDB map to `runs` (they agree with DataFusion as bags on
     the synthetic tables; with a FETCH or a window, where ties make
@@ -370,6 +380,9 @@ def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> 
             )
         else:
             ok = _canonical(got) == _canonical(reference)
+            if not ok and (duck := second()) is not None and _canonical(got) == _canonical(duck):
+                out[engine] = "runs (DataFusion's SQL differs)"
+                continue
         out[engine] = "runs" if ok else "differs"
     try:
         text = plan_sql(json.loads(plan), SNOWFLAKE)
@@ -437,8 +450,20 @@ def probe_profile(
         "checker": "verified",
         "incremental": "incremental: yes" in out,
         "datafusion": ran,
-        "engines": probe_engines(con, written_plan(plan), reference),
+        "engines": probe_engines(
+            con, written_plan(plan), reference, lambda: duckdb_rows(con, query)
+        ),
     }
+
+
+def duckdb_rows(con: Connection, query: ir.Table | str) -> list[tuple] | None:
+    """The query's rows on DuckDB itself (Ibis's DuckDB SQL for an
+    expression), None if DuckDB fails."""
+    sql = query if isinstance(query, str) else ibis.to_sql(query, dialect="duckdb")
+    try:
+        return _rows(canonical(con.ibis.con.sql(sql).to_arrow_table()))
+    except Exception:  # noqa: BLE001 - DuckDB's own failures
+        return None
 
 
 def has_decimal(schemas: dict[str, Any], dataset: str) -> bool:
@@ -475,7 +500,7 @@ def runs_on(s: dict[str, Any], engine: str) -> bool:
     status = (
         e.get("datafusion", "") if engine == "datafusion" else e.get("engines", {}).get(engine, "")
     )
-    return status == "runs" or status.startswith("sql")
+    return status.startswith(("runs", "sql"))
 
 
 def blockers(q: Query, features: dict[str, Feature]) -> list[str]:

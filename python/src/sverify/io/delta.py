@@ -11,7 +11,7 @@ add actions (trusted).
 A `DeltaSink` writes a view to a Delta table, one commit per state, exactly
 once (Delta's transaction identifiers), with the view's proved guarantees as
 NOT NULL columns and CHECK constraints, and the contract in the commit
-metadata.
+metadata. A restarted pipeline resumes from it (`DeltaSource.stored`).
 """
 
 from __future__ import annotations
@@ -22,9 +22,16 @@ from datetime import timedelta
 from typing import Literal
 
 import pyarrow as pa
+import pyarrow.dataset as ds
 
 try:
-    from deltalake import CommitProperties, DeltaTable, Transaction, write_deltalake
+    from deltalake import (
+        CommitProperties,
+        DeltaTable,
+        QueryBuilder,
+        Transaction,
+        write_deltalake,
+    )
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
@@ -35,12 +42,17 @@ from sverify.incremental import (
     Row,
     Snapshot,
     SourceBatch,
+    Stored,
     arrow_rows,
+    first_line,
 )
 from sverify.io._common import (
+    FILTER,
     ColumnStats,
     Contract,
-    first_line,
+    check_same_state,
+    filter_rows,
+    prune,
     q,
     sink_schema,
     stats_facts,
@@ -59,7 +71,16 @@ def _arrow_schema(dt: DeltaTable) -> pa.Schema:
     return pa.schema(dt.schema().to_arrow())
 
 
+def _deletion_vectors(dt: DeltaTable) -> bool:
+    return "deletionVectors" in (dt.protocol().reader_features or [])
+
+
 def _read(dt: DeltaTable) -> pa.Table:
+    if _deletion_vectors(dt):
+        # delta-rs's Arrow reader refuses deletion vectors; its DataFusion
+        # reader applies them.
+        reader = QueryBuilder().register("t", dt).execute("SELECT * FROM t")
+        return pa.table(reader.read_all()).cast(_arrow_schema(dt))
     return pa.table(dt.to_pyarrow_table()).cast(_arrow_schema(dt))
 
 
@@ -70,12 +91,24 @@ def constraint_facts(dt: DeltaTable) -> list[Fact]:
 
 
 def file_stats(dt: DeltaTable) -> dict[str, dict[str, ColumnStats]]:
-    """Per data file (by path), the statistics of each top-level column."""
+    """Per data file (by path), the statistics of each top-level column.
+
+    With deletion vectors, a file's statistics describe all its physical
+    rows, deleted ones included (`tightBounds: false`): bounds and NULL
+    counts of a superset are still correct, but the row count is left out,
+    as the protocol does not say that it counts the same rows as the NULL
+    count."""
     actions = pa.table(dt.get_add_actions(flatten=True)).to_pylist()
     names = _arrow_schema(dt).names
+    exact = not _deletion_vectors(dt)
     return {
         a["path"]: {
-            c: ColumnStats(a.get(f"min.{c}"), a.get(f"max.{c}"), a.get(f"null_count.{c}"))
+            c: ColumnStats(
+                a.get(f"min.{c}"),
+                a.get(f"max.{c}"),
+                a.get(f"null_count.{c}"),
+                a.get("num_records") if exact else None,
+            )
             for c in names
         }
         for a in actions
@@ -111,8 +144,43 @@ def _cdf_on(dt: DeltaTable) -> bool:
 class DeltaSource:
     """A Delta table read by version; see the module docstring."""
 
-    def __init__(self, uri: str, *, storage_options: dict[str, str] | None = None):
-        self.uri, self.storage_options = str(uri), storage_options
+    def __init__(
+        self,
+        uri: str,
+        *,
+        storage_options: dict[str, str] | None = None,
+        where: str | None = None,
+    ):
+        """With `where` (a SQL condition on the columns), the source is the
+        rows on which it is TRUE: snapshots read only the files whose
+        statistics do not rule it out (`prune`), and changes are filtered."""
+        self.uri, self.storage_options, self.where = str(uri), storage_options, where
+        self.skipped: list[str] = []
+        """The files the last snapshot did not read."""
+
+    def _facts(
+        self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
+    ) -> list[Fact]:
+        filtered = [] if self.where is None else [Fact(self.where, FILTER)]
+        return _facts(dt, files, source) + filtered
+
+    def _rows(self, dt: DeltaTable) -> tuple[pa.Table, dict[str, dict[str, ColumnStats]]]:
+        """The source's rows at `dt`'s version, and the files they come from."""
+        files = file_stats(dt)
+        if self.where is None:
+            return _read(dt), files
+        keep = prune(files, _arrow_schema(dt), self.where, hi_slack=TIMESTAMP_SLACK)
+        self.skipped = sorted(set(files) - keep)
+        if _deletion_vectors(dt):
+            table = _read(dt)  # delta-rs reads deletion vectors only whole
+        else:
+            dataset = dt.to_pyarrow_dataset()
+            frags = [f for f in dataset.get_fragments() if any(f.path.endswith(p) for p in keep)]
+            table = ds.FileSystemDataset(
+                frags, dataset.schema, dataset.format, dataset.filesystem
+            ).to_table()
+        rows = filter_rows(table.cast(_arrow_schema(dt)), self.where)
+        return rows, {p: s for p, s in files.items() if p in keep}
 
     def table(self, version: int | None = None) -> DeltaTable:
         dt = DeltaTable(self.uri, storage_options=self.storage_options)
@@ -123,7 +191,8 @@ class DeltaSource:
     def snapshot(self, version: int | None = None) -> Snapshot:
         dt = self.table(version)
         v = dt.version()
-        return Snapshot(v, _read(dt), _facts(dt, file_stats(dt), f"file stats @v{v}"))
+        rows, files = self._rows(dt)
+        return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
         """The contract the last sverify commit up to `version` recorded."""
@@ -132,6 +201,17 @@ class DeltaSource:
             if METADATA_KEY in commit:
                 return Contract.from_json(commit[METADATA_KEY])
         return None
+
+    def stored(self) -> Stored | None:
+        """The view state the table's last commit stored, if a `DeltaSink`
+        made that commit (to resume a pipeline from)."""
+        dt = self.table()
+        last = dt.history(1)
+        if not last or METADATA_KEY not in last[0]:
+            return None
+        c = Contract.from_json(last[0][METADATA_KEY])
+        where = f"{self.uri}@v{dt.version()}"
+        return Stored(where, self.uri, c.plan, c.sources, c.digests, _read(dt))
 
     def _check_cdf(self, dt: DeltaTable, since: int, end: int) -> None:
         """Raise unless every commit after `since` up to `end` wrote its
@@ -152,19 +232,14 @@ class DeltaSource:
         dt = self.table()
         end = dt.version()
         files = file_stats(dt)
-        snapshot_facts = _facts(dt, files, f"file stats @v{end}")
-        if end == since:
-            return SourceBatch(since, end, snapshot_facts)
+        snapshot_facts = self._facts(dt, files, f"file stats @v{end}")
         schema = _arrow_schema(dt)
+        if end == since:
+            return SourceBatch(since, end, snapshot_facts, schema=schema)
         try:
             old: DeltaTable | None = self.table(since)
         except Exception:
             old = None  # its log is gone: no statistics for the batch
-        if old is not None and _arrow_schema(old) != schema:
-            raise ValueError(
-                f"the schema of {self.uri} changed between v{since} and v{end}; "
-                "build the pipeline again"
-            )
         try:
             self._check_cdf(dt, since, end)
             cdf = pa.table(dt.load_cdf(starting_version=since + 1, ending_version=end).read_all())
@@ -173,9 +248,12 @@ class DeltaSource:
                 since,
                 end,
                 snapshot_facts,
-                snapshot=_read(dt),
+                snapshot=self._rows(dt)[0],
                 fallback=f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
+                schema=schema,
             )
+        if self.where is not None:
+            cdf = filter_rows(cdf, self.where)
         kinds = cdf.column("_change_type").to_pylist()
         rows = arrow_rows(cdf.select(schema.names).cast(schema))
         changes = Changes(
@@ -187,9 +265,9 @@ class DeltaSource:
         if old is not None:
             before = file_stats(old)
             new_files = {p: s for p, s in files.items() if p not in before}
-            facts = _facts(dt, new_files, f"file stats @v{end} (new files)")
+            facts = self._facts(dt, new_files, f"file stats @v{end} (new files)")
         else:
-            facts = constraint_facts(dt)
+            facts = self._facts(dt, {}, "")
         return SourceBatch(
             since,
             end,
@@ -197,6 +275,7 @@ class DeltaSource:
             changes=changes,
             facts=facts,
             trusted=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
+            schema=schema,
         )
 
 
@@ -247,6 +326,8 @@ class DeltaSink:
         self.uri, self.view, self.storage_options = str(uri), view, storage_options
         self.app_id = app_id or f"sverify:{view.name}"
         self._written: Counter[tuple] | None = None
+        if view.stored is not None and view.stored[0] == self.uri:
+            self._written = view.stored[1]
 
     def _table(self) -> DeltaTable | None:
         if not DeltaTable.is_deltatable(self.uri, storage_options=self.storage_options):
@@ -263,6 +344,11 @@ class DeltaSink:
         dt = self._table()
         done = None if dt is None else dt.transaction_version(self.app_id)
         if dt is not None and done is not None and done >= contract.epoch:
+            check_same_state(
+                self.uri,
+                DeltaSource(self.uri, storage_options=self.storage_options).contract(),
+                contract,
+            )
             self._written = Counter(self.view.counts)
             return SinkWrite("skipped", dt.version(), contract)
         mode: Literal["created", "overwrite", "merge"]
