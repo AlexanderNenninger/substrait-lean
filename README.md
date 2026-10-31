@@ -36,13 +36,24 @@ assumed. See [The tour](#the-tour) for how to open it.
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/) for Python and
+You need [uv](https://docs.astral.sh/uv/) for Python,
 [elan](https://github.com/leanprover/elan) for Lean (elan is to Lean what
-rustup is to Rust, or uv to Python):
+rustup is to Rust, or uv to Python), and Java 17 or 21 for the Spark tests:
 
 ```bash
 brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+```bash
+brew install openjdk@21  # or: sudo apt install openjdk-21-jre-headless
+```
+
+Homebrew's JDK is not on the `PATH`; point `JAVA_HOME` at it (in `~/.zshrc`):
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+```
+
+Without a JVM the Spark tests are skipped and everything else runs.
 ```bash
 curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 ```
@@ -54,16 +65,37 @@ the project root:
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
-cd python && uv sync             # DataFusion 51, DuckDB, Ibis, pyarrow, substrait, pytest, hypothesis
+cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
 uv run pytest                    # should end with "161 passed"
 ```
 
-`uv sync` installs `sverify` in editable mode. Its build hook runs
+`uv sync` installs `sverify` in editable mode, with every extra (below). Its build hook runs
 `lake build substrait-check` and links `sverify/_bin/substrait-check` to the
 result, so later `lake build`s take effect without reinstalling. To use a
 different binary, set `SVERIFY_CHECK` to its path.
+
+### Extras
+
+The core of `sverify` runs on DataFusion: contracts, incremental views and the
+SQL dialects (DuckDB, Snowflake and Spark SQL are generated without any of
+them installed). The other engines and the table formats are extras:
+
+| Extra | Adds |
+|---|---|
+| `polars` | `engine="polars"` (`sverify.polars_engine`) |
+| `duckdb` | `engine="duckdb"` (`sverify.duckdb_engine`) and `sverify.testing` |
+| `spark` | `sverify.spark_engine`, which runs plans on a Spark session (needs Java 17 or 21) |
+| `delta` | `sverify.io.DeltaSource`, `DeltaSink` |
+| `iceberg` | `sverify.io.IcebergSource`, `IcebergSink` |
+| `all` | all of the above |
+
+```bash
+pip install 'sverify[polars,spark]'
+```
+
+Using a feature without its extra raises an `ImportError` that names it.
 
 ### Wheels
 
@@ -101,7 +133,7 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe typecheck` | Type-checks the Python code with pyrefly |
 | `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
 | `poe test` | Python tests, including the randomized engine tests, on every core |
-| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
+| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
 
 From the project root, use `uv run --project python poe -C python qa`. The Lean
@@ -925,7 +957,9 @@ behaviour. To run the same checks on a real account, set `SNOWFLAKE_ACCOUNT`,
 #### Spark
 
 `to_sql(plan, SPARK)` (from `sverify.sql.spark`) writes checked plans and
-Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. Run it in a
+Lean delta plans as Spark SQL, for Spark 4 and Databricks SQL. With the
+`spark` extra, `sverify.spark_engine.run(plan, tables)` runs a plan over Arrow
+tables on a local session (or on the session you pass). Run it in a
 session with the settings of `SPARK_CONF`: ANSI mode
 (`spark.sql.ansi.enabled`), without which an overflow wraps around and a bad
 cast gives NULL, plus a pinned time zone, NTZ timestamps, case-sensitive

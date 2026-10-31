@@ -16,7 +16,6 @@ from collections.abc import Iterable, Mapping
 
 import pyarrow as pa
 
-from sverify import duckdb_engine
 from sverify.engine import run_checker
 from sverify.incremental import arrow_rows
 
@@ -129,6 +128,8 @@ def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
 
 def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:
     """Rows of the plan's SQL on a fresh DuckDB database holding `tables`."""
+    from sverify import duckdb_engine
+
     return arrow_rows(duckdb_engine.run(plan_json, tables or {}))
 
 

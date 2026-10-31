@@ -51,9 +51,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-import polars as pl
 import pyarrow as pa
+
+try:
+    import numpy as np
+    import polars as pl
+except ImportError as e:
+    raise ImportError("the Polars engine needs polars: pip install 'sverify[polars]'") from e
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 US = pl.Datetime("us")
