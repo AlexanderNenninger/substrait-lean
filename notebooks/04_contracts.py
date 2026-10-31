@@ -13,7 +13,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="3. Contracts")
+app = marimo.App(width="medium", app_title="4. Contracts")
 
 
 @app.cell(hide_code=True)
@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 2. [The checker](?file=02_the_checker.py) · [Contents](?file=00_start_here.py) · 4. [Keys and relations](?file=04_keys_and_relations.py) →
+    ← 3. [An orders mart](?file=03_orders_mart.py) · [Contents](?file=00_start_here.py) · 5. [Keys and relations](?file=05_keys_and_relations.py) →
     """)
     return
 
@@ -35,7 +35,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 3. Contracts
+    # 4. Contracts
 
     In verified programming you state what a function **requires** of its
     inputs (preconditions) and what it **ensures** about its output
@@ -337,8 +337,9 @@ def _(mo):
     such as `amount > 10`, `x = 3`, `x IN (1, 2, 3)` and `x IS NOT NULL`
     refine those facts; arithmetic, comparisons, `AND`/`OR`/`NOT` with SQL's
     NULL semantics, `CASE`, `COALESCE`, joins and `UNION ALL` propagate them.
-    The next chapters add **keys** and **relations between columns** (4),
-    doubles, time and text (5), runtime errors (6) and window functions (7).
+    The next chapters add **keys** and **relations between columns** (5),
+    runtime errors (6) and window functions (7); doubles, time and text
+    have a chapter of their own (12).
 
     Not tracked yet: relations that need more than "column plus constant"
     (`a < 2 * b`), string contents, DECIMAL columns, and counts across rows.
@@ -351,7 +352,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 2. [The checker](?file=02_the_checker.py) · [Contents](?file=00_start_here.py) · 4. [Keys and relations](?file=04_keys_and_relations.py) →
+    ← 3. [An orders mart](?file=03_orders_mart.py) · [Contents](?file=00_start_here.py) · 5. [Keys and relations](?file=05_keys_and_relations.py) →
     """)
     return
 
