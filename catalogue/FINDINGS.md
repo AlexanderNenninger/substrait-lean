@@ -119,9 +119,11 @@ practitioner idioms:
      sources and the recursive hierarchy query. The plan verifies, Polars and
      DuckDB run it, DataFusion does not (#64). It also rejects the RANGE frame
      Ibis writes for an interval, and recursive CTEs with a column list.
-   * The engine translations refuse `ts - lag(ts) > INTERVAL …` and `ts <
+   * The engine translations refused `ts - lag(ts) > INTERVAL …` and `ts <
      now - INTERVAL …`, which Lean verifies (session starts, dormant accounts,
-     silent devices; #65).
+     silent devices): Lean's writer wrote the interval constants as
+     timestamps or integers, the kinds the model gives them. It now tells
+     intervals from timestamps (#65).
 9. **Ties are the most common cross-engine pitfall.** 44 queries (32%) have a
    result that depends on how ties are broken: top-N, dedup, LIMIT after a
    non-unique sort, LAG over equal timestamps, OHLC open and close, FIFO
@@ -210,16 +212,16 @@ semi-structured data.
 * **Polars.** Read DECIMAL columns; always pass `nulls_last` explicitly; never
   match NULL join keys (`nulls_equal=False`); integer `/` is float division, so
   emit truncating division; timestamp differences are Durations that must be
-  compared with Durations (the catalogue's session-start query is refused for
-  this reason, by the translation's kind inference).
+  compared with Durations, so plans must type interval constants as
+  intervals (#65).
 * **DuckDB.** `/` on integers is float division (use
   `//` or a truncating form); x / 0 is NULL, so division must raise explicitly
   to keep Lean's error semantics; NULLS LAST is the default for DESC too;
   timestamp differences are month-day-nano intervals.
 * **Snowflake.** Tables have no row order, so sorts,
   fetches and windows need the tie-free obligation above; there is no
-  interval type, so timestamp differences must become `DATEDIFF` in a fixed
-  unit; integer division yields NUMBER with extra scale; week starts and
+  interval type, so intervals are microsecond counts (`DATEDIFF` and
+  `DATEADD` in microseconds); integer division yields NUMBER with extra scale; week starts and
   collation are session parameters, which the generated SQL should pin.
 
 ### Suggested order of work, by queries unblocked
@@ -260,18 +262,18 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DataFusion runs | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 6 | 0 | 1 | 0 | 7 | 6 | 6 | 6 |
-| finance | 18 | 0 | 8 | 10 | 0 | 17 | 6 | 6 | 3 |
+| finance | 18 | 0 | 8 | 10 | 0 | 17 | 7 | 7 | 4 |
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
-| iot | 12 | 7 | 0 | 5 | 0 | 12 | 6 | 6 | 6 |
+| iot | 12 | 7 | 0 | 5 | 0 | 12 | 7 | 7 | 7 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 10 | 0 | 2 | 2 | 11 | 10 | 10 | 9 |
 | product | 13 | 8 | 0 | 5 | 0 | 12 | 8 | 8 | 8 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 10 | 0 | 5 | 0 | 13 | 9 | 9 | 6 |
+| timeseries | 15 | 10 | 0 | 5 | 0 | 13 | 10 | 10 | 7 |
 | tpcds | 8 | 0 | 3 | 5 | 0 | 8 | 3 | 3 | 0 |
 | tpch | 22 | 0 | 15 | 7 | 0 | 22 | 15 | 15 | 4 |
 | windows | 13 | 6 | 0 | 7 | 0 | 13 | 6 | 6 | 3 |
-| **all** | 139 | 62 | 26 | 49 | 2 | 132 | 84 | 84 | 58 |
+| **all** | 139 | 62 | 26 | 49 | 2 | 132 | 87 | 87 | 61 |
 
 ### Feature frequency
 
@@ -406,15 +408,9 @@ Over the 88 queries that verify (some only as DOUBLE):
 | engine: reason | queries |
 |---|---|
 | snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 26 |
-| duckdb: refused: comparison of time with interval; cast one side first | 2 |
-| polars: refused: lt of Datetime(time_unit='us', time_zone=None) and Duration(time_unit='us') | 2 |
-| snowflake: refused: comparison of time with interval; cast one side first | 2 |
 | duckdb: differs | 1 |
 | polars: differs | 1 |
-| duckdb: refused: comparison of time with int; cast one side first | 1 |
-| polars: refused: lt of Datetime(time_unit='us', time_zone=None) and Int64 | 1 |
-| snowflake: refused: comparison of time with int; cast one side first | 1 |
-| snowflake: refused: Snowflake has no interval values, so timestamp - timestamp is refused | 1 |
+| snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency
 
