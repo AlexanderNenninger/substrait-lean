@@ -613,6 +613,10 @@ class Exprs:
             return ftoi(v)
         if "string" in target and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.String), pl.String, v.issues)
+        if "date" in target and v.dtype == US:
+            # `UnFn.toDate`: days since 1970-01-01, rounding down.
+            days = v.expr.dt.epoch("us") // US_PER_DAY
+            return Val(days.cast(pl.Int32).cast(pl.Date), pl.Date, v.issues)
         raise Unsupported(f"unsupported cast from {v.dtype} to {json.dumps(target)}")
 
     def if_then(self, t: dict) -> Val:

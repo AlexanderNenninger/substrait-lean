@@ -333,6 +333,10 @@ class Dialect:
         """`Time.trunc`: rounded down to the unit, weeks from Monday."""
         raise Unsupported(f"{self.name}: date_trunc is not implemented")
 
+    def to_date(self, ts: str) -> str:
+        """`UnFn.toDate`: the calendar day of a timestamp (rounding down)."""
+        return self.cast(ts, "date")
+
     # Strings: sequences of Unicode scalar values (`SubstraitLean/Text.lean`).
     # Lengths and positions count characters, and string order (which only
     # sorts use) is by code point, i.e. byte order: no collation.
@@ -523,6 +527,7 @@ class Un:
     op: Literal[
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "itos", "upper", "lower", "length", "regex_match", "date_part", "date_trunc",
+        "to_date",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -794,6 +799,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "str"
         case Un(op="date_trunc"):
             return "time"
+        case Un(op="to_date"):
+            return "date"
         case Un():
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
@@ -828,6 +835,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return "str"
         case Un(op="date_trunc"):
             return "time"
+        case Un(op="to_date"):
+            return "date"
         case Un():
             return "bool"
         case Bin(op="add" | "sub", left=a, right=b):
@@ -1342,6 +1351,8 @@ class _Parser:
                     return Un("ftoi", e)
                 if target == "str" and k == "int":
                     return Un("itos", e)
+                if target == "date" and k == "time":
+                    return Un("to_date", e)
                 if target == k and target != "other":
                     return e
                 raise Unsupported(f"unsupported cast from {k} to {target}")
@@ -2507,6 +2518,8 @@ class _Writer:
                 return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
             case Un(op="date_trunc", arg=a, param=unit):
                 return self.date_trunc(unit, self.operand(a, "time", ref, cols, "date_trunc"))
+            case Un(op="to_date", arg=a):
+                return d.to_date(self.operand(a, "time", ref, cols, "CAST to DATE"))
             case Bin(op="concat", left=a, right=b):
                 sa, sb = (self.operand(x, "str", ref, cols, "||") for x in (a, b))
                 return d.concat(sa, sb)

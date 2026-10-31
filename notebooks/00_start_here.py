@@ -142,6 +142,7 @@ def _(mo):
     | 12 | [A complete pipeline](?file=12_fitness.py) | heart rate during workouts, end to end |
     | 13 | [What is proved, what is trusted](?file=13_trust.py) | the trusted boundary, a glossary and a map of the code |
     | 14 | [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
+    | 15 | [One expression, many engines](?file=15_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
     """)
     return
 
