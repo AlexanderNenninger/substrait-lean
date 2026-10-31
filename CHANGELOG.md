@@ -79,8 +79,26 @@ Every other module (`sverify.incremental`, `sverify.contracts`,
   the public path.
 - Incremental views over SQL strings have no public replacement yet: nodes
   come from Ibis transforms.
-- Fixed: a `DeltaSink` refused its second write when a guarantee had
-  parentheses that Delta drops when it stores a CHECK constraint
+### Fixes
+
+- Arithmetic on double literals (`3.0 / 2.0`, a `CASE` of double literals
+  plus `1.0`) used the integer operators on the literals' codes, which gave
+  false proofs; the parser now reads a double literal, a cast to a double or
+  such a `CASE` as a double
+  ([#97](https://github.com/AlexanderNenninger/substrait-lean/issues/97),
+  [#155](https://github.com/AlexanderNenninger/substrait-lean/pull/155)).
+- Booleans are ordered FALSE < TRUE, as DataFusion orders them; `b < TRUE`
+  was NULL in the model
+  ([#154](https://github.com/AlexanderNenninger/substrait-lean/issues/154),
+  [#155](https://github.com/AlexanderNenninger/substrait-lean/pull/155)).
+- A bare double literal (`SELECT 1.5 AS c`) is written as an `fp64` literal,
+  not as an integer holding its code, and `substrait-check` prints such a
+  column as doubles. `0.0` and `CAST(NULL AS DOUBLE)` still come out with an
+  integer column type (part of
+  [#96](https://github.com/AlexanderNenninger/substrait-lean/issues/96),
+  [#166](https://github.com/AlexanderNenninger/substrait-lean/pull/166)).
+- A `DeltaSink` refused its second write when a guarantee had parentheses
+  that Delta drops when it stores a CHECK constraint
   (`(x IS NULL) OR (x > 0)`).
 
 ### Moved
