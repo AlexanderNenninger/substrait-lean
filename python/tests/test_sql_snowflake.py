@@ -27,6 +27,7 @@ import sqlglot
 
 import sverify as sv
 from sverify.engine import run_checker
+from sverify.engines import create_table, substrait_json, written_plan
 from sverify.examples import PIPELINES, create_tables
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
@@ -107,7 +108,7 @@ def fixture_plan(path: Path) -> dict:
     what the engines get (they use encodings only Lean reads)."""
     text = path.read_text()
     if path.stem.startswith("isthmus_"):
-        text = sv.written_plan(text)
+        text = written_plan(text)
     return json.loads(text)
 
 
@@ -116,7 +117,7 @@ def pipeline_plans() -> dict[str, dict]:
     create_tables(con, ORDERS, CUSTOMERS)
     queries = {name: sv.engine.to_sql(expr) for name, expr in PIPELINES.items()}
     queries["sql_query"] = SQL_QUERY
-    return {name: json.loads(sv.substrait_json(con, q)) for name, q in queries.items()}
+    return {name: json.loads(substrait_json(con, q)) for name, q in queries.items()}
 
 
 PLANS = pipeline_plans()
@@ -133,8 +134,8 @@ ORDERED_QUERIES = {
 
 def ordered_plans() -> dict[str, dict]:
     con = sv.connect()
-    sv.create_table(con, "w", sv.engine.ibis.schema({"g": "int64", "x": "int64"}), ORDERED_ROWS)
-    return {name: json.loads(sv.substrait_json(con, q)) for name, q in ORDERED_QUERIES.items()}
+    create_table(con, "w", sv.engine.ibis.schema({"g": "int64", "x": "int64"}), ORDERED_ROWS)
+    return {name: json.loads(substrait_json(con, q)) for name, q in ORDERED_QUERIES.items()}
 
 
 def feature_plans() -> dict[str, dict]:
@@ -162,7 +163,7 @@ def feature_plans() -> dict[str, dict]:
     }
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
-    return {k: json.loads(sv.substrait_json(con, sv.engine.to_sql(e))) for k, e in exprs.items()}
+    return {k: json.loads(substrait_json(con, sv.engine.to_sql(e))) for k, e in exprs.items()}
 
 
 FEATURE_PLANS = feature_plans()
@@ -278,7 +279,7 @@ def test_identifiers_are_quoted():
     con = sv.connect()
     create_tables(con)
     sql = to_sql(
-        json.loads(sv.substrait_json(con, sv.engine.to_sql(PIPELINES["inner_join"]))), SNOWFLAKE
+        json.loads(substrait_json(con, sv.engine.to_sql(PIPELINES["inner_join"]))), SNOWFLAKE
     )
     assert '"orders"' in sql
     assert re.search(r'(?<!")\borders\b(?!")', sql) is None
@@ -372,7 +373,7 @@ def run_differential(
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
     for name, expr in SORTED.items():
-        plan = json.loads(sv.substrait_json(con, sv.engine.to_sql(expr)))
+        plan = json.loads(substrait_json(con, sv.engine.to_sql(expr)))
         got = run(retarget(to_sql(plan, d, tie_free=True)))
         assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():

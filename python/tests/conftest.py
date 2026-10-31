@@ -28,10 +28,10 @@ from typing import Any
 import pytest
 from hypothesis import settings
 
-import sverify as sv
+from sverify.engines import ENGINES
 
 #: Keep in step with the `test-*` poe tasks and the CI matrix.
-BACKENDS = ("core", *sv.ENGINES, "snowflake", "spark")
+BACKENDS = ("core", *ENGINES, "snowflake", "spark")
 
 SCALE = float(os.environ.get("SVERIFY_EXAMPLES", "1"))
 

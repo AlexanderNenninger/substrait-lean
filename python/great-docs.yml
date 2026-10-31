@@ -1,0 +1,134 @@
+# Great Docs configuration for the sverify API reference (`uv run poe docs`).
+# See https://posit-dev.github.io/great-docs/user-guide/03-configuration.html
+#
+# The landing page is this directory's README.md (the PyPI page). The notebook
+# tour is linked on molab, not embedded: the notebooks call the native Lean
+# checker, so they can't run in the browser.
+
+module: sverify
+
+display_name: "sverify"
+
+navbar_style: "sky"
+
+parser: google
+
+# Static analysis (griffe reads the source). Runtime introspection resolves
+# `io.DeltaSource` as an attribute of `sverify`, and `import sverify` doesn't
+# import all of its submodules (`sverify.io` loads delta-rs and pyiceberg
+# lazily).
+dynamic: false
+
+# Sections in the order a data engineer looks for things: what a transform
+# promises, how its result is built, stored and kept up to date, where its
+# tables live, where it runs, what can go wrong. The public API is the ten
+# top-level names plus `sverify.io`, `sverify.engines` and `sverify.errors`;
+# everything else is internal (CHANGELOG.md, 0.2.0). `Node`'s results
+# (`Refresh`, `Status`, `Group`) live in `sverify.nodes` and are documented
+# because users hold them, not because they are imported.
+reference:
+  - title: Contracts
+    desc: >
+      State what a transformation assumes and promises, and have it proved
+      before any data runs.
+    contents:
+      - transform
+      - verify
+      - unique
+      - references
+      - Report
+
+  - title: Transforms, nodes and refresh
+    desc: >
+      A contracted transform called on a source builds a node. Nodes compose,
+      are stored with `.write(sink)`, and are kept up to date by `.refresh()`,
+      with update plans proved equal to a full recompute.
+    contents:
+      - Node
+      - group
+      - Changes
+      - nodes.Group
+      - nodes.Refresh
+      - nodes.Status
+      - nodes.NodeStatus
+      - nodes.StageRefresh
+
+  - title: Sources and sinks
+    desc: >
+      Delta Lake and Iceberg tables as versioned sources, sources of
+      preconditions, and sinks that carry the contract (`sverify.io`).
+    contents:
+      - io.DeltaSource
+      - io.DeltaSink
+      - io.IcebergSource
+      - io.IcebergSink
+      - io.StaticSource
+      - io.SinkWrite
+      - io.Contract
+
+  - title: Engines and SQL
+    desc: >
+      Run a checked plan on DuckDB, Polars, DataFusion or Spark, or write it
+      as DuckDB, Snowflake or Spark SQL (`sverify.engines`).
+    contents:
+      - connect
+      - engines.run
+      - engines.ENGINES
+      - engines.Connection
+      - engines.create_table
+      - engines.table_rows
+      - engines.to_sql
+      - engines.Dialect
+      - engines.DUCKDB
+      - engines.SNOWFLAKE
+      - engines.SPARK
+      - engines.Unsupported
+      - engines.run_spark
+      - engines.SPARK_CONF
+      - engines.run_sharded
+
+  - title: ASOF joins
+    desc: Align two time series, each row with the latest earlier row of the other.
+    contents:
+      - asof_join
+
+  - title: Plans
+    desc: >
+      The low-level layer: Substrait plans, Lean's written form of them, and
+      the update plans of incremental maintenance (`sverify.engines`).
+    contents:
+      - engines.substrait_json
+      - engines.isthmus_json
+      - engines.SQL_PRODUCERS
+      - engines.written_plan
+      - engines.run_substrait_json
+      - engines.delta_plans
+
+  - title: Errors
+    desc: What sverify raises, and when (`sverify.errors`).
+    contents:
+      - errors.VerificationError
+      - errors.PreconditionError
+      - errors.PostconditionError
+      - errors.CompositionError
+      - errors.NotIncremental
+      - errors.AuditError
+      - errors.SchemaError
+      - errors.SqlError
+
+# Agent skills for sverify users, written by hand and shipped in the wheel
+# (`sverify/skills/<name>/SKILL.md`, with their `references/`). The site
+# publishes them under `.well-known/agent-skills/` with a Skills page;
+# `tests/test_skills.py` runs their code.
+skill:
+  enabled: true
+  well_known: true
+  skills:
+    - name: sverify
+      file: src/sverify/skills/sverify/SKILL.md
+    - name: sverify-pipelines
+      file: src/sverify/skills/sverify-pipelines/SKILL.md
+    - name: sverify-engines
+      file: src/sverify/skills/sverify-engines/SKILL.md
+
+jupyter: python3

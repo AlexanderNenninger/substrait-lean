@@ -34,8 +34,10 @@ from sverify.engine import (
     run_plan,
     substrait_json,
 )
+from sverify.engines import table_rows, written_plan
+from sverify.errors import PostconditionError, PreconditionError
 from sverify.examples import PIPELINES
-from sverify.incremental import arrow_rows, delta_plans, read_tables
+from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
@@ -635,12 +637,12 @@ def test_unsupported_constructs_raise():
 def test_incremental_view_on_duckdb():
     con = sv.connect()
     sv.examples.create_tables(con, [(1, "ada", 30), (2, "bob", 5)], [("ada", "Paris")])
-    view = sv.IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+    view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
     assert view.rows() == view.recompute() == [(1, "Paris")]
     view.apply({"orders": sv.Changes(inserts=[(3, "ada", 1)], deletes=[(1, "ada", 30)])})
     assert view.rows() == view.recompute() == [(3, "Paris")]
     # The base table changed in `con` too.
-    assert sorted(sv.table_rows(con, "orders")) == [(2, "bob", 5), (3, "ada", 1)]
+    assert sorted(table_rows(con, "orders")) == [(2, "bob", 5), (3, "ada", 1)]
 
 
 def test_contract_checks_on_duckdb():
@@ -659,10 +661,10 @@ def test_contract_checks_on_duckdb():
     sv.examples.create_tables(con, [(1, "ada", 30)])
     passthrough(con.table("orders"))
     sv.examples.create_tables(con, [(1, "ada", 300)])
-    with pytest.raises(sv.PostconditionError):
+    with pytest.raises(PostconditionError):
         passthrough(con.table("orders"))
     sv.examples.create_tables(con, [(1, "ada", -1)])
-    with pytest.raises(sv.PreconditionError):
+    with pytest.raises(PreconditionError):
         passthrough(con.table("orders"))
 
 
@@ -721,7 +723,7 @@ def interval_queries(events: ibis.Table) -> dict[str, ibis.Table]:
 def test_timestamp_differences_compare_with_intervals(name):
     con = connect()
     put_table(con, "events", EVENTS)
-    plan = sv.written_plan(plan_json(con, interval_queries(con.table("events"))[name]))
+    plan = written_plan(plan_json(con, interval_queries(con.table("events"))[name]))
     lean = lean_on(json.loads(plan), {"events": EVENTS})
     assert canonical(duckdb_rows(plan, {"events": EVENTS})) == canonical(lean)
     assert lean, "the query should keep some rows"

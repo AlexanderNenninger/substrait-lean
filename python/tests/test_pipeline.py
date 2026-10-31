@@ -12,7 +12,10 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import label, violations
 from sverify.engine import Engine
+from sverify.engines import ENGINES, table_rows
+from sverify.errors import PreconditionError
 from sverify.examples import create_tables, orders
+from sverify.incremental import IncrementalView, Pipeline
 
 SETTINGS = settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
@@ -49,7 +52,7 @@ def ensures_hold(view):
 
 def test_contracted_view_knows_its_contract():
     con = setup([(1, "ada", 5), (2, "bob", 0)])
-    view = sv.IncrementalView(con, doubled(paid(con.table("orders"))), "v")
+    view = IncrementalView(con, doubled(paid(con.table("orders"))), "v")
     assert [label(c) for c in view.guarantees] == [
         "(_.doubled >= 0)",
         "_.doubled.notnull()",
@@ -62,22 +65,22 @@ def test_contracted_view_knows_its_contract():
 def test_preconditions_are_checked_at_creation():
     # Built on the unbound `orders`, so the call itself checks nothing.
     con = setup([(1, "ada", 5), (1, "bob", 7)])
-    with pytest.raises(sv.PreconditionError, match=r"unique\(id\)"):
-        sv.IncrementalView(con, paid(orders), "v")
+    with pytest.raises(PreconditionError, match=r"unique\(id\)"):
+        IncrementalView(con, paid(orders), "v")
 
 
 def test_batches_violating_preconditions_change_nothing():
     con = setup([(1, "ada", 5), (2, "bob", 7)])
-    view = sv.IncrementalView(con, doubled(paid(con.table("orders"))), "v")
+    view = IncrementalView(con, doubled(paid(con.table("orders"))), "v")
     before = view.rows()
-    with pytest.raises(sv.PreconditionError, match=r"inserted row\(s\) of orders violate"):
+    with pytest.raises(PreconditionError, match=r"inserted row\(s\) of orders violate"):
         view.apply({"orders": sv.Changes(inserts=[(3, "cy", -1)])})
-    with pytest.raises(sv.PreconditionError, match=r"inserted key\(s\) of orders violate unique"):
+    with pytest.raises(PreconditionError, match=r"inserted key\(s\) of orders violate unique"):
         view.apply({"orders": sv.Changes(inserts=[(2, "cy", 1)])})
-    with pytest.raises(sv.PreconditionError, match="unique"):
+    with pytest.raises(PreconditionError, match="unique"):
         view.apply({"orders": sv.Changes(inserts=[(3, "cy", 1), (3, "dan", 2)])})
     assert view.rows() == before
-    assert sv.table_rows(con, "orders") == [(1, "ada", 5), (2, "bob", 7)]
+    assert table_rows(con, "orders") == [(1, "ada", 5), (2, "bob", 7)]
     # Deleting a key frees it for the same batch.
     view.apply({"orders": sv.Changes(inserts=[(2, "cy", 1)], deletes=[(2, "bob", 7)])})
     assert view.rows() == view.recompute() == [(1, "ada", 10), (2, "cy", 2)]
@@ -85,7 +88,7 @@ def test_batches_violating_preconditions_change_nothing():
 
 def test_batches_are_checked_without_reading_the_tables(monkeypatch):
     con = setup([(1, "ada", 5), (2, "bob", 7)])
-    view = sv.IncrementalView(con, doubled(paid(con.table("orders"))), "v")
+    view = IncrementalView(con, doubled(paid(con.table("orders"))), "v")
     checked = []
     real = violations
 
@@ -102,7 +105,7 @@ def test_unproved_links_cannot_be_maintained():
     con = setup([(1, "ada", 5)])
     derived = con.table("orders").filter(_.id > 0)
     with pytest.raises(ValueError, match="not proved"):
-        sv.IncrementalView(con, doubled(derived), "v")
+        IncrementalView(con, doubled(derived), "v")
 
 
 names = st.sampled_from(["ada", "bob", None])
@@ -111,7 +114,7 @@ names = st.sampled_from(["ada", "bob", None])
 @st.composite
 def keyed_batch(draw, con):
     """Inserts and deletes that keep `id` a key and `amount` non-negative."""
-    current = sv.table_rows(con, "orders")
+    current = table_rows(con, "orders")
     deletes = draw(st.lists(st.sampled_from(current), unique=True, max_size=2)) if current else []
     kept = {r[0] for r in current} - {r[0] for r in deletes}
     fresh = st.integers(0, 8).filter(lambda i: i not in kept)
@@ -120,12 +123,12 @@ def keyed_batch(draw, con):
     return sv.Changes(inserts=[(i, draw(names), draw(amounts)) for i in ids], deletes=deletes)
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 @SETTINGS
 @given(data=st.data())
 def test_guarantees_hold_in_every_state(engine, data):
     con = setup()
-    view = sv.IncrementalView(con, doubled(paid(con.table("orders"))), "v", engine)
+    view = IncrementalView(con, doubled(paid(con.table("orders"))), "v", engine)
     for _step in range(data.draw(st.integers(1, 4))):
         view.apply({"orders": data.draw(keyed_batch(con))})
         assert view.rows() == view.recompute()
@@ -141,7 +144,7 @@ def flagged(t):
 
 
 def build(con, engine: Engine = "datafusion"):
-    pipe = sv.Pipeline(con, engine)
+    pipe = Pipeline(con, engine)
     base = pipe.view("base", doubled(paid(con.table("orders"))))
     customers = con.table("customers")
     flags = pipe.view("flags", flagged(base.table))
@@ -175,7 +178,7 @@ def test_views_read_views_and_contracts_connect():
 
 def test_preconditions_on_unproved_views_are_refused():
     con = setup([(1, "ada", 15)])
-    pipe = sv.Pipeline(con)
+    pipe = Pipeline(con)
     plain = pipe.view("plain", con.table("orders").filter(_.amount > 0))
     with pytest.raises(ValueError, match="must be proved"):
         pipe.view("p", paid(plain.table))
@@ -191,14 +194,14 @@ def test_views_change_only_through_their_inputs():
 customers_row = st.tuples(names, st.sampled_from(["Paris", "Rome", None]))
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 @SETTINGS
 @given(data=st.data())
 def test_pipeline_matches_recompute(engine, data):
     con = setup(customers=data.draw(st.lists(customers_row, max_size=3)))
     pipe = build(con, engine)
     for _step in range(data.draw(st.integers(1, 4))):
-        current = sv.table_rows(con, "customers")
+        current = table_rows(con, "customers")
         deletes = data.draw(st.lists(st.sampled_from(current), max_size=1)) if current else []
         pipe.apply(
             {

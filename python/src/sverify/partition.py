@@ -1,5 +1,8 @@
 """Sharded evaluation: run a plan on each shard of its data, then combine.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
     import sverify.partition as sp
 
     s = sp.split(plan_json, sharded=["orders"])      # or NotShardable, saying why
@@ -74,12 +77,24 @@ FloatOrder = Literal["exact", "any"]
 
 
 class NotShardable(ValueError):
-    """The plan's result would depend on how the rows are split."""
+    """The plan's result would depend on how the rows are split.
+
+    Raised by `split` and `sverify.engines.run_sharded`, with the reason, for
+    example a `SUM` of doubles or a window whose `PARTITION BY` does not
+    contain the split key. A subclass of `ValueError`, which is how to catch
+    it from `sverify.engines.run_sharded`.
+    """
 
 
 @dataclass(frozen=True)
 class Split:
+    """A plan split for sharded evaluation, returned by `split`: the plan each
+    shard runs, and the plan that combines their results into the plan's
+    result on all the data (`Rel.shardSplit_sound`)."""
+
     mode: Literal["linear", "two_phase"]
+    """`"linear"` when the shards' results are concatenated; `"two_phase"`
+    when they are aggregated again (see the module docstring)."""
     proved: bool
     """False when `float_order="any"` was needed: sums of doubles then round
     as the split makes them."""
@@ -118,7 +133,35 @@ def split(
 ) -> Split:
     """Split a Substrait plan for evaluation on shards of the tables `sharded`,
     each split on the columns `keys[t]` (if given). `unique[t]` lists column
-    sets with no two equal rows in the whole table `t`."""
+    sets with no two equal rows in the whole table `t`.
+
+    `split` only splits the plan; it does not check `keys` or `unique` on any
+    data (`sverify.engines.run_sharded` does).
+
+    Args:
+        plan: A Substrait JSON plan, as a string or parsed.
+        sharded: The names of the tables split across shards; every other
+            table the plan reads is broadcast.
+        keys: Split keys, as a mapping from sharded table name to columns:
+            rows with equal values on them are always on the same shard.
+            Default: none.
+        unique: Keys of whole tables, as a mapping from table name to a list
+            of column sets. They let windows run on each shard. Default:
+            none.
+        float_order: `"exact"` (the default) refuses `SUM` and `AVG` of
+            doubles; `"any"` splits them anyway, and the result has
+            `proved=False`.
+
+    Returns:
+        The `Split`.
+
+    Raises:
+        NotShardable: The plan's result would depend on how the rows are
+            split; the message says why.
+        ValueError: `keys` or `unique` name unknown columns, a key is given
+            for a table that is not sharded or names no columns, or the
+            checker fails on the request.
+    """
     p = json.loads(plan) if isinstance(plan, str) else plan
     cols = _columns(p)
 
@@ -203,11 +246,47 @@ def run_sharded(
     max_workers: int | None = None,
 ) -> pa.Table:
     """The plan's result on all the data, computed shard by shard on Polars.
+    This is `sverify.engines.run_sharded`.
 
     Each shard maps every table of `sharded` to its rows on that shard;
     `broadcast` holds the other tables. The result equals the plan's on the
     concatenated shards, as a bag (row order is not kept), unless
-    `float_order="any"` was needed (see `Split.proved`)."""
+    `float_order="any"` was needed: sums of doubles then round as the split
+    makes them.
+
+    Before running, the split keys and `unique` column sets are checked on
+    the data.
+
+    Args:
+        plan: A Substrait JSON plan, as a string or parsed.
+        shards: One mapping per shard, from each table of `sharded` to its
+            rows on that shard.
+        sharded: The names of the tables split across shards.
+        broadcast: The other tables the plan reads, each the same on every
+            shard. Default: none.
+        keys: Split keys, as a mapping from sharded table name to columns:
+            rows with equal values on them are always on the same shard.
+            Default: none.
+        unique: Keys of whole tables, as a mapping from table name to a list
+            of column sets. They let windows run on each shard. Default:
+            none.
+        float_order: `"exact"` (the default) refuses `SUM` and `AVG` of
+            doubles; `"any"` splits them anyway, and the result is not
+            proved equal.
+        max_workers: The number of threads running shards in parallel.
+            Default: `ThreadPoolExecutor`'s default.
+
+    Returns:
+        The plan's result, as an Arrow table.
+
+    Raises:
+        ValueError: The plan's result would depend on how the rows are
+            split (`sverify.partition.NotShardable`, a `ValueError`, saying
+            why); there are no shards; a shard's tables are not exactly
+            `sharded`; rows with equal split keys are on two shards; a
+            `unique` column set has two equal rows; or `keys` or `unique`
+            name unknown columns.
+    """
     from sverify import polars_engine
 
     if not shards:

@@ -9,3 +9,6 @@ __pycache__/
 /python/dist/
 /python/wheelhouse/
 __marimo__/
+# Great Docs build output (`poe docs`)
+/python/great-docs/
+/python/.great-docs*/

@@ -15,6 +15,7 @@ import sverify as sv
 from sverify import duckdb_engine, polars_engine
 from sverify.contracts import violations
 from sverify.engine import connect, plan_json, run_checker
+from sverify.engines import create_table
 from sverify.examples import orders
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
@@ -245,8 +246,8 @@ def test_left_join_on_a_foreign_key_runs_agree(data):
 
 def test_foreign_keys_are_checked_on_the_data():
     con = sv.connect()
-    sv.create_table(con, "c", CUSTOMERS.schema(), [(1, "x")])
-    sv.create_table(con, "o", ORDERS.schema(), [(1, 1, 5), (2, None, 6), (3, 2, 7)])
+    create_table(con, "c", CUSTOMERS.schema(), [(1, "x")])
+    create_table(con, "o", ORDERS.schema(), [(1, 1, 5), (2, None, 6), (3, 2, 7)])
     assert violations(con.table("o"), sv.references("cust", "c", "cid")) == 1
 
 

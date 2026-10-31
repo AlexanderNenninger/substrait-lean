@@ -46,48 +46,67 @@ def _(mo):
     that no longer add up.
 
     *Incremental view maintenance* computes only the **change** to the
-    result from the **changes** to the inputs. `sv.IncrementalView` does it
-    with update rules proved correct in Lean, on DuckDB, Polars or
-    DataFusion. We'll use it first, see what it refuses, and then look at
-    how it works.
+    result from the **changes** to the inputs. A transform you call on
+    sources is a *node*, and `node.refresh()` keeps it up to date with
+    update rules proved correct in Lean, on DuckDB, Polars, DataFusion or
+    Spark (chapter 11). We'll use it first, see what it recomputes
+    instead, and then look at how it works.
 
     ## Keeping a join up to date
 
-    You write the query once, as Ibis or SQL. `IncrementalView` stores its
-    result as a table and keeps it up to date from the inserts and deletes
-    alone:
+    You write the query once, as an Ibis transform. Called on two sources
+    it builds a node; `refresh()` computes its result once, and from then on
+    keeps it up to date from the inserts and deletes alone. Here the
+    sources are in-memory tables (`StaticSource`, from `sverify.io`); Delta
+    and Iceberg tables work the same way (chapter 1 reads a Delta table):
     """)
     return
 
 
 @app.cell
 def _():
-    import ibis
+    import pyarrow as pa
     import sverify as sv
-    from sverify.examples import create_tables
+    from sverify.engines import delta_plans
+    from sverify.io import StaticSource
 
-    con = sv.connect()  # plans run on DuckDB by default
-    create_tables(
-        con,
-        orders_rows=[(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
-        customers_rows=[("ada", "Paris"), ("bob", "Oslo")],
+    def arrow_table(schema, rows):
+        return pa.Table.from_pylist([dict(zip(schema.names, r)) for r in rows], schema=schema)
+
+    orders = StaticSource(
+        arrow_table(
+            pa.schema({"id": pa.int64(), "customer": pa.string(), "amount": pa.int64()}),
+            [(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
+        ),
+        name="orders",
     )
-    o, c = con.table("orders"), con.table("customers")
-    with_city = o.join(c, o.customer == c.name).select(o.id, c.city)
+    customers = StaticSource(
+        arrow_table(
+            pa.schema({"name": pa.string(), "city": pa.string()}),
+            [("ada", "Paris"), ("bob", "Oslo")],
+        ),
+        name="customers",
+    )
 
-    view = sv.IncrementalView(con, with_city, "orders_with_city")
-    view.rows()
-    return c, con, ibis, o, sv, view
+    @sv.transform()
+    def orders_with_city(o, c):
+        return o.join(c, o.customer == c.name).select(o.id, c.city)
+
+    view = orders_with_city(orders, customers)  # plans run on DuckDB by default
+    view.refresh()
+    view.to_pandas()
+    return customers, delta_plans, orders, orders_with_city, sv, view
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `view.apply({...})` takes a batch of changes per table, as
-    `sv.Changes(inserts=[...], deletes=[...])`. It updates the base tables
-    *and* the view. `view.recompute()` computes the view from scratch, for
-    checking. We'll throw some changes at it: press the button to change
-    both tables at once, at random.
+    `orders.apply(sv.Changes(inserts=[...], deletes=[...]))` changes a
+    source and gives it a new version; the next `view.refresh()` gets
+    exactly that change and updates the view from it. To check, we build
+    the same node again and refresh it: a node that has never been
+    refreshed computes its result from scratch. We'll throw some changes at
+    it: press the button to change both tables at once, at random.
     """)
     return
 
@@ -102,60 +121,72 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(apply_batch, display, mo, sv, view):
+def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city, sv, view):
     import random as _random
 
-    def _batch(rng, table, make_row):
-        current = sv.table_rows(view.con, table)
+    def _rows(table):
+        return sorted((tuple(r.values()) for r in table.to_pylist()), key=repr)
+
+    def _batch(rng, source, make_row):
+        current = _rows(source.table)
         deletes = rng.sample(current, k=min(len(current), rng.randint(0, 2)))
-        return sv.Changes(
+        changes = sv.Changes(
             inserts=[make_row(rng) for _ in range(rng.randint(0, 2))], deletes=deletes
         )
+        source.apply(changes)
+        return changes
 
     def _changes_table(ch, cols, title):
         rows = [list(r) for r in [*ch.inserts, *ch.deletes]]
         return display.table(rows, cols, [1] * len(ch.inserts) + [-1] * len(ch.deletes), title)
 
     _names = ["ada", "bob", "cy", None]
-    _last = None
+    _last, _report = None, None
     if apply_batch.value:
         _rng = _random.Random(apply_batch.value)
         _last = {
             "orders": _batch(
                 _rng,
-                "orders",
+                orders,
                 lambda r: (r.randint(1, 9), r.choice(_names), r.choice([None, 5, 30, 50])),
             ),
             "customers": _batch(
-                _rng, "customers", lambda r: (r.choice(_names), r.choice(["Paris", "Oslo", "Lima"]))
+                _rng, customers, lambda r: (r.choice(_names), r.choice(["Paris", "Oslo", "Lima"]))
             ),
         }
-        view.apply(_last)
+        _report = view.refresh()
 
-    _equal = view.rows() == view.recompute()
+    _fresh = orders_with_city(orders, customers)
+    _fresh.refresh()
+    _maintained, _recomputed = _rows(view.to_arrow()), _rows(_fresh.to_arrow())
+    _equal = _maintained == _recomputed
     mo.vstack(
         [
             mo.md("*Press the button to change both tables at once.*")
             if _last is None
-            else display.side_by_side(
-                _changes_table(_last["orders"], ["id", "customer", "amount"], "changes to orders"),
-                _changes_table(_last["customers"], ["name", "city"], "changes to customers"),
+            else mo.vstack(
+                [
+                    display.side_by_side(
+                        _changes_table(
+                            _last["orders"], ["id", "customer", "amount"], "changes to orders"
+                        ),
+                        _changes_table(
+                            _last["customers"], ["name", "city"], "changes to customers"
+                        ),
+                    ),
+                    mo.md(f"`view.refresh()` reports:\n\n```text\n{_report}\n```"),
+                ]
             ),
             display.side_by_side(
-                display.table(
-                    sorted(view.rows(), key=lambda r: r[0]), ["id", "city"], title="maintained view"
-                ),
-                display.table(
-                    sorted(view.recompute(), key=lambda r: r[0]),
-                    ["id", "city"],
-                    title="recomputed from scratch",
-                ),
+                display.table(_maintained, ["id", "city"], title="maintained view"),
+                display.table(_recomputed, ["id", "city"], title="recomputed from scratch"),
             ),
             mo.callout(
                 mo.md(
                     f"After {apply_batch.value} batch(es): the maintained view "
                     + ("**equals** full recomputation ✓" if _equal else "**differs** ✗")
-                    + f". Each batch runs {len(view.deltas)} Lean-generated update plans on DuckDB."
+                    + f". Each batch runs {len(delta_plans(view.plan))} Lean-generated"
+                    " update plans on DuckDB."
                 ),
                 kind="success" if _equal else "danger",
             ),
@@ -172,53 +203,72 @@ def _(mo):
 
     A view that is quietly wrong is worse than no view, so the rule is
     strict. Filters, computed columns, inner joins (self-joins too), cross
-    joins, `UNION ALL` and `ORDER BY`. Everything else is **refused up
-    front** instead of being maintained wrongly: left, semi and anti joins
-    (a left join's NULL-padded rows must be *retracted* when a match turns
-    up later), `DISTINCT`, `LIMIT` (it depends on row order), windows, and
-    aggregates (contracts work on them, but their update rules aren't proved
-    yet). Pick one:
+    joins, `UNION ALL` and `ORDER BY` are maintained from their changes.
+    Everything else is **recomputed and diffed** on every refresh instead
+    of being maintained wrongly: left, semi and anti joins (a left join's
+    NULL-padded rows must be *retracted* when a match turns up later),
+    `DISTINCT`, `LIMIT` (it depends on row order), windows, and aggregates
+    (contracts work on them, but their update rules aren't proved yet).
+    The result is just as right, but it costs a full run per refresh, and
+    `node.status()` tells you which kind of node you have. Pick one:
     """)
     return
 
 
 @app.cell(hide_code=True)
-def _(c, mo, o):
-    REFUSED = {
-        "orders.limit(2)": o.limit(2),
-        "a left join": o.left_join(c, o.customer == c.name).select(o.id, c.city),
-        "orders.distinct()": o.distinct(),
-        "total amount per customer": o.group_by("customer").aggregate(total=o.amount.sum()),
+def _(customers, mo, orders, orders_with_city, sv):
+    @sv.transform()
+    def first_two(o):
+        return o.limit(2)
+
+    @sv.transform()
+    def located(o, c):
+        return o.left_join(c, o.customer == c.name).select(o.id, c.city)
+
+    @sv.transform()
+    def distinct_orders(o):
+        return o.distinct()
+
+    @sv.transform()
+    def totals(o):
+        return o.group_by("customer").aggregate(total=o.amount.sum())
+
+    KINDS = {
+        "the inner join above": lambda: orders_with_city(orders, customers),
+        "orders.limit(2)": lambda: first_two(orders),
+        "a left join": lambda: located(orders, customers),
+        "orders.distinct()": lambda: distinct_orders(orders),
+        "total amount per customer": lambda: totals(orders),
     }
-    refused = mo.ui.dropdown(list(REFUSED), value="a left join", label="query")
-    refused
-    return REFUSED, refused
+    kind = mo.ui.dropdown(list(KINDS), value="a left join", label="query")
+    kind
+    return KINDS, kind
 
 
 @app.cell(hide_code=True)
-def _(REFUSED, con, mo, refused, sv):
-    try:
-        sv.IncrementalView(con, REFUSED[refused.value], "refused_view")
-        _out = mo.callout(mo.md("Accepted?!"), kind="danger")
-    except sv.NotIncremental as _e:
-        _out = mo.callout(mo.md(f"**NotIncremental**: {_e}"), kind="info")
-    except ValueError as _e:
-        _out = mo.callout(mo.md(f"**ValueError**: {str(_e).splitlines()[-1]}"), kind="info")
-    _out
+def _(KINDS, kind, mo):
+    _node = KINDS[kind.value]()
+    _node.refresh()
+    _status = _node.status()
+    mo.callout(
+        mo.md(f"`node.status()`: {_status}"),
+        kind="info" if _status.nodes[0].recomputed else "success",
+    )
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    In a *pipeline* (next chapter), views without update rules are
-    recomputed and diffed instead, and their changes still flow to the
-    views downstream; that is how chapters 2 and 3 maintain a window and an
-    aggregate.
+    A recomputed node's change, the difference between its new and its old
+    result, still flows to the nodes that read it; that is how chapters 2
+    and 3 maintain a window and an aggregate. The reason `status()` gives
+    is a short, generic one; the list above is the full one.
 
-    Plain SQL works too: `sv.IncrementalView(con, "select ... from ...",
-    "name")`. And the view is a table like any other:
-    `con.table("orders_with_city")`.
+    Nodes are built from Ibis transforms: a view written as a SQL string
+    has no public counterpart yet. And the view is a table like any other:
+    `view.table` is an Ibis table to query further, and `view.to_arrow()`,
+    `to_polars()` and `to_pandas()` hand you its rows.
     """)
     return
 
@@ -282,8 +332,8 @@ def _():
         kept = z_filter(z, lambda r: lt(10, r[2]))
         return z_map(kept, lambda r: [r[0], mul(r[2], 2)])
 
-    orders = [[1, "ada", 30], [2, "bob", 5], [3, "ada", None]]
-    return consolidate, eq, orders, z_cross, z_filter, z_lift, z_query
+    order_rows = [[1, "ada", 30], [2, "bob", 5], [3, "ada", None]]
+    return consolidate, eq, order_rows, z_cross, z_filter, z_lift, z_query
 
 
 @app.cell(hide_code=True)
@@ -319,11 +369,11 @@ def _(changes):
 
 
 @app.cell(hide_code=True)
-def _(consolidate, delta_orders, display, mo, orders, z_lift, z_query):
-    _old = consolidate(z_query(z_lift(orders)))
+def _(consolidate, delta_orders, display, mo, order_rows, z_lift, z_query):
+    _old = consolidate(z_query(z_lift(order_rows)))
     _delta_out = consolidate(z_query(delta_orders))
-    _incremental = consolidate(z_query(z_lift(orders)) + z_query(delta_orders))
-    _recomputed = consolidate(z_query(z_lift(orders) + delta_orders))
+    _incremental = consolidate(z_query(z_lift(order_rows)) + z_query(delta_orders))
+    _recomputed = consolidate(z_query(z_lift(order_rows) + delta_orders))
     mo.vstack(
         [
             display.side_by_side(
@@ -391,7 +441,16 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(
-    consolidate, delta_orders, display, eq, include_corner, mo, orders, z_cross, z_filter, z_lift
+    consolidate,
+    delta_orders,
+    display,
+    eq,
+    include_corner,
+    mo,
+    order_rows,
+    z_cross,
+    z_filter,
+    z_lift,
 ):
     _customers = z_lift([["ada", "Paris"], ["bob", "Oslo"]])
     _delta_customers = [(["cy", "Lima"], +1), (["bob", "Oslo"], -1)]
@@ -400,7 +459,7 @@ def _(
         # orders.customer ($1) = customers.name ($3)
         return z_filter(z_cross(a, b), lambda r: eq(r[1], r[3]))
 
-    _A, _dA = z_lift(orders), delta_orders
+    _A, _dA = z_lift(order_rows), delta_orders
     _B, _dB = _customers, _delta_customers
     _delta = _join(_dA, _B) + _join(_A, _dB) + (_join(_dA, _dB) if include_corner.value else [])
     _incremental = consolidate(_join(_A, _B) + _delta)
@@ -453,7 +512,8 @@ def _(mo):
     ## What runs on each batch
 
     The three update plans are exactly the three new cells of the join
-    table above, as Lean wrote them. `orders$delta` and
+    table above, as Lean wrote them; `sverify.engines.delta_plans(view.plan)`
+    gives them to you. `orders$delta` and
     `customers$delta` are the change tables, with a trailing `__weight`
     column; old tables get weight 1 (`Project +[1]`), and the join
     multiplies weights (`$3 * $6`):
@@ -462,7 +522,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo, view):
+def _(delta_plans, mo, view):
     import subprocess
 
     from sverify.engine import checker_path
@@ -477,7 +537,11 @@ def _(mo, view):
         ).stdout
         return out.split("tables:")[0].rstrip()
 
-    mo.hstack([mo.md(f"```text\n{_tree(p)}\n```") for p in view.deltas], justify="start", wrap=True)
+    mo.hstack(
+        [mo.md(f"```text\n{_tree(p)}\n```") for p in delta_plans(view.plan)],
+        justify="start",
+        wrap=True,
+    )
     return
 
 
@@ -486,31 +550,38 @@ def _(mo):
     mo.md(r"""
     Step by step:
 
-    1. The query becomes a Substrait plan (sverify's Ibis producer, or the
-       connection's SQL producer for a SQL string).
+    1. The transform becomes a Substrait plan (sverify's Ibis producer);
+       `view.plan` is that plan as Lean checked and wrote it.
     2. `substrait-check --delta` builds the update plan (`Rel.delta`),
        splits it into pieces without `UNION ALL` (`Rel.terms`), and encodes
        each row's weight as the `__weight` column (`Rel.weighted`). Each step
        has a theorem saying it computes exactly the change to the result;
        `Rel.weighted_eval` covers running it on an ordinary engine.
-    3. `sverify` registers the change tables, runs the plans, sums the
-       weights per row, and merges the result into the stored view.
+    3. On each refresh, `sverify` registers the change tables, runs the
+       plans, sums the weights per row, and merges the result into the
+       view's state.
 
-    A batch is computed completely before anything is replaced. If anything
-    fails, for example deleting a row that doesn't exist, nothing changes:
+    A batch is computed completely before anything is replaced, so if
+    anything fails, nothing changes. A change that can't happen at all,
+    such as deleting a row that doesn't exist, doesn't even get that far:
+    the source refuses it, and neither `orders` nor the view moves.
     """)
     return
 
 
 @app.cell
-def _(mo, sv, view):
-    _before = view.rows()
+def _(mo, orders, sv, view):
+    _before = orders.version, view.versions
     try:
-        view.apply({"orders": sv.Changes(inserts=[(7, "ada", 70)], deletes=[(99, "nobody", 1)])})
+        orders.apply(sv.Changes(inserts=[(7, "ada", 70)], deletes=[(99, "nobody", 1)]))
     except ValueError as _e:
         _err = _e
     mo.callout(
-        mo.md(f"**ValueError**: {_err}. The view is unchanged: {view.rows() == _before}."),
+        mo.md(
+            f"**ValueError**: {_err}. `orders` is still at version {orders.version}, "
+            f"and the view still reflects {view.versions}: "
+            f"{(orders.version, view.versions) == _before}."
+        ),
         kind="warn",
     )
     return
@@ -526,13 +597,17 @@ def _(mo):
     Python glue, the engine itself) is covered by randomized tests: they
     generate random tables and random batches, with NULLs and duplicates,
     and after every batch compare the maintained view with a full
-    recompute, as the button above does.
+    recompute, as the button above does. In production you can ask for
+    the same check on every batch: `view.refresh(audit=True)` compares the
+    batch with recomputation before applying it, and raises `AuditError`
+    (from `sverify.errors`) instead of applying a wrong one.
 
     You can now keep a join up to date from its changes alone, with update
-    rules proved in Lean, and you know which queries are refused rather
+    rules proved in Lean, and you know which queries are recomputed rather
     than maintained wrongly. Next up, [Pipelines](?file=10_pipelines.py)
-    stacks views that read each other, so each change flows through every
-    layer, and brings back the contracts of chapter 8.
+    stacks transforms into layers, stores the ones others read, so each
+    change flows through every layer, and brings back the contracts of
+    chapter 8.
     """)
     return
 

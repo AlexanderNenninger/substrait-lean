@@ -11,6 +11,8 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import violations
 from sverify.counterexample import Counterexample
+from sverify.engines import create_table
+from sverify.errors import VerificationError
 from sverify.examples import customers, orders
 
 
@@ -36,7 +38,7 @@ def bound(cex: Counterexample) -> dict:
     con = sv.connect()
     schemas = {"orders": orders.schema(), "customers": customers.schema()}
     for name, schema in schemas.items():
-        sv.create_table(con, name, schema, cex.tables.get(name, []))
+        create_table(con, name, schema, cex.tables.get(name, []))
     return {name: con.table(name) for name in schemas}
 
 
@@ -106,7 +108,7 @@ def test_verification_errors_show_the_counterexample():
     def plus_one(orders):
         return orders.select(orders.id, total=orders.amount + 1)
 
-    with pytest.raises(sv.VerificationError, match="counterexample: orders"):
+    with pytest.raises(VerificationError, match="counterexample: orders"):
         plus_one(orders)
     report = plus_one.last_report
     assert report is not None

@@ -79,11 +79,13 @@ def _(mo):
 def _():
     import ibis
     import sverify as sv
+    from sverify.engines import create_table, table_rows
+    from sverify.errors import VerificationError
 
     MIN, MAX = -(2**63), 2**63 - 1
 
     con = sv.connect()
-    sv.create_table(
+    create_table(
         con,
         "t",
         ibis.schema({"qty": "int64", "n": "int64", "amount": "float64"}),
@@ -108,14 +110,14 @@ def _():
         ).select(x=t.amount.round()),
         "select qty + 1": t.select(x=t.qty + 1),
     }
-    return MAX, MIN, VARIANTS, con, sv
+    return MAX, MIN, VARIANTS, VerificationError, con, sv, table_rows
 
 
 @app.cell(hide_code=True)
-def _(MAX, MIN, con, display, sv):
+def _(MAX, MIN, con, display, table_rows):
     _shown = [
         tuple("MIN" if v == MIN else "MAX" if v == MAX else v for v in r)
-        for r in sv.table_rows(con, "t")
+        for r in table_rows(con, "t")
     ]
     display.table(
         _shown,
@@ -184,7 +186,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, sv):
+def _(VerificationError, mo, sv):
     @sv.transform()
     def ratio(t):
         return t.select(x=t.qty // t.n)
@@ -199,7 +201,7 @@ def _(mo, sv):
     _t = _ibis.table({"qty": "int64", "n": "int64"}, name="t")
     try:
         ratio(_t)
-    except sv.VerificationError as _e:
+    except VerificationError as _e:
         _err = str(_e).splitlines()[0]
     safe_ratio(_t)
     mo.vstack(

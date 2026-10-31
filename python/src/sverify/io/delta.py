@@ -1,6 +1,9 @@
 """Delta Lake tables (delta-rs) as change sources and sinks.
 
-A `DeltaSource` hands a pipeline Arrow tables: the snapshot at a version,
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
+A `DeltaSource` hands the nodes reading it Arrow tables: the snapshot at a version,
 and the change between two versions from the Change Data Feed, where
 `insert` and `update_postimage` rows have weight +1 and `delete` and
 `update_preimage` rows weight -1. Its metadata gives facts about every row:
@@ -8,21 +11,24 @@ schema nullability (enforced by writers), CHECK constraints
 (`delta.constraints.*`, enforced by writers) and per-file statistics from the
 add actions (trusted).
 
-A `DeltaSink` writes a view to a Delta table, one commit per state, exactly
-once (Delta's transaction identifiers), with the view's proved guarantees as
-NOT NULL columns and CHECK constraints, and the contract in the commit
-metadata. A restarted pipeline resumes from it (`DeltaSource.stored`).
+A `DeltaSink` stores a node (`node.write(DeltaSink(uri))`) in a Delta
+table, one commit per state, exactly once (Delta's transaction identifiers),
+with the node's proved guarantees as NOT NULL columns and CHECK constraints,
+and the contract in the commit metadata. A restarted job resumes from it
+(`DeltaSource.stored`), and nodes downstream read it through its Change Data
+Feed.
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import PurePosixPath
 from typing import Literal
 
 import pyarrow as pa
 import pyarrow.dataset as ds
+import sqlglot as sg
 
 try:
     from deltalake import (
@@ -50,6 +56,7 @@ from sverify.io._common import (
     FILTER,
     ColumnStats,
     Contract,
+    SinkWrite,
     check_same_state,
     filter_rows,
     prune,
@@ -141,8 +148,72 @@ def _cdf_on(dt: DeltaTable) -> bool:
     return dt.metadata().configuration.get(CDF_KEY, "false").lower() == "true"
 
 
+def _basename(uri: str) -> str:
+    return PurePosixPath(uri.rstrip("/")).name or uri
+
+
 class DeltaSource:
-    """A Delta table read by version; see the module docstring."""
+    """A Delta table read by version, as the input of transforms.
+
+    With `where` (a SQL condition on the columns), the source is the rows on
+    which it is TRUE: snapshots read only the files whose statistics do not
+    rule it out, and changes are filtered. `name` is the table's name in the
+    plans that read it (default: the last part of `uri`).
+
+    A refresh reads the Change Data Feed (`delta.enableChangeDataFeed`)
+    between the version a node's state was computed from and the latest;
+    where the feed is off or its files are gone, the new snapshot is diffed
+    instead. Its metadata gives facts about every row, which can establish
+    a transform's preconditions without reading the data: NOT NULL columns,
+    CHECK constraints and file statistics.
+
+    Args:
+        uri: The table's location: a path, or a URI such as `s3://...`.
+        storage_options: Options for delta-rs's object store (credentials,
+            region). Default: None.
+        where: A SQL condition on the columns. The source is the rows on
+            which it is TRUE; files are skipped only where Lean proves from
+            their statistics that it is TRUE on none of their rows. Default:
+            None, every row.
+        name: The table's name in the plans that read it. Default: the last
+            part of `uri`.
+
+    Attributes:
+        uri: The table's location.
+        name: The table's name in the plans that read it.
+        where: The SQL condition, or None.
+
+    Examples:
+        A node over a Delta table, updated from its Change Data Feed:
+
+        ```python
+        import tempfile
+        from pathlib import Path
+
+        import pyarrow as pa
+        import sverify as sv
+        from deltalake import write_deltalake
+        from sverify.io import DeltaSource
+
+        lake = Path(tempfile.mkdtemp())
+        write_deltalake(lake / "orders", pa.table({"id": [1, 2], "amount": [30, 5]}),
+                        configuration={"delta.enableChangeDataFeed": "true"})
+
+
+        @sv.transform()
+        def big_orders(orders):
+            return orders.filter(orders.amount > 10)
+
+
+        big = big_orders(DeltaSource(str(lake / "orders")))
+        big.refresh()
+        write_deltalake(lake / "orders", pa.table({"id": [3], "amount": [50]}), mode="append")
+        print(big.refresh())
+        # big_orders:
+        #   orders@v0→v1: 1 insert(s), 0 delete(s); Δ trusted as coming from Delta CDF v0→v1
+        #   view big_orders: orders@v1
+        ```
+    """
 
     def __init__(
         self,
@@ -150,11 +221,10 @@ class DeltaSource:
         *,
         storage_options: dict[str, str] | None = None,
         where: str | None = None,
+        name: str | None = None,
     ):
-        """With `where` (a SQL condition on the columns), the source is the
-        rows on which it is TRUE: snapshots read only the files whose
-        statistics do not rule it out (`prune`), and changes are filtered."""
         self.uri, self.storage_options, self.where = str(uri), storage_options, where
+        self.name = name or _basename(self.uri)
         self.skipped: list[str] = []
         """The files the last snapshot did not read."""
 
@@ -183,19 +253,53 @@ class DeltaSource:
         return rows, {p: s for p, s in files.items() if p in keep}
 
     def table(self, version: int | None = None) -> DeltaTable:
+        """The table as delta-rs opens it.
+
+        Args:
+            version: The version to load. Default: the latest.
+
+        Returns:
+            A `deltalake.DeltaTable`.
+        """
         dt = DeltaTable(self.uri, storage_options=self.storage_options)
         if version is not None:
             dt.load_as_version(version)
         return dt
 
+    def schema(self) -> pa.Schema:
+        """The table's schema at its latest version, as Arrow."""
+        return _arrow_schema(self.table())
+
+    def latest(self) -> int:
+        """The table's latest version."""
+        return self.table().version()
+
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table's rows at a version, with what its metadata says about
+        every row (schema nullability, CHECK constraints, file statistics).
+
+        Args:
+            version: The version to read. Default: the latest.
+
+        Returns:
+            The version, the rows (those passing `where`, if given) and the
+            facts.
+        """
         dt = self.table(version)
         v = dt.version()
         rows, files = self._rows(dt)
         return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
-        """The contract the last sverify commit up to `version` recorded."""
+        """The contract the last sverify commit up to `version` recorded.
+
+        Args:
+            version: The latest version to look at. Default: the latest.
+
+        Returns:
+            The contract a `DeltaSink` stored in the commit metadata, or None
+            if no commit has one.
+        """
         dt = self.table(version)
         for commit in dt.history():
             if METADATA_KEY in commit:
@@ -203,8 +307,14 @@ class DeltaSource:
         return None
 
     def stored(self) -> Stored | None:
-        """The view state the table's last commit stored, if a `DeltaSink`
-        made that commit (to resume a pipeline from)."""
+        """The node state the table's last commit stored, if a `DeltaSink`
+        made that commit. A restarted job's first refresh resumes the sink's
+        node from it, when it was stored by the same plan from the same
+        sources.
+
+        Returns:
+            The stored state, or None if another writer made the last commit.
+        """
         dt = self.table()
         last = dt.history(1)
         if not last or METADATA_KEY not in last[0]:
@@ -228,8 +338,20 @@ class DeltaSource:
         if not all(_cdf_on(t) for t in check):
             raise ValueError(f"{CDF_KEY} is not set for every commit")
 
-    def changes(self, since: int) -> SourceBatch:
-        dt = self.table()
+    def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        """The change from version `since` to `until`, as a refresh reads it.
+
+        Args:
+            since: The version the node's state was computed from.
+            until: The version to read up to. Default: the latest.
+
+        Returns:
+            The net change from the Change Data Feed, with facts from the
+            statistics of the files added since; or, where the feed is
+            unavailable for some commit, the snapshot at `until` and the
+            reason.
+        """
+        dt = self.table(until)
         end = dt.version()
         files = file_stats(dt)
         snapshot_facts = self._facts(dt, files, f"file stats @v{end}")
@@ -279,77 +401,151 @@ class DeltaSource:
         )
 
 
-@dataclass
-class SinkWrite:
-    """What one `write` did."""
+def _same_sql(a: str | None, b: str) -> bool:
+    """The same condition, up to parentheses: Delta stores a constraint as
+    it reads it (`(x IS NULL) OR (x > 0)` as `x IS NULL OR x > 0`)."""
+    if a is None:
+        return False
 
-    mode: Literal["created", "overwrite", "merge", "skipped"]
-    version: int
-    """The sink table's version afterwards."""
-    contract: Contract
-    inserted: int = 0
-    deleted: int = 0
-    constraints: dict[str, str] = field(default_factory=dict)
+    def tree(sql: str) -> sg.exp.Expression:
+        e = sg.parse_one(sql, read="postgres")
+        return e.transform(lambda n: n.this if isinstance(n, sg.exp.Paren) else n)
 
-    def __str__(self) -> str:
-        src = ", ".join(f"{t}@v{n}" for t, n in self.contract.sources.items())
-        if self.mode == "skipped":
-            return f"{self.contract.view} from {src}: already committed (v{self.version})"
-        return (
-            f"{self.contract.view} from {src}: {self.mode} v{self.version}, "
-            f"{self.inserted} row(s) written, {self.deleted} deleted"
-        )
+    return a == b or tree(a) == tree(b)
 
 
 OP = "__sverify_op"
 
 
 class DeltaSink:
-    """Writes a view's state to a Delta table, exactly once per state.
+    """Stores a node in a Delta table, exactly once per state:
+    `node.write(DeltaSink(uri))`, written by every `refresh`.
 
     Each commit carries the transaction `(app_id, epoch)`, where the epoch is
-    the sum of the view's source versions; a state whose epoch the table has
+    the sum of the node's source versions; a state whose epoch the table has
     already committed is skipped. The first write creates the table with
     Change Data Feed enabled, NOT NULL columns and CHECK constraints for the
-    view's proved guarantees; later writes MERGE the view's change (each
-    changed row deleted and re-inserted with its new multiplicity) in one
-    commit. A new sink on an existing table first overwrites it."""
+    node's proved guarantees; later writes MERGE the change (each changed row
+    deleted and re-inserted with its new multiplicity) in one commit. A new
+    sink on an existing table first overwrites it, unless it resumes from it.
+    `name` is the table's name in the plans that read the stored node
+    (default: the last part of `uri`); `app_id` defaults to
+    `sverify:<node name>`.
+
+    The node `write` returns reads the table as a `DeltaSource`, through its
+    Change Data Feed, and builds on the contract the stored node proved. A
+    restarted job that builds the same nodes resumes from the table on its
+    first refresh. The refresh's report includes what each write did
+    (`SinkWrite`). It raises `ValueError` if the table has CHECK constraints
+    the node does not guarantee, or holds this state's epoch from other
+    contents of a `StaticSource`.
+
+    Args:
+        uri: The sink table's location: a path, or a URI such as `s3://...`.
+        app_id: The transaction's application id. Default:
+            `"sverify:<node name>"`.
+        storage_options: Options for delta-rs's object store. Default: None.
+        name: The table's name in the plans that read the stored node.
+            Default: the last part of `uri`.
+
+    Attributes:
+        uri: The sink table's location.
+        name: The table's name in the plans that read the stored node.
+
+    Examples:
+        A node written to a Delta table and refreshed:
+
+        ```python
+        import tempfile
+        from pathlib import Path
+
+        import pyarrow as pa
+        import sverify as sv
+        from deltalake import write_deltalake
+        from ibis import _
+        from sverify.io import DeltaSink, DeltaSource
+
+        lake = Path(tempfile.mkdtemp())
+        write_deltalake(lake / "orders", pa.table({"id": [1, 2], "amount": [30, 5]}),
+                        configuration={"delta.enableChangeDataFeed": "true"})
+
+
+        @sv.transform(ensures=[_.amount > 10])
+        def big_orders(orders):
+            return orders.filter(orders.amount > 10)
+
+
+        orders = DeltaSource(str(lake / "orders"))
+        big = big_orders(orders).write(DeltaSink(str(lake / "big_orders")))
+        big.refresh()  # creates the table, with a CHECK constraint for `amount > 10`
+
+        write_deltalake(lake / "orders", pa.table({"id": [3], "amount": [50]}), mode="append")
+        print(big.refresh())  # reads the Change Data Feed, writes one MERGE commit
+        # big_orders:
+        #   orders@v0→v1: 1 insert(s), 0 delete(s); Δ trusted as coming from Delta CDF v0→v1
+        #   view big_orders: orders@v1
+        #   wrote big_orders from orders@v1: merge v3, 1 row(s) written, 0 deleted
+        print(DeltaSource(str(lake / "big_orders")).contract().checks)
+        # {'sverify_1': 'amount > 10'}
+        ```
+    """
 
     def __init__(
         self,
         uri: str,
-        view: IncrementalView,
         *,
         app_id: str | None = None,
         storage_options: dict[str, str] | None = None,
+        name: str | None = None,
     ):
-        self.uri, self.view, self.storage_options = str(uri), view, storage_options
-        self.app_id = app_id or f"sverify:{view.name}"
+        self.uri, self.storage_options = str(uri), storage_options
+        self.name = name or _basename(self.uri)
+        self.app_id = app_id
+        self.view: IncrementalView | None = None
         self._written: Counter[tuple] | None = None
+
+    def _attach(self, view: IncrementalView) -> None:
+        """Write `view` from now on."""
+        self.view = view
+        self.app_id = self.app_id or f"sverify:{view.name}"
+        self._written = None
         if view.stored is not None and view.stored[0] == self.uri:
             self._written = view.stored[1]
+
+    def _source(self) -> DeltaSource:
+        """The table as a source, for the nodes that read the stored node."""
+        return DeltaSource(self.uri, storage_options=self.storage_options, name=self.name)
+
+    def _stored(self) -> Stored | None:
+        if self._table() is None:
+            return None
+        return self._source().stored()
 
     def _table(self) -> DeltaTable | None:
         if not DeltaTable.is_deltatable(self.uri, storage_options=self.storage_options):
             return None
         return DeltaTable(self.uri, storage_options=self.storage_options)
 
-    def write(self) -> SinkWrite:
-        contract = view_contract_record(self.view)
+    def _commit(self) -> SinkWrite:
+        """Write the attached view's state, unless the table has it."""
+        if self.view is None or self.app_id is None:
+            raise ValueError(f"no node is stored in {self.uri}: node.write(sink) attaches one")
+        view, app_id = self.view, self.app_id
+        contract = view_contract_record(view)
         commit = CommitProperties(
             custom_metadata={METADATA_KEY: contract.to_json()},
-            app_transactions=[Transaction(self.app_id, contract.epoch)],
+            app_transactions=[Transaction(app_id, contract.epoch)],
         )
-        schema = sink_schema(self.view, contract.not_null)
+        schema = sink_schema(view, contract.not_null)
         dt = self._table()
-        done = None if dt is None else dt.transaction_version(self.app_id)
+        done = None if dt is None else dt.transaction_version(app_id)
         if dt is not None and done is not None and done >= contract.epoch:
             check_same_state(
                 self.uri,
                 DeltaSource(self.uri, storage_options=self.storage_options).contract(),
                 contract,
             )
-            self._written = Counter(self.view.counts)
+            self._written = Counter(view.counts)
             return SinkWrite("skipped", dt.version(), contract)
         mode: Literal["created", "overwrite", "merge"]
         if dt is None:
@@ -363,12 +559,12 @@ class DeltaSink:
         else:
             mode = "merge" if self._written is not None else "overwrite"
         constraints = self._constraints(dt, contract)
-        counts = self.view.counts
+        counts = view.counts
         if mode == "merge":
             assert self._written is not None
             inserted, deleted = self._merge(dt, schema, self._written, counts, commit)
         else:
-            rows = self.view._arrow(counts).cast(schema)
+            rows = view._arrow(counts).cast(schema)
             write_deltalake(
                 dt,
                 rows,
@@ -390,7 +586,7 @@ class DeltaSink:
             for k, v in dt.metadata().configuration.items()
             if k.startswith("delta.constraints.")
         }
-        stale = {k: v for k, v in have.items() if contract.checks.get(k) != v}
+        stale = {k: v for k, v in have.items() if not _same_sql(contract.checks.get(k), v)}
         if stale:
             raise ValueError(f"{self.uri} has constraints the view does not guarantee: {stale}")
         missing = {k: v for k, v in contract.checks.items() if k not in have}
@@ -408,6 +604,7 @@ class DeltaSink:
     ) -> tuple[int, int]:
         """Replace every row whose multiplicity changed, in one commit."""
         changed = [k for k in old.keys() | new.keys() if old[k] != new[k]]
+        assert self.view is not None
         examples = self.view.examples
         rows: list[tuple[Row, str]] = [(examples[k], "d") for k in changed if old[k] > 0]
         rows += [(examples[k], "i") for k in changed for _ in range(new[k])]

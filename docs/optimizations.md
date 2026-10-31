@@ -335,6 +335,6 @@ Pipelines often recompute the same subplan, such as one filtered fact table
 feeding several aggregates. The checker could find subplans equal up to
 `≈ᵣ` (canonical forms from `Rewrites.lean` and `Terms.lean`), compute them
 once, and answer a query from a materialised view when the query is a
-filter or projection of it. Incremental views (`IncrementalView`) are the
+filter or projection of it. Incremental views (what a node's `refresh` maintains) are the
 natural targets. This needs a decision procedure for plan containment beyond
 syntactic equality, so it comes after the items above.

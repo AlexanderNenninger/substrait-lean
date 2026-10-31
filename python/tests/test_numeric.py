@@ -22,6 +22,7 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import decode_double
 from sverify.engine import connect, create_table, put_table, run_sql, substrait_json, to_sql
+from sverify.errors import VerificationError
 from sverify.testing import canonical, duckdb_rows, inline_tables, lean_values
 
 R = ibis.schema({"a": "int64", "b": "int64"})
@@ -159,7 +160,7 @@ def test_contracts_fail_on_possible_errors():
     def ratio(t):
         return t.select(x=t.qty // t.n)
 
-    with pytest.raises(sv.VerificationError, match="division by zero"):
+    with pytest.raises(VerificationError, match="division by zero"):
         ratio(T)
 
 

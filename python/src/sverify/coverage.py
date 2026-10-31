@@ -1,5 +1,8 @@
 """Which parts of the Ibis API reach the Lean checker.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 Each case is an Ibis expression over two unbound tables. It is compiled the way
 `sverify` compiles Ibis expressions (the vendored producer,
 `sverify.ibis_substrait`) and handed to `substrait-check`:

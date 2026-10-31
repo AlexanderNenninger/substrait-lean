@@ -1,5 +1,9 @@
 """What Delta and Iceberg have in common: file statistics as facts,
-contracts as SQL, and the record a sink stores with each commit."""
+contracts as SQL, and the record a sink stores with each commit.
+
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import ibis
@@ -207,7 +211,17 @@ def not_null_column(sql: str) -> str | None:
 @dataclass
 class Contract:
     """What a sink records with each commit: which plan produced the data,
-    from which source versions, and what it proved about every row."""
+    from which source versions, and what it proved about every row.
+
+    `DeltaSource.contract` and `IcebergSource.contract` read it back.
+
+    Attributes:
+        view: The stored node's name.
+        sources: The version of every source table the state was computed
+            from.
+        not_null: Columns the node proves NOT NULL.
+        unique: Column sets the node proves unique.
+    """
 
     view: str
     plan: str
@@ -221,14 +235,71 @@ class Contract:
     """Constraint name -> SQL."""
     unique: list[list[str]]
     digests: dict[str, str] = field(default_factory=dict)
-    """Content digest of each static table (`StaticSource`) the view read."""
+    """Content digest of each static table (`StaticSource`) the node read."""
 
     def to_json(self) -> str:
+        """The contract as JSON, as sinks store it.
+
+        Returns:
+            A JSON object with the contract's fields, keys sorted.
+        """
         return json.dumps(self.__dict__, sort_keys=True)
 
     @staticmethod
     def from_json(text: str) -> Contract:
+        """A contract from what `to_json` wrote.
+
+        Args:
+            text: The JSON `to_json` wrote.
+
+        Returns:
+            The contract.
+        """
         return Contract(**json.loads(text))
+
+
+@dataclass
+class SinkWrite:
+    """What storing a node's state did, in a Delta or Iceberg table.
+
+    `mode` is how: `created` the table, `overwrite` it, `merge` the change
+    (Delta), `append` the new rows or write the change `row-level` (Iceberg),
+    or `skipped` a state the table already holds. `version` is the table's
+    version afterwards; `constraints` are the CHECK constraints the table
+    has for the node's guarantees (Delta). `print` it for a one-line
+    summary. A refresh's report lists the writes it made.
+
+    Attributes:
+        mode: `"created"` (the first write made the table), `"overwrite"`
+            (a new sink replaced the table's rows), `"merge"` (the change in
+            one MERGE commit, Delta), `"append"` (the change only added rows,
+            Iceberg), `"row-level"` (position deletes and new rows in one
+            snapshot, Iceberg) or `"skipped"` (the table already has this
+            state's epoch).
+        version: The table's version afterwards (Delta), or its snapshot
+            sequence number (Iceberg).
+        contract: What the commit recorded.
+        inserted: Rows written.
+        deleted: Rows deleted.
+        constraints: The table's CHECK constraints from the node's
+            guarantees, by name (Delta; empty for Iceberg).
+    """
+
+    mode: Literal["created", "overwrite", "merge", "append", "row-level", "skipped"]
+    version: int
+    contract: Contract
+    inserted: int = 0
+    deleted: int = 0
+    constraints: dict[str, str] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        src = ", ".join(f"{t}@v{n}" for t, n in self.contract.sources.items())
+        if self.mode == "skipped":
+            return f"{self.contract.view} from {src}: already committed (v{self.version})"
+        return (
+            f"{self.contract.view} from {src}: {self.mode} v{self.version}, "
+            f"{self.inserted} row(s) written, {self.deleted} deleted"
+        )
 
 
 def view_contract_record(view: IncrementalView) -> Contract:
@@ -239,7 +310,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
         raise ValueError(
             f"view {view.name} reads tables without a source ({missing}): a sink needs "
             "source versions to write exactly once; read a table that is not in a table "
-            "format with pipe.source(name, sv.StaticSource(table, version))"
+            "format through sverify.io.StaticSource(table, version)"
         )
     schema = ibis.Schema.from_pyarrow(view.schema)
     not_null: list[str] = []

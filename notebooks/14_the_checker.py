@@ -71,6 +71,7 @@ def _():
 
     import sverify as sv
     from sverify.engine import checker_path
+    from sverify.engines import substrait_json, written_plan
     from sverify.examples import create_tables
 
     con = sv.connect()  # plans run on DuckDB by default
@@ -91,13 +92,13 @@ def _():
         )
         return proc.returncode, (proc.stdout + proc.stderr).strip()
 
-    return con, json, substrait_check, sv
+    return con, json, substrait_check, substrait_json, written_plan
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `sv.substrait_json` asks DataFusion for the Substrait plan of a query.
+    `sverify.engines.substrait_json` asks DataFusion for the Substrait plan of a query.
     Edit the SQL and the checker re-runs. Try a join (`select o.id, c.city
     from orders o join customers c on o.customer = c.name`), a `limit 2`, or
     a `group by` (which the model doesn't cover yet).
@@ -118,9 +119,9 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(con, mo, sql, substrait_check, sv):
+def _(con, mo, sql, substrait_check, substrait_json):
     try:
-        plan = sv.substrait_json(con, sql.value)
+        plan = substrait_json(con, sql.value)
         _code, _out = substrait_check(plan)
         _shown = mo.md(f"```text\n$ substrait-check plan.json\n{_out}\n```")
         _note = {
@@ -182,7 +183,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(con, field_index, json, mo, substrait_check, sv):
+def _(con, field_index, json, mo, substrait_check, substrait_json):
     def _set_filter_field(node, k):
         """Point the first field reference in the first filter's condition at column k."""
         if isinstance(node, dict):
@@ -203,7 +204,7 @@ def _(con, field_index, json, mo, substrait_check, sv):
         return False
 
     _plan = json.loads(
-        sv.substrait_json(con, "select id, amount * 2 as doubled from orders where amount > 10")
+        substrait_json(con, "select id, amount * 2 as doubled from orders where amount > 10")
     )
     _set_filter_field(_plan, field_index.value)
     _code, _out = substrait_check(json.dumps(_plan))
@@ -249,7 +250,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(con, display, json, mo, plan, sql):
-    from sverify.engine import run_sql, table_rows
+    from sverify.engine import run_sql
+    from sverify.engines import table_rows
     from sverify.testing import canonical, inline_tables, lean_rows
 
     if plan is None:
@@ -285,7 +287,7 @@ def _(mo):
     ## Writing plans back out
 
     `--write` prints the plan as Lean understood it, as Substrait JSON
-    produced from the `Rel` (`sv.written_plan` in Python). That is the plan
+    produced from the `Rel` (`sverify.engines.written_plan` in Python). That is the plan
     the other engines run (chapter 11), so whatever runs is exactly what was
     checked, not DataFusion's original JSON. Here are the first few hundred
     characters for your query:
@@ -294,9 +296,9 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo, plan, sv):
+def _(mo, plan, written_plan):
     try:
-        _written = sv.written_plan(plan) if plan else ""
+        _written = written_plan(plan) if plan else ""
         _out = mo.md(f"```json\n{_written[:600]}…\n```") if _written else mo.md("")
     except ValueError as _e:
         _out = mo.callout(mo.md(f"`{_e}`"), kind="warn")

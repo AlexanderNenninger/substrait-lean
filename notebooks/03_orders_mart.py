@@ -83,6 +83,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
+    from sverify.engines import ENGINES, SNOWFLAKE, SPARK, to_sql
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())
@@ -135,8 +136,11 @@ def _():
         DeltaSink,
         DeltaSource,
         DeltaTable,
+        ENGINES,
         HISTORY,
         ORDERS,
+        SNOWFLAKE,
+        SPARK,
         dt,
         history_v0,
         ibis,
@@ -145,6 +149,7 @@ def _():
         orders_v0,
         rows,
         sv,
+        to_sql,
         write_deltalake,
     )
 
@@ -308,37 +313,37 @@ def _(history_t, orders_t, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    (A SQL string can be verified and maintained as a view, but contracts
-    only travel through a pipeline with Ibis steps; that is why the
-    pipeline below uses the Ibis version.)
+    (A SQL string can be verified, but nodes are built from Ibis
+    transforms, and that is how contracts travel from one step to the
+    next; that is why the job below uses the Ibis version.)
 
     ## 3. Build it from the Delta tables
 
-    Now we wire it up. The pipeline reads both tables. A left join and an
-    aggregate have no proven delta rules yet, so the view is recomputed on
-    each refresh, and the pipeline says so:
+    Now we wire it up. The model reads both tables as sources, and calling
+    it on them builds a node. A left join and an aggregate have no proven
+    delta rules yet, so the node is recomputed on each refresh, and its
+    status says so:
     """)
     return
 
 
 @app.cell
-def _(DeltaSource, daily_city_revenue, lake, sv):
-    pipe = sv.Pipeline(sv.connect())
-    mart = pipe.view(
-        "daily_city_revenue",
-        daily_city_revenue(
-            pipe.source("orders", DeltaSource(str(lake / "orders"))),
-            pipe.source("history", DeltaSource(str(lake / "customer_history"))),
-        ),
-    )
+def _(DeltaSource, daily_city_revenue, lake):
+    orders = DeltaSource(str(lake / "orders"))
+    history = DeltaSource(str(lake / "customer_history"), name="history")
+    mart = daily_city_revenue(orders, history)
     assert daily_city_revenue.last_report.proved
-    pipe.fallbacks
-    return mart, pipe
+    mart.refresh()
+    print(mart.status())
+    return history, mart, orders
 
 
 @app.cell(hide_code=True)
 def _(display, mart):
-    display.table(sorted(mart.rows()), mart.columns, title="daily_city_revenue")
+    display.arrow(
+        mart.to_arrow().sort_by([("city", "ascending"), ("day", "ascending")]),
+        title="daily_city_revenue",
+    )
     return
 
 
@@ -356,12 +361,12 @@ def _(mo):
 
 
 @app.cell
-def _(pipe):
+def _(sv):
     import duckdb
 
     {
         "DuckDB": duckdb.sql("select 4699 / 2 as avg").fetchall()[0][0],
-        "DataFusion": pipe.con.datafusion.sql("select 4699 / 2 as avg").to_pylist()[0]["avg"],
+        "DataFusion": sv.connect().datafusion.sql("select 4699 / 2 as avg").to_pylist()[0]["avg"],
     }
     return
 
@@ -376,22 +381,20 @@ def _(mo):
     error, and the first to notice is whoever reconciles the dashboard with
     finance. sverify's translations write out what the plan means instead
     (integer division truncates, on every engine), so the checked plan gives
-    the same rows on each:
+    the same rows on each, whichever `engine=` the node is refreshed with:
     """)
     return
 
 
 @app.cell
-def _(mart, pipe, sv):
+def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_sql):
     import json
 
-    from sverify.sql import to_sql
-    from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
-
-    _results = {
-        e: sorted(map(repr, sv.run_plan(pipe.con, mart.plan, e).to_pylist())) for e in sv.ENGINES
-    }
+    _results = {}
+    for _engine in ENGINES:
+        _node = daily_city_revenue(orders, history)
+        _node.refresh(engine=_engine)
+        _results[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _results.values()}) == 1
     {
         "engines that agree": list(_results),
@@ -409,14 +412,17 @@ def _(mo):
     Overnight, the snapshot job records that customer 2 moved from Rome to
     Milan at 15:00 on 3 May: the old row is closed and a new one added. And
     a new customer, 4, places an order before their first snapshot.
+
+    Before the changes land, we store the mart in a Delta table with
+    `.write`; its first refresh creates the table.
     """)
     return
 
 
 @app.cell
 def _(DeltaSink, DeltaTable, HISTORY, ORDERS, lake, mart, may, rows, write_deltalake):
-    sink = DeltaSink(str(lake / "daily_city_revenue"), mart)
-    print(sink.write())
+    stored = mart.write(DeltaSink(str(lake / "daily_city_revenue")))
+    print(stored.refresh())
 
     _h = DeltaTable(lake / "customer_history")
     _h.update(
@@ -425,23 +431,26 @@ def _(DeltaSink, DeltaTable, HISTORY, ORDERS, lake, mart, may, rows, write_delta
     )
     write_deltalake(_h, rows(HISTORY, (2, "Milan", may(3, 15), None)), mode="append")
     write_deltalake(lake / "orders", rows(ORDERS, (6, 4, may(4), 500)), mode="append")
-    return (sink,)
+    return (stored,)
 
 
 @app.cell
-def _(mart, pipe, sink):
-    print(pipe.refresh())
-    print(sink.write())
-    assert ("Milan", 1, 100) in [(c, n, r) for c, _d, n, r in mart.rows()]
-    assert "unknown" in [r[0] for r in mart.rows()]
+def _(stored):
+    print(stored.refresh())
+    _rows = stored.to_arrow().to_pylist()
+    assert ("Milan", 1, 100) in [(r["city"], r["n_orders"], r["revenue_cents"]) for r in _rows]
+    assert "unknown" in [r["city"] for r in _rows]
     return
 
 
 @app.cell(hide_code=True)
-def _(display, mart, mo):
+def _(display, mo, stored):
     mo.vstack(
         [
-            display.table(sorted(mart.rows()), mart.columns, title="daily_city_revenue"),
+            display.arrow(
+                stored.to_arrow().sort_by([("city", "ascending"), ("day", "ascending")]),
+                title="daily_city_revenue",
+            ),
             mo.md(
                 "Order 4 (18:00 on 3 May) moved from Rome to Milan, and customer 4's order "
                 "is counted under `unknown` instead of disappearing or making `city` NULL. "
@@ -466,7 +475,7 @@ def _(mo):
     The checked plan gives the same rows on DuckDB, Polars and DataFusion,
     and as Snowflake or Spark SQL, where the same SQL text would not. And
     although the model is outside the incremental fragment, it still runs
-    in the pipeline, recomputed and diffed, with its sink merged exactly
+    as a node, recomputed and diffed, with its sink merged exactly
     once per state.
 
     **Next up:** the rest of the tour explains each feature in turn,

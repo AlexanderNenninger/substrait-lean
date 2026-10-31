@@ -68,6 +68,8 @@ def _(mo):
 def _():
     import ibis
     import sverify as sv
+    from sverify.engines import create_table, table_rows
+    from sverify.errors import PreconditionError
 
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
     customers = ibis.table({"name": "string", "city": "string"}, name="customers")
@@ -77,7 +79,7 @@ def _():
             orders.id, orders.customer, customers.city
         )
 
-    return customers, ibis, orders, sv, with_city
+    return PreconditionError, create_table, customers, ibis, orders, sv, table_rows, with_city
 
 
 @app.cell(hide_code=True)
@@ -108,22 +110,22 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(display, ibis, sv, with_city):
+def _(create_table, display, ibis, sv, table_rows, with_city):
     con = sv.connect()
-    sv.create_table(
+    create_table(
         con,
         "orders",
         ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
         [(1, "ada", 30), (2, "bob", 5)],
     )
-    sv.create_table(
+    create_table(
         con,
         "customers",
         ibis.schema({"name": "string", "city": "string"}),
         [("ada", "Paris"), ("bob", "Oslo"), ("bob", "Rome")],
     )
     display.side_by_side(
-        display.table(sv.table_rows(con, "customers"), ["name", "city"], title="customers"),
+        display.table(table_rows(con, "customers"), ["name", "city"], title="customers"),
         display.arrow(
             with_city(con.table("orders"), con.table("customers")), title="with_city: id 2 twice"
         ),
@@ -142,14 +144,14 @@ def _(mo):
 
 
 @app.cell
-def _(con, mo, sv, with_city):
+def _(PreconditionError, con, mo, sv, with_city):
     contracted = sv.transform(
         requires={"orders": [sv.unique("id")], "customers": [sv.unique("name")]},
         ensures=[sv.unique("id")],
     )(with_city)
     try:
         contracted(con.table("orders"), con.table("customers"))
-    except sv.PreconditionError as _e:
+    except PreconditionError as _e:
         _err = _e
     mo.callout(mo.md(f"**PreconditionError**: {_err}"), kind="danger")
     return

@@ -1,21 +1,21 @@
-"""Delta Lake and Iceberg tables as change sources, sources of
-preconditions, and sinks that carry proved contracts between jobs.
+"""Delta Lake and Iceberg tables as the sources and the stored results of
+transforms, carrying proved contracts between jobs.
 
     import sverify as sv
-    from sverify.io import DeltaSource, DeltaSink
+    from sverify.io import DeltaSink, DeltaSource
 
-    pipe = sv.Pipeline(sv.connect())
-    orders = pipe.source("orders", DeltaSource("data/orders"))
-    big = pipe.view("big", doubled(paid(orders)))
-    sink = DeltaSink("data/big", big)
-    sink.write()
-    ...
-    print(pipe.refresh())   # orders@v3→v5: ...; Δ trusted as coming from Delta CDF v3→v5
-    sink.write()
+    orders = DeltaSource("s3://lake/orders")
+    p = paid(orders).write(DeltaSink("s3://lake/paid"))
+    r = revenue(p).write(DeltaSink("s3://lake/revenue"))
+    print(r.refresh())   # orders@v3→v5: ...; Δ trusted as coming from Delta CDF v3→v5
 
-Sources hand Arrow tables to the pipeline, so every engine works. Each
-format is an extra: `pip install 'sverify[delta]'` or `'sverify[iceberg]'`;
-its classes are imported when first used.
+Sources hand Arrow tables to the transforms, so every engine works. A sink
+stores a node exactly once per state, with its contract (`Contract`), and
+reports what each write did (`SinkWrite`); nodes downstream read the stored
+table as a versioned source. A `StaticSource` is an in-memory table with
+versions the caller gives. Each table format is an extra:
+`pip install 'sverify[delta]'` or `'sverify[iceberg]'`; its classes are
+imported when first used.
 """
 
 from __future__ import annotations
@@ -23,20 +23,18 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING, Any
 
-from sverify.incremental import StaticSource, Stored
-from sverify.io._common import ColumnStats, Contract, stats_facts
+from sverify.incremental import StaticSource
+from sverify.io._common import Contract, SinkWrite
 
 if TYPE_CHECKING:
-    from sverify.io.delta import DeltaSink, DeltaSource, SinkWrite
-    from sverify.io.iceberg import IcebergSink, IcebergSource, IcebergWrite
+    from sverify.io.delta import DeltaSink, DeltaSource
+    from sverify.io.iceberg import IcebergSink, IcebergSource
 
 _MODULES = {
     "DeltaSink": "delta",
     "DeltaSource": "delta",
-    "SinkWrite": "delta",
     "IcebergSink": "iceberg",
     "IcebergSource": "iceberg",
-    "IcebergWrite": "iceberg",
 }
 
 
@@ -47,15 +45,11 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
-    "ColumnStats",
     "Contract",
     "DeltaSink",
     "DeltaSource",
     "IcebergSink",
     "IcebergSource",
-    "IcebergWrite",
     "SinkWrite",
     "StaticSource",
-    "Stored",
-    "stats_facts",
 ]

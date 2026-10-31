@@ -34,8 +34,9 @@ from sverify.engine import (
     to_sql,
     written_plan,
 )
+from sverify.engines import ENGINES, delta_plans
 from sverify.examples import PIPELINES, create_tables
-from sverify.incremental import WEIGHT
+from sverify.incremental import WEIGHT, IncrementalView
 from sverify.testing import canonical, inline_tables, lean_rows, lean_values
 from test_numeric import DOUBLES, INT_QUERIES, MIN, F
 from test_numeric import PIPELINES as NUMERIC_PIPELINES
@@ -284,7 +285,7 @@ def test_delta_plans_agree(name, data):
         rows = data.draw(st.lists(row, max_size=4))
         ws = data.draw(st.lists(weights, min_size=len(rows), max_size=len(rows)))
         put_table(con, t + "$delta", with_weights(rows, ws, con.arrow[t].schema))
-    deltas = sv.delta_plans(plan)
+    deltas = delta_plans(plan)
     assert deltas
     for d in deltas:
         assert set(read_tables(json.loads(d))) <= {
@@ -305,10 +306,10 @@ def test_polars_view_matches_datafusion_view(name, data):
     orders = data.draw(st.lists(orders_row, max_size=6))
     customers = data.draw(st.lists(customers_row, max_size=4))
     views = {}
-    for engine in sv.ENGINES:
+    for engine in ENGINES:
         con = connect()
         create_tables(con, orders, customers)
-        views[engine] = sv.IncrementalView(con, PIPELINES[name], "v", engine=engine)
+        views[engine] = IncrementalView(con, PIPELINES[name], "v", engine=engine)
     for _ in range(data.draw(st.integers(1, 3))):
         changes = {
             t: sv.Changes(

@@ -1,5 +1,8 @@
 """Iceberg tables (pyiceberg) as change sources and sinks.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 Versions are snapshot sequence numbers. An `IcebergSource` reads the
 change between two versions from the data files the snapshots in between
 added, when all of them are appends (trusted, like a Delta change feed).
@@ -10,7 +13,7 @@ rows in both (Iceberg files are immutable), so they cancel out of the diff
 (`ChangeFeed.of_changed_files`), and only the changed files are read. Facts:
 `required` fields (the schema) and per-file statistics from the manifests.
 
-Iceberg has no CHECK constraints, so an `IcebergSink` stores the view's
+Iceberg has no CHECK constraints, so an `IcebergSink` stores the node's
 contract in the table properties and the summary of every snapshot it
 writes. A reader trusts that contract only while every snapshot of the
 table was written under it (no other writer appended in between). The sink
@@ -23,7 +26,6 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from typing import Any, Literal
 
 import pyarrow as pa
@@ -66,6 +68,7 @@ from sverify.incremental import (
 from sverify.io._common import (
     ColumnStats,
     Contract,
+    SinkWrite,
     check_same_state,
     q,
     sink_schema,
@@ -184,13 +187,42 @@ def contract_facts(t: Table) -> list[Fact]:
 
 
 class IcebergSource:
-    """An Iceberg table of a catalog, read by snapshot sequence number."""
+    """An Iceberg table of a catalog, read by snapshot sequence number, as
+    the input of transforms. `name` is the table's name in the plans that
+    read it (default: the last part of `identifier`).
 
-    def __init__(self, catalog: Catalog, identifier: str):
+    A refresh reads the files that appends added since the version a node's
+    state was computed from; after row-level deletes or overwrites it diffs
+    the data files that changed. Tables with equality deletes cannot be
+    read.
+
+    Args:
+        catalog: A pyiceberg catalog.
+        identifier: The table's identifier in it, e.g. `"db.readings"`.
+        name: The table's name in the plans that read it. Default: the last
+            part of `identifier`.
+
+    Attributes:
+        catalog: The catalog.
+        identifier: The table's identifier.
+        name: The table's name in the plans that read it.
+    """
+
+    def __init__(self, catalog: Catalog, identifier: str, *, name: str | None = None):
         self.catalog, self.identifier = catalog, identifier
+        self.name = name or identifier.rsplit(".", 1)[-1]
 
     def table(self) -> Table:
+        """The table as the catalog loads it now (a `pyiceberg.table.Table`)."""
         return self.catalog.load_table(self.identifier)
+
+    def schema(self) -> pa.Schema:
+        """The table's current schema, as Arrow."""
+        return _arrow_schema(self.table())
+
+    def latest(self) -> int:
+        """The current snapshot's sequence number (0 before the first)."""
+        return _version(self.table().current_snapshot())
 
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
         schema = _arrow_schema(t)
@@ -198,6 +230,21 @@ class IcebergSource:
         return contract_facts(t) + stats_facts(stats, schema, source)
 
     def snapshot(self, version: int | None = None) -> Snapshot:
+        """The table's rows at a snapshot, with what its metadata says about
+        every row (`required` fields, file statistics, and the contract of
+        an `IcebergSink` that wrote every snapshot).
+
+        Args:
+            version: A snapshot sequence number of the current snapshot's
+                ancestry; 0 is the empty table before the first snapshot.
+                Default: the current snapshot.
+
+        Returns:
+            The version, the rows and the facts.
+
+        Raises:
+            ValueError: No ancestor has that sequence number.
+        """
         t = self.table()
         s = t.current_snapshot() if version is None else _at(t, version)
         if version is not None and s is None and version != 0:
@@ -207,12 +254,21 @@ class IcebergSource:
         return Snapshot(v, _read(t, s), self._facts(t, files, f"file stats @v{v}"))
 
     def contract(self) -> Contract | None:
+        """The contract the table property `sverify.contract` records, or
+        None if it has none."""
         text = self.table().properties.get(KEY)
         return None if text is None else Contract.from_json(text)
 
     def stored(self) -> Stored | None:
-        """The view state the current snapshot stored, if an `IcebergSink`
-        wrote it under the table's contract (to resume a pipeline from)."""
+        """The node state the current snapshot stored, if an `IcebergSink`
+        wrote it under the table's contract. A restarted job's first refresh
+        resumes the sink's node from it, when it was stored by the same plan
+        from the same sources.
+
+        Returns:
+            The stored state, or None if the current snapshot was not
+            written under the contract.
+        """
         t = self.table()
         s, text = t.current_snapshot(), t.properties.get(KEY)
         if s is None or s.summary is None or text is None:
@@ -223,15 +279,33 @@ class IcebergSource:
         where = f"{self.identifier}@v{_version(s)}"
         return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))
 
-    def changes(self, since: int) -> SourceBatch:
+    def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        """The change from sequence number `since` to `until`, as a refresh
+        reads it.
+
+        Args:
+            since: The version the node's state was computed from.
+            until: A snapshot sequence number to read up to. Default: the
+                current snapshot.
+
+        Returns:
+            The rows of the files appends added (trusted), or the diff of
+            the data files that changed (exact); or, where snapshot `since`
+            is gone or unreadable, the snapshot at `until` and the reason.
+
+        Raises:
+            ValueError: No ancestor has sequence number `until`.
+        """
         t = self.table()
-        current = t.current_snapshot()
+        current = t.current_snapshot() if until is None else _at(t, until)
+        if until is not None and current is None and until != 0:
+            raise ValueError(f"{self.identifier} has no snapshot with sequence number {until}")
         end = _version(current)
         files = _live_files(t, current)
         snapshot_facts = self._facts(t, files, f"file stats @v{end}")
         if end == since:
             return SourceBatch(since, end, snapshot_facts)
-        between = [s for s in _ancestry(t) if _version(s) > since]
+        between = [s for s in _ancestry(t) if since < _version(s) <= end]
         old = _at(t, since)
         schema = _arrow_schema(t)
         if since != 0 and old is None:
@@ -299,24 +373,6 @@ class IcebergSource:
             trusted=f"Δ trusted as the files Iceberg appends v{since}→v{end} added",
             schema=schema,
         )
-
-
-@dataclass
-class IcebergWrite:
-    mode: Literal["created", "append", "row-level", "overwrite", "skipped"]
-    version: int
-    contract: Contract
-    inserted: int = 0
-    deleted: int = 0
-
-    def __str__(self) -> str:
-        src = ", ".join(f"{t}@v{n}" for t, n in self.contract.sources.items())
-        if self.mode in ("append", "row-level"):
-            return (
-                f"{self.contract.view} from {src}: {self.mode} v{self.version}, "
-                f"{self.inserted} row(s) written, {self.deleted} deleted"
-            )
-        return f"{self.contract.view} from {src}: {self.mode} v{self.version}"
 
 
 # Field ids of a position delete file's columns (Iceberg spec).
@@ -476,7 +532,9 @@ def _commit_rows(
 
 
 class IcebergSink:
-    """Writes a view's state to an Iceberg table, exactly once per state.
+    """Stores a node in an Iceberg table, exactly once per state:
+    `node.write(IcebergSink(catalog, identifier))`, written by every
+    `refresh`.
 
     After the first write, each state is one snapshot the size of the change:
     position delete files for the rows that went (one copy each, so
@@ -486,26 +544,72 @@ class IcebergSink:
     the epoch (sum of source versions) and the app id; a state whose epoch
     the last snapshot of this app already has is skipped. The contract is
     also the table property `sverify.contract`, and columns the view proves
-    NOT NULL are `required`."""
+    NOT NULL are `required`. `name` is the table's name in the plans that
+    read the stored node (default: the last part of `identifier`); `app_id`
+    defaults to `sverify:<node name>`.
+
+    The node `write` returns reads the table as an `IcebergSource` and builds
+    on the contract the stored node proved. A restarted job that builds the
+    same nodes resumes from the table on its first refresh. The refresh's
+    report includes what each write did (`SinkWrite`). It raises
+    `ValueError` if the table holds this state's epoch from other contents
+    of a `StaticSource`.
+
+    Args:
+        catalog: A pyiceberg catalog.
+        identifier: The sink table's identifier; the first write creates it.
+        app_id: The application id recorded in each snapshot. Default:
+            `"sverify:<node name>"`.
+        name: The table's name in the plans that read the stored node.
+            Default: the last part of `identifier`.
+
+    Attributes:
+        catalog: The catalog.
+        identifier: The sink table's identifier.
+        name: The table's name in the plans that read the stored node.
+    """
 
     def __init__(
         self,
         catalog: Catalog,
         identifier: str,
-        view: IncrementalView,
         *,
         app_id: str | None = None,
+        name: str | None = None,
     ):
-        self.catalog, self.identifier, self.view = catalog, identifier, view
-        self.app_id = app_id or f"sverify:{view.name}"
+        self.catalog, self.identifier = catalog, identifier
+        self.name = name or identifier.rsplit(".", 1)[-1]
+        self.app_id = app_id
+        self.view: IncrementalView | None = None
         self._written: Counter[tuple] | None = None
-        if view.stored is not None and view.stored[0] == identifier:
+
+    def _attach(self, view: IncrementalView) -> None:
+        """Write `view` from now on."""
+        self.view = view
+        self.app_id = self.app_id or f"sverify:{view.name}"
+        self._written = None
+        if view.stored is not None and view.stored[0] == self.identifier:
             self._written = view.stored[1]
 
-    def write(self) -> IcebergWrite:
-        contract = view_contract_record(self.view)
-        schema = sink_schema(self.view, contract.not_null)
-        props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}
+    def _source(self) -> IcebergSource:
+        """The table as a source, for the nodes that read the stored node."""
+        return IcebergSource(self.catalog, self.identifier, name=self.name)
+
+    def _stored(self) -> Stored | None:
+        if not self.catalog.table_exists(self.identifier):
+            return None
+        return self._source().stored()
+
+    def _commit(self) -> SinkWrite:
+        """Write the attached view's state, unless the table has it."""
+        if self.view is None or self.app_id is None:
+            raise ValueError(
+                f"no node is stored in {self.identifier}: node.write(sink) attaches one"
+            )
+        view, app_id = self.view, self.app_id
+        contract = view_contract_record(view)
+        schema = sink_schema(view, contract.not_null)
+        props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: app_id}
         if not self.catalog.table_exists(self.identifier):
             t = self.catalog.create_table(
                 self.identifier, schema=schema, properties={KEY: contract.to_json()}
@@ -513,15 +617,15 @@ class IcebergSink:
             created = True
         else:
             t = self.catalog.load_table(self.identifier)
-            mine = [s for s in _ancestry(t) if s.summary and s.summary.get(APP) == self.app_id]
+            mine = [s for s in _ancestry(t) if s.summary and s.summary.get(APP) == app_id]
             if mine and int(mine[0].summary.get(EPOCH, "-1")) >= contract.epoch:  # type: ignore[union-attr]
                 text = t.properties.get(KEY)
                 committed = None if text is None else Contract.from_json(text)
                 check_same_state(self.identifier, committed, contract)
-                self._written = Counter(self.view.counts)
-                return IcebergWrite("skipped", _version(t.current_snapshot()), contract)
+                self._written = Counter(view.counts)
+                return SinkWrite("skipped", _version(t.current_snapshot()), contract)
             created = False
-        counts, old = self.view.counts, self._written
+        counts, old = view.counts, self._written
         positions: dict[str, list[int]] | None = None
         if not created and old is not None and t.spec().is_unpartitioned():
             removed = Counter({k: old[k] - counts[k] for k in old if old[k] > counts[k]})
@@ -529,14 +633,12 @@ class IcebergSink:
         mode: Literal["created", "append", "row-level", "overwrite"]
         if positions is None:
             mode = "created" if created else "overwrite"
-            rows = self.view._arrow(counts).cast(schema)
+            rows = view._arrow(counts).cast(schema)
             deleted = 0
         else:
             assert old is not None
             mode = "row-level" if positions else "append"
-            rows = self.view._arrow(Counter({k: n - old[k] for k, n in counts.items()})).cast(
-                schema
-            )
+            rows = view._arrow(Counter({k: n - old[k] for k, n in counts.items()})).cast(schema)
             deleted = sum(len(p) for p in positions.values())
         with t.transaction() as tx:
             tx.set_properties({KEY: contract.to_json()})
@@ -546,4 +648,4 @@ class IcebergSink:
                 _commit_rows(tx, t, rows, _position_deletes(t, positions), props)
         self._written = Counter(counts)
         version = _version(self.catalog.load_table(self.identifier).current_snapshot())
-        return IcebergWrite(mode, version, contract, rows.num_rows, deleted)
+        return SinkWrite(mode, version, contract, rows.num_rows, deleted)

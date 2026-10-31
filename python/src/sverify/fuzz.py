@@ -1,5 +1,8 @@
 """Random queries with Lean's semantics as the oracle (SQLancer-style).
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 A Hypothesis strategy draws well-typed SQL queries over two small tables (`t`
 with integer, double, string, boolean and timestamp columns, `u` with an
 integer and a string) and random rows for them, NULLs included. Each query
