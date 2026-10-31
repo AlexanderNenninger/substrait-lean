@@ -1435,14 +1435,18 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
         return out
 
     def walk_view(read: Json, view: Any) -> Json:
-        if "common" in read:
-            raise Unsupported("an emit on a read of a view is not supported")
+        common = read.get("common", {})
+        if set(common) - {"direct", "emit"}:
+            raise Unsupported(f"a read of a view with {sorted(common)} is not supported")
         out = rel(view)
         if "filter" in read:
             out = {"filter": {"input": out, "condition": walk(read["filter"])}}
         if "projection" in read:
             items = read["projection"]["select"].get("structItems", [])
             out = emit_rel(out, [i.get("field", 0) for i in items])
+        if "emit" in common:
+            # Isthmus maps a read's output columns with an emit.
+            out = emit_rel(out, list(common["emit"].get("outputMapping", [])))
         return out
 
     (root,) = [r["root"] for r in plan["relations"] if "root" in r]
