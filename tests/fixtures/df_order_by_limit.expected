@@ -1,0 +1,12 @@
+Fetch offset=1 count=2
+  OrderBy [$2]
+    Emit [3, 4, 5]
+      Project +[$0, $1, $2]
+        Read orders
+tables: orders(3)
+arity: 3
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

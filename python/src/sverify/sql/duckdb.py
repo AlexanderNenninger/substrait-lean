@@ -13,6 +13,9 @@ from dataclasses import dataclass
 
 from sverify.sql.core import Dialect, Kind
 
+#: The timestamps chrono represents (`Time.partMin`, `Time.partMax`).
+PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
+
 
 @dataclass(frozen=True)
 class DuckDBDialect(Dialect):
@@ -49,6 +52,40 @@ class DuckDBDialect(Dialect):
 
     def row_ordinal(self) -> str:
         return "rowid"
+
+    def char_length(self, s: str) -> str:
+        return f"length({s})"
+
+    def strpos(self, s: str, t: str) -> str:
+        return f"strpos({s}, {t})"
+
+    def ends_with(self, s: str, t: str) -> str:
+        return f"suffix({s}, {t})"
+
+    def like_pattern(self, p: str) -> str:
+        odd = f"regexp_matches({p}, {self.str_lit(r'(^|[^\\])(\\\\)*\\$')})"
+        return f"(CASE WHEN {odd} THEN {p} || {self.str_lit(chr(92))} ELSE {p} END)"
+
+    def substring(self, s: str, start: str, length: str | None) -> str:
+        return (
+            f"substring({s}, {start})" if length is None else f"substring({s}, {start}, {length})"
+        )
+
+    def trim(self, s: str, chars: str, left: bool, right: bool) -> str:
+        f = "trim" if left and right else "ltrim" if left else "rtrim"
+        return f"{f}({s}, {chars})"
+
+    def regex_search(self, s: str, pattern: str) -> str:
+        return f"regexp_matches({s}, {self.str_lit(pattern)})"
+
+    def date_part(self, part: str, ts: str) -> str:
+        us = f"epoch_us({ts})"
+        inside = f"{us} BETWEEN {self.int_lit(PART_MIN)} AND {self.int_lit(PART_MAX)}"
+        value = self.cast(f"date_part({self.str_lit(part)}, {ts})", "int")
+        return f"(CASE WHEN {inside} THEN {value} END)"
+
+    def date_trunc(self, unit: str, ts: str) -> str:
+        return ts if unit == "microsecond" else f"date_trunc({self.str_lit(unit)}, {ts})"
 
 
 DUCKDB: Dialect = DuckDBDialect("duckdb")

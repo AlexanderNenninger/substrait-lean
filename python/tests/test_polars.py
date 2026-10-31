@@ -161,9 +161,9 @@ def table_data(draw, schema: pa.Schema) -> pa.Table:
     return pa.table(cols, schema=schema)
 
 
-#: Fixtures Lean accepts with relations the Polars translator does not have yet
-#: (`DISTINCT`): it must refuse them, not run them wrongly.
-NOT_IN_POLARS = {"group_by_without_measures"}
+#: DataFusion writes `DISTINCT` as an aggregate with one empty grouping, which
+#: its own consumer rejects.
+DATAFUSION_CANNOT_READ = {"df_distinct"}
 
 
 def same_bag(a: list[tuple], b: list[tuple]) -> bool:
@@ -195,13 +195,15 @@ def test_golden_fixtures(fixture, data):
     tables = {t: data.draw(table_data(s)) for t, s in schemas.items()}
     for t, table in tables.items():
         put_table(con, t, table)
-    if fixture.stem in NOT_IN_POLARS:
-        with pytest.raises(polars_engine.Unsupported, match="unsupported relation"):
-            on_both(con, plan)
-        return
-    df, pl_rows = on_both(con, plan)
+    if '"fetch"' in plan:
+        # DataFusion reads the current `offsetExpr`/`countExpr`, not the
+        # deprecated fields Lean writes: it runs the fixture itself.
+        df = datafusion_rows(run_substrait_json(con, source))
+        pl_rows = rows_of(run_plan(con, plan, "polars"))
+    else:
+        df, pl_rows = on_both(con, plan)
     assert same_bag(df, pl_rows)
-    if fixture.stem.startswith("df_"):
+    if fixture.stem.startswith("df_") and fixture.stem not in DATAFUSION_CANNOT_READ:
         # DataFusion's own plan (captured from it), not just Lean's rewrite.
         assert same_bag(datafusion_rows(run_substrait_json(con, source)), pl_rows)
     if all(f.type == pa.int64() for s in schemas.values() for f in s):

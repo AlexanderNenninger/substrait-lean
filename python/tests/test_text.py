@@ -2,7 +2,9 @@
 
 * Lean's semantics of `substring`, `strpos`, `starts_with`, `ends_with`,
   `LIKE`, `btrim`/`ltrim`/`rtrim`, `||` and `character_length` agrees with
-  DataFusion (`SubstraitLean/Text.lean`).
+  DataFusion (`SubstraitLean/Text.lean`), and so do Polars and DuckDB, which
+  run the plan Lean writes (also `UPPER`, `LOWER` and regular expressions,
+  black boxes in Lean).
 * Every pattern `Text.simpleRegex` accepts compiles in DataFusion: this tests
   the trusted part of the "invalid regular expression" check.
 * Contracts see through the black boxes as far as they can.
@@ -18,7 +20,16 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, put_table, run_sql, substrait_json, to_sql
+from sverify.engine import (
+    connect,
+    create_table,
+    put_table,
+    run_plan,
+    run_sql,
+    substrait_json,
+    to_sql,
+    written_plan,
+)
 from sverify.testing import canonical, inline_tables, lean_values
 
 R = ibis.schema({"s": "string", "t": "string", "a": "int64"})
@@ -45,6 +56,29 @@ def test_string_semantics_match_datafusion(sql, rows):
     expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
     assert canonical(lean_values(json.dumps(plan))) == canonical(expected)
+
+
+#: Black boxes in Lean: only the engines are compared.
+BLACK_BOXES = [
+    "SELECT upper(s) AS u, lower(t) AS l FROM r",
+    "SELECT array_length(regexp_match(s, '^a')) AS x, array_length(regexp_match(s, '(a)(b|%)'))"
+    " AS y, array_length(regexp_match(t, 'é.')) AS z FROM r",
+]
+
+
+@pytest.mark.parametrize("sql", QUERIES + BLACK_BOXES)
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
+def test_engines_match_datafusion(sql, rows):
+    con = connect()
+    create_table(con, "r", R, rows)
+    expected = canonical(tuple(x.values()) for x in run_sql(con, sql).to_pylist())
+    plan = written_plan(substrait_json(con, sql))
+    for engine in ("polars", "duckdb"):
+        got = run_plan(con, plan, engine)
+        assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected, engine
 
 
 T = ibis.table({"name": "string", "n": "int64"}, name="t")

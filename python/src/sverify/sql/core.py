@@ -38,7 +38,7 @@ import json
 import math
 import re
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, Literal
@@ -322,6 +322,71 @@ class Dialect:
     def interval_sub(self, a: str, b: str) -> str:
         return f"({a} - {b})"
 
+    def date_part(self, part: str, ts: str) -> str:
+        """`Time.datePart` of a timestamp: the proleptic Gregorian calendar,
+        `week` the ISO week, `dow` from Sunday = 0, `millisecond` and
+        `microsecond` within the minute; NULL outside the dates chrono
+        represents (the years -262143 to 262142)."""
+        raise Unsupported(f"{self.name}: date_part is not implemented")
+
+    def date_trunc(self, unit: str, ts: str) -> str:
+        """`Time.trunc`: rounded down to the unit, weeks from Monday."""
+        raise Unsupported(f"{self.name}: date_trunc is not implemented")
+
+    # Strings: sequences of Unicode scalar values (`SubstraitLean/Text.lean`).
+    # Lengths and positions count characters, and string order (which only
+    # sorts use) is by code point, i.e. byte order: no collation.
+
+    def upper(self, s: str) -> str:
+        """A black box in Lean (Unicode case mapping in DataFusion)."""
+        return f"UPPER({s})"
+
+    def lower(self, s: str) -> str:
+        return f"LOWER({s})"
+
+    def char_length(self, s: str) -> str:
+        return f"CHAR_LENGTH({s})"
+
+    def concat(self, a: str, b: str) -> str:
+        """NULL if either is."""
+        return f"({a} || {b})"
+
+    def strpos(self, s: str, t: str) -> str:
+        """The 1-based position of the first `t` in `s`, 0 if none, 1 for ''."""
+        return f"POSITION({t} IN {s})"
+
+    def starts_with(self, s: str, t: str) -> str:
+        return f"starts_with({s}, {t})"
+
+    def ends_with(self, s: str, t: str) -> str:
+        return f"ends_with({s}, {t})"
+
+    def like(self, s: str, pattern: str) -> str:
+        """`s LIKE pattern` with `\\` as the escape character; the pattern has
+        no trailing lone backslash (`like_pattern`)."""
+        return f"({s} LIKE {pattern} ESCAPE {self.str_lit(chr(92))})"
+
+    def like_pattern(self, p: str) -> str:
+        """`like_pattern` of a computed pattern: a backslash appended when `p`
+        ends with an odd number of them."""
+        raise Unsupported(f"{self.name}: LIKE with a computed pattern is not implemented")
+
+    def substring(self, s: str, start: str, length: str | None) -> str:
+        """Characters from 1-based `start` ≥ 1 on (`length` of them)."""
+        n = "" if length is None else f" FOR {length}"
+        return f"SUBSTRING({s} FROM {start}{n})"
+
+    def trim(self, s: str, chars: str, left: bool, right: bool) -> str:
+        """Remove characters of the set `chars` from the start and/or end."""
+        side = "BOTH" if left and right else "LEADING" if left else "TRAILING"
+        return f"TRIM({side} {chars} FROM {s})"
+
+    def regex_search(self, s: str, pattern: str) -> str:
+        """Does the regular expression (a constant) match somewhere in `s`?
+        Regular expressions are black boxes in Lean; each engine has its
+        own dialect, which agrees with Rust's on simple patterns."""
+        raise Unsupported(f"{self.name}: regular expressions are not implemented")
+
     # Three-valued logic and comparisons (NULL-propagating)
 
     def eq(self, a: str, b: str) -> str:
@@ -445,21 +510,28 @@ class Field:
 class Un:
     op: Literal[
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
-        "ftoi", "itos",
+        "ftoi", "itos", "upper", "lower", "length", "regex_match", "date_part", "date_trunc",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`."""
+    param: str = ""
+    """The pattern of `regexMatch`, the part of `datePart`, the unit of `dateTrunc`."""
 
 
 @dataclass(frozen=True)
 class Bin:
     op: Literal[
         "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
-        "idiv", "imod", "ipow", "fpow",
+        "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
+        "like", "substr", "trim",
     ]  # fmt: skip
     left: Expr
     right: Expr
+    length: int | None = None
+    """The `n` of `substr n`."""
+    sides: tuple[bool, bool] = (True, True)
+    """`left` and `right` of `trim`."""
 
 
 @dataclass(frozen=True)
@@ -556,7 +628,35 @@ class Window:
     fns: tuple[WinFn, ...]
 
 
-Rel = Read | Values | Filter | Project | Emit | Cross | Join | Fetch | UnionAll | Window
+@dataclass(frozen=True)
+class Semi:
+    """The left rows with some (`anti`: no) right row satisfying `on`."""
+
+    left: Rel
+    right: Rel
+    anti: bool
+    on: Expr
+
+
+@dataclass(frozen=True)
+class OrderBy:
+    """A stable sort."""
+
+    input: Rel
+    keys: tuple[SortKey, ...]
+
+
+@dataclass(frozen=True)
+class Distinct:
+    """The first occurrence of every row."""
+
+    input: Rel
+
+
+Rel = (
+    Read | Values | Filter | Project | Emit | Cross | Join | Fetch | UnionAll | Window | Semi
+    | OrderBy | Distinct
+)  # fmt: skip
 
 
 # Kinds of columns and expressions. `kinds` is what SQL sees; `lean_kinds`
@@ -567,8 +667,10 @@ def kinds(r: Rel) -> list[Kind | None]:
     match r:
         case Read() | Values():
             return list(r.kinds)
-        case Filter(input=i) | Fetch(input=i):
+        case Filter(input=i) | Fetch(input=i) | OrderBy(input=i) | Distinct(input=i):
             return kinds(i)
+        case Semi(left=a):
+            return kinds(a)
         case Project(input=i, exprs=es):
             ks = kinds(i)
             return ks + [expr_kind(e, ks) for e in es]
@@ -591,8 +693,10 @@ def lean_kinds(r: Rel) -> list[LeanKind]:
         case Values():
             # `Rel.kinds` reads them from the `baseSchema`, as for tables.
             return list(r.lean_kinds)
-        case Filter(input=i) | Fetch(input=i):
+        case Filter(input=i) | Fetch(input=i) | OrderBy(input=i) | Distinct(input=i):
             return lean_kinds(i)
+        case Semi(left=a):
+            return lean_kinds(a)
         case Project(input=i, exprs=es):
             ks = lean_kinds(i)
             return ks + [lean_expr_kind(e, ks) for e in es]
@@ -638,18 +742,22 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return lean_expr_kind(a, cols)
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
-        case Un(op="ftoi"):
+        case Un(op="ftoi" | "length" | "regex_match" | "date_part"):
             return "int"
-        case Un(op="itos"):
+        case Un(op="itos" | "upper" | "lower"):
             return "str"
+        case Un(op="date_trunc"):
+            return "time"
         case Un():
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
         case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos"):
             return "int"
+        case Bin(op="concat" | "substr" | "trim"):
+            return "str"
         case Bin():
             return "bool"
         case If(then=Lit(value=v), orelse=o):
@@ -668,10 +776,12 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return expr_kind(a, cols)
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
-        case Un(op="ftoi"):
+        case Un(op="ftoi" | "length" | "regex_match" | "date_part"):
             return "int"
-        case Un(op="itos"):
+        case Un(op="itos" | "upper" | "lower"):
             return "str"
+        case Un(op="date_trunc"):
+            return "time"
         case Un():
             return "bool"
         case Bin(op="add" | "sub", left=a, right=b):
@@ -683,8 +793,10 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return expr_kind(a, cols) or expr_kind(b, cols)
         case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos"):
             return "int"
+        case Bin(op="concat" | "substr" | "trim"):
+            return "str"
         case Bin():
             return "bool"
         case If(then=t, orelse=o):
@@ -954,7 +1066,10 @@ def _const_literal(j: dict) -> Const:
                 raise Unsupported("malformed string literal")
             return Const("str", v, kind="str")
         case "null":
-            return Const("null", kind=_type_kinds(v)[1])
+            # Lean writes every NULL whose kind it does not know as an `i64`
+            # one, so that type says nothing (an outer join's padding is one).
+            kind = _type_kinds(v)[1]
+            return Const("null", kind=None if kind == "int" else kind)
         case "fp32" | "fp64":
             if isinstance(v, bool):
                 raise Unsupported("malformed floating-point literal")
@@ -1112,7 +1227,23 @@ class _Parser:
             case "scalarFunction":
                 name = _base_name(self.name(_nat_d(v, "functionReference")))
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
+                # `array_length(regexp_match(s, p))`: NULL if `p` does not match.
+                if name == "array_length" and len(arg_js) == 1:
+                    g = _field(arg_js[0], "scalarFunction")
+                    inner = None if g is None else self.fns.get(_nat_d(g, "functionReference"))
+                    if g is not None and inner is not None and _base_name(inner) == "regexp_match":
+                        gargs = [_req(a, "value") for a in _arr(g, "arguments")]
+                        if len(gargs) != 2:
+                            raise Unsupported("regexp_match with flags is not supported")
+                        pat = self.const(gargs[1])
+                        if pat is None or pat.tag != "str":
+                            raise Unsupported("regular expressions must be constants")
+                        return Un("regex_match", self.expr(gargs[0], cols), param=pat.value)
                 parsed = [self.expr(a, cols) for a in arg_js]
+                if name in ("date_part", "datepart", "date_trunc", "datetrunc"):
+                    second = parsed[1] if len(parsed) > 1 else Lit(None, None)
+                    if lean_expr_kind(second, cols.lean) != "time":
+                        raise Unsupported(f"{name} is only supported on timestamps")
 
                 def keep_int(k: int) -> bool:
                     # `ROUND(x, d)`: the digits stay an integer.
@@ -1340,7 +1471,9 @@ class _Parser:
     def rel(self, j: dict) -> Rel:
         """`parseRel`."""
         kind, r = _oneof(
-            "relation", j, ("read", "filter", "project", "cross", "join", "fetch", "set")
+            "relation",
+            j,
+            ("read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"),
         )
         core: Rel
         match kind:
@@ -1348,7 +1481,31 @@ class _Parser:
                 core = self.read(r)
             case "filter":
                 inp = self.rel(_req(r, "input"))
-                core = Filter(inp, self.expr(_req(r, "condition"), self.cols(inp)))
+                cols = self.cols(inp)
+                # `x IN (subquery)` conjuncts become semi joins; the rest stays a filter.
+                base: Rel = inp
+                rest: list[Expr] = []
+                for c in self.conjuncts(_req(r, "condition")):
+                    sub = _field(c, "subquery")
+                    ip = _field(sub, "inPredicate") if sub is not None else None
+                    if ip is None:
+                        rest.append(self.expr(c, cols))
+                        continue
+                    needles = _arr(ip, "needles")
+                    if len(needles) != 1:
+                        raise Unsupported("IN with several needles is not supported")
+                    needle = self.expr(needles[0], cols)
+                    hay = self.rel(_req(ip, "haystack"))
+                    if len(lean_kinds(hay)) != 1:
+                        raise Unsupported("IN subquery must return one column")
+                    base = Semi(base, hay, False, Bin("eq", needle, Field(len(cols.lean))))
+                if not rest:
+                    core = base
+                else:
+                    cond = rest[0]
+                    for e in rest[1:]:
+                        cond = Bin("and", cond, e)
+                    core = Filter(base, cond)
             case "project":
                 inp = self.rel(_req(r, "input"))
                 cols = self.cols(inp)
@@ -1361,15 +1518,7 @@ class _Parser:
             case "cross":
                 core = Cross(self.rel(_req(r, "left")), self.rel(_req(r, "right")))
             case "join":
-                types: dict[str, tuple[Literal["inner", "left"], bool]] = {
-                    "JOIN_TYPE_INNER": ("inner", False),
-                    "JOIN_TYPE_LEFT": ("left", False),
-                    "JOIN_TYPE_RIGHT": ("left", True),
-                }
                 t = _field(r, "type")
-                if t not in types:
-                    raise Unsupported(f"unsupported join type: {'unspecified' if t is None else t}")
-                ty, swap = types[t]
                 if _field(r, "postJoinFilter") is not None:
                     raise Unsupported("JoinRel.postJoinFilter is not supported")
                 left, right = self.rel(_req(r, "left")), self.rel(_req(r, "right"))
@@ -1378,14 +1527,33 @@ class _Parser:
                 cols = _Cols(lc.lean + rc.lean, lc.sql + rc.sql)
                 e = _field(r, "expression")
                 on = Lit(True, "bool") if e is None else self.expr(e, cols)
-                if not swap:
-                    core = Join(left, right, ty, on)
-                else:
-                    on = _map_fields(on, lambda i: m + i if i < n else i - n)
-                    core = Emit(
-                        Join(right, left, "left", on),
-                        tuple([m + i for i in range(n)] + list(range(m))),
-                    )
+                # The condition with the sides swapped, and `b`'s columns then
+                # `a`'s put back in order.
+                swapped = _map_fields(on, lambda i: m + i if i < n else i - n)
+                back = tuple([m + i for i in range(n)] + list(range(m)))
+                match t:
+                    case "JOIN_TYPE_INNER":
+                        core = Join(left, right, "inner", on)
+                    case "JOIN_TYPE_LEFT":
+                        core = Join(left, right, "left", on)
+                    case "JOIN_TYPE_RIGHT":
+                        core = Emit(Join(right, left, "left", swapped), back)
+                    case "JOIN_TYPE_LEFT_SEMI":
+                        core = Semi(left, right, False, on)
+                    case "JOIN_TYPE_LEFT_ANTI":
+                        core = Semi(left, right, True, on)
+                    case "JOIN_TYPE_RIGHT_SEMI":
+                        core = Semi(right, left, False, swapped)
+                    case "JOIN_TYPE_RIGHT_ANTI":
+                        core = Semi(right, left, True, swapped)
+                    case "JOIN_TYPE_OUTER":
+                        # The left join, plus the right rows nothing matches, padded.
+                        pad = Project(Semi(right, left, True, swapped), (Lit(None, None),) * n)
+                        core = UnionAll(Join(left, right, "left", on), Emit(pad, back))
+                    case _:
+                        raise Unsupported(
+                            f"unsupported join type: {'unspecified' if t is None else t}"
+                        )
             case "fetch":
                 offset = self.fetch_int(r, "offset")
                 if offset is not None and offset < 0:
@@ -1396,18 +1564,26 @@ class _Parser:
                     offset or 0,
                     None if count is None or count < 0 else count,
                 )
+            case "sort":
+                inp = self.rel(_req(r, "input"))
+                cols = self.cols(inp)
+                core = OrderBy(inp, tuple(self.sort_key(k, cols) for k in _arr(r, "sorts")))
+            case "aggregate":
+                core = self.aggregate(r)
             case _:
-                op = _field(r, "op")
-                if op != "SET_OP_UNION_ALL":
-                    raise Unsupported(
-                        f"unsupported set operation: {'unspecified' if op is None else op}"
-                    )
                 inputs = [self.rel(i) for i in _arr(r, "inputs")]
                 if not inputs:
                     raise Unsupported("SetRel without inputs")
                 core = inputs[0]
                 for i in inputs[1:]:
                     core = UnionAll(core, i)
+                op = _field(r, "op")
+                if op == "SET_OP_UNION_DISTINCT":
+                    core = Distinct(core)
+                elif op != "SET_OP_UNION_ALL":
+                    raise Unsupported(
+                        f"unsupported set operation: {'unspecified' if op is None else op}"
+                    )
         common = _field(r, "common")
         emit = _field(common, "emit") if common is not None else None
         if emit is not None:
@@ -1418,6 +1594,45 @@ class _Parser:
                 )
             return Emit(core, tuple(m))
         return core
+
+    def aggregate(self, r: dict) -> Rel:
+        """An aggregate without measures is `DISTINCT` (of its grouping keys)."""
+        inp = self.rel(_req(r, "input"))
+        cols = self.cols(inp)
+        if _arr(r, "measures"):
+            raise Unsupported("aggregate functions are not supported yet")
+        groupings = _arr(r, "groupings")
+        if len(groupings) != 1:
+            raise Unsupported("grouping sets are not supported")
+        g = groupings[0]
+        refs, exprs = _field(g, "expressionReferences"), _field(g, "groupingExpressions")
+        if refs is None and exprs is None:
+            # DataFusion writes `DISTINCT` as one empty grouping: all columns.
+            keys = list(range(len(cols.lean)))
+        else:
+            top = _arr(r, "groupingExpressions")
+            if refs is not None:
+                js = []
+                for i in _arr(g, "expressionReferences"):
+                    k = _nat(i)
+                    if k >= len(top):
+                        raise Unsupported(f"grouping expression {k} does not exist")
+                    js.append(top[k])
+            else:
+                js = _arr(g, "groupingExpressions")
+            keys = [self.column(e, cols, "grouping keys") for e in js]
+        if keys == list(range(len(cols.lean))):
+            return Distinct(inp)
+        return Distinct(Emit(inp, tuple(keys)))
+
+    def conjuncts(self, j: Any) -> list[Any]:
+        """The conjuncts of a condition, splitting top-level `and` calls."""
+        f = _field(j, "scalarFunction")
+        if f is not None:
+            name = self.fns.get(_nat_d(f, "functionReference"))
+            if name is not None and _base_name(name) == "and":
+                return [c for a in _arr(f, "arguments") for c in self.conjuncts(_req(a, "value"))]
+        return [j]
 
     def fetch_int(self, r: dict, key: str) -> int | None:
         e = _field(r, key + "Expr")
@@ -1453,10 +1668,10 @@ def _map_fields(e: Expr, f: Callable[[int], int]) -> Expr:
             return e
         case Field(index=i):
             return Field(f(i))
-        case Un(op=op, arg=a):
-            return Un(op, _map_fields(a, f))
-        case Bin(op=op, left=a, right=b):
-            return Bin(op, _map_fields(a, f), _map_fields(b, f))
+        case Un(arg=a):
+            return replace(e, arg=_map_fields(a, f))
+        case Bin(left=a, right=b):
+            return replace(e, left=_map_fields(a, f), right=_map_fields(b, f))
         case If(cond=c, then=t, orelse=o):
             return If(_map_fields(c, f), _map_fields(t, f), _map_fields(o, f))
 
@@ -1521,7 +1736,61 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("imod", a, b)
         case "power", [a, b]:
             return Bin("ipow", a, b)
+        # Strings (`SubstraitLean/Text.lean`).
+        case "upper", [a]:
+            return Un("upper", a)
+        case "lower", [a]:
+            return Un("lower", a)
+        case (("character_length" | "char_length" | "length"), [a]):
+            return Un("length", a)
+        case "str_concat", [a, b]:
+            return Bin("concat", a, b)
+        case "strpos", [a, b]:
+            return Bin("strpos", a, b)
+        case "starts_with", [a, b]:
+            return Bin("starts_with", a, b)
+        case "ends_with", [a, b]:
+            return Bin("ends_with", a, b)
+        # The third argument is the escape character; NULL means a backslash.
+        case "like", ([a, b] | [a, b, Lit(value=None)]):
+            return Bin("like", a, b)
+        case "like", [_, _, _]:
+            raise Unsupported("LIKE … ESCAPE is not supported (DataFusion only allows a backslash)")
+        case "substring", [a, b]:
+            return Bin("substr", a, b)
+        case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
+            if n < 0:
+                raise Unsupported("a negative substring length always fails")
+            return Bin("substr", a, b, length=n)
+        case "substring", [_, _, _]:
+            raise Unsupported("substring lengths must be constants")
+        case (("btrim" | "ltrim" | "rtrim"), [a, *rest]) if len(rest) <= 1:
+            chars = rest[0] if rest else Lit(" ", "str")
+            sides = {"btrim": (True, True), "ltrim": (True, False), "rtrim": (False, True)}[name]
+            return Bin("trim", a, chars, sides=sides)
+        case "regexp_match", _:
+            raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
+        # Timestamps (`SubstraitLean/Time.lean`).
+        case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
+            if part.lower() not in DATE_PARTS:
+                raise Unsupported(f"unsupported date part '{part}'")
+            return Un("date_part", a, param=part.lower())
+        case (("date_trunc" | "datetrunc"), [Lit(value=str(unit)), a]):
+            if unit.lower() not in TIME_UNITS:
+                raise Unsupported(f"unsupported date_trunc unit '{unit}'")
+            return Un("date_trunc", a, param=unit.lower())
     raise Unsupported(f"unsupported function {name}/{len(args)}")
+
+
+#: `Time.DatePart.name` and `Time.TimeUnit.name`.
+DATE_PARTS = (
+    "year", "quarter", "month", "week", "day", "hour", "minute", "second", "millisecond",
+    "microsecond", "dow", "doy",
+)  # fmt: skip
+TIME_UNITS = (
+    "microsecond", "millisecond", "second", "minute", "hour", "day", "week", "month", "quarter",
+    "year",
+)  # fmt: skip
 
 
 def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
@@ -1593,14 +1862,17 @@ def arity(r: Rel) -> int:
 
 
 def order_matters(r: Rel) -> bool:
-    """Does the result's row order matter (a FETCH or a window anywhere)?"""
+    """Does the result's row order matter (a FETCH, a window or a sort anywhere
+    the order reaches the result)?"""
     match r:
-        case Fetch() | Window():
+        case Fetch() | Window() | OrderBy():
             return True
         case Read() | Values():
             return False
-        case Filter(input=i) | Project(input=i) | Emit(input=i):
+        case Filter(input=i) | Project(input=i) | Emit(input=i) | Distinct(input=i):
             return order_matters(i)
+        case Semi(left=a):
+            return order_matters(a)
         case Cross(left=a, right=b) | Join(left=a, right=b) | UnionAll(left=a, right=b):
             return order_matters(a) or order_matters(b)
 
@@ -1774,7 +2046,78 @@ class _Writer:
                 return self.select(items, d.subquery(d.union_all(*branches), u))
             case Window(input=i, part=part, sort=sort, fns=fns):
                 return self.window(i, part, sort, fns, ordered)
+            case Semi(left=left, right=right, anti=anti, on=on):
+                # A correlated `EXISTS`: true when the condition is TRUE for
+                # some right row (`hasMatch`); the left rows keep their order.
+                la, ra = self.alias(), self.alias()
+                nl = arity(left)
+                self.check_refs(on, nl + arity(right))
+
+                def side(j: int) -> str:
+                    return self.ref(la, self.c(j)) if j < nl else self.ref(ra, self.c(j - nl))
+
+                cond = d.is_true(self.expr(on, side, kinds(left) + kinds(right), "bool"))
+                rsub = d.subquery(self.rel(right, False), ra)
+                exists = f"{'NOT ' if anti else ''}EXISTS (SELECT 1 FROM {rsub} WHERE {cond})"
+                return self.select(
+                    self.passthrough(la, n, ordered),
+                    d.subquery(self.rel(left, ordered), la),
+                    f"WHERE {exists}",
+                )
+            case OrderBy(input=i, keys=sort):
+                # A stable sort: ties keep their input order, by its ordinal.
+                a = self.alias()
+                ks = kinds(i)
+                if any(k.col >= n for k in sort):
+                    raise Unsupported("a sort key refers to a column beyond its input")
+                keys = self.sort_keys(a, sort, ks)
+                items = self.passthrough(a, n, False)
+                if ordered:
+                    if not keys:
+                        items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
+                    else:
+                        items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
+                needs = ordered and (not self.tie_free or not keys)
+                return self.select(items, d.subquery(self.rel(i, needs), a))
+            case Distinct(input=i):
+                return self.distinct(i, ordered)
         raise Unsupported(f"unsupported relation {type(r).__name__}")
+
+    def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
+        """ORDER BY keys for `sortLe sort` over subquery `a`, ties broken by its
+        ordinal (Lean's merge sort is stable) unless the caller promised none."""
+        keys: list[str] = []
+        for k in sort:
+            for x, kind in self.sort_exprs(self.ref(a, self.c(k.col)), ks[k.col]):
+                keys.append(self.d.sort_key(x, k.desc, k.nulls_first, kind))
+        if keys and not self.tie_free:
+            keys.append(self.asc(self.ordinal(a)))
+        return keys
+
+    def distinct(self, i: Rel, ordered: bool) -> str:
+        """`dedup`: rows equal as `Value`s (NULLs equal, doubles by their codes,
+        so -0.0 and +0.0 differ) are one; the first of them stays, in place."""
+        d = self.d
+        a = self.alias()
+        ks = kinds(i)
+        n = len(ks)
+        keys = [x for j in range(n) for x in d.partition_keys(self.ref(a, self.c(j)), ks[j])]
+        if not ordered:
+            # Any row of a group stands for it: they are all the same value.
+            return self.select(
+                self.passthrough(a, n, False),
+                d.subquery(self.rel(i, False), a),
+                "GROUP BY " + ", ".join(keys),
+            )
+        first = d.quote("first")
+        over = d.over(keys, [self.asc(self.ordinal(a))])
+        items = self.passthrough(a, n, True) + [f"{d.row_number(over)} AS {first}"]
+        b = self.alias()
+        return self.select(
+            self.passthrough(b, n, True),
+            d.subquery(self.select(items, d.subquery(self.rel(i, True), a)), b),
+            f"WHERE {self.ref(b, first)} = {d.int_lit(1)}",
+        )
 
     def window(self, i: Rel, part: tuple, sort: tuple, fns: tuple, ordered: bool) -> str:
         d = self.d
@@ -1948,7 +2291,82 @@ class _Writer:
             case If(cond=c, then=t, orelse=o):
                 k = kind(e) or ctx
                 return d.case_when(go(c, "bool"), go(t, k), go(o, k))
+            case Un(op="upper" | "lower" | "length" as op, arg=a):
+                x = self.operand(a, "str", ref, cols, op)
+                return {"upper": d.upper, "lower": d.lower, "length": d.char_length}[op](x)
+            case Un(op="regex_match", arg=a, param=pattern):
+                groups = regex_groups(pattern)
+                x = self.operand(a, "str", ref, cols, "regexp_match")
+                return d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
+            case Un(op="date_part", arg=a, param=part):
+                return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
+            case Un(op="date_trunc", arg=a, param=unit):
+                return self.date_trunc(unit, self.operand(a, "time", ref, cols, "date_trunc"))
+            case Bin(op="concat", left=a, right=b):
+                sa, sb = (self.operand(x, "str", ref, cols, "||") for x in (a, b))
+                return d.concat(sa, sb)
+            case Bin(op="strpos" | "starts_with" | "ends_with" as op, left=a, right=b):
+                sa, sb = (self.operand(x, "str", ref, cols, op) for x in (a, b))
+                f = {"strpos": d.strpos, "starts_with": d.starts_with, "ends_with": d.ends_with}
+                return f[op](sa, sb)
+            case Bin(op="like", left=a, right=b):
+                sa, sb = (self.operand(x, "str", ref, cols, "LIKE") for x in (a, b))
+                if isinstance(b, Lit):
+                    pattern = None if b.value is None else d.str_lit(like_pattern(b.value))
+                else:
+                    pattern = d.like_pattern(sb)
+                return d.null("bool") if pattern is None else d.like(sa, pattern)
+            case Bin(op="substr", left=a, right=b, length=length):
+                sa = self.operand(a, "str", ref, cols, "substring")
+                sb = self.int_operand(b, ref, cols, "substring")
+                return self.substring(sa, sb, length)
+            case Bin(op="trim", left=a, right=b, sides=sides):
+                sa, sb = (self.operand(x, "str", ref, cols, "trim") for x in (a, b))
+                return d.trim(sa, sb, *sides)
         raise Unsupported(f"unsupported expression {e!r}")
+
+    def operand(
+        self, e: Expr, want: Kind, ref: Callable[[int], str], cols: list[Kind | None], what: str
+    ) -> str:
+        """`e` as a value of kind `want` (an untyped NULL is one too)."""
+        k = expr_kind(e, cols)
+        if k != want and not (isinstance(e, Lit) and e.value is None):
+            raise Unsupported(f"{what} needs a {want} value, not {k or 'one of unknown type'}")
+        return self.expr(e, ref, cols, want)
+
+    def substring(self, s: str, a: str, n: int | None) -> str:
+        """`Text.substr`: the characters at 1-based positions `a … a+n-1` that
+        exist. Engines count a start below 1 differently (from the end, or
+        not at all), so only starts ≥ 1 reach them."""
+        d = self.d
+        one = d.int_lit(1)
+        null = d.null("str")
+        if n == 0:
+            return d.case_when(f"({s} IS NULL OR {a} IS NULL)", null, d.str_lit(""))
+        if n is None:
+            return (
+                f"(CASE WHEN {a} IS NULL THEN {null} WHEN {a} >= {one} "
+                f"THEN {d.substring(s, a, None)} ELSE {s} END)"
+            )
+        # No string has 2^62 characters; `a + (n - 1)` cannot overflow for `a < 1`.
+        m = min(n, 2**62)
+        rest = f"GREATEST({a} + {d.int_lit(m - 1)}, {d.int_lit(0)})"
+        return (
+            f"(CASE WHEN {a} IS NULL THEN {null} WHEN {a} >= {one} "
+            f"THEN {d.substring(s, a, d.int_lit(m))} ELSE {d.substring(s, one, rest)} END)"
+        )
+
+    def date_trunc(self, unit: str, ts: str) -> str:
+        """`Time.trunc`. To a week or longer, DataFusion computes in nanoseconds
+        and fails outside ±2⁶³ ns (`Issue.overflow`): so does the SQL. To a day
+        or less it wraps below -2⁶³ µs, which no engine's timestamps reach."""
+        d = self.d
+        t = d.date_trunc(unit, ts)
+        if unit not in ("week", "month", "quarter", "year"):
+            return t
+        lo, hi = d.timestamp_lit(NS_MIN), d.timestamp_lit(NS_MAX)
+        fail = d.raise_(f"date_trunc to a {unit} outside ±2^63 ns", ts, "time")
+        return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
 
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
@@ -2003,6 +2421,45 @@ class _Writer:
             case "sub", "interval", "interval":
                 return d.interval_sub(sa, sb)
         raise Unsupported(f"{ka} {sym} {kb} is not supported")
+
+
+#: DataFusion truncates to calendar units exactly from here to here
+#: (`Time.nsMin`, `Time.nsMax`, in microseconds).
+NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
+
+
+def like_pattern(p: str) -> str:
+    """`Text.tokens` as a pattern for `LIKE … ESCAPE '\\'`: a backslash escapes
+    the next character, and a trailing one stands for itself (where SQL
+    engines reject it), so it is escaped."""
+    return p + "\\" if (len(p) - len(p.rstrip("\\"))) % 2 else p
+
+
+def regex_groups(p: str) -> int:
+    """The entries `regexp_match(s, p)` has on a match: its capture groups, or
+    the whole match if there are none. Groups are counted as `(` outside
+    classes and escapes, which is exact for patterns without `(?`."""
+    groups, k, in_class = 0, 0, False
+    while k < len(p):
+        c = p[k]
+        if c == "\\":
+            k += 2
+            continue
+        if in_class:
+            in_class = c != "]"
+        elif c == "[":
+            in_class = True
+            # A `]` right after `[` or `[^` is a literal member.
+            if p[k + 1 : k + 2] == "^":
+                k += 1
+            if p[k + 1 : k + 2] == "]":
+                k += 1
+        elif c == "(":
+            if p[k + 1 : k + 2] == "?":
+                raise Unsupported(f"regular expressions with '(?' are not supported: {p!r}")
+            groups += 1
+        k += 1
+    return max(groups, 1)
 
 
 def _is_int_arith(e: Expr) -> bool:

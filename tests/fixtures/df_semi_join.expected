@@ -1,0 +1,12 @@
+Emit [3, 4, 5]
+  Project +[$0, $1, $2]
+    SemiJoin ($1 = $3)
+      Read orders
+      Read customers
+tables: customers(2), orders(3)
+arity: 3
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

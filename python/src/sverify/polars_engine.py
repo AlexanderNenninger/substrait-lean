@@ -29,14 +29,24 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   `AND`/`OR` count), and the operator raises the matching `RuntimeIssue` if it
   hits on a row it evaluates: a filter on its input, a project on every
   expression and row, a join's residual condition on the key matches.
-* Window sorts are stable and place NULLs as each sort key says; partitions
-  group NULLs together, as `samePart` does.
+* Sorts (`SortRel`, and the sort of a window) are stable and place NULLs as
+  each key says; window partitions group NULLs together, as `samePart` does,
+  and `DISTINCT` keeps the first of equal rows (`dedup`), NULLs equal.
+* Strings are sequences of Unicode scalar values (`SubstraitLean/Text.lean`):
+  positions and lengths count characters, not bytes. `UPPER`, `LOWER` and
+  regular expressions are black boxes in Lean; Polars computes them with the
+  same Rust code DataFusion uses (`str::to_uppercase`, the `regex` crate).
+* `date_part` and `date_trunc` follow `SubstraitLean/Time.lean`: sub-day
+  parts and truncations are integer arithmetic on the microseconds, calendar
+  ones go through Polars' (chrono's) calendar, and the `Issue`s of
+  `date_trunc` (outside ±2⁶³ ns, or wrapping) raise.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -84,6 +94,10 @@ class NegativeExponent(RuntimeIssue):
 
 class BadCast(RuntimeIssue):
     """`CAST(double AS BIGINT)` of NaN, ±∞ or a value outside 64 bits."""
+
+
+class BadRegex(RuntimeIssue):
+    """A regular expression that does not compile."""
 
 
 def col(i: int) -> str:
@@ -354,6 +368,146 @@ def is_true(e: pl.Expr) -> pl.Expr:
     return e.eq_missing(True)
 
 
+# --- Strings (`SubstraitLean/Text.lean`) ------------------------------------
+
+
+def _rows(fn, out: DType, *vals: Val) -> pl.Expr:
+    """`fn` on each row's Python values, NULL if any argument is NULL. For
+    the functions whose Polars counterparts count bytes or differ in edge
+    cases; Python strings are sequences of code points, as Lean's are."""
+
+    def apply(s: pl.Series) -> pl.Series:
+        cols = [s.struct.field(f"a{k}").to_list() for k in range(len(vals))]
+        return pl.Series(
+            [None if None in xs else fn(*xs) for xs in zip(*cols, strict=True)], dtype=out
+        )
+
+    args = pl.struct([v.expr.alias(f"a{k}") for k, v in enumerate(vals)])
+    return args.map_batches(apply, return_dtype=out, is_elementwise=True)
+
+
+def strpos(s: str, t: str) -> int:
+    """`Text.strpos`: the 1-based position of the first `t`, 0 if none."""
+    return s.find(t) + 1
+
+
+_LIKE: dict[str, re.Pattern] = {}
+
+
+def like(s: str, p: str) -> bool:
+    """`Text.like`: `%` any characters, `_` one, a backslash makes the next
+    character literal (a trailing one is itself)."""
+    if p not in _LIKE:
+        out, k = [], 0
+        while k < len(p):
+            c = p[k]
+            if c == "\\" and k + 1 < len(p):
+                out.append(re.escape(p[k + 1]))
+                k += 2
+                continue
+            out.append(".*" if c == "%" else "." if c == "_" else re.escape(c))
+            k += 1
+        _LIKE[p] = re.compile("".join(out), re.DOTALL)
+    return _LIKE[p].fullmatch(s) is not None
+
+
+def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
+    """`Text.substr`: the characters at 1-based positions `a … a+n-1`."""
+    start = wide(a) - 1
+    lo = pl.max_horizontal(start, pl.lit(0, pl.Int128))
+    if n is None:
+        length = None
+    else:
+        # No string has 2^62 characters, so clipping changes nothing.
+        hi = pl.max_horizontal(start + n, pl.lit(0, pl.Int128))
+        length = pl.max_horizontal(hi - lo, pl.lit(0, pl.Int128)).clip(0, 2**62).cast(pl.Int64)
+    lo = lo.clip(0, 2**62).cast(pl.Int64)
+    return pl.when(a.expr.is_null()).then(None).otherwise(s.expr.str.slice(lo, length))
+
+
+def regex_groups(p: str) -> int | None:
+    """Entries of `regexp_match(s, p)` on a match: the capture groups, or the
+    whole match if there are none. `None` if the pattern does not compile.
+    Asked of Polars, which compiles patterns with DataFusion's `regex` crate."""
+    try:
+        groups = pl.Series([""], dtype=pl.String).str.extract_groups(p).dtype
+    except pl.exceptions.ComputeError:
+        return None
+    assert isinstance(groups, pl.Struct)
+    return max(len(groups.fields), 1)
+
+
+# --- Times (`SubstraitLean/Time.lean`) ---------------------------------------
+
+US_PER_DAY = 86_400_000_000
+#: The timestamps `chrono` represents (`Time.partMin`, `Time.partMax`).
+PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
+#: Calendar truncation is exact from here to here (`Time.nsMin`, `Time.nsMax`).
+NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
+#: Sub-day parts as `(modulus, divisor)` of the microseconds (`Time.partOf`).
+CLOCK_PARTS = {
+    "hour": (US_PER_DAY, 3_600_000_000),
+    "minute": (3_600_000_000, 60_000_000),
+    "second": (60_000_000, 1_000_000),
+    "millisecond": (60_000_000, 1000),
+    "microsecond": (60_000_000, 1),
+}
+CLOCK_UNITS = {
+    "microsecond": 1,
+    "millisecond": 1000,
+    "second": 1_000_000,
+    "minute": 60_000_000,
+    "hour": 3_600_000_000,
+    "day": US_PER_DAY,
+}
+CALENDAR_UNITS = {"month": "1mo", "quarter": "1q", "year": "1y"}
+
+
+def date_part(part: str, v: Val) -> Val:
+    """`Time.datePart`: NULL outside the dates chrono represents."""
+    us = v.expr.dt.epoch("us")
+    if part in CLOCK_PARTS:
+        m, d = CLOCK_PARTS[part]
+        value = us % m // d
+    elif part == "dow":
+        # 1970-01-01 is a Thursday; Sunday is 0.
+        value = (us // US_PER_DAY + 4) % 7
+    else:
+        dt = v.expr.dt
+        calendar = {"year": dt.year, "quarter": dt.quarter, "month": dt.month,
+                    "week": dt.week, "day": dt.day, "doy": dt.ordinal_day}  # fmt: skip
+        if part not in calendar:
+            raise Unsupported(f"unsupported date part {part!r}")
+        value = calendar[part]()
+    inside = (us >= PART_MIN) & (us <= PART_MAX)
+    return Val(pl.when(inside).then(value.cast(pl.Int64)), pl.Int64, v.issues)
+
+
+def date_trunc(unit: str, v: Val) -> Val:
+    """`Time.trunc` with the `Issue`s of `UnFn.issue`: to a week or longer,
+    outside ±2⁶³ ns an error (`Overflow`); to a day or less, a result below
+    64 bits wraps in DataFusion (`IntegerOverflow`)."""
+    us = wide(v)
+    if unit in CLOCK_UNITS:
+        k = CLOCK_UNITS[unit]
+        return narrow(us - us % k, US, f"date_trunc to a {unit}", v)
+    if unit == "week":
+        # Monday is 3 days before 1970-01-01.
+        days = us // US_PER_DAY
+        t = (days - (days + 3) % 7) * US_PER_DAY
+    elif unit in CALENDAR_UNITS:
+        # Polars computes in microseconds; only use it where DataFusion's
+        # nanoseconds are exact, which is where the result counts.
+        inside = us.is_null() | ((us >= NS_MIN) & (us <= NS_MAX))
+        safe = pl.when(inside).then(v.expr).otherwise(pl.lit(0, US))
+        t = wide(Val(safe.dt.truncate(CALENDAR_UNITS[unit]), US))
+    else:
+        raise Unsupported(f"unsupported date_trunc unit {unit!r}")
+    bad = (us > NS_MAX) | (us < NS_MIN) | (t < NS_MIN)
+    value = pl.when(bad).then(None).otherwise(t).cast(pl.Int64).cast(US)
+    return Val(value, US, (*v.issues, issue(bad, Overflow, f"date_trunc to a {unit} overflows")))
+
+
 def ftoi(v: Val) -> Val:
     """`CAST(double AS BIGINT)`: truncation toward zero (`FloatCode.toInt?`);
     NaN, ±∞ and results outside 64 bits are errors."""
@@ -404,8 +558,51 @@ class Exprs:
             arg_js = [a["value"] for a in f.get("arguments", [])]
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
+            if name == "array_length" and len(arg_js) == 1:
+                return self.regex_match(arg_js[0])
+            if name in ("date_part", "date_trunc") and len(arg_js) == 2:
+                which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
+                if not isinstance(which, str) or ts.dtype != US:
+                    raise Unsupported(f"{name} of {ts.dtype} by {which!r}")
+                return (date_part if name == "date_part" else date_trunc)(which.lower(), ts)
+            if name == "substring" and len(arg_js) == 3:
+                n = self.constant(arg_js[2], "substring length")
+                if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+                    raise Unsupported("substring lengths must be integer literals ≥ 0")
+                return self.substring(self(arg_js[0]), self(arg_js[1]), n)
             return self.call(name, [self(a) for a in arg_js])
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
+
+    @staticmethod
+    def constant(j: dict, what: str) -> Any:
+        if "literal" not in j:
+            raise Unsupported(f"{what} must be a literal")
+        return literal(j["literal"])[0]
+
+    def regex_match(self, j: dict) -> Val:
+        """`array_length(regexp_match(s, p))` (`UnFn.regexMatch`): the number
+        of entries of the match, NULL if there is none."""
+        f = j.get("scalarFunction")
+        if f is None or self.function(f.get("functionReference")) != "regexp_match":
+            raise Unsupported("array_length is only supported of regexp_match")
+        args = [a["value"] for a in f.get("arguments", [])]
+        if len(args) != 2:
+            raise Unsupported("regexp_match with flags is not supported")
+        s, p = self(args[0]), self.constant(args[1], "a regular expression")
+        if s.dtype not in (pl.String, pl.Null) or not isinstance(p, str):
+            raise Unsupported(f"regexp_match of {s.dtype} and {p!r}")
+        groups = regex_groups(p)
+        if groups is None:
+            # The pattern is compiled whatever the input (`UnFn.issue`).
+            bad = issue(pl.lit(True), BadRegex, f"invalid regular expression {p!r}")
+            return Val(pl.lit(None, pl.Int64), pl.Int64, (*s.issues, bad))
+        found = s.expr.str.contains(p)
+        return Val(pl.when(found).then(pl.lit(groups, pl.Int64)), pl.Int64, s.issues)
+
+    def substring(self, s: Val, a: Val, n: int | None) -> Val:
+        if s.dtype not in (pl.String, pl.Null) or a.dtype not in (pl.Int64, pl.Null):
+            raise Unsupported(f"substring of {s.dtype} from {a.dtype}")
+        return Val(substr(s, a, n), pl.String, issues(s, a))
 
     def cast(self, c: dict) -> Val:
         v = self(c["input"])
@@ -469,6 +666,13 @@ class Exprs:
                 return narrow(
                     pl.lit(0, pl.Int128) - wide(a), pl.Int64 if t == pl.Null else t, "negation", a
                 )
+        if t in (pl.String, pl.Null):
+            if name == "upper":
+                return Val(e.str.to_uppercase(), pl.String, a.issues)
+            if name == "lower":
+                return Val(e.str.to_lowercase(), pl.String, a.issues)
+            if name == "character_length":
+                return Val(e.str.len_chars().cast(pl.Int64), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
             # The sign of a zero result is kept, as `onMag` keeps it.
@@ -511,6 +715,10 @@ class Exprs:
             q = narrow(tdiv(x, y), pl.Int64, "division", a, b, kind=Overflow)
             return Val(pl.when(zero).then(None).otherwise(q.expr), pl.Int64,
                        (*q.issues, by_zero))  # fmt: skip
+        strings = ("str_concat", "strpos", "starts_with", "ends_with", "like", "substring",
+                   "btrim", "ltrim", "rtrim")  # fmt: skip
+        if name in strings:
+            return self.string(name, a, b)
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
             if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Float64, pl.Null):
@@ -520,6 +728,27 @@ class Exprs:
             ka, kb = ordered(a.expr, t), ordered(b.expr, t)
             return Val(ka == kb if name == "equal" else ka < kb, pl.Boolean, issues(a, b))
         raise Unsupported(f"unsupported function {name}/2 on {[ta, tb]}")
+
+    def string(self, name: str, a: Val, b: Val) -> Val:
+        """The binary functions of `SubstraitLean/Text.lean`."""
+        if name == "substring":
+            return self.substring(a, b, None)
+        if unify(a.dtype, b.dtype, name) not in (pl.String, pl.Null):
+            raise Unsupported(f"{name} of {a.dtype} and {b.dtype}")
+        x, y, found = a.expr, b.expr, issues(a, b)
+        if name == "str_concat":
+            return Val(pl.concat_str([x, y]), pl.String, found)
+        if name in ("starts_with", "ends_with"):
+            e = x.str.starts_with(y) if name == "starts_with" else x.str.ends_with(y)
+            return Val(e, pl.Boolean, found)
+        if name == "strpos":
+            return Val(_rows(strpos, pl.Int64, a, b), pl.Int64, found)
+        if name == "like":
+            return Val(_rows(like, pl.Boolean, a, b), pl.Boolean, found)
+        # Trimming: Polars strips whitespace for a NULL set, Lean gives NULL.
+        strip = {"btrim": x.str.strip_chars, "ltrim": x.str.strip_chars_start,
+                 "rtrim": x.str.strip_chars_end}[name]  # fmt: skip
+        return Val(pl.when(y.is_not_null()).then(strip(y)), pl.String, found)
 
     def round_to(self, a: Val, digits: dict) -> Val:
         """`ROUND(x, d)`, as `FloatCode.roundTo`: `round(x · p) / p` with native
@@ -620,7 +849,7 @@ class Translator:
         return Exprs(self.functions, dtypes)
 
     def rel(self, j: dict) -> Frame:
-        kinds = ["read", "filter", "project", "cross", "join", "fetch", "set"]
+        kinds = ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"]
         found = [k for k in kinds if k in j]
         if len(found) != 1 or len(j) != 1:
             raise Unsupported(f"unsupported relation {json.dumps(j)[:80]}")
@@ -714,7 +943,9 @@ class Translator:
             return self.window(lf, dtypes, [e["windowFunction"] for e in es])
         ex = self.exprs(dtypes)
         new = [ex(e) for e in es]
-        out = [materialize(v.dtype) for v in new]
+        # An untyped NULL column stays untyped, so that a union can type it
+        # (an outer join's padding meets the right side's columns there).
+        out = [v.dtype for v in new]
         n = len(dtypes)
         # Every expression is evaluated on every row, used later or not.
         lf = guard(lf, new).with_columns(
@@ -733,24 +964,8 @@ class Translator:
         for w in ws:
             if w.get("partitions", []) != part or w.get("sorts", []) != sorts:
                 raise Unsupported("window functions in one project must share PARTITION/ORDER BY")
-        by, desc, nulls_last = [], [], []
-        directions = {
-            "SORT_DIRECTION_ASC_NULLS_FIRST": (False, False),
-            "SORT_DIRECTION_ASC_NULLS_LAST": (False, True),
-            "SORT_DIRECTION_DESC_NULLS_FIRST": (True, False),
-            "SORT_DIRECTION_DESC_NULLS_LAST": (True, True),
-        }
-        for s in sorts:
-            d = s.get("direction")
-            if d not in directions:
-                raise Unsupported(f"unsupported sort direction {d}")
-            key = self.column(ex, s["expr"])
-            by.append(ordered(key.expr, key.dtype))
-            desc.append(directions[d][0])
-            nulls_last.append(directions[d][1])
+        lf = self.sorted(lf, ex, sorts)
         keys = [ordered(v.expr, v.dtype) for v in (self.column(ex, p) for p in part)]
-        if by:
-            lf = lf.sort(by, descending=desc, nulls_last=nulls_last, maintain_order=True)
         n = len(dtypes)
         new, out = [], []
         for k, w in enumerate(ws):
@@ -783,6 +998,64 @@ class Translator:
             out.append(materialize(t))
         return lf.with_columns(new), dtypes + out
 
+    def sorted(self, lf: pl.LazyFrame, ex: Exprs, sorts: list[dict]) -> pl.LazyFrame:
+        """`mergeSort (sortLe keys)`: stable, each key with its direction and
+        NULL placement, values in `Value.le` order (strings by code point,
+        which is UTF-8 byte order, as Polars sorts them)."""
+        by, desc, nulls_last = [], [], []
+        directions = {
+            "SORT_DIRECTION_ASC_NULLS_FIRST": (False, False),
+            "SORT_DIRECTION_ASC_NULLS_LAST": (False, True),
+            "SORT_DIRECTION_DESC_NULLS_FIRST": (True, False),
+            "SORT_DIRECTION_DESC_NULLS_LAST": (True, True),
+        }
+        for s in sorts:
+            d = s.get("direction")
+            if d not in directions:
+                raise Unsupported(f"unsupported sort direction {d}")
+            key = self.column(ex, s["expr"])
+            by.append(ordered(key.expr, key.dtype))
+            desc.append(directions[d][0])
+            nulls_last.append(directions[d][1])
+        if not by:
+            return lf
+        return lf.sort(by, descending=desc, nulls_last=nulls_last, maintain_order=True)
+
+    def sort(self, r: dict) -> Frame:
+        """`Rel.orderBy`."""
+        lf, dtypes = self.rel(r["input"])
+        return self.sorted(lf, self.exprs(dtypes), r.get("sorts", [])), dtypes
+
+    def aggregate(self, r: dict) -> Frame:
+        """`Rel.distinct`, written as a grouping by every column in order with
+        no measures: the first of each set of equal rows (`dedup`), in order.
+        Rows are equal as `Value`s: NULLs equal, doubles by their codes."""
+        if r.get("measures"):
+            raise Unsupported("aggregate functions are not in Lean's written form")
+        lf, dtypes = self.rel(r["input"])
+        n = len(dtypes)
+        ex = self.exprs(dtypes)
+        top = r.get("groupingExpressions", [])
+        groupings = r.get("groupings", [])
+        refs = groupings[0].get("expressionReferences", []) if len(groupings) == 1 else None
+        if refs is None or [int(i) for i in refs] != list(range(n)) or len(top) != n:
+            raise Unsupported("an aggregate is written as DISTINCT over all its columns")
+        for i, e in enumerate(top):
+            if "selection" not in e or ex.field(e["selection"]) != i:
+                raise Unsupported("an aggregate is written as DISTINCT over all its columns")
+        keys = [f"__sv_key{i}" for i in range(n)]
+        return (
+            lf.with_columns(
+                [
+                    ordered(pl.col(col(i)), t).alias(k)
+                    for i, (t, k) in enumerate(zip(dtypes, keys, strict=True))
+                ]
+            )
+            .unique(subset=keys, keep="first", maintain_order=True)
+            .select([col(i) for i in range(n)]),
+            dtypes,
+        )
+
     @staticmethod
     def column(ex: Exprs, j: dict) -> Val:
         if "selection" not in j:
@@ -801,11 +1074,17 @@ class Translator:
         return left.join(right, how="cross", maintain_order="left_right"), dtypes
 
     def join(self, r: dict) -> Frame:
-        """`Rel.join`. Equalities between a left and a right column become
-        hash-join keys with NULLs never matching (`nulls_equal=False`, as
-        `isTrue (eq NULL _)` is false); the rest of the condition filters the
-        matches. Row indices restore `Rel.eval`'s order."""
-        how = {"JOIN_TYPE_INNER": "inner", "JOIN_TYPE_LEFT": "left"}.get(r.get("type", ""))
+        """`Rel.join`, and `Rel.semi` for semi and anti joins. Equalities
+        between a left and a right column become hash-join keys with NULLs
+        never matching (`nulls_equal=False`, as `isTrue (eq NULL _)` is
+        false); the rest of the condition filters the matches. Row indices
+        restore `Rel.eval`'s order."""
+        how = {
+            "JOIN_TYPE_INNER": "inner",
+            "JOIN_TYPE_LEFT": "left",
+            "JOIN_TYPE_LEFT_SEMI": "semi",
+            "JOIN_TYPE_LEFT_ANTI": "anti",
+        }.get(r.get("type", ""))
         if how is None:
             raise Unsupported(f"unsupported join type {r.get('type')}")
         if "postJoinFilter" in r:
@@ -845,6 +1124,13 @@ class Translator:
             for c in conds[1:]:
                 on = and3(on, c.expr)
             matches = guard(matches, conds).filter(is_true(on))
+        if how in ("semi", "anti"):
+            # `Rel.semi`: the left rows with (`anti`: without) a match, in order.
+            left_cols = [col(i) for i in range(n)]
+            kept = left.join(
+                matches.select(_LEFT).unique(), on=_LEFT, how=how, maintain_order="left"
+            )
+            return kept.sort(_LEFT, maintain_order=True).select(left_cols), dtypes[:n]
         cols = [col(i) for i in range(len(dtypes))]
         if how == "left":
             unmatched = left.join(matches.select(_LEFT), on=_LEFT, how="anti").with_columns(
@@ -920,7 +1206,12 @@ def to_lazy(plan: str | dict, tables: Tables) -> pl.LazyFrame:
     names = roots[0].get("names") or [col(i) for i in range(len(dtypes))]
     if len(names) != len(dtypes):
         raise Unsupported(f"root names {names} do not match arity {len(dtypes)}")
-    return lf.select([pl.col(col(i)).alias(name) for i, name in enumerate(names)])
+    return lf.select(
+        [
+            pl.col(col(i)).cast(materialize(t)).alias(name)
+            for i, (t, name) in enumerate(zip(dtypes, names, strict=True))
+        ]
+    )
 
 
 def collect(lf: pl.LazyFrame) -> pl.DataFrame:

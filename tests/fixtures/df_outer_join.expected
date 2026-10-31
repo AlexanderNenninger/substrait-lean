@@ -1,0 +1,18 @@
+Emit [5, 6, 7, 8, 9]
+  Project +[$0, $1, $2, $3, $4]
+    UnionAll
+      LeftJoin ($1 = $3)
+        Read orders
+        Read customers
+      Emit [2, 3, 4, 0, 1]
+        Project +[NULL, NULL, NULL]
+          AntiJoin ($3 = $0)
+            Read customers
+            Read orders
+tables: customers(2), orders(3)
+arity: 5
+well-formed: yes
+incremental: no
+roundtrip: ok
+rows (0):
+[exit 0]

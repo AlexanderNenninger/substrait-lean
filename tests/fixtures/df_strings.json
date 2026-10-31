@@ -1,0 +1,778 @@
+{
+  "extensions": [
+    {
+      "extensionFunction": {
+        "functionAnchor": 13,
+        "name": "starts_with",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 3,
+        "name": "add",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 5,
+        "name": "substring",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 1,
+        "name": "lower",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 11,
+        "name": "or",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 2,
+        "name": "character_length",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 10,
+        "name": "is_null",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 14,
+        "name": "ends_with",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "name": "upper",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 12,
+        "name": "str_concat",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 9,
+        "name": "btrim",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 6,
+        "name": "strpos",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 8,
+        "name": "like",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 7,
+        "name": "subtract",
+        "extensionUrnReference": 4294967295
+      }
+    },
+    {
+      "extensionFunction": {
+        "functionAnchor": 4,
+        "name": "gte",
+        "extensionUrnReference": 4294967295
+      }
+    }
+  ],
+  "relations": [
+    {
+      "root": {
+        "input": {
+          "project": {
+            "common": {
+              "emit": {
+                "outputMapping": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11
+                ]
+              }
+            },
+            "input": {
+              "read": {
+                "baseSchema": {
+                  "names": [
+                    "name",
+                    "city"
+                  ],
+                  "struct": {
+                    "types": [
+                      {
+                        "string": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "string": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      }
+                    ],
+                    "nullability": "NULLABILITY_REQUIRED"
+                  }
+                },
+                "namedTable": {
+                  "names": [
+                    "customers"
+                  ]
+                }
+              }
+            },
+            "expressions": [
+              {
+                "scalarFunction": {
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {}
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 1,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 2,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {}
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 5,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {}
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "ifThen": {
+                          "ifs": [
+                            {
+                              "if": {
+                                "scalarFunction": {
+                                  "functionReference": 4,
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "scalarFunction": {
+                                          "functionReference": 3,
+                                          "arguments": [
+                                            {
+                                              "value": {
+                                                "literal": {
+                                                  "i64": "1"
+                                                }
+                                              }
+                                            },
+                                            {
+                                              "value": {
+                                                "literal": {
+                                                  "i64": "1"
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "i64": "1"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "then": {
+                                "scalarFunction": {
+                                  "functionReference": 3,
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "i64": "1"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "i64": "1"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ],
+                          "else": {
+                            "scalarFunction": {
+                              "functionReference": 3,
+                              "arguments": [
+                                {
+                                  "value": {
+                                    "scalarFunction": {
+                                      "functionReference": 3,
+                                      "arguments": [
+                                        {
+                                          "value": {
+                                            "literal": {
+                                              "i64": "1"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "value": {
+                                            "literal": {
+                                              "i64": "1"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "value": {
+                                    "scalarFunction": {
+                                      "functionReference": 2,
+                                      "arguments": [
+                                        {
+                                          "value": {
+                                            "selection": {
+                                              "directReference": {
+                                                "structField": {}
+                                              },
+                                              "rootReference": {}
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "i64": "2"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 7,
+                  "arguments": [
+                    {
+                      "value": {
+                        "scalarFunction": {
+                          "functionReference": 6,
+                          "arguments": [
+                            {
+                              "value": {
+                                "selection": {
+                                  "directReference": {
+                                    "structField": {}
+                                  },
+                                  "rootReference": {}
+                                }
+                              }
+                            },
+                            {
+                              "value": {
+                                "literal": {
+                                  "string": "b"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "i64": "1"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 8,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "R%"
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "null": {
+                            "string": {
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          "nullable": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 9,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "string": " \t\n\r\u000b\f"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "ifThen": {
+                  "ifs": [
+                    {
+                      "if": {
+                        "scalarFunction": {
+                          "functionReference": 11,
+                          "arguments": [
+                            {
+                              "value": {
+                                "scalarFunction": {
+                                  "functionReference": 10,
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "ifThen": {
+                                          "ifs": [
+                                            {
+                                              "if": {
+                                                "scalarFunction": {
+                                                  "functionReference": 11,
+                                                  "arguments": [
+                                                    {
+                                                      "value": {
+                                                        "scalarFunction": {
+                                                          "functionReference": 10,
+                                                          "arguments": [
+                                                            {
+                                                              "value": {
+                                                                "selection": {
+                                                                  "directReference": {
+                                                                    "structField": {}
+                                                                  },
+                                                                  "rootReference": {}
+                                                                }
+                                                              }
+                                                            }
+                                                          ]
+                                                        }
+                                                      }
+                                                    },
+                                                    {
+                                                      "value": {
+                                                        "scalarFunction": {
+                                                          "functionReference": 10,
+                                                          "arguments": [
+                                                            {
+                                                              "value": {
+                                                                "literal": {
+                                                                  "string": "@"
+                                                                }
+                                                              }
+                                                            }
+                                                          ]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "then": {
+                                                "literal": {
+                                                  "null": {
+                                                    "string": {
+                                                      "typeVariationReference": 2,
+                                                      "nullability": "NULLABILITY_NULLABLE"
+                                                    }
+                                                  },
+                                                  "nullable": true
+                                                }
+                                              }
+                                            }
+                                          ],
+                                          "else": {
+                                            "scalarFunction": {
+                                              "functionReference": 12,
+                                              "arguments": [
+                                                {
+                                                  "value": {
+                                                    "selection": {
+                                                      "directReference": {
+                                                        "structField": {}
+                                                      },
+                                                      "rootReference": {}
+                                                    }
+                                                  }
+                                                },
+                                                {
+                                                  "value": {
+                                                    "literal": {
+                                                      "string": "@"
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "value": {
+                                "scalarFunction": {
+                                  "functionReference": 10,
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "selection": {
+                                          "directReference": {
+                                            "structField": {
+                                              "field": 1
+                                            }
+                                          },
+                                          "rootReference": {}
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "then": {
+                        "literal": {
+                          "null": {
+                            "string": {
+                              "typeVariationReference": 2,
+                              "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          "nullable": true
+                        }
+                      }
+                    }
+                  ],
+                  "else": {
+                    "scalarFunction": {
+                      "functionReference": 12,
+                      "arguments": [
+                        {
+                          "value": {
+                            "ifThen": {
+                              "ifs": [
+                                {
+                                  "if": {
+                                    "scalarFunction": {
+                                      "functionReference": 11,
+                                      "arguments": [
+                                        {
+                                          "value": {
+                                            "scalarFunction": {
+                                              "functionReference": 10,
+                                              "arguments": [
+                                                {
+                                                  "value": {
+                                                    "selection": {
+                                                      "directReference": {
+                                                        "structField": {}
+                                                      },
+                                                      "rootReference": {}
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "value": {
+                                            "scalarFunction": {
+                                              "functionReference": 10,
+                                              "arguments": [
+                                                {
+                                                  "value": {
+                                                    "literal": {
+                                                      "string": "@"
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "then": {
+                                    "literal": {
+                                      "null": {
+                                        "string": {
+                                          "typeVariationReference": 2,
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      "nullable": true
+                                    }
+                                  }
+                                }
+                              ],
+                              "else": {
+                                "scalarFunction": {
+                                  "functionReference": 12,
+                                  "arguments": [
+                                    {
+                                      "value": {
+                                        "selection": {
+                                          "directReference": {
+                                            "structField": {}
+                                          },
+                                          "rootReference": {}
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "string": "@"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "value": {
+                            "selection": {
+                              "directReference": {
+                                "structField": {
+                                  "field": 1
+                                }
+                              },
+                              "rootReference": {}
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 13,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {}
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "a"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "scalarFunction": {
+                  "functionReference": 14,
+                  "arguments": [
+                    {
+                      "value": {
+                        "selection": {
+                          "directReference": {
+                            "structField": {
+                              "field": 1
+                            }
+                          },
+                          "rootReference": {}
+                        }
+                      }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "string": "e"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "names": [
+          "upper",
+          "lower",
+          "length",
+          "sub",
+          "find",
+          "like",
+          "strip",
+          "concat",
+          "starts",
+          "ends"
+        ]
+      }
+    }
+  ],
+  "version": {
+    "minorNumber": 77,
+    "producer": "datafusion"
+  }
+}
