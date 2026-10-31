@@ -181,3 +181,22 @@ def test_added_column_is_left_out(catalog):
     [s] = pipe.refresh().sources
     assert s.mode == "change feed" and "schema: added note, read in the old schema" in s.detail
     assert big.rows() == big.recompute() == [(1, "ada", 10), (2, "bob", 2)]
+
+
+def test_restarted_pipeline_resumes_from_its_iceberg_sink(catalog):
+    src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
+    pipe = sv.Pipeline(sv.connect())
+    big = pipe.view("big", doubled(pipe.source("orders", src)))
+    IcebergSink(catalog, "db.big", big).write()
+    src.table().append(rows_table([(3, "cy", 1)]))
+    stored = IcebergSource(catalog, "db.big").stored()
+    assert stored is not None and stored.sources == {"orders": 1}
+    pipe2 = sv.Pipeline(sv.connect())
+    orders = pipe2.source("orders", src, version=stored.sources["orders"])
+    big2 = pipe2.view("big", doubled(orders), resume=stored)
+    assert big2.resumed is not None and big2.resumed.startswith("resumed from db.big@v")
+    sink2 = IcebergSink(catalog, "db.big", big2)
+    pipe2.refresh()
+    assert sink2.write().mode == "append"
+    got = catalog.load_table("db.big").scan().to_arrow().to_pylist()
+    assert sorted(tuple(r.values()) for r in got) == big2.rows() == big2.recompute()

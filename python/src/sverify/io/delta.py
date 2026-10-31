@@ -11,7 +11,7 @@ add actions (trusted).
 A `DeltaSink` writes a view to a Delta table, one commit per state, exactly
 once (Delta's transaction identifiers), with the view's proved guarantees as
 NOT NULL columns and CHECK constraints, and the contract in the commit
-metadata.
+metadata. A restarted pipeline resumes from it (`DeltaSource.stored`).
 """
 
 from __future__ import annotations
@@ -35,12 +35,14 @@ from sverify.incremental import (
     Row,
     Snapshot,
     SourceBatch,
+    Stored,
     arrow_rows,
     first_line,
 )
 from sverify.io._common import (
     ColumnStats,
     Contract,
+    check_same_state,
     q,
     sink_schema,
     stats_facts,
@@ -132,6 +134,17 @@ class DeltaSource:
             if METADATA_KEY in commit:
                 return Contract.from_json(commit[METADATA_KEY])
         return None
+
+    def stored(self) -> Stored | None:
+        """The view state the table's last commit stored, if a `DeltaSink`
+        made that commit (to resume a pipeline from)."""
+        dt = self.table()
+        last = dt.history(1)
+        if not last or METADATA_KEY not in last[0]:
+            return None
+        c = Contract.from_json(last[0][METADATA_KEY])
+        where = f"{self.uri}@v{dt.version()}"
+        return Stored(where, self.uri, c.plan, c.sources, c.digests, _read(dt))
 
     def _check_cdf(self, dt: DeltaTable, since: int, end: int) -> None:
         """Raise unless every commit after `since` up to `end` wrote its
@@ -244,6 +257,8 @@ class DeltaSink:
         self.uri, self.view, self.storage_options = str(uri), view, storage_options
         self.app_id = app_id or f"sverify:{view.name}"
         self._written: Counter[tuple] | None = None
+        if view.stored is not None and view.stored[0] == self.uri:
+            self._written = view.stored[1]
 
     def _table(self) -> DeltaTable | None:
         if not DeltaTable.is_deltatable(self.uri, storage_options=self.storage_options):
@@ -260,6 +275,11 @@ class DeltaSink:
         dt = self._table()
         done = None if dt is None else dt.transaction_version(self.app_id)
         if dt is not None and done is not None and done >= contract.epoch:
+            check_same_state(
+                self.uri,
+                DeltaSource(self.uri, storage_options=self.storage_options).contract(),
+                contract,
+            )
             self._written = Counter(self.view.counts)
             return SinkWrite("skipped", dt.version(), contract)
         mode: Literal["created", "overwrite", "merge"]
