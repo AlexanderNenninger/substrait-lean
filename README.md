@@ -74,7 +74,9 @@ In order of what it is worth in day-to-day data engineering:
 4. **Proved optimizations.** A plan can be split across shards (Delta or
    Iceberg partitions, files) and the results combined, with a proof that
    the result is the same; per-row overflow checks can be dropped where a
-   contract proves them unnecessary. See
+   contract proves them unnecessary; and a plan can be rewritten with what
+   its contract establishes (a `DISTINCT` over a key or an implied filter
+   goes, a left join on a NOT NULL foreign key becomes an inner join). See
    [docs/optimizations.md](docs/optimizations.md).
 
 **What it doesn't do (yet).** DECIMAL columns are refused (keep money as
@@ -284,6 +286,9 @@ except sv.VerificationError as e:
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key).
+* **Foreign keys:** `sv.references("cust", "customers", "id")` in `requires`
+  says every non-NULL `cust` occurs in `customers.id` (checked on the data,
+  like `unique`). It is only an assumption: nothing proves it in `ensures`.
 * **Windows:** `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first, so
   every postcondition is `undetermined` and `report.deterministic` is
@@ -488,7 +493,13 @@ and `MAX` combine in two phases; with split keys (`keys={"orders":
 ["region"]}`, as a partition column guarantees), aggregates grouped by the
 key, co-partitioned joins and tie-free windows run per shard. Anything else
 raises `NotShardable` with the reason. When a report says `guard_free`,
-`to_sql(..., guards=False)` leaves out the per-row overflow checks.
+`to_sql(..., guards=False)` leaves out the per-row overflow checks. And
+`sv.verify(...).optimized` is the transformation rewritten with what the
+preconditions establish, with `rewrites` naming the changes (a `DISTINCT`
+over a key goes, a filter the preconditions imply goes, a left join on a NOT
+NULL foreign key becomes an inner join, an unread join to a dimension goes);
+run it instead of the original on data that meets the preconditions
+([Contracts](#contracts-1) under How it works lists them).
 [docs/optimizations.md](docs/optimizations.md) compares these with what the
 engines already do.
 
@@ -1139,6 +1150,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
+| `SubstraitLean/Semantic.lean` | Rewrites from contract facts and keys (`DISTINCT` on a key, …); `Rel.optimize_sound` |
 | `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/ShardCheck.lean` | `--shard`: splitting a plan into per-shard and combining plans (trusted) |
@@ -1199,6 +1211,18 @@ interval, possible booleans, and whether it can be a string.
   which proves `x >= 0 OR x IS NULL` for a nullable `x`.
 * `Rel.keys_sound` ([Keys.lean](SubstraitLean/Keys.lean)): derived keys hold. No two
   output rows agree on them.
+* `Rel.optimize_sound` ([Semantic.lean](SubstraitLean/Semantic.lean)): the
+  rewrites a contract's keys and facts allow keep a plan's rows, on data that
+  meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
+  goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
+  A filter the preconditions imply goes; one they rule out empties the plan.
+  A left join on a NOT NULL foreign key (`sv.references`) becomes an inner
+  join, and so does one under a filter that rejects its padded rows. A join
+  whose condition hits a key of the right side goes when nothing reads the
+  right side's columns (for an inner join, given a NOT NULL foreign key).
+  A `GROUP BY` column that the other grouping columns determine (functional
+  dependencies from keys and equalities, `Rel.fds_sound`) moves into a `MIN`.
+  `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL
   integer column can stand in for it in a key; a filter `$i = k` drops `i` from
