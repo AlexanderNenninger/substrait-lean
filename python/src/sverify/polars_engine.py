@@ -896,7 +896,8 @@ class Measure:
     def result(self, values: pl.Expr) -> pl.Expr:
         """The measure from the list of each group's values."""
         fn, distinct = self.fn, self.distinct
-        physical = {US: pl.Int64, pl.Date: pl.Int32}.get(self.arg.dtype)
+        t = self.arg.dtype
+        physical = pl.Int64 if t == US else pl.Int32 if t == pl.Date else None
         out = physical or self.dtype
 
         def apply(s: pl.Series) -> pl.Series:
@@ -1179,18 +1180,14 @@ class Translator:
         if cond is not None and cond.dtype not in (pl.Boolean, pl.Null):
             raise Unsupported(f"aggregate filter of type {cond.dtype}")
         t = arg.dtype
-        fns = {
-            ("count", None): "count",
-            ("sum", pl.Int64): "sum",
-            ("sum", pl.Float64): "fsum",
-            ("avg", pl.Float64): "avg",
-        }
-        fn = fns.get((name, None if name == "count" else t))
-        if (
-            fn is None
-            and name in ("min", "max")
-            and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date)
-        ):
+        fn: str | None = None
+        if name == "count":
+            fn = "count"
+        elif name == "sum" and t in (pl.Int64, pl.Float64):
+            fn = "sum" if t == pl.Int64 else "fsum"
+        elif name == "avg" and t == pl.Float64:
+            fn = "avg"
+        elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
             fn = name
         if fn is None:
             raise Unsupported(f"unsupported aggregate {name} of {t}")
