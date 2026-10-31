@@ -387,6 +387,15 @@ def verify(
     SQL query) from `requires`, a mapping from table name to conditions.
 
     `tables` gives the input schemas; it is only needed for SQL transforms.
+
+    A proof is about the plan `transform` compiles to, under `Rel.eval`. An
+    Ibis expression compiles with sverify's own producer, so it means what
+    `docs/ibis-semantics.md` says, whichever Ibis backend it came from; where
+    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
+    no backend's `execute` is guaranteed to match. `run_plan` runs the
+    verified plan with that meaning (or fails) on DataFusion, DuckDB and
+    Polars. A SQL string means what the SQL producer (DataFusion's or
+    Isthmus) makes of it.
     """
     schemas = {
         name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
