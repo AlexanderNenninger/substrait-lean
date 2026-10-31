@@ -65,6 +65,7 @@ jobs:
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
           uv run --isolated --no-project --with "$wheel" --with pytest --with hypothesis \
+            --with "pyiceberg[sql-sqlite]" \
             pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" tests
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

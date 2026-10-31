@@ -468,6 +468,113 @@ window) is recomputed and diffed; its change still flows to the views
 downstream, and `pipe.fallbacks` lists such views. `sv.IncrementalView` is a
 pipeline with one view, and refuses a query without delta rules.
 
+### Delta Lake and Iceberg tables
+
+`sverify.io` reads and writes Delta Lake (delta-rs) and Iceberg (pyiceberg)
+tables. Sources hand Arrow tables to the pipeline, so every engine works. A
+table format plays three roles:
+
+* **A change source.** `pipe.source` loads a snapshot and records its
+  version (`orders@v1`). `pipe.refresh()` reads the Delta Change Data Feed
+  from the recorded version to the latest (`insert`/`update_postimage` +1,
+  `delete`/`update_preimage` −1), applies it, and records the new version in
+  the same commit. A failed refresh changes nothing, so a retry never applies
+  a batch twice. Where the history is gone (CDF off, files vacuumed, log
+  removed), the new snapshot is diffed against the view's state, the views
+  reading it are recomputed, and the report says so.
+* **A source of preconditions.** `requires` conditions are proved from
+  metadata where possible: schema nullability (`nullable=false`, Iceberg
+  `required`), Delta CHECK constraints, and per-file statistics (min/max for
+  integers, dates and timestamps; NULL counts for every column). A batch only
+  uses the statistics of the files it added. Keys are always checked on the
+  data, since neither format enforces them.
+* **A sink that carries the contract.** `DeltaSink` writes a view in one
+  commit per state, exactly once (Delta's transaction identifiers, keyed by
+  the sum of the source versions). The proved guarantees become NOT NULL
+  columns and CHECK constraints, and the commit metadata records the plan
+  hash, the source versions and the contract. A downstream job that reads the
+  table gets its preconditions from them.
+
+```python
+import pyarrow as pa
+from deltalake import DeltaTable, write_deltalake
+from sverify.io import DeltaSink, DeltaSource
+
+schema = pa.schema([pa.field("id", pa.int64(), nullable=False),
+                    pa.field("customer", pa.string()), pa.field("amount", pa.int64())])
+def batch(*rows):
+    return pa.Table.from_pylist([dict(zip(schema.names, r)) for r in rows], schema=schema)
+
+write_deltalake("orders", batch((1, "ada", 5), (2, "bob", 7)),
+                configuration={"delta.enableChangeDataFeed": "true"})
+DeltaTable("orders").alter.add_constraint({"positive": "amount >= 0"})
+
+@sv.transform(
+    requires={"orders": [_.id.notnull(), _.amount >= 0, _.amount <= 1000, sv.unique("id")]},
+    ensures=[_.doubled >= 0, _.doubled.notnull(), sv.unique("id")],
+)
+def doubled(orders):
+    return orders.select(orders.id, orders.customer, doubled=orders.amount * 2)
+
+pipe = sv.Pipeline(sv.connect())
+big = pipe.view("big", doubled(pipe.source("orders", DeltaSource("orders"))))
+for p in pipe.preconditions: print(p)
+# orders: unique(id) (checked on data)
+# orders: _.id.notnull() (schema)
+# orders: (_.amount >= 0) (Delta constraint)
+# orders: (_.amount <= 1000) (file stats @v1)
+
+sink = DeltaSink("big", big)
+sink.write()            # big from orders@v1: created v2, 2 row(s) written, 0 deleted
+
+dt = DeltaTable("orders")
+write_deltalake(dt, batch((3, "cy", 4)), mode="append")
+dt.update(updates={"amount": "amount + 1"}, predicate="id = 1")
+print(pipe.refresh())
+# orders@v1→v3: 2 insert(s), 1 delete(s); Δ trusted as coming from Delta CDF v1→v3
+# requires orders: _.id.notnull() (schema)
+# requires orders: (_.amount >= 0) (Delta constraint)
+# requires orders: (_.amount <= 1000) (file stats @v3 (new files))
+# requires orders: unique(id) (checked on data)
+# view big: orders@v3
+sink.write()            # big from orders@v3: merge v3, 2 row(s) written, 1 deleted
+
+DeltaTable("big").metadata().configuration["delta.constraints.sverify_1"]   # 'doubled >= 0'
+DeltaSource("big").contract()
+# Contract(view='big', plan='cbaa09dd…', sources={'orders': 3}, epoch=3,
+#          not_null=['doubled'], checks={'sverify_1': 'doubled >= 0'}, unique=[['id']])
+
+# Another job builds on big's contract instead of checking big's data:
+@sv.transform(requires={"t": [_.doubled >= 0, _.doubled.notnull()]}, ensures=[_.half >= 0])
+def halved(t):
+    return t.select(t.id, half=t.doubled // 2)
+
+job2 = sv.Pipeline(sv.connect())
+halves = job2.view("halves", halved(job2.source("big", DeltaSource("big"))))
+for p in job2.preconditions: print(p)
+# big: _.doubled.notnull() (schema)
+# big: (_.doubled >= 0) (Delta constraint)
+```
+
+`pipe.refresh(audit=True)` also compares the batch with the new snapshot
+before committing, and every view with its recomputation afterwards
+(`AuditError`). Iceberg works the same way with `IcebergSource(catalog,
+"db.orders")` and `IcebergSink`: versions are snapshot sequence numbers, a
+run of appends is read from the files those snapshots added, and anything
+else (row-level deletes, overwrites) is a diff of the two snapshots, which the
+report names. Iceberg has no CHECK constraints, so the sink keeps the
+contract in the table properties and every snapshot summary, and a reader
+uses it only while every snapshot of the table was written under it.
+
+What is trusted: that the change feed turns the old snapshot into the new
+one (each report says "Δ trusted as coming from …"), that writers enforce
+nullability and constraints, and that file statistics are correct (Delta's
+millisecond timestamp maxima are widened by 999 µs). What is proved: given a
+correct feed, the views are maintained correctly (`Rel.cdf_sound`); a
+snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
+the table and an append's rows (`stats_table`, `stats_append`); and each
+precondition follows from the metadata facts (`contract_sound`).
+
 ### Checking a query plan
 
 `substrait-check` reads any Substrait JSON plan, shows it in readable form,
@@ -806,6 +913,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Write.lean` | `Rel` → Substrait JSON, delta plans for engines (trusted) |
 | `SubstraitLean/Contracts.lean` | Verified abstract interpreter: NULLs, intervals, filter refinement; `contract_sound` |
 | `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
+| `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
 | `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
 | `SubstraitLean/ContractCheck.lean` | `--contract`: proving postconditions from preconditions and schemas |
 | `SubstraitLean/Check.lean` | Executable `checkWF`, proven equivalent to `Rel.WF`; `Decidable` instance |
@@ -969,6 +1077,27 @@ Equivalence is `List.Perm`, which never cancels `+1` against `-1`. That makes it
 stronger than Z-set equality, so the results also hold under consolidation.
 `Examples.lean` runs a delete, an insert and an update through a filter/project
 plan and an inner join where both sides change.
+
+### Table formats
+
+[TableFormat.lean](SubstraitLean/TableFormat.lean) covers what `sverify.io`
+takes from Delta Lake and Iceberg, with the format's part as explicit
+hypotheses:
+
+* `Rel.zeval_weight_congr`: on the incremental fragment, Z-set evaluation only
+  depends on the tables' weights. A change feed deletes and re-inserts rows,
+  so the old table plus the feed is not a permutation of the new table, only
+  equal in weights.
+* `Rel.cdf_sound`: if the feed turns each old snapshot into the new one up to
+  weights (`ChangeFeed`, trusted) and is loaded as the change tables (`hδ` of
+  `Rel.delta_correct`), the old view plus the delta plan's output has the
+  weights of the view on the new snapshot. `ChangeFeed.of_diff`: the diff of
+  two snapshots is such a feed, so the fallback needs no trust in the feed.
+* `stats_table`: with correct per-file statistics (`ColStats.Correct`,
+  trusted), every row of the table lies in the join of the files' bounds;
+  `stats_append`: the files an append added bound its rows; `stats_bounds`:
+  that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
+  contract checker.
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 

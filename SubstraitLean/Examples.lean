@@ -7,6 +7,7 @@ import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Completeness
 import SubstraitLean.Compose
+import SubstraitLean.TableFormat
 
 /-!
 # Examples
@@ -166,3 +167,9 @@ end Substrait.Examples
 #print axioms Substrait.Rel.stack_sound
 #print axioms Substrait.Rel.chain_sound
 #print axioms Substrait.ZSet.diff_correct
+#print axioms Substrait.Rel.zeval_weight_congr
+#print axioms Substrait.ChangeFeed.of_diff
+#print axioms Substrait.Rel.cdf_sound
+#print axioms Substrait.stats_table
+#print axioms Substrait.stats_append
+#print axioms Substrait.stats_bounds
