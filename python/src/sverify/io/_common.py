@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -100,6 +101,9 @@ def condition_sql(cond: Condition, schema: ibis.Schema) -> str | None:
     expr = select.expressions[0].this  # type: ignore[attr-defined]
     for col in expr.find_all(sg.exp.Column):
         col.set("table", None)
+    for ident in expr.find_all(sg.exp.Identifier):
+        if re.fullmatch(r"[a-z_][a-z0-9_]*", ident.name):
+            ident.set("quoted", False)
     return expr.sql(dialect="postgres")
 
 
@@ -108,13 +112,17 @@ def not_null_column(sql: str) -> str | None:
     e = sg.parse_one(sql, read="postgres")
     if isinstance(e, sg.exp.Paren):
         e = e.this
+    if isinstance(e, sg.exp.Not):
+        e, negated = e.this, True
+    else:
+        negated = bool(e.args.get("negate"))
     if (
-        isinstance(e, sg.exp.Not)
-        and isinstance(e.this, sg.exp.Is)
-        and isinstance(e.this.this, sg.exp.Column)
-        and isinstance(e.this.expression, sg.exp.Null)
+        negated
+        and isinstance(e, sg.exp.Is)
+        and isinstance(e.this, sg.exp.Column)
+        and isinstance(e.expression, sg.exp.Null)
     ):
-        return e.this.this.name
+        return e.this.name
     return None
 
 

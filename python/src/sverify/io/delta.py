@@ -257,7 +257,8 @@ class DeltaSink:
         )
         schema = sink_schema(self.view, contract.not_null)
         dt = self._table()
-        if dt is not None and (dt.transaction_version(self.app_id) or -1) >= contract.epoch:
+        done = None if dt is None else dt.transaction_version(self.app_id)
+        if dt is not None and done is not None and done >= contract.epoch:
             self._written = Counter(self.view.counts)
             return SinkWrite("skipped", dt.version(), contract)
         mode: Literal["created", "overwrite", "merge"]
