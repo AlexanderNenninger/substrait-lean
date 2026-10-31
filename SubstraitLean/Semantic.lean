@@ -898,7 +898,7 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
                 omega
               have hesx : es.map (·.eval (x ++ w)) = es.map (·.eval x) :=
                 List.map_congr_left fun e he' => Expr.eval_append w (hes e he') hl
-              simp only [Function.comp_apply, hw, List.map_map, hesx]
+              simp only [Function.comp_apply, hw, hesx]
               refine List.map_congr_left fun i hi => ?_
               rcases hmi i hi with hi' | hi'
               · simp only [Function.comp_apply, hi', ↓reduceIte, List.append_assoc]
