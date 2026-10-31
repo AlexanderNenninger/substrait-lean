@@ -238,6 +238,7 @@ def test_fixture_lists_are_complete():
     assert set(REFUSED) == {"bad_field_ref", "df_aggregate"}
 
 
+@needs_fixtures
 @pytest.mark.parametrize("name", sorted(NOT_IN_SQL))
 def test_fixtures_beyond_the_sql_generator_are_refused(name):
     assert name in ACCEPTED
