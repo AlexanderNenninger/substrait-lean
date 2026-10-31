@@ -76,13 +76,81 @@ def call (anchor : Nat) (args : List Json) : Json :=
     ("functionReference", toJson anchor),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray)])]
 
+/-- The kind of a column or expression as the writer sees it: the parser's
+`Kind`, and day/second intervals. The model has both timestamps and intervals
+as microseconds, and `Expr.kind` calls `ts - ts` a time; the writer must tell
+them apart to write a literal compared with, or added to, an interval as an
+interval (#65). -/
+inductive WKind where
+  | int | float | time | date | interval | str | bool | other
+  deriving BEq
+
+def WKind.ofKind : Parse.Kind → WKind
+  | .int => .int | .float => .float | .time => .time | .date => .date
+  | .str => .str | .bool => .bool | .other => .other
+
+/-- The model's view: an interval is a time (`Expr.kind`). -/
+def WKind.toKind : WKind → Parse.Kind
+  | .int => .int | .float => .float | .time | .interval => .time | .date => .date
+  | .str => .str | .bool => .bool | .other => .other
+
+/-- An expression without field references. -/
+def isConst : Expr → Bool
+  | .lit _ => true
+  | .field _ => false
+  | .un _ a => isConst a
+  | .bin _ a b => isConst a && isConst b
+  | .ifThen c t e => isConst c && isConst t && isConst e
+
+/-- `Expr.kind`, telling intervals from times: `ts - ts` and an interval
+column `± x` are intervals, `ts ± x` is a time. -/
+def wkind (cols : List WKind) : Expr → WKind
+  | .field i => cols.getD i .other
+  | .un .neg a => wkind cols a
+  | .bin .add a b | .bin .sub a b | .bin .mul a b =>
+      match wkind cols a, wkind cols b, a with
+      | .time, .time, _ => .interval
+      | .interval, .time, _ | .time, _, _ => .time
+      | _, kb, .lit _ => kb
+      | ka, _, _ => ka
+  | .ifThen _ (.lit v) e => match e with
+    | .lit _ => .ofKind (Parse.litKind v)
+    | _ => wkind cols e
+  | .ifThen _ t _ => wkind cols t
+  | e => .ofKind (e.kind (cols.map WKind.toKind))
+
+/-- How to write the operands of `a ± b`, in a context of kind `ctx`: a
+constant operand takes its kind from the other operand, or, if both are
+constant, from the context (`ts < TIMESTAMP '…' - INTERVAL '15 minutes'`). -/
+def sumKinds (sub : Bool) (cols : List WKind) (ctx : WKind) (a b : Expr) : WKind × WKind :=
+  let ka := wkind cols a
+  let kb := wkind cols b
+  match isConst a, isConst b with
+  | false, false => (ka, kb)
+  | false, true => (ka, if ka == .time then .interval else ka)
+  | true, false => match kb with
+    | .time => (if sub then .time else .interval, kb)
+    | .interval => (if ctx == .time then .time else .interval, kb)
+    | _ => (kb, kb)
+  | true, true => match ctx with
+    | .time => (.time, .interval)
+    | .interval => (.interval, .interval)
+    | _ => (kb, ka)
+
+/-- A day/second interval of `us` microseconds. -/
+def writeInterval (us : Int) : Json :=
+  obj [("literal", obj [("intervalDayToSecond", obj [
+    ("seconds", toJson (us / 1_000_000)), ("subseconds", toJson (toString (us % 1_000_000))),
+    ("precision", toJson 6)])])]
+
 /-- An integer literal, written as the kind of value it stands for. -/
-def writeLit (k : Parse.Kind) (v : Value) : Json :=
+def writeLit (k : WKind) (v : Value) : Json :=
   let lit (kvs : List (String × Json)) := obj [("literal", obj kvs)]
   match k, v with
   | .float, .int c => lit [("fp64", writeDouble c)]
   | .time, .int us =>
     lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .interval, .int us => writeInterval us
   | .date, .int d => lit [("date", toJson d)]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
   | .float, .null => lit [("null", fp64Type)]
@@ -90,6 +158,7 @@ def writeLit (k : Parse.Kind) (v : Value) : Json :=
   | .bool, .null => lit [("null", obj [("bool", obj [])])]
   | .time, .null => lit [("null", obj [("precisionTimestamp", obj [("precision", toJson 6)])])]
   | .date, .null => lit [("null", obj [("date", obj [])])]
+  | .interval, .null => lit [("null", obj [("intervalDayToSecond", obj [("precision", toJson 6)])])]
   | _, v => obj [("literal", writeValue v)]
 
 /-- A constant of a virtual table, as a literal of its column's type `ty`
@@ -98,13 +167,7 @@ def valuesLit (ty : Json) (v : Value) : Json :=
   let narrow := ["i8", "i16", "i32"].find? fun k => (ty.getObjVal? k).toOption.isSome
   match narrow, v with
   | some k, .int i => obj [("literal", obj [(k, toJson i)])]
-  | _, _ => writeLit (Parse.typeKind ty) v
-
-/-- A day/second interval of `us` microseconds. -/
-def writeInterval (us : Int) : Json :=
-  obj [("literal", obj [("intervalDayToSecond", obj [
-    ("seconds", toJson (us / 1_000_000)), ("subseconds", toJson (toString (us % 1_000_000))),
-    ("precision", toJson 6)])])]
+  | _, _ => writeLit (.ofKind (Parse.typeKind ty)) v
 
 /-- A double the model has one zero and one NaN for, as IEEE engines compute
 it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
@@ -115,13 +178,9 @@ def canonical (x : Json) : Json :=
   let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
   call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
 
-def isLit : Expr → Bool
-  | .lit _ => true
-  | _ => false
-
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
-def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
+def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .lit v => writeLit ctx v
   | .field i => obj [("selection", obj [
       ("directReference", obj [("structField", obj [("field", toJson i)])]),
@@ -148,10 +207,10 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
   | .un (.datePart p) a => call 25 [obj [("literal", writeValue (.str p.name))], writeExpr cols .time a]
   | .un (.dateTrunc u) a => call 26 [obj [("literal", writeValue (.str u.name))], writeExpr cols .time a]
-  | .un f a => call (UnFn.anchor f) [writeExpr cols (a.kind cols) a]
+  | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
-    let ka := if isLit a then b.kind cols else a.kind cols
-    let kb := if isLit b then a.kind cols else b.kind cols
+    let ka := if isConst a then wkind cols b else wkind cols a
+    let kb := if isConst b then wkind cols a else wkind cols b
     match f with
     -- A sum or difference of canonical doubles is `-0.0` never, NaN only
     -- as `inf - inf`, which IEEE engines may make negative.
@@ -159,9 +218,8 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
       canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
-      match ka, b with
-      | .time, .lit (.int us) => call (BinFn.anchor f) [writeExpr cols ka a, writeInterval us]
-      | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+      let (ka, kb) := sumKinds (f matches .sub) cols ctx a b
+      call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | .substr (some n) =>
       call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
     | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]
@@ -195,13 +253,13 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
       ("expressions", Json.arr #[])])]
 
 /-- Column kinds, from the schemas the writer uses. -/
-def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List Parse.Kind
-  | .read t => Parse.schemaKinds (schemas t (cat t).arity)
-  | .values n rows => Parse.schemaKinds (schemas (Parse.valuesKey n rows) n)
+def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
+  | .read t => (Parse.schemaKinds (schemas t (cat t).arity)).map .ofKind
+  | .values n rows => (Parse.schemaKinds (schemas (Parse.valuesKey n rows) n)).map .ofKind
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
-      ks ++ es.map (·.kind ks)
+      ks ++ es.map (wkind ks)
   | .emit r m =>
       let ks := relKinds schemas cat r
       m.map (ks.getD · .other)
@@ -209,12 +267,17 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List Parse.Kind
   | .unionAll a _ => relKinds schemas cat a
   | .window r _ _ fns =>
       let ks := relKinds schemas cat r
-      ks ++ fns.map (WinFn.kind ks)
+      ks ++ fns.map fun
+        | .rowNumber => .int
+        | .lag c _ _ | .lead c _ _ => ks.getD c .other
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
-      gs.map (·.kind ks) ++ ms.map (·.kind ks)
+      gs.map (wkind ks) ++ ms.map fun m => match m.fn with
+        | .count | .sum => .int
+        | .fsum | .avg => .float
+        | .min | .max => wkind ks m.arg
 
-def writeSortKey (cols : List Parse.Kind) (k : SortKey) : Json :=
+def writeSortKey (cols : List WKind) (k : SortKey) : Json :=
   let dir : Json := match k.desc, k.nullsFirst with
     | false, true => "SORT_DIRECTION_ASC_NULLS_FIRST"
     | false, false => "SORT_DIRECTION_ASC_NULLS_LAST"
@@ -223,7 +286,7 @@ def writeSortKey (cols : List Parse.Kind) (k : SortKey) : Json :=
   obj [("expr", writeExpr cols .other (.field k.col)), ("direction", dir)]
 
 /-- A window function over input columns of kinds `cols`. -/
-def writeWindow (cols : List Parse.Kind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
+def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
   let col (i : Nat) := writeExpr cols .other (.field i)
   let (anchor, args) := match f with
     | .rowNumber => (12, [])
@@ -240,8 +303,8 @@ def writeWindow (cols : List Parse.Kind) (part : List Nat) (sort : List SortKey)
     ("boundsType", "BOUNDS_TYPE_ROWS")])]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
-def writeMeasure (df : Bool) (cols : List Parse.Kind) (m : Measure) : Json :=
-  let arg := writeExpr cols (m.arg.kind cols) m.arg
+def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
+  let arg := writeExpr cols (wkind cols m.arg) m.arg
   let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
     ("nullability", "NULLABILITY_NULLABLE")])]
   let arg := if df && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
@@ -285,7 +348,7 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
       ("input", writeRel schemas cat df r none),
       ("expressions",
         let ks := relKinds schemas cat r
-        Json.arr (es.map fun e => writeExpr ks (e.kind ks) e).toArray)] out
+        Json.arr (es.map fun e => writeExpr ks (wkind ks e) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
       ("left", writeRel schemas cat df a none), ("right", writeRel schemas cat df b none)] out
   | .join a b ty on, out => withCommon "join" [
@@ -321,7 +384,7 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false) :
       let ks := relKinds schemas cat r
       let agg := withCommon "aggregate" [
         ("input", writeRel schemas cat df r none),
-        ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (g.kind ks) g).toArray),
+        ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
         ("groupings", if gs.isEmpty then Json.arr #[] else
           Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
         ("measures", Json.arr (ms.map (writeMeasure df ks)).toArray)]

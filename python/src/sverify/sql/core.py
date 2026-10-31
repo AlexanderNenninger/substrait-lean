@@ -102,6 +102,9 @@ class Dialect:
     def cast(self, sql: str, kind: Kind) -> str:
         return f"CAST({sql} AS {self.type_name(kind)})"
 
+    def result_kind(self, kind: Kind | None) -> None:
+        """Raise `Unsupported` if a result column cannot have this kind."""
+
     # Literals
 
     def null(self, kind: Kind | None) -> str:
@@ -2752,6 +2755,8 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     names = p.names or [f"c{i}" for i in range(n)]
     if len(names) != n:
         raise Unsupported(f"root names {names} do not match the plan's {n} columns")
+    for k in kinds(p.root):
+        dialect.result_kind(k)
     w = _Writer(dialect, tie_free)
     ordered = order_matters(p.root)
     a = w.alias()
