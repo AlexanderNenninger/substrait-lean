@@ -516,8 +516,8 @@ engines already do.
 ### What is supported
 
 How much of the Ibis API gets through, from
-[`sverify/coverage.py`](python/src/sverify/coverage.py) (regenerate with
-`uv run python -m sverify.coverage --write-readme` in `python/`):
+[`sverify/coverage.py`](python/src/sverify/coverage.py) (regenerated on `main`
+after every merge by `uv run python -m sverify.coverage --write-readme`):
 
 <!-- coverage:start -->
 131 of 154 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
