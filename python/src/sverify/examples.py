@@ -47,7 +47,7 @@ UNSUPPORTED: dict[str, ibis.Table] = {
 
 
 def create_tables(con, orders_rows=(), customers_rows=()) -> None:
-    """Create `orders` and `customers` on an Ibis DataFusion backend."""
+    """Create `orders` and `customers` on a connection (`sverify.connect()`)."""
     from sverify.engine import create_table
 
     create_table(con, "orders", ibis.schema(ORDERS_SCHEMA), orders_rows)

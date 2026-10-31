@@ -1,28 +1,30 @@
 [project]
 name = "sverify"
 version = "0.1.0"
-description = "Contracts and incremental views on DataFusion or Polars, proven in Lean"
+description = "Contracts and incremental views on DuckDB, Polars or DataFusion, proven in Lean"
 readme = "README.md"
 authors = [
     { name = "Alexander Nenninger", email = "alexander.nenninger@live.de" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "datafusion==51.0.0",
-    "ibis-framework[datafusion]>=12.0.0",
+    "duckdb>=2.0.0",
+    "ibis-framework[duckdb]>=12.0.0",
     "pyarrow>=26.0.0",
     "substrait>=0.37.0",
 ]
 
-# Engines and table formats beyond DataFusion. The SQL dialects (DuckDB,
-# Snowflake, Spark) need nothing; an extra adds what runs the SQL.
+# DuckDB is the core: the default engine, and the table store behind
+# `sverify.connect()`. Other engines and table formats are extras; the SQL
+# dialects (DuckDB, Snowflake, Spark) need nothing.
 [project.optional-dependencies]
+# DataFusion as an engine (`engine="datafusion"`), and the producer for SQL strings.
+datafusion = ["datafusion==51.0.0"]
 polars = ["numpy>=2.5.4", "polars>=2.1.0"]
-duckdb = ["duckdb>=2.0.0"]
 spark = ["pyspark>=4.0"]
 delta = ["deltalake>=1.6.6"]
 iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
-all = ["sverify[polars,duckdb,spark,delta,iceberg]"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg]"]
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"

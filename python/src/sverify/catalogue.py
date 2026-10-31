@@ -45,7 +45,7 @@ import pyarrow as pa
 from ibis import _
 
 from sverify.engine import (
-    Backend,
+    Connection,
     connect,
     plan_json,
     put_table,
@@ -321,7 +321,7 @@ def _first_line(e: BaseException | str) -> str:
     return (text.splitlines() or [type(e).__name__])[0][:200]
 
 
-def probe_engines(con: Backend, plan: str, reference: list[tuple] | None) -> dict[str, str]:
+def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> dict[str, str]:
     """Run Lean's written plan on each engine and compare with DataFusion's
     rows (`reference`, None if DataFusion failed).
 
@@ -387,7 +387,7 @@ def probe_engines(con: Backend, plan: str, reference: list[tuple] | None) -> dic
 
 
 def probe_profile(
-    con: Backend, q: Query, schemas: dict[str, Any], profile: Profile
+    con: Connection, q: Query, schemas: dict[str, Any], profile: Profile
 ) -> dict[str, Any]:
     """The query's status on one profile of its dataset.
 
@@ -415,7 +415,7 @@ def probe_profile(
         reference, ran = None, f"error: {_first_line(e)}"
     if isinstance(query, str):
         try:
-            con.con.sql(query).logical_plan()
+            con.datafusion.sql(query).logical_plan()
         except Exception as e:  # noqa: BLE001
             return {"checker": "upstream", "stage": "datafusion", "detail": _first_line(e)}
     try:
@@ -446,7 +446,7 @@ def has_decimal(schemas: dict[str, Any], dataset: str) -> bool:
     return any(t.startswith("decimal") for cols in spec.values() for t in cols.values())
 
 
-def probe(con: Backend, q: Query, schemas: dict[str, Any]) -> dict[str, Any]:
+def probe(con: Connection, q: Query, schemas: dict[str, Any]) -> dict[str, Any]:
     """The query's status; when it fails on its own types and the dataset has
     DECIMAL columns, also its status with DOUBLE in their place."""
     if q.not_expressible is not None:

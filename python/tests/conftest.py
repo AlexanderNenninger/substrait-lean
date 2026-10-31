@@ -3,9 +3,10 @@
 Every test runs under one backend, which is also a marker: `poe test-polars`
 (`pytest -m polars`) runs the Polars tests, and CI runs one job per backend.
 A test's backend is its `engine` parameter, else its `backend` mark (on the
-test or as the module's `pytestmark`), else `core`: Lean, and DataFusion as
-the producer and reference. Tests comparing two engines with each other stay
-in `core`.
+test or as the module's `pytestmark`), else `core`: Lean, the producers, and
+DataFusion as the reference. Tests comparing two engines with each other stay
+in `core`. DataFusion is an optional extra of `sverify`, but the tests need it
+(it is in the `dev` group); `test_without_datafusion.py` blocks it.
 
 `SVERIFY_EXAMPLES=0.25 poe test` runs every Hypothesis test with a quarter
 of its examples, for a quicker local loop. Every `@settings` sets

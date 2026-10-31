@@ -297,7 +297,7 @@ def _(dt, tables):
 
         def run(self) -> "E":
             o = self.out
-            o["df"] = attempt(lambda: positional(con.con.sql(self.sql).to_arrow_table()))[0]
+            o["df"] = attempt(lambda: positional(con.datafusion.sql(self.sql).to_arrow_table()))[0]
             duck_sql = self.sql if self.duck == "same" else self.duck
             o["duck"] = attempt(lambda: duck.sql(duck_sql).fetchall())[0] if duck_sql else None
             with warnings.catch_warnings():

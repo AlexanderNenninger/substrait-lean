@@ -79,7 +79,7 @@ def _():
     def t(h, m):
         return dt.datetime(2024, 5, 1, h, m)
 
-    con = sv.connect()  # an Ibis DataFusion backend
+    con = sv.connect()  # plans run on DuckDB by default
     sv.create_table(
         con,
         "heart_rate",
