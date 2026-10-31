@@ -36,11 +36,17 @@ inductive Value where
 
 ## Abstract values
 
-`AVal` (contracts, runtime errors, keys) does not look inside lists. Its `str`
-flag becomes "may be a string or a list": a list column's abstract value is
-"some string or list, maybe NULL". Every proof that cases on a `Value` gains a
-`.list` case, which these flags cover. Length bounds and element descriptions
-(#59's "abstract values for lists") are left for when a contract needs them.
+`AVal` (contracts, runtime errors, keys) does not look inside lists. An
+abstract value admits a list exactly where it admits every non-NULL scalar
+(an integer, both booleans, a string): `AVal.top`, or a column's description
+after `IS NOT NULL`. Functions of one type give NULL on any other, so every
+existing abstraction already covers a list as it covers a value of the wrong
+type, and refinements keep it (`x IS NOT NULL` holds for a list). Reusing the
+`str` flag alone would be unsound (`length(list)` is NULL, while the
+abstraction of `length` on strings says it is not), and so would requiring
+the `null` flag (`IS NOT NULL` clears it). Every proof that cases on a
+`Value` gains a `.list` case. Length bounds and element descriptions (#59's
+"abstract values for lists") are left for when a contract needs them.
 
 ## Collect
 
@@ -55,14 +61,15 @@ orders them: Substrait's `AggregateFunction.sorts`, Ibis's
 `collect(order_by=…)`. `Measure` gains `sort : List SortKey` (columns of the
 input), and the group's rows are sorted stably before they are collected.
 Without a sort, `Rel.eval` collects in list order, which is one of the
-orders an engine may choose, not the only one. Such a plan still checks,
-but:
+orders an engine may choose, not the only one. Such a plan still checks;
+the abstract value of the result says nothing about its elements, so no
+fact about element order is proved, and the differential tests compare
+unordered collects as multisets. Reporting the result itself as
+undetermined belongs with the other order-dependent results (#55).
 
-* the checker marks it: `collect` without `sorts` is reported
-  `order: undetermined` (like the other order-dependent results, #55), and
-  facts about element order are not proved (the abstract value of the
-  result says nothing about its elements);
-* the differential tests compare unordered collects as multisets.
+The parser accepts `array_agg` only with the filter `x IS NOT NULL` (Ibis's
+form), since the model skips NULLs as for every other measure. `collect` is
+not decomposable, so it is neither sharded nor maintained incrementally.
 
 ## Unnest
 
@@ -83,22 +90,34 @@ rows first. `keep_empty=True` and `offset=` are refused for now.
 
 It is a new `Rel` constructor, so every analysis gets a case:
 
-* arity: the input's; well-formed: `col` in range;
-* keys: none (an element can repeat), facts and abstract values: the input's,
-  with `col` unknown;
-* runtime errors: none of its own;
-* incremental: yes, since it is linear: `unnest (a ++ b) = unnest a ++ unnest b`
-  per row, so `Rel.weighted_eval` extends to it (weights copy to each
-  element's row); sharding likewise (`Rel.shardSplit_sound`).
+* arity: the input's; well-formed: `col` in range (and a list, in the parser);
+* keys and facts: none (an element can repeat); abstract values: the input's,
+  with `col` unknown (`EnvMem.set_top`);
+* runtime errors: none of its own. DataFusion pushes filters on the other
+  columns below an `UNNEST`, onto rows whose lists may be empty, so
+  `Rel.loose` of an unnest is the unnested loose input together with the
+  loose input itself;
+* guard elimination does not pass through it (`looseSub` is false);
+* incremental maintenance and sharding: not yet. It is linear
+  (`unnest (a ++ b) = unnest a ++ unnest b`), so `Rel.weighted_eval` and
+  `Rel.shardSplit_sound` should extend to it (weights copy to each element's
+  row); that is a follow-up.
 
 Ibis's DataFusion compiler has no rule for `TableUnnest`, so the differential
 test compares with DuckDB running Ibis's DuckDB SQL.
 
+## Engines
+
+Polars runs lists, `collect` (sorting each group's rows when the measure is
+ordered) and `UNNEST` (filtering empty and NULL lists before `explode`). The
+SQL dialects (DuckDB, Snowflake, Spark) refuse them with `Unsupported` for
+now; DuckDB's `ARRAY_AGG … ORDER BY` and `UNNEST` are part of #94.
+
 ## Types in plans
 
-`Parse.Kind` gains `list (k : Kind)` and `struct (ks : List Kind)` (Substrait
-`List` and `Struct` types), so the writer can type list literals, NULLs and
-virtual tables. List literals are `{"literal": {"list": {"values": […]}}}`,
+`Parse.Kind` gains `list (k : Kind)` (Substrait's `List` type), so the writer
+can type list literals, empty lists and NULLs. Structs (`struct (ks : List
+Kind)`) come with #94. List literals are `{"literal": {"list": {"values": […]}}}`,
 an empty list `{"emptyList": {"type": …}}`.
 
 ## Follow-ups (#94)

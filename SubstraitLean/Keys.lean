@@ -301,6 +301,8 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .distinct r => List.range (r.arity cat) :: r.keys cat A F K
   -- The grouping columns are a key (without them, there is one row).
   | .aggregate _ gs _ => [List.range gs.length]
+  -- An element can repeat.
+  | .unnest _ _ => []
 
 theorem crossRows_key {A B : Relation} {n : Nat} {ka kb : List Nat}
     (hA : ∀ x ∈ A, x.length = n) (hka : ∀ c ∈ ka, c < n)
@@ -575,6 +577,7 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
   | .orderBy r _, hwf, k, hk =>
       (keys_sound hcat hA hF hK (r := r) hwf.1 k hk).perm (List.mergeSort_perm _ _).symm
         fun h => Ne.symm h
+  | .unnest _ _, _, k, hk => by simp [Rel.keys] at hk
   | .distinct r, hwf, k, hk => by
       simp only [Rel.keys, List.mem_cons] at hk
       rcases hk with rfl | hk
@@ -747,7 +750,7 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
-  | .aggregate r _ _ => r.windowsTotal cat A F K
+  | .aggregate r _ _ | .unnest r _ => r.windowsTotal cat A F K
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort _ =>

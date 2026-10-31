@@ -497,6 +497,9 @@ def Rel.loose : Rel → Rel
   | .semi a _ _ _ => a.loose
   | .orderBy r _ | .distinct r => r.loose
   | .aggregate r gs ms => .aggregate r gs ms
+  -- DataFusion pushes filters on the other columns below an `UNNEST`, onto
+  -- rows whose lists may be empty: the loose rows are both.
+  | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat
   | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
@@ -509,6 +512,7 @@ theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.ari
   | .unionAll a _ => by simp [loose, arity, loose_arity cat a]
   | .semi a _ _ _ => by simp [loose, arity, loose_arity cat a]
   | .orderBy r _ | .distinct r => by simp [loose, arity, loose_arity cat r]
+  | .unnest r _ => by simp [loose, arity, loose_arity cat r]
 
 theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF cat
   | .read _, h | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
@@ -524,6 +528,8 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
   | .semi a _ _ _, h => loose_wf (r := a) h.1
   | .orderBy r _, h => loose_wf (r := r) h.1
   | .distinct r, h => loose_wf (r := r) h
+  | .unnest r _, h => ⟨⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩, loose_wf (r := r) h.1,
+      by simp [arity, loose_arity]⟩
 
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
@@ -537,7 +543,7 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .project r es, p => r.HasIssue cat u p ∨
       ∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ es, p ∈ e.issues row
   | u, .emit r _, p | u, .fetch r _ _, p | u, .window r _ _ _, p | u, .orderBy r _, p
-  | u, .distinct r, p => r.HasIssue cat u p
+  | u, .distinct r, p | u, .unnest r _, p => r.HasIssue cat u p
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
   | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
@@ -556,8 +562,8 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | u, .project r es =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T))
-  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ | u, .orderBy r _ | u, .distinct r =>
-    r.mayIssues cat A F T u
+  | u, .emit r _ | u, .fetch r _ _ | u, .window r _ _ _ | u, .orderBy r _ | u, .distinct r
+  | u, .unnest r _ => r.mayIssues cat A F T u
   | u, .cross a b | u, .unionAll a b => a.mayIssues cat A F T u ++ b.mayIssues cat A F T u
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
@@ -620,6 +626,7 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | _, .window r _ _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .orderBy r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .distinct r, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
+  | _, .unnest r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
   | _, .cross a b, hwf, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]

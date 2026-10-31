@@ -46,12 +46,15 @@ def WinFn.render : WinFn → String
 
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"
+  | .collect => "ARRAY_AGG"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with
     | some c => s!" FILTER (WHERE {c.render})"
     | none => ""
-  s!"{m.fn.name}({if m.distinct then "DISTINCT " else ""}{m.arg.render}){filter}"
+  let sort := if m.sort.isEmpty then "" else
+    " ORDER BY " ++ ", ".intercalate (m.sort.map fun k => s!"${k.col}{if k.desc then " DESC" else ""}")
+  s!"{m.fn.name}({if m.distinct then "DISTINCT " else ""}{m.arg.render}{sort}){filter}"
 
 def Rel.renderLines : Rel → List String
   | .read t => [s!"Read {t}"]
@@ -73,6 +76,7 @@ def Rel.renderLines : Rel → List String
       s!"{if anti then "Anti" else "Semi"}Join {on.render}" :: indent a.renderLines ++ indent b.renderLines
   | .orderBy r keys => s!"OrderBy {keys.map key}" :: indent r.renderLines
   | .distinct r => "Distinct" :: indent r.renderLines
+  | .unnest r c => s!"Unnest ${c}" :: indent r.renderLines
   | .aggregate r gs ms =>
       s!"Aggregate +[{", ".intercalate (ms.map Measure.render)}] GROUP BY [{", ".intercalate (gs.map Expr.render)}]"
         :: indent r.renderLines

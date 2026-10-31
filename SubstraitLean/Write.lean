@@ -30,10 +30,11 @@ def functions : List (Nat × String) :=
    (23, "regexp_match"), (24, "array_length"), (25, "date_part"), (26, "date_trunc"),
    (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
    (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
-   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl")]
+   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (41, "nanvl"),
+   (42, "array_agg")]
 
 def AggFn.anchor : AggFn → Nat
-  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40
+  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40 | .collect => 42
 
 def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
@@ -222,6 +223,9 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List Parse.Kind
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (·.kind ks) ++ ms.map (·.kind ks)
+  | .unnest r c =>
+      let ks := relKinds schemas cat r
+      ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
 
 def writeSortKey (cols : List Parse.Kind) (k : SortKey) : Json :=
   let dir : Json := match k.desc, k.nullsFirst with
@@ -253,7 +257,8 @@ def writeMeasure (cols : List Parse.Kind) (m : Measure) : Json :=
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
-    ("arguments", Json.arr #[obj [("value", writeExpr cols (m.arg.kind cols) m.arg)]])]
+    ("arguments", Json.arr #[obj [("value", writeExpr cols (m.arg.kind cols) m.arg)]]),
+    ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 
@@ -313,6 +318,9 @@ def writeRel (schemas : Schemas) (cat : Catalog) : Rel → Option (List Nat) →
         ("groupings", if gs.isEmpty then Json.arr #[] else
           Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
         ("measures", Json.arr (ms.map (writeMeasure ks)).toArray)] out
+  | .unnest r c, out => withCommon "extensionSingle" [
+      ("input", writeRel schemas cat r none),
+      ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out
   | .window r part sort fns, out => withCommon "project" [
       ("input", writeRel schemas cat r none),
       ("expressions",

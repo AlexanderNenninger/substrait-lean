@@ -8,7 +8,8 @@ value of the grouping expressions (in order of first occurrence), holding
 those values followed by one value per measure. Without grouping
 expressions there is exactly one output row, even for an empty input.
 
-A measure is `COUNT`, `SUM`, `MIN`, `MAX` or `AVG` of an expression, over the
+A measure is `COUNT`, `SUM`, `MIN`, `MAX`, `AVG` or `ARRAY_AGG` (`collect`,
+whose rows may be ordered) of an expression, over the
 rows that pass its `FILTER` (if any), skipping NULLs, and over distinct
 values only for `COUNT(DISTINCT …)` and friends. On no values `COUNT` is 0
 and the others are NULL. Checked against DataFusion 51:
@@ -74,6 +75,8 @@ inductive AggFn where
   | fsum | avg
   /-- `MIN` and `MAX` by `Value.le`. -/
   | min | max
+  /-- `ARRAY_AGG`: the list of the values, in the measure's `sort` order. -/
+  | collect
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -83,6 +86,8 @@ structure Measure where
   distinct : Bool := false
   /-- `fn(arg) FILTER (WHERE cond)` -/
   filter : Option Expr := none
+  /-- `fn(arg ORDER BY …)`: the order of the rows, for `collect`. -/
+  sort : List SortKey := []
   deriving Repr, DecidableEq
 
 def Measure.refsLt (n : Nat) (m : Measure) : Prop :=
@@ -125,8 +130,18 @@ def AggFn.apply : AggFn → List Value → Value
   | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
   | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
+  | .collect, vs => .list vs
 
-def Measure.eval (rows : Relation) (m : Measure) : Value := m.fn.apply (m.inputs rows)
+/-- `collect` takes the rows in its sort order (a stable sort, so without
+one in list order: one of the orders an engine may choose). -/
+def Measure.eval (rows : Relation) (m : Measure) : Value :=
+  match m.fn with
+  | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
+  | f => f.apply (m.inputs rows)
+
+theorem Measure.eval_eq {m : Measure} (h : m.fn ≠ .collect) (rows : Relation) :
+    m.eval rows = m.fn.apply (m.inputs rows) := by
+  unfold Measure.eval; split <;> simp_all
 
 /-! ## Groups -/
 

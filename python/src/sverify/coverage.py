@@ -53,7 +53,10 @@ T = ibis.table(
     name="t",
 )
 U = ibis.table({"name": "string", "region": "string"}, name="u")
-t, u = T, U
+L = ibis.table({"k": "int64", "xs": "array<int64>"}, name="l")
+t, u, ls = T, U, L
+#: Every table the cases read.
+TABLES = (T, U, L)
 
 
 @dataclass(frozen=True)
@@ -133,14 +136,36 @@ CASES: list[Case] = [
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
-    case("aggregation", "collect", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
+    case("aggregation", "collect", V, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
+    case(
+        "aggregation",
+        "collect ordered",
+        V,
+        lambda: t.group_by("name").aggregate(xs=t.qty.collect(order_by="qty")),
+    ),
+    case(
+        "aggregation",
+        "collect include_null",
+        R,
+        lambda: t.group_by("name").aggregate(xs=t.qty.collect(include_null=True)),
+    ),
     case("aggregation", "scalar subquery", R, lambda: t.filter(t.qty > t.qty.mean())),
     case(
         "aggregation",
         "unnest",
-        R,
+        V,
         lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs"),
     ),
+    # Lists
+    case("lists", "unnest column", V, lambda: ls.unnest("xs")),
+    case("lists", "unnest keep_empty", R, lambda: ls.unnest("xs", keep_empty=True)),
+    case(
+        "lists",
+        "list literal",
+        V,
+        lambda: t.select("id", xs=ibis.literal([1, 2], "array<int64>")),
+    ),
+    case("lists", "list column", V, lambda: ls.filter(ls.k > 0)),
     # Window functions
     case(
         "windows",
@@ -256,6 +281,28 @@ REFUSED: dict[str, dict[str, str]] = {
     "row_number": NO_ROW_ORDER,
     "lag": NO_ROW_ORDER,
 }
+#: The SQL dialects have no lists yet (#94).
+NO_LISTS = {
+    "duckdb": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+    "snowflake": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+    "spark": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+}
+REFUSED.update(
+    {
+        label: NO_LISTS
+        for label in ("collect", "collect ordered", "unnest", "unnest column", "list literal")
+    }
+)
+#: Lists built from rows in an order the plan does not fix: compared as bags.
+UNORDERED_LISTS = {"collect"}
+
+#: Verified cases where DataFusion running Ibis's own SQL means something else
+#: than the plan (and SQL), or fails: the tests compare them with DuckDB
+#: running Ibis's DuckDB SQL instead.
+DATAFUSION_SQL = {
+    "unnest": "Ibis cannot compile TableUnnest for DataFusion",
+    "unnest column": "Ibis cannot compile TableUnnest for DataFusion",
+}
 #: Of those, the cases Snowflake and Spark run when the caller promises no ties.
 TIE_FREE = {"order_by", "row_number", "lag"}
 
@@ -273,7 +320,7 @@ def refusal(c: Case, engine: str, tie_free: bool = False) -> str | None:
     plan = json.loads(written_plan(to_substrait_json(c.build())))
     try:
         if engine == "polars":
-            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in (T, U)}
+            tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}
             polars_engine.run(plan, tables)
         else:
             plan_sql(plan, dialects[engine], tie_free=tie_free)

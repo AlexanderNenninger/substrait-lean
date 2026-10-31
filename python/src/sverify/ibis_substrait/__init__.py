@@ -82,6 +82,8 @@ def _type_json(dtype: Any) -> Json:
         return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
     if dtype.is_null():
         return {"i64": NULLABLE}
+    if dtype.is_array():
+        return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     raise Unsupported(f"type {dtype} is not supported")
 
 
@@ -112,6 +114,12 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"date": (value - EPOCH.date()).days}}
     if dtype.is_interval():
         return interval_literal(value, dtype)
+    if dtype.is_array():
+        # The elements of a list literal are literals without the `literal` key.
+        if not value:
+            return {"literal": {"emptyList": {"type": type_json(dtype.value_type)}}}
+        values = [literal(v, dtype.value_type)["literal"] for v in value]
+        return {"literal": {"list": {"values": values}}}
     raise Unsupported(f"literal of type {dtype} is not supported")
 
 
@@ -516,6 +524,8 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.Min | ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
         name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.ArrayCollect):
+        return collect(x, op)
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
@@ -529,6 +539,33 @@ def measure(x: Exprs, op: Any) -> Json:
     if op.where is not None:
         out["filter"] = x(op.where)
     return out
+
+
+def collect(x: Exprs, op: Any) -> Json:
+    """`ARRAY_AGG(x ORDER BY …) FILTER (WHERE x IS NOT NULL [AND where])`, as
+    Ibis's DataFusion compiler writes `collect()`. Without `order_by` the order
+    of the elements is the engine's choice."""
+    if op.include_null:
+        raise Unsupported("collect(include_null=True) is not supported")
+    if op.distinct:
+        raise Unsupported("collect(distinct=True) is not supported")
+    arg = x(op.arg)
+    sorts = []
+    for k in op.order_by:
+        key = _sort_key(x, k)
+        if "selection" not in key["expr"]:
+            raise Unsupported("collect(order_by=) must order by columns")
+        sorts.append(key)
+    agg: Json = {
+        "functionReference": _anchor("array_agg"),
+        "arguments": [{"value": arg}],
+        "sorts": sorts,
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    keep = call("is_not_null", [arg])
+    if op.where is not None:
+        keep = call("and", [x(op.where), keep])
+    return {"measure": agg, "filter": keep}
 
 
 # --------------------------------------------------------------------------
@@ -804,6 +841,20 @@ def _set_op(op: Any) -> Json:
     return distinct_rel(join, n)
 
 
+def _table_unnest(op: Any) -> Json:
+    # No standard Substrait relation: an `ExtensionSingleRel` with our own
+    # detail (`docs/nested-values.md`). The column keeps its place.
+    if op.offset is not None:
+        raise Unsupported("unnest(offset=) is not supported")
+    if op.keep_empty:
+        raise Unsupported("unnest(keep_empty=True) is not supported")
+    if op.column_name != op.column.name or not isinstance(op.column, ops.Field):
+        raise Unsupported("unnest must unnest a column in place")
+    col = list(op.parent.schema.names).index(op.column.name)
+    detail = {"@type": "type.googleapis.com/sverify.Unnest", "column": col}
+    return {"extensionSingle": {"input": rel(op.parent), "detail": detail}}
+
+
 _RELS: dict[Any, Callable[[Any], Json]] = {
     ops.UnboundTable: _read,
     ops.DatabaseTable: _read,
@@ -821,6 +872,7 @@ _RELS: dict[Any, Callable[[Any], Json]] = {
     ops.Difference: _set_op,
     ops.SelfReference: lambda op: rel(op.parent),
     ops.JoinReference: lambda op: rel(op.parent),
+    ops.TableUnnest: _table_unnest,
 }
 
 

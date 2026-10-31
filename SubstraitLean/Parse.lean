@@ -198,6 +198,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .count | .sum => .int
   | .fsum | .avg => .float
   | .min | .max => m.arg.kind cols
+  | .collect => .list (m.arg.kind cols)
 
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
@@ -220,6 +221,9 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
       ks ++ fns.map (WinFn.kind ks)
   | .semi a _ _ _ => a.kinds tables
   | .orderBy r _ | .distinct r => r.kinds tables
+  | .unnest r c =>
+      let ks := r.kinds tables
+      ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
   | .aggregate r gs ms =>
       let ks := r.kinds tables
       gs.map (·.kind ks) ++ ms.map (·.kind ks)
@@ -950,7 +954,10 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  if !(← arrD m "sorts").isEmpty then throw s!"ordered aggregates are not supported: {name}"
+  -- Only `ARRAY_AGG` depends on the order of its rows.
+  let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
+  if !sort.isEmpty && name != "array_agg" then
+    throw s!"ordered aggregates are not supported: {name}"
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
@@ -982,8 +989,19 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
     | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
     | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
     | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
+    -- NULLs are skipped (`Measure.inputs`), as with Ibis's
+    -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
+    | "array_agg", _ => pure (.collect, arg)
     | n, _ => throw s!"unsupported aggregate function: {n}"
-  return { fn, arg, distinct, filter }
+  if fn == .collect then
+    if distinct then throw "array_agg(DISTINCT …) is not supported"
+    let skipsNull := match filter with
+      | some f => f == .un .not (.un .isNull arg) ||
+          (match f with | .bin .and _ (.un .not (.un .isNull a)) => a == arg | _ => false)
+      | none => false
+    if !skipsNull then
+      throw "array_agg keeps NULLs; only array_agg(x) FILTER (WHERE x IS NOT NULL) is supported"
+  return { fn, arg, distinct, filter, sort }
 
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
@@ -995,7 +1013,8 @@ partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) :=
 
 partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
   let (kind, r) ← oneof "relation" j
-    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"]
+    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate",
+      "extensionSingle"]
   let input := fun (k : String) => do parseRel fns (← field r k)
   let core ← match kind with
     | "read" => parseRead fns r
@@ -1112,6 +1131,18 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         | none => pure (.aggregate inp gs [])
       | some gs, ms =>
         pure (.aggregate inp gs (← ms.mapM fun m => (parseMeasure fns cols m : J Measure)))
+    | "extensionSingle" =>
+      -- `UNNEST`, our own extension (`docs/nested-values.md`).
+      let d ← field r "detail"
+      if field? d "@type" != some (.str "type.googleapis.com/sverify.Unnest") then
+        throw "unsupported ExtensionSingleRel"
+      if field? d "keepEmpty" == some (.bool true) then
+        throw "UNNEST keeping empty lists is not supported"
+      let inp ← input "input"
+      let c ← natD d "column"
+      match (inp.kinds (← get)).getD c .other with
+      | .list _ => pure (.unnest inp c)
+      | _ => throw s!"UNNEST of column {c}, which is not a list"
     | _ =>
       let inputs ← (← arrD r "inputs").mapM (parseRel fns)
       let union ← match inputs with
