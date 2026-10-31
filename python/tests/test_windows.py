@@ -224,9 +224,8 @@ def lean_and_datafusion(sql: str, rows: list[tuple]) -> tuple[list, list]:
     con = connect()
     create_table(con, "r", SCHEMA, rows)
     out = run_sql(con, sql)
-    # Lean prints the double 0.0 (code 0) as 0.
     expected = [
-        tuple((round(v, 6) if v != 0 else 0) if isinstance(v, float) else v for v in r.values())
+        tuple((round(v, 6) if v != 0 else 0.0) if isinstance(v, float) else v for v in r.values())
         for r in out.to_pylist()
     ]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
