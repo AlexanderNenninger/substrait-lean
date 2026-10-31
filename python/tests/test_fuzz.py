@@ -81,7 +81,6 @@ def test_written_typed_null():
     )
 
 
-@pytest.mark.xfail(strict=True, reason="#96: a bare timestamp literal is written as an integer")
 def test_written_timestamp_literal_in_case():
     sql = (
         "SELECT CASE WHEN b THEN CASE WHEN b THEN TIMESTAMP '2024-01-01 00:00:00' "
@@ -90,7 +89,6 @@ def test_written_timestamp_literal_in_case():
     assert not finding(sql, "engines", {"t": [T_ROW]})
 
 
-@pytest.mark.xfail(strict=True, reason="#72: substrait-check prints -2^63 as a double code")
 def test_smallest_bigint_is_printed_as_an_integer():
     row = (None, -(2**63), None, None, None, None)
     assert not finding("SELECT MIN(j) AS c0 FROM t AS q", "rows", {"t": [row]})

@@ -1215,10 +1215,25 @@ def _parse_timestamp(s: str) -> int | None:
     return ((days * 24 + int(h)) * 60 + int(mi)) * 60_000_000 + int(sec) * 1_000_000 + micros
 
 
+def _wide_int_decimal(ty: Any) -> bool:
+    """`Parse.wideIntDecimal`: a decimal of scale 0 and at least 19 digits,
+    whose values the model keeps as integers."""
+    d = ty.get("decimal") if isinstance(ty, dict) else None
+    return isinstance(d, dict) and d.get("scale", 0) == 0 and d.get("precision", 0) >= 19
+
+
+def _interval_type(ty: Any) -> bool:
+    return isinstance(ty, dict) and ("intervalDayToSecond" in ty or "intervalCompound" in ty)
+
+
 def _cast_const(ty: dict, c: Const) -> Const:
     lean, kind = _type_kinds(ty)
     if c.tag == "null":
         return Const("null", kind=kind)
+    if _wide_int_decimal(ty):
+        if c.tag == "int" or (c.tag == "dec" and c.scale == 0):
+            return Const("int", c.value, kind="int")
+        raise Unsupported("cannot cast this value to an integer decimal")
     match lean:
         case "float":
             f = c.to_float()
@@ -1586,7 +1601,12 @@ class _Parser:
                     # `ROUND(x, d)`: the digits stay an integer.
                     return name == "round" and k == 1
 
-                out = _lean_type_kind(_field(v, "outputType"))
+                out_ty = _field(v, "outputType")
+                # `Parse.wideIntDecimal`: other decimal results are not modelled.
+                decimal = isinstance(out_ty, dict) and "decimal" in out_ty
+                if decimal and not _wide_int_decimal(out_ty):
+                    raise Unsupported(f"{name}: decimal results are not supported")
+                out = _lean_type_kind(out_ty)
                 floats = (
                     "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
                     "ceil", "round",
@@ -1600,6 +1620,11 @@ class _Parser:
                         e if keep_int(k) else self._as_double(a, e)
                         for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
                     ]
+                # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
+                # for a NULL `x` (as `Parse.parseExpr`).
+                exponent = parsed[1] if name == "power" and len(parsed) == 2 else None
+                if isinstance(exponent, Lit) and repr(exponent.value) in ("0", "0.0"):
+                    return Lit(1.0, "float") if float_call else Lit(1, "int")
                 # Substrait's typed `greatest`/`least` are NULL if any argument is.
                 if name in ("greatest", "least") and ":" in full_name:
                     out_e = _call(name, parsed)
@@ -1639,6 +1664,11 @@ class _Parser:
                     inp = {"scalarFunction": {**f, "outputType": {"date": {}}}}
                 e = self.expr(inp, cols)
                 k = lean_expr_kind(e, cols.lean)
+                # `Parse.wideIntDecimal`; a duration compared with an interval.
+                if k == "int" and _wide_int_decimal(_req(v, "type")):
+                    return e
+                if k == "time" and _interval_type(_req(v, "type")):
+                    return e
                 if target == "float" and k == "int":
                     return Un("itof", e)
                 # Fails on NaN, ±inf and out-of-range values.

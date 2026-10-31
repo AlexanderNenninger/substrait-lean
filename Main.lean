@@ -59,6 +59,14 @@ def delta (plan : Plan) : IO UInt32 := do
     IO.println (Write.writeDeltaPlan plan term).compress
   return 0
 
+/-- A result value, printed by its column's kind: integers (unbounded in the
+model, so `MAX + 1` is a value) exactly, doubles as doubles. A column of
+unknown kind falls back to `Value.render`. -/
+def renderCell : Kind → Value → String
+  | .float, .int c => s!"{FloatCode.toFloat c}d"
+  | .int, .int i | .time, .int i | .date, .int i => toString i
+  | _, v => v.render
+
 def check (plan : Plan) : IO UInt32 := do
   let cat := plan.catalog
   IO.println plan.root.render
@@ -76,9 +84,12 @@ def check (plan : Plan) : IO UInt32 := do
   -- Lean's evaluator panics at the black boxes it does not evaluate
   -- (`Text.lean`: non-ASCII `UPPER`/`LOWER`, regular expressions) and goes
   -- on with a placeholder; refuse such rows rather than print them (#70).
+  let kinds := plan.root.kinds plan.tables
   let (panics, rows) ← IO.FS.withIsolatedStreams (isolateStderr := true) do
     -- `lazyPure`: evaluated here, not hoisted out of the isolated streams.
-    IO.lazyPure fun _ => (plan.root.eval cat).map Row.render
+    IO.lazyPure fun _ => (plan.root.eval cat).map fun row =>
+      let cells := row.zipIdx.map fun (v, i) => renderCell (kinds.getD i .other) v
+      s!"({", ".intercalate cells})"
   if let some msg := (panics.splitOn "\n").find? (·.startsWith "PANIC") then
     IO.eprintln s!"error: rows not evaluated: {(msg.splitOn ": ").drop 1 |> ": ".intercalate}"
     return 1

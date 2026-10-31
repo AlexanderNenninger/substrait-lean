@@ -783,8 +783,8 @@ def _(E, render):
             engines="split",
             why="DataFusion and Polars wrap around to −2⁶³ silently; DuckDB raises; "
             "Snowflake's integers are 38-digit decimals and do not overflow here. Lean's "
-            "integers are unbounded (it prints 2⁶³ as a double code, a known rendering "
-            "bug) and the checker warns `wraps`; the translators raise.",
+            "integers are unbounded (it gives 2⁶³) and the checker warns `wraps`; the "
+            "translators raise.",
             picks="unbounded, plus a `wraps` warning",
         ).run(),
         E(

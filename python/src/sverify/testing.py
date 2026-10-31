@@ -148,7 +148,7 @@ def parse_row(text: str, doubles: bool = False) -> tuple:
 
 
 def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
-    """The rows section of `substrait-check` output (`Row.render`)."""
+    """The rows section of `substrait-check` output (`renderCell` in `Main.lean`)."""
     rows = []
     for line in output.split("rows (")[1].splitlines()[1:]:
         if not line.startswith("  ("):

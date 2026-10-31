@@ -152,7 +152,10 @@ T = ibis.table({"qty": "int64", "id": "int64", "amount": "float64"}, name="t")
     ],
 )
 def test_contracts_see_through_rewrites(label, expr, ensures, facts):
-    report = sv.verify(expr, ensures=ensures)
+    # `ABS` of the minimum overflows, so the abs case bounds its inputs.
+    bounded = [c.isnull() | ((c > -(2**61)) & (c < 2**61)) for c in (_.qty, _.id)]
+    requires = {"t": bounded} if label == "abs" else None
+    report = sv.verify(expr, requires=requires, ensures=ensures)
     assert report.proved, f"{label}: {report}"
     for col, fact in facts.items():
         assert report.facts[col] == fact, label

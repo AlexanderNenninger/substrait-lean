@@ -18,7 +18,7 @@ def Row.render (row : Row) : String :=
 def UnFn.render : UnFn → String
   | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
   | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
-  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
+  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
   | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"

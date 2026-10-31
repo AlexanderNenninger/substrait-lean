@@ -585,7 +585,7 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"md5|sha|'Hash'", {"hash"}),
     (r"date_bin|'TimestampBucket'", {"time_bucket"}),
     (r"Kind\.str to Substrait\.Parse\.Kind\.other", {"dynamic_interval"}),
-    (r"Kind\.time to Substrait\.Parse\.Kind\.other|AT TIME ZONE", {"timezone"}),
+    (r"Kind\.time to Substrait\.Parse\.Kind\.(other|timeTz)|AT TIME ZONE", {"timezone"}),
     (r"Kind\.date to Substrait\.Parse\.Kind\.str", {"cast_date"}),
     (r"Kind\.time to Substrait\.Parse\.Kind\.int|'TimestampDelta'", {"interval_to_number"}),
     (r"function (ln|exp|log|log10|log2|sqrt)/", {"math_transcendental"}),

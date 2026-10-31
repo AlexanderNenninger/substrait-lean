@@ -21,6 +21,12 @@ they wrap around silently, so the result differs from `Rel.eval`'s
 * `CASE` evaluates a branch only on rows that take it, so
   `CASE WHEN b <> 0 THEN a / b END` and `a / NULLIF(b, 0)` are safe.
 * `AND` and `OR` evaluate both sides: `b <> 0 AND a / b > 1` fails on `b = 0`.
+* Not every `CASE` is lazy, though. `COALESCE` evaluates all its arguments,
+  and the simplifier rewrites a `CASE` with a boolean value into `AND`/`OR`,
+  so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END` fails on `b = 0`. The
+  parser makes those eager (`Parse.eagerly`); `Expr.ifThen` itself is lazy.
+* `ABS` fails on the smallest integer (the parser writes `-a` as `a / -1`),
+  and the simplifier makes `POWER(x, 0)` the constant 1, so it never fails.
 * The optimizer merges filters and pushes them down through projections and
   joins, so a filter condition may be evaluated on rows that a filter below it
   would remove: `t.filter(b != 0).filter(a / b > 1)` fails on `b = 0`.
@@ -50,7 +56,8 @@ inductive Issue where
   | negExponent
   /-- A regular expression outside `Text.simpleRegex`, which may not compile. -/
   | badRegex
-  /-- `+`, `-`, `*` or negation leaving 64 bits: DataFusion wraps around. -/
+  /-- `+`, `-`, `*` or negation leaving 64 bits, or the width of narrower
+  integers (`UnFn.wrap`): DataFusion wraps around. -/
   | wraps
   /-- An integer `SUM` leaving 64 bits: DataFusion wraps around. Kept apart
   from `wraps` because it comes from a group's rows, not from one row:
@@ -94,6 +101,7 @@ def UnFn.issue : UnFn → Value → Option Issue
     | some x => if inI64 x then none else some .badCast
     | none => some .badCast
   | .narrow n, .int i => if fitsBits n i then none else some .badCast
+  | .wrap n, .int i => if fitsBits n i then none else some .wraps
   -- The pattern is compiled whatever the input.
   | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
   | .dateTrunc u, .int ts =>
@@ -189,6 +197,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.intFits then [] else [.wraps]
   | .ftoi, aa, _ => if aa.castFits then [] else [.badCast]
   | .narrow n, aa, _ => if aa.int.all (·.fitsBits n) then [] else [.badCast]
+  | .wrap n, aa, _ => if aa.int.all (·.fitsBits n) then [] else [.wraps]
   | .regexMatch p, _, _ => if Text.simpleRegex p then [] else [.badRegex]
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if nsFits aa ar then [] else [.overflow])
@@ -343,6 +352,15 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       simp [inI64, hx₁, hx₂] at hk
     · cases hx : FloatCode.toInt? c <;> simp only [hx] at hk <;> (try split at hk) <;> simp_all
   case narrow.int n i =>
+    simp only [UnFn.mayIssue]
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    split
+    · rename_i hn hfits
+      obtain ⟨b, hb, hi⟩ := ha
+      simp only [hb, Option.all_some] at hfits
+      exact absurd (Bound.fitsBits_mem hfits hi) hn
+    · simp_all
+  case wrap.int n i =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     split

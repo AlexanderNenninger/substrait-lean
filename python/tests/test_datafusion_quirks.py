@@ -13,6 +13,7 @@ the run until the marker is removed.
 
 import datetime as dt
 import json
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +55,7 @@ TABLES = {
     "u8": pa.table({"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}),
     "str": pa.table({"s": ["b", "B", "a", "", "é", "z"]}),
     "str5": pa.table({"s": ["5", "05"]}),
+    "is": pa.table({"a": pa.array([10, 10, -3, None], pa.int64()), "s": ["10", "010", "-3", "x"]}),
     "nanp": pa.table(
         {
             "v": pa.array(
@@ -175,12 +177,15 @@ def test_datafusion_fails(con, sql, error):
         rows(con, sql)
 
 
-def test_unanalysed_plan_has_no_coercion_casts(con):
-    """The plan `substrait_json` produces compares int with double uncast;
-    DataFusion's consumer adds the cast back when it reads the plan."""
+def test_plan_has_coercion_casts(con):
+    """`substrait_json` writes the analysed plan, with DataFusion's implicit
+    casts explicit (`CAST(a AS DOUBLE) > f`), and leaves the session's
+    optimizer settings as they were."""
+    passes = rows(con, "SHOW datafusion.optimizer.max_passes")
     plan = substrait_json(con, "SELECT a > f AS gt FROM mixed")
-    assert '"cast"' not in plan
+    assert '"cast"' in plan
     assert arrow_rows(run_substrait_json(con, plan)) == [(True,)]
+    assert rows(con, "SHOW datafusion.optimizer.max_passes") == passes
 
 
 def test_distinct_plan_is_not_readable_by_datafusion(con):
@@ -273,6 +278,16 @@ def test_not_in_subquery_means_what_sql_means(con):
     assert lean([]) == [(1,), (None,), (2,)]
 
 
+def test_lean_prints_integers_beyond_64_bits(con):
+    """`Rel.eval`'s integers are unbounded: `MAX + 1` is printed as itself (and
+    a doubled column as doubles), not as a double's code (#72)."""
+    plan = json.loads(substrait_json(con, "SELECT a + 1 AS s, -a AS n FROM mx WHERE a > 0"))
+    lean = lean_rows(json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]})))
+    assert lean == [(2**63, -(2**63) + 1)]
+    plan = json.loads(substrait_json(con, "SELECT -a AS n FROM m"))
+    assert lean_rows(json.dumps(inline_tables(plan, {"m": [(-(2**63),)]}))) == [(2**63,)]
+
+
 def verify(sql: str, table: str, schema: dict, requires=(), ensures=()) -> sv.Report:
     return sv.verify(
         sql, requires={table: list(requires)}, ensures=list(ensures), tables={table: schema}
@@ -295,9 +310,8 @@ gap = pytest.mark.xfail(
 )
 
 
-@gap
-def test_gap_int_vs_double_comparison():
-    """F6: DataFusion says `1 > 0.5`; Lean compares 1 with the code of 0.5."""
+def test_int_vs_double_comparison():
+    """F6: `1 > 0.5`; the analysed plan casts the integer to a double."""
     report = verify(
         "SELECT a > f AS gt FROM t",
         "t",
@@ -308,9 +322,8 @@ def test_gap_int_vs_double_comparison():
     assert not report.ensures[0].proved
 
 
-@gap
-def test_gap_int_concat_string():
-    """N7: `x || 'a'` is '1a' on DataFusion; Lean, missing the cast, gives NULL."""
+def test_int_concat_string():
+    """N7: `x || 'a'` is '1a'; the analysed plan casts the integer to text."""
     report = verify("SELECT x || 'a' AS p FROM n", "n", {"x": "int64"}, ensures=["p IS NULL"])
     assert not report.ensures[0].proved
 
@@ -323,9 +336,13 @@ def test_string_order_is_datafusions(con):
     assert lean_rows(json.dumps(inline_tables(plan, {"str": rows_}))) == rows(con, sql)
 
 
-def test_int_compared_with_string_is_refused():
-    with pytest.raises(ValueError, match="compares values of different types"):
-        verify("SELECT a = s AS e FROM t", "t", {"a": "int64", "s": "string"})
+def test_int_compared_with_string_compares_text(con):
+    """DataFusion casts the integer to text, so `10 = '010'` is false; the
+    analysed plan has the cast."""
+    sql = 'SELECT a, s, a = s AS e FROM "is"'
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(10, "10"), (10, "010"), (-3, "-3"), (None, "x")]
+    assert lean_rows(json.dumps(inline_tables(plan, {"is": rows_}))) == rows(con, sql)
 
 
 def test_string_order_comparison():
@@ -336,8 +353,7 @@ def test_string_order_comparison():
     assert not report.ensures[0].proved
 
 
-@gap
-def test_gap_int32_wraps_at_32_bits():
+def test_int32_wraps_at_32_bits():
     """I6: DataFusion's INT + INT wraps at 2^31."""
     report = verify(
         "SELECT a + b AS s FROM t",
@@ -349,13 +365,25 @@ def test_gap_int32_wraps_at_32_bits():
     assert not report.ensures[0].proved or report.warnings
 
 
-@gap
-def test_gap_uint8_is_unsigned():
-    """I7: 0 - 1 is 255 for UINT8."""
-    report = verify(
-        "SELECT a - b AS d FROM t", "t", {"a": "uint8", "b": "uint8"}, ["a = 0", "b = 1"], ["d < 0"]
-    )
-    assert not report.ensures[0].proved
+def test_int32_wrap_in_lean_and_datafusion(con):
+    """`Rel.eval` computes `INT + INT` unbounded, warning that DataFusion wraps;
+    `INT + 1` is a `BIGINT` in DataFusion and does not wrap. Lean's written
+    plan computes at the same widths."""
+    sql = "SELECT a + b AS s, a + 1 AS t FROM i32"
+    plan = substrait_json(con, sql)
+    assert lean_rows(json.dumps(inline_tables(json.loads(plan), {"i32": [(2**31 - 1, 1)]}))) == [
+        (2**31, 2**31)
+    ]
+    assert arrow_rows(run_substrait_json(con, sv.written_plan(plan))) == rows(con, sql)
+    report = verify(sql.replace("i32", "t"), "t", {"a": "int32", "b": "int32"})
+    assert ("may wrap around", "WRAP32(($0 + $1))") in [(i.kind, i.expr) for i in report.warnings]
+    assert not any(i.expr.startswith("WRAP32(($0 + 1") for i in report.warnings)
+
+
+def test_uint8_is_refused():
+    """I7: 0 - 1 is 255 for UINT8; unsigned integers are not modelled."""
+    with pytest.raises(ValueError, match="unsigned"):
+        verify("SELECT a - b AS d FROM t", "t", {"a": "uint8", "b": "uint8"})
 
 
 def test_narrowing_cast_may_fail():
@@ -368,37 +396,52 @@ def test_narrowing_cast_may_fail():
     assert verify("SELECT CAST(a AS INT) AS x FROM t", "t", I64, fits).proved
 
 
-@gap
-def test_gap_abs_of_min_fails():
+def test_abs_of_min_fails():
     """I4: `abs(MIN)` raises; it does not wrap."""
     assert verify("SELECT abs(a) AS x FROM t", "t", I64).errors
 
 
-@gap
-def test_gap_boolean_case_is_not_lazy():
+def test_boolean_case_is_not_lazy():
     """E4: the simplifier turns the CASE into `b <> 0 AND a / b > 1`."""
     sql = "SELECT a FROM t WHERE CASE WHEN b <> 0 THEN a / b > 1 ELSE false END"
     assert verify(sql, "t", I64, ["a >= 0"]).errors
 
 
-@gap
-def test_gap_coalesce_is_eager():
+def test_lazy_and_eager_conditionals_that_are_safe():
+    """A numeric `CASE` stays lazy; `ABS` is safe above the smallest integer
+    and keeps its sign."""
+    sql = "SELECT CASE WHEN b <> 0 THEN a / b END AS q FROM t"
+    assert verify(sql, "t", I64, ["a >= 0"]).errors == []
+    assert verify("SELECT coalesce(b, a / 2) AS c FROM t", "t", I64).errors == []
+    report = verify("SELECT abs(a) AS x FROM t", "t", I64, ["a > -10"], ["x >= 0"])
+    assert report.proved and report.issues == []
+
+
+def test_coalesce_is_eager():
     """E5: DataFusion evaluates `a / b` even where b is not NULL."""
     assert verify("SELECT coalesce(b, a / b) AS c FROM t", "t", I64, ["b IS NOT NULL"]).errors
 
 
-@gap
-def test_gap_power_of_null_to_zero(con):
+def test_power_of_null_to_zero(con):
     """I9: `power(NULL, 0)` is 1 on DataFusion, NULL in `Rel.eval`."""
     plan = json.loads(substrait_json(con, "SELECT power(a, 0) AS p FROM pn"))
     lean = lean_rows(json.dumps(inline_tables(plan, {"pn": [(None,), (2,)]})))
     assert lean == rows(con, "SELECT power(a, 0) AS p FROM pn")
 
 
-@gap
-def test_gap_zoned_day_is_not_24_hours(con):
-    """T3: Lean adds 86 400 s to a zoned timestamp; DataFusion adds a local day."""
+def test_zoned_timestamp_arithmetic_is_refused(con):
+    """T3: a day of a zoned timestamp is 23 hours across the switch to daylight
+    saving time in DataFusion; the model would add 86 400 s, so it refuses."""
     sql = "SELECT t + INTERVAL '1 day' >= t + INTERVAL '24 hours' AS ok FROM z"
     plan = json.loads(substrait_json(con, sql))
-    lean = lean_rows(json.dumps(inline_tables(plan, {"z": [(dt.datetime(2024, 3, 30, 12),)]})))
-    assert lean == rows(con, sql)
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        lean_rows(json.dumps(inline_tables(plan, {"z": [(dt.datetime(2024, 3, 30, 12),)]})))
+    assert "time zone" in str(e.value.stderr)
+
+
+def test_nan_payloads_are_canonical_on_a_connection():
+    """F7: DataFusion's order tells NaN payloads apart, the model has one NaN.
+    A connection stores every NaN as the same one (`engine.canonical`)."""
+    c = connect()
+    put_table(c, "nanp", TABLES["nanp"])
+    assert rows(c, "SELECT count(DISTINCT v) FROM nanp") == [(1,)]

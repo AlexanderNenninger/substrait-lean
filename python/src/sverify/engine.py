@@ -240,6 +240,9 @@ def plan_json(con: Connection, query: ir.Table | str) -> str:
     return to_substrait_json(query)
 
 
+#: `substrait_json` changes a session setting while it plans.
+_analyse_lock = threading.Lock()
+
 #: A RANGE frame bounded by an offset, in DataFusion's plan display.
 _RANGE_OFFSET = re.compile(
     r"RANGE BETWEEN (?!UNBOUNDED PRECEDING AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
@@ -250,12 +253,24 @@ _RANGE_OFFSET = re.compile(
 def substrait_json(con: Connection, sql: str) -> str:
     """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON.
 
+    The plan is the *analysed* one: DataFusion's type coercion makes its
+    implicit casts explicit (`int > double` compares `CAST(int AS DOUBLE)`),
+    which the unanalysed plan leaves to the consumer. The optimizer, whose
+    rewrites would change the plan's shape, runs no passes.
+
     DataFusion 51's producer writes the offsets of a RANGE frame (`RANGE
     BETWEEN 1 PRECEDING AND …`) as UNBOUNDED, so the plan would mean another
     query: those are refused."""
     ss = _datafusion().substrait
     ctx = con.datafusion
-    logical = ctx.sql(sql).logical_plan()
+    key = "datafusion.optimizer.max_passes"
+    with _analyse_lock:
+        passes = ctx.sql(f"SHOW {key}").to_pylist()[0]["value"]
+        ctx.sql(f"SET {key} = 0").collect()
+        try:
+            logical = ctx.sql(sql).optimized_logical_plan()
+        finally:
+            ctx.sql(f"SET {key} = {passes}").collect()
     if _RANGE_OFFSET.search(logical.display_indent()):
         raise Unsupported(
             "DataFusion's Substrait producer drops the offsets of RANGE frames; "

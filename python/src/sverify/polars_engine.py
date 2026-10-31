@@ -723,6 +723,14 @@ class Exprs:
             arg_js = [a["value"] for a in f.get("arguments", [])]
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
+            if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
+                # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
+                # for a NULL `x` (as `Parse.parseExpr`).
+                v, t = literal(arg_js[1]["literal"])
+                if repr(v) in ("0", "0.0"):
+                    floats = pl.Float64 in (self(arg_js[0]).dtype, t)
+                    one, dtype = (1.0, pl.Float64) if floats else (1, pl.Int64)
+                    return Val(lit_expr(one, dtype), dtype)
             if name == "array_length" and len(arg_js) == 1:
                 return self.regex_match(arg_js[0])
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:

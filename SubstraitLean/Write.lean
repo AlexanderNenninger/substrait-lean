@@ -91,6 +91,8 @@ def UnFn.anchor : UnFn → Nat
   | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
+  -- Not a function: the arithmetic inside is written at its width.
+  | .wrap _ => 0
 
 def BinFn.anchor : BinFn → Nat
   -- Core
@@ -149,6 +151,8 @@ def kindType : Parse.Kind → Json
   | .bool => obj [("bool", nullable)]
   | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeTz => obj [("precisionTimestampTz", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
   | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
@@ -168,6 +172,8 @@ inductive WKind where
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
+  -- Zoned timestamps are only compared with each other (`checkArgKinds`).
+  | .timeTz => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Parse.Kind
@@ -273,6 +279,17 @@ def canonical (x : Json) : Json :=
   let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
   call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
 
+/-- `x`, written as `j`, or as an integer literal of `n` bits. -/
+def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
+  match x with
+  | .lit (.int i) =>
+    obj [("literal", obj [(if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32", toJson i)])]
+  | _ => j
+
+def isLit : Expr → Bool
+  | .lit _ => true
+  | _ => false
+
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
 def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
@@ -290,6 +307,12 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  -- Arithmetic at `n` bits: its integer literals are written at that width,
+  -- which is what makes the engine compute at it.
+  | .un (.wrap n) (.bin f x y) =>
+    call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)]
+  | .un (.wrap n) (.un .neg x) => call 3 [narrowLit n x (writeExpr cols .int x)]
+  | .un (.wrap _) a => writeExpr cols ctx a
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>

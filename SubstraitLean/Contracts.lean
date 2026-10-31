@@ -387,12 +387,15 @@ theorem Bound.mem_absHull {b : Bound} {i j : Int} (h : b.Mem i) (hj : j.natAbs �
 /-- Between `min(lo, 0)` and `max(hi, 0)`. -/
 def Bound.signHull (b : Bound) : Bound := ⟨b.lo.map (min · 0), b.hi.map (max · 0)⟩
 
-/-- Truncating division: monotone for a positive constant divisor, between 0
-and the dividend for any positive divisor, and never larger in absolute value
-than the dividend. -/
+/-- Truncating division: monotone for a positive constant divisor (and
+antitone for a negative one), between 0 and the dividend for any positive
+divisor, and never larger in absolute value than the dividend. -/
 def divBound (x y : Bound) : Bound :=
   match y.point with
-  | some k => if 0 < k then x.mapMono (·.tdiv k) else x.absHull
+  | some k =>
+    if 0 < k then x.mapMono (·.tdiv k)
+    else if k < 0 then (x.mapMono (·.tdiv (-k))).neg
+    else x.absHull
   | none => if y.lo.any (1 ≤ ·) then x.signHull else x.absHull
 
 /-- For a positive divisor, `a / b` lies between 0 and `a`. -/
@@ -485,6 +488,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fround, a => monoAbs FloatCode.round a
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
+  | .wrap _, a => a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .upper, a | .lower, a => ⟨a.nonStr, none, false, false, a.str⟩
   | .length, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
@@ -693,6 +697,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · simp [AVal.Mem, narrowAbs, hb, hfb]
         · exact absurd (Bound.fitsBits_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case itos =>
@@ -785,7 +790,13 @@ theorem divBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (
     · rename_i hk0
       rw [Bound.point_mem hk hj]
       exact Bound.mem_mapMono (fun h => Int.tdiv_le_tdiv hk0 h) hi
-    · exact Bound.mem_absHull hi (Int.natAbs_tdiv_le_natAbs i j)
+    · split
+      · rename_i _ hkn
+        rw [Bound.point_mem hk hj]
+        have hneg : i.tdiv k = -(i.tdiv (-k)) := by rw [Int.tdiv_neg, Int.neg_neg]
+        rw [hneg]
+        exact Bound.mem_neg (Bound.mem_mapMono (fun h => Int.tdiv_le_tdiv (by omega) h) hi)
+      · exact Bound.mem_absHull hi (Int.natAbs_tdiv_le_natAbs i j)
   · split
     · rename_i hpos
       obtain ⟨yl, yh⟩ := y
