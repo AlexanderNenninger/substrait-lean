@@ -237,7 +237,7 @@ CASES: list[Case] = [
     case("logic", "notnull", V, lambda: t.filter(t.qty.notnull())),
     case("logic", "simple case", V, lambda: t.select(x=t.qty.cases((1, "one"), else_="many"))),
     # Relations
-    case("relations", "table fill_null", R, lambda: t.fill_null({"qty": 0})),
+    case("relations", "table fill_null", R, lambda: t.fill_null({"qty": 0})),  # pyrefly: ignore
     case("relations", "self join", V, lambda: t.join(t.view(), "id")),
     case("relations", "memtable", R, lambda: ibis.memtable({"a": [1, 2]})),
     case("relations", "literal as table", R, lambda: ibis.literal(1).as_table()),
@@ -325,7 +325,7 @@ CASES: list[Case] = [
     case("strings", "replace", R, lambda: t.select(x=t.name.replace("a", "b"))),
     case("strings", "translate", R, lambda: t.select(x=t.name.translate("ab", "ba"))),
     case("strings", "ilike", R, lambda: t.filter(t.name.ilike("a%"))),
-    case("strings", "join", R, lambda: t.select(x=ibis.literal("-").join([t.name, t.name]))),
+    case("strings", "join", R, lambda: t.select(x=ibis.literal("-").join([t.name, t.name]))),  # pyrefly: ignore
     case("strings", "ascii_str", R, lambda: t.select(x=t.name.ascii_str())),
     case("strings", "find_in_set", R, lambda: t.select(x=t.name.find_in_set(["a", "b"]))),
     case("strings", "levenshtein", R, lambda: t.select(x=t.name.levenshtein("abc"))),
@@ -355,7 +355,7 @@ CASES: list[Case] = [
     # Types
     case("types", "try_cast", R, lambda: t.select(x=t.name.try_cast("int64"))),
     case("types", "typeof", R, lambda: t.select(x=t.qty.typeof())),
-    case("types", "param", R, lambda: t.filter(t.qty > ibis.param("int64"))),
+    case("types", "param", R, lambda: t.filter(t.qty > ibis.param(ibis.dtype("int64")))),
     # Aggregation (more)
     case("aggregation", "count(col), min", V, lambda: t.aggregate(n=t.qty.count(), m=t.qty.min())),
     case("aggregation", "any, all", R, lambda: t.aggregate(a=t.flag.any(), b=t.flag.all())),
@@ -436,7 +436,7 @@ CASES: list[Case] = [
             a=t.ts + (ibis.interval(days=1) + ibis.interval(hours=1)),
             b=t.ts + (ibis.interval(days=1) - ibis.interval(hours=1)),
             c=t.ts + ibis.interval(days=1) * 2,
-            d=t.ts + ibis.interval(days=4) // 2,
+            d=t.ts + ibis.interval(days=4) // 2,  # pyrefly: ignore
         ),
     ),
     case("time", "as_interval", R, lambda: t.select(x=t.ts + t.qty.as_interval("D"))),
@@ -484,7 +484,7 @@ CASES: list[Case] = [
         "nested", "unnest", R, lambda: t.group_by("name").aggregate(xs=t.qty.collect()).unnest("xs")
     ),
     case("nested", "array", R, lambda: t.select(x=ibis.array([t.qty, t.id]))),
-    case("nested", "range", R, lambda: t.select(x=ibis.range(0, t.qty))),
+    case("nested", "range", R, lambda: t.select(x=ibis.range(0, t.qty, 1))),
     case(
         "nested",
         "array length, index, slice",
