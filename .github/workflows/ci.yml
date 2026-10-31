@@ -96,9 +96,23 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - run: uv run --locked --project python poe -C python notebooks
 
+  # Float error bounds (docs/float-bounds.md): a separate Lake package that
+  # needs Mathlib, fetched as prebuilt oleans.
+  float-bounds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-lean
+        with:
+          cache: "false"
+      - working-directory: float-bounds
+        run: lake exe cache get && lake build --wfail
+
   # The check the `main` ruleset requires: green only if every job above is.
   qa:
-    needs: [lean, static, test, isthmus, notebooks]
+    needs: [lean, static, test, isthmus, notebooks, float-bounds]
     if: always()
     runs-on: ubuntu-latest
     steps:

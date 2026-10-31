@@ -102,6 +102,9 @@ class Dialect:
     def cast(self, sql: str, kind: Kind) -> str:
         return f"CAST({sql} AS {self.type_name(kind)})"
 
+    def result_kind(self, kind: Kind | None) -> None:
+        """Raise `Unsupported` if a result column cannot have this kind."""
+
     # Literals
 
     def null(self, kind: Kind | None) -> str:
@@ -350,7 +353,9 @@ class Dialect:
     # sorts use) is by code point, i.e. byte order: no collation.
 
     def upper(self, s: str) -> str:
-        """A black box in Lean (Unicode case mapping in DataFusion)."""
+        """A black box in Lean, meaning Rust's `str::to_uppercase` (DataFusion's
+        and Polars'). SQL engines map case with their own tables (`'ß'`), so
+        the writer guards it with `is_ascii`."""
         return f"UPPER({s})"
 
     def lower(self, s: str) -> str:
@@ -358,6 +363,10 @@ class Dialect:
 
     def char_length(self, s: str) -> str:
         return f"CHAR_LENGTH({s})"
+
+    def is_ascii(self, s: str) -> str:
+        """Is every character of `s` ASCII? (Its UTF-8 bytes are its characters.)"""
+        return f"(OCTET_LENGTH({s}) = {self.char_length(s)})"
 
     def concat(self, a: str, b: str) -> str:
         """NULL if either is."""
@@ -2007,10 +2016,23 @@ def arity(r: Rel) -> int:
     return len(kinds(r))
 
 
+def numbers_copies(w: Window) -> bool:
+    """Is `w` `ROW_NUMBER() OVER (PARTITION BY` every column`)`? It numbers the
+    copies of each row, and as a bag that does not depend on the row order
+    (the copies are equal)."""
+    return (
+        not w.sort
+        and all(f.fn == "row_number" for f in w.fns)
+        and set(w.part) == set(range(arity(w.input)))
+    )
+
+
 def order_matters(r: Rel) -> bool:
     """Does the result's row order matter (a FETCH, a window or a sort anywhere
     the order reaches the result)?"""
     match r:
+        case Window(input=i) if numbers_copies(r):
+            return order_matters(i)
         case Fetch() | Window() | OrderBy():
             return True
         case Read() | Values():
@@ -2386,7 +2408,11 @@ class _Writer:
         for k in sort:
             for x, kind in self.sort_exprs(col(k.col), ks[k.col]):
                 keys.append(d.sort_key(x, k.desc, k.nulls_first, kind))
-        if not self.tie_free:
+        copies = numbers_copies(Window(i, part, sort, fns)) and not ordered
+        if copies:
+            # Any order numbers the copies (some dialects need one).
+            keys = [d.sort_key(col(p), False, False, ks[p]) for p in part]
+        elif not self.tie_free:
             # Lean sorts with a stable merge sort: ties keep their input order.
             keys.append(self.asc(self.ordinal(a)))
         elif ordered and not keys:
@@ -2406,7 +2432,7 @@ class _Writer:
         if ordered:
             # `windowEval` emits the rows in sort order.
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
-        return self.select(items, d.subquery(self.rel(i, not self.tie_free), a))
+        return self.select(items, d.subquery(self.rel(i, not self.tie_free and not copies), a))
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,
@@ -2545,13 +2571,20 @@ class _Writer:
             case If(cond=c, then=t, orelse=o):
                 k = kind(e) or ctx
                 return d.case_when(go(c, "bool"), go(t, k), go(o, k))
-            case Un(op="upper" | "lower" | "length" as op, arg=a):
+            case Un(op="length", arg=a):
+                return d.char_length(self.operand(a, "str", ref, cols, "length"))
+            case Un(op="upper" | "lower" as op, arg=a):
                 x = self.operand(a, "str", ref, cols, op)
-                return {"upper": d.upper, "lower": d.lower, "length": d.char_length}[op](x)
+                return self.ascii_only(x, (d.upper if op == "upper" else d.lower)(x), op.upper())
             case Un(op="regex_match", arg=a, param=pattern):
                 groups = regex_groups(pattern)
                 x = self.operand(a, "str", ref, cols, "regexp_match")
-                return d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
+                m = d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
+                return (
+                    self.ascii_only(x, m, f"regular expression {pattern!r}", "int")
+                    if (unicode_classes(pattern))
+                    else m
+                )
             case Un(op="date_part", arg=a, param=part):
                 return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
             case Un(op="date_trunc", arg=a, param=unit):
@@ -2624,6 +2657,14 @@ class _Writer:
         fail = d.raise_(f"date_trunc to a {unit} outside ±2^63 ns", ts, "time")
         return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
 
+    def ascii_only(self, x: str, value: str, what: str, kind: Kind = "str") -> str:
+        """`value`, a black box of the string `x` that the engine computes as
+        Rust does on ASCII text only, or an error where `x` is not ASCII
+        (#70). Not one of `Safety.lean`'s issues, so `guards=False` keeps it."""
+        d = self.d
+        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind)
+        return d.case_when(f"(NOT {d.is_ascii(x)})", fail, value)
+
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
     ) -> str:
@@ -2691,6 +2732,21 @@ def like_pattern(p: str) -> str:
     return p + "\\" if (len(p) - len(p.rstrip("\\"))) % 2 else p
 
 
+def unicode_classes(p: str) -> bool:
+    """Does the pattern use `\\d`, `\\w` or `\\s` (or their negations)? Rust's
+    are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's are
+    ASCII-only, so they agree on ASCII text only."""
+    i = 0
+    while i < len(p):
+        if p[i] == "\\" and i + 1 < len(p):
+            if p[i + 1] in "dDwWsS":
+                return True
+            i += 2
+        else:
+            i += 1
+    return False
+
+
 def regex_groups(p: str) -> int:
     """The entries `regexp_match(s, p)` has on a match: its capture groups, or
     the whole match if there are none. Groups are counted as `(` outside
@@ -2752,6 +2808,8 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     names = p.names or [f"c{i}" for i in range(n)]
     if len(names) != n:
         raise Unsupported(f"root names {names} do not match the plan's {n} columns")
+    for k in kinds(p.root):
+        dialect.result_kind(k)
     w = _Writer(dialect, tie_free)
     ordered = order_matters(p.root)
     a = w.alias()
