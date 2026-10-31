@@ -50,13 +50,14 @@ guarantees of their own. A composed result can be maintained incrementally
 checked on each batch of changes, and its guarantees hold in every state.
 
 Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
-or SQL snippets (`"amount >= 0"`). DataFusion compiles them to Substrait.
+or SQL snippets (`"amount >= 0"`). SQL snippets are compiled to Substrait by
+DataFusion, so they need the `datafusion` extra.
 
-Runtime checks run on DataFusion through Ibis by default; another engine
-(`engine="duckdb"` or `"polars"`, see `sverify.engine.run_plan`) runs each
-condition's plan, as Lean wrote it, instead, so such conditions must be inside
-the Lean model. `unique` checks need aggregation, which the model lacks, and
-always run through Ibis.
+Runtime checks run through Ibis, on the connection the tables are bound to
+(`sverify.connect()`), by default; naming an engine (`engine="duckdb"`,
+`"polars"` or `"datafusion"`, see `sverify.engine.run_plan`) runs each
+condition's plan, as Lean wrote it, there instead, so such conditions must be
+inside the Lean model. `unique` checks always run through Ibis.
 """
 
 from __future__ import annotations
@@ -80,8 +81,10 @@ from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
 from sverify.engine import (
+    Connection,
     Engine,
     connect,
+    connection_of,
     create_table,
     plan_json,
     run_checker,
@@ -451,16 +454,19 @@ def verify(
     )
 
 
-def violations(table: ir.Table, cond: Condition, engine: Engine = "datafusion") -> int:
-    """Rows of a backend-bound table where `cond` is not TRUE (FALSE or NULL),
-    or for `unique`, rows beyond the first for each repeated key.
+def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
+    """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
+    `unique`, rows beyond the first for each repeated key.
 
-    With an engine other than DataFusion, the condition's plan runs there on
-    copies of the tables it reads."""
-    if not isinstance(cond, Unique) and engine != "datafusion":
-        bound: Any = ibis.get_backend(table)
-        plan = written_plan(plan_json(bound, condition_query(table, cond)))
-        return sum(v is not True for v in run_plan(bound, plan, engine).column(0).to_pylist())
+    With an engine named, the condition's plan runs there, over the tables of
+    the connection `table` is bound to; otherwise Ibis counts on that
+    connection."""
+    if not isinstance(cond, Unique) and engine is not None:
+        con = connection_of(table)
+        if con is None:
+            raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
+        plan = written_plan(plan_json(con, condition_query(table, cond)))
+        return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
@@ -511,12 +517,13 @@ class Discharged:
 _facts: dict[tuple[int, str], list[Fact]] = {}
 
 
-def register_facts(con: Any, name: str, facts: Sequence[Fact] | None) -> None:
+def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> None:
     """Record (or with None, forget) what metadata says about table `name`."""
+    key = (id(con.ibis), name)
     if facts is None:
-        _facts.pop((id(con), name), None)
+        _facts.pop(key, None)
     else:
-        _facts[(id(con), name)] = list(facts)
+        _facts[key] = list(facts)
 
 
 def table_facts(table: ir.Table) -> list[Fact] | None:
@@ -548,7 +555,7 @@ def discharge(
     table: ir.Table,
     name: str,
     conds: Sequence[Condition],
-    engine: Engine,
+    engine: Engine | None,
     facts: Sequence[Fact] | None,
     what: str,
 ) -> list[Discharged]:
@@ -759,7 +766,7 @@ class ContractedTransform:
         ensures: Sequence[Condition],
         on_unproved: Literal["error", "runtime", "warn"],
         check_requires: bool,
-        engine: Engine,
+        engine: Engine | None,
     ):
         self.fn, self.requires, self.ensures = fn, requires, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
@@ -910,7 +917,7 @@ def transform(
     *,
     on_unproved: Literal["error", "runtime", "warn"] = "error",
     check_requires: bool = True,
-    engine: Engine = "datafusion",
+    engine: Engine | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -918,7 +925,7 @@ def transform(
     the postconditions are proved (cached per input schema and expression) and
     the report is kept in `.last_report`; see the module docstring. With
     `on_unproved="runtime"`, unproved postconditions are checked on the output
-    data instead, which needs inputs bound to a backend. `engine` says where
+    data instead, which needs inputs bound to a connection. `engine` says where
     those checks on data run (see the module docstring).
     """
     return lambda fn: ContractedTransform(

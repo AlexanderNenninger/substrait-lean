@@ -670,8 +670,8 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-datafusion = [
-    { name = "datafusion" },
+duckdb = [
+    { name = "duckdb" },
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas" },
@@ -2149,10 +2149,9 @@ name = "sverify"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "datafusion" },
     { name = "deltalake" },
     { name = "duckdb" },
-    { name = "ibis-framework", extra = ["datafusion"] },
+    { name = "ibis-framework", extra = ["duckdb"] },
     { name = "numpy" },
     { name = "polars" },
     { name = "pyarrow" },
@@ -2160,8 +2159,14 @@ dependencies = [
     { name = "substrait" },
 ]
 
+[package.optional-dependencies]
+datafusion = [
+    { name = "datafusion" },
+]
+
 [package.dev-dependencies]
 dev = [
+    { name = "datafusion" },
     { name = "fakesnow" },
     { name = "hypothesis" },
     { name = "marimo" },
@@ -2178,19 +2183,21 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datafusion", specifier = "==51.0.0" },
+    { name = "datafusion", marker = "extra == 'datafusion'", specifier = "==51.0.0" },
     { name = "deltalake", specifier = ">=1.6.6" },
     { name = "duckdb", specifier = ">=2.0.0" },
-    { name = "ibis-framework", extras = ["datafusion"], specifier = ">=12.0.0" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "polars", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyiceberg", extras = ["pyarrow"], specifier = ">=0.12.0" },
     { name = "substrait", specifier = ">=0.37.0" },
 ]
+provides-extras = ["datafusion"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "datafusion", specifier = "==51.0.0" },
     { name = "fakesnow", specifier = ">=0.12.1" },
     { name = "hypothesis", specifier = ">=6.170.14" },
     { name = "marimo", specifier = ">=0.25.2" },

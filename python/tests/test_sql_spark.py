@@ -184,7 +184,7 @@ def test_groups_keep_the_sign_of_zero(spark):
     plan = written_plan(substrait_json(con, "SELECT x, count(*) AS n FROM z GROUP BY x"))
     from spark_session import put_tables
 
-    put_tables({"z": con.con.table("z").to_arrow_table()})
+    put_tables({"z": con.arrow["z"]})
     got = query(to_sql(json.loads(plan), SPARK))
     assert canonical(got) == canonical(
         [tuple(r.values()) for r in run_plan(con, plan, "duckdb").to_pylist()]

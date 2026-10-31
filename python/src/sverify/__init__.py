@@ -1,5 +1,5 @@
-"""Verified Substrait plans on DataFusion and Polars: contracts and incremental views, checked in
-Lean."""
+"""Verified Substrait plans on DuckDB, Polars or DataFusion: contracts and incremental views,
+checked in Lean."""
 
 from sverify.asof import asof_join
 from sverify.contracts import (
@@ -16,6 +16,7 @@ from sverify.contracts import (
 )
 from sverify.engine import (
     ENGINES,
+    Connection,
     connect,
     create_table,
     run_plan,
@@ -42,6 +43,7 @@ __all__ = [
     "IncrementalView",
     "NotIncremental",
     "Pipeline",
+    "Connection",
     "connect",
     "create_table",
     "table_rows",
