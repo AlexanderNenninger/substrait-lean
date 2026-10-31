@@ -170,6 +170,9 @@ class SourceBatch:
     facts: list[Fact] = field(default_factory=list)
     trusted: str = ""
     """E.g. "Δ trusted as coming from Delta CDF v3→v5"."""
+    kind: Literal["change feed", "snapshot diff"] = "change feed"
+    """A snapshot diff is exact (`ChangeFeed.of_diff`): only the snapshots
+    are trusted."""
     snapshot: pa.Table | None = None
     fallback: str | None = None
 
@@ -189,7 +192,7 @@ class SourceRefresh:
     table: str
     start: int
     end: int
-    mode: Literal["unchanged", "change feed", "recomputed"]
+    mode: Literal["unchanged", "change feed", "snapshot diff", "recomputed"]
     detail: str = ""
     inserts: int = 0
     deletes: int = 0
@@ -550,7 +553,7 @@ class Pipeline:
             else:
                 ch = consolidate(batch.changes)
                 facts[t] = batch.facts
-                mode, detail = "change feed", batch.trusted
+                mode, detail = batch.kind, batch.trusted
             if audit and batch.changes is not None:
                 got = _apply_to_table(self.con, t, ch)
                 want = src.snapshot(batch.end).table

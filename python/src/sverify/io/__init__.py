@@ -18,5 +18,16 @@ Sources hand Arrow tables to the pipeline, so every engine works.
 
 from sverify.io._common import ColumnStats, Contract, stats_facts
 from sverify.io.delta import DeltaSink, DeltaSource, SinkWrite
+from sverify.io.iceberg import IcebergSink, IcebergSource, IcebergWrite
 
-__all__ = ["ColumnStats", "Contract", "DeltaSink", "DeltaSource", "SinkWrite", "stats_facts"]
+__all__ = [
+    "ColumnStats",
+    "Contract",
+    "DeltaSink",
+    "DeltaSource",
+    "IcebergSink",
+    "IcebergSource",
+    "IcebergWrite",
+    "SinkWrite",
+    "stats_facts",
+]

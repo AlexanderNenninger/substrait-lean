@@ -361,7 +361,8 @@ def test_sink_writes_contract_and_changes(tmp_path):
     assert second.mode == "merge" and second.version == before + 1
     assert (second.inserted, second.deleted) == (2, 1)
     assert delta_rows(sink.uri) == big.rows() == [(1, "ada", 12), (2, "bob", 14), (3, "cy", 0)]
-    assert DeltaSource(sink.uri).contract().sources == {"orders": 3}
+    later = DeltaSource(sink.uri).contract()
+    assert later is not None and later.sources == {"orders": 3}
     assert DeltaTable(sink.uri).transaction_version("sverify:big") == 3
 
 
