@@ -1,8 +1,10 @@
 """Delta Lake tables as change sources (CDF), sources of preconditions and
 sinks, on local tables in temporary directories."""
 
+import shutil
 from collections import Counter
 from datetime import datetime
+from pathlib import Path
 
 import ibis
 import pyarrow as pa
@@ -13,8 +15,9 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.engine import Engine
-from sverify.incremental import AuditError, SchemaError
-from sverify.io import DeltaSink, DeltaSource
+from sverify.incremental import AuditError, SchemaError, arrow_rows
+from sverify.io import ColumnStats, DeltaSink, DeltaSource
+from sverify.io.delta import file_stats
 
 SCHEMA_ORDERS = pa.schema(
     [
@@ -670,3 +673,95 @@ def test_resume_recomputes_on_a_mismatch(tmp_path):
     assert late.rows() == late.recompute() and len(late.rows()) == 3
     # A sink commit that is not the last one is not resumed from.
     assert DeltaSource(src.uri).stored() is None
+
+
+# -- Statistics: nullable columns, doubles, deletion vectors -------------------
+
+
+@sv.transform(
+    requires={"orders": [(_.amount >= 0) | _.amount.isnull()]},
+    ensures=[(_.amount >= 0) | _.amount.isnull()],
+)
+def kept(orders):
+    return orders.select(orders.id, orders.amount)
+
+
+def test_nullable_columns_get_bounds_from_statistics(tmp_path):
+    src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", None), (3, "cy", 7)])
+    facts = [f.condition for f in src.snapshot().facts]
+    assert '"amount" IS NULL OR ("amount" >= 5 AND "amount" <= 7)' in facts
+    pipe = sv.Pipeline(sv.connect())
+    view = pipe.view("kept", kept(pipe.source("orders", src)))
+    assert sources(pipe.preconditions) == {
+        ("orders", "((_.amount >= 0) | _.amount.isnull())"): "file stats @v1"
+    }
+    # A file whose amounts are all NULL adds NULL and no bound.
+    write_deltalake(src.uri, orders_table([(4, "dan", None), (5, "eve", None)]), mode="append")
+    report = pipe.refresh()
+    assert sources(report.preconditions) == {
+        ("orders", "((_.amount >= 0) | _.amount.isnull())"): "file stats @v2 (new files)"
+    }
+    assert [f.condition for f in src.changes(1).facts if "amount" in f.condition] == [
+        '"amount" IS NULL'
+    ]
+    assert view.rows() == view.recompute()
+
+
+def test_double_statistics_give_a_minimum_only(tmp_path):
+    schema = pa.schema(
+        [pa.field("id", pa.int64(), nullable=False), pa.field("price", pa.float64())]
+    )
+    rows = [{"id": 1, "price": 0.5}, {"id": 2, "price": float("nan")}, {"id": 3, "price": 2.5}]
+    write_deltalake(tmp_path / "p", pa.Table.from_pylist(rows, schema=schema))
+    facts = [f.condition for f in DeltaSource(str(tmp_path / "p")).snapshot().facts]
+    # NaN is above every double and Delta does not count NaNs: no maximum.
+    assert '"price" IS NOT NULL AND "price" >= 0.5' in facts
+
+    @sv.transform(requires={"t": [_.price >= 0.0]}, ensures=[])
+    def priced(t):
+        return t.select(t.id)
+
+    pipe = sv.Pipeline(sv.connect())
+    pipe.view("ids", priced(pipe.source("t", DeltaSource(str(tmp_path / "p")))))
+    assert sources(pipe.preconditions) == {("t", "(_.price >= 0.0)"): "file stats @v0"}
+
+    # A maximum of 2.5 would have "proved" this, but the NaN row violates it.
+    @sv.transform(requires={"t": [_.price <= 100.0]}, ensures=[])
+    def capped(t):
+        return t.select(t.id)
+
+    pipe = sv.Pipeline(sv.connect())
+    with pytest.raises(sv.PreconditionError, match="1 row"):
+        pipe.view("ids", capped(pipe.source("t", DeltaSource(str(tmp_path / "p")))))
+
+
+FIXTURE_DV = Path(__file__).parent / "data" / "delta_deletion_vectors"
+"""Written by Spark 4.0.1 with Delta 4.0.0 (delta-rs cannot write deletion
+vectors): a table with CDF and deletion vectors, `(1, ada, 5), (2, bob, NULL),
+(3, cy, 1), (4, dan, 100)` inserted at v1 and ids 2 and 4 deleted at v2, which
+adds a deletion vector to the one data file."""
+
+
+def test_deletion_vectors(tmp_path):
+    shutil.copytree(FIXTURE_DV, tmp_path / "dv")
+    src = DeltaSource(str(tmp_path / "dv"))
+    dt = src.table()
+    [dv] = pa.table(dt.deletion_vectors()).to_pylist()
+    assert dv["selection_vector"] == [True, False, True, False]
+    # The statistics are those of all four physical rows (Delta writes
+    # tightBounds: false): a NULL and 100 that are deleted. They still bound
+    # the two live rows; the row count is left out.
+    [stats] = file_stats(dt).values()
+    assert stats["amount"] == ColumnStats(1, 100, 1, None)
+    snap = src.snapshot()
+    assert sorted(arrow_rows(snap.table)) == [(1, "ada", 5), (3, "cy", 1)]
+    assert '"amount" IS NULL OR ("amount" >= 1 AND "amount" <= 100)' in [
+        f.condition for f in snap.facts
+    ]
+    # Following the feed across the deletion-vector commit.
+    pipe = sv.Pipeline(sv.connect())
+    view = pipe.view("kept", kept(pipe.source("orders", src, version=1)))
+    assert sorted(view.rows()) == [(1, 5), (2, None), (3, 1), (4, 100)]
+    [s] = pipe.refresh(audit=True).sources
+    assert (s.mode, s.inserts, s.deletes) == ("change feed", 0, 2)
+    assert sorted(view.rows()) == [(1, 5), (3, 1)]

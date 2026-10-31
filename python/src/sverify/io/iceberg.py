@@ -98,11 +98,20 @@ def _live_files(t: Table, s: IcebergSnapshot | None) -> list[dict[str, Any]]:
 
 
 def _stats(entry: dict[str, Any], names: list[str]) -> dict[str, ColumnStats]:
+    """A data file's statistics. With delete files, they describe all its
+    physical rows, which is still correct (`ColStats.Correct`)."""
     metrics = entry.get("readable_metrics") or {}
+    rows = entry["data_file"].get("record_count")
     out = {}
     for c in names:
         m = metrics.get(c) or {}
-        out[c] = ColumnStats(m.get("lower_bound"), m.get("upper_bound"), m.get("null_value_count"))
+        out[c] = ColumnStats(
+            m.get("lower_bound"),
+            m.get("upper_bound"),
+            m.get("null_value_count"),
+            rows,
+            m.get("nan_value_count"),
+        )
     return out
 
 
