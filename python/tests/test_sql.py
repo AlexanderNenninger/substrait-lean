@@ -47,8 +47,8 @@ ACCEPTED = sorted(
 )
 REFUSED = sorted(f.stem for f in FIXTURES.glob("*.json") if f.stem not in ACCEPTED)
 #: Accepted by Lean with relations the SQL generator does not have yet
-#: (`DISTINCT`): it must refuse them, not translate them wrongly.
-NOT_IN_SQL = {"group_by_without_measures"}
+#: (`DISTINCT`, aggregates): it must refuse them, not translate them wrongly.
+NOT_IN_SQL = {"group_by_without_measures", "df_aggregate"}
 
 
 #: The Wheels workflow runs these tests against the installed wheel, with only
@@ -235,7 +235,7 @@ def agree(plan: dict, df: list[tuple] | None, duck: list[tuple], lean: list[tupl
 @needs_fixtures
 def test_fixture_lists_are_complete():
     assert {"filter_project", "virtual_left_join", "union_fetch", "df_window"} <= set(ACCEPTED)
-    assert set(REFUSED) == {"bad_field_ref", "df_aggregate"}
+    assert set(REFUSED) == {"bad_field_ref"}
 
 
 @needs_fixtures

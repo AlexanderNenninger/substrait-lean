@@ -156,6 +156,12 @@ def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
   | .rowNumber => .int
   | .lag c _ _ | .lead c _ _ => cols.getD c .other
 
+def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
+  match m.fn with
+  | .count | .sum => .int
+  | .fsum | .avg => .float
+  | .min | .max => m.arg.kind cols
+
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
     | some (_, s) => schemaKinds s
@@ -177,6 +183,9 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
       ks ++ fns.map (WinFn.kind ks)
   | .semi a _ _ _ => a.kinds tables
   | .orderBy r _ | .distinct r => r.kinds tables
+  | .aggregate r gs ms =>
+      let ks := r.kinds tables
+      gs.map (·.kind ks) ++ ms.map (·.kind ks)
 
 /-! ## Constants
 
@@ -674,6 +683,44 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   | some m => return .emit filtered (← parseMask m)
   | none => return filtered
 
+/-- One `AggregateRel` measure. `AVG` of integers averages their conversions
+to double; `COUNT(*)` may come with no argument. -/
+def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J Measure := do
+  let m ← field mj "measure"
+  let anchor ← natD m "functionReference"
+  let some name := fns.lookup anchor
+    | throw s!"function reference {anchor} is not declared in extensions"
+  let name := baseName name
+  if !(← arrD m "sorts").isEmpty then throw s!"ordered aggregates are not supported: {name}"
+  let distinct ← match field? m "invocation" with
+    | none | some (.str "AGGREGATION_INVOCATION_ALL")
+    | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
+    | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
+    | some i => throw s!"unsupported aggregate invocation: {i.compress}"
+  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols c : J Expr)
+  let args ← (← arrD m "arguments").mapM fun a => field a "value"
+  let arg ← match args with
+    | [a] => parseExpr fns cols a
+    | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
+    | _ => throw s!"{name} takes one argument"
+  let k := arg.kind cols
+  let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
+  let (fn, arg) ← match name, k with
+    | "count", _ => pure (AggFn.count, arg)
+    | "sum", .int => pure (.sum, arg)
+    | "sum", .float => pure (.fsum, arg)
+    | "avg", .int => pure (.avg, .un .itof arg)
+    | "avg", .float => pure (.avg, arg)
+    -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
+    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, NaN is skipped next to
+    -- other values, and which of -0.0 and 0.0 wins depends on the row order.
+    | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
+    | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
+    | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
+    | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
+    | n, _ => throw s!"unsupported aggregate function: {n}"
+  return { fn, arg, distinct, filter }
+
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
   if let some f := field? j "scalarFunction" then
@@ -770,13 +817,14 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
     | "aggregate" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
-      if !(← arrD r "measures").isEmpty then throw "aggregate functions are not supported yet"
-      let keys ← match ← arrD r "groupings" with
-        -- DataFusion writes `DISTINCT` as one empty grouping (which its own
-        -- consumer rejects); it can only mean all columns.
+      let measures ← arrD r "measures"
+      let groups ← match ← arrD r "groupings" with
+        | [] => pure (some [])
         | [g] =>
+          -- DataFusion writes `DISTINCT` as one empty grouping (which its own
+          -- consumer rejects); without measures it can only mean all columns.
           if (field? g "expressionReferences").isNone && (field? g "groupingExpressions").isNone then
-            pure (List.range cols.length)
+            pure (if measures.isEmpty then none else some [])
           else
             let top ← arrD r "groupingExpressions"
             let exprs ← match field? g "expressionReferences" with
@@ -786,10 +834,20 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
                   | some e => pure e
                   | none => throw s!"grouping expression {k} does not exist"
               | none => arrD g "groupingExpressions"
-            exprs.mapM fun e => (parseColumn fns cols "grouping keys" e : J Nat)
+            pure (some (← exprs.mapM fun e => (parseExpr fns cols e : J Expr)))
         | _ => throw "grouping sets are not supported"
-      if keys == List.range cols.length then pure (.distinct inp)
-      else pure (.distinct (.emit inp keys))
+      let columns (gs : List Expr) : Option (List Nat) :=
+        gs.mapM fun | .field i => some i | _ => none
+      match groups, measures with
+      | none, _ => pure (.distinct inp)
+      | some [], [] => throw "an aggregate without groupings needs measures"
+      | some gs, [] => match columns gs with
+        | some keys =>
+          if keys == List.range cols.length then pure (.distinct inp)
+          else pure (.distinct (.emit inp keys))
+        | none => pure (.aggregate inp gs [])
+      | some gs, ms =>
+        pure (.aggregate inp gs (← ms.mapM fun m => (parseMeasure fns cols m : J Measure)))
     | _ =>
       let inputs ← (← arrD r "inputs").mapM (parseRel fns)
       let union ← match inputs with

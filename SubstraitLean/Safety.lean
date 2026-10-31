@@ -462,8 +462,9 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
 
 /-- The plan with the filters DataFusion may merge into or push past removed:
 filters go, inner joins become cross joins, semi and anti joins, sorts and
-`DISTINCT` give way to their (left) input. Fetches and windows stop it:
-filters do not move across them. -/
+`DISTINCT` give way to their (left) input. Fetches, windows and aggregates
+stop it: filters do not move across them (a filter on grouping columns does,
+but only to rows with the same grouping values). -/
 def Rel.loose : Rel → Rel
   | .read t => .read t
   | .values n rows => .values n rows
@@ -478,9 +479,10 @@ def Rel.loose : Rel → Rel
   | .window r part sort fns => .window r part sort fns
   | .semi a _ _ _ => a.loose
   | .orderBy r _ | .distinct r => r.loose
+  | .aggregate r gs ms => .aggregate r gs ms
 
 theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.arity cat
-  | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ => rfl
+  | .read _ | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
   | .filter r _ => by simp [loose, arity, loose_arity cat r]
   | .project r _ => by simp [loose, arity, loose_arity cat r]
   | .emit _ _ => rfl
@@ -492,7 +494,7 @@ theorem Rel.loose_arity (cat : Catalog) : ∀ r : Rel, r.loose.arity cat = r.ari
   | .orderBy r _ | .distinct r => by simp [loose, arity, loose_arity cat r]
 
 theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF cat
-  | .read _, h | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h => h
+  | .read _, h | .values _ _, h | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
   | .filter r _, h => loose_wf (r := r) h.1
   | .project r _, h => ⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩
   | .emit r _, h => ⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩
@@ -508,7 +510,10 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
 
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
-join condition (`under`), which may inline them. -/
+join condition (`under`), which may inline them. Aggregates evaluate their
+grouping expressions and every measure's argument and filter like
+projections, and a `SUM` of integers wraps around when the true sum of a
+group leaves 64 bits. -/
 def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | _, .read _, _ | _, .values _ _, _ => False
   | _, .filter r c, p => r.HasIssue cat true p ∨ ∃ row ∈ r.loose.eval cat, p ∈ c.issues row
@@ -519,6 +524,11 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
   | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
+  | u, .aggregate r gs ms, p => r.HasIssue cat u p ∨
+      (∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ gs ++ ms.flatMap Measure.exprs,
+        p ∈ e.issues row) ∨
+      ∃ m ∈ ms, m.fn = .sum ∧ p = (.wraps, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false
 
 /-- The issues the abstract evaluation cannot rule out. -/
 def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
@@ -536,6 +546,12 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     let ab := Rel.cross a.loose b.loose
     a.mayIssues cat A F T true ++ b.mayIssues cat A F T true ++
       on.mayIssues (ab.aeval cat A F T) (ab.facts cat F T)
+  -- Nothing bounds the number of rows in a group, so any integer sum may wrap.
+  | u, .aggregate r gs ms =>
+    let s := if u then r.loose else r
+    r.mayIssues cat A F T u ++
+      (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T)) ++
+      ms.filterMap fun m => if m.fn = .sum then some (.wraps, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
 
@@ -615,5 +631,17 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 p h))
     · exact .inl (.inr (mayIssues_sound hcat hA hF hT hwf.2.1 p h))
     · exact .inr (condIssue_sound hcat hA hF hT hwf.1 hwf.2.1 hx hy hp)
+  | u, .aggregate r gs ms, hwf, p, h => by
+    simp only [HasIssue] at h
+    simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
+    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, rfl, _⟩
+    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 p h))
+    · have hs : (if u then r.loose else r).WF cat := by
+        cases u
+        · exact hwf.1
+        · exact loose_wf hwf.1
+      exact .inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs row hrow)
+        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩)
+    · exact .inr ⟨m, hm, by simp [hf]⟩
 
 end Substrait
