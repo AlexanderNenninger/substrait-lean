@@ -122,8 +122,8 @@ def test_full_join_on_datafusion():
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(2, "x")]})
 
 
-@pytest.mark.xfail(strict=True, reason="#111: the DuckDB guard raises on NULL / 0")
 def test_null_divided_by_zero_on_duckdb():
+    """#111: `NULL / 0` is NULL; the DuckDB guard raises only on a number."""
     row = (0, None, None, None, None, None)
     assert not finding("SELECT j / i AS c0 FROM t AS q", "engines", {"t": [row]})
 
