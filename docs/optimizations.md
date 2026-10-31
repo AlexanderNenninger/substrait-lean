@@ -147,8 +147,8 @@ other table is broadcast (`Sharding S cat cs`). The question is when
   reverse.** Example: a shard with `2^62, 2^62` next to one with
   `-2^62, -2^62`. Engines differ here. DataFusion and Polars wrap, and since
   wrapping addition is associative the wrapped total is still right
-  mod 2⁶⁴. Spark in ANSI mode raises on an overflowing partial sum (see the
-  Spark backend notes). DuckDB sums `BIGINT` into `HUGEINT`. Our dialects
+  mod 2⁶⁴. Spark in ANSI mode raises on an overflowing partial sum, as
+  seen while building the Spark dialect. DuckDB sums `BIGINT` into `HUGEINT`. Our dialects
   check each `SUM` (`Dialect.int_sum`), so two-phase evaluation either gives
   the exact answer or raises. It never returns a wrong value
   (`test_partial_sum_may_overflow_where_the_total_does_not`). A spurious
