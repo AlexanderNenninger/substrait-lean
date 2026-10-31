@@ -160,11 +160,11 @@ from sverify.io import DeltaSink, DeltaSource
 
 pipe = sv.Pipeline(sv.connect())
 big = pipe.view("big", doubled(pipe.source("orders", DeltaSource("orders"))))
-pipe.preconditions   # each with its source: schema, Delta constraint, file stats @v1, ...
+pipe.preconditions  # each with its source: schema, Delta constraint, file stats @v1, ...
 sink = DeltaSink("big", big)
-sink.write()         # NOT NULL / CHECK constraints from `ensures`, contract in the commit
-pipe.refresh()       # orders@v1→v3: ...; Δ trusted as coming from Delta CDF v1→v3
-sink.write()         # one MERGE commit, exactly once
+sink.write()  # NOT NULL / CHECK constraints from `ensures`, contract in the commit
+pipe.refresh()  # orders@v1→v3: ...; Δ trusted as coming from Delta CDF v1→v3
+sink.write()  # one MERGE commit, exactly once
 ```
 
 See the main README for the full example and what is trusted versus proved.
