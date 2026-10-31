@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | #75–#80 |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75); #79, #80 open |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -241,22 +241,46 @@ optimizer. DataFusion uses primary keys for functional dependencies in
 or proved through composition, so each rewrite below rests on facts we know
 hold:
 
-* **Join elimination** (#75). Take `R ⋈ S` on an FK `R.k → S.pk`, with `S.pk` a key
-  (`Keys.lean`) and `R.k` NOT NULL (`AVal.null = false`), where the output
-  needs no column of `S`. Then the join is `R`. A left join on a key needs no
-  FK at all. Proof obligation: a bag equation stating that each left row has
-  exactly one match.
-* **DISTINCT elimination** (#76). If `Rel.keys` proves a key among the output
-  columns, then `DISTINCT r ~ r`. The ingredients exist already: `KeyOn` and
-  `dedup` of a `Pairwise ≠` list.
-* **Outer-to-inner join conversion** (#77). A filter above a left join that
-  rejects NULLs on a right column turns it into an inner join. With an FK and
-  NOT NULL, every left row matches, so the conversion holds without a filter.
-  Engines do the filter case; the FK case needs our facts.
-* **Filters implied by CHECK constraints** (#78). If `aeval` proves the condition
-  certainly TRUE on the input (`AVal.certainlyTrue`), then `filter r c ~ r`.
-  This is nearly free given `contract_sound`, and it composes: a downstream
-  re-check of an upstream guarantee disappears.
+* **Join elimination** (#75, done). Take `R ⋈ S` on a condition that
+  determines a key of `S` (`Keys.determines`), so each left row has at most
+  one partner. A left join then gives exactly one row per left row, and so
+  does an inner join on a NOT NULL foreign key (`sv.references`, as in
+  #77). When an emit, a projection or an aggregate above reads no column of
+  `S`, the join goes (`Rel.joinElim`, `flatMap_single`, `aggregateEval_map`).
+* **DISTINCT elimination** (#76, done). If `Rel.keys` proves any key of
+  `r`, its rows are pairwise distinct and `DISTINCT r` is `r`
+  (`dedup_of_nodup`). The same goes for a `GROUP BY` without measures whose
+  grouping expressions contain a key's columns (it becomes a projection), and
+  for `fn(DISTINCT x)` when `x` alone is a key (`COUNT(DISTINCT id)` becomes
+  `COUNT(id)`).
+
+**Wiring.** `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
+rewrites bottom-up, deciding each from the analyses of the already rewritten
+inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
+is well-formed, has the same arity and gives the same list of rows (not just
+the same bag). `substrait-check --contract` reports the rewritten plan as
+`optimized`, in Lean's written form, with the names of the rewrites applied
+(`rewrites`); `sverify.Report.optimized` and `Report.rewrites` expose them.
+Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
+`polars_engine.run`) only on data that meets the preconditions, as with
+`guards=False`.
+* **Outer-to-inner join conversion** (#77, done). A filter above a left
+  join that is never TRUE on a padded row (`Expr.absD` with the right
+  columns NULL) turns it into an inner join; engines do this case too. With a
+  foreign key and NOT NULL, every left row matches, so the conversion holds
+  without a filter. `sv.references(col, table, other)` declares the foreign
+  key (`ForeignKeys.Hold`), checked on the data like `unique`. `Rel.origin`
+  follows the join column back to a table column and `Rel.cover` checks that
+  the right side keeps every value of the referenced one. The inner join is
+  in the incremental fragment (`--delta`), which excludes left joins. Incremental
+  views do not take `references` preconditions yet: they would have to check
+  deletes from the referenced table.
+* **Filters implied by CHECK constraints** (#78, done). If `Expr.absD`
+  shows the condition certainly TRUE on the input's abstract rows
+  (`AVal.certainlyTrue`, as for a postcondition), `filter r c` is `r`. If it
+  shows the condition never TRUE (`tt = false`), the filter is an empty
+  `VALUES`. This composes: a downstream re-check of an upstream guarantee
+  disappears (`test_composed_pipeline_drops_the_downstream_check`).
 * **GROUP BY simplification through functional dependencies** (#79). If a key
   `k ⊆ gs` determines the other grouping columns, group by `k` alone and
   carry the rest through `MIN` (or `ANY_VALUE`). This needs functional
