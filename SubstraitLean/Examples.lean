@@ -6,6 +6,7 @@ import SubstraitLean.Contracts
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Completeness
+import SubstraitLean.Compose
 
 /-!
 # Examples
@@ -134,3 +135,15 @@ end Substrait.Examples
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak
 #print axioms Substrait.Rel.window_deterministic
+#print axioms Substrait.Triple.compose
+#print axioms Substrait.Triple.compose_spec
+#print axioms Substrait.Triple.of_contract
+#print axioms Substrait.Triple.of_keys
+#print axioms Substrait.Triple.of_aeval
+#print axioms Substrait.RowsSat.update
+#print axioms Substrait.KeyOn.update
+#print axioms Substrait.Spec.update
+#print axioms Substrait.Triple.maintained
+#print axioms Substrait.Rel.stack_sound
+#print axioms Substrait.Rel.chain_sound
+#print axioms Substrait.ZSet.diff_correct
