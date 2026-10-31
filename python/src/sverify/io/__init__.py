@@ -13,12 +13,37 @@ preconditions, and sinks that carry proved contracts between jobs.
     print(pipe.refresh())   # orders@v3→v5: ...; Δ trusted as coming from Delta CDF v3→v5
     sink.write()
 
-Sources hand Arrow tables to the pipeline, so every engine works.
+Sources hand Arrow tables to the pipeline, so every engine works. Each
+format is an extra: `pip install 'sverify[delta]'` or `'sverify[iceberg]'`;
+its classes are imported when first used.
 """
 
+from __future__ import annotations
+
+import importlib
+from typing import TYPE_CHECKING, Any
+
 from sverify.io._common import ColumnStats, Contract, stats_facts
-from sverify.io.delta import DeltaSink, DeltaSource, SinkWrite
-from sverify.io.iceberg import IcebergSink, IcebergSource, IcebergWrite
+
+if TYPE_CHECKING:
+    from sverify.io.delta import DeltaSink, DeltaSource, SinkWrite
+    from sverify.io.iceberg import IcebergSink, IcebergSource, IcebergWrite
+
+_MODULES = {
+    "DeltaSink": "delta",
+    "DeltaSource": "delta",
+    "SinkWrite": "delta",
+    "IcebergSink": "iceberg",
+    "IcebergSource": "iceberg",
+    "IcebergWrite": "iceberg",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _MODULES:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(f"sverify.io.{_MODULES[name]}"), name)
+
 
 __all__ = [
     "ColumnStats",

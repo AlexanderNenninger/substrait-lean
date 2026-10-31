@@ -13,8 +13,12 @@ import json
 import threading
 from collections.abc import Mapping
 
-import duckdb
 import pyarrow as pa
+
+try:
+    import duckdb
+except ImportError as e:
+    raise ImportError("the DuckDB engine needs duckdb: pip install 'sverify[duckdb]'") from e
 
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
