@@ -1,5 +1,5 @@
 import Lean.Data.Json
-import SubstraitLean.Rel
+import SubstraitLean.Keys
 
 /-!
 # Parsing Substrait JSON plans
@@ -102,9 +102,14 @@ Doubles, timestamps and dates all become integers in the model (see
 
 inductive Kind where
   | int | float | time | date | str | bool | other
-  deriving Repr, BEq, DecidableEq
+  /-- A timestamp with a time zone: an instant, whose calendar arithmetic is
+  daylight-saving-aware in DataFusion, so it is refused. -/
+  | timeTz
+  /-- A list of values of the element kind. -/
+  | list (elem : Kind)
+  deriving Repr, BEq, DecidableEq, Inhabited
 
-def typeKind (ty : Json) : Kind :=
+partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if ["i8", "i16", "i32", "i64"].any has then .int
   else if ["fp32", "fp64"].any has then .float
@@ -113,9 +118,12 @@ def typeKind (ty : Json) : Kind :=
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
     if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
+  else if has "precisionTimestampTz" || has "timestampTz" then .timeTz
   else if has "date" then .date
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
+  else if let some l := (ty.getObjVal? "list").toOption then
+    .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
   else .other
 
 def schemaKinds (schema : Json) : List Kind :=
@@ -147,6 +155,8 @@ def litKind : Value → Kind
   | .str _ => .str
   | .bool _ => .bool
   | .null => .other
+  | .list [] => .list .other
+  | .list (v :: _) => .list (litKind v)
 
 def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
@@ -155,6 +165,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ | .un (.narrow _) _ => .int
+  | .un (.wrap _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ => .str
   | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ => .int
   | .un (.dateTrunc _) _ => .time
@@ -192,6 +203,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .count | .sum => .int
   | .fsum | .avg => .float
   | .min | .max => m.arg.kind cols
+  | .collect => .list (m.arg.kind cols)
 
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
@@ -214,6 +226,9 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
       ks ++ fns.map (WinFn.kind ks)
   | .semi a _ _ _ => a.kinds tables
   | .orderBy r _ | .distinct r => r.kinds tables
+  | .unnest r c =>
+      let ks := r.kinds tables
+      ks.set c (match ks.getD c .other with | .list k => k | _ => .other)
   | .aggregate r gs ms =>
       let ks := r.kinds tables
       gs.map (·.kind ks) ++ ms.map (·.kind ks)
@@ -302,7 +317,77 @@ def intBits (ty : Json) : Nat :=
   else if (ty.getObjVal? "i32").toOption.isSome then 32
   else 64
 
+/-! ## Integer widths
+
+The model's integers are unbounded; 64-bit arithmetic wraps around in
+DataFusion, which `SubstraitLean/Safety.lean` reports. Narrower integers wrap
+at their own width, so the parser tracks the width of integer expressions and
+marks arithmetic on narrower ones with `UnFn.wrap`. DataFusion computes at the
+widest operand type (`INT + BIGINT` is a `BIGINT`), and an integer literal has
+its own type (SQL's `1` is a `BIGINT`, Calcite's an `INT`). Unsigned integers
+(a type variation in Substrait) are refused. -/
+
+/-- Is this an integer type with a type variation (DataFusion's unsigned
+integers)? -/
+def unsignedType (ty : Json) : Bool :=
+  ["i8", "i16", "i32", "i64"].any fun k =>
+    ((field? ty k).bind (field? · "typeVariationReference")).any (·.getNat?.toOption != some 0)
+
+def schemaBits (schema : Json) : List Nat :=
+  match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
+  | some tys => tys.toList.map intBits
+  | none => []
+
+/-- The width of an integer expression over columns of widths `cols` (64 for
+anything else). A literal does not widen (the parser looks at its type where
+it is an argument). -/
+def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
+  | .field i => cols.getD i 64
+  | .lit _ => 8
+  | .un (.wrap n) _ | .un (.narrow n) _ => n
+  | .un .neg a => a.bits cols
+  | .bin .add a b | .bin .sub a b | .bin .mul a b | .bin .idiv a b | .bin .imod a b =>
+    max (a.bits cols) (b.bits cols)
+  | .ifThen _ t e => max (t.bits cols) (e.bits cols)
+  | _ => 64
+
+def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
+  | .read t => match tables.lookup t with
+    | some (_, s) => schemaBits s
+    | none => []
+  | .values n rows => match tables.lookup (valuesKey n rows) with
+    | some (_, s) => schemaBits s
+    | none => List.replicate n 64
+  | .filter r _ | .fetch r _ _ => r.bits tables
+  | .project r es =>
+      let bs := r.bits tables
+      bs ++ es.map (·.bits bs)
+  | .emit r m =>
+      let bs := r.bits tables
+      m.map (bs.getD · 64)
+  | .cross a b | .join a b _ _ => a.bits tables ++ b.bits tables
+  | .unionAll a _ => a.bits tables
+  | .window r _ _ fns =>
+      let bs := r.bits tables
+      bs ++ fns.map fun | .lag c _ _ | .lead c _ _ => bs.getD c 64 | .rowNumber => 64
+  | .semi a _ _ _ => a.bits tables
+  | .orderBy r _ | .distinct r => r.bits tables
+  -- A list element's width is not tracked.
+  | .unnest r c => (r.bits tables).set c 64
+  | .aggregate r gs ms =>
+      let bs := r.bits tables
+      gs.map (·.bits bs) ++ ms.map fun m => match m.fn with
+        | .min | .max => m.arg.bits bs
+        | _ => 64
+
+/-- The width of an argument: a literal's own type, or the expression's. -/
+def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
+  match field? j "literal" with
+  | some l => if (field? l "null").isSome then 8 else intBits l
+  | none => e.bits cols
+
 def castConst (ty : Json) (c : Const) : J Const := do
+  if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
   match typeKind ty with
   | .float =>
@@ -355,6 +440,9 @@ def intervalMicros (d : Json) : J Int := do
   return (days * 86400 + secs) * 1_000_000 + subUs
 
 def parseConstLiteral (j : Json) : J Const := do
+  if ["i8", "i16", "i32", "i64"].any (fun k => (field? j k).isSome) &&
+      (field? j "typeVariationReference").any (·.getNat?.toOption != some 0) then
+    throw "unsigned integers are not supported"
   let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
     "varChar", "null", "decimal",
     "precisionTimestamp", "timestamp", "date", "intervalDayToSecond", "intervalCompound"]
@@ -473,6 +561,16 @@ def arithmeticFns : List String :=
 def comparisonFns : List String :=
   ["equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from"]
 
+/-- Functions on strings, with the positions of their arguments that are
+integers (`substring`'s start and length). -/
+def stringFns : List (String × List Nat) :=
+  [("upper", []), ("lower", []), ("character_length", []), ("char_length", []), ("length", []),
+   ("str_concat", []), ("concat", []), ("strpos", []), ("starts_with", []), ("ends_with", []),
+   ("like", []), ("substring", [1, 2]), ("btrim", []), ("ltrim", []), ("rtrim", [])]
+
+/-- Functions on booleans. -/
+def booleanFns : List String := ["and", "or", "not", "xor"]
+
 /-- Does the expression read a column? One that doesn't is built from
 literals, whose kinds say nothing (a timestamp literal is an integer). -/
 def _root_.Substrait.Expr.readsField : Expr → Bool
@@ -494,11 +592,26 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
   if arithmeticFns.contains base then
     if sigs.any (· matches .kind .date) || ks.any (· == some .date) then
       throw s!"{name}: date arithmetic is not in the Lean model (dates are days, intervals microseconds)"
+    -- A day of a zoned timestamp is 23 or 25 hours across a switch to or from
+    -- daylight saving time.
+    if ks.any (· == some .timeTz) then
+      throw s!"{name}: arithmetic on timestamps with a time zone is not in the Lean model (daylight saving time)"
   if comparisonFns.contains base then
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
       if rest.any (· != k) then throw s!"{name}: compares values of different types"
+  -- `Rel.eval` gives `NULL` for a string or boolean function of anything
+  -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
+  let want (k : Nat) : Option Kind :=
+    if booleanFns.contains base then some .bool
+    else match stringFns.lookup base with
+      | some ints => some (if ints.contains k then .int else .str)
+      | none => none
+  for (k, i) in ks.zipIdx do
+    if let (some w, some k) := (want i, k) then
+      if k != .other && k != w then
+        throw s!"{name}: argument {i + 1} is of kind {repr k}, not {repr w}"
   -- A variadic signature (`and:bool`) names the type of every argument once.
   let sigs := match sigs.getLast? with
     | some s => sigs ++ List.replicate (args.length - sigs.length) s
@@ -514,6 +627,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     | _, _ => pure ()
 
 #guard (checkArgKinds "add:date_iday" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+#guard (checkArgKinds "add" [.timeTz] [.field 0, .lit (.int 86400000000)]).toBool == false
 #guard (checkArgKinds "add" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
 #guard (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
 #guard (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false
@@ -522,6 +636,92 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard (checkArgKinds "add:pts_iday" [.time] [.field 0, .lit (.int 1)]).toBool
 #guard (checkArgKinds "add:i64_i64" [.float] [.field 0, .lit (.int 1)]).toBool == false
 #guard (checkArgKinds "and:bool" [.bool, .bool, .int] [.field 0, .field 1, .field 2]).toBool == false
+#guard (checkArgKinds "concat" [.int] [.field 0, .lit (.str "a")]).toBool == false
+#guard (checkArgKinds "substring" [.str, .int] [.field 0, .field 1]).toBool
+#guard (checkArgKinds "or" [.bool, .int] [.field 0, .field 1]).toBool == false
+
+/-! ## Eager conditionals
+
+`Expr.ifThen` evaluates only the branch it takes (`SubstraitLean/Safety.lean`),
+as DataFusion's `CASE` does. Two conditionals are eager in DataFusion, though:
+`COALESCE` evaluates all its arguments, and the simplifier rewrites a `CASE`
+with a boolean value into `AND`/`OR`, which evaluate both sides. The parser
+makes these eager by evaluating the other branches in the condition as well:
+`c AND (x IS NULL OR … OR TRUE)` is true exactly where `c` is, and evaluates
+every `x` on every row. -/
+
+/-- Does evaluating the expression always evaluate `x`? (Not when `x` is only
+in a branch of a conditional.) -/
+def evaluates (x : Expr) : Expr → Bool
+  | e@(.lit _) | e@(.field _) => e == x
+  | e@(.un _ a) => e == x || evaluates x a
+  | e@(.bin _ a b) => e == x || evaluates x a || evaluates x b
+  | e@(.ifThen c _ _) => e == x || evaluates x c
+
+/-- The condition `c`, also evaluating each of `xs` on every row. Expressions
+it evaluates already are left out, so the parser reads its own written plans
+back unchanged. -/
+def eagerly (c : Expr) (xs : List Expr) : Expr :=
+  match xs.filter fun x => !(x matches .lit _) && !evaluates x c with
+  | [] => c
+  | x :: rest =>
+    let tail := rest.foldl (fun acc y => .bin .or acc (.un .isNull y)) (.un .isNull x)
+    .bin .and c (.bin .or tail (.lit (.bool true)))
+
+/-! ## Function options
+
+Substrait lets a plan choose some behaviours (`overflow`, `rounding`, …); a
+consumer takes the first preference it supports. An option is accepted when
+the model's behaviour is one of its preferences, or when the behaviours differ
+only on rows where `SubstraitLean/Safety.lean` reports an error anyway (what
+`MIN / -1` gives); anything else is refused. -/
+
+/-- The preferences an option of `base` may list (`none`: any), and whether
+the option is known at all. `float` says the call is on doubles. -/
+def optionAccepts (base : String) (float : Bool) : String → Option (Option (List String))
+  -- Integer `+`, `-`, `*` and `SUM` wrap around silently (a `wraps` warning).
+  | "overflow" =>
+    if float then none
+    else if ["add", "subtract", "multiply", "negate", "sum"].contains base then some (some ["SILENT"])
+    else if ["divide", "modulus", "abs", "power"].contains base then some none
+    else none
+  | "rounding" =>
+    if !float then none
+    -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
+    else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
+    -- Native doubles round to nearest, ties to even.
+    else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
+      some (some ["TIE_TO_EVEN"])
+    else none
+  | "on_division_by_zero" =>
+    if base != "divide" && base != "modulus" then none
+    else if float then some (some ["IEEE"]) else some none
+  | "on_domain_error" =>
+    if base != "power" then none else if float then some (some ["NAN"]) else some none
+  | _ => none
+
+def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
+  let base := baseName name
+  for o in opts do
+    let opt ← (← field o "name").getStr?
+    -- `concat`'s `null_handling` is checked where it is parsed.
+    if base == "concat" && opt == "null_handling" then continue
+    let prefs ← (← arrD o "preference").mapM (·.getStr?)
+    match optionAccepts base float opt with
+    | none => throw s!"{name}: option {opt} is not supported"
+    | some none => pure ()
+    | some (some ok) =>
+      unless prefs.isEmpty || prefs.any ok.contains do
+        throw s!"{name}: option {opt} = {prefs} is not supported (the model does {ok})"
+
+#guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["ERROR", "SILENT"])]]).toBool
+#guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["SATURATE"])]]).toBool == false
+#guard (checkOptions "divide" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["SATURATE"])]]).toBool
+#guard (checkOptions "add" true [Json.mkObj [("name", "rounding"),
+  ("preference", Json.arr #["TIE_AWAY_FROM_ZERO"])]]).toBool == false
 
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
@@ -563,13 +763,17 @@ def mkCall : String → List Expr → J Expr
   | "or", a :: as => pure (as.foldl (.bin .or) a)
   -- Null handling and `GREATEST`/`LEAST`, as conditionals. These duplicate
   -- their arguments, which is harmless: expressions have no side effects.
-  | "coalesce", a :: as => pure (coalesce a as)
+  -- Eager: every argument is evaluated on every row.
+  | "coalesce", a :: as => pure <| match coalesce a as with
+    | .ifThen c x r => .ifThen (eagerly c as) x r
+    | e => e
   | "nullif", [a, b] => pure (.ifThen (.bin .eq a b) (.lit .null) a)
   | "greatest", a :: as | "greatest_skip_null", a :: as =>
     pure (as.foldl (pick fun x y => .bin .lt x y) a)
   | "least", a :: as | "least_skip_null", a :: as =>
     pure (as.foldl (pick fun x y => .bin .lt y x) a)
-  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.un .neg a) a)
+  -- `-a` as `a / -1`, which fails on the smallest integer as `ABS` does.
+  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .idiv a (.lit (.int (-1)))) a)
   -- Equality where `NULL` equals `NULL`: never `NULL` itself.
   | "is_not_distinct_from", [a, b] => pure (notDistinct a b)
   | "is_distinct_from", [a, b] => pure (.un .not (notDistinct a b))
@@ -646,7 +850,15 @@ def mkFloatCall : String → List Expr → J Expr
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
 /-- Parse an expression over input columns of kinds `cols`. -/
-partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json) : J Expr := do
+partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
+    J Expr := do
+  -- List literals: their elements are literals (without the `literal` key).
+  if let some l := field? j "literal" then
+    if let some lj := field? l "list" then
+      let vs ← (← arrD lj "values").mapM fun e => do
+        return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
+      return .lit (.list vs)
+    if (field? l "emptyList").isSome then return .lit (.list [])
   if let some c ← constOf? fns j then return ← constExpr c
   match ← oneof "expression" j ["selection", "scalarFunction", "ifThen", "cast", "singularOrList"] with
   | ("selection", s) =>
@@ -669,9 +881,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
             let gargs ← (← arrD g "arguments").mapM fun a => field a "value"
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
-            return .un (.regexMatch p) (← parseExpr fns cols sj)
-    let parsed ← argJs.mapM (parseExpr fns cols)
+            return .un (.regexMatch p) (← parseExpr fns cols bits sj)
+    let parsed ← argJs.mapM (parseExpr fns cols bits)
     checkArgKinds name cols parsed
+    let onFloats := parsed.any (·.kind cols == .float) ||
+      typeKind ((field? f "outputType").getD .null) == .float
+    checkOptions name onFloats (← arrD f "options")
     -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
     -- writes its `NULL`-skipping ones untyped (`mkCall`).
     if ["greatest", "least"].contains (baseName name) && !(sigTokens name).isEmpty then
@@ -708,21 +923,42 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
       if (hasFloat || floatCall) && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.int (FloatCode.ofInt i))
       return e
+    -- DataFusion's simplifier makes `power(x, 0)` a constant 1, even for a
+    -- NULL `x`.
+    if baseName name == "power" then
+      if let [_, Expr.lit (.int 0)] := args then
+        return .lit (.int (if floatCall then FloatCode.ofFloat 1.0 else 1))
     if floatCall then
       let args := args.zipIdx.map fun (e, k) =>
         if e.kind cols == .int && !keepInt k && !(e matches .lit _) then Expr.un .itof e else e
       mkFloatCall (baseName name) args
-    else mkCall (baseName name) args
+    else
+      let call ← mkCall (baseName name) args
+      -- Arithmetic on integers narrower than 64 bits wraps at their width.
+      let w := ((argJs.zip parsed).map fun (j, e) => argBits bits j e).foldl max 8
+      if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&
+          call.kind cols == .int then
+        return .un (.wrap w) call
+      return call
   | ("ifThen", t) =>
     -- A `CASE` without `ELSE` is `ELSE NULL`.
     let els ← match field? t "else" with
-      | some e => parseExpr fns cols e
+      | some e => parseExpr fns cols bits e
       | none => pure (.lit .null)
-    (← arrD t "ifs").foldrM (init := els) fun clause acc => do
-      return .ifThen (← parseExpr fns cols (← field clause "if"))
-        (← parseExpr fns cols (← field clause "then")) acc
+    let clauses ← (← arrD t "ifs").mapM fun clause => do
+      return (← parseExpr fns cols bits (← field clause "if"), ← parseExpr fns cols bits (← field clause "then"))
+    match clauses with
+    | [] => return els
+    | (c, x) :: rest =>
+      let rest' := rest.foldr (fun (c, x) acc => .ifThen c x acc) els
+      -- A boolean `CASE` may become `AND`/`OR`: every branch is evaluated.
+      let thens := els :: clauses.map (·.2)
+      if thens.any (·.kind cols == .bool) then
+        return .ifThen (eagerly c (thens ++ rest.map (·.1))) x rest'
+      return .ifThen c x rest'
   | ("cast", c) =>
-    let e ← parseExpr fns cols (← field c "input")
+    let e ← parseExpr fns cols bits (← field c "input")
+    if unsignedType (← field c "type") then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
     if target == .float && k == .int then return .un .itof e
@@ -738,11 +974,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
     throw s!"unsupported cast from {repr k} to {repr target}"
   | ("singularOrList", l) =>
     -- `x IN (a, b)` is `x = a OR x = b`, which has SQL's null semantics.
-    let v ← parseExpr fns cols (← field l "value")
+    let v ← parseExpr fns cols bits (← field l "value")
     let opts ← (← arrD l "options").mapM fun o => do
       if v.kind cols == .float then
         if let some (.int i) ← constOf? fns o then return Expr.lit (.int (FloatCode.ofInt i))
-      parseExpr fns cols o
+      parseExpr fns cols bits o
     match opts.map (.bin .eq v) with
     | [] => return .lit (.bool false)
     | e :: es => return es.foldl (.bin .or) e
@@ -751,7 +987,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json)
 /-! ## Window functions -/
 
 def parseColumn (fns : List (Nat × String)) (cols : List Kind) (what : String) (j : Json) : J Nat := do
-  match ← parseExpr fns cols j with
+  match ← parseExpr fns cols [] j with
   | .field i => pure i
   | _ => throw s!"window {what} must be columns"
 
@@ -801,26 +1037,36 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (w : Json) :
     | n => throw s!"unsupported window function: {n}"
   return (part, sort, f)
 
-/-- The window functions inside an expression, in the order `replaceWindows`
-visits them. A window function's own arguments are not searched. -/
-partial def windowsIn : Json → List Json
-  | .arr a => a.toList.flatMap windowsIn
-  | j@(.obj kvs) => match field? j "windowFunction" with
+/-- The nodes under `key` inside an expression, in the order `replaceNodes`
+visits them. A node's own contents are not searched. -/
+partial def nodesIn (key : String) : Json → List Json
+  | .arr a => a.toList.flatMap (nodesIn key)
+  | j@(.obj kvs) => match field? j key with
     | some w => [w]
-    | none => kvs.toList.flatMap (windowsIn ·.2)
+    | none => kvs.toList.flatMap (nodesIn key ·.2)
   | _ => []
 
-/-- Replace the `k`-th window function (from `k₀`) by `col k`. -/
-partial def replaceWindows (col : Nat → Json) : Json → StateM Nat Json
-  | .arr a => return .arr (← a.mapM (replaceWindows col))
+/-- Replace the `k`-th node under `key` (from `k₀`) by `col k`. -/
+partial def replaceNodes (key : String) (col : Nat → Json) : Json → StateM Nat Json
+  | .arr a => return .arr (← a.mapM (replaceNodes key col))
   | j@(.obj kvs) => do
-    if (field? j "windowFunction").isSome then
+    if (field? j key).isSome then
       let k ← get
       set (k + 1)
       return col k
-    let kvs' ← kvs.toList.mapM fun (k, v) => do return (k, ← replaceWindows col v)
+    let kvs' ← kvs.toList.mapM fun (k, v) => do return (k, ← replaceNodes key col v)
     return Json.mkObj kvs'
   | j => return j
+
+/-- The window functions inside an expression. -/
+def windowsIn : Json → List Json := nodesIn "windowFunction"
+
+def replaceWindows (col : Nat → Json) : Json → StateM Nat Json := replaceNodes "windowFunction" col
+
+/-- A reference to input column `i`. -/
+def fieldJson (i : Nat) : Json :=
+  Json.mkObj [("selection", Json.mkObj [("directReference", Json.mkObj
+    [("structField", Json.mkObj [("field", (i : Int))])])])]
 
 /-- A `ProjectRel` whose expressions use window functions, at the top or
 nested (`ROW_NUMBER() OVER (…) - 1`). The windows are hoisted into
@@ -828,7 +1074,7 @@ nested (`ROW_NUMBER() OVER (…) - 1`). The windows are hoisted into
 (stacked in order of first use), each use getting its own column. The
 expressions then read those columns; an emit restores Substrait's column
 order: input columns, then each expression. -/
-def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kind)
+def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kind) (bits : List Nat)
     (es : List Json) : J Rel := do
   let n := cols.length
   let uses ← (es.flatMap windowsIn).mapM (parseWindow fns cols)
@@ -850,15 +1096,13 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
       if p' == part && s' == sort then return off + before
       off := off + fs.length
     return off
-  let field (i : Nat) : Json :=
-    Json.mkObj [("selection", Json.mkObj [("directReference", Json.mkObj
-      [("structField", Json.mkObj [("field", (i : Int))])])])]
-  let (rewritten, _) := (es.mapM (replaceWindows (field ∘ column))).run 0
+  let (rewritten, _) := (es.mapM (replaceWindows (fieldJson ∘ column))).run 0
   let wcols := cols ++ (windowed.kinds []).drop n
+  let wbits := bits ++ (windowed.bits []).drop n
   -- Bare window functions are their columns; other expressions are computed
   -- after the windows.
   let parsed ← rewritten.mapM fun e => do
-    match ← parseExpr fns wcols e with
+    match ← parseExpr fns wcols wbits e with
     | .field i => if n ≤ i then pure (Sum.inl i) else pure (Sum.inr (Expr.field i))
     | e => pure (Sum.inr e)
   let scalars := parsed.filterMap fun p => match p with | .inr e => some e | .inl _ => none
@@ -889,6 +1133,7 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   let arity ← schemaArity r
   -- The model's times are microseconds (`typeKind`).
   for ty in ← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types" do
+    if unsignedType ty then throw "unsigned integer columns are not supported"
     if let some t := field? ty "precisionTimestamp" then
       if (← natD t "precision") < 6 then
         throw "timestamp columns coarser than microseconds are not supported"
@@ -902,7 +1147,7 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
       -- Current encoding: `expressions`; deprecated encoding: `values` of literals.
       let rows ← match field? v "expressions" with
         | some _ => (← arrD v "expressions").mapM fun row => do
-            (← arrD row "fields").mapM fun e => do pure ((← parseExpr fns [] e).eval [])
+            (← arrD row "fields").mapM fun e => do pure ((← parseExpr fns [] [] e).eval [])
         | none => (← arrD v "values").mapM fun row => do
             (← arrD row "fields").mapM fun e => do
               return (← constExpr (← parseConstLiteral e)).eval []
@@ -923,7 +1168,9 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   -- `ReadRel.filter` must be applied exactly (`bestEffortFilter` may be
   -- ignored). It refers to the base schema, so it comes before the mask.
   let filtered ← match field? r "filter" with
-    | some c => pure (Rel.filter base (← parseExpr fns (schemaKinds (← field r "baseSchema")) c))
+    | some c =>
+      let schema ← field r "baseSchema"
+      pure (Rel.filter base (← parseExpr fns (schemaKinds schema) (schemaBits schema) c))
     | none => pure base
   match field? r "projection" with
   | some m => return .emit filtered (← parseMask m)
@@ -931,25 +1178,30 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
 
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
-def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J Measure := do
+def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
+    J Measure := do
   let m ← field mj "measure"
   let anchor ← natD m "functionReference"
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  if !(← arrD m "sorts").isEmpty then throw s!"ordered aggregates are not supported: {name}"
+  -- Only `ARRAY_AGG` depends on the order of its rows.
+  let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
+  if !sort.isEmpty && name != "array_agg" then
+    throw s!"ordered aggregates are not supported: {name}"
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
     | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
     | some i => throw s!"unsupported aggregate invocation: {i.compress}"
-  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols c : J Expr)
+  let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols bits c : J Expr)
   let args ← (← arrD m "arguments").mapM fun a => field a "value"
   let arg ← match args with
-    | [a] => parseExpr fns cols a
+    | [a] => parseExpr fns cols bits a
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
   let k := arg.kind cols
+  checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
   -- (`avg:i64` with an `i64` result), which it is not.
   if name == "avg" then
@@ -969,8 +1221,91 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (mj : Json) : J
     | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
     | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
     | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
+    -- NULLs are skipped (`Measure.inputs`), as with Ibis's
+    -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
+    | "array_agg", _ => pure (.collect, arg)
     | n, _ => throw s!"unsupported aggregate function: {n}"
-  return { fn, arg, distinct, filter }
+  if fn == .collect then
+    if distinct then throw "array_agg(DISTINCT …) is not supported"
+    let skipsNull := match filter with
+      | some f => f == .un .not (.un .isNull arg) ||
+          (match f with | .bin .and _ (.un .not (.un .isNull a)) => a == arg | _ => false)
+      | none => false
+    if !skipsNull then
+      throw "array_agg keeps NULLs; only array_agg(x) FILTER (WHERE x IS NOT NULL) is supported"
+  return { fn, arg, distinct, filter, sort }
+
+/-! ## Subqueries
+
+A subquery expression (`Expression.subquery`) in a filter or a projection
+becomes a column appended to the input, computed by joining the subquery's
+relation; the expression then reads that column. Outer references are
+refused, so only uncorrelated subqueries get here. -/
+
+/-- Does `r` have at most one row, on every catalog with the tables' arities?
+`Rel.keys` derives the empty key (`Rel.keys_sound`, `KeyOn.nil_iff`). -/
+def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
+  let cat : Catalog := fun t => match tables.lookup t with
+    | some (n, _) => ⟨n, []⟩
+    | none => ⟨0, []⟩
+  (r.keys cat (fun _ => []) (fun _ => []) (fun _ => [])).contains []
+
+/-- `inp` with one more column: the value of the subquery `sq` on each row.
+
+* `(SELECT …)`: a left join on `TRUE`. DataFusion fails when the subquery
+  has several rows, so it must provably have at most one (`atMostOneRow`);
+  with none, the value is `NULL`.
+* `x IN (SELECT y …)`: `TRUE` if some `y = x`; otherwise `NULL` if `x` is
+  `NULL` (and there are `y`s) or some `y` is, else `FALSE`. A left join with
+  the distinct non-`NULL` `y`s finds the match (at most one per row), and a
+  cross join with `COUNT(*)` and `COUNT(y)` (one row) says the rest.
+* `EXISTS (…)`: a cross join with its `COUNT(*)` (one row), compared with 0. -/
+def liftSubquery (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Rel) (sq : Json) :
+    P Rel := do
+  let cols := inp.kinds (← get)
+  let n := cols.length
+  let oneColumn (what : String) (q : Rel) : P Unit := do
+    if (q.kinds (← get)).length != 1 then throw s!"{what} must return one column"
+  let count (e : Expr) : Measure := { fn := .count, arg := e }
+  match ← oneof "subquery" sq ["scalar", "inPredicate", "setPredicate"] with
+  | ("scalar", s) =>
+    let q ← parse (← field s "input")
+    oneColumn "a scalar subquery" q
+    if !atMostOneRow (← get) q then
+      throw "a scalar subquery must have at most one row (DataFusion fails on more), \
+        and the checker cannot prove it (it can for an aggregate without groups, or LIMIT 1)"
+    return .join inp q .left (.lit (.bool true))
+  | ("inPredicate", ip) =>
+    let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
+    let x ← parseExpr fns cols (inp.bits (← get)) nj
+    let hay ← parse (← field ip "haystack")
+    oneColumn "an IN subquery" hay
+    let ys := Rel.distinct (.filter hay (.un .not (.un .isNull (.field 0))))
+    let counts := Rel.aggregate hay [] [count (.lit (.int 1)), count (.field 0)]
+    let both := Rel.cross (.join inp ys .left (.bin .eq x (.field n))) counts
+    let (y, c, cy) := (Expr.field n, Expr.field (n + 1), Expr.field (n + 2))
+    let value := Expr.ifThen (.un .not (.un .isNull y)) (.lit (.bool true))
+      (.ifThen (.bin .eq c (.lit (.int 0))) (.lit (.bool false))
+        (.ifThen (.bin .or (.un .isNull x) (.bin .lt cy c)) (.lit .null) (.lit (.bool false))))
+    return .emit (.project both [value]) (List.range n ++ [n + 3])
+  | (_, sp) =>
+    if field? sp "predicateOp" != some (.str "PREDICATE_OP_EXISTS") then
+      throw "only EXISTS set predicates are supported"
+    let q ← parse (← field sp "tuples")
+    let exists_ := Expr.bin .lt (.lit (.int 0)) (.field n)
+    return .emit (.project (.cross inp (.aggregate q [] [count (.lit (.int 1))])) [exists_])
+      (List.range n ++ [n + 1])
+
+/-- Parse the expressions `es` over `inp`, lifting their subqueries
+(`liftSubquery`): the lifted input, and the expressions over it. -/
+def parseLifted (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Rel) (es : List Json) :
+    P (Rel × List Expr) := do
+  let n := (inp.kinds (← get)).length
+  let lifted ← (es.flatMap (nodesIn "subquery")).foldlM (liftSubquery fns parse) inp
+  let (rewritten, _) := (es.mapM (replaceNodes "subquery" (fieldJson ∘ (n + ·)))).run 0
+  let cols := lifted.kinds (← get)
+  let bits := lifted.bits (← get)
+  return (lifted, ← rewritten.mapM fun e => (parseExpr fns cols bits e : J Expr))
 
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
@@ -982,36 +1317,49 @@ partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) :=
 
 partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
   let (kind, r) ← oneof "relation" j
-    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"]
+    ["read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate",
+      "extensionSingle"]
   let input := fun (k : String) => do parseRel fns (← field r k)
   let core ← match kind with
     | "read" => parseRead fns r
     | "filter" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
-      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter.
+      let bits := inp.bits (← get)
+      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
+      -- with other subqueries lifted into columns that an emit drops after.
       let mut base := inp
-      let mut rest : List Expr := []
+      let mut rest : List Json := []
       for c in ← conjuncts fns (← field r "condition") do
         match (field? c "subquery").bind (field? · "inPredicate") with
         | some ip =>
           let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
-          let needle ← parseExpr fns cols nj
+          let needle ← parseExpr fns cols bits nj
           let hay ← parseRel fns (← field ip "haystack")
           if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
           base := .semi base hay false (.bin .eq needle (.field cols.length))
-        | none => rest := rest ++ [← parseExpr fns cols c]
-      match rest with
-      | [] => pure base
-      | e :: es => pure (.filter base (es.foldl (.bin .and) e))
+        | none => rest := rest ++ [c]
+      let (lifted, conds) ← parseLifted fns (parseRel fns) base rest
+      let filtered := match conds with
+        | [] => lifted
+        | e :: es => .filter lifted (es.foldl (.bin .and) e)
+      if (rest.flatMap (nodesIn "subquery")).isEmpty then pure filtered
+      else pure (.emit filtered (List.range cols.length))
     | "project" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
+      let bits := inp.bits (← get)
       let ejs ← arrD r "expressions"
+      let k := (ejs.flatMap (nodesIn "subquery")).length
       if !(ejs.flatMap windowsIn).isEmpty then
-        parseWindowProject fns inp cols ejs
+        if k != 0 then throw "a projection with window functions and subqueries is not supported"
+        parseWindowProject fns inp cols bits ejs
+      else if k != 0 then
+        let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
+        let n := cols.length
+        pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
-        let es ← ejs.mapM fun e => do return (← parseExpr fns cols e)
+        let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else pure (.project inp es)
     | "cross" => pure (.cross (← input "left") (← input "right"))
@@ -1025,8 +1373,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       let right ← input "right"
       let (n, m) := ((left.kinds (← get)).length, (right.kinds (← get)).length)
       let cols := left.kinds (← get) ++ right.kinds (← get)
+      let bits := left.bits (← get) ++ right.bits (← get)
       let on ← (field? r "expression").elim (pure (Expr.lit (.bool true)))
-        fun e => do return (← parseExpr fns cols e)
+        fun e => do return (← parseExpr fns cols bits e)
       -- The condition with the sides swapped: a's columns `i < n` move to
       -- `m + i`, b's columns `n + j` to `j`.
       let swapped := on.mapFields fun i => if i < n then m + i else i - n
@@ -1068,6 +1417,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
     | "aggregate" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
+      let bits := inp.bits (← get)
       let measures ← arrD r "measures"
       let groups ← match ← arrD r "groupings" with
         | [] => pure (some [])
@@ -1085,7 +1435,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
                   | some e => pure e
                   | none => throw s!"grouping expression {k} does not exist"
               | none => arrD g "groupingExpressions"
-            pure (some (← exprs.mapM fun e => (parseExpr fns cols e : J Expr)))
+            pure (some (← exprs.mapM fun e => (parseExpr fns cols bits e : J Expr)))
         | _ => throw "grouping sets are not supported"
       let columns (gs : List Expr) : Option (List Nat) :=
         gs.mapM fun | .field i => some i | _ => none
@@ -1098,7 +1448,19 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
           else pure (.distinct (.emit inp keys))
         | none => pure (.aggregate inp gs [])
       | some gs, ms =>
-        pure (.aggregate inp gs (← ms.mapM fun m => (parseMeasure fns cols m : J Measure)))
+        pure (.aggregate inp gs (← ms.mapM fun m => (parseMeasure fns cols bits m : J Measure)))
+    | "extensionSingle" =>
+      -- `UNNEST`, our own extension (`docs/nested-values.md`).
+      let d ← field r "detail"
+      if field? d "@type" != some (.str "type.googleapis.com/sverify.Unnest") then
+        throw "unsupported ExtensionSingleRel"
+      if field? d "keepEmpty" == some (.bool true) then
+        throw "UNNEST keeping empty lists is not supported"
+      let inp ← input "input"
+      let c ← natD d "column"
+      match (inp.kinds (← get)).getD c .other with
+      | .list _ => pure (.unnest inp c)
+      | _ => throw s!"UNNEST of column {c}, which is not a list"
     | _ =>
       let inputs ← (← arrD r "inputs").mapM (parseRel fns)
       let union ← match inputs with

@@ -64,6 +64,8 @@ def spark_type(t: pa.DataType) -> str:
         return SPARK.type_name("bool")
     if pa.types.is_string(t) or pa.types.is_large_string(t):
         return SPARK.type_name("str")
+    if pa.types.is_list(t) or pa.types.is_large_list(t):
+        return f"ARRAY<{spark_type(t.value_type)}>"
     raise TypeError(f"no Spark type for {t}")
 
 

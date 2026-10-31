@@ -4,13 +4,14 @@
   `LIKE`, `btrim`/`ltrim`/`rtrim`, `||` and `character_length` agrees with
   DataFusion (`SubstraitLean/Text.lean`), and so do Polars and DuckDB, which
   run the plan Lean writes (also `UPPER`, `LOWER` and regular expressions,
-  black boxes in Lean).
+  black boxes in Lean, where DuckDB raises on non-ASCII text instead, #70).
 * Every pattern `Text.simpleRegex` accepts compiles in DataFusion: this tests
   the trusted part of the "invalid regular expression" check.
 * Contracts see through the black boxes as far as they can.
 """
 
 import json
+import subprocess
 
 import ibis
 import pyarrow as pa
@@ -77,8 +78,37 @@ def test_engines_match_datafusion(engine, sql, rows):
     create_table(con, "r", R, rows)
     expected = canonical(tuple(x.values()) for x in run_sql(con, sql).to_pylist())
     plan = written_plan(substrait_json(con, sql))
+    non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
+    if engine == "duckdb" and sql == BLACK_BOXES[0] and non_ascii:
+        with pytest.raises(Exception, match="non-ASCII text differs between engines"):
+            run_plan(con, plan, engine)
+        return
     got = run_plan(con, plan, engine)
     assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
+
+
+@pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("SELECT upper(s) AS u FROM r", "UPPER of non-ASCII text"),
+        ("SELECT lower(s) AS u FROM r", "LOWER of non-ASCII text"),
+        ("SELECT array_length(regexp_match(t, 'a')) AS m FROM r", "regular expressions"),
+    ],
+)
+def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
+    """Lean's evaluator maps ASCII case only and evaluates no regular
+    expressions; `substrait-check` refuses such rows instead of printing
+    placeholders (`''`, NULL) that no engine gives (#70)."""
+    con = connect()
+    rows = [("Straße", "abc", 1)]
+    create_table(con, "r", R, rows)
+    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    with pytest.raises(subprocess.CalledProcessError) as e:
+        lean_values(json.dumps(plan))
+    assert f"rows not evaluated: {message}" in e.value.stderr
+    if "regexp" not in sql:
+        ascii_rows = inline_tables(json.loads(substrait_json(con, sql)), {"r": [("abc", "x", 1)]})
+        assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
 
 
 T = ibis.table({"name": "string", "n": "int64"}, name="t")

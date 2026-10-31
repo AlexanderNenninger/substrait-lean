@@ -15,7 +15,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", app_title="15. One expression, many engines")
+app = marimo.App(width="full", app_title="17. One expression, many engines")
 
 
 @app.cell(hide_code=True)
@@ -28,7 +28,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
+    ← 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
     """)
     return
 
@@ -36,13 +36,13 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # 15. One expression, many engines
+    # 17. One expression, many engines
 
     A query or an Ibis expression has no single meaning: each engine gives it
     its own. This notebook collects the questions that a semantics written
     *from first principles* (instead of read off one implementation) has to
     answer, and shows how each engine answers them today. It is the companion
-    of [chapter 14](?file=14_datafusion_semantics.py), which compares
+    of [chapter 16](?file=16_datafusion_semantics.py), which compares
     DataFusion alone with the Lean model.
 
     Every entry is one small question, such as "what is `-7 % 2`?" or "where do
@@ -266,7 +266,10 @@ def _(dt, pa, tables):
         """`Rel.eval` of the plan on the same rows, as `substrait-check` prints it."""
         rows = {n: arrow_rows(tables[n]) for n in read_tables(json.loads(plan))}
         inlined = inline_tables(json.loads(plan), rows)
-        _, out, _ = run_checker((), json.dumps(inlined))
+        code, out, err = run_checker((), json.dumps(inlined))
+        if code:
+            # Lean does not evaluate black boxes on every input (#70).
+            return "refused: " + err.strip().removeprefix("error: ")[:120]
         got = [ln.strip() for ln in out.split("rows (")[1].splitlines()[1:] if ln.startswith("  (")]
         text = ", ".join(r[1:-1] if "," not in r else r for r in got) or "(no rows)"
         return text if len(text) < 140 else text[:137] + "…"
@@ -780,8 +783,8 @@ def _(E, render):
             engines="split",
             why="DataFusion and Polars wrap around to −2⁶³ silently; DuckDB raises; "
             "Snowflake's integers are 38-digit decimals and do not overflow here. Lean's "
-            "integers are unbounded (it prints 2⁶³ as a double code, a known rendering "
-            "bug) and the checker warns `wraps`; the translators raise.",
+            "integers are unbounded (it gives 2⁶³) and the checker warns `wraps`; the "
+            "translators raise.",
             picks="unbounded, plus a `wraps` warning",
         ).run(),
         E(
@@ -841,7 +844,7 @@ def _(E, render):
             snowflake="no 32-bit type: INT is NUMBER(38,0)",
             engines="split",
             why="DataFusion and DuckDB raise; Polars' non-strict cast gives NULL. Lean "
-            "used to read the cast as the identity (chapter 14, I8). It is now "
+            "used to read the cast as the identity (chapter 16, I8). It is now "
             "`UnFn.narrow`: NULL plus a `badCast` issue where the value does not fit, so "
             "`verify` reports the possible error and both translators raise.",
             picks="an error where the value does not fit (`badCast`)",
@@ -1080,10 +1083,10 @@ def _(E, render):
             sverify="opaque",
             why="Rust (DataFusion, Polars) maps ß to 'SS'; DuckDB's utf8proc to 'ẞ' "
             "(capital sharp s). `upper` is an uninterpreted function in Lean, so no "
-            "proof depends on it. But the same verified plan gives different strings on "
-            "sverify's two translators, and Lean's own evaluator only maps ASCII (it "
-            "prints '' for the rest).",
-            picks="uninterpreted",
+            "proof depends on it; its meaning is Rust's. sverify's DuckDB, Snowflake and "
+            "Spark SQL raise on non-ASCII text, where their case tables could differ, and "
+            "Lean's own evaluator refuses to print rows it cannot compute (#70).",
+            picks="Rust's case mapping; SQL engines raise on non-ASCII text",
         ).run(),
         E(
             "S5",
@@ -1115,9 +1118,10 @@ def _(E, render):
             sverify="opaque",
             why="Rust's regex (DataFusion, Polars) is Unicode-aware: the Arabic-Indic "
             "digit ٣ is a `\\d` and a no-break space is a `\\s`. DuckDB's RE2 is "
-            "ASCII-only. Lean leaves regular expressions uninterpreted, but sverify's "
-            "DuckDB and Polars translators of one verified plan disagree on ٣.",
-            picks="uninterpreted",
+            "ASCII-only. Lean leaves regular expressions uninterpreted; their meaning is "
+            "Rust's. sverify's SQL raises where a pattern with \\d, \\w or \\s meets "
+            "non-ASCII text, so the translators agree or fail (#70).",
+            picks="Rust's classes; SQL engines raise on non-ASCII text",
         ).run(),
         E(
             "S7",
@@ -1131,8 +1135,8 @@ def _(E, render):
             sverify="refused",
             why="Every engine compares bytewise ('' and 'S' come before 'b'). Lean's `<` "
             "has no string case, so `Rel.eval` keeps nothing; every translator refuses the "
-            "plan. `verify` itself still accepts it (chapter 14, gap S6).",
-            picks="NULL (wrong; see chapter 14)",
+            "plan. `verify` itself still accepts it (chapter 16, gap S6).",
+            picks="NULL (wrong; see chapter 16)",
         ).run(),
         E(
             "S8",
@@ -1324,16 +1328,17 @@ def _(mo):
       as one implementation.
     * **Uninterpreted is not the same as agreed.** `upper`, `lower` and
       regular expressions are black boxes in Lean, which keeps proofs honest,
-      but sverify's translators then compute them with different Unicode
-      tables (S4, S6). Pinning them (to Rust's `str::to_uppercase` and the
-      `regex` crate, say) or refusing non-ASCII input would make "the same
-      plan, the same rows" true across engines.
+      and sverify's translators used to compute them with different Unicode
+      tables (S4, S6). Their meaning is now pinned to Rust's
+      `str::to_uppercase` and `regex` crate (DataFusion, Polars); the SQL
+      translations raise on non-ASCII text where their engines could differ,
+      so "the same plan, the same rows, or an error" holds across engines.
     * **sverify gaps found here, all fixed.** Constant casts used to round
       (`CAST(2.7 AS BIGINT)` was proved to be 3; DataFusion gives 2, F9) and
       to trim spaces from strings (`' 12'` was proved to be 12; DataFusion
       fails, S8); constants now fold by the same rules as columns, and strings
       DataFusion cannot parse are refused. Narrowing casts were the identity
-      (I10, chapter 14's I8); they are now range-checked and may raise
+      (I10, chapter 16's I8); they are now range-checked and may raise
       `badCast`. The Polars translator crashed on duplicate output column
       names (N4); it now keeps them.
 
@@ -1349,7 +1354,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 14. [DataFusion's surprising semantics](?file=14_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
+    ← 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) · [Contents](?file=00_start_here.py)
     """)
     return
 
