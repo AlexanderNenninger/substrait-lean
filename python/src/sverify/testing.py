@@ -2,8 +2,8 @@
 DataFusion and DuckDB.
 
 `inline_tables` replaces each named-table read by a Substrait virtual table
-holding given rows (integers, strings, booleans, timestamps, doubles and
-NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`
+holding given rows (integers, strings, booleans, timestamps, dates, doubles
+and NULLs); `lean_rows` evaluates the plan with `Rel.eval` via `substrait-check`
 (`lean_values` also reads printed doubles); `duckdb_rows` runs it as SQL on
 DuckDB.
 """
@@ -34,6 +34,8 @@ def literal(v: object) -> dict:
     if isinstance(v, dt.datetime):
         micros = (v - EPOCH) // dt.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
+    if isinstance(v, dt.date):
+        return {"literal": {"date": (v - EPOCH.date()).days}}
     if isinstance(v, float):
         # The model's one zero and one NaN: -0.0 is 0.0, a negative NaN is NaN.
         text = "NaN" if math.isnan(v) else "Infinity" if v == math.inf else "-Infinity"

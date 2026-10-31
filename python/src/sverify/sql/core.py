@@ -933,8 +933,14 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         return "int", "int"
     if any(k in ty for k in ("fp32", "fp64")):
         return "float", "float"
-    if "precisionTimestamp" in ty or "timestamp" in ty:
+    if "timestamp" in ty:
         return "time", "time"
+    if "precisionTimestamp" in ty:
+        # Times are microseconds; a coarser precision is not modelled.
+        pts = ty["precisionTimestamp"]
+        if isinstance(pts, dict) and pts.get("precision", 0) >= 6:
+            return "time", "time"
+        return "other", None
     if "date" in ty:
         return "date", "date"
     if any(k in ty for k in ("string", "varchar", "fixedChar")):
@@ -1288,7 +1294,8 @@ class _Parser:
                     raise Unsupported("nested field references are not supported")
                 return Field(_nat_d(sf, "field"))
             case "scalarFunction":
-                name = _base_name(self.name(_nat_d(v, "functionReference")))
+                full_name = self.name(_nat_d(v, "functionReference"))
+                name = _base_name(full_name)
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 # `array_length(regexp_match(s, p))`: NULL if `p` does not match.
                 if name == "array_length" and len(arg_js) == 1:
@@ -1312,20 +1319,27 @@ class _Parser:
                     # `ROUND(x, d)`: the digits stay an integer.
                     return name == "round" and k == 1
 
-                # An integer constant next to a double stands for that double.
-                if any(lean_expr_kind(e, cols.lean) == "float" for e in parsed):
-                    parsed = [
-                        e if keep_int(k) else self._as_double(a, e)
-                        for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
-                    ]
                 out = _lean_type_kind(_field(v, "outputType"))
                 floats = (
                     "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
                     "ceil", "round",
                 )  # fmt: skip
-                if name in floats and (
-                    out == "float" or any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
-                ):
+                has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
+                float_call = name in floats and (out == "float" or has_float)
+                # An integer constant next to a double, or in a double
+                # function, stands for that double.
+                if has_float or float_call:
+                    parsed = [
+                        e if keep_int(k) else self._as_double(a, e)
+                        for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
+                    ]
+                # Substrait's typed `greatest`/`least` are NULL if any argument is.
+                if name in ("greatest", "least") and ":" in full_name:
+                    out_e = _call(name, parsed)
+                    for a in reversed(parsed):
+                        out_e = If(Un("is_null", a), Lit(None, None), out_e)
+                    return out_e
+                if float_call:
                     # Integer arguments of a double function are converted.
                     parsed = [
                         Un("itof", e)
@@ -1730,6 +1744,9 @@ class _Parser:
         else:
             raise Unsupported(f"{name} takes one argument")
         k = lean_expr_kind(arg, cols.lean)
+        # `AVG` is a double; Calcite's `AVG` of integers (`avg:i64`) is not.
+        if name == "avg" and "outputType" in m and _lean_type_kind(m["outputType"]) != "float":
+            raise Unsupported("avg with a non-double result is not supported")
         fn: Literal["count", "sum", "fsum", "avg", "min", "max"]
         match name, k:
             case "count", _:
@@ -1851,11 +1868,11 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return _coalesce(a, rest)
         case "nullif", [a, b]:
             return If(Bin("eq", a, b), Lit(None, None), a)
-        case "greatest", [a, *rest]:
+        case (("greatest" | "greatest_skip_null"), [a, *rest]):
             for b in rest:
                 a = _pick(lambda x, y: Bin("lt", x, y), a, b)
             return a
-        case "least", [a, *rest]:
+        case (("least" | "least_skip_null"), [a, *rest]):
             for b in rest:
                 a = _pick(lambda x, y: Bin("lt", y, x), a, b)
             return a

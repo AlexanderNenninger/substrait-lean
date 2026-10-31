@@ -2,8 +2,9 @@
 
 Each test runs a script in a fresh interpreter where importing `datafusion`
 fails, as if the package were not installed: incremental views, pipelines and
-contracts on DuckDB (the default) and Polars, and a clear error for what does
-need DataFusion (its engine, and SQL strings).
+contracts on DuckDB (the default) and Polars; SQL strings through Isthmus,
+where its binary is available; and a clear error for what does need
+DataFusion (its engine, and SQL strings without Isthmus).
 """
 
 import subprocess
@@ -11,6 +12,8 @@ import sys
 import textwrap
 
 import pytest
+
+from sverify.engine import isthmus_path
 
 PRELUDE = """
 import importlib.abc
@@ -112,7 +115,10 @@ def test_contracts(engine):
 def test_what_needs_datafusion_says_so():
     run(
         """
+        import sverify.engine
         from sverify.engine import plan_json, run_plan, written_plan
+
+        sverify.engine.isthmus_path = lambda: None
 
         plan = written_plan(plan_json(con, orders.filter(orders.amount > 10)))
         for attempt in (
@@ -125,5 +131,19 @@ def test_what_needs_datafusion_says_so():
                 assert "sverify[datafusion]" in str(e), e
             else:
                 raise AssertionError("expected an ImportError")
+        """
+    )
+
+
+@pytest.mark.skipif(isthmus_path() is None, reason="no Isthmus binary")
+def test_sql_strings_through_isthmus():
+    run(
+        """
+        assert sv.engine.default_sql_producer() == "isthmus"
+        sql = "SELECT id, amount * 2 AS a FROM orders WHERE amount > 10"
+        view = sv.IncrementalView(con, sql, "v")
+        view.apply({"orders": sv.Changes(inserts=[(3, "bob", 50)])})
+        assert sorted(view.rows()) == sorted(view.recompute()) == [(1, 60), (3, 100)]
+        assert "datafusion" not in sys.modules
         """
     )

@@ -1,0 +1,10 @@
+Project +[IF IS_NULL($0) THEN NULL ELSE IF IS_NULL($1) THEN NULL ELSE IF IS_NULL($0) THEN $1 ELSE IF IS_NULL($1) THEN $0 ELSE IF ($0 < $1) THEN $1 ELSE $0, IF IS_NULL($0) THEN $1 ELSE IF IS_NULL($1) THEN $0 ELSE IF ($1 < $0) THEN $1 ELSE $0]
+  Values[2] 2 row(s)
+arity: 4
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (2):
+  (1, NULL, NULL, 1)
+  (1, 5, 5, 1)
+[exit 0]

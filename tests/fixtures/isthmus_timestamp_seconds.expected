@@ -1,0 +1,2 @@
+error: timestamp columns coarser than microseconds are not supported
+[exit 1]

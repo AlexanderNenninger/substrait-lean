@@ -1,0 +1,2 @@
+error: avg with a non-double result is not supported
+[exit 1]

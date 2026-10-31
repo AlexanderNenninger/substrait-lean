@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 from decimal import Decimal
 from pathlib import Path
@@ -35,6 +34,7 @@ from test_sql_snowflake import (
     TIE_FREE,
     accepted_fixtures,
     check_snapshot,
+    fixture_plan,
     run_differential,
 )
 from test_time import DAY, MAX, MIN, NS_MAX, NS_MIN, PARTS, UNITS, anywhere
@@ -52,7 +52,7 @@ def spark_sql(plan: dict, tie_free: bool = False) -> str:
 
 @pytest.mark.parametrize("path", accepted_fixtures(), ids=lambda p: p.stem)
 def test_fixture_snapshot(path: Path):
-    check_snapshot(path.stem, spark_sql(json.loads(path.read_text())), "spark")
+    check_snapshot(path.stem, spark_sql(fixture_plan(path)), "spark")
 
 
 @pytest.mark.parametrize("name", sorted(ALL_PLANS))

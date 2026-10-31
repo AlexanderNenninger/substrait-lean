@@ -1,0 +1,10 @@
+Emit [7]
+  Project +[(DOUBLE($3) ^. 2.000000d)]
+    Read events
+tables: events(7)
+arity: 1
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

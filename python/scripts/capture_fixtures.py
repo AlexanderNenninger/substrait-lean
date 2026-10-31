@@ -1,7 +1,11 @@
-"""Capture real Substrait plans from DataFusion into tests/fixtures/df_*.json.
+"""Capture real Substrait plans from DataFusion into tests/fixtures/df_*.json,
+and from Isthmus into tests/fixtures/isthmus_*.json.
 
 The pipelines are the Ibis expressions in `sverify.examples`, compiled to SQL by
 Ibis and to Substrait by DataFusion, the same route `IncrementalView` takes.
+The Isthmus plans are SQL that pins down what the parser reads (and refuses)
+of Calcite's encodings; they are captured only where an Isthmus binary is
+found (`$SVERIFY_ISTHMUS`, or `isthmus` on `PATH`).
 
 Run from python/:  uv run python scripts/capture_fixtures.py
 """
@@ -12,7 +16,15 @@ from pathlib import Path
 import ibis
 
 from sverify.asof import asof_join
-from sverify.engine import connect, create_table, substrait_json, to_sql
+from sverify.engine import (
+    _isthmus,
+    connect,
+    create_table,
+    isthmus_json,
+    isthmus_path,
+    substrait_json,
+    to_sql,
+)
 from sverify.examples import PIPELINES, UNSUPPORTED, create_tables, customers, orders
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
@@ -80,6 +92,66 @@ CAPTURED = {
 }
 
 
+EVENTS = ibis.table(
+    {
+        "d": "date",
+        "d2": "date",
+        "ts": "timestamp",
+        "x": "int64",
+        "s": "string",
+        "ok": "boolean",
+        "v": "float64",
+    },
+    name="events",
+)
+
+ISTHMUS = {
+    # `add:date_iday` adds days and microseconds: refused (#17).
+    "date_iday": "SELECT d, d + INTERVAL '1' DAY AS next_day, d < d + INTERVAL '7' DAY AS later "
+    "FROM events",
+    # `lt:date_date`, `gt:date_date`: dates compare as days.
+    "date_compare": "SELECT d FROM events WHERE d < d2 AND d > DATE '2024-01-01'",
+    # VARCHAR literals (CASE), CHAR literals (cast for `||`) and a timestamp
+    # literal at precision 0.
+    "char_literals": "SELECT CASE WHEN x > 1 THEN 'big' ELSE 'small' END AS size, s || 'z' AS sz "
+    "FROM events WHERE ts > TIMESTAMP '2024-01-01 00:00:00'",
+    # `'ab '` is CHAR(3) with a trailing blank: refused.
+    "char_padding": "SELECT CHAR_LENGTH('ab ') AS n FROM events",
+    # Window functions inside expressions are hoisted into `Rel.window`.
+    "nested_window": "SELECT x, ROW_NUMBER() OVER (PARTITION BY s ORDER BY x) - 1 AS rn0, "
+    "x - LAG(x) OVER (PARTITION BY s ORDER BY x) AS dx, "
+    "ROW_NUMBER() OVER (PARTITION BY s ORDER BY x) AS rn FROM events",
+    "is_true": "SELECT ok IS TRUE AS t, ok IS NOT FALSE AS nf FROM events WHERE (x > 3) IS TRUE",
+    # `power:i64_i64` returns a double: its integer arguments are converted.
+    "power": "SELECT POWER(x, 2) AS p FROM events",
+    # Calcite's AVG of integers is an integer (`avg:i64`): refused.
+    "avg_integer": "SELECT s, AVG(x) AS a FROM events GROUP BY s",
+    # An integer compared with a double is cast to a double.
+    "compare_int_double": "SELECT x FROM events WHERE x > v",
+}
+
+#: Captured with DDL of its own: a TIMESTAMP(0) column (seconds), refused.
+ISTHMUS_SECONDS = (
+    'CREATE TABLE "secs" ("ts" TIMESTAMP)',
+    "SELECT ts FROM secs WHERE ts > TIMESTAMP '2024-01-01 00:00:00'",
+)
+
+
+def capture_isthmus() -> None:
+    binary = isthmus_path()
+    if binary is None:
+        print("no Isthmus binary: skipping tests/fixtures/isthmus_*.json")
+        return
+    con = connect(sql_producer="isthmus")
+    create_table(con, "events", EVENTS.schema())
+    plans = {name: isthmus_json(con, sql) for name, sql in ISTHMUS.items()}
+    plans["timestamp_seconds"] = _isthmus(binary, ISTHMUS_SECONDS[:1], ISTHMUS_SECONDS[1])
+    for name, plan in plans.items():
+        path = FIXTURES / f"isthmus_{name}.json"
+        path.write_text(json.dumps(json.loads(plan), indent=2) + "\n")
+        print(f"wrote {path.relative_to(FIXTURES.parents[1])}")
+
+
 def main() -> None:
     con = connect()
     create_tables(con)
@@ -92,6 +164,7 @@ def main() -> None:
         path = FIXTURES / f"df_{name}.json"
         path.write_text(json.dumps(plan, indent=2) + "\n")
         print(f"wrote {path.relative_to(FIXTURES.parents[1])}")
+    capture_isthmus()
 
 
 if __name__ == "__main__":
