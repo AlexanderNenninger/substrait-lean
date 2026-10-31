@@ -264,6 +264,27 @@ def test_union_batches_differ_in_nullability(con, sql, expected):
         assert sorted(arrow_rows(run_substrait_json(con, plan)), key=str) == expected
 
 
+@pytest.mark.parametrize("join", ["JOIN", "LEFT JOIN"])
+@pytest.mark.parametrize("cond", ["l.a = l.b", "r.y = r.y", "l.a + 0 = l.b AND r.y = r.y"])
+def test_join_conditions_over_one_input(con, join, cond):
+    """#98: DataFusion's consumer takes every `=` of a join condition for a key
+    pair across the inputs, and fails on one over a single input. The plan
+    Lean writes for DataFusion filters that input instead, or (the left input
+    of a left join) writes the conjunct as a `CASE`."""
+    tables = {"l": ints(a=[1, 1, 2, None], b=[1, 2, 2, 3]), "r": ints(y=[1, 2, None])}
+    for name, t in tables.items():
+        put_table(con, name, t)
+    sql = f"SELECT l.a, l.b, r.y FROM l {join} r ON l.a = r.y AND {cond}"
+    plan = sv.written_plan(substrait_json(con, sql))
+    with pytest.raises(Exception, match="FieldNotFound"):
+        run_substrait_json(con, plan)
+    rows = {name: arrow_rows(t) for name, t in tables.items()}
+    lean = lean_rows(json.dumps(inline_tables(json.loads(plan), rows)))
+    got = arrow_rows(run_plan(con, plan, "datafusion"))
+    assert sorted(got, key=str) == sorted(lean, key=str)
+    assert any(r[2] is not None for r in lean)
+
+
 def test_not_in_subquery_means_what_sql_means(con):
     """DataFusion keeps rows (`test_datafusion_behaviour`); the checker lifts
     the subquery with SQL's NULL rules, so `s`'s NULL leaves none."""

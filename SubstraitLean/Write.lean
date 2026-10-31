@@ -482,6 +482,28 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 
+/-- The conjuncts of a condition. -/
+def conjunctsOf : Expr → List Expr
+  | .bin .and a b => conjunctsOf a ++ conjunctsOf b
+  | e => [e]
+
+/-- The conjunction of `cs`, if any. -/
+def andAll : List Expr → Option Expr
+  | [] => none
+  | c :: cs => some ((andAll cs).elim c (.bin .and c ·))
+
+/-- Does `e` read a field, and only fields `p` holds of? -/
+def readsOnly (p : Nat → Bool) (e : Expr) : Bool :=
+  let rec go : Expr → Bool × Bool  -- (reads a field, all fields satisfy p)
+    | .lit _ => (false, true)
+    | .field i => (true, p i)
+    | .un _ a => go a
+    | .bin _ a b => let (x, y) := go a; let (z, w) := go b; (x || z, y && w)
+    | .ifThen c t e =>
+      let (x, y) := go c; let (z, w) := go t; let (u, v) := go e; (x || z || u, y && w && v)
+  let (reads, all) := go e
+  reads && all
+
 /-- Write a relation; `emit` is an output mapping to put on its `RelCommon`.
 
 With `df`, write it for DataFusion to run (`--write-datafusion`), compensating
@@ -523,9 +545,29 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
       ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none)] out
-  | .join a b ty on, out => withCommon "join" [
-      ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none),
-      ("expression", writeExpr (relKinds schemas cat a ++ relKinds schemas cat b) .bool on),
+  | .join a b ty on, out =>
+    -- For DataFusion, whose consumer takes every `=` of a join condition for
+    -- a key pair across the inputs (#98), conjuncts over one input become a
+    -- filter on it: the right input's, and in an inner join the left
+    -- input's. In a left join those decide the padding, so they stay, as
+    -- `CASE WHEN c THEN TRUE ELSE FALSE END`: the same in a join condition
+    -- (NULL and FALSE both do not match), and not an `=`.
+    let n := a.arity cat
+    let cs := conjunctsOf on
+    let left := if df && ty matches .inner then cs.filter (readsOnly (· < n)) else []
+    let right := if df then cs.filter (readsOnly (n ≤ ·)) else []
+    let rest := (cs.filter fun c => !left.contains c && !right.contains c).map fun c =>
+      if df && readsOnly (· < n) c then .ifThen c (.lit (.bool true)) (.lit (.bool false)) else c
+    let ka := relKinds schemas cat a
+    let kb := relKinds schemas cat b
+    let side (r : Json) (ks : List WKind) (cs : List Expr) : Json := match andAll cs with
+      | none => r
+      | some c => withCommon "filter" [("input", r), ("condition", writeExpr ks .bool c)] none
+    withCommon "join" [
+      ("left", side (writeRel schemas cat df [] a none) ka left),
+      ("right", side (writeRel schemas cat df [] b none) kb (right.map (·.mapFields (· - n)))),
+      ("expression", writeExpr (ka ++ kb) .bool
+        (if !df then on else (andAll rest).getD (.lit (.bool true)))),
       ("type", match ty with | .inner => "JOIN_TYPE_INNER" | .left => "JOIN_TYPE_LEFT")] out
   -- The current encoding, `offsetExpr`/`countExpr`: DataFusion's protobuf no
   -- longer has the deprecated `offset`/`count`.

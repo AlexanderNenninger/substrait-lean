@@ -348,8 +348,6 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
     # Double arithmetic with only literal operands is integer arithmetic on
     # the codes: an integer operator next to a printed double.
     (97, lambda f: bool(_INT_OP_ON_DOUBLE.search(f.extra.get("Lean's plan", "")))),
-    # DataFusion's consumer takes `a = b` over one join input for a join key.
-    (98, lambda f: f.oracle == "rows:datafusion" and "FieldNotFound" in f.detail),
     # One integer kind in the model: a widening cast of an `int32` is dropped.
     (
         18,

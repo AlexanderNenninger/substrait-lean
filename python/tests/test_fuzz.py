@@ -112,8 +112,8 @@ def test_double_literal_arithmetic_proofs():
     assert not check_contract(q, {"t": [T_ROW]}, None, "c0 <> 3.0")
 
 
-@pytest.mark.xfail(strict=True, reason="#98: DataFusion's consumer fails on t.i = t.j in a join")
 def test_join_condition_over_one_side():
+    """#98: the DataFusion plan moves `t.i = t.j` out of the join's keys."""
     sql = "SELECT COUNT(*) AS c0 FROM t JOIN u ON t.i = u.k AND t.i = t.j"
     assert not finding(sql, "engines", {"t": [T_ROW], "u": [(1, "x")]})
 
