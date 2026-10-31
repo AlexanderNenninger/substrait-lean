@@ -1,5 +1,8 @@
 """Random queries with Lean's semantics as the oracle (SQLancer-style).
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 A Hypothesis strategy draws well-typed SQL queries over two small tables (`t`
 with integer, double, string, boolean and timestamp columns, `u` with an
 integer and a string) and random rows for them, NULLs included. Each query
@@ -348,10 +351,6 @@ KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
     # Double arithmetic with only literal operands is integer arithmetic on
     # the codes: an integer operator next to a printed double.
     (97, lambda f: bool(_INT_OP_ON_DOUBLE.search(f.extra.get("Lean's plan", "")))),
-    # DataFusion's consumer takes `a = b` over one join input for a join key.
-    (98, lambda f: f.oracle == "rows:datafusion" and "FieldNotFound" in f.detail),
-    # The DuckDB guard raises on `NULL / 0` (DataFusion, which ran fine, gives NULL).
-    (111, lambda f: f.oracle == "rows:duckdb" and "sverify: division by zero" in f.detail),
     # One integer kind in the model: a widening cast of an `int32` is dropped.
     (
         18,

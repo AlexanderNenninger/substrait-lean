@@ -1,5 +1,8 @@
 """Pre- and postconditions for transformations, with postconditions proved in Lean.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
     from ibis import _
     import sverify as sv
 
@@ -103,11 +106,7 @@ def q(name: str) -> str:
 
 @dataclass(frozen=True)
 class Unique:
-    """No two rows agree on these columns (see `unique`).
-
-    Attributes:
-        cols: The key's column names, in the order given to `unique`.
-    """
+    """No two rows agree on these columns (see `unique`)."""
 
     cols: tuple[str, ...]
 
@@ -118,12 +117,6 @@ def unique(*cols: str) -> Unique:
     In `requires` it is an assumption about an input (checked on the data when
     the input is bound to a backend); in `ensures` it is proved by
     `Rel.keys_sound` from the input keys and the transformation.
-
-    Args:
-        *cols: The names of the key's columns.
-
-    Returns:
-        A `Unique` condition, for `requires` or `ensures`.
     """
     return Unique(tuple(cols))
 
@@ -131,13 +124,7 @@ def unique(*cols: str) -> Unique:
 @dataclass(frozen=True)
 class References:
     """A foreign key: every non-NULL value of `col` occurs in column `other`
-    of table `table` (see `references`).
-
-    Attributes:
-        col: The referencing column, in the table the condition is on.
-        table: The name of the referenced table.
-        other: The referenced column of `table`.
-    """
+    of table `table` (see `references`)."""
 
     col: str
     table: str
@@ -151,15 +138,6 @@ def references(col: str, table: str, other: str) -> References:
     referenced table must be bound to the same backend). With a key on the
     referenced column it lets `Rel.optimize` turn a left join on it into an
     inner join (`Report.optimized`). Not supported by incremental views.
-
-    Args:
-        col: The referencing column of the input the condition is on.
-        table: The name of the referenced table, as `verify` and the backend
-            know it.
-        other: The referenced column of `table`.
-
-    Returns:
-        A `References` condition, for `requires`.
     """
     return References(col, table, other)
 
@@ -205,20 +183,8 @@ class Issue:
 
 @dataclass
 class Report:
-    """What Lean proved about a transformation, returned by `verify` and kept
-    in `ContractedTransform.last_report`.
-
-    `str(report)` lists each postcondition with its status, the possible
-    runtime errors and warnings, and what is known about each output column;
-    in a notebook the report renders as tables.
-    """
-
     requires: dict[str, list[str]]
-    """The preconditions that were assumed, as labels, per input table."""
     ensures: list[CheckedCondition]
-    """Each postcondition, in the order given: its label, whether it was
-    proved, what Lean established about it, and a counterexample if one was
-    found."""
     facts: dict[str, str] = field(default_factory=dict)
     """What Lean established about each output column."""
     deterministic: bool = True
@@ -249,18 +215,14 @@ class Report:
 
     @property
     def errors(self) -> list[Issue]:
-        """The `issues` an engine fails on at run time (`Issue.error` is true)."""
         return [i for i in self.issues if i.error]
 
     @property
     def warnings(self) -> list[Issue]:
-        """The `issues` that do not fail but may give a wrong value, such as a
-        64-bit wrap-around."""
         return [i for i in self.issues if not i.error]
 
     @property
     def unproved(self) -> list[CheckedCondition]:
-        """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
 
     def __str__(self) -> str:
@@ -316,14 +278,7 @@ TIES_HINT = (
 
 
 class VerificationError(Exception):
-    """A postcondition, or the absence of runtime errors, could not be proved.
-
-    The message names each unproved postcondition with what Lean established
-    about it, and each possible runtime error, followed by the full report.
-
-    Attributes:
-        report: The `Report` of the failed proof.
-    """
+    """A postcondition, or the absence of runtime errors, could not be proved."""
 
     def __init__(self, report: Report):
         self.report = report
@@ -333,22 +288,11 @@ class VerificationError(Exception):
 
 
 class PreconditionError(Exception):
-    """Input data violates a precondition.
-
-    Raised when a contracted transformation is called on inputs bound to a
-    backend and a precondition does not hold on their rows. The message says
-    how many rows violate which condition, for example
-    "2 row(s) of orders violate (_.amount >= 0)".
-    """
+    """Input data violates a precondition."""
 
 
 class PostconditionError(Exception):
-    """Output data violates a postcondition (only raised by runtime checks).
-
-    Raised with `on_unproved="runtime"`, when a postcondition Lean could not
-    prove fails on the output rows. The message says how many output rows
-    violate which condition.
-    """
+    """Output data violates a postcondition (only raised by runtime checks)."""
 
 
 # Doubles, timestamps and dates are integer codes in the Lean model
@@ -506,65 +450,6 @@ def verify(
     verified plan with that meaning (or fails) on DataFusion, DuckDB and
     Polars. A SQL string means what the SQL producer (DataFusion's or
     Isthmus) makes of it.
-
-    Unlike `transform`, `verify` checks nothing on data and raises nothing
-    when a postcondition is unproved: it returns the report.
-
-    Args:
-        transform: The transformation, as an Ibis table expression or a SQL
-            query.
-        requires: Preconditions, as a mapping from input table name to its
-            conditions (Ibis expressions, SQL snippets, `unique` or
-            `references`). They are assumed, not checked. Default: none.
-        ensures: Postconditions on the output to prove, including `unique`
-            keys. Default: none, which still reports the facts and possible
-            runtime errors.
-        tables: Input schemas by table name, as Ibis schemas, anything
-            `ibis.schema` accepts, or Ibis tables. Needed for SQL transforms;
-            an Ibis expression's own tables are found from it.
-        counterexamples: How many small inputs to try per unproved
-            postcondition when searching for one that breaks it. Default 200;
-            0 skips the search.
-
-    Returns:
-        A `Report` with the status of each postcondition, the possible
-        runtime errors, and what is known about each output column.
-
-    Raises:
-        ValueError: `unique` or `references` names an unknown column or
-            table, or the checker fails on the request (for example on a plan
-            outside the Lean model).
-        TypeError: An Ibis condition is given for a SQL transform.
-
-    Examples:
-        A SQL query, with its input schema (compiling SQL needs the
-        `datafusion` extra, or Isthmus):
-
-        ```python
-        import ibis
-        import sverify as sv
-        from ibis import _
-
-        orders = ibis.table({"id": "int64", "amount": "int64"}, name="orders")
-
-        report = sv.verify(
-            "select id, amount from orders where amount > 0",
-            tables={"orders": orders},
-            ensures=["amount > 0"],
-        )
-        report.proved  # True
-        ```
-
-        An Ibis expression, with preconditions:
-
-        ```python
-        report = sv.verify(
-            orders.select(orders.id, total=orders.amount + 1),
-            requires={"orders": [_.amount >= 0]},
-            ensures=[_.total >= 1],
-        )
-        report.facts["total"]  # 'an integer ≥ 1'
-        ```
     """
     schemas = {
         name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
@@ -839,19 +724,7 @@ def is_bound(table: ir.Table) -> bool:
 
 class CompositionError(VerificationError):
     """A contracted transformation's precondition on an input is not implied
-    by what the contracted transformation producing that input guarantees.
-
-    The message names both sides, for example "doubled needs (_.amount >= 0)
-    (it is TRUE or FALSE) on 't'; not_null only guarantees _.amount.notnull()".
-    With `on_unproved="runtime"` and a bound input, the precondition is
-    checked on the data instead; with `on_unproved="warn"` it is a warning.
-
-    Attributes:
-        report: The `Report` of the failed proof of the link.
-        consumer: The name of the transformation whose precondition failed.
-        param: The parameter of `consumer` that received the input.
-        producer: The name of the contracted transformation that produced it.
-    """
+    by what the contracted transformation producing that input guarantees."""
 
     def __init__(self, report: Report, consumer: str, param: str, producer: str, guarantees):
         self.report = report
@@ -1011,12 +884,7 @@ def register_view(table: ir.Table, contract: ViewContract) -> None:
 
 
 class ContractedTransform:
-    """A transformation with a contract; see `transform`.
-
-    Call it like the function it wraps: it returns the same Ibis expression,
-    after proving the contract. It keeps the wrapped function's name and
-    docstring.
-    """
+    """A transformation with a contract; see `transform`."""
 
     def __init__(
         self,
@@ -1036,8 +904,6 @@ class ContractedTransform:
         if unknown:
             raise TypeError(f"requires names unknown parameters: {sorted(unknown)}")
         self.last_report: Report | None = None
-        """The `Report` of the proof of the postconditions in the last call,
-        or None before the first call."""
         self.last_preconditions: list[Discharged] = []
         """How each precondition on a bound input was established, in the
         last call: from metadata (`sverify.io` tables) or on the data."""
@@ -1106,31 +972,13 @@ class ContractedTransform:
             raise error
         return out
 
-    def __call__(self, *args, **kwargs) -> ir.Table:
-        """Build the expression and prove the contract.
+    def __call__(self, *args, **kwargs) -> Any:
+        """The transformation's result: an Ibis table, or a node
+        (`sverify.Node`) when an input is a source or a node."""
+        from sverify import nodes
 
-        Inputs bound to a backend have their preconditions checked on the data
-        (or proved from table metadata); results of other contracted
-        transformations have them proved from those transformations'
-        guarantees. Then the postconditions are proved.
-
-        Args:
-            *args: The wrapped function's positional arguments.
-            **kwargs: The wrapped function's keyword arguments.
-
-        Returns:
-            The Ibis table expression the wrapped function returns.
-
-        Raises:
-            PreconditionError: A bound input's data violates a precondition.
-            CompositionError: A precondition on another contracted
-                transformation's result does not follow from its guarantees.
-            VerificationError: A postcondition, or the absence of runtime
-                errors, could not be proved (with `on_unproved="error"`, or
-                with `"runtime"` when the result is not bound).
-            PostconditionError: With `on_unproved="runtime"`, an unproved
-                postcondition fails on the output data.
-        """
+        if nodes.wants_node(args, kwargs):
+            return nodes.derive(self, args, kwargs)
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
         result = self.fn(*args, **kwargs)
@@ -1212,70 +1060,6 @@ def transform(
     `on_unproved="runtime"`, unproved postconditions are checked on the output
     data instead, which needs inputs bound to a connection. `engine` says where
     those checks on data run (see the module docstring).
-
-    Args:
-        requires: Preconditions, as a mapping from parameter name to
-            conditions on that input: Ibis expressions (`_.amount >= 0`),
-            functions of the table, SQL snippets (`"amount >= 0"`), `unique`
-            or `references`. Default: none.
-        ensures: Postconditions on the result, in the same forms (but not
-            `references`). Default: none, which still rules out runtime
-            errors.
-        on_unproved: What happens when a postcondition, or a precondition on
-            another contracted transformation's result, is not proved:
-            `"error"` (the default) raises; `"runtime"` checks it on the data
-            instead, which needs bound inputs; `"warn"` emits a warning and
-            returns the expression.
-        check_requires: Whether to check preconditions on the data of bound
-            inputs at call time. Default True.
-        engine: Where checks on data run: `"duckdb"`, `"polars"` or
-            `"datafusion"` run each condition's plan as Lean wrote it; None
-            (the default) runs them through Ibis on the inputs' connection.
-
-    Returns:
-        A decorator that turns the function into a `ContractedTransform`.
-
-    Raises:
-        TypeError: When decorating, if `requires` names a parameter the
-            function does not have. Calls raise `PreconditionError`,
-            `CompositionError`, `VerificationError` or `PostconditionError`
-            (see `ContractedTransform.__call__`).
-
-    Examples:
-        A contract that holds, and what Lean worked out about the output:
-
-        ```python
-        import ibis
-        import sverify as sv
-        from ibis import _
-
-        orders = ibis.table({"id": "int64", "amount": "int64"}, name="orders")
-
-        @sv.transform(
-            requires={"orders": [_.amount >= 0, _.id.notnull()]},
-            ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
-        )
-        def doubled(orders):
-            return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
-
-        expr = doubled(orders)
-        doubled.last_report.proved  # True
-        doubled.last_report.facts["doubled"]  # 'an integer ≥ 22'
-        ```
-
-        A postcondition that does not follow is refused:
-
-        ```python
-        @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
-        def plus_one(orders):
-            return orders.select(orders.id, total=orders.amount + 1)
-
-        try:
-            plus_one(orders)
-        except sv.VerificationError as e:
-            print(str(e).splitlines()[0])
-        # could not prove: (_.total > 5) (it is TRUE or FALSE)
-        ```
     """
     return lambda fn: ContractedTransform(
         fn, requires or {}, ensures, on_unproved, check_requires, engine

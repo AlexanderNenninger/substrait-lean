@@ -47,16 +47,19 @@ def _(mo):
     more than you'd think: about NULL join keys, NaN, integer overflow, the
     rounding of integer division, the order of ties. So plans in `sverify`
     come from one producer (the vendored Ibis producer, or DataFusion's for
-    SQL strings), but they can **run** on three engines:
+    SQL strings), but they can **run** on three engines in process
+    (`sverify.engines.ENGINES`), and on Spark:
 
     | engine | how the plan runs |
     |:---|:---|
-    | `"duckdb"` (default) | `sverify.sql` writes the plan as DuckDB SQL |
-    | `"polars"` | `sverify.polars_engine` translates the plan to a Polars `LazyFrame` |
+    | `"duckdb"` (default) | the SQL generator (`sverify.engines.to_sql`) writes the plan as DuckDB SQL |
+    | `"polars"` | a translator turns the plan into a Polars `LazyFrame` |
     | `"datafusion"` | DataFusion's own Substrait consumer (the `sverify[datafusion]` extra) |
+    | `"spark"`, or a Spark session | the SQL generator writes Spark SQL (the `sverify[spark]` extra; below) |
 
-    Polars and DuckDB run **Lean's written form** of the plan (`sv.written_plan`,
-    chapter 14), so what runs is exactly what was checked. Their translators
+    Polars and DuckDB run **Lean's written form** of the plan
+    (`sverify.engines.written_plan`, chapter 14), so what runs is exactly
+    what was checked. Their translators
     don't take engine defaults: they spell out the model's semantics, so
     that disagreements with Lean show up as test failures instead of quiet
     differences.
@@ -64,7 +67,8 @@ def _(mo):
     ## The same plan on three engines
 
     We'll line them up. Pick a query; each engine runs the same checked
-    plan, next to Lean's reference interpreter:
+    plan (`sverify.engines.run(con, plan, engine)`), next to Lean's
+    reference interpreter:
     """)
     return
 
@@ -76,29 +80,38 @@ def _():
     import ibis
     import sqlglot
     import sverify as sv
-    from sverify.testing import canonical, inline_tables, lean_rows
+    from sverify.engines import ENGINES, create_table, run, substrait_json, table_rows, written_plan
+
+    T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
+    U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
+    T_ROWS = [("a", 7, 1.5), ("b", -7, float("nan")), (None, 2, 0.0), ("a", 2**63 - 1, None)]
+    U_ROWS = [("a", "alpha"), (None, "nothing"), ("b", "beta")]
 
     con = sv.connect()
-    sv.create_table(
+    create_table(con, "t", T_SCHEMA, T_ROWS)
+    create_table(con, "u", U_SCHEMA, U_ROWS)
+    return (
+        ENGINES,
+        T_ROWS,
+        T_SCHEMA,
+        U_ROWS,
+        U_SCHEMA,
         con,
-        "t",
-        ibis.schema({"k": "string", "qty": "int64", "v": "float64"}),
-        [("a", 7, 1.5), ("b", -7, float("nan")), (None, 2, 0.0), ("a", 2**63 - 1, None)],
+        json,
+        run,
+        sqlglot,
+        substrait_json,
+        sv,
+        table_rows,
+        written_plan,
     )
-    sv.create_table(
-        con,
-        "u",
-        ibis.schema({"k": "string", "label": "string"}),
-        [("a", "alpha"), (None, "nothing"), ("b", "beta")],
-    )
-    return canonical, con, inline_tables, json, lean_rows, sqlglot, sv
 
 
 @app.cell(hide_code=True)
-def _(con, display, sv):
+def _(con, display, table_rows):
     display.side_by_side(
-        display.table(sv.table_rows(con, "t"), ["k", "qty", "v"], title="t"),
-        display.table(sv.table_rows(con, "u"), ["k", "label"], title="u"),
+        display.table(table_rows(con, "t"), ["k", "qty", "v"], title="t"),
+        display.table(table_rows(con, "u"), ["k", "label"], title="u"),
     )
     return
 
@@ -120,14 +133,16 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(canonical, con, display, inline_tables, json, lean_rows, mo, query, sv):
-    _plan = sv.substrait_json(con, query.value)
-    _written = sv.written_plan(_plan)
+def _(ENGINES, con, display, json, mo, query, run, substrait_json, table_rows, written_plan):
+    from sverify.testing import canonical, inline_tables, lean_rows
+
+    _plan = substrait_json(con, query.value)
+    _written = written_plan(_plan)
     _cols = json.loads(_plan)["relations"][0]["root"]["names"]
     _panels, _results = [], {}
-    for _engine in sv.ENGINES:
+    for _engine in ENGINES:
         try:
-            _t = sv.run_plan(con, _written, _engine)
+            _t = run(con, _written, _engine)
             _results[_engine] = [tuple(r.values()) for r in _t.to_pylist()]
             _panels.append(display.arrow(_t, title=_engine))
         except Exception as _e:
@@ -143,7 +158,7 @@ def _(canonical, con, display, inline_tables, json, lean_rows, mo, query, sv):
                 )
             )
     if " v" not in query.value and "+ 1" not in query.value:  # see "Lean's column" below
-        _data = {t: sv.table_rows(con, t) for t in ("t", "u")}
+        _data = {t: table_rows(con, t) for t in ("t", "u")}
         _lean = lean_rows(json.dumps(inline_tables(json.loads(_plan), _data)))
         _panels.insert(0, display.table(_lean, _cols, title="Lean's Rel.eval"))
     _same = len({repr(canonical(r)) for r in _results.values()}) == 1 and len(_results) == 3
@@ -188,10 +203,55 @@ def _(mo):
     double from an integer beyond 64 bits, and shows neither faithfully.
     The test suite compares doubles through the engines instead.
 
-    Every contract feature and view can run on another engine:
+    ## Choosing the engine for a node
+
+    A node (chapters 9 and 10) doesn't fix its engine when you build it:
+    the plan is the same everywhere, and you pick where it runs each time
+    you refresh, with `node.refresh(engine="polars")`, `"datafusion"`,
+    `"spark"` or a Spark session (DuckDB in memory is the default). We'll
+    build the NULL-key join as a transform over `t` and `u` and refresh a
+    fresh node on each engine:
+    """)
+    return
+
+
+@app.cell
+def _(ENGINES, T_ROWS, T_SCHEMA, U_ROWS, U_SCHEMA, sv):
+    import pyarrow as _pa
+    from sverify.io import StaticSource
+
+    def _source(schema, rows, name):
+        _arrow = schema.to_pyarrow()
+        return StaticSource(
+            _pa.Table.from_pylist([dict(zip(_arrow.names, r)) for r in rows], schema=_arrow),
+            name=name,
+        )
+
+    _t, _u = _source(T_SCHEMA, T_ROWS, "t"), _source(U_SCHEMA, U_ROWS, "u")
+
+    @sv.transform()
+    def labelled(t, u):
+        return t.join(u, t.k == u.k).select(t.k, t.qty, u.label)
+
+    by_engine = {}
+    for _engine in ENGINES:
+        _node = labelled(_t, _u)
+        _node.refresh(engine=_engine)
+        by_engine[_engine] = sorted(tuple(r.values()) for r in _node.to_arrow().to_pylist())
+    by_engine
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The same rows on every engine, and the NULL key matches nothing. A node
+    keeps its state between refreshes, so the next refresh may use another
+    engine than the last one. Contracts checked on the data can name an
+    engine too:
 
     ```python
-    view = sv.IncrementalView(con, query, "v", engine="polars")
+    node.refresh(engine="polars")   # or "datafusion", "spark", a SparkSession
 
     @sv.transform(ensures=[...], on_unproved="runtime", engine="duckdb")
     def step(orders): ...
@@ -200,8 +260,8 @@ def _(mo):
     ## SQL for DuckDB, Snowflake and Spark
 
     Often the data already lives in a warehouse, and the plan has to go to
-    it rather than the other way round. The SQL generator in `sverify.sql`
-    writes a checked plan, or one of Lean's update plans, as SQL whose
+    it rather than the other way round. The SQL generator,
+    `sverify.engines.to_sql`, writes a checked plan, or one of Lean's update plans, as SQL whose
     result is `Rel.eval` of the plan. Nothing is left to engine defaults:
     columns are positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS
     TRUE`), integers are checked against 64 bits, every `ORDER BY` says
@@ -226,14 +286,11 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(con, dialect, json, mo, sql_query, sqlglot, sv):
-    from sverify.sql import Unsupported, to_sql
-    from sverify.sql.duckdb import DUCKDB
-    from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
+def _(con, dialect, json, mo, sql_query, sqlglot, substrait_json):
+    from sverify.engines import DUCKDB, SNOWFLAKE, SPARK, Unsupported, to_sql
 
     try:
-        _plan = json.loads(sv.substrait_json(con, sql_query.value))
+        _plan = json.loads(substrait_json(con, sql_query.value))
         _dialects = {"duckdb": DUCKDB, "snowflake": SNOWFLAKE, "spark": SPARK}
         _sql = to_sql(_plan, _dialects[dialect.value])
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
@@ -266,8 +323,9 @@ def _(mo):
 
     ## Spark and Databricks
 
-    The Spark dialect (`sverify.sql.spark`) targets Spark 4 and Databricks
-    SQL. It assumes the session settings of `SPARK_CONF`, above all
+    The Spark dialect (`sverify.engines.SPARK`) targets Spark 4 and
+    Databricks SQL; it is also what `node.refresh(engine="spark")` runs. It
+    assumes the session settings of `sverify.engines.SPARK_CONF`, above all
     `spark.sql.ansi.enabled`: without ANSI mode an overflow wraps around and
     a bad cast is NULL. Spark answers several of
     [chapter 17](?file=17_backend_semantics.py)'s questions its own way, and
@@ -303,8 +361,8 @@ def _(mo):
     [fakesnow](https://github.com/tekumara/fakesnow), a Snowflake emulator,
     or on a real account if you configure one.
 
-    You can now run a checked plan on DuckDB, Polars or DataFusion, or hand
-    it to Snowflake or Spark as SQL, and you know where an engine could
+    You can now run a checked plan, or refresh a node, on DuckDB, Polars,
+    DataFusion or Spark, or hand it to Snowflake as SQL, and you know where an engine could
     depart from the model: the translators and the SQL generator spell out
     the model's semantics and raise or refuse rather than answer
     differently, and the tests compare the engines with `Rel.eval`. That

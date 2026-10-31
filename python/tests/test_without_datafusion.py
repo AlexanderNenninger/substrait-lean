@@ -33,15 +33,18 @@ class NoDataFusion(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoDataFusion())
 
 import sverify as sv
+from sverify.engines import create_table
+from sverify.errors import PreconditionError
+from sverify.incremental import IncrementalView, Pipeline
 
 con = sv.connect(ENGINE)
-sv.create_table(
+create_table(
     con,
     "orders",
     ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
     [(1, "ada", 30), (2, "bob", 5)],
 )
-sv.create_table(
+create_table(
     con, "customers", ibis.schema({"name": "string", "city": "string"}), [("ada", "Paris")]
 )
 orders, customers = con.table("orders"), con.table("customers")
@@ -63,7 +66,7 @@ def test_views_and_pipelines(engine):
             .join(customers, orders.customer == customers.name)
             .select(orders.id, customers.city, orders.amount)
         )
-        view = sv.IncrementalView(con, big, "big_orders")
+        view = IncrementalView(con, big, "big_orders")
         view.apply(
             {
                 "orders": sv.Changes(inserts=[(3, "bob", 50)], deletes=[(1, "ada", 30)]),
@@ -73,7 +76,7 @@ def test_views_and_pipelines(engine):
         assert view.rows() == view.recompute() == [(3, "Rome", 50)]
         assert con.table("big_orders").to_pyarrow().num_rows == 1
 
-        pipe = sv.Pipeline(con)
+        pipe = Pipeline(con)
         totals = pipe.view("totals", orders.group_by("customer").aggregate(s=_.amount.sum()))
         pipe.apply({"orders": sv.Changes(inserts=[(4, "ada", 1)])})
         assert totals.rows() == totals.recompute()
@@ -99,10 +102,10 @@ def test_contracts(engine):
             requires={"orders": [_.amount >= 0]}, engine=con.engine
         )(lambda orders: orders)
         checked_on_engine(orders)
-        sv.create_table(con, "bad", orders.schema(), [(1, "ada", -1)])
+        create_table(con, "bad", orders.schema(), [(1, "ada", -1)])
         try:
             checked_on_engine(con.table("bad"))
-        except sv.PreconditionError:
+        except PreconditionError:
             pass
         else:
             raise AssertionError("the precondition was not checked")
@@ -141,7 +144,7 @@ def test_sql_strings_through_isthmus():
         """
         assert sv.engine.default_sql_producer() == "isthmus"
         sql = "SELECT id, amount * 2 AS a FROM orders WHERE amount > 10"
-        view = sv.IncrementalView(con, sql, "v")
+        view = IncrementalView(con, sql, "v")
         view.apply({"orders": sv.Changes(inserts=[(3, "bob", 50)])})
         assert sorted(view.rows()) == sorted(view.recompute()) == [(1, 60), (3, 100)]
         assert "datafusion" not in sys.modules

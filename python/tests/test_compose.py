@@ -7,6 +7,8 @@ from ibis import _
 
 import sverify as sv
 from sverify.contracts import label, provenance, violations
+from sverify.engines import create_table
+from sverify.errors import CompositionError, PreconditionError
 from sverify.examples import ORDERS_SCHEMA, orders
 
 
@@ -30,7 +32,7 @@ def positive(t):
 
 def bound(rows):
     con = sv.connect()
-    sv.create_table(con, "orders", ibis.schema(ORDERS_SCHEMA), rows)
+    create_table(con, "orders", ibis.schema(ORDERS_SCHEMA), rows)
     return con.table("orders")
 
 
@@ -53,7 +55,7 @@ def test_broken_link_names_both_sides():
     def not_null(orders):
         return orders.filter(orders.amount.notnull())
 
-    with pytest.raises(sv.CompositionError) as e:
+    with pytest.raises(CompositionError) as e:
         doubled(not_null(orders))
     msg = str(e.value)
     assert msg.startswith("doubled needs (_.amount >= 0) (it is TRUE or FALSE) on 't'")
@@ -68,7 +70,7 @@ def test_obligation_may_follow_from_more_than_the_ensures():
         return orders.filter(orders.amount.notnull())
 
     positive(doubled(strictly_paid(orders)))
-    with pytest.raises(sv.CompositionError, match="positive needs doubled > 0"):
+    with pytest.raises(CompositionError, match="positive needs doubled > 0"):
         positive(doubled(paid(orders)))
 
 
@@ -94,7 +96,7 @@ def test_plain_ibis_in_the_chain():
     doubled(paid(orders).filter(_.id > 3))
     doubled(orders.filter(orders.amount > 0))
     # ...and the rest are checked on the data like a base table's.
-    with pytest.raises(sv.PreconditionError, match="violate"):
+    with pytest.raises(PreconditionError, match="violate"):
         doubled(bound([(1, "ada", -5)]).filter(_.id > 0))
     prov = provenance(doubled(bound([(1, "ada", 5)]).filter(_.id > 0)))
     assert prov is not None and prov.unproved_links
@@ -112,7 +114,7 @@ def test_keys_propagate_through_links():
     tagged(big(orders))
     assert tagged.last_report is not None
     assert tagged.last_report.requires == {"big": ["unique(id)"]}
-    with pytest.raises(sv.CompositionError, match=r"tagged needs unique\(id\)"):
+    with pytest.raises(CompositionError, match=r"tagged needs unique\(id\)"):
         tagged(paid(orders))
 
 
@@ -140,7 +142,7 @@ def test_runtime_mode_checks_a_broken_link_on_data():
         return t
 
     lenient(not_null(bound([(1, "ada", 5)])))
-    with pytest.raises(sv.PreconditionError, match="violate"):
+    with pytest.raises(PreconditionError, match="violate"):
         lenient(not_null(bound([(1, "ada", -5)])))
     prov = provenance(lenient(not_null(bound([(1, "ada", 5)]))))
     assert prov is not None and prov.unproved_links == ["lenient: (_.amount >= 0) on t"]

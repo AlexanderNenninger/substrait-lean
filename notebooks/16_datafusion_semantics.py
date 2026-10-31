@@ -190,12 +190,8 @@ def _(dt, pa, tables):
     import duckdb
     import polars as pl
     import sverify as sv
-    from sverify.engine import (
-        checker_path,
-        put_table,
-        run_substrait_json,
-        substrait_json,
-    )
+    from sverify.engine import checker_path, put_table
+    from sverify.engines import run_substrait_json, substrait_json, written_plan
     from sverify.incremental import arrow_rows
     from sverify.testing import inline_tables
 
@@ -358,7 +354,7 @@ def _(dt, pa, tables):
             )
             return self
 
-    return P, Q, con, lean_rows, pl, prove, run_substrait_json, substrait_json, sv
+    return P, Q, con, lean_rows, pl, prove, run_substrait_json, substrait_json, sv, written_plan
 
 
 @app.cell(hide_code=True)
@@ -654,7 +650,7 @@ def _(P, Q, pl, prove, render):
             "int column vs double: no cast",
             "SELECT a, f, a > f AS gt FROM mixed",
             "GAP",
-            "`sverify.engine.substrait_json` produces Substrait from DataFusion's *unanalysed* logical plan, "
+            "`sverify.engines.substrait_json` produces Substrait from DataFusion's *unanalysed* logical plan, "
             "before type coercion adds `CAST(a AS DOUBLE)`. Lean compares the integer 1 with the *code* of 0.5 "
             "and proves `NOT gt`. Ibis's `t.a > t.f` hits it too.",
             std="1 > 0.5 is true",
@@ -1278,7 +1274,7 @@ def _(mo):
     * **R2b**: Lean used to write a `VirtualTable` with placeholder `i64`
       columns, which DataFusion checks the rows against; it now writes the
       parsed schema and literals of its types. DataFusion runs every plan in
-      the form Lean writes for it (`run_plan(..., "datafusion")`,
+      the form Lean writes for it (`run(..., "datafusion")`,
       `substrait-check --write-datafusion`), which also sums integers as
       `DECIMAL(38,0)` so that `SUM` fails past 64 bits instead of wrapping
       around (#24).
@@ -1309,7 +1305,7 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(Q, con, render, run_substrait_json, substrait_json, sv, tables):
+def _(Q, con, render, run_substrait_json, substrait_json, tables, written_plan):
     def _df_consumer(sql):
         try:
             run_substrait_json(con, substrait_json(con, sql))
@@ -1319,7 +1315,7 @@ def _(Q, con, render, run_substrait_json, substrait_json, sv, tables):
 
     def _lean_written(sql):
         try:
-            rows = run_substrait_json(con, sv.written_plan(substrait_json(con, sql))).to_pylist()
+            rows = run_substrait_json(con, written_plan(substrait_json(con, sql))).to_pylist()
             return f"Lean's rewrite runs on DataFusion: {len(rows)} rows"
         except Exception as e:
             return (

@@ -2,7 +2,7 @@
 and from Isthmus into tests/fixtures/isthmus_*.json.
 
 The pipelines are the Ibis expressions in `sverify.examples`, compiled to SQL by
-Ibis and to Substrait by DataFusion, the same route `IncrementalView` takes.
+Ibis and to Substrait by DataFusion, the same route incremental maintenance takes.
 The Isthmus plans are SQL that pins down what the parser reads (and refuses)
 of Calcite's encodings; they are captured only where an Isthmus binary is
 found (`$SVERIFY_ISTHMUS`, or `isthmus` on `PATH`).

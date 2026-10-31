@@ -130,8 +130,8 @@ def _(mo):
     | 6 | [Runtime errors](?file=06_runtime_errors.py) | division by zero, overflow, casts; proving they can't happen |
     | 7 | [Windows and ASOF joins](?file=07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
     | 8 | [Composing contracts](?file=08_composition.py) | proving one step's preconditions from the previous step |
-    | 9 | [Incremental views](?file=09_incremental_views.py) | `IncrementalView`, what is refused, and how the update rules work |
-    | 10 | [Pipelines](?file=10_pipelines.py) | views over views, fallbacks, contracts that hold in every state |
+    | 9 | [Incremental views](?file=09_incremental_views.py) | a transform on a source becomes a node that `refresh` keeps up to date from changes alone; what is refused, and how the update rules work |
+    | 10 | [Pipelines](?file=10_pipelines.py) | nodes over nodes, `.write` to store them, fallbacks, contracts that hold in every state |
     | 11 | [Engines and SQL](?file=11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
     | 12 | [Doubles, time and text](?file=12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
 

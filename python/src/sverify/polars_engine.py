@@ -1,5 +1,8 @@
 """Polars as a Substrait consumer, for the plans Lean writes.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 `to_lazy` translates a Substrait JSON plan into a Polars `LazyFrame`. It reads
 the form `substrait-check` writes (`Write.writePlan`: `--write` and the delta
 plans of `--delta`), which holds only constructs the Lean `Rel` model has, so

@@ -66,6 +66,8 @@ def _():
     import ibis
     import sverify as sv
     from ibis import _
+    from sverify.engines import create_table
+    from sverify.errors import CompositionError, PreconditionError, VerificationError
 
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
@@ -86,7 +88,17 @@ def _():
 
     doubled(paid(orders))
     doubled.last_report
-    return doubled, ibis, orders, paid, sv
+    return (
+        CompositionError,
+        PreconditionError,
+        VerificationError,
+        create_table,
+        doubled,
+        ibis,
+        orders,
+        paid,
+        sv,
+    )
 
 
 @app.cell(hide_code=True)
@@ -126,7 +138,7 @@ def _(mo):
 
 
 @app.cell
-def _(doubled, mo, orders, paid, sv, upstream):
+def _(CompositionError, VerificationError, doubled, mo, orders, paid, sv, upstream):
     from ibis import _
 
     @sv.transform(ensures=[_.amount.notnull()])
@@ -144,9 +156,9 @@ def _(doubled, mo, orders, paid, sv, upstream):
         _out = mo.vstack(
             [mo.callout(mo.md("Every link holds ✓"), kind="success"), doubled.last_report]
         )
-    except sv.CompositionError as _e:
+    except CompositionError as _e:
         _out = mo.callout(mo.md(f"**CompositionError**: {str(_e).splitlines()[0]}"), kind="danger")
-    except sv.VerificationError as _e:
+    except VerificationError as _e:
         _out = mo.callout(mo.md(f"**VerificationError**: {str(_e).splitlines()[0]}"), kind="danger")
     _out
     return (not_null,)
@@ -181,9 +193,9 @@ def _(mo):
 
 
 @app.cell
-def _(display, doubled, ibis, mo, paid, sv):
+def _(create_table, display, doubled, ibis, mo, paid, sv):
     con = sv.connect()
-    sv.create_table(
+    create_table(
         con,
         "orders",
         ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
@@ -200,8 +212,8 @@ def _(display, doubled, ibis, mo, paid, sv):
 
 
 @app.cell
-def _(con, doubled, ibis, mo, paid, sv):
-    sv.create_table(
+def _(PreconditionError, con, create_table, doubled, ibis, mo, paid):
+    create_table(
         con,
         "bad_orders",
         ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
@@ -209,7 +221,7 @@ def _(con, doubled, ibis, mo, paid, sv):
     )
     try:
         doubled(paid(con.table("bad_orders")))
-    except sv.PreconditionError as _e:
+    except PreconditionError as _e:
         _err = _e
     mo.callout(mo.md(f"**PreconditionError** from `paid`: {_err}"), kind="danger")
     return

@@ -19,6 +19,7 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import connect, create_table, run_sql, substrait_json
+from sverify.incremental import IncrementalView
 from sverify.testing import canonical, inline_tables, lean_values
 
 T = ibis.schema({"a": "int64", "b": "int64"})
@@ -121,6 +122,6 @@ def test_distinct_rows_are_a_key():
 def test_sorted_views_are_maintained(rows, more):
     con = connect()
     create_table(con, "t", T, rows)
-    view = sv.IncrementalView(con, t.filter(t.a > 0).order_by(t.b), "v")
+    view = IncrementalView(con, t.filter(t.a > 0).order_by(t.b), "v")
     view.apply({"t": sv.Changes(inserts=more, deletes=[])})
     assert view.rows() == view.recompute()

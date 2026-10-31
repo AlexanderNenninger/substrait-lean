@@ -1,6 +1,9 @@
 """The query catalogue (`catalogue/` in the repository): real analytical queries,
 and how far `sverify` gets with each.
 
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release.
+
 The catalogue is hand-written TOML:
 
 * `catalogue/features.toml`: the vocabulary of operators and features a query

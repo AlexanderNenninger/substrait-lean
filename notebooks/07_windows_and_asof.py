@@ -67,12 +67,13 @@ def _():
 
     import ibis
     import sverify as sv
+    from sverify.engines import create_table
 
     def t(m, s=0):
         return dt.datetime(2024, 5, 1, 7, m, s)
 
     con = sv.connect()
-    sv.create_table(
+    create_table(
         con,
         "readings",
         ibis.schema({"sensor": "string", "ts": "timestamp", "v": "float64"}),
@@ -90,7 +91,7 @@ def _():
             rn=ibis.row_number().over(w),
         )
 
-    return con, dt, ibis, sv, t, with_neighbours
+    return con, create_table, dt, ibis, sv, t, with_neighbours
 
 
 @app.cell(hide_code=True)
@@ -187,7 +188,7 @@ def _(mo):
 
 
 @app.cell
-def _(con, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
+def _(con, create_table, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
     from ibis import _
 
     _t0 = dt.datetime(2024, 5, 1, 7, 0)
@@ -195,10 +196,10 @@ def _(con, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
     _gyr = [
         (1, _t0 + dt.timedelta(microseconds=round(1e6 * i / 130)), float(i)) for i in range(130)
     ]
-    sv.create_table(
+    create_table(
         con, "acc", ibis.schema({"device": "int64", "ts": "timestamp", "a": "float64"}), _acc
     )
-    sv.create_table(
+    create_table(
         con, "gyr", ibis.schema({"device": "int64", "ts": "timestamp", "g": "float64"}), _gyr
     )
 

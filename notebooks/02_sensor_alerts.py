@@ -90,6 +90,8 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
+    from sverify.engines import ENGINES, SNOWFLAKE, Unsupported, to_sql
+    from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
     warnings.filterwarnings("ignore", module="pyiceberg")
@@ -128,9 +130,13 @@ def _():
     readings_table = catalog.create_table("plant.readings", schema=READING)
     readings_table.append(first)
     return (
+        ENGINES,
         IcebergSink,
         IcebergSource,
+        PreconditionError,
         READING,
+        SNOWFLAKE,
+        Unsupported,
         catalog,
         first,
         ibis,
@@ -138,6 +144,7 @@ def _():
         readings_batch,
         readings_table,
         sv,
+        to_sql,
     )
 
 
@@ -294,35 +301,38 @@ def _(ENSURES, REQUIRES, ibis, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. The pipeline
+    ## 4. Both rules on the data
 
-    We put both versions side by side as views over the Iceberg source,
-    and compare them on the data. Building the `alerts` view proves its
-    contract:
+    We put both versions side by side as nodes over the Iceberg source,
+    and refresh them together with `sv.group`, so they see the same
+    snapshot. The naive rule gets an empty contract, `sv.transform()`, which
+    promises nothing but lets it read the source too. Building the `alerts`
+    node proves its contract:
     """)
     return
 
 
 @app.cell
 def _(IcebergSource, alerts, catalog, sv, three_high):
-    pipe = sv.Pipeline(sv.connect())
-    readings = pipe.source("readings", IcebergSource(catalog, "plant.readings"))
-    naive = pipe.view("naive_alerts", three_high(readings))
-    view = pipe.view("alerts", alerts(readings))
+    readings = IcebergSource(catalog, "plant.readings")
+    naive = sv.transform()(three_high)(readings)
+    alerts_node = alerts(readings)
     report = alerts.last_report
     assert report.proved and report.deterministic
-    assert [r[0] for r in naive.rows()] == [1, 3] and [r[0] for r in view.rows()] == [1]
-    return naive, pipe, report, view
+    sv.group(naive, alerts_node).refresh()
+    assert sorted(naive.to_arrow()["device_id"].to_pylist()) == [1, 3]
+    assert alerts_node.to_arrow()["device_id"].to_pylist() == [1]
+    return alerts_node, naive, readings, report
 
 
 @app.cell(hide_code=True)
-def _(display, mo, naive, report, view):
+def _(alerts_node, display, mo, naive, report):
     mo.vstack(
         [
             mo.md(report._repr_markdown_()),
             display.side_by_side(
-                display.table(naive.rows(), naive.columns, title="naive rule"),
-                display.table(view.rows(), view.columns, title="alerts (contracted)"),
+                display.arrow(naive.to_arrow().sort_by("device_id"), title="naive rule"),
+                display.arrow(alerts_node.to_arrow(), title="alerts (contracted)"),
             ),
             mo.md(
                 "The naive rule alerts on device 3 because of the NaN; the contracted one doesn't. "
@@ -339,7 +349,8 @@ def _(mo):
     ## 5. Every engine, and the warehouses
 
     The alerts may run on a laptop today and in the warehouse tomorrow.
-    DuckDB, Polars and DataFusion run the checked plan with the same rows.
+    DuckDB, Polars and DataFusion run the checked plan with the same rows,
+    whichever `engine=` the node is refreshed with.
     Snowflake and Spark tables have no row order, so sverify **refuses** to
     write a window for them unless you promise the order keys have no ties.
     The report's `deterministic` is exactly that promise, proved from the
@@ -349,20 +360,21 @@ def _(mo):
 
 
 @app.cell
-def _(pipe, report, sv, view):
+def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to_sql):
     import json
 
-    from sverify.sql import Unsupported, to_sql
-    from sverify.sql.snowflake import SNOWFLAKE
-
-    _rows = {e: sv.run_plan(pipe.con, view.plan, e).to_pylist() for e in sv.ENGINES}
+    _rows = {}
+    for _engine in ENGINES:
+        _node = alerts(readings)
+        _node.refresh(engine=_engine)
+        _rows[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _rows.values()}) == 1
 
     try:
-        to_sql(json.loads(view.plan), SNOWFLAKE)
+        to_sql(json.loads(alerts_node.plan), SNOWFLAKE)
     except Unsupported as e:
         refused = str(e)
-    _sql = to_sql(json.loads(view.plan), SNOWFLAKE, tie_free=report.deterministic)
+    _sql = to_sql(json.loads(alerts_node.plan), SNOWFLAKE, tie_free=report.deterministic)
     assert _sql.startswith("SELECT")
     refused
     return
@@ -377,34 +389,35 @@ def _(mo):
 
     ## 6. New readings, and a sensor that sends twice
 
-    A window isn't incrementally maintainable (yet), and the pipeline says
-    so up front instead of maintaining it incorrectly. Such a view is
+    A window isn't incrementally maintainable (yet), and the node says so
+    up front instead of maintaining it incorrectly. Such a node is
     **recomputed and diffed** on each refresh; its change still flows to the
-    sink and to views downstream:
+    sink and to nodes downstream:
     """)
     return
 
 
 @app.cell
-def _(pipe):
-    pipe.fallbacks
+def _(alerts_node):
+    print(alerts_node.status())
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The first state goes to an Iceberg sink, which keeps the contract in the
-    table properties and in every snapshot summary:
+    We store the node in an Iceberg sink with `.write`, and its first
+    refresh writes the first state. The sink keeps the contract in the table
+    properties and in every snapshot summary:
     """)
     return
 
 
 @app.cell
-def _(IcebergSink, catalog, view):
-    sink = IcebergSink(catalog, "plant.alerts", view)
-    print(sink.write())
-    return (sink,)
+def _(IcebergSink, alerts_node, catalog):
+    stored = alerts_node.write(IcebergSink(catalog, "plant.alerts"))
+    print(stored.refresh())
+    return (stored,)
 
 
 @app.cell(hide_code=True)
@@ -418,17 +431,20 @@ def _(mo):
 
 
 @app.cell
-def _(minute, pipe, readings_batch, readings_table, sink, view):
+def _(alerts, minute, readings, readings_batch, readings_table, stored):
     readings_table.append(readings_batch((2, minute(3), 37.0), (2, minute(4), 38.0)))
-    print(pipe.refresh())
-    print(sink.write())
-    assert view.rows() == view.recompute() and [r[0] for r in view.rows()] == [1, 2]
+    print(stored.refresh())
+    _from_scratch = alerts(readings)
+    _from_scratch.refresh()
+    _rows = sorted(map(repr, stored.to_arrow().to_pylist()))
+    assert _rows == sorted(map(repr, _from_scratch.to_arrow().to_pylist()))
+    assert sorted(stored.to_arrow()["device_id"].to_pylist()) == [1, 2]
     return
 
 
 @app.cell(hide_code=True)
-def _(display, view):
-    display.table(view.rows(), view.columns, title="alerts")
+def _(display, stored):
+    display.arrow(stored.to_arrow().sort_by("device_id"), title="alerts")
     return
 
 
@@ -440,20 +456,20 @@ def _(mo):
     Then device 1 sends two readings for 12:04. That is exactly the case
     the key rules out, and the one that would make the
     alerts depend on the engine. The refresh refuses the batch, and
-    **nothing changes**: the view and the sink stay at the last good
+    **nothing changes**: the node and the sink stay at the last good
     version, and the next refresh retries from there.
     """)
     return
 
 
 @app.cell
-def _(minute, pipe, readings_batch, readings_table, sv, view):
+def _(PreconditionError, minute, readings_batch, readings_table, stored):
     readings_table.append(readings_batch((1, minute(4), 34.0), (1, minute(4), 34.5)))
     try:
-        pipe.refresh()
-    except sv.PreconditionError as e:
+        stored.refresh()
+    except PreconditionError as e:
         rejected = str(e)
-    assert view.versions == {"readings": 2}
+    assert stored.versions == {"readings": 2}
     rejected
     return
 
@@ -470,7 +486,7 @@ def _(mo):
     that sends twice stops the job instead of making it engine-dependent.
     The same plan runs on DuckDB, Polars and DataFusion, and you get
     Snowflake or Spark SQL only once the tie-freedom it needs is proved. The
-    window view is honest about not being incremental, and stays up to date
+    window node is honest about not being incremental, and stays up to date
     by recomputation, with its change written to the sink.
 
     **Next up:** [An orders mart in SQL and Ibis](?file=03_orders_mart.py),

@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify",
+#     "sverify[delta]",
 # ]
 #
 # [tool.uv.sources]
@@ -42,10 +42,13 @@ def _(mo):
     feed, and a bad row anywhere below ends up on their slides.
 
     Real pipelines are layered like that: cleaned tables feed joined tables
-    feed reports. `sv.Pipeline` maintains several views that **read each
-    other**. Each view's change is handed to the views that read it, so an
-    intermediate result is computed once and shared, and only changes flow
-    through the layers.
+    feed reports. In `sverify` the layers are transforms composed directly,
+    each called on the one below. Without a `.write` in between they
+    **fuse** into one plan, maintained as one incremental view (chapter 9).
+    `.write(sink)` **stores** a layer, as a cache in the middle of a job or
+    as its output; the layers above read the stored table as a versioned
+    source, through its change feed. So an intermediate result is computed
+    once and shared, and only changes flow through the layers.
 
     This chapter brings chapters 8 and 9 together: the base layer is the
     contracted `doubled(paid(orders))`, and its guarantees keep holding in
@@ -58,9 +61,15 @@ def _(mo):
 
 @app.cell
 def _():
-    import ibis
+    import tempfile
+    from pathlib import Path
+
+    import pyarrow as pa
     import sverify as sv
     from ibis import _
+    from sverify.io import DeltaSink, StaticSource
+
+    lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
 
     @sv.transform(
         requires={"orders": [_.amount >= 0, sv.unique("id")]},
@@ -76,29 +85,38 @@ def _():
     def doubled(t):
         return t.select(t.id, t.customer, doubled=t.amount * 2)
 
-    con = sv.connect()
-    sv.create_table(
-        con,
-        "orders",
-        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
-        [(1, "ada", 30), (2, "bob", 5), (3, "cy", 0)],
+    @sv.transform(requires={"base": [_.doubled.notnull()]}, ensures=[_.doubled.notnull()])
+    def cities(base, customers):
+        return base.join(customers, base.customer == customers.name).select("id", "city", "doubled")
+
+    @sv.transform()
+    def located(base, customers):
+        return base.left_join(customers, base.customer == customers.name).select("id", "city")
+
+    def arrow_table(schema, rows):
+        return pa.Table.from_pylist([dict(zip(schema.names, r)) for r in rows], schema=schema)
+
+    orders = StaticSource(
+        arrow_table(
+            pa.schema({"id": pa.int64(), "customer": pa.string(), "amount": pa.int64()}),
+            [(1, "ada", 30), (2, "bob", 5), (3, "cy", 0)],
+        ),
+        name="orders",
     )
-    sv.create_table(
-        con,
-        "customers",
-        ibis.schema({"name": "string", "city": "string"}),
-        [("ada", "Paris"), ("cy", "Lima")],
+    customers = StaticSource(
+        arrow_table(
+            pa.schema({"name": pa.string(), "city": pa.string()}),
+            [("ada", "Paris"), ("cy", "Lima")],
+        ),
+        name="customers",
     )
 
-    pipe = sv.Pipeline(con)
-    base = pipe.view("base", doubled(paid(con.table("orders"))))
-    b, customers = base.table, con.table("customers")
-    pipe.view(
-        "cities", b.join(customers, b.customer == customers.name).select("id", "city", "doubled")
-    )
-    pipe.view("located", b.left_join(customers, b.customer == customers.name).select("id", "city"))
-    pipe.fallbacks
-    return base, pipe, sv
+    base = doubled(paid(orders)).write(DeltaSink(str(lake / "base")))
+    by_city = cities(base, customers)
+    by_location = located(base, customers)
+    monday = sv.group(by_city, by_location)
+    print(monday.refresh())
+    return base, by_city, by_location, customers, monday, orders, sv
 
 
 @app.cell(hide_code=True)
@@ -106,7 +124,7 @@ def _(mo):
     mo.mermaid(
         """
         graph BT
-          O["orders"] --> B["base<br/>doubled(paid(orders))"]
+          O["orders"] --> B["base (Delta table)<br/>doubled(paid(orders)), one fused plan"]
           B --> C["cities<br/>inner join customers"]
           B --> L["located<br/>left join customers<br/>(recomputed)"]
           K["customers"] --> C
@@ -118,19 +136,23 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(base, mo):
-    from sverify.contracts import label
-
+def _(base, mo, monday):
     mo.md(
-        "* A view reads base tables and earlier views (`view.table`). A "
-        "contracted transformation applied to `view.table` builds on that view's "
-        "guarantees, as in a direct composition.\n"
-        "* `pipe.fallbacks` (the output above) lists views without update rules: "
-        "`located` is a left join, so it is **recomputed and diffed** on each batch. "
-        "Its change still flows to any view downstream.\n"
-        f"* `base.guarantees` = `{', '.join(label(g) for g in base.guarantees)}`: what holds "
-        f"in every state. `base.requires` = `{'; '.join(f'{t}: {label(c)}' for t, cs in base.requires.items() for c in cs)}`: "
-        "what every batch is checked against."
+        "* `paid` and `doubled` have no `.write` between them, so they fuse into "
+        "one plan; `.write(DeltaSink(...))` stores the result as `base`. `cities` and "
+        "`located` read `base`'s Delta table, not `orders`.\n"
+        "* A contracted transform called on a stored node builds on what that node's "
+        "plan proved, as in a direct composition: `cities` requires "
+        "`_.doubled.notnull()` of `base`, which `doubled` guarantees, so it is "
+        "checked once, when the node is built, and never on the data. A precondition "
+        "`base` doesn't guarantee raises `CompositionError` right there.\n"
+        "* `sv.group(by_city, by_location)` refreshes both reports against the same source versions; "
+        "`base` is refreshed and written once for the two of them, upstream first. "
+        "Its first refresh checked `paid`'s preconditions on all of `orders` "
+        "(the `requires … (checked on data)` lines above).\n"
+        "* `located` is a left join, so it is **recomputed and diffed** on each "
+        "refresh (chapter 9). Its change would still flow to any node reading it. "
+        f"`status()` says so:\n\n```text\n{monday.status()}\n{base.status()}\n```"
     )
     return
 
@@ -140,9 +162,11 @@ def _(mo):
     mo.md(r"""
     ## Changes, layer by layer
 
-    We'll feed the pipeline. Each button applies one batch to `orders` and
-    `customers`. The first is valid; the other two each insert an order
-    that breaks a precondition of `paid`:
+    We'll feed the pipeline. Each button changes `orders` and `customers`
+    and refreshes both reports. The first is valid; the other two each
+    insert an order that breaks a precondition of `paid`. We refresh with
+    `audit=True`, so every batch is also compared with recomputation
+    before it is applied (`AuditError` otherwise).
     """)
     return
 
@@ -176,15 +200,22 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(dup, good, neg, pipe, presses, sv):
+def _(customers, dup, good, monday, neg, orders, presses, sv):
+    from sverify.errors import PreconditionError
+
     _cities = ["Oslo", "Rome", "Lima", "Paris"]
 
     def _try(kind, changes):
+        orders.apply(changes["orders"])
+        if "customers" in changes:
+            customers.apply(changes["customers"])
         try:
-            pipe.apply(changes)
-            presses["last"] = (kind, None)
-        except sv.PreconditionError as e:
-            presses["last"] = (kind, str(e))
+            presses["last"] = (kind, str(monday.refresh(audit=True)))
+        except PreconditionError as e:
+            presses["last"] = (kind, e)
+            # The demo takes the bad order out of the feed again, so the
+            # next batch can go through.
+            orders.apply(sv.Changes(deletes=changes["orders"].inserts))
 
     while presses["good"] < good.value:
         _i = presses["good"]
@@ -207,33 +238,41 @@ def _(dup, good, neg, pipe, presses, sv):
 
 
 @app.cell(hide_code=True)
-def _(display, mo, pipe, presses, state):
+def _(base, by_city, by_location, display, mo, presses, state):
     _ = state
-    _views = pipe.views
     _last = presses["last"]
     if _last is None:
         _msg = mo.md("*Press a button.*")
-    elif _last[1] is None:
-        _msg = mo.callout(mo.md("Batch applied to every layer."), kind="success")
+    elif isinstance(_last[1], str):
+        _msg = mo.vstack(
+            [
+                mo.callout(
+                    mo.md("Batch applied to every layer; the audit found no difference."),
+                    kind="success",
+                ),
+                mo.md(f"`refresh(audit=True)` reports:\n\n```text\n{_last[1]}\n```"),
+            ]
+        )
     else:
         _msg = mo.callout(
-            mo.md(f"**PreconditionError**: {_last[1]}. The batch was refused; nothing changed."),
+            mo.md(
+                f"**PreconditionError**: {_last[1]}. The refresh was refused; no layer "
+                "changed and nothing was written."
+            ),
             kind="danger",
         )
-    _equal = all(v.rows() == v.recompute() for v in _views.values())
+
+    def _rows(node):
+        return sorted((tuple(r.values()) for r in node.to_arrow().to_pylist()), key=repr)
+
     mo.vstack(
         [
             _msg,
             display.side_by_side(
                 *[
-                    display.table(sorted(v.rows(), key=lambda r: r[0]), v.columns, title=name)
-                    for name, v in _views.items()
+                    display.table(_rows(n), list(n.schema), title=n.name)
+                    for n in [base, by_city, by_location]
                 ]
-            ),
-            display.verdict(
-                _equal,
-                "Every view equals its full recomputation ✓",
-                "A view differs from its recomputation ✗",
             ),
         ],
         gap=1,
@@ -248,8 +287,8 @@ def _(mo):
 
     Whoever reads `base` relies on its guarantees on the hundredth batch as
     much as on the first. `paid`'s preconditions were checked on all of
-    `orders` once, when the pipeline was built. After that, only **the
-    batch** is checked:
+    `orders` once, on the first refresh. After that, only **the batch** is
+    checked:
 
     * row conditions (`amount >= 0`) on the inserted rows;
     * keys (`unique(id)`) among the inserted rows and against the keys of
@@ -260,23 +299,27 @@ def _(mo):
     conditions and their keys clash with neither each other nor the kept
     rows. `Triple.maintained` then says a contracted view's guarantees hold
     in the new state. So `base` satisfies `doubled ≥ 0` and is non-NULL
-    after every batch, without ever re-checking the whole table.
+    after every batch, without ever re-checking the whole table, and the
+    Delta table it is written to records those guarantees with every
+    version, for the layers that read it.
 
     The layering itself is `Rel.chain_sound` (DBSP's *chain rule*): when a
     view reads another view's stored result, and gets that view's change as
-    its change table, its own update plan is still correct. For a recomputed
-    view, `ZSet.diff_correct` shows `new − old` is a valid change to pass
-    on.
+    its change table (here, through the Delta change feed), its own update
+    plan is still correct. For a recomputed view, `ZSet.diff_correct` shows
+    `new − old` is a valid change to pass on.
 
-    `sv.IncrementalView` is a pipeline with a single view; on its own it
-    refuses queries without update rules, since there's nothing to recompute
-    for.
+    Each refresh brings the layers up to date upstream first and writes
+    every stored node exactly once per state. If the job stops and
+    restarts, building the same nodes again is enough: the first refresh
+    resumes each stored node from its table when the plan and the source
+    versions match, rather than computing it again.
 
-    You can now stack views that pass only their changes along, with every
-    contract's guarantees holding in every state while only the batch is
-    checked. Next up, [Engines and SQL](?file=11_engines.py) runs the same
-    checked plans on Polars and DataFusion, and as SQL for Snowflake and
-    Spark.
+    You can now stack transforms into layers that pass only their changes
+    along, store the ones others read, and rely on every contract's
+    guarantees in every state while only the batch is checked. Next up,
+    [Engines and SQL](?file=11_engines.py) runs the same checked plans on
+    Polars and DataFusion, and as SQL for Snowflake and Spark.
     """)
     return
 

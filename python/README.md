@@ -47,18 +47,14 @@ ship in the wheel too, under `sverify/skills/`.
 ## In thirty lines
 
 ```python
-import ibis
+import pyarrow as pa
 import sverify as sv
 from ibis import _
+from sverify.io import StaticSource
 
-con = sv.connect()  # in-memory tables; plans run on DuckDB by default
-sv.create_table(
-    con,
-    "orders",
-    ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
-    [(1, "ada", 30), (2, "bob", 5)],
+orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same way
+    pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
 )
-orders = con.table("orders")
 
 
 @sv.transform(
@@ -69,9 +65,11 @@ def big_orders(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
 
-view = sv.IncrementalView(con, big_orders(orders), "big_orders")  # proved, then computed
-view.apply({"orders": sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)])})
-assert view.rows() == [(3, 100)] == view.recompute()
+big = big_orders(orders)  # proved here, before any data runs
+big.refresh()  # computed, on DuckDB by default
+orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
+big.refresh(engine="polars")  # updated from the changes alone, on another engine
+assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 print(big_orders.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: unique(id)
@@ -86,9 +84,11 @@ def plus_one(orders):
     return orders.select(orders.id, total=orders.amount + 1)
 
 
+from sverify.errors import VerificationError
+
 try:
     plus_one(orders)
-except sv.VerificationError as e:
+except VerificationError as e:
     print(e)
 # could not prove: (_.total > 5) (it is TRUE or FALSE)
 ```
@@ -116,34 +116,39 @@ explains every feature in a chapter of its own; it runs locally with
 ## The API in brief
 
 ```python
-from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
-from sverify.sql import to_sql
-from sverify.sql.snowflake import SNOWFLAKE  # also sverify.sql.duckdb, sverify.sql.spark
 import json
+
+import ibis
+from sverify.engines import SNOWFLAKE, to_sql  # also DUCKDB, SPARK
+from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
 
 sv.verify(
     "select id, amount from orders where amount > 0",
-    tables={"orders": orders},
+    tables={"orders": ibis.table({"id": "int64", "amount": "int64"}, name="orders")},
     ensures=["amount > 0"],
 )  # SQL, checked; returns the report
-sv.run_plan(con, view.plan, "polars")  # the checked plan on another engine
-to_sql(json.loads(view.plan), SNOWFLAKE)  # or sverify.sql.Unsupported, saying why
+to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.Unsupported
 
-pipe = sv.Pipeline(sv.connect())  # views over views; sources with versions
-# big = pipe.view("big", big_orders(pipe.source("orders", DeltaSource("s3://.../orders"))))
-# DeltaSink("s3://.../big", big).write(); pipe.refresh(); ...
+# p = paid(DeltaSource("s3://.../orders")).write(DeltaSink("s3://.../paid"))  # stored: a source
+# r = revenue(p).write(DeltaSink("s3://.../revenue"))
+# r.refresh(engine="polars"); sv.group(r, other).refresh(); r.to_pandas()
 ```
 
 * `@sv.transform(requires=..., ensures=..., on_unproved="error" | "runtime" | "warn")`
   proves a contract on each call; `.last_report` says what was proved and
   what is known about every output column. `sv.unique(...)` states keys.
-* Contracted steps compose: a downstream precondition is proved from the
+* Called on sources (`sverify.io`) or other nodes, transforms build nodes
+  that compose directly: a downstream precondition is proved from the
   upstream contract (`CompositionError` names a broken link).
-* `sv.IncrementalView` maintains filters, projections, inner and cross joins
-  and `UNION ALL`, and refuses anything else up front (`NotIncremental`); in
-  a `sv.Pipeline` other views are recomputed and diffed instead.
-* `sverify.partition.run_sharded` runs a plan per shard and combines the
-  results, with a proof that the result is the same.
+* Without `.write` in between, transforms fuse into one plan; `.write(sink)`
+  stores a node, exactly once per state, and nodes downstream read it as a
+  versioned source. `refresh(engine=...)` updates the whole lineage, and
+  `sv.group(a, b)` several outputs against the same source versions.
+* Filters, projections, inner and cross joins and `UNION ALL` are
+  maintained from the changes; anything else is recomputed and diffed.
+* `sverify.engines` has the engines, SQL dialects and plans
+  (`run_sharded` runs a plan per shard and combines the results, with a
+  proof that the result is the same); `sverify.errors` the exceptions.
 
 **Not supported yet:** DECIMAL columns (keep money as integer cents),
 framed window aggregates, `RANK` and `NTILE`. The repository's README has

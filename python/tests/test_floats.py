@@ -11,6 +11,8 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify.engines import ENGINES, create_table, table_rows
+from sverify.incremental import IncrementalView
 
 ERR = -9999.0
 s1 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s1")
@@ -61,7 +63,7 @@ values = st.sampled_from([0.0, -0.0, 0.5, 1.5, ERR, math.nan, math.inf, -math.in
 minutes = st.integers(0, 4)
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_incremental_view_with_floats_matches_recompute(engine, data):
@@ -70,8 +72,8 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
     t = lambda m: dt.datetime(2024, 1, 1, 0, m)  # noqa: E731
     rows = st.lists(st.tuples(minutes.map(t), values), max_size=5, unique_by=lambda r: r[0])
     for name in ["s1", "s2"]:
-        sv.create_table(con, name, s1.schema(), data.draw(rows))
-    view = sv.IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w", engine)
+        create_table(con, name, s1.schema(), data.draw(rows))
+    view = IncrementalView(con, windows(db.table("s1"), db.table("s2")), "w", engine)
 
     def same(a, b):
         # NaN != NaN, so compare the rows' text.
@@ -81,7 +83,7 @@ def test_incremental_view_with_floats_matches_recompute(engine, data):
     for _step in range(data.draw(st.integers(1, 3))):
         changes = {}
         for name in ["s1", "s2"]:
-            current = sv.table_rows(con, name)
+            current = table_rows(con, name)
             pick = st.lists(st.sampled_from(current), unique=True, max_size=2)
             gone = data.draw(pick) if current else []
             taken = {r[0] for r in current} - {r[0] for r in gone}
@@ -116,33 +118,33 @@ def test_column_comparisons_imply_not_null():
     assert report.proved
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 def test_incremental_view_with_integer_constants(engine):
     con = sv.connect()
     t = lambda m: dt.datetime(2024, 5, 1, 7, m)  # noqa: E731
-    sv.create_table(con, "hr", hr.schema(), [(1, t(0), 72.0), (1, t(10), -1.0)])
-    sv.create_table(con, "sessions", sessions.schema(), [(1, t(0), t(30))])
-    view = sv.IncrementalView(con, in_session(con.table("hr"), con.table("sessions")), "v", engine)
+    create_table(con, "hr", hr.schema(), [(1, t(0), 72.0), (1, t(10), -1.0)])
+    create_table(con, "sessions", sessions.schema(), [(1, t(0), t(30))])
+    view = IncrementalView(con, in_session(con.table("hr"), con.table("sessions")), "v", engine)
     view.apply({"hr": sv.Changes(inserts=[(1, t(20), 160.0), (1, t(25), 0.0)])})
     assert [r[2] for r in view.rows()] == [72.0, 160.0]
     assert view.rows() == view.recompute()
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 def test_signed_zeros_are_one_row(engine):
     """The model has one zero: -0.0 is stored as 0.0, and deleting -0.0
     deletes it."""
     con = sv.connect()
     t = dt.datetime(2024, 1, 1)
-    sv.create_table(con, "s1", s1.schema(), [(t, -0.0), (t, 1.0)])
+    create_table(con, "s1", s1.schema(), [(t, -0.0), (t, 1.0)])
     table = con.table("s1")
-    view = sv.IncrementalView(con, table.filter(table.value >= 0), "v", engine)
+    view = IncrementalView(con, table.filter(table.value >= 0), "v", engine)
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 0.0), (t, 1.0)])
     view.apply({"s1": sv.Changes(inserts=[(t, 2.0)], deletes=[(t, -0.0)])})
     assert repr(view.rows()) == repr(view.recompute()) == repr([(t, 1.0), (t, 2.0)])
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 def test_computed_zeros_and_nans_are_canonical(engine):
     """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `inf - inf` is the one NaN,
     sorted last, though x86 computes a negative NaN (on DataFusion, which

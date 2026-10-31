@@ -191,14 +191,19 @@ class Dialect:
         raise Unsupported(f"{self.name}: integer remainder is not implemented")
 
     def int_div(self, a: str, b: str) -> str:
-        """`BinFn.idiv`: truncating; division by zero raises (Lean: NULL)."""
+        """`BinFn.idiv`: truncating; division by zero raises (Lean: NULL), but
+        `NULL / 0` is NULL, as in `Safety.lean` (only integers divide)."""
         if not self.guards:
             return self.trunc_div(a, b)
         fail = self.raise_("division by zero", b, "int")
-        return f"(CASE WHEN {b} = {self.int_lit(0)} THEN {fail} ELSE {self.trunc_div(a, b)} END)"
+        return (
+            f"(CASE WHEN {a} IS NULL THEN {self.null('int')} WHEN {b} = {self.int_lit(0)} "
+            f"THEN {fail} ELSE {self.trunc_div(a, b)} END)"
+        )
 
     def int_mod(self, a: str, b: str) -> str:
-        """`BinFn.imod`: the sign of `a`; by zero raises (Lean: NULL), by -1 is 0."""
+        """`BinFn.imod`: the sign of `a`; by zero raises (Lean: NULL), by -1 is 0;
+        `NULL % 0` is NULL."""
         zero = self.int_mul(a, self.int_lit(0))
         if not self.guards:
             # `MIN % -1` fails on some engines; that branch is semantics, not a check.
@@ -207,8 +212,9 @@ class Dialect:
             )
         fail = self.raise_("division by zero", b, "int")
         return (
-            f"(CASE WHEN {b} = {self.int_lit(0)} THEN {fail} WHEN {b} = {self.int_lit(-1)} "
-            f"THEN {zero} ELSE {self.trunc_mod(a, b)} END)"
+            f"(CASE WHEN {a} IS NULL THEN {self.null('int')} WHEN {b} = {self.int_lit(0)} "
+            f"THEN {fail} WHEN {b} = {self.int_lit(-1)} THEN {zero} "
+            f"ELSE {self.trunc_mod(a, b)} END)"
         )
 
     def int_pow(self, a: str, b: int) -> str:
