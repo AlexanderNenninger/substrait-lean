@@ -14,15 +14,18 @@ trailing `__weight` column. Each plan is union-free (see `Rel.terms`).
 preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
 and print a JSON report.
 
+`substrait-check --write plan.json`: print the plan in Lean's written form
+(the plan `Rel.eval` runs, as Substrait JSON).
+
+`substrait-check --serve`: answer requests for the modes above on stdin, one
+process for many plans (see `serve`).
+
 Exit codes: 0 ok (for `--contract`: every postcondition proved), 1
 parse/unsupported error, 2 ill-formed plan, 3 not incrementally maintainable,
 4 some postcondition not proved.
 -/
 
 open Substrait Parse
-
-def load (path : String) : IO (Except String Plan) :=
-  return parsePlan (← IO.FS.readFile path)
 
 /-- Shared static checks; `none` means the plan passed. -/
 def checkPlan (plan : Plan) : Option (UInt32 × String) :=
@@ -50,16 +53,6 @@ def delta (plan : Plan) : IO UInt32 := do
     IO.println (Write.writeDeltaPlan plan term).compress
   return 0
 
-def contract (path : String) : IO UInt32 := do
-  let input ← match Lean.Json.parse (← IO.FS.readFile path) with
-    | .ok j => pure j
-    | .error e => IO.eprintln s!"error: {e}"; return 1
-  match ContractCheck.check input with
-  | .error e => IO.eprintln s!"error: {e}"; return 1
-  | .ok report =>
-    IO.println report.json.compress
-    return if report.allProved then 0 else 4
-
 def check (plan : Plan) : IO UInt32 := do
   let cat := plan.catalog
   IO.println plan.root.render
@@ -80,15 +73,79 @@ def check (plan : Plan) : IO UInt32 := do
     IO.println s!"  {Row.render row}"
   return 0
 
-def main (args : List String) : IO UInt32 := do
-  let (mode, path) ← match args with
-    | [path] => pure (check, path)
-    | ["--delta", path] => pure (delta, path)
-    | ["--contract", path] => return ← contract path
-    | ["--write", path] => pure (fun plan => do
-        IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names).compress
-        return 0, path)
-    | _ => IO.eprintln "usage: substrait-check [--delta | --contract] <file.json>"; return 1
-  match ← load path with
+def write (plan : Plan) : IO UInt32 := do
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names).compress
+  return 0
+
+/-- One request of `--serve`: the mode flag (empty for the default check)
+and the input text. -/
+def runOn (flag : String) (input : String) : IO UInt32 := do
+  if flag == "--contract" then
+    match Lean.Json.parse input with
+    | .error e => IO.eprintln s!"error: {e}"; return 1
+    | .ok j => match ContractCheck.check j with
+      | .error e => IO.eprintln s!"error: {e}"; return 1
+      | .ok report =>
+        IO.println report.json.compress
+        return if report.allProved then 0 else 4
+  let mode ← match flag with
+    | "" => pure check
+    | "--delta" => pure delta
+    | "--write" => pure write
+    | _ => IO.eprintln s!"unknown mode {flag}"; return 1
+  match parsePlan input with
   | .ok plan => mode plan
   | .error e => IO.eprintln s!"error: {e}"; return 1
+
+/-- `act` with stdout and stderr captured. -/
+def capture (act : IO UInt32) : IO (UInt32 × ByteArray × ByteArray) := do
+  let out ← IO.mkRef ({} : IO.FS.Stream.Buffer)
+  let err ← IO.mkRef ({} : IO.FS.Stream.Buffer)
+  let code ← IO.withStdout (IO.FS.Stream.ofBuffer out) <|
+    IO.withStderr (IO.FS.Stream.ofBuffer err) act
+  return (code, (← out.get).data, (← err.get).data)
+
+partial def readExactly (h : IO.FS.Stream) (n : Nat) (acc : ByteArray := .empty) : IO ByteArray := do
+  if acc.size ≥ n then return acc
+  let chunk ← h.read (n - acc.size).toUSize
+  if chunk.isEmpty then throw (IO.userError "unexpected end of input")
+  readExactly h n (acc ++ chunk)
+
+/-- `substrait-check --serve`: answer requests on stdin until it closes.
+A request is a line `<flag> <n>` (flag `-` for the default check) and then
+`n` bytes of input; the reply is a line `<exit code> <m> <k>` and then `m`
+bytes of stdout and `k` bytes of stderr. Saves a process start (most of it
+Lean's module initialization) per plan. -/
+partial def serve : IO UInt32 := do
+  let stdin ← IO.getStdin
+  let stdout ← IO.getStdout
+  repeat
+    let line ← stdin.getLine
+    if line.isEmpty then break
+    match line.trimAscii.toString.splitOn " " with
+    | [flag, n] =>
+      let input ← readExactly stdin n.toNat!
+      let flag := if flag == "-" then "" else flag
+      let run := try runOn flag (String.fromUTF8! input) catch e => do
+        IO.eprintln s!"error: {e}"; pure 1
+      let (code, out, err) ← capture run
+      stdout.putStr s!"{code} {out.size} {err.size}\n"
+      stdout.write out
+      stdout.write err
+      stdout.flush
+    | _ => IO.eprintln s!"bad request {line}"; return 1
+  return 0
+
+def main (args : List String) : IO UInt32 := do
+  match args with
+  | ["--serve"] => serve
+  | [path] => runOn "" (← IO.FS.readFile path)
+  | [flag, path] =>
+    if ["--delta", "--contract", "--write"].contains flag then
+      return ← runOn flag (← IO.FS.readFile path)
+    usage
+  | _ => usage
+where
+  usage := do
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write] <file.json> | --serve"
+    return 1

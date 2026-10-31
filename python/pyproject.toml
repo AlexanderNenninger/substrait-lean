@@ -55,6 +55,7 @@ dev = [
     "poethepoet>=0.49.0",
     "pyrefly>=1.4.0",
     "pytest>=9.2.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.17.3",
     "snowflake-connector-python<5",
     "sqlglot>=30.22.0",
@@ -107,8 +108,8 @@ cmd = "tests/run.sh"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.test]
-help = "Python tests, including the randomized engine tests"
-cmd = "pytest"
+help = "Python tests, including the randomized engine tests, on every core"
+cmd = "pytest -n auto --dist worksteal"
 
 [tool.poe.tasks.qa]
 help = "Run everything: prove, build, lint, typecheck, golden, test"

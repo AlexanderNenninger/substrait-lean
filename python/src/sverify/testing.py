@@ -17,7 +17,7 @@ from collections.abc import Iterable, Mapping
 import pyarrow as pa
 
 from sverify import duckdb_engine
-from sverify.engine import checker_path
+from sverify.engine import run_checker
 from sverify.incremental import arrow_rows
 
 EPOCH = dt.datetime(1970, 1, 1)
@@ -62,30 +62,25 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
     return plan
 
 
+def _checked(plan_json: str) -> str:
+    code, out, err = run_checker((), plan_json)
+    if code != 0:
+        raise subprocess.CalledProcessError(code, "substrait-check", out, err)
+    return out
+
+
 def lean_rows(plan_json: str) -> list[tuple]:
     """The rows `Rel.eval` gives for a plan with only virtual tables, in
     Lean's order. Doubles, timestamps and dates come back as their integer
     codes (`SubstraitLean/Float.lean`); doubles are refused."""
-    out = subprocess.run(
-        [str(checker_path()), "/dev/stdin"],
-        input=plan_json,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    out = _checked(plan_json)
     return parse_rows(out)
 
 
 def lean_values(plan_json: str) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
     decimals and a `d` (so only approximately)."""
-    out = subprocess.run(
-        [str(checker_path()), "/dev/stdin"],
-        input=plan_json,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    out = _checked(plan_json)
     return parse_rows(out, doubles=True)
 
 
