@@ -12,7 +12,8 @@ the table format are assumptions, stated here as explicit hypotheses:
   one: `(old ++ Δ).weight = new.weight` (`ChangeFeed`). Given that, the
   delta plans compute the change of every view (`Rel.cdf_sound`). When the
   feed is unavailable, `Δ = new - old` is computed from the two snapshots,
-  and then the hypothesis is proved, not trusted (`ChangeFeed.of_diff`).
+  and then the hypothesis is proved, not trusted (`ChangeFeed.of_diff`); on
+  Iceberg, only from the files that changed (`ChangeFeed.of_changed_files`).
 * **File statistics.** Each data file records per-column minimum, maximum,
   NULL count and row count. With correct statistics as a hypothesis
   (`ColStats.Correct`), the join of the files' bounds bounds the whole table
@@ -229,6 +230,20 @@ snapshots is a correct change, so `ChangeFeed` is then proved. -/
 theorem ChangeFeed.of_diff (old new : ZCatalog) (ts : List String) :
     ChangeFeed old (fun t => new t ++ (old t).neg) new ts :=
   fun t _ row => by rw [ZCatalog.add_apply]; exact ZSet.diff_correct _ _ row
+
+/-- The Iceberg reader's diff of only the changed files: if both snapshots
+consist of the same unchanged files `U` (same weights) plus the files that
+changed (`A` before, `B` after), then `B - A` is a correct change. Reading
+`B` and `A` is all it takes. Trusted: a data file with the same path and the
+same delete files has the same rows in both snapshots (Iceberg files are
+immutable). -/
+theorem ChangeFeed.of_changed_files {old new U A B : ZCatalog} {ts : List String}
+    (hold : ∀ t ∈ ts, ∀ r, (old t).weight r = (U t ++ A t).weight r)
+    (hnew : ∀ t ∈ ts, ∀ r, (new t).weight r = (U t ++ B t).weight r) :
+    ChangeFeed old (fun t => B t ++ (A t).neg) new ts := fun t ht r => by
+  rw [ZCatalog.add_apply, ZSet.weight_append, hold t ht r, hnew t ht r]
+  simp only [ZSet.weight_append, ZSet.weight_neg]
+  omega
 
 /-- **Maintaining a view from a change feed.** If the feed is correct
 (`ChangeFeed`, trusted for Delta CDF and Iceberg appends) and the engine

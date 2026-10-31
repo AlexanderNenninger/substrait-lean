@@ -657,17 +657,25 @@ the view's rows, so `stored()` returns the state only when the table's last
 commit is the sink's own. Iceberg works the same way with `IcebergSource(catalog,
 "db.orders")` and `IcebergSink`: versions are snapshot sequence numbers, a
 run of appends is read from the files those snapshots added, and anything
-else (row-level deletes, overwrites) is a diff of the two snapshots, which the
-report names. Iceberg has no CHECK constraints, so the sink keeps the
-contract in the table properties and every snapshot summary, and a reader
-uses it only while every snapshot of the table was written under it.
+else (row-level deletes, overwrites, delete files) is a diff of the two
+snapshots on only the data files that changed between them (removed, added,
+or with other delete files), which the report names
+(`ChangeFeed.of_changed_files`). Iceberg has no CHECK constraints, so the sink
+keeps the contract in the table properties and every snapshot summary, and a
+reader uses it only while every snapshot of the table was written under it.
+After its first write, the sink writes each change as one snapshot of
+position delete files (one copy per deleted row, so duplicates are exact) and
+a data file of the new rows. pyiceberg 0.12 writes no delete files, so
+`sverify.io` writes them itself; it reads position deletes, but not equality
+deletes (a table with those cannot be read).
 
 What is trusted: that the change feed turns the old snapshot into the new
 one (each report says "Δ trusted as coming from …"), that writers enforce
 nullability and constraints, and that file statistics are correct (Delta's
 millisecond timestamp maxima are widened by 999 µs). What is proved: given a
 correct feed, the views are maintained correctly (`Rel.cdf_sound`); a
-snapshot diff is a correct feed (`ChangeFeed.of_diff`); per-file bounds bound
+snapshot diff is a correct feed (`ChangeFeed.of_diff`), also on the changed
+files alone (`ChangeFeed.of_changed_files`); per-file bounds bound
 the table and an append's rows (`stats_table`, `stats_append`), and the facts
 stated from them follow (`stats_bounds`, `stats_fact`, `stats_all_null`); and
 each precondition follows from the metadata facts (`contract_sound`).
@@ -1360,6 +1368,8 @@ hypotheses:
   `Rel.delta_correct`), the old view plus the delta plan's output has the
   weights of the view on the new snapshot. `ChangeFeed.of_diff`: the diff of
   two snapshots is such a feed, so the fallback needs no trust in the feed.
+  `ChangeFeed.of_changed_files`: so is the diff of only the files that
+  changed, if the unchanged files are the same rows in both snapshots.
 * `stats_table`: with correct per-file statistics (`ColStats.Correct`,
   trusted), every row of the table lies in the join of the files' bounds;
   `stats_append`: the files an append added bound its rows; `stats_bounds`:
