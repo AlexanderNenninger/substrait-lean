@@ -22,6 +22,7 @@ import atexit
 import functools
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -38,7 +39,7 @@ from google.protobuf import json_format
 from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
-from sverify.ibis_substrait import to_substrait_json
+from sverify.ibis_substrait import Unsupported, to_substrait_json
 
 Engine = Literal["duckdb", "polars", "datafusion"]
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
@@ -242,6 +243,12 @@ def plan_json(con: Connection, query: ir.Table | str) -> str:
 #: `substrait_json` changes a session setting while it plans.
 _analyse_lock = threading.Lock()
 
+#: A RANGE frame bounded by an offset, in DataFusion's plan display.
+_RANGE_OFFSET = re.compile(
+    r"RANGE BETWEEN (?!UNBOUNDED PRECEDING AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
+    r"(?!CURRENT ROW AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
+)
+
 
 def substrait_json(con: Connection, sql: str) -> str:
     """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON.
@@ -249,7 +256,11 @@ def substrait_json(con: Connection, sql: str) -> str:
     The plan is the *analysed* one: DataFusion's type coercion makes its
     implicit casts explicit (`int > double` compares `CAST(int AS DOUBLE)`),
     which the unanalysed plan leaves to the consumer. The optimizer, whose
-    rewrites would change the plan's shape, runs no passes."""
+    rewrites would change the plan's shape, runs no passes.
+
+    DataFusion 51's producer writes the offsets of a RANGE frame (`RANGE
+    BETWEEN 1 PRECEDING AND …`) as UNBOUNDED, so the plan would mean another
+    query: those are refused."""
     ss = _datafusion().substrait
     ctx = con.datafusion
     key = "datafusion.optimizer.max_passes"
@@ -260,6 +271,11 @@ def substrait_json(con: Connection, sql: str) -> str:
             logical = ctx.sql(sql).optimized_logical_plan()
         finally:
             ctx.sql(f"SET {key} = {passes}").collect()
+    if _RANGE_OFFSET.search(logical.display_indent()):
+        raise Unsupported(
+            "DataFusion's Substrait producer drops the offsets of RANGE frames; "
+            "write the window in Ibis"
+        )
     plan = ss.Producer.to_substrait_plan(logical, ctx)
     proto = Plan()
     proto.ParseFromString(plan.encode())

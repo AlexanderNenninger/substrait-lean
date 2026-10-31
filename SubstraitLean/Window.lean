@@ -1,11 +1,14 @@
-import SubstraitLean.Expr
+import SubstraitLean.Aggregate
 
 /-!
 # Window functions
 
-`ROW_NUMBER`, `LAG` and `LEAD` over `PARTITION BY … ORDER BY …`. DataFusion
-writes them as `windowFunction` expressions in a `ProjectRel`; here a window
-is a relation of its own (`Rel.window`) that appends one column per function.
+`ROW_NUMBER`, `LAG`, `LEAD`, the ranks (`RANK`, `DENSE_RANK`,
+`PERCENT_RANK`, `CUME_DIST`, `NTILE`), and aggregates and `FIRST_VALUE`,
+`LAST_VALUE` and `NTH_VALUE` over a frame, all over `PARTITION BY … ORDER BY
+…`. DataFusion writes them as `windowFunction` expressions in a `ProjectRel`;
+here a window is a relation of its own (`Rel.window`) that appends one column
+per function.
 
 **Semantics.** The input is sorted by the sort keys with a stable merge sort.
 Each row then sees the rows before and after it *in its own partition*
@@ -13,293 +16,99 @@ Each row then sees the rows before and after it *in its own partition*
 `LAG(c, k, d)` is column `c` of the `k`-th row before, or `d` when there is
 none; `LEAD` looks ahead; `ROW_NUMBER` counts from 1.
 
-Rows that tie on every sort key may come out in any order, and then `LAG`
-depends on the engine. `window_tiebreak` shows that it doesn't when the
+Ranks, `CUME_DIST` and `RANGE` frames depend on the sort keys' values only
+(tied rows are peers). Rows that tie on every sort key may come out in any
+order, and then `LAG`, `NTILE` and `ROWS` frames depend on the engine. `window_tiebreak` shows that it doesn't when the
 partition and sort columns form a key: then any sorted arrangement gives the
 same rows.
 -/
 
 namespace Substrait
 
-/-! ## Total preorders -/
+/-! ## Window functions -/
 
-/-- `le` is a total preorder: transitive and total. -/
-structure TotalPre {α : Type} (le : α → α → Bool) : Prop where
-  trans : ∀ a b c, le a b = true → le b c = true → le a c = true
-  total : ∀ a b, (le a b || le b a) = true
+/-! ## Frames
 
-theorem TotalPre.refl {α : Type} {le : α → α → Bool} (h : TotalPre le) (a : α) : le a a = true := by
-  have := h.total a a; simpa using this
+A frame says which rows of the partition an aggregate (or `FIRST_VALUE`, …)
+of row `x` sees. `ROWS` frames count rows; `RANGE` frames are a condition on
+the sort keys: `CURRENT ROW` is `x`'s peers (rows that tie with it on every
+key), and `k PRECEDING` / `k FOLLOWING` compare the one sort key's value
+with `x`'s, shifted by `k` (in its own unit: microseconds for timestamps,
+days for dates). A row whose key is NULL is `k` from no other row: it is in
+the frame of a NULL `x` (its peers), and otherwise only where the bound on
+its side is `UNBOUNDED`. -/
 
-/-- Lexicographic combination: by `le₁`, ties broken by `le₂`. -/
-def lexLe {α : Type} (le₁ le₂ : α → α → Bool) (a b : α) : Bool :=
-  le₁ a b && (!le₁ b a || le₂ a b)
-
-theorem TotalPre.lex {α : Type} {le₁ le₂ : α → α → Bool} (h₁ : TotalPre le₁) (h₂ : TotalPre le₂) :
-    TotalPre (lexLe le₁ le₂) where
-  trans a b c hab hbc := by
-    simp only [lexLe, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at *
-    refine ⟨h₁.trans a b c hab.1 hbc.1, ?_⟩
-    rcases hab with ⟨hab, hba | hab₂⟩ <;> rcases hbc with ⟨hbc, hcb | hbc₂⟩
-    · left; cases hca : le₁ c a
-      · rfl
-      · exact absurd (h₁.trans b c a hbc hca) (by simp [hba])
-    · left; cases hca : le₁ c a
-      · rfl
-      · exact absurd (h₁.trans b c a hbc hca) (by simp [hba])
-    · left; cases hca : le₁ c a
-      · rfl
-      · exact absurd (h₁.trans c a b hca hab) (by simp [hcb])
-    · cases hca : le₁ c a
-      · left; rfl
-      · right; exact h₂.trans a b c hab₂ hbc₂
-  total a b := by
-    simp only [lexLe]
-    have t₁ := h₁.total a b
-    have t₂ := h₂.total a b
-    cases hab : le₁ a b <;> cases hba : le₁ b a <;> simp_all
-
-theorem lexLe_left {α : Type} {le₁ le₂ : α → α → Bool} {a b : α} (h : lexLe le₁ le₂ a b = true) :
-    le₁ a b = true := by
-  simp only [lexLe, Bool.and_eq_true] at h; exact h.1
-
-/-- Mutual `lexLe` means mutual `le₁` and mutual `le₂`. -/
-theorem lexLe_antisymm {α : Type} {le₁ le₂ : α → α → Bool} {a b : α}
-    (hab : lexLe le₁ le₂ a b = true) (hba : lexLe le₁ le₂ b a = true) :
-    le₁ a b = true ∧ le₁ b a = true ∧ le₂ a b = true ∧ le₂ b a = true := by
-  simp only [lexLe, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hab hba
-  rcases hab with ⟨h₁, h₂ | h₂⟩
-  · simp [hba.1] at h₂
-  · rcases hba with ⟨h₃, h₄ | h₄⟩
-    · simp [h₁] at h₄
-    · exact ⟨h₁, h₃, h₂, h₄⟩
-
-theorem TotalPre.comap {α β : Type} {le : α → α → Bool} (h : TotalPre le) (f : β → α) :
-    TotalPre (fun a b => le (f a) (f b)) :=
-  ⟨fun a b c => h.trans (f a) (f b) (f c), fun a b => h.total (f a) (f b)⟩
-
-theorem TotalPre.flip {α : Type} {le : α → α → Bool} (h : TotalPre le) :
-    TotalPre (fun a b => le b a) :=
-  ⟨fun a b c hab hbc => h.trans c b a hbc hab, fun a b => h.total b a⟩
-
-/-! ## Ordering values -/
-
-def Value.tag : Value → Nat
-  | .bool _ => 0 | .int _ => 1 | .str _ => 2 | .list _ => 3 | .null => 4
-/-- `Value.le` on values that are not both lists. -/
-def Value.leScalar : Value → Value → Bool
-  | .bool a, .bool b => !a || b
-  | .int a, .int b => decide (a ≤ b)
-  | .str a, .str b => decide (a ≤ b)
-  | a, b => decide (a.tag ≤ b.tag)
-mutual
-/-- A total order on values: each type's own order (`false < true`, integers
-and the float codes numerically, strings by code point, which is UTF-8 byte
-order, lists lexicographically with a prefix first), types ordered booleans
-< integers < strings < lists < NULL. Within a column only one type and NULL
-occur; NULL's place only matters inside lists (`ORDER BY` places top-level
-NULLs itself, and `MIN`/`MAX` skip them), where engines sort NULL elements
-last. -/
-def Value.le : Value → Value → Bool
-  | .list as, .list bs => Value.leList as bs
-  | a, b => Value.leScalar a b
-  termination_by a b => sizeOf a + sizeOf b
-/-- Lexicographic order on lists of values: the first element where they
-differ decides, and a prefix comes first. -/
-def Value.leList : List Value → List Value → Bool
-  | [], _ => true
-  | _ :: _, [] => false
-  | a :: as, b :: bs => Value.le a b && (!Value.le b a || Value.leList as bs)
-  termination_by as bs => sizeOf as + sizeOf bs
-end
-theorem Value.le_def (a b : Value) : a.le b = (match a, b with
-    | .list as, .list bs => Value.leList as bs
-    | a, b => Value.leScalar a b) := by
-  cases a <;> cases b <;> rw [Value.le] <;> simp
-
-theorem Value.leList_nil (bs : List Value) : Value.leList [] bs = true := by
-  cases bs <;> rw [Value.leList]
-
-theorem Value.leList_cons_nil (a : Value) (as : List Value) : Value.leList (a :: as) [] = false := by
-  rw [Value.leList]
-
-theorem Value.leList_cons (a b : Value) (as bs : List Value) :
-    Value.leList (a :: as) (b :: bs) = (a.le b && (!b.le a || Value.leList as bs)) := by
-  rw [Value.leList]
-
-mutual
-theorem Value.le_antisymm : ∀ {a b : Value}, a.le b = true → b.le a = true → a = b
-  | .list as, .list bs, hab, hba => by
-    simp only [Value.le_def] at hab hba
-    rw [Value.leList_antisymm hab hba]
-  | .null, b, hab, hba | .bool _, b, hab, hba | .int _, b, hab, hba | .str _, b, hab, hba
-  | .list _, .null, hab, hba | .list _, .bool _, hab, hba | .list _, .int _, hab, hba
-  | .list _, .str _, hab, hba => by
-    try cases b
-    all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
-    all_goals first
-      | omega
-      | exact String.le_antisymm hab hba
-      | (rename_i x y; cases x <;> cases y <;> simp_all)
-  termination_by a b => sizeOf a + sizeOf b
-
-theorem Value.leList_antisymm : ∀ {as bs : List Value},
-    Value.leList as bs = true → Value.leList bs as = true → as = bs
-  | [], [], _, _ => rfl
-  | [], _ :: _, _, h | _ :: _, [], h, _ => by simp [Value.leList_cons_nil] at h
-  | a :: as, b :: bs, hab, hba => by
-    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hab hba
-    have hb := Value.le_antisymm hab.1 hba.1
-    subst hb
-    have h₁ : Value.leList as bs = true := hab.2.resolve_left (by simp [hba.1])
-    have h₂ : Value.leList bs as = true := hba.2.resolve_left (by simp [hab.1])
-    rw [Value.leList_antisymm h₁ h₂]
-  termination_by as bs => sizeOf as + sizeOf bs
-end
-
-mutual
-theorem Value.le_total : ∀ a b : Value, a.le b = true ∨ b.le a = true
-  | .list as, .list bs => by simp only [Value.le_def]; exact Value.leList_total as bs
-  | .null, b | .bool _, b | .int _, b | .str _, b
-  | .list _, .null | .list _, .bool _ | .list _, .int _ | .list _, .str _ => by
-    try cases b
-    all_goals simp [Value.le_def, Value.leScalar, Value.tag]
-    all_goals first
-      | omega
-      | exact String.le_total _ _
-      | (rename_i x y; cases x <;> cases y <;> simp)
-  termination_by a b => sizeOf a + sizeOf b
-
-theorem Value.leList_total : ∀ as bs : List Value,
-    Value.leList as bs = true ∨ Value.leList bs as = true
-  | [], _ => Or.inl (Value.leList_nil _)
-  | _ :: _, [] => Or.inr (Value.leList_nil _)
-  | a :: as, b :: bs => by
-    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true']
-    have := Value.leList_total as bs
-    rcases Value.le_total a b with h | h <;> by_cases h' : (b.le a = true) <;>
-      by_cases h'' : (a.le b = true) <;> simp_all
-  termination_by as bs => sizeOf as + sizeOf bs
-end
-
-mutual
-theorem Value.le_trans : ∀ a b c : Value, a.le b = true → b.le c = true → a.le c = true
-  | .list as, .list bs, .list cs, hab, hbc => by
-    simp only [Value.le_def] at *
-    exact Value.leList_trans as bs cs hab hbc
-  | .null, b, c, hab, hbc | .bool _, b, c, hab, hbc | .int _, b, c, hab, hbc
-  | .str _, b, c, hab, hbc | .list _, .null, c, hab, hbc | .list _, .bool _, c, hab, hbc
-  | .list _, .int _, c, hab, hbc | .list _, .str _, c, hab, hbc
-  | .list _, .list _, .null, hab, hbc | .list _, .list _, .bool _, hab, hbc
-  | .list _, .list _, .int _, hab, hbc | .list _, .list _, .str _, hab, hbc => by
-    try cases b
-    all_goals try cases c
-    all_goals simp_all [Value.le_def, Value.leScalar, Value.tag]
-    all_goals first
-      | omega
-      | exact String.le_trans hab hbc
-      | (rename_i x y z; cases x <;> cases y <;> cases z <;> simp_all)
-  termination_by a b c => sizeOf a + sizeOf b + sizeOf c
-
-theorem Value.leList_trans : ∀ as bs cs : List Value,
-    Value.leList as bs = true → Value.leList bs cs = true → Value.leList as cs = true
-  | [], _, _, _, _ => Value.leList_nil _
-  | _ :: _, [], _, h, _ | _ :: _, _ :: _, [], _, h => by simp [Value.leList_cons_nil] at h
-  | a :: as, b :: bs, c :: cs, hab, hbc => by
-    simp only [Value.leList_cons, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at *
-    have hac := Value.le_trans a b c hab.1 hbc.1
-    refine ⟨hac, ?_⟩
-    by_cases hca : c.le a = true
-    · right
-      have hba := Value.le_trans b c a hbc.1 hca
-      have hcb := Value.le_trans c a b hca hab.1
-      exact Value.leList_trans as bs cs (hab.2.resolve_left (by simp [hba]))
-        (hbc.2.resolve_left (by simp [hcb]))
-    · left; simpa using hca
-  termination_by as bs cs => sizeOf as + sizeOf bs + sizeOf cs
-end
-
-theorem Value.le_totalPre : TotalPre Value.le where
-  trans := Value.le_trans
-  total a b := by rcases Value.le_total a b with h | h <;> simp [h]
-
-/-- One `ORDER BY` key: a column, ascending or descending, NULLs first or last. -/
-structure SortKey where
-  col : Nat
-  desc : Bool := false
-  nullsFirst : Bool := false
+inductive FrameBound where
+  | unboundedPreceding
+  /-- `k PRECEDING`; `preceding 0` is `CURRENT ROW`. -/
+  | preceding (k : Nat)
+  | following (k : Nat)
+  | unboundedFollowing
   deriving Repr, BEq, DecidableEq
 
-/-- Where NULLs go: before (`0`) or after (`1`) the other values. -/
-def SortKey.nullRank (k : SortKey) : Value → Nat
-  | .null => if k.nullsFirst then 0 else 1
-  | _ => if k.nullsFirst then 1 else 0
+structure Frame where
+  /-- `RANGE` (by the sort keys' values) or `ROWS`. -/
+  range : Bool
+  lo : FrameBound
+  hi : FrameBound
+  deriving Repr, BEq, DecidableEq
 
-def SortKey.valLe (k : SortKey) (a b : Value) : Bool :=
-  if k.desc then b.le a else a.le b
+/-- The whole partition. -/
+def Frame.all : Frame := ⟨false, .unboundedPreceding, .unboundedFollowing⟩
 
-def natLe (a b : Nat) : Bool := decide (a ≤ b)
+/-- The signed offset of a bound, `none` if unbounded. -/
+def FrameBound.offset : FrameBound → Option Int
+  | .preceding k => some (-(k : Int))
+  | .following k => some k
+  | _ => none
 
-theorem natLe_totalPre : TotalPre natLe :=
-  ⟨fun a b c => by simp only [natLe, decide_eq_true_eq]; omega,
-   fun a b => by simp only [natLe, Bool.or_eq_true, decide_eq_true_eq]; omega⟩
+/-- `y` comes at or after the point `d` units after `x` on the key `k` (for
+`d = 0`: not before `x`'s peers). -/
+def rangeFrom (k : SortKey) (d : Int) (x y : Row) : Bool :=
+  match x.getD k.col .null, y.getD k.col .null with
+  | .int vx, .int vy => if k.desc then decide (vy ≤ vx - d) else decide (vx + d ≤ vy)
+  | .null, .null => true
+  | a, b => decide (k.nullRank a < k.nullRank b)
 
-/-- Order rows by one key. -/
-def SortKey.le (k : SortKey) : Row → Row → Bool :=
-  lexLe (fun x y => natLe (k.nullRank (x.getD k.col .null)) (k.nullRank (y.getD k.col .null)))
-    (fun x y => k.valLe (x.getD k.col .null) (y.getD k.col .null))
+/-- `y` comes at or before the point `d` units after `x` on the key `k`. -/
+def rangeTo (k : SortKey) (d : Int) (x y : Row) : Bool :=
+  match x.getD k.col .null, y.getD k.col .null with
+  | .int vx, .int vy => if k.desc then decide (vx - d ≤ vy) else decide (vy ≤ vx + d)
+  | .null, .null => true
+  | a, b => decide (k.nullRank b < k.nullRank a)
 
-theorem SortKey.valLe_totalPre (k : SortKey) : TotalPre k.valLe := by
-  unfold SortKey.valLe
-  cases k.desc
-  · exact Value.le_totalPre
-  · exact Value.le_totalPre.flip
-
-theorem SortKey.le_totalPre (k : SortKey) : TotalPre k.le :=
-  (natLe_totalPre.comap _).lex (k.valLe_totalPre.comap fun x : Row => x.getD k.col .null)
-
-/-- Order rows by a list of keys, lexicographically. -/
-def sortLe : List SortKey → Row → Row → Bool
-  | [] => fun _ _ => true
-  | k :: ks => lexLe k.le (sortLe ks)
-
-theorem sortLe_totalPre : ∀ ks, TotalPre (sortLe ks)
-  | [] => ⟨fun _ _ _ _ _ => rfl, fun _ _ => rfl⟩
-  | k :: ks => k.le_totalPre.lex (sortLe_totalPre ks)
-
-/-- Rows in sort order, by the first key: for non-NULL integers (and
-timestamps, and float codes), ascending keys give `y ≤ x`. -/
-theorem SortKey.le_int {k : SortKey} {x y : Row} {u v : Int} (h : k.le y x = true)
-    (hy : y.getD k.col .null = .int u) (hx : x.getD k.col .null = .int v) :
-    if k.desc then v ≤ u else u ≤ v := by
-  simp only [SortKey.le, lexLe, hy, hx, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at h
-  have hr : k.nullRank (.int u) = k.nullRank (.int v) := by simp [SortKey.nullRank]
-  rcases h with ⟨_, h | h⟩
-  · simp [hr, natLe] at h
-  · unfold SortKey.valLe at h
-    cases hd : k.desc <;> simp_all [Value.le_def, Value.leScalar]
-
-/-- Rows that sort both ways on a key agree on its column. -/
-theorem SortKey.le_antisymm {k : SortKey} {x y : Row} (hxy : k.le x y = true) (hyx : k.le y x = true) :
-    x.getD k.col .null = y.getD k.col .null := by
-  obtain ⟨h₁, h₂, h₃, h₄⟩ := lexLe_antisymm hxy hyx
-  simp only [natLe, decide_eq_true_eq] at h₁ h₂
-  have hrank : k.nullRank (x.getD k.col .null) = k.nullRank (y.getD k.col .null) := by omega
-  generalize x.getD k.col .null = a at *
-  generalize y.getD k.col .null = b at *
-  unfold SortKey.valLe at h₃ h₄
-  cases hd : k.desc
-  · simp only [hd] at h₃ h₄; exact Value.le_antisymm h₃ h₄
-  · simp only [hd, ↓reduceIte] at h₃ h₄; exact Value.le_antisymm h₄ h₃
-
-theorem sortLe_antisymm : ∀ {ks : List SortKey} {x y : Row},
-    sortLe ks x y = true → sortLe ks y x = true →
-      ks.map (x.getD ·.col .null) = ks.map (y.getD ·.col .null)
-  | [], _, _, _, _ => rfl
-  | k :: ks, _, _, hxy, hyx => by
-      obtain ⟨h₁, h₂, h₃, h₄⟩ := lexLe_antisymm hxy hyx
-      simp only [List.map_cons, List.cons.injEq]
-      exact ⟨SortKey.le_antisymm h₁ h₂, sortLe_antisymm h₃ h₄⟩
+/-- The rows of `x`'s partition in its frame, in sort order: `pb` are the
+partition's rows before `x`, `pa` those after. -/
+def Frame.rows (fr : Frame) (sort : List SortKey) (pb : List Row) (x : Row) (pa : List Row) :
+    List Row :=
+  let all := pb ++ x :: pa
+  if fr.range then
+    let lo (y : Row) : Bool := match fr.lo with
+      | .unboundedPreceding => true
+      | .unboundedFollowing => false
+      | b => match b.offset, sort with
+        | some 0, _ => sortLe sort x y
+        | some d, k :: _ => rangeFrom k d x y
+        | _, _ => false
+    let hi (y : Row) : Bool := match fr.hi with
+      | .unboundedFollowing => true
+      | .unboundedPreceding => false
+      | b => match b.offset, sort with
+        | some 0, _ => sortLe sort y x
+        | some d, k :: _ => rangeTo k d x y
+        | _, _ => false
+    all.filter fun y => lo y && hi y
+  else
+    let i : Int := pb.length
+    let lo : Int := match fr.lo with
+      | .unboundedPreceding => 0
+      | .unboundedFollowing => all.length
+      | b => i + (b.offset.getD 0)
+    let hi : Int := match fr.hi with
+      | .unboundedPreceding => -1
+      | .unboundedFollowing => all.length
+      | b => i + (b.offset.getD 0)
+    (all.zipIdx.filter fun (_, j) => decide (lo ≤ j) && decide ((j : Int) ≤ hi)).map (·.1)
 
 /-! ## Window functions -/
 
@@ -309,22 +118,77 @@ inductive WinFn where
   | lag (col offset : Nat) (default : Value)
   /-- Column `col` of the row `offset` rows later in the partition, else `default`. -/
   | lead (col offset : Nat) (default : Value)
+  /-- `RANK()`: one more than the partition's rows before `x`'s peers. The
+  sort keys are the window's (as are those of the functions below). -/
+  | rank (sort : List SortKey)
+  /-- `DENSE_RANK()`: one more than the distinct sort keys before `x`'s. -/
+  | denseRank (sort : List SortKey)
+  /-- `PERCENT_RANK()`: `(rank - 1) / (n - 1)` as a double, `0` for one row. -/
+  | percentRank (sort : List SortKey)
+  /-- `CUME_DIST()`: the share of the partition's rows up to `x`'s last peer. -/
+  | cumeDist (sort : List SortKey)
+  /-- `NTILE(k)` as DataFusion computes it: `⌊i · min(k, n) / n⌋ + 1` for the
+  `i`-th row (from 0) of `n`, not the SQL standard's buckets. -/
+  | ntile (k : Nat)
+  /-- An aggregate over the frame. -/
+  | agg (m : Measure) (sort : List SortKey) (frame : Frame)
+  /-- Column `col` of the frame's first, last or `n`-th (from 1) row. -/
+  | firstValue (col : Nat) (sort : List SortKey) (frame : Frame)
+  | lastValue (col : Nat) (sort : List SortKey) (frame : Frame)
+  | nthValue (col n : Nat) (sort : List SortKey) (frame : Frame)
   deriving Repr, BEq, DecidableEq
 
+/-- `Expr.refsLt`, decided. -/
+def Expr.refsLtB (n : Nat) : Expr → Bool
+  | .lit _ => true
+  | .field i => decide (i < n)
+  | .un _ a => a.refsLtB n
+  | .bin _ a b => a.refsLtB n && b.refsLtB n
+  | .ifThen c t e => c.refsLtB n && t.refsLtB n && e.refsLtB n
+
 def WinFn.refsLt (n : Nat) : WinFn → Bool
-  | .rowNumber => true
-  | .lag c _ _ | .lead c _ _ => decide (c < n)
+  | .rowNumber | .rank _ | .denseRank _ | .percentRank _ | .cumeDist _ | .ntile _ => true
+  | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ => decide (c < n)
+  | .agg m _ _ => m.arg.refsLtB n && m.filter.all (·.refsLtB n)
 
 /-- Same partition: equal on every partition column (NULLs are equal). -/
 def samePart (part : List Nat) (x y : Row) : Bool :=
   decide (part.map (x.getD · .null) = part.map (y.getD · .null))
 
+/-- Ties with `x` on every sort key. -/
+def peer (sort : List SortKey) (x y : Row) : Bool := sortLe sort y x && sortLe sort x y
+
+/-- The double `a / b` of two integers. -/
+def floatRatio (a b : Nat) : Value := .int (FloatCode.lift₂ (· / ·) (FloatCode.ofInt a) (FloatCode.ofInt b))
+
+/-- DataFusion's `NTILE(k)` of the `i`-th of `n` rows: with fewer rows than
+buckets, a bucket for each row. -/
+def ntileOf (i k n : Nat) : Nat := i * min k n / n + 1
+
+/-- A window function of `x`, from its partition's rows before (`pb`) and
+after (`pa`) it in sort order. -/
+def WinFn.valueIn (pb : List Row) (x : Row) (pa : List Row) : WinFn → Value
+  | .rowNumber => .int (pb.length + 1)
+  | .lag c k d => ((x :: pb.reverse)[k]?).elim d (·.getD c .null)
+  | .lead c k d => ((x :: pa)[k]?).elim d (·.getD c .null)
+  | .rank sort => .int ((pb.filter fun y => !peer sort x y).length + 1)
+  | .denseRank sort =>
+    .int ((dedup ((pb.filter fun y => !peer sort x y).map fun y => sort.map (y.getD ·.col .null))).length + 1)
+  | .percentRank sort =>
+    let n := pb.length + 1 + pa.length
+    if n ≤ 1 then floatRatio 0 1 else floatRatio (pb.filter fun y => !peer sort x y).length (n - 1)
+  | .cumeDist sort =>
+    floatRatio (pb.length + 1 + (pa.filter (peer sort x)).length) (pb.length + 1 + pa.length)
+  | .ntile k => .int (ntileOf pb.length k (pb.length + 1 + pa.length))
+  | .agg m sort fr => m.eval (fr.rows sort pb x pa)
+  | .firstValue c sort fr => ((fr.rows sort pb x pa).head?).elim .null (·.getD c .null)
+  | .lastValue c sort fr => ((fr.rows sort pb x pa).getLast?).elim .null (·.getD c .null)
+  | .nthValue c n sort fr => ((fr.rows sort pb x pa)[n - 1]?).elim .null (·.getD c .null)
+
 /-- The value of a window function at row `x`, which comes after the rows
 `before` and before the rows `after` in sort order. -/
-def WinFn.value (part : List Nat) (before after : List Row) (x : Row) : WinFn → Value
-  | .rowNumber => .int ((before.filter (samePart part x)).length + 1)
-  | .lag c k d => ((x :: (before.filter (samePart part x)).reverse)[k]?).elim d (·.getD c .null)
-  | .lead c k d => ((x :: after.filter (samePart part x))[k]?).elim d (·.getD c .null)
+def WinFn.value (part : List Nat) (before after : List Row) (x : Row) (f : WinFn) : Value :=
+  f.valueIn (before.filter (samePart part x)) x (after.filter (samePart part x))
 
 /-- Extend each row of a sorted list with its window values. -/
 def windowRows (part : List Nat) (fns : List WinFn) : List Row → List Row → List Row
@@ -400,7 +264,7 @@ theorem WinFn.value_lag {part : List Nat} {b a : List Row} {x : Row} {c k : Nat}
     (WinFn.lag c k d).value part b a x = d ∨
       ∃ y, (y = x ∨ (y ∈ b ∧ samePart part x y = true)) ∧
         (WinFn.lag c k d).value part b a x = y.getD c .null := by
-  simp only [WinFn.value]
+  simp only [WinFn.value, WinFn.valueIn]
   cases h : (x :: (b.filter (samePart part x)).reverse)[k]? with
   | none => simp
   | some y =>
@@ -413,7 +277,7 @@ theorem WinFn.value_lead {part : List Nat} {b a : List Row} {x : Row} {c k : Nat
     (WinFn.lead c k d).value part b a x = d ∨
       ∃ y, (y = x ∨ (y ∈ a ∧ samePart part x y = true)) ∧
         (WinFn.lead c k d).value part b a x = y.getD c .null := by
-  simp only [WinFn.value]
+  simp only [WinFn.value, WinFn.valueIn]
   cases h : (x :: a.filter (samePart part x))[k]? with
   | none => simp
   | some y =>
@@ -427,7 +291,7 @@ theorem WinFn.value_lag' {part : List Nat} {b a : List Row} {x : Row} {c k : Nat
     (WinFn.lag c k d).value part b a x = d ∨
       ∃ y, ((y = x ∧ k = 0) ∨ (y ∈ b ∧ samePart part x y = true)) ∧
         (WinFn.lag c k d).value part b a x = y.getD c .null := by
-  simp only [WinFn.value]
+  simp only [WinFn.value, WinFn.valueIn]
   cases h : (x :: (b.filter (samePart part x)).reverse)[k]? with
   | none => simp
   | some y =>
@@ -444,7 +308,7 @@ theorem WinFn.value_lead' {part : List Nat} {b a : List Row} {x : Row} {c k : Na
     (WinFn.lead c k d).value part b a x = d ∨
       ∃ y, ((y = x ∧ k = 0) ∨ (y ∈ a ∧ samePart part x y = true)) ∧
         (WinFn.lead c k d).value part b a x = y.getD c .null := by
-  simp only [WinFn.value]
+  simp only [WinFn.value, WinFn.valueIn]
   cases h : (x :: a.filter (samePart part x))[k]? with
   | none => simp
   | some y =>

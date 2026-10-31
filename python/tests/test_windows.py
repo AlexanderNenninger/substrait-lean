@@ -1,6 +1,9 @@
 """Window functions: Lean's semantics agree with DataFusion and with DuckDB
 (in Lean's row order), contracts see through LAG/LEAD/ROW_NUMBER, and ties in
-the window order are refused."""
+the window order are refused. Ranks, NTILE (DataFusion's), frames over rows
+and over the sort key's values, and aggregates over them agree with DataFusion
+too, on tables with ties and NULL keys where the result does not depend on
+the order of ties."""
 
 import json
 
@@ -20,7 +23,8 @@ from sverify.engine import (
     substrait_json,
     to_sql,
 )
-from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows
+from sverify.ibis_substrait import Unsupported, to_substrait
+from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows, lean_values
 
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})
 
@@ -177,3 +181,141 @@ def test_windows_are_not_incremental():
     create_table(con, "readings", readings.schema(), [])
     with pytest.raises(sv.NotIncremental):
         sv.IncrementalView(con, to_sql(with_neighbours(readings)), "v")
+
+
+# --------------------------------------------------------------------------
+# Ranks, NTILE, frames (`Window.lean`): any table, ties and NULL keys included
+
+#: These depend on the sort keys' values only (ties are peers, RANGE frames
+#: are conditions on the key), or on the whole partition: determined
+#: whatever the order of ties.
+TIE_FREE_QUERIES = [
+    "SELECT s, t, RANK() OVER (PARTITION BY s ORDER BY t) AS a,"
+    " DENSE_RANK() OVER (PARTITION BY s ORDER BY t DESC NULLS FIRST) AS b,"
+    " PERCENT_RANK() OVER (PARTITION BY s ORDER BY t) AS c,"
+    " CUME_DIST() OVER (ORDER BY t NULLS FIRST) AS d FROM r",
+    "SELECT s, t, SUM(v) OVER (PARTITION BY s ORDER BY t) AS a,"
+    " COUNT(v) OVER (PARTITION BY s) AS b, MAX(v) OVER (ORDER BY t DESC) AS c FROM r",
+    "SELECT s, t, COUNT(*) OVER (ORDER BY t DESC RANGE BETWEEN CURRENT ROW AND CURRENT ROW) AS b,"
+    " MAX(v) OVER (ORDER BY t RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS c FROM r",
+]
+#: These follow the rows' order: determined where (s, t) is a key.
+ORDERED_QUERIES = [
+    "SELECT s, t, NTILE(3) OVER (PARTITION BY s ORDER BY t) AS a,"
+    " NTILE(5) OVER (ORDER BY s, t) AS b FROM r",
+    "SELECT s, t, SUM(v) OVER (PARTITION BY s ORDER BY t ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)"
+    " AS a, FIRST_VALUE(v) OVER (PARTITION BY s ORDER BY t ROWS 2 PRECEDING) AS b,"
+    " LAST_VALUE(v) OVER (PARTITION BY s ORDER BY t) AS c,"
+    " NTH_VALUE(v, 2) OVER (ORDER BY s, t ROWS BETWEEN UNBOUNDED PRECEDING AND 1 FOLLOWING) AS d,"
+    " COUNT(v) OVER (ORDER BY s, t ROWS BETWEEN 2 FOLLOWING AND 3 FOLLOWING) AS e FROM r",
+]
+
+any_tables = st.lists(
+    st.tuples(
+        st.one_of(st.none(), st.integers(0, 2)),
+        st.one_of(st.none(), st.integers(0, 6)),
+        st.one_of(st.none(), st.integers(-5, 5)),
+    ),
+    max_size=10,
+)
+
+
+def lean_and_datafusion(sql: str, rows: list[tuple]) -> tuple[list, list]:
+    con = connect()
+    create_table(con, "r", SCHEMA, rows)
+    out = run_sql(con, sql)
+    expected = [
+        tuple((round(v, 6) if v != 0 else 0.0) if isinstance(v, float) else v for v in r.values())
+        for r in out.to_pylist()
+    ]
+    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    return lean_values(json.dumps(plan)), expected
+
+
+@pytest.mark.parametrize("sql", TIE_FREE_QUERIES)
+@settings(max_examples=30, deadline=None)
+@given(rows=any_tables)
+def test_tie_free_windows_match_datafusion(sql, rows):
+    lean, expected = lean_and_datafusion(sql, rows)
+    assert canonical(lean) == canonical(expected)
+
+
+@pytest.mark.parametrize("sql", ORDERED_QUERIES)
+@settings(max_examples=30, deadline=None)
+@given(rows=keyed_tables)
+def test_ordered_windows_match_datafusion(sql, rows):
+    lean, expected = lean_and_datafusion(sql, rows)
+    assert canonical(lean) == canonical(expected)
+
+
+def test_ntile_is_datafusions():
+    """DataFusion's NTILE is ⌊i · min(k, n) / n⌋ + 1, not the SQL standard's
+    buckets: 6 rows in 4 tiles are 1 1 2 3 3 4 (DuckDB: 1 1 2 2 3 4)."""
+    sql = "SELECT t, NTILE(4) OVER (ORDER BY t) AS n FROM r"
+    rows = [(0, t, 0) for t in range(6)]
+    lean, expected = lean_and_datafusion(sql, rows)
+    assert sorted(lean) == sorted(expected) == [(0, 1), (1, 1), (2, 2), (3, 3), (4, 3), (5, 4)]
+    lean, _ = lean_and_datafusion(sql, rows[:2])
+    assert sorted(lean) == [(0, 1), (1, 2)]
+
+
+def test_sliding_double_aggregates_are_refused():
+    """DataFusion averages a sliding frame that has become empty to NaN, sums
+    its doubles by retracting rows (rounding differently), and keeps a MIN
+    of a frame left with NULLs only: refused; a running frame (from UNBOUNDED
+    PRECEDING) is fine."""
+    con = connect()
+    create_table(
+        con, "f", ibis.schema({"t": "int64", "v": "float64"}), [(1, 0.0), (2, None), (3, None)]
+    )
+    sliding = (
+        "SELECT t, AVG(v) OVER (ORDER BY t ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS a FROM f"
+    )
+    assert any(r["a"] != r["a"] for r in run_sql(con, sliding).to_pylist())  # NaN
+    code, out, err = run_checker((), substrait_json(con, sliding))
+    assert code != 0 and "sliding frame" in out + err
+    running = "SELECT t, AVG(v) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING) AS a FROM f"
+    assert run_checker((), substrait_json(con, running))[0] == 0
+    stale = "SELECT t, MIN(v) OVER (ORDER BY t ROWS CURRENT ROW) AS m FROM f"
+    assert [r["m"] for r in run_sql(con, stale).to_pylist()] == [0.0, 0.0, 0.0]
+    assert run_checker((), substrait_json(con, stale))[0] != 0
+
+
+def test_window_sums_may_wrap():
+    """An integer SUM over a frame wraps around in DataFusion (`Issue.sumWraps`)."""
+    report = sv.verify("SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r", tables={"r": SCHEMA})
+    assert "may wrap around" in [i.kind for i in report.warnings]
+
+
+R = ibis.table(SCHEMA, name="r")
+#: RANGE frames with offsets, which only Ibis writes faithfully (DataFusion's
+#: Substrait producer drops them: `engine.substrait_json` refuses those).
+RANGE_EXPRS = [
+    R.select(
+        "s",
+        "t",
+        a=R.v.sum().over(ibis.range_window(group_by="s", order_by="t", preceding=2, following=1)),
+        b=R.v.count().over(ibis.range_window(order_by=ibis.desc("t"), preceding=1, following=0)),
+        c=R.v.max().over(ibis.range_window(order_by="t", preceding=0, following=3)),
+    ),
+]
+
+
+@pytest.mark.parametrize("i", range(len(RANGE_EXPRS)))
+@settings(max_examples=30, deadline=None)
+@given(rows=any_tables)
+def test_range_frames_match_datafusion(i, rows):
+    expr = RANGE_EXPRS[i]
+    con = connect()
+    create_table(con, "r", SCHEMA, rows)
+    expected = [tuple(r.values()) for r in run_sql(con, to_sql(expr)).to_pylist()]
+    lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"r": rows})))
+    assert canonical(lean) == canonical(expected)
+
+
+def test_sql_range_offsets_are_refused():
+    con = connect()
+    create_table(con, "r", SCHEMA, [])
+    sql = "SELECT COUNT(*) OVER (ORDER BY t RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS b FROM r"
+    with pytest.raises(Unsupported, match="RANGE"):
+        substrait_json(con, sql)

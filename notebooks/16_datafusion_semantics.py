@@ -981,7 +981,8 @@ def _(mo):
     days, nanoseconds), because a month or a day has no fixed length:
 
     * **T1**: `Jan 31 + 1 month` is `Feb 29`. DataFusion clamps to the end
-      of the month. Lean refuses month and year intervals.
+      of the month. Lean's `Time.addMonths` does the same (constant months,
+      added to a date or timestamp before any days).
     * **T2**: `INTERVAL '1 day' = INTERVAL '24 hours'` is **false**, since the
       fields are compared separately.
     * **T3**: on a timestamp *with* a time zone, `+ INTERVAL '1 day'` keeps
@@ -1076,8 +1077,13 @@ def _(mo):
       includes the current row's *peers*. So a "running sum" jumps by both
       tied rows at once, and `last_value` returns the last tied row, not the
       current one. Without an `ORDER BY`, the frame is the whole partition.
-      The model only has `ROW_NUMBER`, `LAG` and `LEAD`, which ignore frames,
-      and it refuses aggregate window functions.
+      The model reads the frame of each window function from the plan
+      (`Window.Frame`: `RANGE` frames are a condition on the sort key, peers
+      included). DataFusion's Substrait producer writes `RANGE` offsets as
+      `UNBOUNDED`, so SQL with them is refused; its sliding `AVG` of an
+      emptied frame is NaN and its sliding `MIN` of NULLs is stale, so those
+      are refused too; and its `NTILE` is `⌊i·min(k, n)/n⌋ + 1`, which the
+      model follows.
     * **O5**: `LAG` over ties, or without `ORDER BY`, depends on the engine's
       order. `verify` says so, unless the partition and sort columns form a
       declared key.

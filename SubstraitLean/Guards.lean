@@ -78,11 +78,11 @@ theorem Expr.evalI_eq {I : Impl} (hI : I.Faithful) {row : Row} :
     · rename_i hc; simp only [hc, Bool.false_eq_true, ↓reduceIte] at h; exact evalI_eq hI h.2
 
 theorem UnFn.issue_ne_sumWraps (f : UnFn) (v : Value) : f.issue v ≠ some .sumWraps := by
-  unfold UnFn.issue wrapIf
+  unfold UnFn.issue wrapIf rangeIssue
   split <;> (try split) <;> (try split) <;> simp
 
 theorem BinFn.issue_ne_sumWraps (f : BinFn) (v w : Value) : f.issue v w ≠ some .sumWraps := by
-  unfold BinFn.issue wrapIf
+  unfold BinFn.issue wrapIf rangeIssue
   split <;> (try split) <;> (try split) <;> (try split) <;> simp
 
 /-- Row-level issues are never `SUM`s. -/
@@ -406,7 +406,7 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
     cases cnt <;> simp only [evalI, eval, ih]
   | u, .window r _ _ _, hs, h => by
     simp only [looseSub] at hs
-    simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs h]
+    simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs fun p hp => h p (.inl hp)]
   | u, .orderBy r _, hs, h => by
     simp only [evalI, eval, evalI_eq hI (u := u) (r := r) hs h]
   | u, .distinct r, hs, h => by
