@@ -27,7 +27,9 @@ result is the Lean value, checked on a local Spark session by
   NaN, read as Lean's +NaN: a negative-NaN literal is refused and negating
   a NaN raises. `GROUP BY`, `DISTINCT` and window partitions normalise
   -0.0 to +0.0 (`NormalizeFloatingNumbers`): the extra sign key keeps the
-  groups apart and `group_value` puts the sign back.
+  groups apart and `group_value` puts the sign back. The optimizer takes the
+  literals -0.0 and +0.0 for equal and folds a `CASE` between them into one
+  of them, so `case_when` writes such a choice as arithmetic.
 * **NULL order**: `NULLS FIRST` is the default for ascending sorts; every
   key says where NULLs go.
 * **Timestamps** are `TIMESTAMP_NTZ`: wall-clock microseconds like Lean.
