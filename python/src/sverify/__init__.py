@@ -38,8 +38,11 @@ from sverify.incremental import (
     StaticSource,
     delta_plans,
 )
+from sverify.nodes import Node, group
 
 __all__ = [
+    "Node",
+    "group",
     "CompositionError",
     "asof_join",
     "Issue",

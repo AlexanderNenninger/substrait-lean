@@ -187,11 +187,24 @@ class SourceBatch:
 class Source(Protocol):
     """A versioned table: a Delta table or an Iceberg table (`sverify.io`)."""
 
+    name: str
+    """The table's name in the views that read it."""
+
+    def schema(self) -> pa.Schema:
+        """The table's schema at its latest version."""
+        ...
+
+    def latest(self) -> int:
+        """The table's latest version."""
+        ...
+
     def snapshot(self, version: int | None = None) -> Snapshot:
         """The table at `version`, or at its latest version."""
         ...
 
-    def changes(self, since: int) -> SourceBatch: ...
+    def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        """The change from version `since` to `until` (default: the latest)."""
+        ...
 
 
 class SchemaError(Exception):
@@ -333,28 +346,68 @@ class Stored:
 
 
 class StaticSource:
-    """A table that is not in a table format, such as a small lookup table,
-    as a pipeline source: its `version` is the caller's (a release number, a
-    batch id), and its `digest` is recorded next to it, so a sink can write
-    a pipeline reading it exactly once. `replace` swaps the table; the next
-    `refresh` diffs the two."""
+    """An in-memory Arrow table as a source, such as a small lookup table or
+    the rows a test feeds in.
 
-    def __init__(self, table: pa.Table, version: int = 0):
+    Its `version` is the caller's (a release number, a batch id), and its
+    `digest` is recorded next to it, so a sink can write a node reading it
+    exactly once. `apply` changes some rows (the next refresh gets exactly
+    that change); `replace` swaps the whole table (the next refresh diffs the
+    two). `name` is the table's name in the plans that read it."""
+
+    def __init__(self, table: pa.Table, version: int = 0, *, name: str = "table"):
+        self.name = name
+        self._log: list[tuple[int, Changes]] = []
         self.replace(table, version)
 
     def replace(self, table: pa.Table, version: int) -> None:
+        """Swap in a new table at `version`, above the current one."""
         if hasattr(self, "version") and version <= self.version:
             raise ValueError(f"a new table needs a version above {self.version}")
         self.table, self.version, self.digest = table, version, table_digest(table)
+        self._log, self._exact_since = [], version
+
+    def apply(self, changes: Changes, version: int | None = None) -> None:
+        """Insert and delete rows (tuples in schema order), as `version`
+        (default: one above the current one)."""
+        version = self.version + 1 if version is None else version
+        if version <= self.version:
+            raise ValueError(f"a new table needs a version above {self.version}")
+        table = _apply_rows(self.table, changes, self.name)
+        self.table, self.version, self.digest = table, version, table_digest(table)
+        self._log.append((version, changes))
+
+    def schema(self) -> pa.Schema:
+        return self.table.schema
+
+    def latest(self) -> int:
+        return self.version
 
     def snapshot(self, version: int | None = None) -> Snapshot:
         if version not in (None, self.version):
             raise ValueError(f"a static table only has version {self.version}")
         return Snapshot(self.version, self.table, [])
 
-    def changes(self, since: int) -> SourceBatch:
+    def changes(self, since: int, until: int | None = None) -> SourceBatch:
+        if until not in (None, self.version):
+            raise ValueError(f"a static table only has version {self.version}")
         if since == self.version:
             return SourceBatch(since, since, [])
+        if since >= self._exact_since:
+            inserts: list[Row] = []
+            deletes: list[Row] = []
+            for v, ch in self._log:
+                if v > since:
+                    inserts += [tuple(r) for r in ch.inserts]
+                    deletes += [tuple(r) for r in ch.deletes]
+            return SourceBatch(
+                since,
+                self.version,
+                [],
+                changes=Changes(inserts, deletes),
+                trusted=f"Δ as applied to {self.name} v{since}→v{self.version}",
+                schema=self.table.schema,
+            )
         return SourceBatch(
             since,
             self.version,
@@ -787,8 +840,11 @@ class Pipeline:
             raise ValueError(f"{sorted(sourced)} change through their source; call refresh()")
         self._apply(changes)
 
-    def refresh(self, *, audit: bool = False) -> RefreshReport:
-        """Bring every source table to its latest version, and the views with it.
+    def refresh(
+        self, *, audit: bool = False, until: Mapping[str, int] | None = None
+    ) -> RefreshReport:
+        """Bring every source table to its latest version (or the version
+        `until` names for it), and the views with it.
 
         Each source's change since the recorded version comes from its change
         feed (trusted, and the report says so) or, where the feed is
@@ -814,7 +870,8 @@ class Pipeline:
         report: list[SourceRefresh] = []
         for t, src in self.sources.items():
             start = self.versions[t]
-            batch = src.changes(start)
+            pin = (until or {}).get(t)
+            batch = src.changes(start) if pin is None else src.changes(start, pin)
             if batch.end == start:
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
@@ -1071,7 +1128,11 @@ def _key_of(row: Row, positions: Sequence[int]) -> tuple:
 
 
 def _apply_to_table(con: Connection, t: str, ch: Changes) -> pa.Table:
-    current = con.arrow[t]
+    return _apply_rows(con.arrow[t], ch, t)
+
+
+def _apply_rows(current: pa.Table, ch: Changes, t: str) -> pa.Table:
+    """`current` with the rows of `ch` deleted (one occurrence each) and inserted."""
     rows = arrow_rows(current)
     for r in ch.deletes:
         k = row_key(tuple(r))

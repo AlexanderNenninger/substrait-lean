@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import ibis
@@ -235,6 +235,33 @@ class Contract:
         return Contract(**json.loads(text))
 
 
+@dataclass
+class SinkWrite:
+    """What storing a node's state did, in a Delta or Iceberg table.
+
+    `mode` is how: `created` the table, `overwrite` it, `merge` the change
+    (Delta), `append` the new rows or write the change `row-level` (Iceberg),
+    or `skipped` a state the table already holds. `version` is the table's
+    version afterwards; `constraints` are the CHECK constraints the table
+    has for the node's guarantees (Delta)."""
+
+    mode: Literal["created", "overwrite", "merge", "append", "row-level", "skipped"]
+    version: int
+    contract: Contract
+    inserted: int = 0
+    deleted: int = 0
+    constraints: dict[str, str] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        src = ", ".join(f"{t}@v{n}" for t, n in self.contract.sources.items())
+        if self.mode == "skipped":
+            return f"{self.contract.view} from {src}: already committed (v{self.version})"
+        return (
+            f"{self.contract.view} from {src}: {self.mode} v{self.version}, "
+            f"{self.inserted} row(s) written, {self.deleted} deleted"
+        )
+
+
 def view_contract_record(view: IncrementalView) -> Contract:
     versions = view.versions
     bases = _base_tables(view)
@@ -243,7 +270,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
         raise ValueError(
             f"view {view.name} reads tables without a source ({missing}): a sink needs "
             "source versions to write exactly once; read a table that is not in a table "
-            "format with pipe.source(name, sv.StaticSource(table, version))"
+            "format through sverify.io.StaticSource(table, version)"
         )
     schema = ibis.Schema.from_pyarrow(view.schema)
     not_null: list[str] = []

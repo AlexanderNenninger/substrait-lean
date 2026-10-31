@@ -553,11 +553,23 @@ def datafusion_plan(plan_json: str) -> str:
     return out
 
 
-def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> pa.Table:
+def run_plan(con: Connection, plan_json: str, engine: Engine | Any = None) -> pa.Table:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. DataFusion runs it as
-    `datafusion_plan` writes it."""
+    `datafusion_plan` writes it; `"spark"` runs it on the local Spark session
+    (`sverify.spark_engine.session`), and a Spark session as `engine` runs it
+    there."""
     engine = engine or con.engine
+    if engine == "spark" or not isinstance(engine, str):
+        # Spark: the local session, or the session given as the engine.
+        from sverify import spark_engine
+
+        plan = json.loads(plan_json)
+        # Spark's temporary views take plain names, not the delta plans' `t$delta`.
+        names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
+        _rename_tables(plan, names)
+        tables = {alias: con.arrow[t] for t, alias in names.items()}
+        return spark_engine.run(plan, tables, None if engine == "spark" else engine)
     if engine == "datafusion":
         return run_substrait_json(con, datafusion_plan(plan_json))
     tables = {t: con.arrow[t] for t in read_tables(json.loads(plan_json))}
@@ -570,6 +582,19 @@ def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> p
 
         return duckdb_engine.run(plan_json, tables)
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+
+
+def _rename_tables(node: object, names: dict[str, str]) -> None:
+    """Rename the named tables a Substrait plan (as a dict) reads, in place."""
+    if isinstance(node, dict):
+        if "namedTable" in node:
+            name = ".".join(node["namedTable"]["names"])
+            node["namedTable"]["names"] = [names.get(name, name)]
+        for v in node.values():
+            _rename_tables(v, names)
+    elif isinstance(node, list):
+        for v in node:
+            _rename_tables(v, names)
 
 
 def run_sql(con: Connection, sql: str) -> pa.Table:

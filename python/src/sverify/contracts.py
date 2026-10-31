@@ -972,7 +972,13 @@ class ContractedTransform:
             raise error
         return out
 
-    def __call__(self, *args, **kwargs) -> ir.Table:
+    def __call__(self, *args, **kwargs) -> Any:
+        """The transformation's result: an Ibis table, or a node
+        (`sverify.Node`) when an input is a source or a node."""
+        from sverify import nodes
+
+        if nodes.wants_node(args, kwargs):
+            return nodes.derive(self, args, kwargs)
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
         result = self.fn(*args, **kwargs)

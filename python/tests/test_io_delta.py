@@ -17,7 +17,8 @@ import sverify as sv
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.engine import Engine
 from sverify.incremental import AuditError, SchemaError, arrow_rows
-from sverify.io import ColumnStats, DeltaSink, DeltaSource
+from sverify.io import DeltaSink, DeltaSource
+from sverify.io._common import ColumnStats
 from sverify.io.delta import file_stats
 
 SCHEMA_ORDERS = pa.schema(
@@ -27,6 +28,12 @@ SCHEMA_ORDERS = pa.schema(
         pa.field("amount", pa.int64()),
     ]
 )
+
+
+def attached(sink, view):
+    """A sink writing `view` (what `node.write(sink)` sets up)."""
+    sink._attach(view)
+    return sink
 
 
 def orders_table(rows):
@@ -176,7 +183,7 @@ def test_audit_catches_a_wrong_feed(tmp_path, monkeypatch):
 
 def test_audit_catches_a_wrong_view_before_the_commit(tmp_path, monkeypatch):
     src, pipe, big, sink = job1(tmp_path)
-    sink.write()
+    sink._commit()
     sink_version = DeltaTable(sink.uri).version()
     write_deltalake(src.uri, orders_table([(3, "cy", 1)]), mode="append")
     real = sv.IncrementalView._delta
@@ -193,7 +200,7 @@ def test_audit_catches_a_wrong_view_before_the_commit(tmp_path, monkeypatch):
     assert pipe.versions == {"orders": 1}
     assert big.rows() == [(1, "ada", 10), (2, "bob", 14)]
     assert pipe.con.arrow["orders"].num_rows == 2
-    assert sink.write().mode == "skipped"
+    assert sink._commit().mode == "skipped"
     assert DeltaTable(sink.uri).version() == sink_version
     monkeypatch.undo()
     pipe.refresh(audit=True)
@@ -365,12 +372,12 @@ def job1(tmp_path):
     src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     pipe = sv.Pipeline(sv.connect())
     big = pipe.view("big", doubled(paid(pipe.source("orders", src))))
-    return src, pipe, big, DeltaSink(str(tmp_path / "big"), big)
+    return src, pipe, big, attached(DeltaSink(str(tmp_path / "big")), big)
 
 
 def test_sink_writes_contract_and_changes(tmp_path):
     src, pipe, big, sink = job1(tmp_path)
-    first = sink.write()
+    first = sink._commit()
     assert first.mode == "created"
     assert delta_rows(sink.uri) == big.rows()
     out = DeltaTable(sink.uri)
@@ -388,7 +395,7 @@ def test_sink_writes_contract_and_changes(tmp_path):
     write_deltalake(dt, orders_table([(3, "cy", 0)]), mode="append")
     pipe.refresh()
     before = DeltaTable(sink.uri).version()
-    second = sink.write()
+    second = sink._commit()
     assert second.mode == "merge" and second.version == before + 1
     assert (second.inserted, second.deleted) == (2, 1)
     assert delta_rows(sink.uri) == big.rows() == [(1, "ada", 12), (2, "bob", 14), (3, "cy", 0)]
@@ -399,24 +406,24 @@ def test_sink_writes_contract_and_changes(tmp_path):
 
 def test_sink_writes_exactly_once(tmp_path):
     src, pipe, big, sink = job1(tmp_path)
-    sink.write()
+    sink._commit()
     version = DeltaTable(sink.uri).version()
-    assert sink.write().mode == "skipped"
+    assert sink._commit().mode == "skipped"
     # A restarted job at the same source versions finds its commit.
     _, _, _, again = job1_restart(src, tmp_path)
-    assert again.write().mode == "skipped"
+    assert again._commit().mode == "skipped"
     assert DeltaTable(sink.uri).version() == version
     # At a later version, a new sink replaces the table's contents.
     write_deltalake(src.uri, orders_table([(3, "cy", 1)]), mode="append")
     _, _, big2, later = job1_restart(src, tmp_path)
-    assert later.write().mode == "overwrite"
+    assert later._commit().mode == "overwrite"
     assert delta_rows(sink.uri) == big2.rows()
 
 
 def job1_restart(src, tmp_path):
     pipe = sv.Pipeline(sv.connect())
     big = pipe.view("big", doubled(paid(pipe.source("orders", src))))
-    return src, pipe, big, DeltaSink(str(tmp_path / "big"), big)
+    return src, pipe, big, attached(DeltaSink(str(tmp_path / "big")), big)
 
 
 def test_sink_keeps_multiplicities_and_nulls(tmp_path):
@@ -424,19 +431,19 @@ def test_sink_keeps_multiplicities_and_nulls(tmp_path):
     pipe = sv.Pipeline(sv.connect())
     orders = pipe.source("orders", src)
     names = pipe.view("names", orders.select(orders.customer, orders.amount))
-    sink = DeltaSink(str(tmp_path / "names"), names)
-    sink.write()
+    sink = attached(DeltaSink(str(tmp_path / "names")), names)
+    sink._commit()
     DeltaTable(src.uri).delete("id = 1")
     write_deltalake(src.uri, orders_table([(4, None, 1), (5, "ada", 5)]), mode="append")
     pipe.refresh()
-    sink.write()
+    sink._commit()
     assert delta_rows(sink.uri) == sorted(names.rows(), key=repr)
     assert len(names.rows()) == 4
 
 
 def test_contracts_travel_between_jobs(tmp_path):
     src, pipe, big, sink = job1(tmp_path)
-    sink.write()
+    sink._commit()
 
     @sv.transform(
         requires={"t": [_.doubled >= 0, _.doubled.notnull(), sv.unique("id")]},
@@ -457,7 +464,7 @@ def test_contracts_travel_between_jobs(tmp_path):
     # Job 1 moves on; job 2 follows the sink's own change feed.
     write_deltalake(src.uri, orders_table([(3, "cy", 4)]), mode="append")
     pipe.refresh()
-    sink.write()
+    sink._commit()
     report = pipe2.refresh()
     assert report.sources[0].mode == "change feed"
     assert halves.rows() == halves.recompute() == [(1, 5), (2, 7), (3, 4)]
@@ -469,7 +476,7 @@ def test_sink_needs_source_versions(tmp_path):
     sv.create_table(con, "orders", ibis.schema({"id": "int64"}), [(1,)])
     view = sv.IncrementalView(con, con.table("orders"), "v")
     with pytest.raises(ValueError, match="without a source"):
-        DeltaSink(str(tmp_path / "v"), view).write()
+        attached(DeltaSink(str(tmp_path / "v")), view)._commit()
 
 
 # -- Schema evolution ---------------------------------------------------------
@@ -585,30 +592,30 @@ def job_with_lookup(tmp_path, src, regions):
     lookup = pipe.source("regions", regions)
     joined = orders.join(lookup, orders.customer == lookup.customer)
     view = pipe.view("by_region", joined.select(orders.id, lookup.region, orders.amount))
-    return pipe, view, DeltaSink(str(tmp_path / "by_region"), view)
+    return pipe, view, attached(DeltaSink(str(tmp_path / "by_region")), view)
 
 
 def test_static_lookup_table_writes_exactly_once(tmp_path):
     src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     regions = sv.StaticSource(REGIONS, version=1)
     pipe, view, sink = job_with_lookup(tmp_path, src, regions)
-    first = sink.write()
+    first = sink._commit()
     assert first.mode == "created"
     assert first.contract.sources == {"orders": 1, "regions": 1}
     assert first.contract.digests == {"regions": regions.digest}
-    assert sink.write().mode == "skipped"
+    assert sink._commit().mode == "skipped"
     # A restarted job with the same inputs finds its commit.
     _, _, again = job_with_lookup(tmp_path, src, sv.StaticSource(REGIONS, version=1))
-    assert again.write().mode == "skipped"
+    assert again._commit().mode == "skipped"
     # The source moves on: one MERGE.
     write_deltalake(src.uri, orders_table([(3, "cy", 1)]), mode="append")
     pipe.refresh()
-    assert sink.write().mode == "merge"
+    assert sink._commit().mode == "merge"
     # A new release of the lookup table: the views reading it are recomputed.
     regions.replace(REGIONS.set_column(1, "region", pa.array(["us", "us", "us"])), version=2)
     [_, lookup] = pipe.refresh().sources
     assert (lookup.start, lookup.end, lookup.mode) == (1, 2, "recomputed")
-    written = sink.write()
+    written = sink._commit()
     assert written.mode == "merge" and written.contract.epoch == 4
     assert delta_rows(sink.uri) == view.rows() == [(1, "us", 5), (2, "us", 7), (3, "us", 1)]
 
@@ -616,18 +623,18 @@ def test_static_lookup_table_writes_exactly_once(tmp_path):
 def test_static_table_changed_without_a_version_is_refused(tmp_path):
     src = make_orders(tmp_path / "orders", [(1, "ada", 5)])
     _, _, sink = job_with_lookup(tmp_path, src, sv.StaticSource(REGIONS, version=1))
-    sink.write()
+    sink._commit()
     other = REGIONS.set_column(1, "region", pa.array(["us", "us", "us"]))
     _, _, again = job_with_lookup(tmp_path, src, sv.StaticSource(other, version=1))
     with pytest.raises(ValueError, match="give the changed static table a new version"):
-        again.write()
+        again._commit()
     with pytest.raises(ValueError, match="version above 1"):
         sv.StaticSource(REGIONS, version=1).replace(other, version=1)
 
 
 def test_restarted_pipeline_resumes_from_its_sink(tmp_path, monkeypatch):
     src, _, big, sink = job1(tmp_path)
-    sink.write()
+    sink._commit()
     # While the job is down, the source moves on.
     write_deltalake(src.uri, orders_table([(3, "cy", 1)]), mode="append")
     stored = DeltaSource(sink.uri).stored()
@@ -649,16 +656,16 @@ def test_restarted_pipeline_resumes_from_its_sink(tmp_path, monkeypatch):
     assert rows_seen == [0]
     assert big2.resumed == f"resumed from {sink.uri}@v{DeltaTable(sink.uri).version()}"
     assert big2.rows() == big.rows() and big2.schema == big.schema
-    sink2 = DeltaSink(sink.uri, big2)
+    sink2 = attached(DeltaSink(sink.uri), big2)
     assert pipe.refresh().sources[0].mode == "change feed"
-    written = sink2.write()
+    written = sink2._commit()
     assert (written.mode, written.inserted, written.deleted) == ("merge", 1, 0)
     assert delta_rows(sink.uri) == big2.rows() == big2.recompute()
 
 
 def test_resume_recomputes_on_a_mismatch(tmp_path):
     src, _, _, sink = job1(tmp_path)
-    sink.write()
+    sink._commit()
     stored = DeltaSource(sink.uri).stored()
     assert stored is not None
     # Another plan.
