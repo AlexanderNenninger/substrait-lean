@@ -55,6 +55,7 @@ TABLES = {
     "u8": pa.table({"a": pa.array([0], pa.uint8()), "b": pa.array([1], pa.uint8())}),
     "str": pa.table({"s": ["b", "B", "a", "", "é", "z"]}),
     "str5": pa.table({"s": ["5", "05"]}),
+    "is": pa.table({"a": pa.array([10, 10, -3, None], pa.int64()), "s": ["10", "010", "-3", "x"]}),
     "nanp": pa.table(
         {
             "v": pa.array(
@@ -310,7 +311,7 @@ gap = pytest.mark.xfail(
 
 
 def test_int_vs_double_comparison():
-    """F6: DataFusion says `1 > 0.5`; Lean compares 1 with the code of 0.5."""
+    """F6: `1 > 0.5`; the analysed plan casts the integer to a double."""
     report = verify(
         "SELECT a > f AS gt FROM t",
         "t",
@@ -322,7 +323,7 @@ def test_int_vs_double_comparison():
 
 
 def test_int_concat_string():
-    """N7: `x || 'a'` is '1a' on DataFusion; Lean, missing the cast, gives NULL."""
+    """N7: `x || 'a'` is '1a'; the analysed plan casts the integer to text."""
     report = verify("SELECT x || 'a' AS p FROM n", "n", {"x": "int64"}, ensures=["p IS NULL"])
     assert not report.ensures[0].proved
 
@@ -335,9 +336,13 @@ def test_string_order_is_datafusions(con):
     assert lean_rows(json.dumps(inline_tables(plan, {"str": rows_}))) == rows(con, sql)
 
 
-def test_int_compared_with_string_is_refused():
-    with pytest.raises(ValueError, match="compares values of different types"):
-        verify("SELECT a = s AS e FROM t", "t", {"a": "int64", "s": "string"})
+def test_int_compared_with_string_compares_text(con):
+    """DataFusion casts the integer to text, so `10 = '010'` is false; the
+    analysed plan has the cast."""
+    sql = "SELECT a, s, a = s AS e FROM \"is\""
+    plan = json.loads(substrait_json(con, sql))
+    rows_ = [(10, "10"), (10, "010"), (-3, "-3"), (None, "x")]
+    assert lean_rows(json.dumps(inline_tables(plan, {"is": rows_}))) == rows(con, sql)
 
 
 def test_string_order_comparison():
