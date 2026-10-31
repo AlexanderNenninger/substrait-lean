@@ -237,8 +237,7 @@ def test_gap_string_order_comparison():
     assert not report.ensures[0].proved
 
 
-@gap
-def test_gap_int32_wraps_at_32_bits():
+def test_int32_wraps_at_32_bits():
     """I6: DataFusion's INT + INT wraps at 2^31."""
     report = verify(
         "SELECT a + b AS s FROM t",
@@ -250,13 +249,25 @@ def test_gap_int32_wraps_at_32_bits():
     assert not report.ensures[0].proved or report.warnings
 
 
-@gap
-def test_gap_uint8_is_unsigned():
-    """I7: 0 - 1 is 255 for UINT8."""
-    report = verify(
-        "SELECT a - b AS d FROM t", "t", {"a": "uint8", "b": "uint8"}, ["a = 0", "b = 1"], ["d < 0"]
-    )
-    assert not report.ensures[0].proved
+def test_int32_wrap_in_lean_and_datafusion(con):
+    """`Rel.eval` computes `INT + INT` unbounded, warning that DataFusion wraps;
+    `INT + 1` is a `BIGINT` in DataFusion and does not wrap. Lean's written
+    plan computes at the same widths."""
+    sql = "SELECT a + b AS s, a + 1 AS t FROM i32"
+    plan = substrait_json(con, sql)
+    assert lean_rows(json.dumps(inline_tables(json.loads(plan), {"i32": [(2**31 - 1, 1)]}))) == [
+        (2**31, 2**31)
+    ]
+    assert arrow_rows(run_substrait_json(con, sv.written_plan(plan))) == rows(con, sql)
+    report = verify(sql.replace("i32", "t"), "t", {"a": "int32", "b": "int32"})
+    assert ("may wrap around", "WRAP32(($0 + $1))") in [(i.kind, i.expr) for i in report.warnings]
+    assert not any(i.expr.startswith("WRAP32(($0 + 1") for i in report.warnings)
+
+
+def test_uint8_is_refused():
+    """I7: 0 - 1 is 255 for UINT8; unsigned integers are not modelled."""
+    with pytest.raises(ValueError, match="unsigned"):
+        verify("SELECT a - b AS d FROM t", "t", {"a": "uint8", "b": "uint8"})
 
 
 def test_narrowing_cast_may_fail():

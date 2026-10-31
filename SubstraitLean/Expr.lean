@@ -48,6 +48,10 @@ inductive UnFn where
   and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit and
   DataFusion fails (`badCast` in `Safety.lean`). -/
   | narrow (bits : Nat)
+  /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
+  value itself, like 64-bit arithmetic, which DataFusion wraps around where it
+  does not fit (`wraps` in `Safety.lean`). -/
+  | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
@@ -106,6 +110,7 @@ def UnFn.apply : UnFn → Value → Value
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
+  | .wrap _, v => v
   | .itos, .int i => .str (toString i)
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)

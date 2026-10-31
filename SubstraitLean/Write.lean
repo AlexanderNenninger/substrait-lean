@@ -41,6 +41,8 @@ def UnFn.anchor : UnFn → Nat
   | .upper => 20 | .lower => 21 | .length => 22 | .datePart _ => 25 | .dateTrunc _ => 26
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ => 0
+  -- Not a function: the arithmetic inside is written at its width.
+  | .wrap _ => 0
 
 def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
@@ -107,6 +109,13 @@ def canonical (x : Json) : Json :=
   let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
   call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
 
+/-- `x`, written as `j`, or as an integer literal of `n` bits. -/
+def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
+  match x with
+  | .lit (.int i) =>
+    obj [("literal", obj [(if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32", toJson i)])]
+  | _ => j
+
 def isLit : Expr → Bool
   | .lit _ => true
   | _ => false
@@ -128,6 +137,12 @@ def writeExpr (cols : List Parse.Kind) (ctx : Parse.Kind) : Expr → Json
     let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  -- Arithmetic at `n` bits: its integer literals are written at that width,
+  -- which is what makes the engine compute at it.
+  | .un (.wrap n) (.bin f x y) =>
+    call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)]
+  | .un (.wrap n) (.un .neg x) => call 3 [narrowLit n x (writeExpr cols .int x)]
+  | .un (.wrap _) a => writeExpr cols ctx a
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>

@@ -434,6 +434,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fround, a => monoAbs FloatCode.round a
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
+  | .wrap _, a => a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .upper, a | .lower, a => ⟨a.nonStr, none, false, false, a.str⟩
   | .length, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
@@ -616,6 +617,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · simp [AVal.Mem, narrowAbs, hb, hfb]
         · exact absurd (Bound.fitsBits_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case itos =>
