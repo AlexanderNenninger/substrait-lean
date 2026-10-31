@@ -10,6 +10,7 @@ import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Partition
 import SubstraitLean.Guards
+import SubstraitLean.Semantic
 
 /-!
 # Examples
@@ -180,9 +181,13 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_weight_congr
 #print axioms Substrait.ChangeFeed.of_diff
 #print axioms Substrait.Rel.cdf_sound
+#print axioms Substrait.ChangeFeed.of_changed_files
 #print axioms Substrait.stats_table
 #print axioms Substrait.stats_append
 #print axioms Substrait.stats_bounds
+#print axioms Substrait.stats_fact
+#print axioms Substrait.stats_all_null
+#print axioms Substrait.prune_sound
 #print axioms Substrait.Rel.eval_sharded
 #print axioms Substrait.Rel.keyRows
 #print axioms Substrait.Sharding.coDisjoint
@@ -194,3 +199,4 @@ end Substrait.Examples
 #print axioms Substrait.inI64_partial
 #print axioms Substrait.Rel.evalI_eq
 #print axioms Substrait.Rel.guardFree_sound
+#print axioms Substrait.Rel.optimize_sound

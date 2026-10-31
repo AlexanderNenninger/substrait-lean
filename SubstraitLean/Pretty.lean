@@ -10,6 +10,7 @@ def Value.render : Value → String
   -- Too large for a 64-bit integer: a double's code (SubstraitLean/Float.lean).
   | .int i => if i.natAbs ≥ 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
   | .str s => s.quote
+  | .list vs => "[" ++ ", ".intercalate (vs.attach.map fun ⟨v, _⟩ => v.render) ++ "]"
 
 def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"
@@ -17,7 +18,7 @@ def Row.render (row : Row) : String :=
 def UnFn.render : UnFn → String
   | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
   | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
-  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
+  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
   | .toDate => "DATE"
@@ -45,12 +46,15 @@ def WinFn.render : WinFn → String
 
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"
+  | .collect => "ARRAY_AGG"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with
     | some c => s!" FILTER (WHERE {c.render})"
     | none => ""
-  s!"{m.fn.name}({if m.distinct then "DISTINCT " else ""}{m.arg.render}){filter}"
+  let sort := if m.sort.isEmpty then "" else
+    " ORDER BY " ++ ", ".intercalate (m.sort.map fun k => s!"${k.col}{if k.desc then " DESC" else ""}")
+  s!"{m.fn.name}({if m.distinct then "DISTINCT " else ""}{m.arg.render}{sort}){filter}"
 
 def Rel.renderLines : Rel → List String
   | .read t => [s!"Read {t}"]
@@ -72,6 +76,7 @@ def Rel.renderLines : Rel → List String
       s!"{if anti then "Anti" else "Semi"}Join {on.render}" :: indent a.renderLines ++ indent b.renderLines
   | .orderBy r keys => s!"OrderBy {keys.map key}" :: indent r.renderLines
   | .distinct r => "Distinct" :: indent r.renderLines
+  | .unnest r c => s!"Unnest ${c}" :: indent r.renderLines
   | .aggregate r gs ms =>
       s!"Aggregate +[{", ".intercalate (ms.map Measure.render)}] GROUP BY [{", ".intercalate (gs.map Expr.render)}]"
         :: indent r.renderLines

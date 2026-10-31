@@ -335,7 +335,35 @@ def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
     logical = ss.Consumer.from_substrait_plan(
         ctx, ss.Serde.deserialize_bytes(proto.SerializeToString())
     )
-    return canonical(ctx.create_dataframe_from_logical_plan(logical).to_arrow_table())
+    return canonical(collect(ctx.create_dataframe_from_logical_plan(logical)))
+
+
+def collect(df: Any) -> pa.Table:
+    """A DataFusion DataFrame's result as one Arrow table.
+
+    DataFusion 51 can return record batches whose schemas differ only in
+    nullability: the branches of a `UNION ALL` (`SELECT 'x' UNION ALL SELECT
+    NULL`, a recursive CTE's anchor and step) each keep their own, and its
+    `to_arrow_table()` then fails to concatenate them. A recursive CTE's
+    batches can also differ in column names. The result has the first batch's
+    names and types, and a column is nullable if it is in any batch."""
+    batches = df.collect()
+    if not batches:
+        return df.to_arrow_table()
+    first = batches[0].schema
+    nullable = [any(b.schema.field(i).nullable for b in batches) for i in range(len(first))]
+    schema = pa.schema(
+        [f.with_nullable(n) for f, n in zip(first, nullable, strict=True)], first.metadata
+    )
+    return pa.Table.from_batches(
+        [
+            pa.RecordBatch.from_arrays(
+                [c.cast(f.type) for c, f in zip(b.columns, schema, strict=True)], schema=schema
+            )
+            for b in batches
+        ],
+        schema,
+    )
 
 
 def canonical(table: pa.Table) -> pa.Table:
@@ -456,12 +484,25 @@ def written_plan(plan_json: str) -> str:
     return check("--write")
 
 
+def datafusion_plan(plan_json: str) -> str:
+    """The plan for DataFusion to run (`substrait-check --write-datafusion`):
+    Lean's written form, compensating for where DataFusion's semantics differ
+    from `Rel.eval` (an integer `SUM` fails outside 64 bits instead of
+    wrapping around)."""
+    code, out, err = run_checker(("--write-datafusion",), plan_json)
+    if code != 0:
+        msg = (err or out).strip().splitlines()[-1:]
+        raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
+    return out
+
+
 def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> pa.Table:
     """Run a plan in Lean's written form on `engine` (default: the
-    connection's), over the tables of `con`."""
+    connection's), over the tables of `con`. DataFusion runs it as
+    `datafusion_plan` writes it."""
     engine = engine or con.engine
     if engine == "datafusion":
-        return run_substrait_json(con, plan_json)
+        return run_substrait_json(con, datafusion_plan(plan_json))
     tables = {t: con.arrow[t] for t in read_tables(json.loads(plan_json))}
     if engine == "polars":
         from sverify import polars_engine
@@ -476,7 +517,7 @@ def run_plan(con: Connection, plan_json: str, engine: Engine | None = None) -> p
 
 def run_sql(con: Connection, sql: str) -> pa.Table:
     """Run SQL on DataFusion; doubles in the result as `canonical` makes them."""
-    return canonical(con.datafusion.sql(sql).to_arrow_table())
+    return canonical(collect(con.datafusion.sql(sql)))
 
 
 def put_table(con: Connection, name: str, table: pa.Table) -> None:

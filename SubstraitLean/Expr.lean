@@ -48,6 +48,10 @@ inductive UnFn where
   and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit and
   DataFusion fails (`badCast` in `Safety.lean`). -/
   | narrow (bits : Nat)
+  /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
+  value itself, like 64-bit arithmetic, which DataFusion wraps around where it
+  does not fit (`wraps` in `Safety.lean`). -/
+  | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
@@ -106,6 +110,7 @@ def UnFn.apply : UnFn → Value → Value
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
+  | .wrap _, v => v
   | .itos, .int i => .str (toString i)
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)
@@ -145,7 +150,11 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .eq, .int a, .int b => .bool (a == b)
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
+  -- Lists are equal element by element, NULL elements equal (DataFusion, DuckDB).
+  | .eq, .list a, .list b => .bool (decide (a = b))
   | .lt, .int a, .int b => .bool (decide (a < b))
+  -- Strings by code point, which is UTF-8 byte order (as `Value.le`).
+  | .lt, .str a, .str b => .bool (decide (a < b))
   | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
