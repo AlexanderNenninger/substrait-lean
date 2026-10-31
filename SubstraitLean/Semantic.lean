@@ -20,6 +20,13 @@ of the already rewritten inputs, so one rewrite can enable the next.
   every group, so `DISTINCT` changes nothing: `COUNT(DISTINCT id)` is
   `COUNT(id)`.
 
+* **Filters the contract implies** (#78). If the abstract evaluation shows
+  the condition certainly TRUE on the input (`Expr.absD`, as for a
+  postcondition), the filter keeps every row and goes. If it shows the
+  condition never TRUE, no row passes, and the plan is an empty `VALUES`.
+  This removes CHECK constraints the engine does not enforce, and re-checks
+  of an upstream guarantee in a composed pipeline.
+
 `Rel.optimize_sound`: on every catalog meeting the preconditions, the
 rewritten plan is well-formed, has the same arity, and gives the same list of
 rows. As elsewhere (`Rel.guardFree_sound`, `Rel.shardSplit_sound`), the
@@ -62,9 +69,20 @@ def Measure.dropDistinct (ks : List (List Nat)) (m : Measure) : Measure :=
 def groupsKey (ks : List (List Nat)) (gs : List Expr) : Bool :=
   ks.any (·.all fun c => gs.contains (.field c))
 
+/-- What the abstract evaluation knows about `c` on the rows of `r`. -/
+def Rel.condVal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (c : Expr) : AVal :=
+  let T := Rel.keyedWindows cat A F K
+  c.absD (r.aeval cat A F T) (r.facts cat F T)
+
 /-- One rewrite at the root, and its name for the report. -/
 def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Option (String × Rel)
+  | .filter r c =>
+    let a := r.condVal cat A F K c
+    if a.certainlyTrue then some ("filter implied by the contract", r)
+    else if !a.tt then some ("filter the contract rules out", .values (r.arity cat) [])
+    else none
   | .distinct r => if (r.keys cat A F K).isEmpty then none else some ("DISTINCT on a key", r)
   | .aggregate r gs ms =>
     let ks := r.keys cat A F K
@@ -169,7 +187,34 @@ include hcat hA hF hK
 theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
     (h : r.rule cat A F K = some (name, s)) : Same cat r s := by
   have keys := fun {r : Rel} (hr : r.WF cat) => keys_sound hcat hA hF hK hr
+  have cond : ∀ {r : Rel}, r.WF cat → ∀ c : Expr, ∀ row ∈ r.eval cat,
+      (r.condVal cat A F K c).Mem (c.eval row) := fun hr c row hrow =>
+    have hT := keyedWindows_sound hcat hA hF hK
+    Expr.absD_sound (aeval_sound hcat hA hF hT hr row hrow) (facts_sound hcat hF hT hr row hrow)
+      (fun _ h => by simp at h) c
   match r, hwf, h with
+  | .filter r c, hwf, h =>
+    simp only [rule] at h
+    split at h
+    · rename_i ht
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      refine ⟨hwf.1, rfl, ?_⟩
+      simp only [eval]
+      refine (List.filter_eq_self.2 fun row hrow => ?_).symm
+      simp [AVal.certainlyTrue_mem ht (cond hwf.1 c row hrow), Value.isTrue]
+    · split at h
+      · rename_i hn
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        refine ⟨by simp [WF], rfl, ?_⟩
+        simp only [eval]
+        refine (List.filter_eq_nil_iff.2 fun row hrow => ?_).symm
+        have hm := cond hwf.1 c row hrow
+        cases hv : c.eval row with
+        | bool b => cases b <;> simp_all [AVal.Mem, Value.isTrue]
+        | _ => simp [Value.isTrue]
+      · simp at h
   | .distinct r, hwf, h =>
     simp only [rule] at h
     split at h

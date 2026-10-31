@@ -1186,6 +1186,7 @@ interval, possible booleans, and whether it can be a string.
   rewrites a contract's keys and facts allow keep a plan's rows, on data that
   meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
   goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
+  A filter the preconditions imply goes; one they rule out empties the plan.
   `sv.verify(...).optimized` is the rewritten plan.
 * Key rules for ASOF (all in `Rel.keys_sound`): `ROW_NUMBER()` with the partition
   columns is a key (`windowRows_rowNumber_key`); a column `$i + c` of a non-NULL

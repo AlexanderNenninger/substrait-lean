@@ -40,7 +40,7 @@ the checker know that the engine does not?** The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76); #75, #77–#80 open |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78); #75, #77, #79, #80 open |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
@@ -265,10 +265,12 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   rejects NULLs on a right column turns it into an inner join. With an FK and
   NOT NULL, every left row matches, so the conversion holds without a filter.
   Engines do the filter case; the FK case needs our facts.
-* **Filters implied by CHECK constraints** (#78). If `aeval` proves the condition
-  certainly TRUE on the input (`AVal.certainlyTrue`), then `filter r c ~ r`.
-  This is nearly free given `contract_sound`, and it composes: a downstream
-  re-check of an upstream guarantee disappears.
+* **Filters implied by CHECK constraints** (#78, done). If `Expr.absD`
+  shows the condition certainly TRUE on the input's abstract rows
+  (`AVal.certainlyTrue`, as for a postcondition), `filter r c` is `r`. If it
+  shows the condition never TRUE (`tt = false`), the filter is an empty
+  `VALUES`. This composes: a downstream re-check of an upstream guarantee
+  disappears (`test_composed_pipeline_drops_the_downstream_check`).
 * **GROUP BY simplification through functional dependencies** (#79). If a key
   `k ⊆ gs` determines the other grouping columns, group by `k` alone and
   carry the rest through `MIN` (or `ANY_VALUE`). This needs functional

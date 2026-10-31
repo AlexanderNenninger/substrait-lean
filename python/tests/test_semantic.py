@@ -9,10 +9,12 @@ import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from ibis import _
 
 import sverify as sv
 from sverify import duckdb_engine, polars_engine
 from sverify.engine import connect, plan_json
+from sverify.examples import orders
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
 from sverify.testing import canonical
@@ -96,3 +98,54 @@ def test_optimized_runs_agree(expr, rewrite, rows):
     for run in (duckdb_engine.run, polars_engine.run):
         got = run(report.optimized, tables)
         assert canonical(tuple(r.values()) for r in got.to_pylist()) == want
+
+
+# Filters the contract implies (#78).
+
+BOUNDED = {"t": [_.a >= 1, _.b.notnull()]}
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        T.filter(T.a >= 0),
+        T.filter(T.b.notnull(), T.a > 0).select("b"),
+        T.filter((T.a + 1) > 1),
+    ],
+)
+def test_implied_filter_goes(expr):
+    report = sv.verify(expr, requires=BOUNDED)
+    assert report.rewrites == ["filter implied by the contract"]
+    assert report.optimized is not None
+    assert "WHERE" not in to_sql(report.optimized, DUCKDB).upper()
+
+
+def test_filter_the_contract_rules_out_is_empty():
+    report = sv.verify(T.filter(T.a < 0).select("b"), requires=BOUNDED)
+    assert report.rewrites == ["filter the contract rules out"]
+    tables = {"t": pa.table({"a": [1, 2], "b": [3, 4]})}
+    assert report.optimized is not None
+    assert duckdb_engine.run(report.optimized, tables).num_rows == 0
+
+
+def test_filter_on_other_rows_stays():
+    report = sv.verify(T.filter(T.a >= 2), requires=BOUNDED)
+    assert report.rewrites == []
+
+
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount >= 0, _.amount.notnull()])
+def paid(orders):
+    return orders.filter(orders.amount.notnull())
+
+
+@sv.transform(requires={"t": [_.amount.notnull()]}, ensures=[_.amount.notnull()])
+def recheck(t):
+    # A defensive re-check of what `paid` guarantees.
+    return t.filter(t.amount.notnull(), t.amount >= 0)
+
+
+def test_composed_pipeline_drops_the_downstream_check():
+    recheck(paid(orders))
+    report = recheck.last_report
+    assert report is not None and report.proved
+    assert report.rewrites == ["filter implied by the contract"]
