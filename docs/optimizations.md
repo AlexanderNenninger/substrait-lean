@@ -202,7 +202,8 @@ guarantees. The question is when
   of the converted doubles (`Aggregate.lean`), which is not
   `CAST(SUM(x)) / COUNT(x)` either. Supporting it needs an exact accumulator.
   A proved error bound for the two-phase sum, which would let these run
-  sharded with a stated tolerance, is the epic #85.
+  sharded with a stated tolerance, is the epic #85; its model and
+  dependency are in `docs/float-bounds.md`.
 * **Other `DISTINCT` aggregates** are refused: a value in two shards counts
   once in the whole and twice in the parts. `DISTINCT` without the split
   key, windows and `FETCH` are refused because they look at rows of other
