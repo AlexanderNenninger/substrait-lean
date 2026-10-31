@@ -25,7 +25,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.incremental import arrow_rows
+from sverify.errors import SqlError
+from sverify.incremental import IncrementalView, arrow_rows
 from sverify.testing import canonical
 
 needs_isthmus = pytest.mark.skipif(isthmus_path() is None, reason="no Isthmus binary")
@@ -158,13 +159,13 @@ def test_isthmus_folds_hours_added_to_a_date(con):
 
 @needs_isthmus
 def test_isthmus_errors(con):
-    with pytest.raises(sv.SqlError, match="not found"):
+    with pytest.raises(SqlError, match="not found"):
         plan_json(con, "SELECT nope FROM orders")
 
 
 @needs_isthmus
 def test_incremental_view_from_sql(con):
-    view = sv.IncrementalView(con, "SELECT id, qty * 2 AS q FROM orders WHERE qty > 1", "v")
+    view = IncrementalView(con, "SELECT id, qty * 2 AS q FROM orders WHERE qty > 1", "v")
     view.apply({"orders": sv.Changes(inserts=[(6, "dee", 1.0, 9, T0, True)])})
     assert canonical(view.rows()) == canonical(view.recompute())
     assert (6, 18) in view.rows()

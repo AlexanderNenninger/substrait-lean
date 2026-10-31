@@ -13,17 +13,14 @@ says why it can't. The checked plan then runs on the engine you choose.
 
 ```python
 import ibis
+import pyarrow as pa
 import sverify as sv
 from ibis import _
+from sverify.io import StaticSource
 
-con = sv.connect()  # in-memory tables; plans run on DuckDB by default
-sv.create_table(
-    con,
-    "orders",
-    ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
-    [(1, "ada", 30), (2, "bob", 5)],
+orders = StaticSource(  # in memory; Delta and Iceberg tables work the same way
+    pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
 )
-orders = con.table("orders")
 
 @sv.transform(
     requires={"orders": [_.amount >= 0, sv.unique("id")]},
@@ -32,14 +29,16 @@ orders = con.table("orders")
 def big_orders(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
-view = sv.IncrementalView(con, big_orders(orders), "big_orders")  # proved, then computed
-view.apply({"orders": sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)])})
-assert view.rows() == [(3, 100)] == view.recompute()
+big = big_orders(orders)  # proved here, before any data runs
+big.refresh()             # computed, on DuckDB by default
+orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
+big.refresh()             # updated from the changes alone
+assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 ```
 
-The three postconditions were proved before anything ran, and the view was
-updated from the changes alone, by a plan proved to give the same result as
-a full recompute.
+The three postconditions were proved before anything ran, and the result
+was updated from the changes alone, by a plan proved to give the same result
+as a full recompute.
 
 ## What it does for you
 
@@ -85,8 +84,7 @@ integer cents); framed window aggregates (running totals, moving averages),
 `RANK` and `NTILE` are not in the model; and incremental maintenance covers
 filters, projections, inner and cross joins and `UNION ALL`. Other views (left
 joins, aggregates, windows, `DISTINCT`) are recomputed and diffed inside a
-pipeline, and a standalone `IncrementalView` refuses them up front rather
-than maintaining them wrongly. [What is supported](#what-is-supported) has
+are recomputed and diffed instead, and `node.status()` says so. [What is supported](#what-is-supported) has
 the full table.
 
 ## Workflows
@@ -113,6 +111,7 @@ from tempfile import mkdtemp
 
 import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
+from sverify.engines import ENGINES
 from sverify.io import DeltaSink, DeltaSource
 
 lake = Path(mkdtemp())
@@ -152,29 +151,33 @@ def duplicate_payments(transactions):
     ).select(first_txn=a.txn_id, duplicate_txn=b.txn_id, merchant=a.merchant,
              amount_cents=a.amount_cents)
 
-pipe = sv.Pipeline(sv.connect())
-source = pipe.source("transactions", DeltaSource(str(lake / "transactions")))
-dups = pipe.view("duplicate_payments", duplicate_payments(source))  # proves the contract
-for p in pipe.preconditions:
+transactions = DeltaSource(str(lake / "transactions"))
+dups = duplicate_payments(transactions)  # proves the contract
+sink = DeltaSink(str(lake / "duplicate_payments"))
+stored = dups.write(sink)  # NOT NULL and CHECK constraints from `ensures`, the contract in the commit
+first = stored.refresh()   # checks the preconditions, computes, writes
+for p in first["duplicate_payments"].preconditions:
     print(p)
 # transactions: unique(txn_id) (checked on data)
 # transactions: (_.amount_cents >= 0) (Delta constraint)
 # transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v1)
 
-sink = DeltaSink(str(lake / "duplicate_payments"), dups)
-sink.write()  # NOT NULL and CHECK constraints from `ensures`, the contract in the commit
-
 # A late duplicate of transaction 3 arrives, and transaction 2 is reversed.
 t = DeltaTable(lake / "transactions")
 write_deltalake(t, txns((4, 11, "books", 2599, at(13))), mode="append")
 t.delete("txn_id = 2")
-print(pipe.refresh())  # reads the Change Data Feed v1→v3, runs the proved delta plans
-assert dups.rows() == [(3, 4, "books", 2599)] == dups.recompute()
-sink.write()  # one MERGE commit, exactly once
+print(stored.refresh())  # the Change Data Feed v1→v3, the proved delta plans, one MERGE commit
+# duplicate_payments:
+#   transactions@v1→v3: 1 insert(s), 1 delete(s); Δ trusted as coming from Delta CDF v1→v3
+# ...
+#   wrote duplicate_payments from transactions@v3: merge v3, 1 row(s) written, 1 deleted
+assert stored.to_arrow().to_pylist() == [
+    {"first_txn": 3, "duplicate_txn": 4, "merchant": "books", "amount_cents": 2599}]
 
-for engine in sv.ENGINES:  # the same rows on DuckDB, Polars and DataFusion
-    assert sv.run_plan(pipe.con, dups.plan, engine).to_pylist() == [
-        {"first_txn": 3, "duplicate_txn": 4, "merchant": "books", "amount_cents": 2599}]
+for engine in ENGINES:  # the same rows on DuckDB, Polars and DataFusion
+    again = duplicate_payments(transactions)
+    again.refresh(engine=engine)
+    assert again.to_arrow().to_pylist() == stored.to_arrow().to_pylist()
 ```
 
 ## What goes wrong without it
@@ -210,7 +213,7 @@ pip install sverify                 # or: uv add sverify
 pip install 'sverify[delta,iceberg,polars,datafusion,spark]'   # or 'sverify[all]'
 ```
 
-The core runs on DuckDB: contracts, incremental views, pipelines, and the
+The core runs on DuckDB: contracts, incremental maintenance, and the
 SQL for DuckDB, Snowflake and Spark. The extras add `datafusion` (an engine,
 and the default compiler for SQL strings), `polars`, `spark` (runs plans on
 a Spark session; needs Java 17 or 21), `delta` and `iceberg`. Wheels bundle
@@ -224,7 +227,8 @@ The [tour](#the-tour) explains each feature in a chapter of its own
 ### Contracts
 
 `@sv.transform` decorates a function from Ibis tables to an Ibis table.
-Each call proves the postconditions before the expression is returned:
+Called on a source or another node, it builds a node (and on Ibis tables, an
+Ibis expression). Each call proves the postconditions before it returns:
 
 ```python
 @sv.transform(
@@ -255,9 +259,11 @@ follow is refused, with what *is* known:
 def plus_one(orders):
     return orders.select(orders.id, total=orders.amount + 1)
 
+from sverify.errors import CompositionError, NotIncremental, VerificationError
+
 try:
     plus_one(orders)
-except sv.VerificationError as e:
+except VerificationError as e:
     print(e)
 # could not prove: (_.total > 5) (it is TRUE or FALSE)
 # ...
@@ -268,9 +274,10 @@ except sv.VerificationError as e:
   (`"amount >= 0"`). SQL transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report.
-* **Preconditions** describe data that comes from outside. When the inputs
-  are real tables, they are checked on the data at call time
-  (`PreconditionError`), or proved from table metadata in a pipeline.
+* **Preconditions** describe data that comes from outside. On a source, they
+  are checked on the data when the node is first refreshed and then on each
+  batch (`PreconditionError`), or proved from the table's metadata; on Ibis
+  tables bound to data (`sv.connect()`), at call time.
 * **Unproved postconditions** raise `VerificationError`. With
   `on_unproved="runtime"` they are checked on the output data instead
   (`PostconditionError`); with `on_unproved="warn"` you get a warning.
@@ -318,7 +325,7 @@ def share(orders):
 
 try:
     share(orders)
-except sv.VerificationError as e:
+except VerificationError as e:
     print(str(e).splitlines()[0])
 # could not prove: no runtime error (division by zero: ($2 % ($2 - 30))), ...
 ```
@@ -358,53 +365,79 @@ print(doubled_paid.last_report)
 ```
 
 If the upstream contract doesn't imply the downstream precondition, the call
-fails with a `CompositionError` that names the broken link.
-`sv.contracts.provenance(expr)` shows what a contracted result assumed and
-guarantees.
+fails at once with a `CompositionError` (in `sverify.errors`) that names the
+broken link.
 
-### Incremental views and pipelines
+### Nodes: composing, storing, refreshing
 
-`sv.IncrementalView(con, query, name)` keeps a query's result up to date
-from inserts and deletes; `apply` updates the base tables too, all or
-nothing. An update is a delete plus an insert:
+A transform called on a source or another node builds a **node**. Nodes
+compose directly: `doubled_paid(paid(orders))` is one plan. `refresh()`
+brings a node up to date from the changes to its sources, with the delta
+plans Lean derives, and the results come out through `to_arrow()`,
+`to_polars()`, `to_pandas()` and `.table`, an Ibis table to query further.
+An update is a delete plus an insert:
 
 ```python
-sv.create_table(con, "customers", ibis.schema({"name": "string", "city": "string"}),
-                [("ada", "Paris")])
-customers = con.table("customers")
-cities = sv.IncrementalView(con, orders.join(customers, orders.customer == customers.name)
-                                 .select(orders.id, customers.city), "cities")
-cities.apply({"customers": sv.Changes(inserts=[("cy", "Rome")])})
-assert cities.rows() == [(3, "Rome")]
+customers = StaticSource(pa.table({"name": ["ada"], "city": ["Paris"]}), name="customers")
 
-try:
-    sv.IncrementalView(con, orders.limit(5), "top5")
-except sv.NotIncremental as e:
-    print(e)
-# not incrementally maintainable (left join, fetch or window)
+@sv.transform()
+def cities(orders, customers):
+    return orders.join(customers, orders.customer == customers.name).select(
+        orders.id, customers.city)
+
+c = cities(orders, customers)
+c.refresh()
+customers.apply(sv.Changes(inserts=[("cy", "Rome")]))
+print(c.refresh())
+# cities:
+#   customers@v0→v1: 1 insert(s), 0 delete(s); Δ as applied to customers v0→v1
+# ...
+assert c.to_arrow().to_pylist() == [{"id": 3, "city": "Rome"}]
+assert c.table.filter(_.city == "Rome").count().to_pyarrow().as_py() == 1
 ```
 
-A `sv.Pipeline` maintains views that read each other: each view's change is
-handed to the views that read it. A view without delta rules (left join,
-aggregate, window, `DISTINCT`, `LIMIT`) is recomputed and diffed, its change
-still flows downstream, and `pipe.fallbacks` lists such views. Views of
-contracted transformations keep their guarantees in every state: their
-preconditions are checked in full once, then only on each batch.
+A node without delta rules (left join, aggregate, window, `DISTINCT`,
+`LIMIT`) is recomputed and diffed instead, and `status()` says so. Contracted
+nodes keep their guarantees in every state: their preconditions on the
+sources are checked in full once, then only on each batch.
+
+**`.write(sink)` stores a node**, as a cache in the middle of a job or as its
+output, and returns the stored node, which transforms downstream read as a
+versioned source. Without a `.write` in between, transforms fuse into one
+plan and the intermediate rows are never stored:
+
+```python
+paid_orders = paid(orders).write(DeltaSink("lake/paid"))         # stored: a source
+report = doubled_paid(paid_orders).write(DeltaSink("lake/report"))
+print(report.refresh(engine="polars"))  # paid first, then report; each written once
+# paid:
+#   computed
+# ...
+```
+
+`refresh()` on any node brings its whole lineage up to date, upstream first,
+writing every stored node exactly once per state. `sv.group(a, b).refresh()`
+refreshes several nodes against the same source versions, and a stored node
+they share is refreshed and written once. The engine is chosen at refresh
+time: `"duckdb"` (the default, in memory), `"polars"`, `"datafusion"`,
+`"spark"` or a Spark session. The nodes keep their state while the process
+runs; a stored node's table is its durable state.
 
 ### Delta Lake and Iceberg
 
 `sverify.io` reads and writes Delta Lake (delta-rs) and Iceberg (pyiceberg)
 tables. A table format plays three roles:
 
-* **A change source.** `pipe.source(name, DeltaSource(uri))` loads a snapshot
-  and records its version; `pipe.refresh()` reads the Change Data Feed (or,
-  for Iceberg, the files that appends added) from that version to the latest,
-  applies it, and records the new version. A failed refresh changes nothing,
-  so a retry never applies a batch twice. Where the history is gone (CDF off,
-  files vacuumed, row-level deletes in Iceberg), the data files that changed
-  are diffed, and the report says so. `refresh(audit=True)` also compares
-  the batch with the new snapshot and every view with a recompute, before
-  committing anything (`AuditError`).
+* **A change source.** A transform reads `DeltaSource(uri)` or
+  `IcebergSource(catalog, identifier)` directly. The first `refresh()` loads
+  a snapshot and records its version; each later one reads the Change Data
+  Feed (or, for Iceberg, the files that appends added) from that version to
+  the latest, applies it, and records the new version. A failed refresh
+  changes nothing, so a retry never applies a batch twice. Where the history
+  is gone (CDF off, files vacuumed, row-level deletes in Iceberg), the data
+  files that changed are diffed, and the report says so.
+  `refresh(audit=True)` also compares the batch with the new snapshot and
+  every node with a recompute, before committing anything (`AuditError`).
 * **A source of preconditions.** `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
   min/max of integers, doubles (only where the files count no NaN), dates
@@ -418,8 +451,9 @@ tables. A table format plays three roles:
   its rows. That covers conditions the readers' own statistics pushdown
   doesn't, such as arithmetic on a column. Changes are filtered the same
   way, and the condition becomes a fact about every row for the contracts.
-* **A sink that carries the contract.** `DeltaSink` and `IcebergSink` write a
-  view in one commit per state, exactly once (keyed by the source versions).
+* **A sink that carries the contract.** `node.write(DeltaSink(uri))` and
+  `node.write(IcebergSink(catalog, identifier))` store a node in one commit
+  per state, exactly once (keyed by the source versions).
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg), and the commit records the plan hash, the
   source versions and the contract. A job that reads the table gets its
@@ -429,28 +463,29 @@ tables. A table format plays three roles:
 
 **Schema changes.** A batch whose data fits the old schema (added columns,
 widened types whose values still fit) is read in it, and the report names
-the change. Otherwise the views reading the source are planned again and
-recomputed, except a view with a contract, whose proof was for the old
+the change. Otherwise the nodes reading the source are planned again and
+recomputed, except a node with a contract, whose proof was for the old
 schema: `refresh` then raises `SchemaError` and changes nothing.
 
-**Tables outside a table format**, such as a small lookup table, become
-sources with `pipe.source("regions", sv.StaticSource(table, version=1))`, so
-that sinks still have a version for every input; `regions.replace(new_table,
-version=2)` and a `refresh` recompute the views that read it.
+**Tables outside a table format**, such as a small lookup table, are
+`StaticSource(table, version=1, name="regions")`, so that sinks still have a
+version for every input; `regions.apply(sv.Changes(...))` changes some rows,
+and `regions.replace(new_table, version=2)` swaps the table, which recomputes
+the nodes that read it.
 
-**A restarted job resumes from its sink** instead of recomputing. The view
-takes the stored rows only if its plan and source versions match what the
-sink recorded; otherwise it is computed, and `resumed` says why:
+**A restarted job resumes from its sink** instead of recomputing: build the
+same nodes again and refresh. A stored node takes the stored rows only if
+its plan and source versions match what the sink recorded; otherwise it is
+computed, and the report says why:
 
 ```python
-stored = DeltaSource(str(lake / "duplicate_payments")).stored()
-restarted = sv.Pipeline(sv.connect())
-txns_again = restarted.source("transactions", DeltaSource(str(lake / "transactions")),
-                              version=stored.sources["transactions"])
-dups_again = restarted.view("duplicate_payments", duplicate_payments(txns_again),
-                            resume=stored)
-print(dups_again.resumed)
-# resumed from .../duplicate_payments@v3
+restarted = duplicate_payments(DeltaSource(str(lake / "transactions"))).write(
+    DeltaSink(str(lake / "duplicate_payments")))
+print(restarted.refresh())
+# duplicate_payments:
+#   resumed from .../duplicate_payments@v3
+# ...
+#   wrote duplicate_payments from transactions@v3: already committed (v3)
 ```
 
 Each refresh report names what it trusted: that the change feed turns the
@@ -465,23 +500,29 @@ proved is listed under [Table formats](#table-formats).
 ```python
 import json
 
-from sverify.sql import to_sql
-from sverify.sql.snowflake import SNOWFLAKE  # also sverify.sql.duckdb.DUCKDB, sverify.sql.spark.SPARK
+from sverify.engines import SNOWFLAKE, create_table, run, to_sql  # also DUCKDB, SPARK
 
-plan = view.plan                               # the plan Lean checked
-sv.run_plan(con, plan, "polars")               # or "duckdb" (the default), "datafusion"
-snowflake_sql = to_sql(json.loads(plan), SNOWFLAKE)  # or sverify.sql.Unsupported, saying why
+plan = c.plan                                  # the plan Lean checked
+c.refresh(engine="polars")                     # or "duckdb" (the default), "datafusion", "spark"
+con = sv.connect()                             # or run a plan on tables of your own
+create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+             [(2, "bob", 5), (3, "cy", 50)])
+create_table(con, "customers", ibis.schema({"name": "string", "city": "string"}),
+             [("ada", "Paris"), ("cy", "Rome")])
+run(con, plan, "polars")
+snowflake_sql = to_sql(json.loads(plan), SNOWFLAKE)  # or sverify.engines.Unsupported, saying why
 ```
 
-`sv.connect(engine="polars")`, or `engine=` on a view or a transform, picks
-where plans and checks on data run. `sverify.spark_engine.run(plan, tables)`
-runs the Spark SQL on a local session or one you pass (the `spark` extra).
-The generated SQL makes some assumptions about the warehouse:
+`refresh(engine=...)` picks where a node's plans run; `sv.connect(engine=...)`
+and `engine=` on a transform pick where checks on data run.
+`sverify.engines.run_spark(plan, tables)` runs the Spark SQL on a local
+session or one you pass (the `spark` extra). The generated SQL makes some
+assumptions about the warehouse:
 
 * **Snowflake:** time columns are `TIMESTAMP_NTZ`, strings have no
   collation, and tables and columns have quoted lower-case names.
 * **Spark and Databricks:** the session uses the settings of
-  `sverify.spark_engine.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
+  `sverify.engines.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
 * Both have no row order, so sorts, `LIMIT` and windows are refused unless
@@ -495,7 +536,7 @@ that is going, is in the design note [docs/engine-profiles.md](docs/engine-profi
 
 ### Sharding and other optimizations
 
-`sverify.partition.run_sharded(plan, shards, sharded=[...], broadcast=...)`
+`sverify.engines.run_sharded(plan, shards, sharded=[...], broadcast=...)`
 runs a plan on each shard of its data and combines the results, with a Lean
 proof that this equals the result on all the data. Filters, projections and
 joins with a broadcast table are concatenated; `COUNT`, integer `SUM`, `MIN`
@@ -645,8 +686,8 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 6 | [Runtime errors](notebooks/06_runtime_errors.py) | division by zero, overflow, casts; proving they can't happen |
 | 7 | [Windows and ASOF joins](notebooks/07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
 | 8 | [Composing contracts](notebooks/08_composition.py) | proving one step's preconditions from the previous step |
-| 9 | [Incremental views](notebooks/09_incremental_views.py) | `IncrementalView`, what is refused, Z-sets and delta rules |
-| 10 | [Pipelines](notebooks/10_pipelines.py) | views over views, fallbacks, contracts that hold in every state |
+| 9 | [Incremental views](notebooks/09_incremental_views.py) | nodes kept up to date from changes, what is recomputed, Z-sets and delta rules |
+| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state |
 | 11 | [Engines and SQL](notebooks/11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
 | 12 | [Doubles, time and text](notebooks/12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
 | 13 | [Plans, meaning and proofs](notebooks/13_plans_and_proofs.py) | under the hood: Substrait plans, Lean's interpreter, theorems, NULL |
@@ -717,7 +758,9 @@ There are no dependencies beyond Lean core (no Mathlib yet), so the build takes 
 and reports what was verified about it:
 
 ```python
-plan = sv.substrait_json(con, "select id, amount * 2 as doubled from orders where amount > 10")
+from sverify.engines import substrait_json
+
+plan = substrait_json(con, "select id, amount * 2 as doubled from orders where amount > 10")
 open("plan.json", "w").write(plan)
 ```
 ```text
@@ -784,21 +827,24 @@ The golden tests in `tests/fixtures` are the guard against that. The
 ### How incremental views work
 
 `python/` holds `sverify`, which maintains query results incrementally on
-DuckDB (by default), Polars or DataFusion, using delta plans from Lean:
+DuckDB (by default), Polars or DataFusion, using delta plans from Lean. Under
+a node's `refresh` is an incremental view (`sverify.incremental`, internal):
 
 ```python
 import sverify as sv
 from sverify.examples import PIPELINES, create_tables
+from sverify.incremental import IncrementalView
 
 con = sv.connect()          # Arrow tables; plans run on DuckDB
 create_tables(con, orders_rows=[(1, "ada", 30)], customers_rows=[("ada", "Paris")])
-view = sv.IncrementalView(con, PIPELINES["inner_join"], "v")
+view = IncrementalView(con, PIPELINES["inner_join"], "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
             "customers": sv.Changes(inserts=[("bob", "Rome")])})
 assert view.rows() == view.recompute()
 ```
 
-The query can be an Ibis expression or a SQL string.
+The query can be an Ibis expression or a SQL string. A node's view reads its
+sources, or the stored nodes it reads, as the view's base tables.
 
 How it works:
 
@@ -824,7 +870,7 @@ and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
 
 **Connections.** `sv.connect(engine=...)` gives a `Connection`: the Arrow
-tables (`sv.create_table`, `con.arrow`), the engine plans run on, and Ibis
+tables (`sverify.engines.create_table`, `con.arrow`), the engine plans run on, and Ibis
 tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
 contracts find a table's data). `con.datafusion` is a DataFusion session with
@@ -934,14 +980,14 @@ with Isthmus too, and fails if both plans verify but give different rows;
 
 Plans come from the Ibis producer or DataFusion's Substrait producer, and they can run on
 DuckDB (the default, below), [Polars](https://pola.rs) or DataFusion. Pass
-`engine="polars"` to `sv.connect`, `IncrementalView` or
-`sv.run_plan(con, plan, "polars")`. The tables stay in `con` and are handed to
+`engine="polars"` to `node.refresh`, `sv.connect` or
+`sverify.engines.run(con, plan, "polars")`. The tables stay in `con` and are handed to
 the engine as Arrow. The point is differential testing,
 with the Lean semantics as the spec.
 
 Polars runs Lean's own serialisation of the checked plan: the plan as
 `substrait-check --write` writes it back out from the parsed `Rel`
-(`sv.written_plan`), and the delta plans of `--delta`, which use the same
+(`sverify.engines.written_plan`), and the delta plans of `--delta`, which use the same
 writer. `sverify/polars_engine.py` translates only that small, canonical form
 to a `LazyFrame` and raises `Unsupported` on anything else. It does not go
 through Ibis's Polars backend, which would compile a different plan. The
@@ -1020,7 +1066,7 @@ tables of `con`, which are copied into a fresh in-process database for each
 run. Contracts take `engine=` for their runtime checks on data too:
 
 ```python
-view = sv.IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
 
 @sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
 def passthrough(orders): ...

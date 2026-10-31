@@ -8,6 +8,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import nodes
+from sverify.engines import create_table, delta_plans
 from sverify.errors import CompositionError, PreconditionError, VerificationError
 from sverify.io import DeltaSink, DeltaSource, StaticSource
 
@@ -72,7 +73,7 @@ def test_a_transform_on_a_source_builds_a_node(tmp_path):
     assert list(node.schema) == ["id", "customer", "doubled"]
     # Plain Ibis tables still give Ibis expressions.
     con = sv.connect()
-    sv.create_table(con, "orders", ORDERS, [(1, "ada", 5)])
+    create_table(con, "orders", ORDERS, [(1, "ada", 5)])
     assert not isinstance(doubled(paid(con.table("orders"))), sv.Node)
 
 
@@ -109,7 +110,7 @@ def test_a_node_and_an_ibis_table_do_not_mix(tmp_path):
         return a.union(b)
 
     con = sv.connect()
-    sv.create_table(con, "orders", ORDERS, [])
+    create_table(con, "orders", ORDERS, [])
     with pytest.raises(TypeError, match="StaticSource"):
         both(orders, con.table("orders"))
 
@@ -126,6 +127,14 @@ def test_two_tables_of_one_name_are_refused(tmp_path):
         both(a, b)
     renamed = DeltaSource(b.uri, name="orders_b")
     assert both(a, renamed).refresh() is not None
+
+
+def test_the_plan_is_the_one_the_stage_runs(tmp_path):
+    node = doubled(paid(make_orders(tmp_path / "orders", [(1, "ada", 5)])))
+    plan = node.plan
+    node.refresh()
+    assert node._stage is not None and node._stage.view.plan == plan
+    assert delta_plans(plan) == node._stage.view.deltas
 
 
 def test_results_need_a_refresh(tmp_path):

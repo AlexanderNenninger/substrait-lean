@@ -209,12 +209,16 @@ def _(dt, pa, tables):
     import polars as pl
     import sverify as sv
     from sverify import duckdb_engine, polars_engine
-    from sverify.engine import put_table, read_tables, run_checker, substrait_json, written_plan
+    from sverify.engine import put_table, read_tables, run_checker
+    from sverify.engines import (
+        SNOWFLAKE,
+        SPARK,
+        Unsupported,
+        substrait_json,
+        written_plan,
+    )
+    from sverify.engines import to_sql as plan_sql
     from sverify.incremental import arrow_rows
-    from sverify.sql import Unsupported
-    from sverify.sql import to_sql as plan_sql
-    from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
     from sverify.testing import inline_tables
 
     con = sv.connect()

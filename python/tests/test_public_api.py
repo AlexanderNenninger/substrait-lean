@@ -10,10 +10,6 @@ import pytest
 PUBLIC = ["sverify", "sverify.io", "sverify.engines", "sverify.errors"]
 
 
-# Top-level names that move to `sverify.engines` once every caller is migrated.
-MOVING = {"ENGINES", "SQL_PRODUCERS"}
-
-
 def documented(module, name: str) -> bool:
     obj = getattr(module, name)
     if inspect.isclass(obj):
@@ -27,7 +23,7 @@ def documented(module, name: str) -> bool:
 def test_every_public_name_is_documented(name):
     module = importlib.import_module(name)
     assert module.__doc__, f"{name} has no docstring"
-    missing = [n for n in module.__all__ if not documented(module, n) and n not in MOVING]
+    missing = [n for n in module.__all__ if not documented(module, n)]
     assert not missing, f"{name}: undocumented public names {missing}"
 
 
@@ -35,3 +31,20 @@ def test_every_public_name_is_documented(name):
 def test_all_has_no_duplicates(name):
     names = importlib.import_module(name).__all__
     assert len(set(names)) == len(names)
+
+
+def test_the_top_level_is_small():
+    import sverify as sv
+
+    assert sorted(sv.__all__) == [
+        "Changes",
+        "Node",
+        "Report",
+        "asof_join",
+        "connect",
+        "group",
+        "references",
+        "transform",
+        "unique",
+        "verify",
+    ]

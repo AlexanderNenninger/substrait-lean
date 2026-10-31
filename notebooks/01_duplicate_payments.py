@@ -94,6 +94,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
+    from sverify.engines import DUCKDB, ENGINES, SNOWFLAKE, SPARK, to_sql
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())  # a local "lake"; any Delta URI works, with storage_options
@@ -131,15 +132,20 @@ def _():
     )
     DeltaTable(lake / "transactions").alter.add_constraint({"non_negative": "amount_cents >= 0"})
     return (
+        DUCKDB,
         DeltaSink,
         DeltaSource,
         DeltaTable,
+        ENGINES,
+        SNOWFLAKE,
+        SPARK,
         at,
         dt,
         first_load,
         ibis,
         lake,
         sv,
+        to_sql,
         txns,
         write_deltalake,
     )
@@ -215,28 +221,33 @@ def _(dt, ibis, sv):
         _.amount_cents >= 0,
         _.first_ts <= _.duplicate_ts,
     ]
-    duplicate_payments = sv.transform(requires=REQUIRES, ensures=ENSURES)(find_duplicates)
+
+    @sv.transform(requires=REQUIRES, ensures=ENSURES)
+    def duplicate_payments(transactions):
+        return find_duplicates(transactions)
+
     return ENSURES, REQUIRES, duplicate_payments, find_duplicates
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Now we build it. A pipeline reads the Delta table as a source and
-    maintains the rule as a view. Building the view proves the contract (a
-    `VerificationError` would stop here) and loads the current snapshot:
+    Now we build it. The Delta table is a source, and calling the rule on
+    it builds a node. Building the node proves the contract (a
+    `VerificationError` would stop here), and its first refresh loads the
+    current snapshot:
     """)
     return
 
 
 @app.cell
-def _(DeltaSource, duplicate_payments, lake, sv):
-    pipe = sv.Pipeline(sv.connect())
-    transactions = pipe.source("transactions", DeltaSource(str(lake / "transactions")))
-    dups = pipe.view("duplicate_payments", duplicate_payments(transactions))
+def _(DeltaSource, duplicate_payments, lake):
+    transactions = DeltaSource(str(lake / "transactions"))
+    dups = duplicate_payments(transactions)
     report = duplicate_payments.last_report
     assert report.proved and not report.issues
-    return dups, pipe, report
+    first_refresh = dups.refresh()
+    return dups, first_refresh, report, transactions
 
 
 @app.cell(hide_code=True)
@@ -262,14 +273,14 @@ def _(mo):
       holds on every output row.
 
     Each precondition was established without trusting anyone's word for
-    it, and the pipeline says how:
+    it, and the first refresh says how:
     """)
     return
 
 
 @app.cell
-def _(pipe):
-    [str(p) for p in pipe.preconditions]
+def _(dups, first_refresh):
+    [str(p) for p in first_refresh[dups.name].preconditions]
     return
 
 
@@ -281,7 +292,7 @@ def _(mo):
     file), and the key is checked on the data, since Delta doesn't enforce
     keys. A later batch only checks the files it added.
 
-    The view holds the one double charge in the data, and neither the near
+    The node holds the one double charge in the data, and neither the near
     miss nor card 12's merchant-less pair:
     """)
     return
@@ -289,7 +300,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(display, dups):
-    display.table(dups.rows(), dups.columns, title="duplicate_payments")
+    display.arrow(dups.to_arrow(), title="duplicate_payments")
     return
 
 
@@ -370,19 +381,23 @@ def _(mo):
     ## 3. One plan, every engine
 
     Maybe you develop on DuckDB on a laptop and the job runs somewhere else
-    in production. The view's plan is the one Lean checked. sverify runs it
+    in production. The node's plan is the one Lean checked. sverify runs it
     on each engine through its own translation, which keeps Lean's
     semantics (NULL keys never match, integers don't wrap around, ties
-    break one way) or refuses the plan. So the rows are the same
-    everywhere:
+    break one way) or refuses the plan. So a node refreshed with
+    `engine=` has the same rows everywhere:
     """)
     return
 
 
 @app.cell
-def _(dups, pipe, sv):
-    on_each = {e: sv.run_plan(pipe.con, dups.plan, e).to_pylist() for e in sv.ENGINES}
-    assert len({repr(rows) for rows in on_each.values()}) == 1
+def _(ENGINES, duplicate_payments, dups, transactions):
+    on_each = {}
+    for _engine in ENGINES:
+        _node = duplicate_payments(transactions)
+        _node.refresh(engine=_engine)
+        on_each[_engine] = _node.to_arrow().to_pylist()
+    assert all(rows == dups.to_arrow().to_pylist() for rows in on_each.values())
     {e: len(rows) for e, rows in on_each.items()}
     return
 
@@ -404,14 +419,10 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(dialect, dups, mo):
+def _(DUCKDB, SNOWFLAKE, SPARK, dialect, dups, mo, to_sql):
     import json
 
     import sqlglot
-    from sverify.sql import to_sql
-    from sverify.sql.duckdb import DUCKDB
-    from sverify.sql.snowflake import SNOWFLAKE
-    from sverify.sql.spark import SPARK
 
     _sql = to_sql(
         json.loads(dups.plan),
@@ -477,9 +488,9 @@ def _(mo):
     of a join, `Δ(A ⋈ B) = ΔA ⋈ (B + ΔB) + A ⋈ ΔB`, and it is easy to get
     subtly wrong.
 
-    ### The pipeline's refresh
+    ### The node's refresh
 
-    `pipe.refresh()` reads the Change Data Feed from the version the view
+    `dups.refresh()` reads the Change Data Feed from the version the node
     was computed at, checks the preconditions on the new rows only, and
     runs the delta plans Lean derived and **proved** to give the same result
     as a full recompute:
@@ -488,23 +499,25 @@ def _(mo):
 
 
 @app.cell
-def _(dups, pipe):
-    refresh = pipe.refresh()
-    assert dups.rows() == dups.recompute()
-    print(refresh)
+def _(DeltaSource, duplicate_payments, dups, lake):
+    _refresh = dups.refresh()
+    _from_scratch = duplicate_payments(DeltaSource(str(lake / "transactions")))
+    _from_scratch.refresh()
+    assert dups.to_arrow().to_pylist() == _from_scratch.to_arrow().to_pylist()
+    print(_refresh)
     return
 
 
 @app.cell(hide_code=True)
 def _(display, dups, mo, naive):
-    _pairs = [(r[0], r[1]) for r in dups.rows()]
+    _pairs = [(r["first_txn"], r["duplicate_txn"]) for r in dups.to_arrow().to_pylist()]
     assert _pairs == [(3, 7)] and sorted(naive) != _pairs
     mo.vstack(
         [
-            display.table(dups.rows(), dups.columns, title="duplicate_payments after the refresh"),
+            display.arrow(dups.to_arrow(), title="duplicate_payments after the refresh"),
             mo.md(
-                "The late duplicate is found and the reversed pair is gone, and "
-                "`dups.rows() == dups.recompute()`."
+                "The late duplicate is found and the reversed pair is gone, and the node "
+                "holds the same rows as a new one computed from scratch."
             ),
         ]
     )
@@ -517,27 +530,27 @@ def _(mo):
     The report names the one thing the proof takes on trust: that the
     change feed really turns the old snapshot into the new one ("Δ trusted
     as coming from Delta CDF"). Where the feed is gone (CDF off, files
-    vacuumed), the pipeline diffs the two snapshots instead, and says so.
-    `pipe.refresh(audit=True)` also compares every view with a recompute
-    before it commits.
+    vacuumed), the refresh diffs the two snapshots instead, and says so.
+    `dups.refresh(audit=True)` also compares every batch with a recompute
+    before it is applied.
 
     ## 5. The sink carries the contract
 
-    `DeltaSink` writes the view to a Delta table, **exactly once per
-    state**: the commit is keyed by the source versions, so a retried job
-    can't write a batch twice. The first write creates the table; the proved
-    guarantees become NOT NULL columns and CHECK constraints, and the commit
-    metadata records the plan and the contract. Later writes MERGE only the
-    change.
+    `dups.write(DeltaSink(...))` stores the node in a Delta table, and every
+    refresh writes it **exactly once per state**: the commit is keyed by the
+    source versions, so a retried job can't write a batch twice. The first
+    write creates the table; the proved guarantees become NOT NULL columns
+    and CHECK constraints, and the commit metadata records the plan and the
+    contract. Later writes MERGE only the change.
     """)
     return
 
 
 @app.cell
 def _(DeltaSink, dups, lake):
-    sink = DeltaSink(str(lake / "duplicate_payments"), dups)
-    print(sink.write())
-    print(sink.write())  # the same state again: skipped
+    stored = dups.write(DeltaSink(str(lake / "duplicate_payments")))
+    print(stored.refresh())
+    print(stored.refresh())  # the same state again: already committed, nothing written
     return
 
 
@@ -570,11 +583,8 @@ def _(DeltaSource, lake, sv):
     def refunds(dups):
         return dups.select(dups.duplicate_txn, dups.merchant, refund_cents=dups.amount_cents)
 
-    refund_job = sv.Pipeline(sv.connect())
-    refund_job.view(
-        "refunds", refunds(refund_job.source("dups", DeltaSource(str(lake / "duplicate_payments"))))
-    )
-    [str(p) for p in refund_job.preconditions]
+    refund_queue = refunds(DeltaSource(str(lake / "duplicate_payments"), name="dups"))
+    [str(p) for p in refund_queue.refresh()[refund_queue.name].preconditions]
     return
 
 

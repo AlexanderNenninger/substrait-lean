@@ -8,6 +8,8 @@ from ibis import _
 
 import sverify as sv
 from sverify.contracts import violations
+from sverify.engines import create_table
+from sverify.errors import PostconditionError, PreconditionError, VerificationError
 from sverify.examples import customers, orders
 
 
@@ -33,7 +35,7 @@ def test_unprovable_postcondition_is_refused():
     def plus_one(orders):
         return orders.select(orders.id, total=orders.amount + 1)
 
-    with pytest.raises(sv.VerificationError) as e:
+    with pytest.raises(VerificationError) as e:
         plus_one(orders)
     assert e.value.report.unproved[0].value == "TRUE or FALSE"
     assert e.value.report.facts["total"] == "an integer ≥ 1"
@@ -91,12 +93,12 @@ def test_non_nullable_schema_is_used():
 
 def bound_orders(rows):
     con = sv.connect()
-    sv.create_table(con, "orders", orders.schema(), rows)
+    create_table(con, "orders", orders.schema(), rows)
     return con.table("orders")
 
 
 def test_preconditions_are_checked_on_data():
-    with pytest.raises(sv.PreconditionError, match="amount >= 0"):
+    with pytest.raises(PreconditionError, match="amount >= 0"):
         doubled(bound_orders([(1, "ada", -3)]))
     doubled(bound_orders([(1, "ada", 30)]))
 
@@ -107,7 +109,7 @@ def test_runtime_fallback_checks_unproved_postconditions():
         return orders.select(orders.amount)
 
     passthrough(bound_orders([(1, "ada", 30)]))
-    with pytest.raises(sv.PostconditionError):
+    with pytest.raises(PostconditionError):
         passthrough(bound_orders([(1, "ada", 300)]))
 
 
@@ -195,7 +197,7 @@ def test_iot_proved_postconditions_hold_on_data(data):
     )
     db = sv.connect()
     for name in ["sensor1", "sensor2"]:
-        sv.create_table(db, name, sensor1.schema(), data.draw(readings))
+        create_table(db, name, sensor1.schema(), data.draw(readings))
     report = sv.verify(iot_windows(sensor1, sensor2), ensures=IOT_ENSURES)
     result = iot_windows(db.table("sensor1"), db.table("sensor2"))
     for cond, checked in zip(IOT_ENSURES, report.ensures, strict=True):
@@ -227,7 +229,7 @@ def test_unique_precondition_is_checked_on_data():
     def big(orders):
         return orders.filter(orders.amount > 10)
 
-    with pytest.raises(sv.PreconditionError, match="unique"):
+    with pytest.raises(PreconditionError, match="unique"):
         big(bound_orders([(1, "ada", 30), (1, "bob", 40)]))
     big(bound_orders([(1, "ada", 30), (2, "bob", 40)]))
     assert big.last_report is not None and big.last_report.proved
@@ -243,6 +245,6 @@ def test_proved_keys_hold_on_data(data):
     )
     db = sv.connect()
     for name in ["sensor1", "sensor2"]:
-        sv.create_table(db, name, sensor1.schema(), data.draw(readings))
+        create_table(db, name, sensor1.schema(), data.draw(readings))
     result = iot_windows(db.table("sensor1"), db.table("sensor2"))
     assert violations(result, sv.unique("t0")) == 0

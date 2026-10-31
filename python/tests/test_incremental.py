@@ -10,7 +10,10 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
+from sverify.engines import ENGINES, create_table, table_rows
+from sverify.errors import NotIncremental
 from sverify.examples import PIPELINES, UNSUPPORTED, create_tables
+from sverify.incremental import IncrementalView
 
 # Plain SQL goes through the same route as Ibis (both reach DataFusion as SQL);
 # one query keeps that entry point covered.
@@ -27,7 +30,7 @@ def setup(orders, customers):
     return con
 
 
-table_rows = sv.table_rows
+table_rows = table_rows
 
 
 @st.composite
@@ -58,44 +61,44 @@ def run_differential(data, make_view):
 SETTINGS = settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 @pytest.mark.parametrize("name", PIPELINES)
 @SETTINGS
 @given(data=st.data())
 def test_ibis_view_matches_recompute(name, engine, data):
-    run_differential(data, lambda con: sv.IncrementalView(con, PIPELINES[name], "v", engine))
+    run_differential(data, lambda con: IncrementalView(con, PIPELINES[name], "v", engine))
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 @SETTINGS
 @given(data=st.data())
 def test_sql_view_matches_recompute(engine, data):
-    run_differential(data, lambda con: sv.IncrementalView(con, SQL_QUERY, "v", engine))
+    run_differential(data, lambda con: IncrementalView(con, SQL_QUERY, "v", engine))
 
 
 def test_left_join_is_rejected():
     con = setup([], [])
-    with pytest.raises(sv.NotIncremental):
-        sv.IncrementalView(con, UNSUPPORTED["left_join"], "v")
+    with pytest.raises(NotIncremental):
+        IncrementalView(con, UNSUPPORTED["left_join"], "v")
 
 
 def test_aggregate_is_rejected():
     con = setup([], [])
-    with pytest.raises(sv.NotIncremental):
-        sv.IncrementalView(con, UNSUPPORTED["aggregate"], "v")
+    with pytest.raises(NotIncremental):
+        IncrementalView(con, UNSUPPORTED["aggregate"], "v")
 
 
 def test_view_named_after_an_input_is_rejected():
     con = setup([(1, "ada", 30), (2, "bob", 5)], [])
     with pytest.raises(ValueError, match="is a table the view reads"):
-        sv.IncrementalView(con, PIPELINES["filter_project"], "orders")
+        IncrementalView(con, PIPELINES["filter_project"], "orders")
     assert table_rows(con, "orders") == [(1, "ada", 30), (2, "bob", 5)]
 
 
-@pytest.mark.parametrize("engine", sv.ENGINES)
+@pytest.mark.parametrize("engine", ENGINES)
 def test_deleting_a_missing_row_fails_and_rolls_back(engine):
     con = setup([(1, "ada", 30)], [])
-    view = sv.IncrementalView(con, PIPELINES["filter_project"], "v", engine)
+    view = IncrementalView(con, PIPELINES["filter_project"], "v", engine)
     with pytest.raises(ValueError):
         view.apply({"orders": sv.Changes(deletes=[(9, "zed", 1)])})
     assert view.rows() == view.recompute() == [(1, 60)]
@@ -132,8 +135,8 @@ events_row = st.tuples(
 @given(data=st.data())
 def test_string_and_time_views_match_recompute(name, data):
     con = sv.connect()
-    sv.create_table(con, "events", EVENTS.schema(), data.draw(st.lists(events_row, max_size=6)))
-    view = sv.IncrementalView(con, EVENT_VIEWS[name], "v")
+    create_table(con, "events", EVENTS.schema(), data.draw(st.lists(events_row, max_size=6)))
+    view = IncrementalView(con, EVENT_VIEWS[name], "v")
     assert view.rows() == view.recompute()
     for _ in range(data.draw(st.integers(1, 3))):
         view.apply({"events": data.draw(batch(con, "events", events_row))})

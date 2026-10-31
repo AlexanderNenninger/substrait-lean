@@ -39,8 +39,9 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify.contracts import _lookup, _register
-from sverify.engine import ENGINES, connect, plain_schema
+from sverify.contracts import Discharged, _lookup, _register
+from sverify.engine import ENGINES, connect, plain_schema, written_plan
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
 
 if TYPE_CHECKING:
@@ -88,6 +89,7 @@ class Node:
         self._expr = expr
         self._inputs = list(inputs)
         self._stage: _Stage | None = None
+        self._plan: str | None = None
 
     def __repr__(self) -> str:
         cols = ", ".join(f"{n}: {t}" for n, t in self.schema.items())
@@ -97,6 +99,15 @@ class Node:
     def schema(self) -> ibis.Schema:
         """The node's columns and their types."""
         return self._expr.schema()
+
+    @property
+    def plan(self) -> str:
+        """The Substrait plan (JSON) of the node's stage, as Lean checked and
+        wrote it: what every engine runs. `sverify.engines.delta_plans(plan)`
+        are the plans that maintain it from changes."""
+        if self._plan is None:
+            self._plan = written_plan(to_substrait_json(self._query()._expr))
+        return self._plan
 
     def write(self, sink: Sink) -> Node:
         """Store this node in `sink` (`sverify.io.DeltaSink`, `IcebergSink`),
@@ -183,6 +194,7 @@ class Node:
         if self._stage is None:
             self._stage = _Stage.build(self, leaves, versions, engine, sink)
             out.started = self._stage.view.resumed or "computed"
+            out.preconditions = list(self._stage.pipe.preconditions)
             if self._stage.view.versions != versions:
                 out.report = self._stage.refresh(versions, audit)
         else:
@@ -288,7 +300,7 @@ class _Stage:
         bound: ir.Table = (mapping[root] if root in mapping else root.replace(mapping)).to_expr()  # type: ignore[attr-defined]
         if (prov := _lookup(root)) is not None:
             _register(bound.op(), prov)
-        name = node._query().name if isinstance(node, _Stored) else node.name
+        name = node.name
         taken = set(versions)
         view_name, n = name, 1
         while view_name in taken:
@@ -318,11 +330,15 @@ class StageRefresh:
     started: str | None = None
     """"computed", or "resumed from <table>@v<n>", on the first refresh."""
     write: SinkWrite | None = None
+    preconditions: list[Discharged] = field(default_factory=list)
+    """On the first refresh: how each precondition on the sources was
+    established on the full tables (later batches: `report.preconditions`)."""
 
     def __str__(self) -> str:
         lines = [f"{self.node}:"]
         if self.started:
             lines.append(f"  {self.started}")
+        lines += [f"  requires {p}" for p in self.preconditions]
         if self.report is not None:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
         if self.write is not None:

@@ -61,6 +61,8 @@ def _():
     import ibis
     import sverify as sv
     from ibis import _
+    from sverify.engines import create_table, table_rows
+    from sverify.errors import PostconditionError, PreconditionError, VerificationError
 
     # An unbound table: just a name and a schema, no data.
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
@@ -74,7 +76,18 @@ def _():
 
     doubled(orders)  # proves the postconditions, or raises VerificationError
     doubled.last_report
-    return doubled, ibis, orders, sv, warnings
+    return (
+        PostconditionError,
+        PreconditionError,
+        VerificationError,
+        create_table,
+        doubled,
+        ibis,
+        orders,
+        sv,
+        table_rows,
+        warnings,
+    )
 
 
 @app.cell(hide_code=True)
@@ -194,7 +207,7 @@ def _(mo):
 
 
 @app.cell
-def _(mo, orders, sv):
+def _(VerificationError, mo, orders, sv):
     from ibis import _
 
     @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
@@ -203,7 +216,7 @@ def _(mo, orders, sv):
 
     try:
         plus_one(orders)
-    except sv.VerificationError as _e:
+    except VerificationError as _e:
         _err = _e
     mo.md(f"```text\nVerificationError: {_err}\n```")
     return
@@ -241,11 +254,11 @@ def _(mo):
 
 
 @app.cell
-def _(display, ibis, sv):
+def _(create_table, display, ibis, sv, table_rows):
     con = sv.connect()  # plans run on DuckDB by default
     _schema = ibis.schema({"id": "int64", "customer": "string", "amount": "int64"})
-    sv.create_table(con, "orders", _schema, [(1, "ada", 30), (2, "bob", 5), (3, "cy", None)])
-    display.table(sv.table_rows(con, "orders"), ["id", "customer", "amount"], title="orders")
+    create_table(con, "orders", _schema, [(1, "ada", 30), (2, "bob", 5), (3, "cy", None)])
+    display.table(table_rows(con, "orders"), ["id", "customer", "amount"], title="orders")
     return (con,)
 
 
@@ -260,7 +273,18 @@ def _(mo):
 
 
 @app.cell
-def _(con, display, mo, mode, sv, warnings, with_pre):
+def _(
+    PostconditionError,
+    PreconditionError,
+    VerificationError,
+    con,
+    display,
+    mo,
+    mode,
+    sv,
+    warnings,
+    with_pre,
+):
     from ibis import _
 
     @sv.transform(
@@ -280,7 +304,7 @@ def _(con, display, mo, mode, sv, warnings, with_pre):
                 _out = mo.vstack(
                     [mo.callout(mo.md(f"**Warning:** {_caught[0].message}"), kind="warn"), _out]
                 )
-        except (sv.PreconditionError, sv.PostconditionError, sv.VerificationError) as _e:
+        except (PreconditionError, PostconditionError, VerificationError) as _e:
             _out = mo.callout(
                 mo.md(f"**{type(_e).__name__}**: {str(_e).splitlines()[0]}"), kind="danger"
             )

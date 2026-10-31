@@ -29,6 +29,7 @@ from sverify.engine import (
     run_substrait_json,
     substrait_json,
 )
+from sverify.engines import written_plan
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows, lean_values
 
@@ -194,7 +195,7 @@ def test_distinct_plan_is_not_readable_by_datafusion(con):
     plan = substrait_json(con, "SELECT DISTINCT x FROM n")
     with pytest.raises(Exception, match="Aggregate requires at least one grouping"):
         run_substrait_json(con, plan)
-    assert sorted(arrow_rows(run_substrait_json(con, sv.written_plan(plan))), key=str) == [
+    assert sorted(arrow_rows(run_substrait_json(con, written_plan(plan))), key=str) == [
         (1,),
         (2,),
         (None,),
@@ -204,7 +205,7 @@ def test_distinct_plan_is_not_readable_by_datafusion(con):
 def test_lean_writes_the_current_fetch_fields(con):
     """R2: DataFusion's protobuf no longer has the deprecated
     `FetchRel.offset`/`count`; Lean writes `offsetExpr`/`countExpr`."""
-    plan = sv.written_plan(substrait_json(con, "SELECT x FROM n ORDER BY x LIMIT 1"))
+    plan = written_plan(substrait_json(con, "SELECT x FROM n ORDER BY x LIMIT 1"))
     assert '"countExpr"' in plan and '"count":' not in plan
     assert arrow_rows(run_substrait_json(con, plan)) == [(1,)]
 
@@ -213,7 +214,7 @@ def test_lean_writes_virtual_tables_with_their_types(con):
     """A VirtualTable's `baseSchema` used to be placeholder `i64` columns,
     which DataFusion checks the rows against."""
     plan = (FIXTURES / "virtual_left_join.json").read_text()
-    rows = arrow_rows(run_substrait_json(con, sv.written_plan(plan)))
+    rows = arrow_rows(run_substrait_json(con, written_plan(plan)))
     assert sorted(rows, key=str) == sorted(lean_rows(plan), key=str)
 
 
@@ -222,12 +223,12 @@ def test_integer_sum_fails_instead_of_wrapping(con):
     is exact. The plan Lean writes for DataFusion sums as DECIMAL(38,0) and
     casts back, which fails instead (#24); within range it agrees."""
     twice = "SELECT a FROM mx UNION ALL SELECT a FROM mx"
-    over = sv.written_plan(substrait_json(con, f"SELECT sum(a) AS s FROM ({twice})"))
+    over = written_plan(substrait_json(con, f"SELECT sum(a) AS s FROM ({twice})"))
     assert arrow_rows(run_substrait_json(con, over)) == [(-2,)]  # wrapped around
     with pytest.raises(Exception, match="out of range Int64"):
         run_plan(con, over, "datafusion")
     sql = "SELECT b, sum(a) AS s, count(*) AS c FROM dm GROUP BY b"
-    within = sv.written_plan(substrait_json(con, sql))
+    within = written_plan(substrait_json(con, sql))
     translated = sorted(arrow_rows(run_plan(con, within, "datafusion")))
     assert (
         translated
@@ -275,7 +276,7 @@ def test_join_conditions_over_one_input(con, join, cond):
     for name, t in tables.items():
         put_table(con, name, t)
     sql = f"SELECT l.a, l.b, r.y FROM l {join} r ON l.a = r.y AND {cond}"
-    plan = sv.written_plan(substrait_json(con, sql))
+    plan = written_plan(substrait_json(con, sql))
     with pytest.raises(Exception, match="FieldNotFound"):
         run_substrait_json(con, plan)
     rows = {name: arrow_rows(t) for name, t in tables.items()}
@@ -395,7 +396,7 @@ def test_int32_wrap_in_lean_and_datafusion(con):
     assert lean_rows(json.dumps(inline_tables(json.loads(plan), {"i32": [(2**31 - 1, 1)]}))) == [
         (2**31, 2**31)
     ]
-    assert arrow_rows(run_substrait_json(con, sv.written_plan(plan))) == rows(con, sql)
+    assert arrow_rows(run_substrait_json(con, written_plan(plan))) == rows(con, sql)
     report = verify(sql.replace("i32", "t"), "t", {"a": "int32", "b": "int32"})
     assert ("may wrap around", "WRAP32(($0 + $1))") in [(i.kind, i.expr) for i in report.warnings]
     assert not any(i.expr.startswith("WRAP32(($0 + 1") for i in report.warnings)

@@ -265,7 +265,8 @@ def test_connections_share_one_duckdb_database():
     a connection is freed only by the cyclic garbage collector, and a DuckDB
     database per connection left one thread pool each until then."""
     psutil = pytest.importorskip("psutil")
-    from sverify import connect, table_rows
+    from sverify import connect
+    from sverify.engines import table_rows
     from sverify.examples import create_tables
 
     a, b = connect(), connect()

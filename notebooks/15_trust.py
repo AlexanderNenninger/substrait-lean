@@ -107,7 +107,7 @@ def _(mo):
     * framed window aggregates (running totals, moving averages), ranks and
       `NTILE`;
     * incremental maintenance of aggregates, left, semi and anti joins,
-      `DISTINCT`, `LIMIT` and windows (pipelines recompute those);
+      `DISTINCT`, `LIMIT` and windows (a node recomputes those and diffs the result);
     * relations needing more than "column plus constant", string contents,
       DECIMAL columns, counts across rows;
     * *completeness*: contracts say what every output row satisfies, not
@@ -156,8 +156,8 @@ def _(mo):
     | Incremental maintenance | `SubstraitLean/Incremental.lean`, `Terms.lean`, `Weighted.lean` | `zeval_add`, `delta_correct`, `weighted_eval` |
     | Substrait JSON | `SubstraitLean/Parse.lean`, `Write.lean` | `parsePlan`, `writePlan` |
     | CLI | `Main.lean` | `substrait-check`, `--write`, `--contract`, `--delta` |
-    | Python package | `python/src/sverify/` | `transform`, `verify`, `IncrementalView`, `Pipeline`, `asof_join` |
-    | Engines, SQL | `python/src/sverify/polars_engine.py`, `sql/` | `run_plan`, `to_sql` |
+    | Python package | `python/src/sverify/` | `transform`, `verify`, `Node`, `group`, `asof_join` |
+    | Engines, SQL | `python/src/sverify/polars_engine.py`, `sql/` | `sverify.engines.run`, `to_sql` |
     """),
             "Try it yourself": mo.md(r"""
     ```bash

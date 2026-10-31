@@ -71,15 +71,16 @@ def _():
     import ibis
     import sverify as sv
     from sverify.engine import run_sql
+    from sverify.engines import create_table, substrait_json, table_rows
 
     con = sv.connect()
-    sv.create_table(
+    create_table(
         con,
         "m",
         ibis.schema({"v": "float64"}),
         [(1.5,), (math.nan,), (-1.0,), (0.0,), (-0.0,), (math.inf,), (-9999.0,), (None,)],
     )
-    return con, dt, ibis, json, run_sql, sv
+    return con, create_table, dt, ibis, json, run_sql, substrait_json, sv, table_rows
 
 
 @app.cell(hide_code=True)
@@ -250,19 +251,19 @@ def _(mo):
 
 
 @app.cell
-def _(con, display, ibis, json, run_sql, sv):
+def _(con, create_table, display, ibis, json, run_sql, substrait_json, table_rows):
     from sverify.testing import inline_tables, lean_rows
 
-    sv.create_table(
+    create_table(
         con, "w", ibis.schema({"word": "string"}), [("Grüße",), ("naïve ",), ("a%b",), (None,)]
     )
     _sql = (
         "select word, substr(word, 2, 3) as middle, character_length(word) as len,"
         " word like 'a\\%b' as literal_percent, btrim(word) as trimmed, strpos(word, 'ß') as eszett from w"
     )
-    _plan = json.loads(sv.substrait_json(con, _sql))
+    _plan = json.loads(substrait_json(con, _sql))
     _cols = _plan["relations"][0]["root"]["names"]
-    _lean = lean_rows(json.dumps(inline_tables(_plan, {"w": sv.table_rows(con, "w")})))
+    _lean = lean_rows(json.dumps(inline_tables(_plan, {"w": table_rows(con, "w")})))
     display.side_by_side(
         display.table(_lean, _cols, title="Lean"),
         display.arrow(run_sql(con, _sql), title="DataFusion"),

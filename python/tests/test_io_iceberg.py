@@ -12,7 +12,8 @@ from pyiceberg.table.snapshots import Operation
 
 import sverify as sv
 from sverify.contracts import ON_DATA, SCHEMA
-from sverify.incremental import snapshot_diff
+from sverify.errors import PreconditionError
+from sverify.incremental import Pipeline, snapshot_diff
 from sverify.io import IcebergSink, IcebergSource
 from sverify.io._common import ColumnStats, stats_facts
 from sverify.io.iceberg import CONTRACT
@@ -76,7 +77,7 @@ def sources(found):
 
 def test_appends_are_a_change_feed(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     assert big.versions == {"orders": 1}
     assert sources(pipe.preconditions) == {
@@ -101,7 +102,7 @@ def test_appends_are_a_change_feed(catalog):
 
 def test_row_level_deletes_fall_back_to_a_snapshot_diff(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     src.table().delete("id = 1")
     src.table().append(rows_table([(3, "cy", 1)]))
@@ -116,17 +117,17 @@ def test_row_level_deletes_fall_back_to_a_snapshot_diff(catalog):
 
 def test_iceberg_batch_violations_are_caught(catalog):
     src = make_orders(catalog, [(1, "ada", 5)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     src.table().append(rows_table([(2, "eve", 1)]))
-    with pytest.raises(sv.PreconditionError, match="customer"):
+    with pytest.raises(PreconditionError, match="customer"):
         pipe.refresh()
     assert pipe.versions == {"orders": 1} and big.rows() == [(1, "ada", 10)]
 
 
 def test_iceberg_sink_carries_the_contract(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     sink = attached(IcebergSink(catalog, "db.big"), big)
     assert sink._commit().mode == "created"
@@ -155,7 +156,7 @@ def test_iceberg_sink_carries_the_contract(catalog):
     def halved(t):
         return t.select(t.id, half=t.doubled // 2)
 
-    pipe2 = sv.Pipeline(sv.connect())
+    pipe2 = Pipeline(sv.connect())
     halves = pipe2.view("halves", halved(pipe2.source("big", IcebergSource(catalog, "db.big"))))
     assert sources(pipe2.preconditions) == {
         ("big", "(_.doubled >= 0)"): CONTRACT,
@@ -168,8 +169,8 @@ def test_iceberg_sink_carries_the_contract(catalog):
             [{"id": 9, "customer": "x", "doubled": -2}], schema=sink_schema_of(catalog)
         )
     )
-    pipe3 = sv.Pipeline(sv.connect())
-    with pytest.raises(sv.PreconditionError, match="doubled >= 0"):
+    pipe3 = Pipeline(sv.connect())
+    with pytest.raises(PreconditionError, match="doubled >= 0"):
         pipe3.view("halves", halved(pipe3.source("big", IcebergSource(catalog, "db.big"))))
 
 
@@ -183,7 +184,7 @@ def test_added_column_is_left_out(catalog):
     from pyiceberg.types import StringType
 
     src = make_orders(catalog, [(1, "ada", 5)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     with src.table().update_schema() as update:
         update.add_column("note", StringType())
@@ -196,13 +197,13 @@ def test_added_column_is_left_out(catalog):
 
 def test_restarted_pipeline_resumes_from_its_iceberg_sink(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     attached(IcebergSink(catalog, "db.big"), big)._commit()
     src.table().append(rows_table([(3, "cy", 1)]))
     stored = IcebergSource(catalog, "db.big").stored()
     assert stored is not None and stored.sources == {"orders": 1}
-    pipe2 = sv.Pipeline(sv.connect())
+    pipe2 = Pipeline(sv.connect())
     orders = pipe2.source("orders", src, version=stored.sources["orders"])
     big2 = pipe2.view("big", doubled(orders), resume=stored)
     assert big2.resumed is not None and big2.resumed.startswith("resumed from db.big@v")
@@ -254,7 +255,7 @@ def test_a_delete_reads_only_the_changed_files(catalog, monkeypatch):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
     src.table().append(rows_table([(3, "cy", 1)]))
     src.table().append(rows_table([(4, "dan", 2)]))
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     big = pipe.view("big", doubled(pipe.source("orders", src)))
     old = src.snapshot().table
     src.table().delete("id = 3")
@@ -287,7 +288,7 @@ def amounts(orders):
 
 def test_sink_writes_a_change_as_position_deletes(catalog):
     src = make_orders(catalog, [(i, "c", i) for i in range(1, 101)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     view = pipe.view("amounts", amounts(pipe.source("orders", src)))
     sink = attached(IcebergSink(catalog, "db.amounts"), view)
     sink._commit()
@@ -308,7 +309,7 @@ def test_sink_writes_a_change_as_position_deletes(catalog):
 
 def test_sink_deletes_one_copy_of_a_duplicate(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "ada", 5), (3, "bob", 7)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     orders = pipe.source("orders", src)
     names = pipe.view("names", orders.select(orders.customer, orders.amount))
     sink = attached(IcebergSink(catalog, "db.names"), names)
@@ -335,12 +336,12 @@ def test_reading_a_table_with_position_deletes(catalog):
     superset, so the facts from them hold; the change is read from the
     changed files only and matches the full snapshot diff."""
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7), (3, "cy", 100)])
-    pipe = sv.Pipeline(sv.connect())
+    pipe = Pipeline(sv.connect())
     view = pipe.view("amounts", amounts(pipe.source("orders", src)))
     sink = attached(IcebergSink(catalog, "db.amounts"), view)
     sink._commit()
     down = IcebergSource(catalog, "db.amounts")
-    job2 = sv.Pipeline(sv.connect())
+    job2 = Pipeline(sv.connect())
     copy = job2.view("copy", down_view(job2.source("amounts", down)))
     before = down.snapshot().table
     src.table().delete("id = 3")

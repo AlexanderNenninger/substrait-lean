@@ -681,10 +681,10 @@ def _load_delta_table(con: Connection, t: str, rows: ZRows) -> None:
 class Pipeline:
     """Views that read each other, maintained together.
 
-        pipe = sv.Pipeline(con)
+        pipe = Pipeline(con)
         big = pipe.view("big", doubled(paid(con.table("orders"))))
         pipe.view("by_id", summarize(big.table))
-        pipe.apply({"orders": sv.Changes(inserts=[...])})
+        pipe.apply({"orders": Changes(inserts=[...])})
 
     A view may read base tables and views added before it, as `view.table`.
     `apply` runs the views in order: each view's change is the change table
