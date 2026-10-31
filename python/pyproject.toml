@@ -114,6 +114,26 @@ cwd = "${POE_ROOT}/.."
 help = "Python tests, including the randomized engine tests, on every core"
 cmd = "pytest -n auto --dist worksteal"
 
+[tool.poe.tasks.test-core]
+help = "Python tests of Lean and DataFusion as the reference (see tests/conftest.py)"
+cmd = "pytest -n auto --dist worksteal -m core"
+
+[tool.poe.tasks.test-datafusion]
+help = "Python tests of DataFusion as an engine"
+cmd = "pytest -n auto --dist worksteal -m datafusion"
+
+[tool.poe.tasks.test-duckdb]
+help = "Python tests of the DuckDB engine and its SQL"
+cmd = "pytest -n auto --dist worksteal -m duckdb"
+
+[tool.poe.tasks.test-polars]
+help = "Python tests of the Polars engine"
+cmd = "pytest -n auto --dist worksteal -m polars"
+
+[tool.poe.tasks.test-snowflake]
+help = "Python tests of the Snowflake SQL (on fakesnow)"
+cmd = "pytest -n auto --dist worksteal -m snowflake"
+
 [tool.poe.tasks.notebooks]
 help = "Check the tour notebooks with marimo and run each one headless"
 shell = """

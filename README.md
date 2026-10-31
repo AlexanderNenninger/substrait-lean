@@ -100,7 +100,8 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe fmt` | Fixes lint issues and formats the Python code |
 | `poe typecheck` | Type-checks the Python code with pyrefly |
 | `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
-| `poe test` | Python tests, including the randomized engine tests |
+| `poe test` | Python tests, including the randomized engine tests, on every core |
+| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
 
 From the project root, use `uv run --project python poe -C python qa`. The Lean

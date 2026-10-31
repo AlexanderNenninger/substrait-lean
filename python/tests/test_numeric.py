@@ -38,6 +38,7 @@ INT_QUERIES = [
 small = st.one_of(st.none(), st.integers(-7, 7))
 
 
+@pytest.mark.backend("duckdb")
 @pytest.mark.parametrize("sql", INT_QUERIES)
 @settings(
     max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
@@ -186,6 +187,7 @@ PIPELINES = [
 values = st.one_of(st.integers(-3, 3), st.sampled_from([MIN, 2**63 - 1, -1]), st.none())
 
 
+@pytest.mark.backend("datafusion")
 @pytest.mark.parametrize("i", range(len(PIPELINES)))
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
@@ -212,6 +214,7 @@ def test_datafusion_fails_only_where_reported(i, rows):
         assert reported, f"DataFusion failed ({e}) but no error was reported"
 
 
+@pytest.mark.backend("duckdb")
 @pytest.mark.parametrize("i", range(len(PIPELINES)))
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
