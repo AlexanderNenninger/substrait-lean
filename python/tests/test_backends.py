@@ -258,3 +258,24 @@ def test_spark_agrees_with_duckdb(con, data):
         root = parse_plan(json.loads(plan)).root
         ordered = order_matters(root) and case.label not in TIE_FREE
         assert same(got, duck) if ordered else canonical(got) == canonical(duck), case.label
+
+
+def test_connections_share_one_duckdb_database():
+    """Connections keep their own tables but start no threads of their own:
+    a connection is freed only by the cyclic garbage collector, and a DuckDB
+    database per connection left one thread pool each until then."""
+    psutil = pytest.importorskip("psutil")
+    from sverify import connect, table_rows
+    from sverify.examples import create_tables
+
+    a, b = connect(), connect()
+    create_tables(a, [(1, "ada", 3)])
+    create_tables(b, [(2, "bob", 5)])
+    assert table_rows(a, "orders") == [(1, "ada", 3)]
+    assert table_rows(b, "orders") == [(2, "bob", 5)]
+    before = psutil.Process().num_threads()
+    cons = [connect() for _ in range(20)]
+    for con in cons:
+        create_tables(con, [(1, "ada", 3)])
+        con.table("orders").count().execute()
+    assert psutil.Process().num_threads() - before < 10

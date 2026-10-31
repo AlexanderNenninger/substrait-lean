@@ -137,6 +137,27 @@ def _register(ctx: Any, name: str, table: pa.Table) -> None:
     ctx.register_record_batches(name, [batches])
 
 
+#: The DuckDB database behind every connection's Ibis backend, created on
+#: first use. Each connection gets its own DuckDB connection to it (a
+#: cursor), whose registered tables and settings are its own. A database
+#: per connection would start a thread pool per connection, which lives until
+#: the cyclic garbage collector frees the connection (its backend refers back
+#: to it): a few hundred connections reach macOS's per-process thread limit.
+_IBIS_DB: Any = None
+_IBIS_DB_LOCK = threading.Lock()
+
+
+def _ibis_backend() -> Any:
+    global _IBIS_DB
+    import duckdb
+
+    with _IBIS_DB_LOCK:
+        if _IBIS_DB is None:
+            _IBIS_DB = duckdb.connect()
+        cursor = _IBIS_DB.cursor()
+    return ibis.duckdb.from_connection(cursor)
+
+
 class Connection:
     """Named Arrow tables, and the engine that runs plans over them.
 
@@ -162,7 +183,7 @@ class Connection:
         self.engine: Engine = engine
         self.sql_producer: SqlProducer | None = sql_producer
         self.arrow: dict[str, pa.Table] = {}
-        self.ibis: Any = ibis.duckdb.connect()
+        self.ibis: Any = _ibis_backend()
         # A bound table keeps its backend alive, and the backend its connection.
         self.ibis._sverify_connection = self
         self._datafusion: Any = None
