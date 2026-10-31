@@ -42,17 +42,6 @@ open Parse Write
 
 def partials : String := "__partials"
 
-def kindType (k : Kind) : Json :=
-  let n := obj [("nullability", "NULLABILITY_NULLABLE")]
-  match k with
-  | .float => fp64Type
-  | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
-      ("nullability", "NULLABILITY_NULLABLE")])]
-  | .date => obj [("date", n)]
-  | .str => obj [("string", n)]
-  | .bool => obj [("bool", n)]
-  | .int | .other => i64Type
-
 def colNames (n : Nat) : List String := (List.range n).map (s!"c{·}")
 
 def schemaOf (ks : List Kind) : Json :=

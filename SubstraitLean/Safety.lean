@@ -245,11 +245,12 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
       · simp only [hct, ite_false, Bool.false_eq_true] at hj
         have hf : (c.eval row).isTrue = false := by simpa using hct
         rcases he with he | he
-        · rcases mem_cases hcm with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩
+        · rcases mem_cases hcm with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
           · simp_all [AVal.nonBool]
           · simp_all [AVal.nonBool]
           · rw [hv] at hct; simp [Value.isTrue] at hct
           · simp_all
+          · simp_all [AVal.nonBool]
           · simp_all [AVal.nonBool]
         · exact Expr.nonZero_sound (Expr.refineNeg_sound env c h hf) hfs
             (KsHold.cons_cstrs hf hks) e he j hj
@@ -292,7 +293,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       simp only [hb, Option.all_some] at hfits
       exact absurd (Bound.fitsBits_mem hfits hi) hn
     · simp_all
-  case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str =>
+  case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str | regexMatch.list =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp_all
   case dateTrunc.int u ts =>
@@ -464,11 +465,12 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct
         have : ((c.absD env fs ks).nonBool || (c.absD env fs ks).ff) = true := by
-          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩
+          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hff⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
           · simp [AVal.nonBool, hn]
           · simp [AVal.nonBool, hb]
           · rw [hv] at hct; simp [Value.isTrue] at hct
           · simp [hff]
+          · simp [AVal.nonBool, hs]
           · simp [AVal.nonBool, hs]
         simp only [this, ite_true]
         exact Expr.mayIssues_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e p hp

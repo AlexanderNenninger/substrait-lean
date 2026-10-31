@@ -56,6 +56,8 @@ def writeValue : Value → Json
   | .bool b => obj [("boolean", toJson b)]
   | .int i => obj [("i64", toJson (toString i))]
   | .str s => obj [("string", toJson s)]
+  | .list [] => obj [("emptyList", obj [("type", obj [("i64", obj [])])])]
+  | .list vs => obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeValue v).toArray)])]
 
 def fp64Type : Json := obj [("fp64", obj [("nullability", "NULLABILITY_NULLABLE")])]
 def i64Type : Json := obj [("i64", obj [("nullability", "NULLABILITY_NULLABLE")])]
@@ -76,21 +78,36 @@ def call (anchor : Nat) (args : List Json) : Json :=
     ("functionReference", toJson anchor),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray)])]
 
-/-- An integer literal, written as the kind of value it stands for. -/
-def writeLit (k : Parse.Kind) (v : Value) : Json :=
-  let lit (kvs : List (String × Json)) := obj [("literal", obj kvs)]
+/-- The (nullable) Substrait type of a kind, `i64` where it is unknown. -/
+def kindType : Parse.Kind → Json
+  | .float => fp64Type
+  | .str => obj [("string", nullable)]
+  | .bool => obj [("bool", nullable)]
+  | .time => obj [("precisionTimestamp", obj [("precision", toJson 6),
+      ("nullability", "NULLABILITY_NULLABLE")])]
+  | .date => obj [("date", nullable)]
+  | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
+  | .int | .other => i64Type
+where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
+
+/-- A literal (the body of `Expression.literal`) of kind `k`: an integer is
+written as the kind of value it stands for. -/
+def writeLitBody (k : Parse.Kind) (v : Value) : Json :=
   match k, v with
-  | .float, .int c => lit [("fp64", writeDouble c)]
+  | .float, .int c => obj [("fp64", writeDouble c)]
   | .time, .int us =>
-    lit [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
-  | .date, .int d => lit [("date", toJson d)]
+    obj [("precisionTimestamp", obj [("precision", toJson 6), ("value", toJson (toString us))])]
+  | .date, .int d => obj [("date", toJson d)]
   -- A typed `NULL`, so that e.g. `CASE … THEN NULL ELSE name END` type-checks.
-  | .float, .null => lit [("null", fp64Type)]
-  | .str, .null => lit [("null", obj [("string", obj [])])]
-  | .bool, .null => lit [("null", obj [("bool", obj [])])]
-  | .time, .null => lit [("null", obj [("precisionTimestamp", obj [("precision", toJson 6)])])]
-  | .date, .null => lit [("null", obj [("date", obj [])])]
-  | _, v => obj [("literal", writeValue v)]
+  | .float, .null => obj [("null", fp64Type)]
+  | .str, .null | .bool, .null | .time, .null | .date, .null | .list _, .null =>
+    obj [("null", kindType k)]
+  | .list e, .list [] => obj [("emptyList", obj [("type", kindType e)])]
+  | .list e, .list vs =>
+    obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
+  | _, v => writeValue v
+
+def writeLit (k : Parse.Kind) (v : Value) : Json := obj [("literal", writeLitBody k v)]
 
 /-- A day/second interval of `us` microseconds. -/
 def writeInterval (us : Int) : Json :=

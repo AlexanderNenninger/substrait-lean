@@ -10,6 +10,7 @@ def Value.render : Value → String
   -- Too large for a 64-bit integer: a double's code (SubstraitLean/Float.lean).
   | .int i => if i.natAbs ≥ 2 ^ 63 then s!"{FloatCode.toFloat i}d" else toString i
   | .str s => s.quote
+  | .list vs => "[" ++ ", ".intercalate (vs.attach.map fun ⟨v, _⟩ => v.render) ++ "]"
 
 def Row.render (row : Row) : String :=
   "(" ++ ", ".intercalate (row.map Value.render) ++ ")"

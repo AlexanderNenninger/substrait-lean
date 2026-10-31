@@ -215,7 +215,7 @@ theorem Rel.eval_congr {c cat : Catalog} (ha : ∀ t, (c t).arity = (cat t).arit
 theorem intSum_append : ∀ (vs ws : List Value), intSum (vs ++ ws) = intSum vs + intSum ws
   | [], _ => by simp [intSum]
   | .int i :: vs, ws => by simp only [List.cons_append, intSum, intSum_append vs ws]; omega
-  | .null :: vs, ws | .bool _ :: vs, ws | .str _ :: vs, ws => by
+  | .null :: vs, ws | .bool _ :: vs, ws | .str _ :: vs, ws | .list _ :: vs, ws => by
       simp only [List.cons_append, intSum, intSum_append vs ws]
 
 theorem intSum_cons (v : Value) (vs : List Value) : intSum (v :: vs) = intSum [v] + intSum vs :=

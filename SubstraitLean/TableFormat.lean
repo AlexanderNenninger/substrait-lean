@@ -301,7 +301,7 @@ theorem stats_bounds {a : AVal} {lo hi : Int} {v : Value}
       simp only [Bound.Mem] at hmem
       exact ⟨i, rfl, hmem.1 lo rfl, hmem.2 hi rfl⟩
   | bool b => cases b <;> simp_all [AVal.Mem]
-  | str _ => simp_all [AVal.Mem]
+  | str _ | list _ => simp_all [AVal.Mem]
 
 -- The join of known bounds is the least minimum and the greatest maximum.
 #guard tableStats [([], ⟨some 3, some 9, some 0⟩), ([], ⟨some 1, some 5, some 0⟩)] ==

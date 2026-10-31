@@ -102,9 +102,11 @@ Doubles, timestamps and dates all become integers in the model (see
 
 inductive Kind where
   | int | float | time | date | str | bool | other
-  deriving Repr, BEq, DecidableEq
+  /-- A list of values of the element kind. -/
+  | list (elem : Kind)
+  deriving Repr, BEq, DecidableEq, Inhabited
 
-def typeKind (ty : Json) : Kind :=
+partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if ["i8", "i16", "i32", "i64"].any has then .int
   else if ["fp32", "fp64"].any has then .float
@@ -116,6 +118,8 @@ def typeKind (ty : Json) : Kind :=
   else if has "date" then .date
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
+  else if let some l := (ty.getObjVal? "list").toOption then
+    .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
   else .other
 
 def schemaKinds (schema : Json) : List Kind :=
@@ -147,6 +151,8 @@ def litKind : Value → Kind
   | .str _ => .str
   | .bool _ => .bool
   | .null => .other
+  | .list [] => .list .other
+  | .list (v :: _) => .list (litKind v)
 
 def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
@@ -647,6 +653,13 @@ def mkFloatCall : String → List Expr → J Expr
 
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (j : Json) : J Expr := do
+  -- List literals: their elements are literals (without the `literal` key).
+  if let some l := field? j "literal" then
+    if let some lj := field? l "list" then
+      let vs ← (← arrD lj "values").mapM fun e => do
+        return (← parseExpr fns [] (Json.mkObj [("literal", e)])).eval []
+      return .lit (.list vs)
+    if (field? l "emptyList").isSome then return .lit (.list [])
   if let some c ← constOf? fns j then return ← constExpr c
   match ← oneof "expression" j ["selection", "scalarFunction", "ifThen", "cast", "singularOrList"] with
   | ("selection", s) =>

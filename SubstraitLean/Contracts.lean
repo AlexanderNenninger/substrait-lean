@@ -191,6 +191,10 @@ def AVal.Mem (a : AVal) : Value → Prop
   | .bool true => a.tt = true
   | .bool false => a.ff = true
   | .str _ => a.str = true
+  -- The abstraction does not look into lists: a list is a member where every
+  -- non-NULL scalar type is. Functions of one type give NULL on the others,
+  -- so each abstraction covers a list as it covers a value of another type.
+  | .list _ => a.int.isSome ∧ a.tt = true ∧ a.ff = true ∧ a.str = true
 
 def AVal.top : AVal := ⟨true, some Bound.top, true, true, true⟩
 def AVal.bot : AVal := ⟨false, none, false, false, false⟩
@@ -201,6 +205,7 @@ def AVal.ofValue : Value → AVal
   | .bool true => ⟨false, none, true, false, false⟩
   | .bool false => ⟨false, none, false, true, false⟩
   | .str _ => ⟨false, none, false, false, true⟩
+  | .list _ => ⟨false, some Bound.top, true, true, true⟩
 
 def joinInt : Option Bound → Option Bound → Option Bound
   | some x, some y => some (x.join y)
@@ -220,15 +225,21 @@ def AVal.certainlyTrue (a : AVal) : Bool := !a.null && a.int.isNone && !a.ff && 
 
 theorem AVal.mem_top : ∀ v, AVal.top.Mem v
   | .null | .bool true | .bool false | .str _ => rfl
+  | .list _ => by simp [AVal.Mem, AVal.top]
   | .int i => ⟨_, rfl, Bound.mem_top i⟩
 
 theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .null | .bool true | .bool false | .str _ => rfl
+  | .list _ => by simp [AVal.Mem, AVal.ofValue]
   | .int i => ⟨_, rfl, Bound.mem_exact i⟩
 
 theorem AVal.mem_join_left {a b : AVal} : ∀ {v}, a.Mem v → (a.join b).Mem v
   | .null, h | .bool true, h | .bool false, h | .str _, h => by
       simp_all [AVal.Mem, AVal.join]
+  | .list _, h => by
+      simp only [AVal.Mem, AVal.join] at *
+      refine ⟨?_, by simp [h.2.1], by simp [h.2.2.1], by simp [h.2.2.2]⟩
+      cases ha : a.int <;> cases hb : b.int <;> simp_all [joinInt]
   | .int i, ⟨x, hx, hm⟩ => by
       simp only [AVal.Mem, AVal.join, hx]
       cases b.int <;> simp [joinInt, hm, Bound.mem_join_left hm]
@@ -236,6 +247,10 @@ theorem AVal.mem_join_left {a b : AVal} : ∀ {v}, a.Mem v → (a.join b).Mem v
 theorem AVal.mem_join_right {a b : AVal} : ∀ {v}, b.Mem v → (a.join b).Mem v
   | .null, h | .bool true, h | .bool false, h | .str _, h => by
       simp_all [AVal.Mem, AVal.join]
+  | .list _, h => by
+      simp only [AVal.Mem, AVal.join] at *
+      refine ⟨?_, by simp [h.2.1], by simp [h.2.2.1], by simp [h.2.2.2]⟩
+      cases ha : a.int <;> cases hb : b.int <;> simp_all [joinInt]
   | .int i, ⟨y, hy, hm⟩ => by
       simp only [AVal.Mem, AVal.join, hy]
       cases ha : a.int <;> simp [joinInt, hm, Bound.mem_join_right hm]
@@ -250,7 +265,7 @@ theorem AVal.certainlyTrue_mem {a : AVal} {v : Value} (hc : a.certainlyTrue = tr
   | .int _, ⟨_, hb, _⟩ => simp_all
   | .bool true, _ => rfl
   | .bool false, hm => simp_all [AVal.Mem]
-  | .str _, hm => simp_all [AVal.Mem]
+  | .str _, hm | .list _, hm => simp_all [AVal.Mem]
 
 /-! ## Abstract expression evaluation -/
 
@@ -518,26 +533,27 @@ def Expr.abs (env : List AVal) : Expr → AVal
 theorem mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
     (v = .null ∧ a.null = true) ∨ (∃ i b, v = .int i ∧ a.int = some b ∧ b.Mem i) ∨
     (v = .bool true ∧ a.tt = true) ∨ (v = .bool false ∧ a.ff = true) ∨
-    (∃ s, v = .str s ∧ a.str = true) := by
+    (∃ s, v = .str s ∧ a.str = true) ∨ (∃ vs, v = .list vs ∧ a.int.isSome ∧ a.tt = true ∧ a.ff = true ∧ a.str = true) := by
   match v, h with
   | .null, h => exact .inl ⟨rfl, h⟩
   | .int i, ⟨b, hb, hm⟩ => exact .inr (.inl ⟨i, b, rfl, hb, hm⟩)
   | .bool true, h => exact .inr (.inr (.inl ⟨rfl, h⟩))
   | .bool false, h => exact .inr (.inr (.inr (.inl ⟨rfl, h⟩)))
-  | .str s, h => exact .inr (.inr (.inr (.inr ⟨s, rfl, h⟩)))
+  | .str s, h => exact .inr (.inr (.inr (.inr (.inl ⟨s, rfl, h⟩))))
+  | .list vs, h => exact .inr (.inr (.inr (.inr (.inr ⟨vs, rfl, h⟩))))
 
 theorem monoAbs_sound {g : Int → Int} (hg : ∀ {x y}, x ≤ y → g x ≤ g y) {f : UnFn}
     (hf : ∀ v, f.apply v = match v with | .int c => .int (g c) | _ => .null)
     {a : AVal} {v : Value} (h : a.Mem v) : (monoAbs g a).Mem (f.apply v) := by
   rw [hf]
-  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
   · simp [monoAbs, AVal.Mem, AVal.nonInt, hn]
   · exact ⟨b.mapMono g, by simp [monoAbs, hb], Bound.mem_mapMono hg hi⟩
   all_goals simp_all [monoAbs, AVal.Mem, AVal.nonInt]
 
 theorem ftoiAbs_sound {a : AVal} {v : Value} (h : a.Mem v) :
     (ftoiAbs a).Mem (UnFn.apply .ftoi v) := by
-  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨c, b, rfl, hb, hc⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨c, b, rfl, hb, hc⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
   · unfold ftoiAbs; split <;> (try split) <;> simp_all [AVal.Mem, AVal.nonInt, UnFn.apply]
   · simp only [UnFn.apply]
     unfold ftoiAbs
@@ -565,14 +581,14 @@ theorem topAbs_sound {g : Int → Int} {f : UnFn}
     {a : AVal} {v : Value} (h : a.Mem v) :
     (⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩ : AVal).Mem (f.apply v) := by
   rw [hf]
-  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
   · simp [AVal.Mem, AVal.nonInt, hn]
   · exact ⟨Bound.top, by simp [hb], Bound.mem_top _⟩
   all_goals simp_all [AVal.Mem, AVal.nonInt]
 
 theorem datePartAbs_sound (p : Time.DatePart) {a : AVal} {v : Value} (h : a.Mem v) :
     (datePartAbs p a).Mem (UnFn.apply (.datePart p) v) := by
-  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨ts, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨ts, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
   · simp [datePartAbs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
   · simp only [UnFn.apply, Time.datePart]
     by_cases hr : Time.partMin ≤ ts ∧ ts ≤ Time.partMax
@@ -606,7 +622,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> rfl) h
   case ftoi => exact ftoiAbs_sound h
   case narrow n =>
-    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
     · simp only [UnFn.apply, UnFn.abs]
       split
@@ -619,16 +635,16 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case itos =>
-    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case datePart p => exact datePartAbs_sound p h
   case dateTrunc u => exact monoAbs_sound (Time.trunc_mono u) (fun v => by cases v <;> rfl) h
   case toDate => exact monoAbs_sound Time.days_mono (fun v => by cases v <;> rfl) h
   case upper | lower | length =>
-    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
   case regexMatch p =>
-    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ <;>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp only [UnFn.abs, UnFn.apply, AVal.Mem]
     all_goals (try cases Text.regexMatch s p) <;> simp_all [Bound.ge, Bound.Mem] <;> omega
   all_goals match v, h with
@@ -638,7 +654,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
           FloatCode.neg]
     | .bool true, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
     | .bool false, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
-    | .str _, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
+    | .str _, h | .list _, h => simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonBool, AVal.nonInt]
 
 theorem arith_sound {op : Bound → Bound → Bound} {f : Int → Int → Int}
     (hop : ∀ {x y : Bound} {i j : Int}, x.Mem i → y.Mem j → (op x y).Mem (f i j))
@@ -647,8 +663,8 @@ theorem arith_sound {op : Bound → Bound → Bound} {f : Int → Int → Int}
     {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (arith op a b).Mem (g.apply v w) := by
   rw [hg]
-  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
-  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ <;>
+  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
+  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
   simp_all [arith, AVal.Mem, AVal.nonInt] <;> exact hop hi hj
 
 theorem canGe_of_le {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) (h : j ≤ i) :
@@ -736,8 +752,8 @@ theorem divAbs_sound {bound : Bound → Bound → Bound} {op : Int → Int → I
     {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (divAbs bound a b).Mem (g.apply v w) := by
   rw [hg]
-  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
-  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ <;>
+  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
+  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
   simp only [] <;> try (simp_all [divAbs, AVal.Mem, AVal.nonInt]; done)
   by_cases hj0 : j = 0
   · subst hj0
@@ -751,8 +767,8 @@ theorem divAbs_sound {bound : Bound → Bound → Bound} {op : Int → Int → I
 
 theorem powAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (powAbs a b).Mem (BinFn.apply .ipow v w) := by
-  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
-  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ <;>
+  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
+  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
   try (simp_all [powAbs, BinFn.apply, AVal.Mem, AVal.nonInt]; done)
   simp only [BinFn.apply]
   split
@@ -794,16 +810,16 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ipow => exact powAbs_sound ha hb
   case concat | trim | strpos | startsWith | endsWith | like | substr =>
-    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
+    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
-      ⟨s', rfl, h'⟩ <;>
+      ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
     simp_all [BinFn.abs, BinFn.apply, AVal.Mem, AVal.nonStr, AVal.nonInt, Bound.ge, Bound.Mem,
       Text.strpos_nonneg]
     all_goals split <;> simp_all
   case eq =>
-    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
+    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
-      ⟨s', rfl, h'⟩ <;>
+      ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
     simp only [BinFn.abs, BinFn.apply, AVal.Mem]
     all_goals first | (simp_all; done) | skip
     -- What is left: two integers, or two strings.
@@ -815,9 +831,9 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
         rw [this]; simp [intNe_of hx hy hi hj hij]
     · cases (s == s') <;> simp [h, h']
   all_goals
-    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ <;>
+    rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
-      ⟨s', rfl, h'⟩ <;>
+      ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
     simp_all [BinFn.abs, BinFn.apply, and3, or3, AVal.Mem, AVal.nonBool, AVal.nonInt]
   all_goals (split <;> simp_all [canLt, canGe])
   -- What is left: comparisons of two integers against their intervals.
@@ -855,11 +871,12 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
       · rw [ite_eq_right hct]
         apply AVal.mem_join_right
         have : ((c.abs env).nonBool || (c.abs env).ff) = true := by
-          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩
+          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
           · simp [AVal.nonBool, hn]
           · simp [AVal.nonBool, hb]
           · rw [hv] at hct; simp [Value.isTrue] at hct
           · simp [hf]
+          · simp [AVal.nonBool, hs]
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
         exact Expr.abs_sound h e
@@ -882,6 +899,11 @@ theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (
       exact ⟨x.meet y, by simp [AVal.meetEq, hx, hy], Bound.mem_meet hxi hyi⟩
   | .bool true, ha, hb | .bool false, ha, hb | .str _, ha, hb =>
       simp_all [AVal.Mem, AVal.meetEq]
+  | .list _, ha, hb =>
+      simp only [AVal.Mem, AVal.meetEq] at *
+      refine ⟨?_, by simp [ha.2.1, hb.2.1], by simp [ha.2.2.1, hb.2.2.1],
+        by simp [ha.2.2.2, hb.2.2.2]⟩
+      cases hx : a.int <;> cases hy : b.int <;> simp_all
 
 def refineCol (env : List AVal) (i : Nat) (f : AVal → AVal) : List AVal :=
   env.set i (f (env.getD i AVal.top))
@@ -1190,7 +1212,7 @@ theorem Expr.cstr_sound {pos : Bool} {c s : Expr} {k : Cstr} {row : Row}
 
 theorem Cstr.apply_sound {k : Cstr} {a : AVal} {v : Value} (hk : k.Holds v) (ha : a.Mem v) :
     (k.apply a).Mem v := by
-  rcases mem_cases ha with ⟨rfl, hn⟩ | ⟨j, x, rfl, hx, hm⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩
+  rcases mem_cases ha with ⟨rfl, hn⟩ | ⟨j, x, rfl, hx, hm⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
   all_goals cases k with
     | null => simp_all [Cstr.Holds, Cstr.apply, AVal.Mem]
     | notNull => simp_all [Cstr.Holds, Cstr.apply, AVal.Mem]
@@ -1429,6 +1451,10 @@ theorem not_or3_true {v w : Value} (h : (UnFn.apply .not (or3 v w)).isTrue = tru
   | .int _, .bool false | .int _, .null | .int _, .int _ | .int _, .str _ =>
       simp [or3, UnFn.apply, Value.isTrue] at h
   | .str _, .bool false | .str _, .null | .str _, .int _ | .str _, .str _ =>
+      simp [or3, UnFn.apply, Value.isTrue] at h
+  | .list _, .bool true | .list _, .bool false | .list _, .null | .list _, .int _
+  | .list _, .str _ | .list _, .list _
+  | .bool false, .list _ | .null, .list _ | .int _, .list _ | .str _, .list _ =>
       simp [or3, UnFn.apply, Value.isTrue] at h
 
 theorem not_and3_notnull_true {x w : Value} (hx : x ≠ .null)
@@ -2297,7 +2323,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
       · rename_i hc
         obtain ⟨rfl, hnb⟩ := hc
         have ha := Expr.absD_sound h hfs hks a
-        rcases mem_cases ha with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩
+        rcases mem_cases ha with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, ht⟩ | ⟨hv, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
         · simp [AVal.nonBool, hn] at hnb
         · simp [AVal.nonBool, hb] at hnb
         · rw [hv]
@@ -2311,8 +2337,9 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
           rw [hv]
           apply AVal.mem_join_right
           rw [ite_eq_left hf]
-          rcases mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ <;>
+          rcases mem_cases hq with ⟨hv', hn⟩ | ⟨_, _, hv', hb, _⟩ | ⟨hv', ht⟩ | ⟨hv', hf'⟩ | ⟨_, hv', hs⟩ | ⟨_, hv', hs⟩ <;>
             rw [hv'] <;> simp_all [BinFn.apply, or3, AVal.orFalse, AVal.Mem]
+        · simp [AVal.nonBool, hs] at hnb
         · simp [AVal.nonBool, hs] at hnb
       · exact sharpen_sound f a b hfs (Expr.absD_sound h hfs hks a)
           (BinFn.abs_sound f (Expr.absD_sound h hfs hks a) (Expr.absD_sound h hfs hks b))
@@ -2331,11 +2358,12 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
       · rw [ite_eq_right hct]
         apply AVal.mem_join_right
         have : ((c.absD env fs ks).nonBool || (c.absD env fs ks).ff) = true := by
-          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩
+          rcases mem_cases hc with ⟨_, hn⟩ | ⟨_, _, _, hb, _⟩ | ⟨hv, _⟩ | ⟨_, hf⟩ | ⟨_, _, hs⟩ | ⟨_, _, hs⟩
           · simp [AVal.nonBool, hn]
           · simp [AVal.nonBool, hb]
           · rw [hv] at hct; simp [Value.isTrue] at hct
           · simp [hf]
+          · simp [AVal.nonBool, hs]
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
         have hf : (c.eval row).isTrue = false := by simpa using hct
@@ -2462,7 +2490,7 @@ theorem EnvMem.replicate (n : Nat) (row : Row) : EnvMem (List.replicate n AVal.t
 
 theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
   | .null, _ => rfl
-  | .int _, h | .bool true, h | .bool false, h | .str _, h => h
+  | .int _, h | .bool true, h | .bool false, h | .str _, h | .list _, h => h
 
 theorem EnvMem.nullable {env : List AVal} {row : Row} (h : EnvMem env row) :
     EnvMem (env.map AVal.nullable) row := by
@@ -2486,7 +2514,7 @@ theorem intSum_nonneg : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → 0 ≤ i
   | .int i :: vs, h => by
     have := intSum_nonneg (vs := vs) fun j hj => h j (List.mem_cons_of_mem _ hj)
     have := h i (by simp); simp only [intSum]; omega
-  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h => by
+  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h | .list _ :: vs, h => by
     simp only [intSum]; exact intSum_nonneg fun j hj => h j (List.mem_cons_of_mem _ hj)
 
 theorem intSum_nonpos : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → i ≤ 0) → intSum vs ≤ 0
@@ -2494,7 +2522,7 @@ theorem intSum_nonpos : ∀ {vs : List Value}, (∀ i, .int i ∈ vs → i ≤ 0
   | .int i :: vs, h => by
     have := intSum_nonpos (vs := vs) fun j hj => h j (List.mem_cons_of_mem _ hj)
     have := h i (by simp); simp only [intSum]; omega
-  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h => by
+  | .null :: vs, h | .bool _ :: vs, h | .str _ :: vs, h | .list _ :: vs, h => by
     simp only [intSum]; exact intSum_nonpos fun j hj => h j (List.mem_cons_of_mem _ hj)
 
 theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs → b.Mem i) :
