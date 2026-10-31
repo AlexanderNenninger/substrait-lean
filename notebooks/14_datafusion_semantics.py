@@ -1075,8 +1075,13 @@ def _(mo):
       includes the current row's *peers*. So a "running sum" jumps by both
       tied rows at once, and `last_value` returns the last tied row, not the
       current one. Without an `ORDER BY`, the frame is the whole partition.
-      The model only has `ROW_NUMBER`, `LAG` and `LEAD`, which ignore frames,
-      and it refuses aggregate window functions.
+      The model reads the frame of each window function from the plan
+      (`Window.Frame`: `RANGE` frames are a condition on the sort key, peers
+      included). DataFusion's Substrait producer writes `RANGE` offsets as
+      `UNBOUNDED`, so SQL with them is refused; its sliding `AVG` of an
+      emptied frame is NaN and its sliding `MIN` of NULLs is stale, so those
+      are refused too; and its `NTILE` is `⌊i·min(k, n)/n⌋ + 1`, which the
+      model follows.
     * **O5**: `LAG` over ties, or without `ORDER BY`, depends on the engine's
       order. `verify` says so, unless the partition and sort columns form a
       declared key.

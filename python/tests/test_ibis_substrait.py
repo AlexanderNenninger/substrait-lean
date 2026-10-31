@@ -21,7 +21,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.coverage import CASES, T, U
+from sverify.coverage import CASES, NO_DATAFUSION_SQL, T, U
 from sverify.engine import connect, create_table, run_sql, to_sql
 from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.testing import EPOCH, canonical, inline_tables, lean_values
@@ -98,7 +98,7 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
         if c.label in KNOWN_GAPS
         else c
         for c in VERIFIED
-        if c.label not in OPAQUE
+        if c.label not in OPAQUE and c.label not in NO_DATAFUSION_SQL
     ],
     ids=lambda c: c.label,
 )
@@ -196,7 +196,7 @@ def test_timestamp_literals_are_not_local_time():
         (lambda: t.select(x=t.qty.cast("uint8")), "unsigned"),
         (lambda: t.select(x=t.amount.cast("float32")), "float32"),
         (lambda: t.sample(0.5), "Sample"),
-        (lambda: t.mutate(c=t.qty.cumsum(order_by="ts")), "window"),
+        (lambda: t.mutate(c=(t.qty + 1).cumsum(order_by="ts")), "window aggregates"),
     ],
 )
 def test_what_lean_does_not_model_is_refused(build, message):

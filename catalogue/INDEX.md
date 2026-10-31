@@ -20,7 +20,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| fin-running-balance | [Running account balance](https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view) | ✗ | F | `running_agg`, `decimal` |
+| fin-running-balance | [Running account balance](https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view) | ✗ *(dbl)* | FPD | `decimal` |
 | fin-velocity-check | [Card velocity in the last hour](https://risingwave.com/blog/transaction-velocity-fraud-sql/) | ✗ *(dbl)* | FPD | `decimal` |
 | fin-impossible-travel | [Impossible travel](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection) | ✗ *(dbl)* | FPDS | `decimal` |
 | fin-duplicate-payments | [Duplicate payments](https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7) | ✗ *(dbl)* | FPDS | `decimal` |
@@ -28,14 +28,14 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✗ *(dbl)* | FPDS | `decimal` |
 | fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✗ *(dbl)* | FPD | `decimal` |
 | fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✗ | F | `date_diff`, `decimal` |
-| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✗ | F | `ntile`, `decimal` |
+| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✗ *(dbl)* | FPD | `decimal` |
 | fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | F | `decimal` |
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✗ | F | `agg_arithmetic` |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | F | `arg_max` |
-| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `rows_frame`, `stddev_var` |
-| fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✗ | F | `running_agg` |
+| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `stddev_var` |
+| fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✗ | F | `min_max` |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✗ | F | `math_transcendental` |
-| fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✗ | F | `running_agg` |
+| fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | FPD |  |
 | fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `math_transcendental`, `stddev_var`, `agg_arithmetic` |
 | fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | ✗ | — | `rows_frame` |
 
@@ -60,10 +60,10 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✗ | F | `epoch`, `interval_to_number`, `agg_arithmetic` |
 | iot-silent-devices | [Devices that stopped reporting](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg) | ✓ | F |  |
-| iot-condition-duration | [How long a temperature stayed above a threshold](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✗ | F | `running_agg` |
+| iot-condition-duration | [How long a temperature stayed above a threshold](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
 | iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✗ | F | `epoch`, `interval_to_number` |
 | iot-counter-increase | [Increase of a counter with resets](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/counter-aggregation) | ✓ | FPDS |  |
-| iot-gapfill-locf | [Hourly averages with last observation carried forward](https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/) | ✗ | F | `first_last_value`, `running_agg` |
+| iot-gapfill-locf | [Hourly averages with last observation carried forward](https://questdb.com/docs/cookbook/sql/time-series/fill-prev-with-history/) | ✓ | FPD |  |
 | iot-downsample | [Hourly downsampling: min, max, mean, last](https://questdb.com/docs/query/sql/sample-by/) | ✗ | F | `arg_max` |
 | iot-latest-reading | [Latest reading per device](https://questdb.com/docs/query/sql/latest-on/) | ✓ | FPDS |  |
 | iot-change-detection | [Keep only state changes](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
@@ -110,11 +110,11 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | pa-users-without-orders | [Users who never ordered](https://www.postgresql.org/docs/current/functions-subquery.html) | ✓ | FPDS |  |
 | pa-market-basket | [Products bought together](https://oneuptime.com/blog/post/2026-03-31-clickhouse-market-basket-analysis/view) | ✓ | FPDS |  |
 | pa-median-order-value | [Median order value per status](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✗ | — | `percentile` |
-| pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✗ | F | `window_partition_agg`, `stddev_var` |
+| pa-zscore-outliers | [Outlier readings by z-score](https://docs.pola.rs/user-guide/expressions/window-functions/) | ✗ | F | `stddev_var` |
 | pa-histogram | [Histogram of order amounts](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | FPDS |  |
 | pa-string-agg | [Products of each order as a list](https://modern-sql.com/feature/listagg) | ✗ | F | `string_agg` |
-| pa-ntile-free-spenders | [Spend deciles with percent rank](https://www.postgresql.org/docs/current/functions-window.html) | ✗ | F | `ntile` |
-| pa-cumulative-signups | [Cumulative signups per day](https://www.postgresql.org/docs/current/tutorial-window.html) | ✗ | F | `running_agg` |
+| pa-ntile-free-spenders | [Spend deciles with percent rank](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | FPD |  |
+| pa-cumulative-signups | [Cumulative signups per day](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | FPDS |  |
 
 ## ssb
 
@@ -139,7 +139,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | ts-dau-rolling-7d | [Daily and seven-day active users](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✗ | F | `interval_day_time` |
 | ts-weekly-active-users | [Weekly active users](https://ibis-project.org/how-to/analytics/basics) | ✓ | FPDS |  |
 | ts-mom-growth | [Month-over-month revenue growth](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | FPD |  |
-| ts-sessionize | [Sessionize events with a 30-minute inactivity gap](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✗ | F | `running_agg` |
+| ts-sessionize | [Sessionize events with a 30-minute inactivity gap](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✓ | F |  |
 | ts-session-starts | [Session starts (without numbering)](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✓ | F |  |
 | ts-local-day-revenue | [Daily revenue in a local time zone](https://www.postgresql.org/docs/current/functions-datetime.html) | ✗ | F | `timezone` |
 | ts-overlapping-bookings | [Overlapping bookings of a resource](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✓ | FPDS |  |
@@ -152,11 +152,11 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | tpcds-q03 | [TPC-DS Q3: brand revenue for a manufacturer in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 | tpcds-q07 | [TPC-DS Q7: promotional item averages for a demographic](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 | tpcds-q27 | [TPC-DS Q27: item averages per state with subtotals](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `grouping_sets`, `decimal` |
-| tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `grouping_sets`, `rank`, `decimal` |
+| tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `grouping_sets`, `decimal` |
 | tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
-| tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `running_agg`, `decimal` |
-| tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `window_partition_agg`, `decimal`, `sort_by_expression` |
-| tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `window_partition_agg`, `interval_day_time`, `decimal` |
+| tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `decimal`, `min_max` |
+| tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `decimal`, `sort_by_expression` |
+| tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `interval_day_time`, `decimal` |
 
 ## tpch
 
@@ -192,13 +192,13 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | win-dedup-latest | [Latest row per key (dedup)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/deduplicate.sql) | ✓ | FPDS |  |
 | win-latest-argmax | [Latest value per key with ARG_MAX](https://duckdb.org/docs/stable/sql/functions/aggregates) | ✗ | F | `arg_max` |
 | win-top-n-per-group | [Top 3 products per category](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | FPD |  |
-| win-top-n-with-ties | [Top 3 salaries per department, ties included](https://neon.com/docs/functions/window-rank) | ✗ | F | `rank` |
-| win-running-total | [Running total per customer](https://www.postgresql.org/docs/current/tutorial-window.html) | ✗ | F | `running_agg` |
+| win-top-n-with-ties | [Top 3 salaries per department, ties included](https://neon.com/docs/functions/window-rank) | ✓ | FPDS |  |
+| win-running-total | [Running total per customer](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | FPD |  |
 | win-moving-average | [Seven-reading moving average](https://docs.pola.rs/user-guide/transformations/time-series/rolling/) | ✗ | F | `rows_frame` |
-| win-percent-of-total | [Salary relative to the department](https://www.postgresql.org/docs/current/tutorial-window.html) | ✗ | F | `window_partition_agg` |
+| win-percent-of-total | [Salary relative to the department](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | FPD |  |
 | win-above-group-average | [Employees paid above their department average](https://www.postgresql.org/docs/current/tutorial-window.html) | ✓ | FPD |  |
-| win-ntile-quartiles | [Customer spend quartiles](https://www.thoughtspot.com/sql-tutorial/sql-window-functions) | ✗ | F | `ntile` |
+| win-ntile-quartiles | [Customer spend quartiles](https://www.thoughtspot.com/sql-tutorial/sql-window-functions) | ✓ | FPD |  |
 | win-gaps-and-islands | [Login streaks (gaps and islands)](https://www.red-gate.com/simple-talk/databases/sql-server/t-sql-programming-sql-server/introduction-to-gaps-and-islands-analysis/) | ✗ | F | `dynamic_interval` |
-| win-forward-fill | [Forward-fill missing readings](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html) | ✗ | F | `running_agg`, `first_last_value` |
+| win-forward-fill | [Forward-fill missing readings](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.resample.html) | ✓ | FPDS |  |
 | win-lag-change | [Change since the previous order](https://www.postgresql.org/docs/current/functions-window.html) | ✓ | FPD |  |
 | win-keyset-pagination | [Keyset pagination](https://use-the-index-luke.com/sql/partial-results/fetch-next-page) | ✓ | FPDS |  |

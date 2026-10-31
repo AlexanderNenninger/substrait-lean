@@ -444,7 +444,7 @@ theorem windowRows_rowNumber_key {part : List Nat} {fns : List WinFn} {n t : Nat
         funext z
         simp only [samePart, keyOf] at hpk ⊢
         rw [hpk]
-      simp only [WinFn.value, hsame, List.filter_append, List.filter_cons_of_pos (samePart_refl part x),
+      simp only [WinFn.value, WinFn.valueIn, hsame, List.filter_append, List.filter_cons_of_pos (samePart_refl part x),
         List.filter_nil, List.cons.injEq, Value.int.injEq, List.length_append, List.length_cons,
         List.length_nil, and_true] at hrn
       omega

@@ -38,11 +38,6 @@ def Expr.render : Expr → String
   | .bin f a b => s!"({a.render} {f.render} {b.render})"
   | .ifThen c t e => s!"IF {c.render} THEN {t.render} ELSE {e.render}"
 
-def WinFn.render : WinFn → String
-  | .rowNumber => "ROW_NUMBER()"
-  | .lag c k d => s!"LAG(${c}, {k}, {d.render})"
-  | .lead c k d => s!"LEAD(${c}, {k}, {d.render})"
-
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"
 
@@ -51,6 +46,24 @@ def Measure.render (m : Measure) : String :=
     | some c => s!" FILTER (WHERE {c.render})"
     | none => ""
   s!"{m.fn.name}({if m.distinct then "DISTINCT " else ""}{m.arg.render}){filter}"
+
+def FrameBound.render : FrameBound → String
+  | .unboundedPreceding => "UNBOUNDED PRECEDING" | .unboundedFollowing => "UNBOUNDED FOLLOWING"
+  | .preceding 0 => "CURRENT ROW" | .preceding k => s!"{k} PRECEDING" | .following k => s!"{k} FOLLOWING"
+
+def Frame.render (fr : Frame) : String :=
+  s!"{if fr.range then "RANGE" else "ROWS"} BETWEEN {fr.lo.render} AND {fr.hi.render}"
+
+def WinFn.render : WinFn → String
+  | .rowNumber => "ROW_NUMBER()"
+  | .lag c k d => s!"LAG(${c}, {k}, {d.render})"
+  | .lead c k d => s!"LEAD(${c}, {k}, {d.render})"
+  | .rank _ => "RANK()" | .denseRank _ => "DENSE_RANK()" | .percentRank _ => "PERCENT_RANK()"
+  | .cumeDist _ => "CUME_DIST()" | .ntile k => s!"NTILE({k})"
+  | .agg m _ fr => s!"{m.render} {fr.render}"
+  | .firstValue c _ fr => s!"FIRST_VALUE(${c}) {fr.render}"
+  | .lastValue c _ fr => s!"LAST_VALUE(${c}) {fr.render}"
+  | .nthValue c n _ fr => s!"NTH_VALUE(${c}, {n}) {fr.render}"
 
 def Rel.renderLines : Rel → List String
   | .read t => [s!"Read {t}"]

@@ -224,6 +224,15 @@ class SparkDialect(Dialect):
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return f"(CASE WHEN {inside} THEN CAST({total} AS BIGINT) ELSE {fail} END)"
 
+    def window_int_sum(self, v: str, over: str) -> str:
+        total = f"SUM(CAST({v} AS DECIMAL(38,0))) {over}"
+        fail = self.raise_("integer overflow in SUM", total, "int")
+        inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
+        return f"(CASE WHEN {inside} THEN CAST({total} AS BIGINT) ELSE {fail} END)"
+
+    def day_interval(self, days: int) -> str:
+        return f"INTERVAL {days} DAYS"
+
     def float_sum(self, v: str, o: str) -> str:
         pairs = f"collect_list(named_struct('o', {o}, 'v', {v})) FILTER (WHERE {v} IS NOT NULL)"
         values = f"transform(array_sort({pairs}), p -> p.v)"

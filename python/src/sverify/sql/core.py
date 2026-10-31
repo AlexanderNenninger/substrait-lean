@@ -457,6 +457,24 @@ class Dialect:
     def row_number(self, over: str) -> str:
         return f"ROW_NUMBER() {over}"
 
+    def over_frame(self, partition: Sequence[str], order: Sequence[str], frame: str) -> str:
+        """`OVER (PARTITION BY … ORDER BY … frame)`."""
+        return self.over(partition, order)[:-1] + f" {frame})"
+
+    def day_interval(self, days: int) -> str:
+        """`days` days, as a RANGE offset over a DATE."""
+        return f"INTERVAL '{days}' DAY"
+
+    def window_int_sum(self, v: str, over: str) -> str:
+        """`SUM` of BIGINTs over a frame; must raise where it leaves 64 bits."""
+        raise Unsupported(f"{self.name}: window sums are not implemented")
+
+    def window_float_sum(self, v: str, over: str) -> str:
+        """`floatSum`: the frame's doubles added left to right, from 0.0."""
+        raise Unsupported(
+            f"{self.name} does not add a frame's doubles in order, and the rounding depends on it"
+        )
+
     def lag(self, x: str, offset: int, default: str, over: str) -> str:
         return f"LAG({x}, {offset}, {default}) {over}"
 
@@ -571,11 +589,36 @@ class SortKey:
 
 
 @dataclass(frozen=True)
+class Frame:
+    """`Window.Frame`: `ROWS` or `RANGE`, each bound `("unbounded" | "preceding"
+    | "following", k)`; `("preceding", 0)` is `CURRENT ROW`."""
+
+    range: bool
+    lo: tuple[str, int]
+    hi: tuple[str, int]
+
+
+WHOLE = Frame(False, ("unbounded", 0), ("unbounded", 0))
+
+
+@dataclass(frozen=True)
 class WinFn:
-    fn: Literal["row_number", "lag", "lead"]
+    fn: Literal[
+        "row_number", "lag", "lead", "rank", "dense_rank", "percent_rank", "cume_dist", "ntile",
+        "agg", "first_value", "last_value", "nth_value",
+    ]  # fmt: skip
     col: int = 0
     offset: int = 0
+    """`LAG`'s offset, `NTILE`'s buckets, `NTH_VALUE`'s n."""
     default: Lit = Lit(None, None)
+    measure: Measure | None = None
+    """The aggregate of `agg`."""
+    frame: Frame = WHOLE
+
+    @property
+    def reads(self) -> bool:
+        """Does it read column `col`?"""
+        return self.fn in ("lag", "lead", "first_value", "last_value", "nth_value")
 
 
 @dataclass(frozen=True)
@@ -758,10 +801,21 @@ def lean_kinds(r: Rel) -> list[LeanKind]:
             return ks + [_win_kind(f, ks, "other") for f in fns]
 
 
-def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> K | Literal["int"]:
+def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
     """`WinFn.kind`."""
-    if f.fn == "row_number":
+    if f.fn in ("row_number", "rank", "dense_rank", "ntile"):
         return "int"
+    if f.fn in ("percent_rank", "cume_dist"):
+        return "float"
+    if f.fn == "agg" and f.measure is not None:
+        m = f.measure
+        if m.fn in ("count", "sum"):
+            return "int"
+        if m.fn in ("fsum", "avg"):
+            return "float"
+        return (
+            cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else unknown
+        )
     return cols[f.col] if f.col < len(cols) else unknown
 
 
@@ -770,6 +824,16 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
     if m.fn in ("count", "sum"):
         return "int"
     return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
+
+
+def _issue_free(e: Expr) -> bool:
+    """`Parse.issueFree`: columns, constants and their conversions to doubles."""
+    match e:
+        case Lit() | Field():
+            return True
+        case Un(op="itof", arg=a):
+            return _issue_free(a)
+    return False
 
 
 def _get(ks: list, i: int) -> Any:
@@ -1456,7 +1520,75 @@ class _Parser:
                     else:
                         default = _lit(d)
                 return part, sort, WinFn(name, c, offset, default)
+            case "rank" | "dense_rank" | "percent_rank" | "cume_dist":
+                if args:
+                    raise Unsupported(f"{name} takes no arguments")
+                return part, sort, WinFn(name)
+            case "ntile":
+                return part, sort, WinFn("ntile", offset=self.positive(args, 0, name))
+            case "first_value" | "last_value" | "nth_value":
+                if len(args) != (2 if name == "nth_value" else 1):
+                    raise Unsupported(f"{name} takes a column")
+                c = self.column(args[0], cols, "function arguments")
+                n = self.positive(args, 1, name) if name == "nth_value" else 0
+                return part, sort, WinFn(name, c, n, frame=self.frame(w, cols, sort))
+            case "count" | "sum" | "avg" | "min" | "max":
+                # The window's sort keys order the frame, not the aggregate.
+                keys = ("functionReference", "arguments", "outputType")
+                m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
+                if m.distinct:
+                    raise Unsupported("DISTINCT window aggregates are not supported")
+                if not _issue_free(m.arg):
+                    raise Unsupported(
+                        "window aggregates of expressions are not supported; use a column"
+                    )
+                fr = self.frame(w, cols, sort)
+                if m.fn in ("fsum", "avg", "min") and fr.lo != ("unbounded", 0):
+                    raise Unsupported(
+                        f"{name} over a sliding frame is not supported "
+                        "(DataFusion retracts rows wrongly)"
+                    )
+                return part, sort, WinFn("agg", measure=m, frame=fr)
         raise Unsupported(f"unsupported window function: {name}")
+
+    def positive(self, args: list, i: int, name: str) -> int:
+        k = self.const(args[i]) if i < len(args) else None
+        if k is None or k.tag != "int" or k.value <= 0:
+            raise Unsupported(f"{name} needs a positive constant")
+        return k.value
+
+    def frame(self, w: dict, cols: _Cols, sort: tuple[SortKey, ...]) -> Frame:
+        """`parseFrame`."""
+        bt = _field(w, "boundsType")
+        if bt == "BOUNDS_TYPE_ROWS":
+            rng = False
+        elif bt in (None, "BOUNDS_TYPE_RANGE", "BOUNDS_TYPE_UNSPECIFIED"):
+            rng = True
+        else:
+            raise Unsupported(f"unsupported window bounds type: {bt}")
+
+        def bound(b: Any) -> tuple[str, int]:
+            if b is None:
+                return ("unbounded", 0)
+            key, v = _oneof("frame bound", b, ("unbounded", "currentRow", "preceding", "following"))
+            if key == "unbounded":
+                return ("unbounded", 0)
+            if key == "currentRow":
+                return ("preceding", 0)
+            k = _int(_field(v, "offset") or 0)
+            if k < 0:
+                raise Unsupported("negative frame offsets are not supported")
+            return (key, k)
+
+        lo, hi = bound(_field(w, "lowerBound")), bound(_field(w, "upperBound"))
+        if rng and any(b[0] != "unbounded" and b[1] != 0 for b in (lo, hi)):
+            if len(sort) != 1:
+                raise Unsupported("RANGE frames with offsets need exactly one sort key")
+            if _get(cols.lean, sort[0].col) not in ("int", "time", "date"):
+                raise Unsupported(
+                    "RANGE frames with offsets need an integer, timestamp or date sort key"
+                )
+        return Frame(rng, lo, hi)
 
     def window_project(self, inp: Rel, cols: _Cols, es: list) -> Rel:
         """`parseWindowProject`."""
@@ -2374,7 +2506,7 @@ class _Writer:
         if (
             any(p >= m for p in part)
             or any(k.col >= m for k in sort)
-            or any(f.fn != "row_number" and f.col >= m for f in fns)
+            or any(f.reads and f.col >= m for f in fns)
         ):
             raise Unsupported("window refers to a column beyond its input")
 
@@ -2394,19 +2526,124 @@ class _Writer:
                 "without ORDER BY a window keeps its input's order, which needs ordinals"
             )
         over = d.over(partition, keys)
+        # Ranks, `CUME_DIST` and RANGE frames depend on the sort keys only: ties
+        # are peers, not ordered by the ordinal.
+        peers = keys[:-1] if not self.tie_free else keys
+
+        def whole() -> str:
+            return f"OVER ({'PARTITION BY ' + ', '.join(partition) if partition else ''})"
+
         items = [f"{col(j)} AS {self.c(j)}" for j in range(m)]
         for j, f in enumerate(fns):
             if f.fn == "row_number":
                 sql = d.row_number(over)
-            else:
+            elif f.fn in ("lag", "lead"):
                 default = self.lit(f.default, ks[f.col])
                 fn = d.lag if f.fn == "lag" else d.lead
                 sql = fn(col(f.col), f.offset, default, over)
+            elif f.fn in ("rank", "dense_rank"):
+                sql = f"{f.fn.upper()}() {d.over(partition, peers)}"
+            elif f.fn == "ntile":
+                # DataFusion's NTILE: ⌊i · min(k, n) / n⌋ + 1 for the i-th row
+                # (from 0) of n.
+                pos = f"({d.row_number(over)} - {d.int_lit(1)})"
+                n = f"COUNT(*) {whole()}"
+                k = f"LEAST({d.int_lit(f.offset)}, {n})"
+                sql = f"({d.trunc_div(f'({pos} * {k})', n)} + {d.int_lit(1)})"
+            elif f.fn in ("percent_rank", "cume_dist"):
+                n = f"COUNT(*) {whole()}"
+                if f.fn == "percent_rank":
+                    r = f"(RANK() {d.over(partition, peers)} - {d.int_lit(1)})"
+                    ratio = d.float_div(
+                        d.int_to_float(r), d.int_to_float(f"({n} - {d.int_lit(1)})")
+                    )
+                    sql = d.case_when(f"{n} <= {d.int_lit(1)}", d.float_lit(0.0), ratio)
+                else:
+                    upto = f"COUNT(*) {d.over(partition, peers)}"
+                    sql = d.float_div(d.int_to_float(upto), d.int_to_float(n))
+            else:
+                exact = f.measure is not None and f.measure.fn in ("count", "sum", "min", "max")
+                if f.frame == WHOLE and f.fn == "agg" and exact:
+                    # The whole partition, in any order.
+                    w = whole()
+                else:
+                    w = self.framed(f.frame, partition, keys, peers, sort, ks)
+                if f.fn == "agg":
+                    assert f.measure is not None
+                    sql = self.window_measure(f.measure, col, ks, w)
+                elif f.fn == "nth_value":
+                    sql = f"NTH_VALUE({col(f.col)}, {f.offset}) {w}"
+                else:
+                    sql = f"{f.fn.upper()}({col(f.col)}) {w}"
             items.append(f"{sql} AS {self.c(m + j)}")
         if ordered:
             # `windowEval` emits the rows in sort order.
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
         return self.select(items, d.subquery(self.rel(i, not self.tie_free), a))
+
+    def framed(
+        self,
+        fr: Frame,
+        partition: list[str],
+        keys: list[str],
+        peers: list[str],
+        sort: tuple,
+        ks: list[Kind | None],
+    ) -> str:
+        """`OVER (…)` with the frame `fr`: ROWS frames order ties by the
+        ordinal, as Lean's stable sort; RANGE frames by the keys alone."""
+        d = self.d
+        if not fr.range:
+            order = keys
+        elif any(b[0] != "unbounded" and b[1] != 0 for b in (fr.lo, fr.hi)):
+            if self.tie_free is False and len(peers) != 1:
+                raise Unsupported("RANGE frames with offsets need one sort key")
+            order = peers
+        else:
+            order = peers
+
+        def bound(b: tuple[str, int], lower: bool) -> str:
+            side, k = b
+            if side == "unbounded":
+                return "UNBOUNDED PRECEDING" if lower else "UNBOUNDED FOLLOWING"
+            if k == 0:
+                return "CURRENT ROW"
+            word = "PRECEDING" if side == "preceding" else "FOLLOWING"
+            if fr.range:
+                kind = ks[sort[0].col]
+                if kind == "time":
+                    return f"{d.interval_lit(k)} {word}"
+                if kind == "date":
+                    return f"{d.day_interval(k)} {word}"
+            return f"{k} {word}"
+
+        unit = "RANGE" if fr.range else "ROWS"
+        spec = f"{unit} BETWEEN {bound(fr.lo, True)} AND {bound(fr.hi, False)}"
+        return d.over_frame(partition, order, spec)
+
+    def window_measure(
+        self, m: Measure, col: Callable[[int], str], ks: list[Kind | None], w: str
+    ) -> str:
+        """`Measure.eval` over the frame `w` (the argument is a column or a
+        constant, `Parse.issueFree`)."""
+        d = self.d
+        v = self.expr(m.arg, col, ks, None)
+        match m.fn:
+            case "count":
+                return f"COUNT({v}) {w}"
+            case "sum":
+                return d.window_int_sum(v, w)
+            case "fsum" | "avg":
+                total = d.window_float_sum(v, w)
+                if m.fn == "avg":
+                    total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
+                return d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
+        f = "MIN" if m.fn == "min" else "MAX"
+        if expr_kind(m.arg, ks) == "bool":
+            as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
+            inner = d.case_when(f"{v} IS NULL", d.null("int"), as_int)
+            return f"({f}({inner}) {w} = {d.int_lit(1)})"
+        return f"{f}({v}) {w}"
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,

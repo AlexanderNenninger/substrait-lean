@@ -1584,6 +1584,7 @@ def winFact (part : List Nat) (sort : List SortKey) (strict : Bool) (w : Nat) : 
       if d = .null then orderFact sort c w true (strictGap strict sort k) ++ partFact part c w else []
   | .lead c k d =>
       if d = .null then orderFact sort c w false (strictGap strict sort k) ++ partFact part c w else []
+  | _ => []
 
 /-- Facts about the window columns appended after `n` input columns. -/
 def winFacts (part : List Nat) (sort : List SortKey) (strict : Bool) (n : Nat) (fns : List WinFn) :
@@ -1878,7 +1879,8 @@ theorem winFact_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {n
       keyOf (part ++ sort.map (·.col)) y ≠ keyOf (part ++ sort.map (·.col)) x) :
     FactsHold (winFact part sort strict w f) row := by
   cases f with
-  | rowNumber => intro g hg; simp [winFact] at hg
+  | rowNumber | rank _ | denseRank _ | percentRank _ | cumeDist _ | ntile _ | agg _ _ _
+  | firstValue _ _ _ | lastValue _ _ _ | nthValue _ _ _ _ => intro g hg; simp [winFact] at hg
   | lag c k d =>
     simp only [winFact]
     split
@@ -2434,10 +2436,14 @@ def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD 
 
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
-/-- `ROW_NUMBER` is a positive integer; `LAG`/`LEAD` read a value of the same
-column of another input row, or give the default. -/
+/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
+value of the same column of another input row, or give the default;
+`PERCENT_RANK` and `CUME_DIST` are doubles. Aggregates over frames and
+`FIRST_VALUE` and friends may be anything. -/
 def WinFn.abs (env : List AVal) : WinFn → AVal
-  | .rowNumber => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
+  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
   | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Sums of integers in `b` keep their sign. -/
@@ -2647,7 +2653,20 @@ produces is described by `Rel.aeval`, provided the tables are. -/
 theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x : Row}
     (hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem env y) :
     ∀ f : WinFn, (f.abs env).Mem (f.value part b a x)
-  | .rowNumber => ⟨_, rfl, by simp [Bound.Mem]; omega⟩
+  | .rowNumber | .rank _ | .denseRank _ => ⟨_, rfl, by simp [Bound.Mem]; omega⟩
+  | .ntile k => ⟨_, rfl, by
+      simp only [Bound.Mem, Option.some.injEq, reduceCtorEq]
+      refine ⟨fun l hl => ?_, fun _ h => h.elim⟩
+      subst hl
+      have : 1 ≤ ntileOf (List.filter (samePart part x) b).length k
+        ((List.filter (samePart part x) b).length + 1 + (List.filter (samePart part x) a).length) :=
+        Nat.le_add_left 1 _
+      omega⟩
+  | .percentRank _ => by
+      simp only [WinFn.abs, WinFn.value, WinFn.valueIn, floatRatio]
+      split <;> exact ⟨_, rfl, Bound.mem_top _⟩
+  | .cumeDist _ => ⟨_, rfl, Bound.mem_top _⟩
+  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
   | .lag c k d => by
       simp only [WinFn.abs]
       rcases WinFn.value_lag (part := part) (b := b) (a := a) (x := x) (c := c) (k := k)

@@ -942,6 +942,172 @@ class Measure:
         return r.cast(self.arg.dtype) if physical else r
 
 
+@dataclass(frozen=True)
+class WindowSpec:
+    """A window function `python_windows` computes: ranks, NTILE, aggregates
+    and FIRST/LAST/NTH_VALUE over a frame (`Window.lean`)."""
+
+    fn: str
+    dtype: DType
+    n: int = 0
+    col: int | None = None
+    agg: str = ""
+    frame: tuple = (False, ("unbounded", 0), ("unbounded", 0))
+
+
+def window_frame(w: dict) -> tuple:
+    """`(range, lo, hi)` of a window (`Parse.parseFrame`)."""
+    bt = w.get("boundsType", "BOUNDS_TYPE_RANGE")
+    if bt not in ("BOUNDS_TYPE_ROWS", "BOUNDS_TYPE_RANGE", "BOUNDS_TYPE_UNSPECIFIED"):
+        raise Unsupported(f"unsupported window bounds type {bt}")
+
+    def bound(b: dict | None) -> tuple[str, int]:
+        if not b or "unbounded" in b:
+            return ("unbounded", 0)
+        if "currentRow" in b:
+            return ("preceding", 0)
+        side = "preceding" if "preceding" in b else "following"
+        return (side, int(b[side].get("offset", 0)))
+
+    return (bt != "BOUNDS_TYPE_ROWS", bound(w.get("lowerBound")), bound(w.get("upperBound")))
+
+
+def _key(v: Any) -> Any:
+    """A value as `Value.le` and `samePart` see it (one zero, one NaN)."""
+    return _dedup_key(v)
+
+
+def _le(a: Any, b: Any, desc: bool, nulls_first: bool) -> bool:
+    """`SortKey.le` on one key's values."""
+    if a is None or b is None:
+        ra = (0 if nulls_first else 1) if a is None else (1 if nulls_first else 0)
+        rb = (0 if nulls_first else 1) if b is None else (1 if nulls_first else 0)
+        return ra <= rb
+    if isinstance(a, float):
+        a, b = _float_rank(a), _float_rank(b)
+    return b <= a if desc else a <= b
+
+
+def _float_rank(x: float) -> tuple:
+    return (1, 0.0) if math.isnan(x) else (0, x + 0.0)
+
+
+def _frame_rows(frame: tuple, sort: list, rows: list, i: int) -> list[int]:
+    """`Frame.rows`: the indexes (into the partition `rows`) of row `i`'s frame."""
+    rng, lo, hi = frame
+    if not rng:
+        lo_i = 0 if lo[0] == "unbounded" else i + (lo[1] if lo[0] == "following" else -lo[1])
+        hi_i = (
+            len(rows) - 1
+            if hi[0] == "unbounded"
+            else i + (hi[1] if hi[0] == "following" else -hi[1])
+        )
+        return [j for j in range(len(rows)) if lo_i <= j <= hi_i]
+    x = rows[i]
+
+    def sort_le(a: tuple, b: tuple) -> bool:
+        for c, desc, nf in sort:
+            if not _le(a[c], b[c], desc, nf):
+                return False
+            if not _le(b[c], a[c], desc, nf):
+                return True
+        return True
+
+    def ok(y: tuple, b: tuple[str, int], lower: bool) -> bool:
+        side, k = b
+        if side == "unbounded":
+            return True
+        if k == 0:
+            return sort_le(x, y) if lower else sort_le(y, x)
+        d = k if side == "following" else -k
+        c, desc, nf = sort[0]
+        vx, vy = x[c], y[c]
+        if vx is None and vy is None:
+            return True
+        if vx is None or vy is None:
+            # NULLs are at one end: `y` is in the frame only on the unbounded side.
+            rx, ry = (
+                (0 if nf else 1) if vx is None else (1 if nf else 0),
+                (0 if nf else 1) if vy is None else (1 if nf else 0),
+            )
+            return rx < ry if lower else ry < rx
+        if lower:
+            return vy <= vx - d if desc else vx + d <= vy
+        return vx - d <= vy if desc else vy <= vx + d
+
+    return [j for j, y in enumerate(rows) if ok(y, lo, True) and ok(y, hi, False)]
+
+
+def python_windows(
+    lf: pl.LazyFrame,
+    dtypes: list[DType],
+    part: list[int],
+    sort: list,
+    fns: list[tuple[int, WindowSpec]],
+    n_in: int,
+) -> pl.LazyFrame:
+    """Window functions of `fns` (output column, spec) over the sorted frame
+    of `n_in` input columns, computed row by row as `WinFn.valueIn` does."""
+    schema = {col(i): materialize(t) for i, t in enumerate(dtypes)}
+
+    def compute(df: pl.DataFrame) -> pl.DataFrame:
+        cols = [df[col(i)].to_physical().to_list() for i in range(n_in)]
+        rows = list(zip(*cols, strict=True)) if cols else [() for _ in range(df.height)]
+        groups: dict[tuple, list[int]] = {}
+        for r, row in enumerate(rows):
+            groups.setdefault(tuple(_key(row[p]) for p in part), []).append(r)
+        out: dict[int, list] = {i: [None] * len(rows) for i, _ in fns}
+        for idx in groups.values():
+            prows = [rows[r] for r in idx]
+            keys = [tuple(_key(y[c]) for c, _, _ in sort) for y in prows]
+            m = len(prows)
+            for i, r in enumerate(idx):
+                before = [keys[j] for j in range(i) if keys[j] != keys[i]]
+                peers_after = sum(1 for j in range(i + 1, m) if keys[j] == keys[i])
+                for o, f in fns:
+                    if f.fn == "rank":
+                        v: Any = len(before) + 1
+                    elif f.fn == "dense_rank":
+                        v = len(set(before)) + 1
+                    elif f.fn == "percent_rank":
+                        v = 0.0 if m <= 1 else len(before) / (m - 1)
+                    elif f.fn == "cume_dist":
+                        v = (i + 1 + peers_after) / m
+                    elif f.fn == "ntile":
+                        v = i * min(f.n, m) // m + 1
+                    else:
+                        frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
+                        vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
+                        if f.fn == "agg":
+                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
+                        elif f.fn == "first_value":
+                            v = vals[0] if vals else None
+                        elif f.fn == "last_value":
+                            v = vals[-1] if vals else None
+                        else:
+                            v = vals[f.n - 1] if f.n <= len(vals) else None
+                    out[o][r] = v
+        new = []
+        for o, f in fns:
+            t = f.dtype
+            physical = (
+                pl.Int64
+                if t == US
+                else pl.Int32
+                if t == pl.Date
+                else pl.Int64
+                if t == pl.Time
+                else t
+            )
+            s = pl.Series(col(o), out[o], dtype=physical)
+            new.append(s.cast(t) if physical != t else s)
+        return df.with_columns(new).select(list(schema))
+
+    for o, f in fns:
+        schema[col(o)] = f.dtype
+    return lf.map_batches(compute, schema=schema)
+
+
 class Translator:
     def __init__(self, plan: dict, tables: Tables, guards: bool = True):
         self.functions = {
@@ -1078,6 +1244,7 @@ class Translator:
         keys = [ordered(v.expr, v.dtype) for v in (self.column(ex, p) for p in part)]
         n = len(dtypes)
         new, out = [], []
+        py: list[tuple[int, WindowSpec]] = []
         for k, w in enumerate(ws):
             name = ex.function(w.get("functionReference"))
             args = [a["value"] for a in w.get("arguments", [])]
@@ -1103,10 +1270,76 @@ class Translator:
                     default = lit_expr(v, t if dt == pl.Null else dt)
                 e = c.shift(offset if name == "lag" else -offset, fill_value=default)
             else:
-                raise Unsupported(f"unsupported window function {name}/{len(args)}")
+                spec = self.window_spec(ex, name, args, w, dtypes, sorts)
+                py.append((n + k, spec))
+                out.append(spec.dtype)
+                continue
             new.append((e.over(keys) if keys else e).cast(materialize(t)).alias(col(n + k)))
             out.append(materialize(t))
-        return lf.with_columns(new), dtypes + out
+        lf = lf.with_columns(new)
+        if py:
+            part_idx = [ex.field(p["selection"]) for p in part]
+            lf = python_windows(lf, dtypes + out, part_idx, self.sort_specs(ex, sorts), py, n)
+        return lf, dtypes + out
+
+    def sort_specs(self, ex: Exprs, sorts: list[dict]) -> list[tuple[int, bool, bool]]:
+        """`(column, desc, nulls_first)` of each sort key."""
+        directions = {
+            "SORT_DIRECTION_ASC_NULLS_FIRST": (False, True),
+            "SORT_DIRECTION_ASC_NULLS_LAST": (False, False),
+            "SORT_DIRECTION_DESC_NULLS_FIRST": (True, True),
+            "SORT_DIRECTION_DESC_NULLS_LAST": (True, False),
+        }
+        out: list[tuple[int, bool, bool]] = []
+        for s in sorts:
+            d = directions.get(s.get("direction", ""))
+            if "selection" not in s["expr"] or d is None:
+                raise Unsupported("window sort keys must be columns with a direction")
+            out.append((ex.field(s["expr"]["selection"]), d[0], d[1]))
+        return out
+
+    def window_spec(
+        self, ex: Exprs, name: str, args: list[dict], w: dict, dtypes: list[DType], sorts: list
+    ) -> WindowSpec:
+        """A window function computed row by row (`WinFn.valueIn`)."""
+
+        def int_arg(j: dict, what: str) -> int:
+            if "literal" not in j or literal(j["literal"])[1] != pl.Int64:
+                raise Unsupported(f"{what} must be an integer literal")
+            v = literal(j["literal"])[0]
+            if v <= 0:
+                raise Unsupported(f"{what} must be positive")
+            return v
+
+        frame = window_frame(w)
+        if name in ("rank", "dense_rank", "percent_rank", "cume_dist") and not args:
+            t = pl.Float64 if name in ("percent_rank", "cume_dist") else pl.Int64
+            return WindowSpec(name, t)
+        if name == "ntile" and len(args) == 1:
+            return WindowSpec(name, pl.Int64, n=int_arg(args[0], "NTILE's buckets"))
+        if name in ("first_value", "last_value", "nth_value"):
+            c = self.column(ex, args[0])
+            n = int_arg(args[1], "NTH_VALUE's n") if name == "nth_value" else 0
+            idx = ex.field(args[0]["selection"])
+            return WindowSpec(name, materialize(c.dtype), col=idx, n=n, frame=frame)
+        if name in ("count", "sum", "avg", "min", "max") and len(args) <= 1:
+            if not args:
+                return WindowSpec("agg", pl.Int64, agg="count", col=None, frame=frame)
+            a = args[0]
+            itof = "cast" in a and "selection" in a["cast"].get("input", {})
+            sel = a["cast"]["input"] if itof else a
+            if "selection" not in sel and "literal" not in sel:
+                raise Unsupported("window aggregates of expressions are not supported")
+            if "literal" in sel:
+                return WindowSpec("agg", pl.Int64, agg="count", col=None, frame=frame)
+            idx = ex.field(sel["selection"])
+            t = dtypes[idx]
+            fn = {"sum": "fsum" if t == pl.Float64 or itof else "sum"}.get(name, name)
+            if name in ("min", "max") and t == pl.Float64:
+                raise Unsupported(f"{name} of doubles is not supported")
+            out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64}
+            return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
+        raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
     def sorted(self, lf: pl.LazyFrame, ex: Exprs, sorts: list[dict]) -> pl.LazyFrame:
         """`mergeSort (sortLe keys)`: stable, each key with its direction and

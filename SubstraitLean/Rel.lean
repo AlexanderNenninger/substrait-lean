@@ -1,4 +1,4 @@
-import SubstraitLean.Aggregate
+import SubstraitLean.Window
 
 /-!
 # Relational operators

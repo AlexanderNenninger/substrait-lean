@@ -22,6 +22,7 @@ import atexit
 import functools
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -38,7 +39,7 @@ from google.protobuf import json_format
 from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
-from sverify.ibis_substrait import to_substrait_json
+from sverify.ibis_substrait import Unsupported, to_substrait_json
 
 Engine = Literal["duckdb", "polars", "datafusion"]
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
@@ -239,11 +240,28 @@ def plan_json(con: Connection, query: ir.Table | str) -> str:
     return to_substrait_json(query)
 
 
+#: A RANGE frame bounded by an offset, in DataFusion's plan display.
+_RANGE_OFFSET = re.compile(
+    r"RANGE BETWEEN (?!UNBOUNDED PRECEDING AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
+    r"(?!CURRENT ROW AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
+)
+
+
 def substrait_json(con: Connection, sql: str) -> str:
-    """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON."""
+    """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON.
+
+    DataFusion 51's producer writes the offsets of a RANGE frame (`RANGE
+    BETWEEN 1 PRECEDING AND …`) as UNBOUNDED, so the plan would mean another
+    query: those are refused."""
     ss = _datafusion().substrait
     ctx = con.datafusion
-    plan = ss.Producer.to_substrait_plan(ctx.sql(sql).logical_plan(), ctx)
+    logical = ctx.sql(sql).logical_plan()
+    if _RANGE_OFFSET.search(logical.display_indent()):
+        raise Unsupported(
+            "DataFusion's Substrait producer drops the offsets of RANGE frames; "
+            "write the window in Ibis"
+        )
+    plan = ss.Producer.to_substrait_plan(logical, ctx)
     proto = Plan()
     proto.ParseFromString(plan.encode())
     return json_format.MessageToJson(proto)

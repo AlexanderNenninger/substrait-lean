@@ -82,6 +82,22 @@ class DuckDBDialect(Dialect):
             f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
         )
 
+    def window_int_sum(self, v: str, over: str) -> str:
+        # SUM of BIGINT is a HUGEINT: exact.
+        total = f"SUM({v}) {over}"
+        fail = self.raise_("integer overflow in SUM", total, "int")
+        inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
+        return (
+            f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
+            f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
+        )
+
+    def window_float_sum(self, v: str, over: str) -> str:
+        # The frame's values in frame order (its ORDER BY), folded from 0.0.
+        values = f"list({v}) FILTER (WHERE {v} IS NOT NULL) {over}"
+        start = self.cast("0", "float")
+        return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
+
     def float_sum(self, v: str, o: str) -> str:
         values = f"list({v} ORDER BY {o}) FILTER (WHERE {v} IS NOT NULL)"
         start = self.cast("0", "float")

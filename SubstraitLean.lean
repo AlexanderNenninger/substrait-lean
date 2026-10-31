@@ -3,6 +3,7 @@ import SubstraitLean.Rounding
 import SubstraitLean.Text
 import SubstraitLean.Time
 import SubstraitLean.Expr
+import SubstraitLean.Order
 import SubstraitLean.Window
 import SubstraitLean.Aggregate
 import SubstraitLean.Rel

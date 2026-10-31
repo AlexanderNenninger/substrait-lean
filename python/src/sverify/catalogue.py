@@ -535,6 +535,11 @@ BLOCKERS: list[tuple[str, set[str]]] = [
         {"running_agg", "window_partition_agg", "rows_frame", "range_frame"},
     ),
     (r"frame offsets for (RANGE|ROWS)|following end point", {"range_frame", "rows_frame"}),
+    (r"over a sliding frame|frame offsets must be", {"rows_frame", "range_frame"}),
+    (
+        r"window aggregates of expressions",
+        {"running_agg", "window_partition_agg", "rows_frame", "range_frame"},
+    ),
     (r"regexp_replace|regexp_extract", {"regex_replace"}),
     (r"split_part|concat_ws", {"string_split"}),
     (r"md5|sha|'Hash'", {"hash"}),
