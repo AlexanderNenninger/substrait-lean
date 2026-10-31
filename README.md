@@ -551,6 +551,13 @@ table format plays three roles:
   are read through delta-rs's DataFusion reader. Their statistics describe
   all physical rows, deleted ones included; bounds of a superset of the rows
   still hold.
+* **Proved file pruning.** `DeltaSource(uri, where="amount * 2 > 100")` is
+  the rows on which the condition is TRUE. A snapshot skips a file only if
+  Lean proves, from the facts the file's statistics give, that the condition
+  is not TRUE on any of its rows (`prune_sound`). That covers conditions the
+  readers' own statistics pushdown does not handle, such as arithmetic on a
+  column. The rows read are filtered exactly, changes are filtered the same
+  way, and the condition becomes a fact about every row.
 * **A sink that carries the contract.** `DeltaSink` writes a view in one
   commit per state, exactly once (Delta's transaction identifiers, keyed by
   the sum of the source versions). The proved guarantees become NOT NULL
@@ -1376,6 +1383,9 @@ hypotheses:
   that bound is the `IS NOT NULL AND c >= lo AND c <= hi` fact handed to the
   contract checker; `stats_fact`: with NULLs or a missing side it is
   `c IS NULL OR (…)`; `stats_all_null`: files that are all NULL give `c IS NULL`.
+* `prune_sound`: filtering only the files that are not skipped gives the
+  same rows as filtering the whole table, if no row of a skipped file makes
+  the filter TRUE (which the checker proves from the file's statistics).
 
 All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
 

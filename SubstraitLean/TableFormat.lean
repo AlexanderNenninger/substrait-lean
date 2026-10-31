@@ -364,6 +364,30 @@ theorem stats_all_null {a : AVal} {v : Value}
   | bool b => cases b <;> simp_all [AVal.Mem]
   | str _ => simp_all [AVal.Mem]
 
+/-! ## Pruning files -/
+
+/-- **Pruning files by their statistics.** A table is its files' rows
+together. Mark each file `true` to read it; a file may be skipped only if no
+row of it makes the filter `e` TRUE. `sverify.io` skips a file when the
+contract checker proves "`e` is not TRUE" from the facts the file's
+statistics give (`contract_sound`, with `stats_table` for one file). Then
+filtering only the files read gives the same rows, in the same order, as
+filtering the whole table. -/
+theorem prune_sound (e : Expr) :
+    ∀ {files : List (Relation × Bool)},
+      (∀ f ∈ files, f.2 = false → ∀ row ∈ f.1, (e.eval row).isTrue = false) →
+      (files.flatMap (·.1)).filter (fun r => (e.eval r).isTrue) =
+        ((files.filter (·.2)).flatMap (·.1)).filter (fun r => (e.eval r).isTrue)
+  | [], _ => rfl
+  | f :: fs, h => by
+      have ih := prune_sound e (files := fs) fun g hg => h g (List.mem_cons_of_mem _ hg)
+      cases hf : f.2
+      · have hnone : f.1.filter (fun r => (e.eval r).isTrue) = [] :=
+          List.filter_eq_nil_iff.mpr fun row hr => by
+            simp [h f List.mem_cons_self hf row hr]
+        simp [hf, List.filter_append, hnone, ih]
+      · simp [hf, List.filter_append, ih]
+
 -- The join of known bounds is the least minimum and the greatest maximum.
 #guard tableStats [([], ⟨some 3, some 9, some 0, none⟩), ([], ⟨some 1, some 5, some 0, none⟩)] ==
     ⟨false, some ⟨some 1, some 9⟩, false, false, false⟩
