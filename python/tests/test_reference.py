@@ -55,6 +55,13 @@ def lean(con, sql: str) -> list[tuple]:
     return lean_values(json.dumps(inline_tables(plan, ROWS)))
 
 
+def refusal(con, sql: str) -> str:
+    """The checker's message refusing `sql`."""
+    code, out, err = run_checker((), substrait_json(con, sql))
+    assert code != 0
+    return out + err
+
+
 def nan_equal(rows: list[tuple]) -> list[tuple]:
     return [tuple("NaN" if isinstance(v, float) and v != v else v for v in r) for r in rows]
 
