@@ -58,8 +58,8 @@ if TYPE_CHECKING:
 class Sink(Protocol):
     """What `Node.write` needs of a sink (`sverify.io.DeltaSink`, `IcebergSink`).
 
-    The sinks in `sverify.io` implement it; the methods it asks for are
-    private, called by `refresh`, so a sink has no public `write` of its own.
+    `sverify.io.Sink` implements it, and a sink of your own subclasses that;
+    the methods it asks for are private, called by `refresh`.
 
     Attributes:
         name: The stored table's name in the plans that read it (the sink's
@@ -703,6 +703,9 @@ class Group:
                 recomputation; nothing was applied.
         """
         order = self._order()
+        for n in order:
+            if isinstance(n, _Stored) and n._stage is None:
+                _continue_versions(n)
         pins: dict[int, int] = {}
         for n in order:
             for leaf in n._leaves():
@@ -722,7 +725,7 @@ class Group:
             stage = n._stage
             stored = None
             if isinstance(n, _Stored):
-                stored = getattr(n.sink, "uri", None) or getattr(n.sink, "identifier", n.name)
+                stored = getattr(n.sink, "location", n.name)
             out.nodes.append(
                 NodeStatus(
                     n.name,
@@ -732,6 +735,24 @@ class Group:
                 )
             )
         return out
+
+
+def _continue_versions(node: _Stored) -> None:
+    """The sources of a stored node's stage whose versions restart with the
+    process (`sverify.io.Source`) number them above the versions its sink
+    recorded, so that its epochs keep growing and it writes exactly once."""
+    resumes = {}
+    for leaf in node._leaves():
+        src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
+        if (resume := getattr(src, "_resume_after", None)) is not None:
+            resumes[leaf.name] = resume
+    committed = getattr(node.sink, "committed", None)
+    contract = committed() if resumes and committed is not None else None
+    if contract is None:
+        return
+    for name, resume in resumes.items():
+        if name in contract.sources:
+            resume(contract.sources[name])
 
 
 def group(*nodes: Node) -> Group:

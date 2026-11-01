@@ -22,11 +22,13 @@ Feed.
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import PurePosixPath
 from typing import Literal
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import sqlglot as sg
 
@@ -42,29 +44,19 @@ except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
 from sverify.contracts import Fact
-from sverify.incremental import (
-    Changes,
-    IncrementalView,
-    Row,
-    Snapshot,
-    SourceBatch,
-    Stored,
-    arrow_rows,
-    first_line,
-)
+from sverify.incremental import Row, Snapshot, SourceBatch, Stored, first_line
 from sverify.io._common import (
     FILTER,
     ColumnStats,
     Contract,
     SinkWrite,
-    check_same_state,
     filter_rows,
     prune,
     q,
-    sink_schema,
     stats_facts,
-    view_contract_record,
 )
+from sverify.io._sink import Sink, SinkChange
+from sverify.io._storage import Options, resolve
 from sverify.steps import Pipeable
 
 CONSTRAINT = "Delta constraint"
@@ -171,7 +163,10 @@ class DeltaSource(Pipeable):
     Args:
         uri: The table's location: a path, or a URI such as `s3://...`.
         storage_options: Options for delta-rs's object store (credentials,
-            region). Default: None.
+            region): a `Storage` shared with other tables, a mapping, or a
+            function returning one, called whenever the table is opened.
+            Default: None, delta-rs's default chain (environment, profiles,
+            roles).
         where: A SQL condition on the columns. The source is the rows on
             which it is TRUE; files are skipped only where Lean proves from
             their statistics that it is TRUE on none of their rows. Default:
@@ -220,7 +215,7 @@ class DeltaSource(Pipeable):
         self,
         uri: str,
         *,
-        storage_options: dict[str, str] | None = None,
+        storage_options: Options = None,
         where: str | None = None,
         name: str | None = None,
     ):
@@ -262,7 +257,7 @@ class DeltaSource(Pipeable):
         Returns:
             A `deltalake.DeltaTable`.
         """
-        dt = DeltaTable(self.uri, storage_options=self.storage_options)
+        dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
         if version is not None:
             dt.load_as_version(version)
         return dt
@@ -358,7 +353,7 @@ class DeltaSource(Pipeable):
         snapshot_facts = self._facts(dt, files, f"file stats @v{end}")
         schema = _arrow_schema(dt)
         if end == since:
-            return SourceBatch(since, end, snapshot_facts, schema=schema)
+            return SourceBatch.unchanged(since, snapshot_facts, schema)
         try:
             old: DeltaTable | None = self.table(since)
         except Exception:
@@ -367,22 +362,18 @@ class DeltaSource(Pipeable):
             self._check_cdf(dt, since, end)
             cdf = pa.table(dt.load_cdf(starting_version=since + 1, ending_version=end).read_all())
         except Exception as e:
-            return SourceBatch(
+            return SourceBatch.from_snapshot(
                 since,
                 end,
-                snapshot_facts,
-                snapshot=self._rows(dt)[0],
-                fallback=f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
+                self._rows(dt)[0],
+                reason=f"Delta CDF v{since}→v{end} unavailable: {first_line(e)}",
+                snapshot_facts=snapshot_facts,
                 schema=schema,
             )
         if self.where is not None:
             cdf = filter_rows(cdf, self.where)
-        kinds = cdf.column("_change_type").to_pylist()
-        rows = arrow_rows(cdf.select(schema.names).cast(schema))
-        changes = Changes(
-            inserts=[r for r, k in zip(rows, kinds, strict=True) if k in INSERT],
-            deletes=[r for r, k in zip(rows, kinds, strict=True) if k in DELETE],
-        )
+        kind = cdf.column("_change_type").cast(pa.string())
+        rows = cdf.select(schema.names).cast(schema)
         # The net inserts are rows at `end` written after `since`, so they
         # lie in the files `end` has and `since` had not.
         if old is not None:
@@ -391,15 +382,20 @@ class DeltaSource(Pipeable):
             facts = self._facts(dt, new_files, f"file stats @v{end} (new files)")
         else:
             facts = self._facts(dt, {}, "")
-        return SourceBatch(
+        return SourceBatch.from_changes(
             since,
             end,
-            snapshot_facts,
-            changes=changes,
-            facts=facts,
+            inserts=rows.filter(_is_in(kind, INSERT)),
+            deletes=rows.filter(_is_in(kind, DELETE)),
             trusted=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
+            facts=facts,
+            snapshot_facts=snapshot_facts,
             schema=schema,
         )
+
+
+def _is_in(column: pa.ChunkedArray, values: tuple[str, ...]) -> pa.ChunkedArray:
+    return pc.call_function("is_in", [column], pc.SetLookupOptions(pa.array(values)))
 
 
 def _same_sql(a: str | None, b: str) -> bool:
@@ -418,7 +414,7 @@ def _same_sql(a: str | None, b: str) -> bool:
 OP = "__sverify_op"
 
 
-class DeltaSink:
+class DeltaSink(Sink):
     """Stores a node in a Delta table, exactly once per state:
     `node.write(DeltaSink(uri))`, written by every `refresh`.
 
@@ -431,7 +427,7 @@ class DeltaSink:
     sink on an existing table first overwrites it, unless it resumes from it.
     `name` is the table's name in the plans that read the stored node
     (default: the last part of `uri`); `app_id` defaults to
-    `sverify:<node name>`.
+    `sverify:<name>`.
 
     The node `write` returns reads the table as a `DeltaSource`, through its
     Change Data Feed, and builds on the contract the stored node proved. A
@@ -444,8 +440,9 @@ class DeltaSink:
     Args:
         uri: The sink table's location: a path, or a URI such as `s3://...`.
         app_id: The transaction's application id. Default:
-            `"sverify:<node name>"`.
-        storage_options: Options for delta-rs's object store. Default: None.
+            `"sverify:<name>"`.
+        storage_options: Options for delta-rs's object store, as for
+            `DeltaSource`. Default: None.
         name: The table's name in the plans that read the stored node.
             Default: the last part of `uri`.
 
@@ -496,86 +493,74 @@ class DeltaSink:
         uri: str,
         *,
         app_id: str | None = None,
-        storage_options: dict[str, str] | None = None,
+        storage_options: Options = None,
         name: str | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
-        self.name = name or _basename(self.uri)
-        self.app_id = app_id
-        self.view: IncrementalView | None = None
-        self._written: Counter[tuple] | None = None
+        super().__init__(name or _basename(self.uri), app_id=app_id, location=self.uri)
 
-    def _attach(self, view: IncrementalView) -> None:
-        """Write `view` from now on."""
-        self.view = view
-        self.app_id = self.app_id or f"sverify:{view.name}"
-        self._written = None
-        if view.stored is not None and view.stored[0] == self.uri:
-            self._written = view.stored[1]
-
-    def _source(self) -> DeltaSource:
+    def source(self) -> DeltaSource:
         """The table as a source, for the nodes that read the stored node."""
         return DeltaSource(self.uri, storage_options=self.storage_options, name=self.name)
 
     def _stored(self) -> Stored | None:
         if self._table() is None:
             return None
-        return self._source().stored()
+        return self.source().stored()
 
     def _table(self) -> DeltaTable | None:
-        if not DeltaTable.is_deltatable(self.uri, storage_options=self.storage_options):
+        options = resolve(self.storage_options)
+        if not DeltaTable.is_deltatable(self.uri, storage_options=options):
             return None
-        return DeltaTable(self.uri, storage_options=self.storage_options)
+        return DeltaTable(self.uri, storage_options=options)
 
-    def _commit(self) -> SinkWrite:
-        """Write the attached view's state, unless the table has it."""
-        if self.view is None or self.app_id is None:
-            raise ValueError(f"no node is stored in {self.uri}: node.write(sink) attaches one")
-        view, app_id = self.view, self.app_id
-        contract = view_contract_record(view)
+    def _version(self) -> int | None:
+        dt = self._table()
+        return None if dt is None else dt.version()
+
+    def committed(self) -> Contract | None:
+        """The contract of the last commit with this sink's transaction
+        (`app_id`), with its epoch, or None."""
+        dt = self._table()
+        done = None if dt is None else dt.transaction_version(self.app_id)
+        if done is None:
+            return None
+        contract = DeltaSource(self.uri, storage_options=self.storage_options).contract()
+        return None if contract is None else replace(contract, epoch=done)
+
+    def write(self, change: SinkChange) -> SinkWrite:
+        """Create the table, overwrite it, or MERGE the change, in one commit
+        that records the contract and the transaction `(app_id, epoch)`."""
+        assert self.view is not None
+        view, contract, schema = self.view, change.contract, change.schema
+        options = resolve(self.storage_options)
         commit = CommitProperties(
             custom_metadata={METADATA_KEY: contract.to_json()},
-            app_transactions=[Transaction(app_id, contract.epoch)],
+            app_transactions=[Transaction(self.app_id, contract.epoch)],
         )
-        schema = sink_schema(view, contract.not_null)
-        dt = self._table()
-        done = None if dt is None else dt.transaction_version(app_id)
-        if dt is not None and done is not None and done >= contract.epoch:
-            check_same_state(
-                self.uri,
-                DeltaSource(self.uri, storage_options=self.storage_options).contract(),
-                contract,
-            )
-            self._written = Counter(view.counts)
-            return SinkWrite("skipped", dt.version(), contract)
         mode: Literal["created", "overwrite", "merge"]
+        dt = self._table()
         if dt is None:
             dt = DeltaTable.create(
                 self.uri,
                 schema,
                 configuration={"delta.enableChangeDataFeed": "true"},
-                storage_options=self.storage_options,
+                storage_options=options,
             )
             mode = "created"
         else:
-            mode = "merge" if self._written is not None else "overwrite"
+            mode = "overwrite" if change.replace else "merge"
         constraints = self._constraints(dt, contract)
-        counts = view.counts
         if mode == "merge":
             assert self._written is not None
-            inserted, deleted = self._merge(dt, schema, self._written, counts, commit)
+            inserted, deleted = self._merge(dt, schema, self._written, view.counts, commit)
         else:
-            rows = view._arrow(counts).cast(schema)
+            rows = change.table
             write_deltalake(
-                dt,
-                rows,
-                mode="overwrite",
-                commit_properties=commit,
-                storage_options=self.storage_options,
+                dt, rows, mode="overwrite", commit_properties=commit, storage_options=options
             )
             inserted, deleted = rows.num_rows, 0
-        self._written = Counter(counts)
-        version = DeltaTable(self.uri, storage_options=self.storage_options).version()
+        version = DeltaTable(self.uri, storage_options=options).version()
         return SinkWrite(mode, version, contract, inserted, deleted, constraints)
 
     def _constraints(self, dt: DeltaTable, contract: Contract) -> dict[str, str]:

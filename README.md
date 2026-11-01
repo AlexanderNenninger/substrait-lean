@@ -505,6 +505,19 @@ version for every input; `regions.apply(sv.Changes(...))` changes some rows,
 and `regions.replace(new_table, version=2)` swaps the table, which recomputes
 the nodes that read it.
 
+**Your own sources and sinks** take one method each. A `sverify.io.Source`
+implements `read(since)`, which returns the new rows and a cursor;
+`from_query(fn, cursor_on="ts")`, `from_frame(fn)` and `from_files(path)`
+build one from a function or a directory. sverify numbers the reads as
+versions, works out the change, and says in the report what the reads
+assume ("rows only arrive with a greater ts"), which `refresh(audit=True)`
+checks. A `sverify.io.Sink` implements `write(change)` and optionally
+`committed()`, and sverify writes each state once, with its contract;
+`sink_from(fn)` hands the whole table to a function. `Storage` holds object
+store credentials, or a function that renews them, for every table that
+needs them. [Chapter 10](notebooks/10_pipelines.py) of the tour walks
+through both.
+
 **A restarted job resumes from its sink** instead of recomputing: build the
 same nodes again and refresh. A stored node takes the stored rows only if
 its plan and source versions match what the sink recorded; otherwise it is
@@ -610,7 +623,7 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify.coverage --write-readme`):
 
 <!-- coverage:start -->
-131 of 154 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+146 of 170 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
@@ -621,17 +634,17 @@ How much of the Ibis API gets through, from
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✗ min over a sliding frame · ✗ window sum of an expression |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
-| strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* |
+| strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✗ date from columns · ✗ string to timestamp · ✗ time + interval · ✗ time truncate · ✗ strftime other directives · – between_time |
 
-Every engine runs the plans of the 131 verified operations, except:
+Every engine runs the plans of the 146 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 130 | non-equi join |
-| DuckDB | 125 | non-equi join · collect · collect ordered · unnest · unnest column · list literal |
-| Snowflake | 102 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · rolling sum by time (with `tie_free=True` it runs) |
-| Spark | 99 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
+| Polars | 145 | non-equi join |
+| DuckDB | 139 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
+| Snowflake | 116 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · replace '' · rolling sum by time (with `tie_free=True` it runs) |
+| Spark | 113 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · replace '' · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
@@ -736,7 +749,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 7 | [Windows and ASOF joins](notebooks/07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
 | 8 | [Composing contracts](notebooks/08_composition.py) | proving one step's preconditions from the previous step |
 | 9 | [Incremental views](notebooks/09_incremental_views.py) | nodes kept up to date from changes, what is recomputed, Z-sets and delta rules |
-| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state |
+| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state, your own source and sink |
 | 11 | [Engines and SQL](notebooks/11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
 | 12 | [Doubles, time and text](notebooks/12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
 | 13 | [Plans, meaning and proofs](notebooks/13_plans_and_proofs.py) | under the hood: Substrait plans, Lean's interpreter, theorems, NULL |
@@ -1556,11 +1569,13 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation that may
   leave 64 bits. Where DataFusion fails instead (division, `POWER`, casts), the
   value in the model is `NULL`.
-* **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`
-  and `character_length` are computed exactly, checked against DataFusion by
-  `python/tests/test_text.py`. `UPPER`, `LOWER` and regular expressions are black
-  boxes (`opaque`): no proof depends on what they compute, and Lean's evaluator
-  handles only ASCII case and no regular expressions. A pattern is an error unless
+* **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`,
+  `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
+  computed exactly, checked against DataFusion by `python/tests/test_text.py`; a
+  `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
+  `ILIKE` and regular expressions are black boxes (`opaque`): no proof depends on what
+  they compute, and Lean's evaluator handles only ASCII case and no regular
+  expressions. `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error unless
   `Text.simpleRegex` accepts it, a conservative subset of Rust's syntax that is
   tested to compile.
 * **Timestamps are microseconds (UTC).** `date_part` and `date_trunc` are computed

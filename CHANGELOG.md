@@ -36,6 +36,41 @@ sv.group(paid_orders.pipe(daily_totals), enriched).refresh()      # fan-out
   unchanged.
 - The README, the tour and the API reference lead with `.pipe`.
 
+### Your own sources and sinks
+
+Writing a source or a sink no longer means knowing sverify's internals
+([#156](https://github.com/AlexanderNenninger/substrait-lean/issues/156)).
+
+- `sverify.io.Source`: implement `read(since)`, which returns new rows and a
+  cursor as a `Batch` (`kind="append"`, `"snapshot"` or `"changes"`).
+  sverify numbers the reads as versions, keeps the table, and hands nodes
+  the exact change. The refresh report says what the batches assume, and
+  `refresh(audit=True)` reads the table again in full to check it, also
+  when no batch arrived. `from_query(fn, cursor_on=...)`, `from_frame(fn)`
+  and `from_files(path)` build one.
+- `sverify.io.Sink`: implement `write(change)`, which gets a `SinkChange`
+  (rows added and removed, or the whole table, and the contract), and
+  optionally `committed()`. Exactly-once skipping and contract recording
+  happen once, in the base class. `sink_from(fn)` hands the whole table to
+  a function. Nodes reading a stored node of your own sink read what was
+  written, with its exact changes. `DeltaSink` and `IcebergSink` are now
+  subclasses, and every sink reports a `SinkWrite` (new mode `"update"`;
+  `version` may be None).
+- The full protocol for table formats is public as
+  `sverify.io.VersionedSource`, with `Snapshot` and `SourceBatch`, whose
+  `unchanged`, `from_changes` and `from_snapshot` build what `changes`
+  returns. `Pipeline` no longer special-cases `StaticSource`: any source
+  with a `digest` gets it recorded.
+- `sverify.io.Storage` holds object store options shared by several tables:
+  a mapping, or a function returning fresh options whenever a table is
+  opened, so expiring tokens renew; `repr` shows option names only.
+  `DeltaSource` and `DeltaSink` take one, or a function, as
+  `storage_options`.
+- A sink's `app_id` now defaults to `sverify:<sink name>` (it was the
+  node's name, which is the same unless it clashed with a source's).
+- `Contract.from_json` ignores fields it does not know, so contracts can
+  gain fields without breaking the readers of this version.
+
 ### A pytest plugin for transforms and contracts
 
 `sverify.testing` is now public

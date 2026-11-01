@@ -41,7 +41,9 @@ def coreFns : List (Nat × String) := [
 def stringFns : List (Nat × String) := [
   (20, "upper"), (21, "lower"), (22, "character_length"), (23, "regexp_match"),
   (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
-  (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim")]
+  (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
+  (200, "reverse"), (201, "ascii"), (202, "replace"), (203, "repeat"), (204, "ilike"),
+  (205, "levenshtein")]
 
 /-- Dates and times: new anchors 300–399. -/
 def temporalFns : List (Nat × String) := [
@@ -85,7 +87,7 @@ def UnFn.anchor : UnFn → Nat
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
   -- Strings
-  | .upper => 20 | .lower => 21 | .length => 22
+  | .upper => 20 | .lower => 21 | .length => 22 | .reverse => 200 | .ascii => 201 | .replace _ _ => 202
   -- Dates and times
   | .datePart _ | .dayPart _ => 25 | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
   | .strftime _ => 61 | .bucket _ _ => 62
@@ -101,6 +103,7 @@ def BinFn.anchor : BinFn → Nat
   -- Strings
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
   | .substr _ => 32 | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
+  | .strRepeat => 203 | .ilike => 204 | .levenshtein => 205
   -- Dates and times
   | .dateAdd => 4 | .dateDiff => 60
 
@@ -355,6 +358,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .upper a => call (UnFn.anchor .upper) [writeExpr cols .str a]
   | .un .lower a => call (UnFn.anchor .lower) [writeExpr cols .str a]
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
+  | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
@@ -376,7 +380,8 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     | .substr (some n) =>
       call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
     | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]
-    | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ =>
+    | .strRepeat => call 203 [writeExpr cols .str a, writeExpr cols .int b]
+    | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ | .ilike | .levenshtein =>
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
     | _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
   | .ifThen c t e => obj [("ifThen", obj [
@@ -405,6 +410,15 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
     else obj [("project", obj [common m, ("input", obj [(kind, obj body)]),
       ("expressions", Json.arr #[])])]
 
+/-- The kinds of a projection's expressions over columns of kinds `ks`:
+`wkind`, or the kind the source plan declares where `Parse.projectKey`
+records one (a projected `0.0`, timestamp or typed `NULL`, #96). -/
+def projKinds (schemas : Schemas) (ks : List WKind) (es : List Expr) : List WKind :=
+  let declared := Parse.schemaKinds (schemas (Parse.projectKey es) 0)
+  es.zipIdx.map fun (e, i) => match declared[i]? with
+    | some k => if k == .other then wkind ks e else .ofKind k
+    | none => wkind ks e
+
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .read t => (Parse.schemaKinds (schemas t (cat t).arity)).map .ofKind
@@ -412,7 +426,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
-      ks ++ es.map (wkind ks)
+      ks ++ projKinds schemas ks es
   | .emit r m =>
       let ks := relKinds schemas cat r
       m.map (ks.getD · .other)
@@ -554,8 +568,7 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
       ("input", writeRel schemas cat df [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
-        Json.arr (es.zipIdx.map fun (e, i) =>
-          let k := wkind ks e
+        Json.arr ((es.zip (projKinds schemas ks es)).zipIdx.map fun ((e, k), i) =>
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
       ("left", writeRel schemas cat df [] a none), ("right", writeRel schemas cat df [] b none)] out

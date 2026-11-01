@@ -115,6 +115,9 @@ class DuckDBDialect(Dialect):
     def strpos(self, s: str, t: str) -> str:
         return f"strpos({s}, {t})"
 
+    def octet_length(self, s: str) -> str:
+        return f"strlen({s})"
+
     def ends_with(self, s: str, t: str) -> str:
         return f"suffix({s}, {t})"
 

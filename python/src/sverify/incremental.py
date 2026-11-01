@@ -184,7 +184,15 @@ def snapshot_diff(old: pa.Table, new: pa.Table) -> Changes:
 
 @dataclass
 class Snapshot:
-    """A table at one version, as a source hands it to a pipeline."""
+    """A table at one version, as a source hands it to a pipeline: what
+    `VersionedSource.snapshot` returns.
+
+    Attributes:
+        version: The version.
+        table: The rows at that version.
+        facts: What the metadata says about every row (`sverify.contracts.Fact`),
+            such as file statistics; empty if nothing is known.
+    """
 
     version: int
     table: pa.Table
@@ -195,12 +203,27 @@ class Snapshot:
 
 @dataclass
 class SourceBatch:
-    """What a source has between a recorded version and its latest one.
+    """What a versioned source has between a recorded version and its latest
+    one: what `VersionedSource.changes` returns.
 
     Either `changes` from the format's change feed (the net change, with
     `facts` about the inserted rows and the `trusted` assumption it rests
     on), or the new `snapshot` alone with the reason the feed is unavailable
-    (`fallback`)."""
+    (`fallback`). Build one with `unchanged`, `from_changes` or
+    `from_snapshot`.
+
+    Attributes:
+        start: The version the batch starts from (`since`).
+        end: The version it reaches.
+        snapshot_facts: What the metadata says about every row at `end`.
+        changes: The change, or None with `snapshot`.
+        facts: What the metadata says about the inserted rows.
+        trusted: What the change rests on, for the refresh report.
+        kind: `"change feed"` (trusted) or `"snapshot diff"` (exact).
+        snapshot: The table at `end`, when there is no change.
+        fallback: Why there is no change, with `snapshot`.
+        schema: The table's schema at `end`; None: the one recorded.
+    """
 
     start: int
     end: int
@@ -219,9 +242,123 @@ class SourceBatch:
     """The table's schema at `end`, which `changes` and `snapshot` have;
     None: the schema the pipeline recorded."""
 
+    @classmethod
+    def unchanged(
+        cls, version: int, facts: Sequence[Fact] = (), schema: pa.Schema | None = None
+    ) -> SourceBatch:
+        """No change: the table is still at `version`.
 
-class Source(Protocol):
-    """A versioned table: a Delta table or an Iceberg table (`sverify.io`)."""
+        Args:
+            version: The version asked for as `since`, and still the latest.
+            facts: What the metadata says about every row. Default: none.
+            schema: The table's schema. Default: the one recorded.
+
+        Returns:
+            A batch from `version` to `version`.
+        """
+        return cls(version, version, list(facts), schema=schema)
+
+    @classmethod
+    def from_changes(
+        cls,
+        since: int,
+        until: int,
+        *,
+        inserts: pa.Table | Sequence[Row] = (),
+        deletes: pa.Table | Sequence[Row] = (),
+        trusted: str,
+        facts: Sequence[Fact] = (),
+        snapshot_facts: Sequence[Fact] = (),
+        kind: Literal["change feed", "snapshot diff"] = "change feed",
+        schema: pa.Schema | None = None,
+    ) -> SourceBatch:
+        """The change from `since` to `until`, as rows inserted and deleted.
+
+        Args:
+            since: The version the change starts from.
+            until: The version it reaches.
+            inserts: Rows added: an Arrow table, or tuples in column order.
+            deletes: Rows removed, one copy each, in the same forms.
+            trusted: What the change rests on, shown in the refresh report,
+                such as `"Δ trusted as coming from Delta CDF v3→v5"`.
+            facts: What the metadata says about the inserted rows.
+                Default: none (preconditions are checked on the rows).
+            snapshot_facts: What the metadata says about every row at
+                `until`. Default: none.
+            kind: `"change feed"` (the change is trusted) or `"snapshot
+                diff"` (it was computed from two snapshots, so it is exact).
+            schema: The table's schema at `until`, which the rows have.
+                Default: the one recorded.
+
+        Returns:
+            The batch.
+        """
+        return cls(
+            since,
+            until,
+            list(snapshot_facts),
+            changes=Changes(inserts=_rows_of(inserts), deletes=_rows_of(deletes)),
+            facts=list(facts),
+            trusted=trusted,
+            kind=kind,
+            schema=schema,
+        )
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        since: int,
+        until: int,
+        table: pa.Table,
+        *,
+        reason: str,
+        snapshot_facts: Sequence[Fact] = (),
+        schema: pa.Schema | None = None,
+    ) -> SourceBatch:
+        """No change is available from `since`: the whole table at `until`
+        instead. The refresh diffs it against the state, and recomputes the
+        nodes reading it.
+
+        Args:
+            since: The version the change would start from.
+            until: The version of `table`.
+            table: The table at `until`.
+            reason: Why there is no change, shown in the refresh report.
+            snapshot_facts: What the metadata says about every row of
+                `table`. Default: none.
+            schema: The table's schema at `until`. Default: `table`'s.
+
+        Returns:
+            The batch.
+        """
+        return cls(
+            since,
+            until,
+            list(snapshot_facts),
+            snapshot=table,
+            fallback=reason,
+            schema=table.schema if schema is None else schema,
+        )
+
+
+def _rows_of(rows: pa.Table | Sequence[Row]) -> list[Row]:
+    return arrow_rows(rows) if isinstance(rows, pa.Table) else [tuple(r) for r in rows]
+
+
+class VersionedSource(Protocol):
+    """What a pipeline needs of a source: a table with integer versions that
+    hands out its snapshot and its change between two versions. Delta and
+    Iceberg tables implement it (`sverify.io`).
+
+    Sources you write yourself usually subclass `sverify.io.Source`
+    instead, which implements this protocol on top of one `read` method.
+    Implement it directly for a table format with metadata facts and a
+    change feed; `SourceBatch.from_changes` and `from_snapshot` build what
+    `changes` returns.
+
+    Attributes:
+        name: The table's name in the plans that read it.
+    """
 
     name: str
     """The table's name in the views that read it."""
@@ -241,6 +378,10 @@ class Source(Protocol):
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from version `since` to `until` (default: the latest)."""
         ...
+
+
+Source = VersionedSource
+"""The name the pipeline's internals use for `VersionedSource`."""
 
 
 class SchemaError(Exception):
@@ -527,29 +668,24 @@ class StaticSource(Pipeable):
         if until not in (None, self.version):
             raise ValueError(f"a static table only has version {self.version}")
         if since == self.version:
-            return SourceBatch(since, since, [])
+            return SourceBatch.unchanged(since)
         if since >= self._exact_since:
             inserts: list[Row] = []
             deletes: list[Row] = []
             for v, ch in self._log:
                 if v > since:
-                    inserts += [tuple(r) for r in ch.inserts]
-                    deletes += [tuple(r) for r in ch.deletes]
-            return SourceBatch(
+                    inserts += ch.inserts
+                    deletes += ch.deletes
+            return SourceBatch.from_changes(
                 since,
                 self.version,
-                [],
-                changes=Changes(inserts, deletes),
+                inserts=inserts,
+                deletes=deletes,
                 trusted=f"Δ as applied to {self.name} v{since}→v{self.version}",
                 schema=self.table.schema,
             )
-        return SourceBatch(
-            since,
-            self.version,
-            [],
-            snapshot=self.table,
-            fallback="static table replaced",
-            schema=self.table.schema,
+        return SourceBatch.from_snapshot(
+            since, self.version, self.table, reason="static table replaced"
         )
 
 
@@ -847,11 +983,11 @@ class Pipeline:
         self.preconditions: list[Discharged] = []
         """How each precondition was established on the full base tables."""
         self._keys: dict[tuple[str, tuple[str, ...]], Counter[tuple]] = {}
-        self.sources: dict[str, Source] = {}
+        self.sources: dict[str, VersionedSource] = {}
         self.versions: dict[str, int] = {}
         """The version of each source table the pipeline's state reflects."""
 
-    def source(self, name: str, source: Source, *, version: int | None = None) -> ir.Table:
+    def source(self, name: str, source: VersionedSource, *, version: int | None = None) -> ir.Table:
         """Load the snapshot of `source` at `version` (default: the latest)
         as base table `name`, record its version and what its metadata says
         about it."""
@@ -897,10 +1033,11 @@ class Pipeline:
         return out
 
     def digests(self, name: str) -> dict[str, str]:
-        """The content digest of every static table (`StaticSource`) that
-        `name` is computed from."""
-        if isinstance(src := self.sources.get(name), StaticSource):
-            return {name: src.digest}
+        """The content digest of every source with one (`StaticSource`)
+        that `name` is computed from: the tables whose versions the caller
+        gives, so a sink can tell other contents at the same version."""
+        if (digest := getattr(self.sources.get(name), "digest", None)) is not None:
+            return {name: digest}
         out: dict[str, str] = {}
         if (v := self.views.get(name)) is not None:
             for t in v.tables:
@@ -1013,6 +1150,10 @@ class Pipeline:
             pin = (until or {}).get(t)
             batch = src.changes(start) if pin is None else src.changes(start, pin)
             if batch.end == start:
+                if audit and hasattr(src, "_reread"):
+                    # A source that reads its table itself may have missed
+                    # rows its batches assume away: read it again in full.
+                    _audit_source(t, self.con.arrow[t], src._reread(start), start, start)
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
             current = self.con.arrow[t]
@@ -1049,16 +1190,12 @@ class Pipeline:
                 mode, detail = batch.kind, batch.trusted
             if audit and batch.changes is not None:
                 got = _apply_to_table(self.con, t, ch)
-                want = src.snapshot(batch.end).table
+                # A source that reads its table itself reads it again in full.
+                reread = getattr(src, "_reread", None)
+                want = reread(batch.end) if reread else src.snapshot(batch.end).table
                 if evolved:
                     want = _conform(want, current.schema)
-                if Counter(map(row_key, arrow_rows(got))) != Counter(
-                    map(row_key, arrow_rows(want))
-                ):
-                    raise AuditError(
-                        f"{t}: the change feed v{start}→v{batch.end} does not turn the "
-                        f"state into snapshot v{batch.end}; nothing was applied"
-                    )
+                _audit_source(t, got, want, start, batch.end)
             changes[t], versions[t] = ch, batch.end
             snapshot_facts[t] = batch.snapshot_facts
             report.append(
@@ -1227,6 +1364,21 @@ class _Commit:
     counts: dict[str, Counter[tuple]]
     """The new contents of each view that changed."""
     found: list[Discharged]
+
+
+def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:
+    """Raise unless `got` (the state after the change) has the rows of
+    `want` (the source's snapshot at `end`)."""
+    if Counter(map(row_key, arrow_rows(got))) != Counter(map(row_key, arrow_rows(want))):
+        if start == end:
+            raise AuditError(
+                f"{t}@v{start} differs from the table read again in full: its batches missed "
+                "rows; nothing was applied"
+            )
+        raise AuditError(
+            f"{t}: the change feed v{start}→v{end} does not turn the state into snapshot "
+            f"v{end}; nothing was applied"
+        )
 
 
 def _conform_batch(batch: SourceBatch, schema: pa.Schema) -> SourceBatch:
