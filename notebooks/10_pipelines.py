@@ -43,7 +43,10 @@ def _(mo):
 
     Real pipelines are layered like that: cleaned tables feed joined tables
     feed reports. In `sverify` the layers are transforms composed directly,
-    each called on the one below. Without a `.write` in between they
+    each piped from the one below, so the code reads in the order the data
+    flows: `orders.pipe(paid).pipe(doubled)` is the same node as the call
+    form `doubled(paid(orders))`. The other inputs of a layer come by
+    keyword, as `base.pipe(cities, customers=customers)`. Without a `.write` in between they
     **fuse** into one plan, maintained as one incremental view (chapter 9).
     `.write(sink)` **stores** a layer, as a cache in the middle of a job or
     as its output; the layers above read the stored table as a versioned
@@ -51,7 +54,7 @@ def _(mo):
     once and shared, and only changes flow through the layers.
 
     This chapter brings chapters 8 and 9 together: the base layer is the
-    contracted `doubled(paid(orders))`, and its guarantees keep holding in
+    contracted `orders.pipe(paid).pipe(doubled)`, and its guarantees keep holding in
     **every** state of the pipeline, not only the first.
 
     ## Three layers
@@ -111,9 +114,9 @@ def _():
         name="customers",
     )
 
-    base = doubled(paid(orders)).write(DeltaSink(str(lake / "base")))
-    by_city = cities(base, customers)
-    by_location = located(base, customers)
+    base = orders.pipe(paid).pipe(doubled).write(DeltaSink(str(lake / "base")))
+    by_city = base.pipe(cities, customers=customers)
+    by_location = base.pipe(located, customers=customers)
     monday = sv.group(by_city, by_location)
     print(monday.refresh())
     return base, by_city, by_location, cities, customers, lake, monday, orders, pa, sv
@@ -124,7 +127,7 @@ def _(mo):
     mo.mermaid(
         """
         graph BT
-          O["orders"] --> B["base (Delta table)<br/>doubled(paid(orders)), one fused plan"]
+          O["orders"] --> B["base (Delta table)<br/>orders.pipe(paid).pipe(doubled), one fused plan"]
           B --> C["cities<br/>inner join customers"]
           B --> L["located<br/>left join customers<br/>(recomputed)"]
           K["customers"] --> C
@@ -141,7 +144,7 @@ def _(base, mo, monday):
         "* `paid` and `doubled` have no `.write` between them, so they fuse into "
         "one plan; `.write(DeltaSink(...))` stores the result as `base`. `cities` and "
         "`located` read `base`'s Delta table, not `orders`.\n"
-        "* A contracted transform called on a stored node builds on what that node's "
+        "* A contracted transform piped from a stored node builds on what that node's "
         "plan proved, as in a direct composition: `cities` requires "
         "`_.doubled.notnull()` of `base`, which `doubled` guarantees, so it is "
         "checked once, when the node is built, and never on the data. A precondition "
@@ -376,7 +379,7 @@ def _(base, cities, lake, pa, sv):
             self.record.write_text(change.contract.to_json())
 
     crm = from_query(signed_up_after, cursor_on="signed_up", name="crm")
-    report = cities(base, crm).write(ParquetFile(lake / "city_report.parquet"))
+    report = base.pipe(cities, customers=crm).write(ParquetFile(lake / "city_report.parquet"))
     print(report.refresh())
 
     crm_signups.append({"name": "bob", "city": "Oslo", "signed_up": 3})

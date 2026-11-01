@@ -67,6 +67,7 @@ from sverify.incremental import (
 )
 from sverify.io._common import ColumnStats, Contract, SinkWrite, q, stats_facts
 from sverify.io._sink import Sink, SinkChange
+from sverify.steps import Pipeable
 
 CONTRACT = "Iceberg contract"
 KEY = "sverify.contract"
@@ -178,7 +179,7 @@ def contract_facts(t: Table) -> list[Fact]:
     ]
 
 
-class IcebergSource:
+class IcebergSource(Pipeable):
     """An Iceberg table of a catalog, read by snapshot sequence number, as
     the input of transforms. `name` is the table's name in the plans that
     read it (default: the last part of `identifier`).

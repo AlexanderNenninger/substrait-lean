@@ -104,6 +104,17 @@ def test_audit_catches_a_row_the_cursor_missed():
     ok.refresh(audit=True)
 
 
+def test_sources_of_your_own_pipe_into_steps():
+    f = feed()
+    node = from_query(f.since, cursor_on="ts", name="payments").pipe(big).pipe(ids)
+    node.refresh()
+    assert rows_of(node) == [(1,)]
+    regions = from_frame(lambda: pa.table({"id": [1], "region": ["eu"]}), name="regions")
+    out = regions.pipe(ids)
+    out.refresh()
+    assert rows_of(out) == [(1,)]
+
+
 def test_preconditions_are_checked_on_the_rows():
     f = feed()
     node = big(from_query(f.since, cursor_on="ts", name="payments"))

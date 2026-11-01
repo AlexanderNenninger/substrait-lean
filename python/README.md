@@ -65,7 +65,7 @@ def big_orders(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
 
-big = big_orders(orders)  # proved here, before any data runs
+big = orders.pipe(big_orders)  # proved here, before any data runs
 big.refresh()  # computed, on DuckDB by default
 orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
 big.refresh(engine="polars")  # updated from the changes alone, on another engine
@@ -110,7 +110,7 @@ def per_customer(orders):
     )
 
 
-totals = per_customer(orders)  # proved here, like an Ibis transform
+totals = orders.pipe(per_customer)  # proved here, like an Ibis transform
 totals.refresh()
 assert sorted(totals.to_arrow().to_pylist(), key=str) == [
     {"customer": "bob", "total": 5},
@@ -158,17 +158,21 @@ sv.verify(
 )  # SQL, checked; returns the report
 to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.Unsupported
 
-# p = paid(DeltaSource("s3://.../orders")).write(DeltaSink("s3://.../paid"))  # stored: a source
-# r = revenue(p).write(DeltaSink("s3://.../revenue"))
+# p = DeltaSource("s3://.../orders").pipe(paid).write(DeltaSink("s3://.../paid"))  # stored
+# r = p.pipe(revenue, regions=regions).write(DeltaSink("s3://.../revenue"))
 # r.refresh(engine="polars"); sv.group(r, other).refresh(); r.to_pandas()
 ```
 
 * `@sv.transform(requires=..., ensures=..., on_unproved="error" | "runtime" | "warn")`
   proves a contract on each call; `.last_report` says what was proved and
   what is known about every output column. `sv.unique(...)` states keys.
-* Called on sources (`sverify.io`) or other nodes, transforms build nodes
-  that compose directly: a downstream precondition is proved from the
-  upstream contract (`CompositionError` names a broken link).
+* `source.pipe(paid).pipe(revenue, regions=regions)` builds nodes left to
+  right, in the order the data flows (the call form `revenue(paid(source),
+  regions=regions)` is the same node). A step is a transform, SQL
+  (`sv.sql(query)`, which binds the chained node to the one table the
+  keywords leave over) or a plain function. A downstream precondition is
+  proved from the upstream contract (`CompositionError` names a broken
+  link).
 * Without `.write` in between, transforms fuse into one plan; `.write(sink)`
   stores a node, exactly once per state, and nodes downstream read it as a
   versioned source. `refresh(engine=...)` updates the whole lineage, and

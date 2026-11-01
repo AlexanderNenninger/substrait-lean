@@ -29,7 +29,7 @@ orders = StaticSource(  # in memory; Delta and Iceberg tables work the same way
 def big_orders(orders):
     return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
-big = big_orders(orders)  # proved here, before any data runs
+big = orders.pipe(big_orders)  # proved here, before any data runs
 big.refresh()             # computed, on DuckDB by default
 orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
 big.refresh()             # updated from the changes alone
@@ -152,7 +152,7 @@ def duplicate_payments(transactions):
              amount_cents=a.amount_cents)
 
 transactions = DeltaSource(str(lake / "transactions"))
-dups = duplicate_payments(transactions)  # proves the contract
+dups = transactions.pipe(duplicate_payments)  # proves the contract
 sink = DeltaSink(str(lake / "duplicate_payments"))
 stored = dups.write(sink)  # NOT NULL and CHECK constraints from `ensures`, the contract in the commit
 first = stored.refresh()   # checks the preconditions, computes, writes
@@ -377,12 +377,14 @@ broken link.
 
 ### Nodes: composing, storing, refreshing
 
-A transform called on a source or another node builds a **node**. Nodes
-compose directly: `doubled_paid(paid(orders))` is one plan. `refresh()`
-brings a node up to date from the changes to its sources, with the delta
-plans Lean derives, and the results come out through `to_arrow()`,
-`to_polars()`, `to_pandas()` and `.table`, an Ibis table to query further.
-An update is a delete plus an insert:
+A source or a node **pipes** into a transform to build a new **node**, so a
+job reads in the order its data flows: `orders.pipe(paid).pipe(doubled_paid)`
+is one plan, the same as the call form `doubled_paid(paid(orders))`. The
+chained node fills the transform's first table parameter, and its other
+inputs come by keyword. `refresh()` brings a node up to date from the
+changes to its sources, with the delta plans Lean derives, and the results
+come out through `to_arrow()`, `to_polars()`, `to_pandas()` and `.table`, an
+Ibis table to query further. An update is a delete plus an insert:
 
 ```python
 customers = StaticSource(pa.table({"name": ["ada"], "city": ["Paris"]}), name="customers")
@@ -392,7 +394,7 @@ def cities(orders, customers):
     return orders.join(customers, orders.customer == customers.name).select(
         orders.id, customers.city)
 
-c = cities(orders, customers)
+c = orders.pipe(cities, customers=customers)   # fan-in: the other inputs by keyword
 c.refresh()
 customers.apply(sv.Changes(inserts=[("cy", "Rome")]))
 print(c.refresh())
@@ -401,6 +403,20 @@ print(c.refresh())
 # ...
 assert c.to_arrow().to_pylist() == [{"id": 3, "city": "Rome"}]
 assert c.table.filter(_.city == "Rome").count().to_pyarrow().as_py() == 1
+```
+
+A step can also be SQL or a plain function. `sv.sql(query)` is a step whose
+inputs are the tables the query reads: the keyword inputs bind their own
+names, and the chained node binds to the one table left over (`as_="orders"`
+names it, and is checked). A plain function from Ibis tables to an Ibis
+table is a transform with no contract:
+
+```python
+c2 = orders.pipe(
+    sv.sql("SELECT o.id, c.city FROM customers c JOIN orders o ON o.customer = c.name"),
+    customers=customers,
+)                                                    # the chained node is `orders`
+large = orders.pipe(lambda t: t.filter(_.amount > 20))
 ```
 
 A node without delta rules (left join, aggregate, window, `DISTINCT`,
@@ -414,8 +430,8 @@ versioned source. Without a `.write` in between, transforms fuse into one
 plan and the intermediate rows are never stored:
 
 ```python
-paid_orders = paid(orders).write(DeltaSink("lake/paid"))         # stored: a source
-report = doubled_paid(paid_orders).write(DeltaSink("lake/report"))
+paid_orders = orders.pipe(paid).write(DeltaSink("lake/paid"))         # stored: a source
+report = paid_orders.pipe(doubled_paid).write(DeltaSink("lake/report"))
 print(report.refresh(engine="polars"))  # paid first, then report; each written once
 # paid:
 #   computed
@@ -423,11 +439,20 @@ print(report.refresh(engine="polars"))  # paid first, then report; each written 
 ```
 
 `refresh()` on any node brings its whole lineage up to date, upstream first,
-writing every stored node exactly once per state. `sv.group(a, b).refresh()`
-refreshes several nodes against the same source versions, and a stored node
-they share is refreshed and written once. The engine is chosen at refresh
-time: `"duckdb"` (the default, in memory), `"polars"`, `"datafusion"`,
-`"spark"` or a Spark session. The nodes keep their state while the process
+writing every stored node exactly once per state. To fan out, assign the
+shared node to a variable and pipe it into each branch;
+`sv.group(a, b).refresh()` refreshes several nodes against the same source
+versions, and a stored node they share is refreshed and written once:
+
+```python
+totals = paid_orders.pipe(lambda t: t.group_by("customer").aggregate(n=t.count()))
+print(sv.group(report, totals).refresh())  # paid is refreshed and written once
+# paid:
+# ...
+```
+
+The engine is chosen at refresh time: `"duckdb"` (the default, in memory),
+`"polars"`, `"datafusion"`, `"spark"` or a Spark session. The nodes keep their state while the process
 runs; a stored node's table is its durable state.
 
 ### Delta Lake and Iceberg
@@ -499,7 +524,7 @@ its plan and source versions match what the sink recorded; otherwise it is
 computed, and the report says why:
 
 ```python
-restarted = duplicate_payments(DeltaSource(str(lake / "transactions"))).write(
+restarted = DeltaSource(str(lake / "transactions")).pipe(duplicate_payments).write(
     DeltaSink(str(lake / "duplicate_payments")))
 print(restarted.refresh())
 # duplicate_payments:

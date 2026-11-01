@@ -80,6 +80,7 @@ from sverify.engine import (
     to_arrow,
     written_plan,
 )
+from sverify.steps import Pipeable
 
 Row = tuple
 WEIGHT = "__weight"
@@ -528,7 +529,7 @@ class Stored:
     table: pa.Table
 
 
-class StaticSource:
+class StaticSource(Pipeable):
     """An in-memory Arrow table as a source, such as a small lookup table or
     the rows a test feeds in.
 

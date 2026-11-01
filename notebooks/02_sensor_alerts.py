@@ -315,8 +315,8 @@ def _(mo):
 @app.cell
 def _(IcebergSource, alerts, catalog, sv, three_high):
     readings = IcebergSource(catalog, "plant.readings")
-    naive = sv.transform()(three_high)(readings)
-    alerts_node = alerts(readings)
+    naive = readings.pipe(three_high)  # a plain function: no contract
+    alerts_node = readings.pipe(alerts)
     report = alerts.last_report
     assert report.proved and report.deterministic
     sv.group(naive, alerts_node).refresh()
@@ -365,7 +365,7 @@ def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to
 
     _rows = {}
     for _engine in ENGINES:
-        _node = alerts(readings)
+        _node = readings.pipe(alerts)
         _node.refresh(engine=_engine)
         _rows[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _rows.values()}) == 1
@@ -434,7 +434,7 @@ def _(mo):
 def _(alerts, minute, readings, readings_batch, readings_table, stored):
     readings_table.append(readings_batch((2, minute(3), 37.0), (2, minute(4), 38.0)))
     print(stored.refresh())
-    _from_scratch = alerts(readings)
+    _from_scratch = readings.pipe(alerts)
     _from_scratch.refresh()
     _rows = sorted(map(repr, stored.to_arrow().to_pylist()))
     assert _rows == sorted(map(repr, _from_scratch.to_arrow().to_pylist()))

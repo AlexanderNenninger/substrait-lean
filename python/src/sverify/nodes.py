@@ -6,12 +6,14 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 public names (`Node`, `group`) are re-exported by `sverify`.
 
     orders = DeltaSource("s3://lake/orders")
-    p = paid(orders).write(DeltaSink("s3://lake/paid"))
-    r = revenue(p).write(DeltaSink("s3://lake/revenue"))
+    p = orders.pipe(paid).write(DeltaSink("s3://lake/paid"))
+    r = p.pipe(revenue).write(DeltaSink("s3://lake/revenue"))
     r.refresh(engine="polars")
 
-Calling a contracted transform (`sverify.transform`) on a source or a node
-builds a node. Its contract is checked then, on placeholder tables with the
+Piping a source or a node into a step (`Node.pipe`: a contracted transform,
+`sverify.sql(query)` or a plain function) builds a node, as does calling a
+contracted transform (`sverify.transform`) on it: `orders.pipe(paid)` is
+`paid(orders)`. Its contract is checked then, on placeholder tables with the
 sources' schemas: its postconditions are proved, and a precondition on
 another node's result must follow from what that node guarantees
 (`CompositionError`). Preconditions on sources are checked on the data when
@@ -43,6 +45,7 @@ from sverify.contracts import Discharged, _lookup, _register
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
+from sverify.steps import Step, as_transform
 
 if TYPE_CHECKING:
     import pandas
@@ -77,13 +80,14 @@ class Sink(Protocol):
 class Node:
     """The result of a contracted transform over sources or other nodes.
 
-        r = revenue(paid(orders))              # one fused plan
-        r = revenue(paid(orders).write(sink))  # paid is stored, revenue reads it
+        r = orders.pipe(paid).pipe(revenue)              # one fused plan
+        r = orders.pipe(paid).write(sink).pipe(revenue)  # paid is stored, revenue reads it
         r.refresh(engine="polars")
         r.to_pandas()
 
-    Built by calling a transform (`sverify.transform`) on a source
-    (`sverify.io`) or a node; its contract is checked then. `write(sink)`
+    Built by piping a source (`sverify.io`) or a node into a step (`pipe`),
+    or by calling a transform (`sverify.transform`) on it, which is the same:
+    `orders.pipe(paid)` is `paid(orders)`. Its contract is checked then. `write(sink)`
     stores the node and returns the stored node, which downstream transforms
     read as a versioned source. `refresh` brings the node and every node it
     reads up to date; the results come from the last refresh, through
@@ -125,13 +129,13 @@ class Node:
         def doubled(t):
             return t.select(t.id, doubled=t.amount * 2)
 
-        r = doubled(paid(orders))  # one fused plan, proved here
+        r = orders.pipe(paid).pipe(doubled)  # one fused plan, proved here
         r.refresh()  # computed, on DuckDB by default
         r.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]
 
         lake = tempfile.mkdtemp()
-        p = paid(orders).write(DeltaSink(f"{lake}/paid"))  # stored: a source
-        r = doubled(p).write(DeltaSink(f"{lake}/doubled"))
+        p = orders.pipe(paid).write(DeltaSink(f"{lake}/paid"))  # stored: a source
+        r = p.pipe(doubled).write(DeltaSink(f"{lake}/doubled"))
         r.refresh()  # paid first, then doubled; each written once
 
         orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
@@ -169,6 +173,66 @@ class Node:
             self._plan = written_plan(to_substrait_json(self._query()._expr))
         return self._plan
 
+    def pipe(self, step: Step, /, **inputs: Any) -> Node:
+        """Apply `step` to this node, left to right: `orders.pipe(paid)` is
+        `paid(orders)`, and a job reads in the order its data flows.
+
+        The chained node fills the step's first table parameter, and the
+        step's other inputs come by keyword. The contract is checked as when
+        the transform is called: `orders.pipe(paid)` builds the same node,
+        and the same plan, as `paid(orders)`.
+
+        Args:
+            step: What to apply: a contracted transform (`sverify.transform`);
+                a SQL step, `sverify.sql(query)`, whose inputs are the tables
+                the query reads; or a plain function from Ibis tables to an
+                Ibis table, which is a transform with no contract.
+            **inputs: The step's other inputs, by parameter name: sources,
+                nodes, or plain values. For a SQL step, the keywords are
+                table names in the query, and the chained node is the one
+                table left over.
+
+        Returns:
+            The node `step` builds.
+
+        Raises:
+            TypeError: `step` is not a step, or an input is missing, given
+                twice (as the chained node and by keyword) or unknown; the
+                message names the step's parameters. For a SQL step, a table
+                of the query has no input, the chained node is left unused,
+                or `as_` is not the table left over.
+            sverify.errors.CompositionError: A precondition on another
+                node's result does not follow from what that node guarantees.
+            sverify.errors.VerificationError: A postcondition could not be
+                proved.
+
+        Examples:
+            With `orders`, `paid` and `doubled` from the `Node` example, and
+            a lookup table of customers:
+
+            ```python
+            customers = StaticSource(
+                pa.table({"customer": ["ada", "cy"], "region": ["eu", "us"]}),
+                name="customers",
+            )
+
+            r = orders.pipe(paid).pipe(doubled)  # the same node as doubled(paid(orders))
+            regional = orders.pipe(paid).pipe(  # SQL, with the chained node as orders
+                sv.sql(
+                    "SELECT o.id, c.region FROM orders o "
+                    "JOIN customers c ON o.customer = c.customer"
+                ),
+                customers=customers,
+            )
+            big = orders.pipe(lambda t: t.filter(t.amount > 20))  # no contract
+            sv.group(r, regional, big).refresh()
+            regional.to_arrow().to_pylist()  # [{'id': 3, 'region': 'us'}]
+            ```
+        """
+        transform = as_transform(step)
+        args, kwargs = transform._pipe_args(self, inputs)
+        return derive(transform, args, kwargs)
+
     def write(self, sink: Sink) -> Node:
         """Store this node in `sink` (`sverify.io.DeltaSink`, `IcebergSink`),
         as a cache in the middle of a job or as its output. Each refresh
@@ -198,8 +262,8 @@ class Node:
 
             ```python
             lake = tempfile.mkdtemp()
-            p = paid(orders).write(DeltaSink(f"{lake}/paid"))
-            r = doubled(p).write(DeltaSink(f"{lake}/doubled"))
+            p = orders.pipe(paid).write(DeltaSink(f"{lake}/paid"))
+            r = p.pipe(doubled).write(DeltaSink(f"{lake}/doubled"))
             [w.mode for w in r.refresh().writes]  # ['created', 'created']
             ```
         """
@@ -716,7 +780,7 @@ def group(*nodes: Node) -> Group:
         def customers(t):
             return t.select(t.customer)
 
-        g = sv.group(r, customers(p))
+        g = sv.group(r, p.pipe(customers))  # fan-out: p is piped twice
         result = g.refresh()  # paid is refreshed and written once
         [s.node for s in result.nodes]  # ['paid', 'doubled', 'customers']
         print(g.status())  # one line per node

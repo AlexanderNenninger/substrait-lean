@@ -33,6 +33,7 @@ from sverify.incremental import (
     arrow_rows,
     snapshot_diff,
 )
+from sverify.steps import Pipeable
 
 Kind = Literal["append", "snapshot", "changes"]
 
@@ -103,7 +104,7 @@ class _State:
     """The log holds every batch after this version."""
 
 
-class Source(ABC):
+class Source(Pipeable, ABC):
     """A table you read yourself: subclass it and implement `read`.
 
     `read(since)` returns what is new since the cursor of the last read (a

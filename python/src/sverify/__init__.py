@@ -7,8 +7,9 @@ DataFusion and Spark.
     @sv.transform(requires={"orders": [...]}, ensures=[...])
     def paid(orders): ...
 
-    p = paid(DeltaSource("s3://lake/orders")).write(DeltaSink("s3://lake/paid"))
-    r = revenue(p).write(DeltaSink("s3://lake/revenue"))
+    orders = DeltaSource("s3://lake/orders")
+    p = orders.pipe(paid).write(DeltaSink("s3://lake/paid"))
+    r = p.pipe(revenue).write(DeltaSink("s3://lake/revenue"))
     r.refresh(engine="polars")
     r.to_pandas()
 
@@ -16,13 +17,15 @@ DataFusion and Spark.
   what it assumes of its inputs (`requires`) and what it promises of its
   output (`ensures`), which Lean proves. Conditions are Ibis expressions, SQL
   snippets, `unique` keys and `references` (foreign keys).
-* Called on sources (`sverify.io`) or other nodes, a transform builds a
-  `Node`. Transforms compose directly, fused into one plan until `.write`
+* A source (`sverify.io`) or a node piped into a transform,
+  `orders.pipe(paid)`, builds a `Node` (as does the call form `paid(orders)`).
+  Transforms compose left to right, fused into one plan until `.write`
   stores a result; `refresh` keeps the nodes up to date from the changes to
   their sources, and `group` refreshes several together. A batch of
   `Changes` feeds an in-memory source (`sverify.io.StaticSource`).
-* `sql(query, orders=orders)` writes a transform's body in SQL over its
-  input tables, by their keyword names.
+* `sql(query)` is SQL as a step of `.pipe`, reading the chained node and
+  the keyword inputs by their table names; `sql(query, orders=orders)`
+  writes a transform's body in SQL over its input tables.
 * `verify` proves a contract of an Ibis expression without a transform, and
   returns a `Report`.
 * `connect` gives a connection of named in-memory tables, for Ibis

@@ -46,16 +46,16 @@ def _(mo):
     that no longer add up.
 
     *Incremental view maintenance* computes only the **change** to the
-    result from the **changes** to the inputs. A transform you call on
-    sources is a *node*, and `node.refresh()` keeps it up to date with
+    result from the **changes** to the inputs. A source piped into a
+    transform is a *node*, and `node.refresh()` keeps it up to date with
     update rules proved correct in Lean, on DuckDB, Polars, DataFusion or
     Spark (chapter 11). We'll use it first, see what it recomputes
     instead, and then look at how it works.
 
     ## Keeping a join up to date
 
-    You write the query once, as an Ibis transform. Called on two sources
-    it builds a node; `refresh()` computes its result once, and from then on
+    You write the query once, as an Ibis transform. We pipe one source into
+    it and pass the other by keyword, which builds a node; `refresh()` computes its result once, and from then on
     keeps it up to date from the inserts and deletes alone. Here the
     sources are in-memory tables (`StaticSource`, from `sverify.io`); Delta
     and Iceberg tables work the same way (chapter 1 reads a Delta table):
@@ -92,7 +92,7 @@ def _():
     def orders_with_city(o, c):
         return o.join(c, o.customer == c.name).select(o.id, c.city)
 
-    view = orders_with_city(orders, customers)  # plans run on DuckDB by default
+    view = orders.pipe(orders_with_city, c=customers)  # plans run on DuckDB by default
     view.refresh()
     view.to_pandas()
     return customers, delta_plans, orders, orders_with_city, sv, view
@@ -156,7 +156,7 @@ def _(apply_batch, customers, delta_plans, display, mo, orders, orders_with_city
         }
         _report = view.refresh()
 
-    _fresh = orders_with_city(orders, customers)
+    _fresh = orders.pipe(orders_with_city, c=customers)
     _fresh.refresh()
     _maintained, _recomputed = _rows(view.to_arrow()), _rows(_fresh.to_arrow())
     _equal = _maintained == _recomputed
@@ -234,11 +234,11 @@ def _(customers, mo, orders, orders_with_city, sv):
         return o.group_by("customer").aggregate(total=o.amount.sum())
 
     KINDS = {
-        "the inner join above": lambda: orders_with_city(orders, customers),
-        "orders.limit(2)": lambda: first_two(orders),
-        "a left join": lambda: located(orders, customers),
-        "orders.distinct()": lambda: distinct_orders(orders),
-        "total amount per customer": lambda: totals(orders),
+        "the inner join above": lambda: orders.pipe(orders_with_city, c=customers),
+        "orders.limit(2)": lambda: orders.pipe(first_two),
+        "a left join": lambda: orders.pipe(located, c=customers),
+        "orders.distinct()": lambda: orders.pipe(distinct_orders),
+        "total amount per customer": lambda: orders.pipe(totals),
     }
     kind = mo.ui.dropdown(list(KINDS), value="a left join", label="query")
     kind
