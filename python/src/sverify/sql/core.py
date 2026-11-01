@@ -1633,9 +1633,10 @@ class _Parser:
             case "selection":
                 if _field(v, "outerReference") is not None:
                     raise Unsupported("outer references are not supported")
-                sf = _req(_req(v, "directReference"), "structField")
-                if _field(sf, "child") is not None:
-                    raise Unsupported("nested field references are not supported")
+                ref = _req(v, "directReference")
+                sf = _field(ref, "structField")
+                if _field(v, "expression") is not None or sf is None or _field(sf, "child"):
+                    raise Unsupported("struct fields and list elements have no SQL form yet (#94)")
                 return Field(_nat_d(sf, "field"))
             case "scalarFunction":
                 full_name = self.name(_nat_d(v, "functionReference"))
@@ -2071,6 +2072,8 @@ class _Parser:
         st = _field(schema, "struct")
         arity = len(_arr(st, "types")) if st is not None else len(_arr(schema, "names"))
         types = _schema_types(schema)
+        if any(isinstance(t, dict) and "struct" in t for t in types):
+            raise Unsupported("struct columns have no SQL form yet (#94)")
         sql_kinds = tuple(_type_kinds(t)[1] for t in types) + (None,) * (arity - len(types))
         lean = [_lean_type_kind(t) for t in types]
         key, v = _oneof("read type", r, ("namedTable", "virtualTable"))

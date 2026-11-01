@@ -117,9 +117,73 @@ inductive Kind where
   | timeTz
   /-- A list of values of the element kind. -/
   | list (elem : Kind)
+  /-- A struct of fields of these kinds, in order. Its value is the list of
+  its fields (`docs/nested-values.md`). -/
+  | struct (fields : List Kind)
   /-- `DECIMAL(p, s)`, as its unscaled integer (#27). -/
   | dec (p s : Nat)
-  deriving Repr, BEq, DecidableEq, Inhabited
+  deriving Repr, BEq, Inhabited
+
+mutual
+/-- `DecidableEq` by hand: the deriving handler does not take the list in
+`struct` (as for `Value.decEq`). -/
+def Kind.decEq : (a b : Kind) → Decidable (a = b)
+  | .int, .int => isTrue rfl
+  | .float, .float => isTrue rfl
+  | .time, .time => isTrue rfl
+  | .date, .date => isTrue rfl
+  | .str, .str => isTrue rfl
+  | .bool, .bool => isTrue rfl
+  | .tod, .tod => isTrue rfl
+  | .other, .other => isTrue rfl
+  | .timeTz, .timeTz => isTrue rfl
+  | .list a, .list b => match Kind.decEq a b with
+    | isTrue h => isTrue (h ▸ rfl)
+    | isFalse h => isFalse (by simp [h])
+  | .struct as, .struct bs => match Kind.decEqList as bs with
+    | isTrue h => isTrue (h ▸ rfl)
+    | isFalse h => isFalse (by simp [h])
+  | .dec p s, .dec q t =>
+    if h : p = q ∧ s = t then isTrue (by obtain ⟨rfl, rfl⟩ := h; rfl)
+    else isFalse (by simp only [Kind.dec.injEq]; exact h)
+  | .int, .float | .int, .time | .int, .date | .int, .str | .int, .bool | .int, .tod
+  | .int, .other | .int, .timeTz | .int, .list _ | .int, .struct _ | .int, .dec _ _
+  | .float, .int | .float, .time | .float, .date | .float, .str | .float, .bool | .float, .tod
+  | .float, .other | .float, .timeTz | .float, .list _ | .float, .struct _ | .float, .dec _ _
+  | .time, .int | .time, .float | .time, .date | .time, .str | .time, .bool | .time, .tod
+  | .time, .other | .time, .timeTz | .time, .list _ | .time, .struct _ | .time, .dec _ _
+  | .date, .int | .date, .float | .date, .time | .date, .str | .date, .bool | .date, .tod
+  | .date, .other | .date, .timeTz | .date, .list _ | .date, .struct _ | .date, .dec _ _
+  | .str, .int | .str, .float | .str, .time | .str, .date | .str, .bool | .str, .tod
+  | .str, .other | .str, .timeTz | .str, .list _ | .str, .struct _ | .str, .dec _ _
+  | .bool, .int | .bool, .float | .bool, .time | .bool, .date | .bool, .str | .bool, .tod
+  | .bool, .other | .bool, .timeTz | .bool, .list _ | .bool, .struct _ | .bool, .dec _ _
+  | .tod, .int | .tod, .float | .tod, .time | .tod, .date | .tod, .str | .tod, .bool
+  | .tod, .other | .tod, .timeTz | .tod, .list _ | .tod, .struct _ | .tod, .dec _ _
+  | .other, .int | .other, .float | .other, .time | .other, .date | .other, .str | .other, .bool
+  | .other, .tod | .other, .timeTz | .other, .list _ | .other, .struct _ | .other, .dec _ _
+  | .timeTz, .int | .timeTz, .float | .timeTz, .time | .timeTz, .date | .timeTz, .str
+  | .timeTz, .bool | .timeTz, .tod | .timeTz, .other | .timeTz, .list _ | .timeTz, .struct _
+  | .timeTz, .dec _ _ | .list _, .int | .list _, .float | .list _, .time | .list _, .date
+  | .list _, .str | .list _, .bool | .list _, .tod | .list _, .other | .list _, .timeTz
+  | .list _, .struct _ | .list _, .dec _ _ | .struct _, .int | .struct _, .float
+  | .struct _, .time | .struct _, .date | .struct _, .str | .struct _, .bool | .struct _, .tod
+  | .struct _, .other | .struct _, .timeTz | .struct _, .list _ | .struct _, .dec _ _
+  | .dec _ _, .int | .dec _ _, .float | .dec _ _, .time | .dec _ _, .date | .dec _ _, .str
+  | .dec _ _, .bool | .dec _ _, .tod | .dec _ _, .other | .dec _ _, .timeTz | .dec _ _, .list _
+  | .dec _ _, .struct _ =>
+    isFalse (by simp)
+
+def Kind.decEqList : (as bs : List Kind) → Decidable (as = bs)
+  | [], [] => isTrue rfl
+  | [], _ :: _ | _ :: _, [] => isFalse (by simp)
+  | a :: as, b :: bs => match Kind.decEq a b, Kind.decEqList as bs with
+    | isTrue h, isTrue h' => isTrue (h ▸ h' ▸ rfl)
+    | isFalse h, _ => isFalse (by simp [h])
+    | _, isFalse h' => isFalse (by simp [h'])
+end
+
+instance : DecidableEq Kind := Kind.decEq
 
 /-- Decimals of any type and integers compare as numbers: `decimalCall`
 brings them to one scale. -/
@@ -145,6 +209,8 @@ partial def typeKind (ty : Json) : Kind :=
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
     .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
+  else if let some t := (ty.getObjVal? "struct").toOption then
+    .struct (((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind)
   -- A scale of 0 is left out of the JSON.
   else if let some d := (ty.getObjVal? "decimal").toOption then
     .dec ((d.getObjValAs? Nat "precision").toOption.getD 38) ((d.getObjValAs? Nat "scale").toOption.getD 0)
@@ -213,6 +279,13 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.decimal p s) _ | .un (.dkind p s) _ => .dec p s
   | .un (.dround _) _ | .un (.dtrunc _) _ | .un (.ftod _) _ => .int
   | .un (.dtof _) _ => .float
+  | .un (.structField i) a => match a.kind cols with
+    | .struct ks => ks.getD i .other
+    | _ => .other
+  | .un (.listElement _) a => match a.kind cols with
+    | .list k => k
+    | _ => .other
+  | .un .cardinality _ => .int
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
@@ -774,6 +847,9 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     else match stringFns.lookup base with
       | some ints => some (if ints.contains k then .int else .str)
       | none => none
+  if base == "cardinality" then
+    if let [some k] := ks then
+      if !(k matches .list _ | .other) then throw s!"{name}: argument of kind {repr k}, not a list"
   for (k, i) in ks.zipIdx do
     if let (some w, some k) := (want i, k) then
       if k != .other && k != w then
@@ -1046,6 +1122,7 @@ def mkCall : String → List Expr → J Expr
   | "equal", [a, b] => pure (.bin .eq a b)
   | "not_equal", [a, b] => pure (.un .not (.bin .eq a b))
   | "lt", [a, b] | "list_lt", [a, b] => pure (.bin .lt a b)
+  | "cardinality", [a] => pure (.un .cardinality a)
   | "gt", [a, b] => pure (.bin .lt b a)
   | "lte", [a, b] => pure (.un .not (.bin .lt b a))
   | "gte", [a, b] => pure (.un .not (.bin .lt a b))
@@ -1290,6 +1367,29 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"
 
+/-- `base` followed by the reference segments `seg` (`structField`,
+`listElement`, each with an optional `child`). A struct field must exist:
+Substrait calls a reference outside the struct an invalid plan. -/
+partial def segments (cols : List Kind) (base : Expr) (seg : Json) :
+    J Expr := do
+  let (e, child) ← match field? seg "structField", field? seg "listElement" with
+    | some sf, _ =>
+      let i ← natD sf "field"
+      if let .struct ks := base.kind cols then
+        if ks.length ≤ i then throw s!"field {i} of a struct of {ks.length} fields"
+      else if base.kind cols != .other then
+        throw s!"a struct field of a value of kind {repr (base.kind cols)}"
+      pure (Expr.un (.structField i) base, field? sf "child")
+    | none, some le =>
+      let off : Int := (le.getObjValAs? Int "offset").toOption.getD 0
+      if !(base.kind cols matches .list _ | .other) then
+        throw s!"a list element of a value of kind {repr (base.kind cols)}"
+      pure (Expr.un (.listElement off) base, field? le "child")
+    | none, none => throw "only struct field and list element references are supported"
+  match child with
+  | some c => segments cols e c
+  | none => return e
+
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
     J Expr := do
@@ -1300,6 +1400,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
       return .lit (.list vs)
     if (field? l "emptyList").isSome then return .lit (.list [])
+    -- A struct is the list of its fields.
+    if let some sj := field? l "struct" then
+      let vs ← (← arrD sj "fields").mapM fun e => do
+        return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
+      return .lit (.list vs)
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"
@@ -1307,10 +1412,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
   | ("selection", s) =>
     if (field? s "outerReference").isSome then
       throw "outer references are not supported"
-    let sf ← field (← field s "directReference") "structField"
-    if (field? sf "child").isSome then
-      throw "nested field references are not supported"
-    return .field (← natD sf "field")
+    let seg ← field s "directReference"
+    -- A reference into the input row, or into an expression's value; each
+    -- segment then goes one level into a struct or a list (#94).
+    match field? s "expression" with
+    | some ej =>
+      let base ← parseExpr fns cols bits ej
+      segments cols base seg
+    | none =>
+      let sf ← field seg "structField"
+      let base := Expr.field (← natD sf "field")
+      match field? sf "child" with
+      | some c => segments cols base c
+      | none => return base
   | ("scalarFunction", f) =>
     let anchor ← natD f "functionReference"
     let some name := fns.lookup anchor

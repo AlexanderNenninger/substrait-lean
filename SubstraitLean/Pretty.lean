@@ -28,6 +28,8 @@ def UnFn.render : UnFn → String
   | .fmath f => f.name.toUpper
   | .decimal p s => s!"DECIMAL_{p}_{s}" | .dkind p s => s!"AS_DECIMAL_{p}_{s}" | .dround k => s!"DROUND_{k}" | .dtrunc k => s!"DTRUNC_{k}"
   | .ftod s => s!"TO_DECIMAL_{s}" | .dtof s => s!"DECIMAL_TO_DOUBLE_{s}"
+  | .structField i => s!"FIELD_{i}" | .listElement off => s!"ELEMENT_{off}"
+  | .cardinality => "CARDINALITY"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"

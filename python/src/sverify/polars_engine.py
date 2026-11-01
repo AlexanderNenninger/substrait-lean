@@ -199,7 +199,15 @@ def null_type(t: dict) -> DType:
         return pl.Null
     if "list" in t:
         return pl.List(materialize(null_type(t["list"].get("type", {"i64": {}}))))
+    if "struct" in t:
+        return struct_type([materialize(null_type(f)) for f in t["struct"].get("types", [])])
     raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
+
+
+def struct_type(fields: list[DType]) -> DType:
+    """A struct of these field dtypes. The model's structs are positional:
+    fields are named `f0`, `f1`, … (`conform` renames a column's)."""
+    return pl.Struct([pl.Field(f"f{i}", t) for i, t in enumerate(fields)])
 
 
 def literal(lit: dict) -> tuple[Any, DType]:
@@ -235,6 +243,10 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return _int(v["value"]), pl.Time
     if kind == "emptyList":
         return [], pl.List(materialize(null_type(v.get("type", {"i64": {}}))))
+    if kind == "struct":
+        fields = [literal(e) for e in v.get("fields", [])]
+        dtype = struct_type([materialize(t) for _, t in fields])
+        return {f"f{i}": f for i, (f, _) in enumerate(fields)}, dtype
     if kind == "list":
         elems = [literal(e) for e in v.get("values", [])]
         t: DType = pl.Null
@@ -793,12 +805,16 @@ class Exprs:
         return self.functions[anchor].split(":")[0]
 
     def field(self, j: dict) -> int:
+        if "child" in j["directReference"]["structField"]:
+            raise Unsupported("nested field references are not supported here")
+        return self.field_index(j)
+
+    def field_index(self, j: dict) -> int:
         if "outerReference" in j:
             raise Unsupported("outer references are not supported")
-        sf = j["directReference"]["structField"]
-        if "child" in sf:
-            raise Unsupported("nested field references are not supported")
-        i = int(sf.get("field", 0))
+        if "expression" in j:
+            raise Unsupported("a reference into an expression is not supported here")
+        i = int(j["directReference"]["structField"].get("field", 0))
         if i >= len(self.dtypes):
             raise Unsupported(f"field {i} is out of range ({len(self.dtypes)} columns)")
         return i
@@ -808,8 +824,13 @@ class Exprs:
             v, t = literal(j["literal"])
             return Val(lit_expr(v, t), t)
         if "selection" in j:
-            i = self.field(j["selection"])
-            return Val(pl.col(col(i)), self.dtypes[i])
+            sel = j["selection"]
+            if "expression" in sel:
+                return self.segments(self(sel["expression"]), sel["directReference"])
+            i = self.field_index(sel)
+            column = Val(pl.col(col(i)), self.dtypes[i])
+            child = sel["directReference"]["structField"].get("child")
+            return column if child is None else self.segments(column, child)
         if "cast" in j:
             return self.cast(j["cast"])
         if "ifThen" in j:
@@ -1002,8 +1023,34 @@ class Exprs:
             return self.binary(name, *args)
         raise Unsupported(f"unsupported function {name}/{len(args)} on {types}")
 
+    def segments(self, base: Val, seg: dict) -> Val:
+        """`base` followed by reference segments (`Parse.segments`): a struct
+        field (`UnFn.structField`), or a list element (`UnFn.listElement`:
+        zero-based, negative from the end, NULL out of range)."""
+        if "structField" in seg:
+            sf = seg["structField"]
+            k = int(sf.get("field", 0))
+            if not isinstance(base.dtype, pl.Struct) or k >= len(base.dtype.fields):
+                raise Unsupported(f"field {k} of a value of type {base.dtype}")
+            f = base.dtype.fields[k]
+            dtype: Any = f.dtype
+            out = Val(base.expr.struct.field(f.name), dtype, base.issues)
+        elif "listElement" in seg:
+            le = seg["listElement"]
+            if not isinstance(base.dtype, pl.List):
+                raise Unsupported(f"an element of a value of type {base.dtype}")
+            off = int(le.get("offset", 0))
+            inner: Any = base.dtype.inner
+            out = Val(base.expr.list.get(off, null_on_oob=True), inner, base.issues)
+        else:
+            raise Unsupported(f"unsupported reference segment {json.dumps(seg)}")
+        child = seg.get("structField", seg.get("listElement", {})).get("child")
+        return self.segments(out, child) if child is not None else out
+
     def unary(self, name: str, a: Val) -> Val:
         e, t = a.expr, a.dtype
+        if name == "cardinality" and isinstance(t, pl.List):
+            return Val(e.list.len().cast(pl.Int64), pl.Int64, a.issues)
         if name == "not" and t in (pl.Boolean, pl.Null):
             return Val(~e, pl.Boolean, a.issues)
         if name == "is_null":
@@ -1253,6 +1300,8 @@ def type_of(t: dict) -> DType:
         return INTERVAL
     if "list" in t:
         return pl.List(type_of(t["list"].get("type", {})))
+    if "struct" in t:
+        return struct_type([type_of(f) for f in t["struct"].get("types", [])])
     raise Unsupported(f"unsupported column type {json.dumps(t)}")
 
 
@@ -1270,6 +1319,10 @@ def conform(e: pl.Expr, have: DType, want: DType, where: str) -> pl.Expr:
         raise Unsupported(f"{where}: categorical strings are not supported")
     if have == pl.Null:
         return e.cast(want)
+    if isinstance(have, pl.Struct) and isinstance(want, pl.Struct):
+        hs, ws = have.fields, want.fields
+        if len(hs) == len(ws) and all(h.dtype == w.dtype for h, w in zip(hs, ws, strict=True)):
+            return e.struct.rename_fields([w.name for w in ws])
     raise Unsupported(f"{where}: column has type {have}, the plan expects {want}")
 
 
