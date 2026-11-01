@@ -489,14 +489,35 @@ def test_rounding_and_casts_match_datafusion(sql):
     assert canonical(duck) == canonical(df)
 
 
-def test_double_division_follows_ieee():
+def test_double_division_by_zero_raises_unless_ieee():
+    """`on_division_by_zero` omitted is ERROR (#204); a plan asking for IEEE
+    gets ±inf and NaN, written as a `CASE` every engine runs."""
     r = ints(a=[7, -7, 0, 1], b=[2, 0, 0, 3])
     sql = "SELECT CAST(a AS DOUBLE) / CAST(b AS DOUBLE) AS q FROM r"
     plan_json = plan_of(sql, {"r": r})
-    df, duck = both(plan_json, {"r": r})
+    with pytest.raises(duckdb.Error, match="division by zero"):
+        duckdb_rows(plan_json, {"r": r})
+    plan = json.loads(plan_json)
+    for f in _walk(plan):
+        if "scalarFunction" in f:
+            f["scalarFunction"]["options"] = [
+                {"name": "on_division_by_zero", "preference": ["IEEE"]}
+            ]
+    df, duck = both(json.dumps(plan), {"r": r})
     assert canonical(df) == canonical(duck)
     assert [repr(q) for (q,) in duck] == ["3.5", "-inf", "nan", repr(1 / 3)]
     assert "CAST(" in to_sql(json.loads(plan_json), DUCKDB)
+
+
+def _walk(node):
+    """Every dict in a JSON value."""
+    if isinstance(node, dict):
+        yield node
+        for v in node.values():
+            yield from _walk(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _walk(v)
 
 
 @pytest.mark.parametrize(

@@ -60,7 +60,7 @@ refused.
 | R2 | integer `divide` by zero | no finding (`verify`: division by zero error) | 23 |
 | R3 | integer `modulus` by zero; remainder sign | no finding; `division_type` open, no diff | (in R2) |
 | R4 | `modulus` on `fp64` | fixed (#203): C's `fmod` (no such Substrait function) | 30 |
-| R5 | `fp64` `divide` by zero | deviation: IEEE, not ERROR | 10 |
+| R5 | `fp64` `divide` by zero | fixed (#204): an error unless the plan asks for IEEE, LIMIT or NULL | 10 |
 | R6 | integer `sum` overflow | deviation: unbounded, and reported as a warning | 5 |
 | R7 | `sum`/`avg` of an `fp64` constant | fixed (#205) | 3 |
 | R8 | `cast` to a narrower integer that does not fit | no finding (`verify`: cast out of range error) | 10 |
@@ -186,12 +186,15 @@ Evidence: `function/numeric/decimal_mod.test:5,10,16`,
 - **Substrait and the reference:** `divide` on `fp32`/`fp64` takes
   `on_division_by_zero: [IEEE, LIMIT, NULL, ERROR]`. With it omitted, a zero
   divisor raises, `0.0 / 0.0` included.
-- **Lean: deviation.** `Rel.eval` gives IEEE values (`1.0 / 0.0 = inf`,
-  `0.0 / 0.0 = NaN`), `verify` reports nothing for a double divisor, and the
-  parser accepts only `IEEE` ([`Parse.lean:783`](../../SubstraitLean/Parse.lean#L783)).
-  So `7.5::DOUBLE / 0` answers `inf` where the reference raises. The fix:
-  report division by zero on doubles as an error, and keep `IEEE` for plans
-  that ask for it.
+- **Lean: deviation, fixed (#204).** `Rel.eval` gave IEEE values
+  (`1.0 / 0.0 = inf`, `0.0 / 0.0 = NaN`), `verify` reported nothing for a
+  double divisor, and the parser accepted only `IEEE`. So `7.5::DOUBLE / 0`
+  answered `inf` where the reference raises. Now `verify` reports `division
+  by zero` as an error when the option is omitted or `ERROR`. The parser
+  writes `IEEE`, `LIMIT` and `NULL` as a `CASE` on the divisor
+  (`Parse.divByZero`): IEEE gives `±inf` by the dividend's sign and NaN for
+  `0 / 0`, LIMIT gives `±inf` for `0 / 0` too (the one zero is positive),
+  NULL gives NULL, and a NaN dividend stays NaN.
 - **DuckDB: native,** under `error_on_division_by_zero = true`: `x / 0.0`
   and `0.0 / 0.0` raise. With the setting off, DuckDB gives IEEE values, so
   it needs the guard of R2. A plan that asks for `IEEE` needs the setting

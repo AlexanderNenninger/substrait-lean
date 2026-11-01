@@ -1274,7 +1274,8 @@ Spark differs:
 * integers are `BIGINT`; division is `div` (`/` gives a double) and
   remainder `%`, both truncating; a `SUM` adds `DECIMAL(38,0)` values, since
   Spark raises when a partial sum overflows even if the total fits;
-* doubles divided by zero give ±inf or NaN (ANSI mode raises);
+* doubles divided by zero raise, as the reference does (`on_division_by_zero`
+  = ERROR); a plan asking for IEEE gets a `CASE` for ±inf or NaN;
   `CAST(double AS BIGINT)` is range-checked first (Spark saturates at 2⁶³);
   `FLOOR` and `CEIL` (which return `BIGINT`) keep NaN, ±inf and large values;
 * timestamps are `TIMESTAMP_NTZ` and intervals `INTERVAL DAY TO SECOND`;

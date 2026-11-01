@@ -267,7 +267,8 @@ class Dialect:
             f"ELSE {self.int_product(a, b)} END)"
         )
 
-    # Doubles: IEEE 754, so x / 0 is ±inf or NaN rather than an error.
+    # Doubles: IEEE 754. A zero divisor raises (`on_division_by_zero` = ERROR,
+    # guarded in `expr`); the plan writes `IEEE`, `NULL` and `LIMIT` as a `CASE`.
 
     def float_add(self, a: str, b: str) -> str:
         return f"({a} + {b})"
@@ -1749,7 +1750,15 @@ class _Parser:
                         else e
                         for k, e in enumerate(parsed)
                     ]
+                    mode = _div_by_zero_mode(v)
+                    if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
+                        op = "fdiv" if name == "divide" else "fmod"
+                        return _div_by_zero(mode, True, op, *parsed)
                     return _float_call(name, parsed)
+                mode = _div_by_zero_mode(v)
+                if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
+                    op = "idiv" if name == "divide" else "imod"
+                    return _div_by_zero(mode, False, op, *parsed)
                 return _call(name, parsed)
             case "ifThen":
                 # A `CASE` without `ELSE` is `ELSE NULL`.
@@ -2576,6 +2585,39 @@ def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
     return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
 
 
+def _div_by_zero_mode(f: dict) -> str:
+    """`Parse.divByZeroMode`: the first preference of `on_division_by_zero`,
+    or ERROR when the plan omits it."""
+    for o in _arr(f, "options"):
+        if o.get("name") == "on_division_by_zero" and o.get("preference"):
+            return o["preference"][0]
+    return "ERROR"
+
+
+def _div_by_zero(
+    mode: str, double: bool, op: Literal["fdiv", "fmod", "idiv", "imod"], a: Expr, b: Expr
+) -> Expr:
+    """`Parse.divByZero`: `a / b` under `on_division_by_zero` = `mode`, a `CASE`
+    on the divisor around the division that raises on zero. `IEEE` and `LIMIT`
+    are only for dividing doubles (`Parse.optionAccepts`)."""
+    if mode not in ("IEEE", "LIMIT", "NULL") or (op != "fdiv" and mode != "NULL"):
+        raise Unsupported(f"on_division_by_zero = {mode} is not supported")
+    lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
+    nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
+    is_nan = Bin("eq", a, nan)
+    if mode == "IEEE":
+        by_zero: Expr = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
+                           If(Bin("lt", lit(0.0), a), Lit(math.inf, "float"), nan)))  # fmt: skip
+    elif mode == "LIMIT":
+        by_zero = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
+                                     Lit(math.inf, "float")))  # fmt: skip
+    else:
+        by_zero = If(is_nan, nan, null) if double else null
+    zero = lit(0.0) if double else lit(0)
+    return If(Un("not", Bin("eq", b, zero)), Bin(op, a, b),
+              If(Un("is_null", b), null, If(Un("is_null", a), null, by_zero)))  # fmt: skip
+
+
 def _float_call(name: str, args: list[Expr]) -> Expr:
     """`mkFloatCall`."""
     match name, args:
@@ -3292,9 +3334,15 @@ class _Writer:
                     "fmod": d.float_mod,
                     "fpow": d.float_pow,
                 }[op]
-                sql = f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
+                sa, sb = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
-                return sql if op in ("fadd", "fsub") else d.canon(sql)
+                sql = sql if op in ("fadd", "fsub") else d.canon(sql)
+                if op != "fdiv" or not d.guards:
+                    return sql
+                # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
+                zero = f"({sa} IS NOT NULL AND {sb} = {d.float_lit(0.0)})"
+                return d.case_when(zero, d.raise_("division by zero", sb, "float"), sql)
             case Bin(op="add" | "sub" | "mul" as op, left=a, right=b):
                 return self.arith(op, a, b, ref, cols)
             case Bin(op="idiv" | "imod" as op, left=a, right=b):
