@@ -31,6 +31,7 @@ from sverify.engines import create_table, substrait_json, written_plan
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
+from sverify_dev import examples
 from sverify_dev.examples import PIPELINES, create_tables
 
 pytestmark = pytest.mark.backend("snowflake")
@@ -140,7 +141,7 @@ def ordered_plans() -> dict[str, dict]:
 
 def feature_plans() -> dict[str, dict]:
     """DISTINCT, aggregates, semi, anti and outer joins and string functions."""
-    o, c = sv.examples.orders, sv.examples.customers
+    o, c = examples.orders, examples.customers
     exprs = {
         "distinct": o.select("customer", "amount").distinct(),
         "semi_join": o.semi_join(c, o.customer == c.name),
@@ -168,7 +169,7 @@ def feature_plans() -> dict[str, dict]:
 
 FEATURE_PLANS = feature_plans()
 #: Sorted in Lean's order: the only ties in `ORDERS` are equal rows.
-SORTED = {"order_by": sv.examples.orders.order_by([sv.examples.orders.amount.desc(), "id"])}
+SORTED = {"order_by": examples.orders.order_by([examples.orders.amount.desc(), "id"])}
 
 
 DELTA_PLANS = {
