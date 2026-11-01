@@ -91,6 +91,23 @@ inductive UnFn where
   | bucket (k : Nat) (origin : Int)
   /-- `sqrt`, `ln`, `sin`, … of a double: `NULL` outside its domain. -/
   | fmath (f : FMath)
+  /-- `DECIMAL(p, s)` (#27). A decimal is its unscaled integer (`12.34` at scale
+  2 is `1234`), so this is the value itself: it gives the expression its kind,
+  and a value of more than `p` digits is an overflow (`Safety.lean`). -/
+  | decimal (p s : Nat)
+  /-- `DECIMAL(p, s)` without the check, where the value cannot have more
+  digits: an average has no more than the values it averages (#27). -/
+  | dkind (p s : Nat)
+  /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
+  rounding half away from zero (`roundDiv10`). -/
+  | dround (k : Nat)
+  /-- A decimal to an integer: divided by `10ᵏ`, truncating toward zero. -/
+  | dtrunc (k : Nat)
+  /-- A double to a decimal of scale `s` (`FloatCode.toDecimal?`); `NULL` for
+  NaN and ±∞, where the cast fails (`Safety.lean`). -/
+  | ftod (s : Nat)
+  /-- A decimal of scale `s` to a double, correctly rounded (`FloatCode.ofDecimal`). -/
+  | dtof (s : Nat)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -122,6 +139,13 @@ inductive BinFn where
   | fatan2 | flogb
   /-- `&`, `|`, `^` and the shifts of integers (`BitOp`). -/
   | bit (op : BitOp)
+  /-- Decimal arithmetic on unscaled integers (#27), exact. Engines compute it
+  in 128 bits, so unlike `add`, `sub` and `mul` it does not wrap at 64;
+  `UnFn.decimal` checks the precision. -/
+  | dadd | dsub | dmul
+  /-- `a / b` of decimals, rounded half away from zero (`roundDivInt?`), and
+  `NULL` for `b = 0`: a decimal `AVG`'s sum by its count (#27). -/
+  | ddiv
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -135,6 +159,30 @@ inductive Expr where
 /-- Does `i` fit in a signed integer of `bits` bits? -/
 def fitsBits (bits : Nat) (i : Int) : Bool :=
   decide (-(2 ^ (bits - 1) : Int) ≤ i) && decide (i < 2 ^ (bits - 1))
+
+/-- Does `i` fit in `p` decimal digits (`|i| < 10ᵖ`)? -/
+def fitsDigits (p : Nat) (i : Int) : Bool :=
+  decide (-(10 ^ p : Int) < i) && decide (i < 10 ^ p)
+
+/-- `i / 10ᵏ`, rounded half away from zero: a decimal brought to a scale `k`
+digits smaller (#27). -/
+def roundDiv10 (k : Nat) (i : Int) : Int :=
+  let q : Int := ((i.natAbs + 10 ^ k / 2) / 10 ^ k : Nat)
+  if i < 0 then -q else q
+
+#guard roundDiv10 1 1235 == 124 && roundDiv10 1 (-5) == -1 && roundDiv10 2 250 == 3
+#guard roundDiv10 2 (-250) == -3 && roundDiv10 1 1234 == 123 && roundDiv10 0 (-7) == -7
+
+/-- `a / b` rounded half away from zero, `none` for `b = 0`: a decimal
+average (#27). -/
+def roundDivInt? (a b : Int) : Option Int :=
+  if b = 0 then none else
+    let q : Int := ((2 * a.natAbs + b.natAbs) / (2 * b.natAbs) : Nat)
+    some (if (a < 0) = (b < 0) then q else -q)
+
+#guard roundDivInt? 20000 3 == some 6667 && roundDivInt? (-20000) 3 == some (-6667)
+#guard roundDivInt? 5 2 == some 3 && roundDivInt? (-5) 2 == some (-3) && roundDivInt? 4 2 == some 2
+#guard roundDivInt? 1 0 == none && roundDivInt? 0 7 == some 0
 
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
@@ -180,6 +228,14 @@ def UnFn.apply : UnFn → Value → Value
   | .fmath f, .int c => match f.apply c with
     | some r => .int r
     | none => .null
+  | .decimal _ _, v => v
+  | .dkind _ _, v => v
+  | .dround k, .int i => .int (roundDiv10 k i)
+  | .dtrunc k, .int i => .int (i.tdiv (10 ^ k))
+  | .ftod s, .int c => match FloatCode.toDecimal? c s with
+    | some m => .int m
+    | none => .null
+  | .dtof s, .int i => .int (FloatCode.ofDecimal i s)
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -235,6 +291,12 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .strRepeat, .str s, .int n => .str (if Text.repeatFits s n then Text.repeatStr s n else "")
   | .ilike, .str a, .str b => .bool (Text.ilike a b)
   | .levenshtein, .str a, .str b => .int (Text.levenshtein a b)
+  | .dadd, .int a, .int b => .int (a + b)
+  | .dsub, .int a, .int b => .int (a - b)
+  | .dmul, .int a, .int b => .int (a * b)
+  | .ddiv, .int a, .int b => match roundDivInt? a b with
+    | some r => .int r
+    | none => .null
   | .dateAdd, .int d, .int n => .int (d + n)
   | .dateDiff, .int d, .int e => .int (d - e)
   | .fatan2, .int y, .int x => match atan2? y x with

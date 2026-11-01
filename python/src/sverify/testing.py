@@ -29,13 +29,14 @@ The other functions here (`inline_tables`, `lean_rows`, `duckdb_rows`, …)
 are internal, for sverify's own differential tests against Lean's semantics,
 and may change in any release: `inline_tables` replaces each named-table read
 by a Substrait virtual table holding given rows (integers, strings, booleans,
-timestamps, dates, doubles and NULLs); `lean_rows` evaluates the plan with
+timestamps, dates, doubles, decimals and NULLs); `lean_rows` evaluates the plan with
 `Rel.eval` via `substrait-check` (`lean_values` also reads printed doubles);
 `duckdb_rows` runs it as SQL on DuckDB.
 """
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import importlib.util
 import json
@@ -44,6 +45,7 @@ import re
 import subprocess
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, overload
 
 import ibis
@@ -87,7 +89,20 @@ __all__ = [
 EPOCH = dt.datetime(1970, 1, 1)
 
 
+def decimal_literal(v: Decimal, precision: int = 38, scale: int | None = None) -> dict:
+    """A Substrait decimal literal: the unscaled integer, 16 bytes little-endian.
+    Without a `scale`, the value's own; with one, rounded half away from zero."""
+    if scale is None:
+        exponent = v.as_tuple().exponent
+        scale = max(0, -exponent) if isinstance(exponent, int) else 0
+    unscaled = int(v.scaleb(scale).to_integral_value(rounding=ROUND_HALF_UP))
+    value = base64.b64encode(unscaled.to_bytes(16, "little", signed=True)).decode()
+    return {"literal": {"decimal": {"value": value, "precision": precision, "scale": scale}}}
+
+
 def literal(v: object) -> dict:
+    if isinstance(v, Decimal):
+        return decimal_literal(v)
     if v is None:
         return {"literal": {"null": {"i64": {}}}}
     if isinstance(v, bool):
@@ -123,7 +138,17 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
         if isinstance(node, dict):
             if "namedTable" in node:
                 name = ".".join(node.pop("namedTable")["names"])
-                exprs = [{"fields": [literal(v) for v in row]} for row in rows[name]]
+                # A decimal takes its column's type (`baseSchema`).
+                types = node.get("baseSchema", {}).get("struct", {}).get("types", [])
+                decs = [t.get("decimal") if isinstance(t, dict) else None for t in types]
+
+                def cell(i: int, v: object) -> dict:
+                    d = decs[i] if i < len(decs) else None
+                    if isinstance(v, Decimal) and d is not None:
+                        return decimal_literal(v, d.get("precision", 38), d.get("scale", 0))
+                    return literal(v)
+
+                exprs = [{"fields": [cell(i, v) for i, v in enumerate(row)]} for row in rows[name]]
                 node["virtualTable"] = {"expressions": exprs}
             for v in node.values():
                 walk(v)
@@ -184,6 +209,9 @@ def _value(x: str, doubles: bool) -> object:
         return _unquote(x)
     if re.fullmatch(r"-?\d+", x):
         return int(x)
+    # A decimal, as `Main.decimalString` prints it.
+    if re.fullmatch(r"-?\d+\.\d+", x):
+        return Decimal(x)
     if doubles and x.endswith("d"):
         return float(x[:-1])
     raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")

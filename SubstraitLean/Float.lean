@@ -124,6 +124,35 @@ def fmod (a b : Int) : Int :=
 #guard fmod (ofFloat 0.3) (ofFloat 0.1) == ofFloat 0.09999999999999998
 #guard fmod (ofFloat 5e-324) (ofFloat 2.0) == ofFloat 5e-324
 
+/-- `CAST(x AS DECIMAL(_, s))` of a double, as the decimal's unscaled integer:
+`round(x · 10ˢ)` computed in doubles, halves away from zero, as DuckDB and
+DataFusion cast (#27). NaN and ±∞ have none. -/
+def toDecimal? (c : Int) (s : Nat) : Option Int :=
+  let (negative, m) := finiteParts (ofFloat (toFloat c * Float.ofNat (10 ^ s)).round)
+  -- A whole double's magnitude is a multiple of 2¹⁰⁷⁴.
+  if infMag ≤ m then none else
+    let q : Int := (m / 2 ^ 1074 : Nat)
+    some (if negative then -q else q)
+
+/-- A decimal's unscaled integer `n` at scale `s` as a double's code,
+correctly rounded (#27). -/
+def ofDecimal (n : Int) (s : Nat) : Int :=
+  let f := Float.ofScientific n.natAbs true s
+  ofFloat (if n < 0 then -f else f)
+
+-- The backends' cases: the product rounds in doubles (`-2.675 · 100` is
+-- `-267.5`), and `0.145 · 100` is just below `14.5`.
+#guard toDecimal? (ofFloat 0.125) 2 == some 13 && toDecimal? (ofFloat (-2.675)) 2 == some (-268)
+#guard toDecimal? (ofFloat 0.135) 2 == some 14 && toDecimal? (ofFloat 0.145) 2 == some 14
+#guard toDecimal? (ofFloat 2.5) 0 == some 3 && toDecimal? (ofFloat (-2.5)) 0 == some (-3)
+#guard toDecimal? (ofFloat 1e20) 2 == some (10 ^ 22) && toDecimal? nan 2 == none
+#guard toDecimal? posInf 0 == none && toDecimal? 0 3 == some 0
+#guard ofDecimal 1234 2 == ofFloat 12.34 && ofDecimal (-5) 2 == ofFloat (-0.05)
+#guard ofDecimal 145 3 == ofFloat 0.145 && ofDecimal 0 5 == 0
+-- Correctly rounded where `n` itself is not a double: 2⁵³ + 1 is a tie.
+#guard ofDecimal 9007199254740993 0 == ofFloat 9007199254740992.0
+#guard ofDecimal 99999999999999999999 2 == ofFloat 999999999999999999.99
+
 end Substrait.FloatCode
 
 namespace Substrait.Time

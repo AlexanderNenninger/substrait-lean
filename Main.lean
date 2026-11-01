@@ -59,11 +59,23 @@ def delta (plan : Plan) : IO UInt32 := do
     IO.println (Write.writeDeltaPlan plan term).compress
   return 0
 
+/-- `i · 10⁻ˢ` in decimal digits (`decimalString 2 (-5)` is `-0.05`). -/
+def decimalString (s : Nat) (i : Int) : String :=
+  if s = 0 then toString i else
+    let digits := (toString i.natAbs).toList
+    let digits := List.replicate (s + 1 - digits.length) '0' ++ digits
+    let k := digits.length - s
+    (if i < 0 then "-" else "") ++ String.ofList (digits.take k) ++ "." ++ String.ofList (digits.drop k)
+
+#guard decimalString 2 (-5) == "-0.05" && decimalString 2 1234 == "12.34" && decimalString 0 7 == "7"
+#guard decimalString 3 1000 == "1.000" && decimalString 1 0 == "0.0"
+
 /-- A result value, printed by its column's kind: integers (unbounded in the
 model, so `MAX + 1` is a value) exactly, doubles as doubles. A column of
 unknown kind falls back to `Value.render`. -/
 def renderCell : Kind → Value → String
   | .float, .int c => s!"{FloatCode.toFloat c}d"
+  | .dec _ s, .int i => decimalString s i
   | .int, .int i | .time, .int i | .date, .int i => toString i
   | _, v => v.render
 
@@ -101,6 +113,10 @@ def check (plan : Plan) : IO UInt32 := do
   return 0
 
 def write (df : Bool) (plan : Plan) : IO UInt32 := do
+  -- The engines do not emulate the reference's decimals yet (#27).
+  if plan.root.decimalOps then
+    IO.eprintln "error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+    return 1
   if df then
     if let some (code, msg) := checkPlan plan then
       IO.eprintln msg; return code

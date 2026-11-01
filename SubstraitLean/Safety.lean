@@ -53,7 +53,8 @@ inductive Issue where
   /-- Integer division or remainder by zero, or a double divided by zero. -/
   | divByZero
   /-- A result outside 64 bits where DataFusion fails (`MIN / -1`, `POWER`),
-  or a `repeat` beyond `Text.repeatMax` bytes. -/
+  a `repeat` beyond `Text.repeatMax` bytes, or a decimal of more digits than
+  its precision (`UnFn.decimal`). -/
   | overflow
   /-- `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value. -/
   | badCast
@@ -86,9 +87,17 @@ def Issue.name : Issue → String
   | .wraps | .sumWraps => "may wrap around"
   | .domain => "domain error"
 
+/-- A decimal (#27). The parser marks the argument of a `SUM` of decimals
+this way: engines add decimals in 128 bits, so the sum does not wrap at 64. -/
+def Expr.isDecimal : Expr → Bool
+  | .un (.decimal _ _) _ => true
+  | _ => false
+
 /-- The arguments of a list of window functions' integer `SUM`s. -/
 def WinFn.sumArg? (fns : List WinFn) : List Expr :=
-  fns.filterMap fun | .agg m _ _ => if m.fn = .sum then some m.arg else none | _ => none
+  fns.filterMap fun
+    | .agg m _ _ => if m.fn = .sum ∧ m.arg.isDecimal = false then some m.arg else none
+    | _ => none
 
 /-- Errors stop the query; wrapping silently gives a different result. -/
 def Issue.isError : Issue → Bool
@@ -132,6 +141,9 @@ def UnFn.issue : UnFn → Value → Option Issue
   -- DataFusion bins in nanoseconds, which wrap around outside ±2⁶³.
   | .bucket k o, .int ts => rangeIssue Time.nsMin Time.nsMax ts (Time.bucket k o ts)
   | .fmath f, .int c => domainIssue (f.apply c)
+  | .decimal p _, .int i => if fitsDigits p i then none else some .overflow
+  -- NaN and ±∞ have no decimal.
+  | .ftod s, .int c => if (FloatCode.toDecimal? c s).isSome then none else some .badCast
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
@@ -233,6 +245,8 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
   | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
   | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
+  | .decimal p _, aa, _ => if aa.int.all (·.fitsDigits p) then [] else [.overflow]
+  | .ftod _, _, _ => [.badCast]
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -425,6 +439,18 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
       simp only [hb, Option.all_some] at hfits
       exact absurd (Bound.fitsBits_mem hfits hi) hn
     · simp_all
+  case decimal.int p s i =>
+    simp only [UnFn.mayIssue]
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    split
+    · rename_i hn hfits
+      obtain ⟨b, hb, hi⟩ := ha
+      simp only [hb, Option.all_some] at hfits
+      exact absurd (Bound.fitsDigits_mem hfits hi) hn
+    · simp_all
+  case ftod.int s c =>
+    simp only [UnFn.mayIssue]
+    split at hk <;> simp_all
   case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str | regexMatch.list =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp_all
@@ -758,7 +784,7 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .aggregate r gs ms, p => r.HasIssue cat u p ∨
       (∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ gs ++ ms.flatMap Measure.exprs,
         p ∈ e.issues row) ∨
-      ∃ m ∈ ms, m.fn = .sum ∧ p = (.sumWraps, m.arg) ∧
+      ∃ m ∈ ms, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
         ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false
 
 /-- The issues the abstract evaluation cannot rule out. -/
@@ -783,7 +809,8 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++
       (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T)) ++
-      ms.filterMap fun m => if m.fn = .sum then some (.sumWraps, m.arg) else none
+      ms.filterMap fun m =>
+        if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
 
@@ -872,7 +899,7 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | u, .aggregate r gs ms, hwf, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
-    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, rfl, _⟩
+    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩
     · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 p h))
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
@@ -880,6 +907,6 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         · exact loose_wf hwf.1
       exact .inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩)
-    · exact .inr ⟨m, hm, by simp [hf]⟩
+    · exact .inr ⟨m, hm, by simp [hf, hd]⟩
 
 end Substrait
