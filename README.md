@@ -1,8 +1,8 @@
 # substrait-lean
 
 **Prove a data pipeline's contracts before it runs, get the same result on
-DuckDB, Polars, DataFusion, Spark and Snowflake, and keep it up to date from
-Delta Lake and Iceberg change feeds.**
+DuckDB, Polars, DataFusion and Spark, and keep it up to date from Delta Lake
+and Iceberg change feeds.**
 
 You write a transformation in [Ibis](https://ibis-project.org) or SQL, as
 usual, and say what it assumes about its inputs (`requires`) and what it
@@ -40,6 +40,27 @@ The three postconditions were proved before anything ran, and the result
 was updated from the changes alone, by a plan proved to give the same result
 as a full recompute.
 
+## Where it stands
+
+sverify is a young, independent project, and for now it is purely
+observational. It tells you what it can and can't prove about your
+transformations, and it describes how each engine behaves as we observed it:
+at pinned versions, through their documentation, their own test suites and
+our differential tests. Those findings describe engines; they don't certify
+or rank them, and sverify isn't affiliated with any engine's project or
+vendor. Use it as a careful second pair of eyes on your pipelines rather
+than a gate production depends on, and expect the API to keep changing
+between minor releases.
+
+What it's for is making data engineering more joyful: fewer 3 a.m. pages
+over a NULL nobody expected, fewer afternoons spent finding out why two
+engines disagree, and more trust in the tables you hand to the next team.
+
+**Snowflake support is mostly aspirational for now.** sverify writes
+Snowflake SQL and checks it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), but it hasn't been
+run against a real Snowflake account yet ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). DuckDB, Polars, DataFusion
+and Spark are the engines it runs on.
+
 ## What it does for you
 
 In order of what it is worth in day-to-day data engineering:
@@ -55,7 +76,7 @@ In order of what it is worth in day-to-day data engineering:
    can fail at 3 am. Preconditions are checked on the data, or proved from
    Delta and Iceberg metadata (schemas, CHECK constraints, file statistics).
 2. **One plan, the same answer on every engine.** Develop on DuckDB or
-   Polars, run on Spark or Snowflake. The same SQL text doesn't mean the
+   Polars, run on Spark (and, one day, on Snowflake). The same SQL text doesn't mean the
    same thing on each (`/` on integers truncates in DataFusion and
    PostgreSQL and gives a double in DuckDB and Spark; DataFusion wraps on
    overflow where DuckDB raises; NULLs sort first or last depending on the
@@ -1182,6 +1203,9 @@ generated SQL in `python/tests/sql_snapshots/`. The incremental, window,
 rewrite and ASOF differential tests run on DuckDB too.
 
 ##### Snowflake
+
+Snowflake support is mostly aspirational for now: everything below has been
+checked on an emulator, not on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)).
 
 `to_sql(plan, SNOWFLAKE)` (from `sverify.sql.snowflake`) writes checked plans
 and Lean delta plans as Snowflake SQL. The SQL is written to match Lean where
