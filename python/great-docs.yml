@@ -41,11 +41,13 @@ reference:
 
   - title: Transforms, nodes and refresh
     desc: >
-      A contracted transform called on a source builds a node. Nodes compose,
-      are stored with `.write(sink)`, and are kept up to date by `.refresh()`,
+      A source piped into a contracted transform, `orders.pipe(paid)`, builds
+      a node. Nodes compose left to right with `.pipe`, are stored with
+      `.write(sink)`, and are kept up to date by `.refresh()`,
       with update plans proved equal to a full recompute.
     contents:
       - Node
+      - sql
       - group
       - Changes
       - nodes.Group

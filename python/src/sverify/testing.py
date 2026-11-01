@@ -5,7 +5,7 @@
 
     def test_paid():
         orders = source([(1, 30), (2, 5)], {"id": "int64", "amount": "int64"}, name="orders")
-        node = paid(orders)
+        node = orders.pipe(paid)
         assert_contract(node)                                   # proved
         assert_contract(node, data={"orders": [(1, 30), (3, 50)]}, expected=[(1, 30), (3, 50)])
         assert_engines_agree(node, {"orders": [(1, 30), (2, 5)]})
@@ -303,7 +303,7 @@ def source(
 def _node(node: Any) -> Node:
     if not isinstance(node, Node):
         raise TypeError(
-            f"expected a sverify.Node (a transform called on sources), got {type(node).__name__}"
+            f"expected a sverify.Node (a source piped into a transform), got {type(node).__name__}"
         )
     return node
 
@@ -479,8 +479,8 @@ def assert_contract(
     the missing and unexpected rows listed when it is not.
 
     Args:
-        node: A node: a contracted transform called on sources (such as
-            `source(...)`) or other nodes.
+        node: A node: a source or node piped into contracted transforms
+            (`source(...).pipe(paid)`).
         data: The rows of each table the node reads, by name: its sources,
             and the stored nodes it reads (`Node.write`). Default: none,
             which only checks the proof.
@@ -512,9 +512,9 @@ def assert_contract(
             return orders.select(orders.id, doubled=orders.amount * 2)
 
         orders = source([], {"id": "int64", "amount": "int64"}, name="orders")
-        assert_contract(doubled(orders))
+        assert_contract(orders.pipe(doubled))
         assert_contract(
-            doubled(orders),
+            orders.pipe(doubled),
             data={"orders": [(1, 30), (2, 0)]},
             expected=[(1, 60), (2, 0)],
         )
@@ -570,7 +570,7 @@ def assert_engines_agree(
     postconditions.
 
     Args:
-        node: A node: a contracted transform called on sources or nodes.
+        node: A node: a source or node piped into contracted transforms.
         data: The rows of each table the node reads, by name (see
             `assert_contract`).
         engines: The engines to compare. Default: `installed_engines()`.
@@ -591,7 +591,7 @@ def assert_engines_agree(
         ```python
         from sverify.testing import assert_engines_agree
 
-        assert_engines_agree(doubled(orders), {"orders": [(1, 30), (2, 7)]})
+        assert_engines_agree(orders.pipe(doubled), {"orders": [(1, 30), (2, 7)]})
         ```
     """
     __tracebackhide__ = True
@@ -652,7 +652,7 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
     supported.
 
     Args:
-        node: A node: a contracted transform called on sources or nodes.
+        node: A node: a source or node piped into contracted transforms.
         max_rows: The most rows per table. Default: 5.
 
     Returns:
@@ -669,7 +669,7 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
         from hypothesis import given, settings
         from sverify.testing import cases
 
-        node = doubled(orders)
+        node = orders.pipe(doubled)
 
         @settings(max_examples=10, deadline=None)
         @given(cases(node))

@@ -126,7 +126,7 @@ from sverify.testing import assert_contract, assert_engines_agree, cases, source
 
 def test_big_orders():  # with the plugin: def test_big_orders(sv_source, sv_engine)
     orders = source([], {"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
-    node = big_orders(orders)
+    node = orders.pipe(big_orders)
     assert_contract(node)  # every contract in the node's lineage is proved
     data = {"orders": [(1, "ada", 30), (2, "bob", 5)]}
     out = assert_contract(node, data=data, expected=[{"id": 1, "doubled": 60}])
@@ -152,7 +152,7 @@ test_big_orders()
 from hypothesis import given, settings
 
 ORDERS = {"id": "int64", "customer": "string", "amount": "int64"}
-node = big_orders(source([], ORDERS, name="orders"))
+node = source([], ORDERS, name="orders").pipe(big_orders)
 
 
 @settings(max_examples=10, deadline=None)

@@ -47,14 +47,14 @@ def test_the_contracts_are_proved(sv_source):
     customers = sv_source([], CUSTOMERS, name="customers")
     # Building the nodes proves each contract, and that `city_revenue`'s
     # precondition follows from what `big_orders` guarantees.
-    assert_contract(city_revenue(big_orders(orders), customers))
+    assert_contract(orders.pipe(big_orders).pipe(city_revenue, customers=customers))
 
 
 def test_big_orders_on_rows(sv_source, sv_engine):
     orders = sv_source([], ORDERS, name="orders")
     data = {"orders": [(1, "ada", 30, day(1)), (2, "bob", 5, day(2)), (3, None, 11, day(3))]}
     assert_contract(
-        big_orders(orders),
+        orders.pipe(big_orders),
         data=data,
         expected=[(1, "ada", 30, 60), (3, None, 11, 22)],
         engine=sv_engine,
@@ -64,7 +64,7 @@ def test_big_orders_on_rows(sv_source, sv_engine):
 def test_city_revenue_on_rows(sv_source):
     orders = sv_source([], ORDERS, name="orders")
     customers = sv_source([], CUSTOMERS, name="customers")
-    node = city_revenue(big_orders(orders), customers)
+    node = orders.pipe(big_orders).pipe(city_revenue, customers=customers)
     data = {
         "orders": [(1, "ada", 30, day(1)), (2, "bob", 50, day(2)), (3, "cy", 12, day(3))],
         "customers": [("ada", "Paris"), ("bob", "Paris"), ("cy", None)],
@@ -76,7 +76,7 @@ def test_city_revenue_on_rows(sv_source):
 def test_every_city_has_a_big_order(sv_source):
     orders = sv_source([], ORDERS, name="orders")
     customers = sv_source([], CUSTOMERS, name="customers")
-    node = city_revenue(big_orders(orders), customers)
+    node = orders.pipe(big_orders).pipe(city_revenue, customers=customers)
 
     # `cases` draws inputs that meet the preconditions; the property is about
     # the code around the node: each city in the output has a big order.

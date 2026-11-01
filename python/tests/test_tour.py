@@ -60,7 +60,7 @@ def test_doubled(sv_source, sv_engine):
 def payments(sv_source):
     nb = notebook("01_duplicate_payments")
     transactions = sv_source([], nb["TXN_SCHEMA"], name="transactions")
-    return nb, nb["duplicate_payments"](transactions)
+    return nb, transactions.pipe(nb["duplicate_payments"])
 
 
 def test_a_double_charge_is_found_once(sv_source):
@@ -83,7 +83,7 @@ def test_refunds(sv_source):
     nb, node = payments(sv_source)
     dups = sv_source([], node.schema.to_pyarrow(), name="dups")
     data = {"dups": [(1, 2, 7, "cafe", 450, minute(0), minute(2))]}
-    assert_contract(nb["refunds"](dups), data=data, expected=[(2, "cafe", 450)])
+    assert_contract(dups.pipe(nb["refunds"]), data=data, expected=[(2, "cafe", 450)])
 
 
 def test_duplicates_are_within_five_minutes(sv_source):
@@ -108,7 +108,7 @@ def test_duplicates_are_within_five_minutes(sv_source):
 def test_alerts_on_the_first_batch(sv_source, sv_engine):
     nb = notebook("02_sensor_alerts")
     readings = sv_source([], nb["READING"], name="readings")
-    node = nb["alerts"](readings)
+    node = readings.pipe(nb["alerts"])
     data = {"readings": nb["first"]}
     # Device 2's missing reading breaks its run; device 3's NaN is not hot.
     assert_contract(node, data=data, expected=[(1, minute(3), 33.0)], engine=sv_engine)
@@ -136,7 +136,7 @@ def test_daily_city_revenue(sv_source):
     nb = notebook("03_orders_mart")
     orders = sv_source([], nb["ORDERS"], name="orders")
     history = sv_source([], nb["HISTORY"], name="history")
-    node = nb["daily_city_revenue"](orders, history)
+    node = orders.pipe(nb["daily_city_revenue"], history=history)
     may = nb["may"]
     data = {"orders": nb["orders_v0"], "history": nb["history_v0"]}
     # Customer 1 moved from Paris to Lyon on May 2.

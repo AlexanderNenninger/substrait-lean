@@ -243,7 +243,7 @@ def _(mo):
 @app.cell
 def _(DeltaSource, duplicate_payments, lake):
     transactions = DeltaSource(str(lake / "transactions"))
-    dups = duplicate_payments(transactions)
+    dups = transactions.pipe(duplicate_payments)
     report = duplicate_payments.last_report
     assert report.proved and not report.issues
     first_refresh = dups.refresh()
@@ -394,7 +394,7 @@ def _(mo):
 def _(ENGINES, duplicate_payments, dups, transactions):
     on_each = {}
     for _engine in ENGINES:
-        _node = duplicate_payments(transactions)
+        _node = transactions.pipe(duplicate_payments)
         _node.refresh(engine=_engine)
         on_each[_engine] = _node.to_arrow().to_pylist()
     assert all(rows == dups.to_arrow().to_pylist() for rows in on_each.values())
@@ -501,7 +501,7 @@ def _(mo):
 @app.cell
 def _(DeltaSource, duplicate_payments, dups, lake):
     _refresh = dups.refresh()
-    _from_scratch = duplicate_payments(DeltaSource(str(lake / "transactions")))
+    _from_scratch = DeltaSource(str(lake / "transactions")).pipe(duplicate_payments)
     _from_scratch.refresh()
     assert dups.to_arrow().to_pylist() == _from_scratch.to_arrow().to_pylist()
     print(_refresh)
@@ -583,7 +583,7 @@ def _(DeltaSource, lake, sv):
     def refunds(dups):
         return dups.select(dups.duplicate_txn, dups.merchant, refund_cents=dups.amount_cents)
 
-    refund_queue = refunds(DeltaSource(str(lake / "duplicate_payments"), name="dups"))
+    refund_queue = DeltaSource(str(lake / "duplicate_payments"), name="dups").pipe(refunds)
     [str(p) for p in refund_queue.refresh()[refund_queue.name].preconditions]
     return
 
