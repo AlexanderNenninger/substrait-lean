@@ -1331,6 +1331,10 @@ their type (`COALESCE(a, b)`). -/
 def decimalPassThrough : List String :=
   ["coalesce", "greatest", "least", "nullif", "greatest_skip_null", "least_skip_null"]
 
+/-- Functions of a decimal that do not depend on its scale: the integer path
+computes them on the unscaled value. -/
+def decimalScaleFree : List String := ["is_null", "is_not_null"]
+
 /-- A call with a `DECIMAL` argument (#27), or `none` where the integer path
 computes it. Decimals are their unscaled integers, so the arguments are
 brought to one scale and the arithmetic is exact: `+` and `-` at the larger
@@ -1376,6 +1380,7 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"
   | _, _, _ =>
+    if decimalScaleFree.contains name then return none
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"
 

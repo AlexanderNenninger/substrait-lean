@@ -60,7 +60,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sverify.sql.core import Dialect, Kind, Unsupported
+from sverify.sql.core import Dec, Dialect, Kind, Unsupported
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 NAN = "CAST('NaN' AS FLOAT)"
@@ -81,6 +81,8 @@ _TYPES: dict[str, str] = {
 @dataclass(frozen=True)
 class SnowflakeDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
+        if isinstance(kind, Dec):
+            return super().type_name(kind)
         return _TYPES[kind]
 
     def result_kind(self, kind: Kind | None) -> None:

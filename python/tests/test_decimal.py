@@ -140,6 +140,11 @@ def test_decimal_sum_does_not_wrap():
     assert report.errors == [] and report.warnings == []
 
 
-def test_engines_refuse_until_stage_2(con):
-    code, _, err = run_checker(("--write",), substrait_json(con, "SELECT a + b AS r FROM t"))
+def test_decimal_plans_are_written_but_not_for_datafusion(con):
+    """Stage 2: decimal plans are written back as typed calls and casts for
+    the engines; DataFusion does not compute decimals as the reference does."""
+    plan = substrait_json(con, "SELECT a + b AS r FROM t")
+    code, out, _ = run_checker(("--write",), plan)
+    assert code == 0 and "decimal" in out
+    code, _, err = run_checker(("--write-datafusion",), plan)
     assert code == 1 and "#27" in err

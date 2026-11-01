@@ -217,4 +217,28 @@ def leSigned (bytes : List Nat) : Int :=
   let n : Nat := (bytes.zipIdx.map fun (b, i) => b * 256 ^ i).sum
   if bytes.length > 0 && bytes.getLast! ≥ 128 then (n : Int) - 256 ^ bytes.length else n
 
+def encodeChar (v : Nat) : Char :=
+  if v < 26 then Char.ofNat ('A'.toNat + v)
+  else if v < 52 then Char.ofNat ('a'.toNat + v - 26)
+  else if v < 62 then Char.ofNat ('0'.toNat + v - 52)
+  else if v = 62 then '+' else '/'
+
+/-- Encode bytes as standard base64, padded with `=`. -/
+def encode (bytes : List Nat) : String :=
+  let bits := bytes.flatMap fun b => (List.range 8).reverse.map fun i => (b / 2 ^ i) % 2
+  let groups := (bits.length + 5) / 6
+  let chars := (List.range groups).map fun g =>
+    encodeChar ((List.range 6).map fun i => bits.getD (g * 6 + i) 0 * 2 ^ (5 - i)).sum
+  (String.ofList chars).pushn '=' ((4 - groups % 4) % 4)
+
+/-- `m` as 16 little-endian bytes of two's complement (Substrait's decimal
+encoding, for `-2¹²⁷ ≤ m < 2¹²⁷`). -/
+def leBytes16 (m : Int) : List Nat :=
+  let u : Nat := (if m < 0 then m + 2 ^ 128 else m).toNat
+  (List.range 16).map fun i => u / 256 ^ i % 256
+
+#guard [0, 1, -1, 1235, -1235, 10 ^ 37, -(10 ^ 37)].all fun m =>
+  (decode (encode (leBytes16 m))).map leSigned == some m
+#guard encode (leBytes16 1235) == "0wQAAAAAAAAAAAAAAAAAAA=="
+
 end Substrait.Base64
