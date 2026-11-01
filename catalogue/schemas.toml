@@ -171,6 +171,16 @@ p_channel_event = "string"
 "promotion.p_channel_event" = ["N", "Y"]
 
 # Star Schema Benchmark (O'Neil et al.), the date table renamed `dwdate`.
+# The specification's tables have no NULLs, and the dimensions' keys are keys.
+[datasets.ssb]
+keys = ["dwdate.d_datekey", "customer.c_custkey", "supplier.s_suppkey", "part.p_partkey"]
+not_null = [
+    "lineorder.lo_orderdate", "lineorder.lo_custkey", "lineorder.lo_partkey",
+    "lineorder.lo_suppkey", "lineorder.lo_quantity", "lineorder.lo_extendedprice",
+    "lineorder.lo_discount", "lineorder.lo_revenue", "lineorder.lo_supplycost",
+    "dwdate.d_year", "dwdate.d_yearmonthnum",
+]
+
 [datasets.ssb.tables.lineorder]
 lo_orderdate = "int64"
 lo_custkey = "int64"
@@ -217,6 +227,10 @@ p_mfgr = "string"
 "part.p_mfgr" = ["MFGR#1", "MFGR#2", "MFGR#3"]
 
 # ClickBench (`hits`, web analytics), the columns of the chosen queries.
+# Flags and times are never NULL in the benchmark's data.
+[datasets.hits]
+not_null = ["hits.IsRefresh", "hits.DontCountHits", "hits.EventTime", "hits.EventDate"]
+
 [datasets.hits.tables.hits]
 WatchID = "int64"
 UserID = "int64"
@@ -248,7 +262,14 @@ MobilePhoneModel = "string"
 "hits.IsRefresh" = [0, 1]
 "hits.DontCountHits" = [0, 1]
 
-# Join Order Benchmark (IMDB), the columns of the chosen queries.
+# Join Order Benchmark (IMDB), the columns of the chosen queries. Every
+# table's `id` is its key.
+[datasets.imdb]
+keys = [
+    "title.id", "company_type.id", "company_name.id", "info_type.id", "keyword.id", "name.id",
+]
+not_null = ["title.production_year"]
+
 [datasets.imdb.tables.title]
 id = "int64"
 title = "string"
@@ -308,7 +329,13 @@ gender = "string"
 "title.production_year" = [1995, 2005, 2010, 2014]
 "cast_info.note" = ["(voice)", "(producer)", "(writer)"]
 
-# H2O db-benchmark (groupby `x`; join `x` with `small`, `medium`).
+# H2O db-benchmark (groupby `x`; join `x` with `small`, `medium`). The
+# generator's ranges: v1 in 1..5, v2 in 1..15, v3 in [0, 100]; `small` and
+# `medium` have one row per `id1` and `id2`.
+[datasets.h2o]
+keys = ["small.id1", "medium.id2"]
+not_null = ["x.v1", "x.v2", "x.v3"]
+
 [datasets.h2o.tables.x]
 id1 = "string"
 id2 = "string"
@@ -346,6 +373,9 @@ v2 = "float64"
 "x.id1" = ["id001", "id002", "id003"]
 "x.id2" = ["id001", "id002"]
 "x.id3" = ["id0000000001", "id0000000002", "id0000000003", "id0000000004"]
+"x.v1" = [1, 2, 3, 4, 5]
+"x.v2" = [1, 4, 9, 15]
+"x.v3" = [0.0, 12.5, 50.0, 99.75]
 
 # Application data for the practitioner idioms: events, orders, subscriptions,
 # sensors, markets, HR.

@@ -38,6 +38,16 @@ q = j.aggregate(
     movie_year=t.production_year.min(),
 )
 '''
+requires = '''
+{
+    'title': [_.production_year.between(1874, 2030)],
+}
+'''
+ensures = '''
+[
+    _.movie_year.isnull() | _.movie_year.between(1874, 2030),
+]
+'''
 
 [[query]]
 id = "job-2a"
@@ -58,6 +68,14 @@ j = (
     .filter((cn.country_code == "[de]") & (k.keyword == "character-name-in-title"))
 )
 q = j.aggregate(movie_title=t.title.min())
+'''
+requires = '''
+{
+    'title': [],
+}
+'''
+ensures = '''
+[]
 '''
 
 [[query]]
@@ -84,4 +102,12 @@ j = (
     )
 )
 q = j.aggregate(movie_keyword=k.keyword.min(), actor_name=n.name.min(), marvel_movie=t.title.min())
+'''
+requires = '''
+{
+    'title': [_.production_year.between(1874, 2030)],
+}
+'''
+ensures = '''
+[]
 '''

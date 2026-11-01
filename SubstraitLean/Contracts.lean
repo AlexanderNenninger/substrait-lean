@@ -2862,6 +2862,16 @@ def sumBound (b : Bound) : Bound :=
   ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
    b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
 
+/-- A non-empty sum of integers in `b`: at least `b`'s lower bound where that
+is not negative (the other terms are not negative), at most its upper bound
+where that is not positive. -/
+def sumBoundPos (b : Bound) : Bound :=
+  ⟨b.lo.bind fun l => if 0 ≤ l then some l else none,
+   b.hi.bind fun h => if h ≤ 0 then some h else none⟩
+
+/-- Admits integers and NULL only: no booleans, strings or lists. -/
+def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
+
 /-- Some double, or NULL. -/
 def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
 
@@ -2869,11 +2879,20 @@ def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
 number, a sum of integers keeps their sign, `MIN` and `MAX` are among the
 argument's values, and the other measures are doubles. All but `COUNT` may
 be NULL. -/
-def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) : AVal :=
+def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false) :
+    AVal :=
   let a := m.arg.absD env fs
   match m.fn with
-  | .count => ⟨false, some (Bound.ge 0), false, false, false⟩
-  | .sum => ⟨true, some (match a.int with | some b => sumBound b | none => Bound.top), false, false, false⟩
+  -- A group has a row (`grouped`), so a count of a never-NULL argument
+  -- without a filter is positive: `COUNT(*)` per group is at least 1.
+  | .count =>
+    ⟨false, some (Bound.ge (if grouped && m.filter.isNone && !a.null then 1 else 0)), false, false,
+      false⟩
+  -- A sum is over at least one input (none: NULL), so with integer inputs
+  -- it is at least the smallest one, if that is not negative.
+  | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
+      | some b => if a.intsOnly then sumBoundPos b else sumBound b
+      | none => Bound.top), false, false, false⟩
   | .fsum | .avg => AVal.double
   | .min | .max => a.nullable
   | .collect => AVal.top
@@ -2898,7 +2917,7 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .unnest r c => (r.aeval cat A F T).set c AVal.top
   | .aggregate r gs ms =>
       gs.map (·.absD (r.aeval cat A F T) (r.facts cat F T)) ++
-        ms.map (Measure.abs (r.aeval cat A F T) (r.facts cat F T))
+        ms.map fun m => Measure.abs (r.aeval cat A F T) (r.facts cat F T) m !gs.isEmpty
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} :
@@ -3034,9 +3053,55 @@ theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs �
       · cases hu; exact intSum_nonpos fun i hi => by have := (h i hi).2 h₀ hb; omega
       · cases hu
 
+theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
+    (h : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i) : (sumBoundPos b).Mem (intSum (v :: vs)) := by
+  obtain ⟨i, rfl, hi⟩ := h v (by simp)
+  have hrest : ∀ j, .int j ∈ vs → b.Mem j := fun j hj => by
+    obtain ⟨j', hj', hm⟩ := h (.int j) (by simp [hj]); cases hj'; exact hm
+  simp only [intSum]
+  constructor
+  · intro l hl
+    cases hb : b.lo with
+    | none => simp [sumBoundPos, hb] at hl
+    | some l₀ =>
+      simp only [sumBoundPos, hb, Option.bind_some] at hl
+      split at hl
+      · simp only [Option.some.injEq] at hl; subst hl
+        have := hi.1 l₀ hb
+        have := intSum_nonneg (vs := vs) fun j hj => by have := (hrest j hj).1 l₀ hb; omega
+        omega
+      · cases hl
+  · intro u hu
+    cases hb : b.hi with
+    | none => simp [sumBoundPos, hb] at hu
+    | some h₀ =>
+      simp only [sumBoundPos, hb, Option.bind_some] at hu
+      split at hu
+      · simp only [Option.some.injEq] at hu; subst hu
+        have := hi.2 h₀ hb
+        have := intSum_nonpos (vs := vs) fun j hj => by have := (hrest j hj).2 h₀ hb; omega
+        omega
+      · cases hu
+
+/-- A measure without a filter, of an argument that is never NULL, over a
+group with a row, has an input. -/
+theorem Measure.inputs_ne_nil {env : List AVal} {fs : List Fact} {grp : Relation}
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) {m : Measure} (hg : grp ≠ [])
+    (hf : m.filter = none) (hnn : (m.arg.absD env fs).null = false) : m.inputs grp ≠ [] := by
+  obtain ⟨y, hy⟩ := List.exists_mem_of_ne_nil grp hg
+  have hv := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) m.arg
+  have : m.arg.eval y ≠ .null := fun h0 => by rw [h0] at hv; simp_all [AVal.Mem]
+  simp only [Measure.inputs, Measure.kept, hf]
+  have hm : m.arg.eval y ∈ (grp.map m.arg.eval).filter (· != .null) :=
+    List.mem_filter.mpr ⟨List.mem_map.mpr ⟨y, hy, rfl⟩, by simpa using this⟩
+  split
+  · exact List.ne_nil_of_mem (mem_dedup.mpr hm)
+  · exact List.ne_nil_of_mem hm
+
 theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
-    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (m : Measure) :
-    (m.abs env fs).Mem (m.eval grp) := by
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (m : Measure) (grouped : Bool := false)
+    (hne : grouped = true → grp ≠ [] := by simp) :
+    (m.abs env fs grouped).Mem (m.eval grp) := by
   have hin : ∀ v ∈ m.inputs grp, (m.arg.absD env fs).Mem v := by
     intro v hv
     obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
@@ -3044,20 +3109,52 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
   case collect => exact AVal.mem_top _
-  case count => exact ⟨_, rfl, by simp [Bound.Mem, Bound.ge]⟩
+  case count =>
+    refine ⟨_, rfl, fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩
+    simp only [Bound.ge, Option.some.injEq] at hl
+    subst hl
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Bool.not_eq_true'] at hc
+      obtain ⟨⟨hg, hf⟩, hnn⟩ := hc
+      have hne' := Measure.inputs_ne_nil hall (hne hg) hf hnn
+      cases h : m.inputs grp with
+      | nil => exact absurd h hne'
+      | cons _ _ => simp only [List.length_cons]; omega
+    · omega
   case sum =>
     cases hvs : m.inputs grp with
-    | nil => rfl
+    | nil =>
+      simp only [AggFn.apply, AVal.Mem]
+      cases hg : grouped <;> cases hfi : m.filter <;> cases hn : (m.arg.absD env fs).null <;>
+        simp
+      exact Measure.inputs_ne_nil hall (hne hg) hfi hn hvs
     | cons v vs =>
       simp only [AggFn.apply]
       refine ⟨_, rfl, ?_⟩
       cases ha : (m.arg.absD env fs).int with
       | none => exact Bound.mem_top _
       | some b =>
-        refine sumBound_sound fun i hi => ?_
-        have := hin (.int i) (hvs ▸ hi)
-        obtain ⟨b', hb', hm⟩ := this
-        rw [ha] at hb'; cases hb'; exact hm
+        simp only
+        split
+        · -- Every input is an integer in `b`.
+          rename_i honly
+          simp only [AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at honly
+          refine sumBoundPos_sound fun w hw => ?_
+          have hm := hin w (hvs ▸ hw)
+          have hnn : w ≠ .null := by
+            have : w ∈ m.inputs grp := hvs ▸ hw
+            simp only [Measure.inputs] at this
+            split at this <;> simp_all [mem_dedup]
+          rcases mem_cases hm with ⟨rfl, _⟩ | ⟨i, b', rfl, hb', hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ |
+              ⟨_, rfl, hs⟩ | ⟨_, rfl, ht, _, _⟩
+          · exact absurd rfl hnn
+          · rw [ha] at hb'; cases hb'; exact ⟨i, rfl, hi⟩
+          all_goals simp_all
+        · refine sumBound_sound fun i hi => ?_
+          have := hin (.int i) (hvs ▸ hi)
+          obtain ⟨b', hb', hm⟩ := this
+          rw [ha] at hb'; cases hb'; exact hm
   case fsum | avg =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case min | max =>
@@ -3068,11 +3165,12 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     · exact AVal.mem_nullable (hin _ h)
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
-    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) :
-    EnvMem (ms.map (Measure.abs env fs)) (ms.map (·.eval grp)) := by
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)
+    (hne : grouped = true → grp ≠ [] := by simp) :
+    EnvMem (ms.map fun m => Measure.abs env fs m grouped) (ms.map (·.eval grp)) := by
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall]
+  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall _ grouped hne]
 
 /-- **Soundness of abstract plan evaluation**: every row a well-formed plan
 produces is described by `Rel.aeval`, provided the tables are. -/
@@ -3181,15 +3279,15 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       obtain ⟨_, v, _, _, rfl⟩ := mem_unnestRow h
       exact (aeval_sound hcat hA hF hT hwf.1 x hx).set_top c v
   | .aggregate r gs ms, hwf, row, h => by
-      obtain ⟨k, grp, rfl, hgrp, hk⟩ := mem_aggregateEval h
+      obtain ⟨k, grp, rfl, hgrp, hk, hne⟩ := mem_aggregateEval_nonempty h
       have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T) y ∧ FactsHold (r.facts cat F T) y :=
         fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 y (hgrp y hy),
           Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
+      have hm := EnvMem.measures hall ms (!gs.isEmpty) (fun hg => hne (by simpa using hg))
       rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
-      · exact EnvMem.append (by intro j; simp [AVal.mem_top]) (EnvMem.measures hall ms) (by simp)
+      · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
       · exact (EnvMem.mapD (aeval_sound hcat hA hF hT hwf.1 x hx)
-          (Rel.facts_sound hcat hF hT hwf.1 x hx) gs).append (EnvMem.measures hall ms)
-          (by simp)
+          (Rel.facts_sound hcat hF hT hwf.1 x hx) gs).append hm (by simp)
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       rcases h with h | h

@@ -206,6 +206,23 @@ theorem mem_aggregateEval {gs : List Expr} {ms : List Measure} {rows : Relation}
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
     exact ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩⟩
 
+/-- `mem_aggregateEval`, and with a grouping, the group has a row. -/
+theorem mem_aggregateEval_nonempty {gs : List Expr} {ms : List Measure} {rows : Relation}
+    {row : Row} (h : row ∈ aggregateEval gs ms rows) :
+    ∃ k grp, row = k ++ ms.map (·.eval grp) ∧ (∀ y ∈ grp, y ∈ rows) ∧
+      ((gs = [] ∧ k = []) ∨ ∃ x ∈ rows, k = groupKey gs x) ∧ (gs ≠ [] → grp ≠ []) := by
+  unfold aggregateEval at h
+  split at h
+  · rename_i hg
+    simp only [List.mem_singleton] at h
+    exact ⟨[], rows, by simp [h], fun _ hy => hy, .inl ⟨List.isEmpty_iff.mp hg, rfl⟩,
+      fun hne => absurd (List.isEmpty_iff.mp hg) hne⟩
+  · simp only [List.mem_map] at h
+    obtain ⟨k, hk, rfl⟩ := h
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_⟩
+    exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
+
 theorem aggregateEval_length {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}
     (h : row ∈ aggregateEval gs ms rows) : row.length = gs.length + ms.length := by
   obtain ⟨k, grp, rfl, _, hk⟩ := mem_aggregateEval h
