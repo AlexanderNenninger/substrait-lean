@@ -331,9 +331,9 @@ def _(mo):
     [chapter 17](?file=17_backend_semantics.py)'s questions its own way, and
     each is spelled out or refused:
 
-    * `/` of integers is a double, so division is `div`; `/` of doubles
-      raises on a zero divisor in ANSI mode, so `x / 0.0` is written as the
-      IEEE ±inf or NaN.
+    * `/` of integers is a double, so division is `div`. `/` of doubles
+      raises on a zero divisor, which is what the reference does too; a plan
+      that asks for IEEE gets ±inf or NaN from a `CASE`.
     * `CAST(9.3e18 AS BIGINT)` saturates instead of raising, and `FLOOR`
       and `CEIL` return integers: each is checked or repaired.
     * `SUM` of `BIGINT` raises on an overflowing partial sum, though Lean's

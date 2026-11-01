@@ -314,7 +314,8 @@ FAITHFUL = [
     "SELECT a / b FROM dm",
     "SELECT a % b FROM dm",
     "SELECT v, v = 0.0, v < 0.0 FROM f0",
-    "SELECT v / 0.0 FROM f",
+    # By zero raises (#204), except for NULL.
+    "SELECT v / 0.0 FROM f WHERE v IS NULL",
     "SELECT v % 2.0, v % CAST('-inf' AS DOUBLE), -v % 2.0 FROM f",
     "SELECT 7.5 % v, -7.5 % v FROM f WHERE v <> 0.0",
     "SELECT v, CAST(v AS BIGINT) AS c FROM r",

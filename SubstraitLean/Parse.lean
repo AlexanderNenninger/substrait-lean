@@ -818,13 +818,18 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
       some (some ["TIE_TO_EVEN"])
     else none
+  -- Every value is modelled (`divByZero`). `IEEE` and `LIMIT` are only for
+  -- dividing doubles: integers have neither, and the remainder of doubles is
+  -- C's `fmod` (#203), whose IEEE value by zero is not `±∞`.
   | "on_division_by_zero" =>
     if base != "divide" && base != "modulus" then none
-    -- Double `divide` is IEEE (#204); `modulus` raises, as on integers.
-    else if float && base == "divide" then some (some ["IEEE"]) else some none
+    else if float && base == "divide" then some (some ["ERROR", "IEEE", "NULL", "LIMIT"])
+    else some (some ["ERROR", "NULL"])
   | "on_domain_error" =>
     -- Outside their domains the elementary functions raise (`Numeric.lean`).
     if doubleFns.contains base then some (some ["ERROR"])
+    -- Double division propagates NaN, and `±∞ / ±∞` is NaN (IEEE 754).
+    else if base == "divide" then (if float then some (some ["NAN"]) else some none)
     else if base != "power" then none else if float then some (some ["NAN"]) else some none
   | "on_log_zero" =>
     if ["ln", "log10", "log2", "logb"].contains base then some (some ["ERROR"]) else none
@@ -857,6 +862,10 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
   ("preference", Json.arr #["SATURATE"])]]).toBool == false
 #guard (checkOptions "divide" false [Json.mkObj [("name", "overflow"),
   ("preference", Json.arr #["SATURATE"])]]).toBool
+#guard (checkOptions "divide" true [Json.mkObj [("name", "on_division_by_zero"),
+  ("preference", Json.arr #["LIMIT"])]]).toBool
+#guard (checkOptions "divide" false [Json.mkObj [("name", "on_division_by_zero"),
+  ("preference", Json.arr #["IEEE"])]]).toBool == false
 #guard (checkOptions "add" true [Json.mkObj [("name", "rounding"),
   ("preference", Json.arr #["TIE_AWAY_FROM_ZERO"])]]).toBool == false
 #guard (checkOptions "like:str_str" false [Json.mkObj [("name", "case_sensitivity"),
@@ -941,6 +950,38 @@ def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (
     | .lit (.int k) => .lit (.int (-k))
     | e => .un .neg e
   return some (.bin .dateAdd x days)
+
+/-- The preference of `on_division_by_zero` that applies: the first one, or
+`ERROR` when the plan omits it (#185). `checkOptions` has checked them. -/
+def divByZeroMode (opts : List Json) : String := Id.run do
+  for o in opts do
+    if (field? o "name") == some (.str "on_division_by_zero") then
+      if let some (Json.str m) := ((field? o "preference").bind (·.getArr? |>.toOption)).bind (·[0]?) then
+        return m
+  return "ERROR"
+
+/-- `a / b` (`div`, which raises on a zero divisor) under `on_division_by_zero`
+= `mode`. Other than `ERROR`, the mode is a `CASE` on the divisor:
+
+* `NULL`: `NULL`.
+* `IEEE` (doubles): `±∞` by the sign of `a`, and NaN for `0 / 0`. The model
+  has one zero (#89), which is positive.
+* `LIMIT` (doubles): `±∞` by the sign of `a`, `0 / 0` included.
+
+A NaN dividend stays NaN (`on_domain_error` = `NAN`). `NULL` stays `NULL`. -/
+def divByZero (mode : String) (float : Bool) (div : Expr → Expr → Expr) (a b : Expr) : Expr :=
+  let lit (i : Int) : Expr := .lit (.int i)
+  let nan := lit FloatCode.nan
+  let byZero : Expr := match mode with
+    | "IEEE" => .ifThen (.bin .eq a nan) nan
+        (.ifThen (.bin .lt a (lit 0)) (lit FloatCode.negInf)
+          (.ifThen (.bin .lt (lit 0) a) (lit FloatCode.posInf) nan))
+    | "LIMIT" => .ifThen (.bin .eq a nan) nan
+        (.ifThen (.bin .lt a (lit 0)) (lit FloatCode.negInf) (lit FloatCode.posInf))
+    | _ => if float then .ifThen (.bin .eq a nan) nan (.lit .null) else .lit .null
+  if mode == "ERROR" then div a b else
+  .ifThen (.un .not (.bin .eq b (lit 0))) (div a b)
+    (.ifThen (.un .isNull b) (.lit .null) (.ifThen (.un .isNull a) (.lit .null) byZero))
 
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
@@ -1296,9 +1337,17 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if e.kind cols == .int && !keepInt k && !(e matches .lit _) && !doubleJ fns j then
           Expr.un .itof e
         else e
-      mkFloatCall (baseName name) args
+      let mode := divByZeroMode (← arrD f "options")
+      match baseName name, args with
+      | "divide", [a, b] => return divByZero mode true (.bin .fdiv) a b
+      | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
+      | _, _ => mkFloatCall (baseName name) args
     else
-      let call ← mkCall (baseName name) args
+      let mode := divByZeroMode (← arrD f "options")
+      let call ← match baseName name, args with
+        | "divide", [a, b] => pure (divByZero mode false (.bin .idiv) a b)
+        | "modulus", [a, b] => pure (divByZero mode false (.bin .imod) a b)
+        | _, _ => mkCall (baseName name) args
       -- Arithmetic on integers narrower than 64 bits wraps at their width.
       let w := ((argJs.zip parsed).map fun (j, e) => argBits bits j e).foldl max 8
       if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&

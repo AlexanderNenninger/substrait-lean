@@ -653,7 +653,7 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify.coverage --write-readme`):
 
 <!-- coverage:start -->
-146 of 170 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+159 of 183 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
@@ -663,18 +663,19 @@ How much of the Ibis API gets through, from
 | lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* |
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✗ min over a sliding frame · ✗ window sum of an expression |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
+| math | ✓ sign *inc.* · ✓ sqrt *inc.* · ✓ exp *inc.* · ✓ ln *inc.* · ✓ log10, log2 *inc.* · ✓ log(base) *inc.* · ✓ trigonometry *inc.* · ✓ degrees, radians *inc.* · ✓ pi, e *inc.* · ✓ isinf *inc.* · ✓ bitwise *inc.* · ✓ shifts *inc.* · ✓ logical xor *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✗ date from columns · ✗ string to timestamp · ✗ time + interval · ✗ time truncate · ✗ strftime other directives · – between_time |
 
-Every engine runs the plans of the 146 verified operations, except:
+Every engine runs the plans of the 159 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 145 | non-equi join |
-| DuckDB | 139 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
-| Snowflake | 116 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · replace '' · rolling sum by time (with `tie_free=True` it runs) |
-| Spark | 113 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · replace '' · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
+| Polars | 158 | non-equi join |
+| DuckDB | 152 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
+| Snowflake | 122 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · rolling sum by time (with `tie_free=True` it runs) |
+| Spark | 121 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
@@ -1268,7 +1269,8 @@ Spark differs:
 * integers are `BIGINT`; division is `div` (`/` gives a double) and
   remainder `%`, both truncating; a `SUM` adds `DECIMAL(38,0)` values, since
   Spark raises when a partial sum overflows even if the total fits;
-* doubles divided by zero give ±inf or NaN (ANSI mode raises);
+* doubles divided by zero raise, as the reference does (`on_division_by_zero`
+  = ERROR); a plan asking for IEEE gets a `CASE` for ±inf or NaN;
   `CAST(double AS BIGINT)` is range-checked first (Spark saturates at 2⁶³);
   `FLOOR` and `CEIL` (which return `BIGINT`) keep NaN, ±inf and large values;
 * timestamps are `TIMESTAMP_NTZ` and intervals `INTERVAL DAY TO SECOND`;
