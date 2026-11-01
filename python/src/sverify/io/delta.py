@@ -420,7 +420,8 @@ class DeltaSink(Sink):
 
     Each commit carries the transaction `(app_id, epoch)`, where the epoch is
     the sum of the node's source versions; a state whose epoch the table has
-    already committed is skipped. The first write creates the table with
+    already committed is skipped, unless another plan committed it: then the
+    table is overwritten, schema and constraints included. The first write creates the table with
     Change Data Feed enabled, NOT NULL columns and CHECK constraints for the
     node's proved guarantees; later writes MERGE the change (each changed row
     deleted and re-inserted with its new multiplicity) in one commit. A new
@@ -550,35 +551,53 @@ class DeltaSink(Sink):
             mode = "created"
         else:
             mode = "overwrite" if change.replace else "merge"
-        constraints = self._constraints(dt, contract)
+        missing = self._constraints(dt, contract, replace=mode != "merge")
         if mode == "merge":
+            if missing:
+                dt.alter.add_constraint(missing)
             assert self._written is not None
             inserted, deleted = self._merge(dt, schema, self._written, view.counts, commit)
         else:
+            # The rows may come from another plan, with other columns: the
+            # schema becomes the rows'. Its constraints hold only once the
+            # rows are in, so the last commit records the epoch: a job that
+            # stops in between writes the state again.
             rows = change.table
             write_deltalake(
-                dt, rows, mode="overwrite", commit_properties=commit, storage_options=options
+                dt,
+                rows,
+                mode="overwrite",
+                schema_mode="overwrite",
+                commit_properties=None if missing else commit,
+                storage_options=options,
             )
+            if missing:
+                DeltaTable(self.uri, storage_options=options).alter.add_constraint(
+                    missing, commit_properties=commit
+                )
             inserted, deleted = rows.num_rows, 0
         version = DeltaTable(self.uri, storage_options=options).version()
-        return SinkWrite(mode, version, contract, inserted, deleted, constraints)
+        return SinkWrite(mode, version, contract, inserted, deleted, contract.checks)
 
-    def _constraints(self, dt: DeltaTable, contract: Contract) -> dict[str, str]:
-        """Add the contract's CHECK constraints the table lacks. A constraint
-        of an earlier contract that this one does not prove is an error: the
-        table would promise what the view no longer guarantees."""
+    def _constraints(self, dt: DeltaTable, contract: Contract, *, replace: bool) -> dict[str, str]:
+        """The contract's CHECK constraints the table lacks. A constraint of
+        an earlier contract that this one does not prove is an error: the
+        table would promise what the view no longer guarantees. Unless the
+        rows are replaced (`replace`): then the constraints a `DeltaSink`
+        added (`sverify_*`) are dropped."""
         have = {
             k.removeprefix("delta.constraints."): v
             for k, v in dt.metadata().configuration.items()
             if k.startswith("delta.constraints.")
         }
         stale = {k: v for k, v in have.items() if not _same_sql(contract.checks.get(k), v)}
-        if stale:
-            raise ValueError(f"{self.uri} has constraints the view does not guarantee: {stale}")
-        missing = {k: v for k, v in contract.checks.items() if k not in have}
-        if missing:
-            dt.alter.add_constraint(missing)
-        return contract.checks
+        foreign = {k: v for k, v in stale.items() if not (replace and k.startswith("sverify_"))}
+        if foreign:
+            raise ValueError(f"{self.uri} has constraints the view does not guarantee: {foreign}")
+        for k in stale:
+            dt.alter.drop_constraint(k)
+            del have[k]
+        return {k: v for k, v in contract.checks.items() if k not in have}
 
     def _merge(
         self,

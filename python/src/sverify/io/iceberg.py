@@ -35,7 +35,11 @@ import pyarrow.parquet as pq
 try:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import AlwaysTrue
-    from pyiceberg.io.pyarrow import ArrowScan, _dataframe_to_data_files
+    from pyiceberg.io.pyarrow import (
+        ArrowScan,
+        _dataframe_to_data_files,
+        _pyarrow_schema_ensure_small_types,
+    )
     from pyiceberg.manifest import (
         DataFile,
         DataFileContent,
@@ -78,6 +82,26 @@ APP = "sverify.app"
 
 def _arrow_schema(t: Table) -> pa.Schema:
     return pa.schema([f.remove_metadata() for f in t.schema().as_arrow()])
+
+
+def _layout(schema: pa.Schema) -> list[tuple[str, bool, pa.DataType]]:
+    return [(f.name, f.nullable, f.type) for f in _pyarrow_schema_ensure_small_types(schema)]
+
+
+def _replace_schema(tx: Transaction, old: pa.Schema, new: pa.Schema) -> None:
+    """Make the table's schema `new` in `tx`, for rows that replace the
+    table's (of another plan, maybe): drop the columns that are not in
+    `new` as they are, then add the ones it lacks."""
+    if _layout(old) == _layout(new):
+        return
+    keep = set(_layout(new))
+    gone = [f.name for f, lay in zip(old, _layout(old), strict=True) if lay not in keep]
+    if gone:
+        with tx.update_schema(allow_incompatible_changes=True) as update:
+            for name in gone:
+                update.delete_column(name)
+    with tx.update_schema(allow_incompatible_changes=True) as update:
+        update.union_by_name(new)
 
 
 def _ancestry(t: Table) -> list[IcebergSnapshot]:
@@ -536,11 +560,12 @@ class IcebergSink(Sink):
     on an existing table, or a table that does not hold the rows the sink
     wrote, is overwritten. Every snapshot carries the contract's plan hash,
     the epoch (sum of source versions) and the app id; a state whose epoch
-    the last snapshot of this app already has is skipped. The contract is
-    also the table property `sverify.contract`, and columns the view proves
-    NOT NULL are `required`. `name` is the table's name in the plans that
-    read the stored node (default: the last part of `identifier`); `app_id`
-    defaults to `sverify:<name>`.
+    the last snapshot of this app already has is skipped, unless another
+    plan wrote it: then the table is overwritten, schema included. The
+    contract is also the table property `sverify.contract`, and columns the
+    view proves NOT NULL are `required`. `name` is the table's name in the
+    plans that read the stored node (default: the last part of
+    `identifier`); `app_id` defaults to `sverify:<name>`.
 
     The node `write` returns reads the table as an `IcebergSource` and builds
     on the contract the stored node proved. A restarted job that builds the
@@ -632,6 +657,8 @@ class IcebergSink(Sink):
         with t.transaction() as tx:
             tx.set_properties({KEY: contract.to_json()})
             if positions is None:
+                if not created:
+                    _replace_schema(tx, _arrow_schema(t), schema)
                 tx.overwrite(rows, snapshot_properties=props)
             else:
                 _commit_rows(tx, t, rows, _position_deletes(t, positions), props)
