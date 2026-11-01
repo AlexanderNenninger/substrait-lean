@@ -76,6 +76,9 @@ inductive Issue where
   `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
   instead, which an error allows (a refinement, epic #185). -/
   | domain
+  /-- Raised by a shim's guard (`UnFn.raise`, #185), where an engine would
+  answer while the reference raises. Plans `verify` checks have none. -/
+  | raised
   deriving Repr, DecidableEq
 
 def Issue.name : Issue → String
@@ -86,6 +89,7 @@ def Issue.name : Issue → String
   | .badRegex => "invalid regular expression"
   | .wraps | .sumWraps => "may wrap around"
   | .domain => "domain error"
+  | .raised => "raised by a guard"
 
 /-- A decimal (#27). The parser marks the argument of a `SUM` of decimals
 this way: engines add decimals in 128 bits, so the sum does not wrap at 64. -/
@@ -144,6 +148,7 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .decimal p _, .int i => if fitsDigits p i then none else some .overflow
   -- NaN and ±∞ have no decimal.
   | .ftod s, .int c => if (FloatCode.toDecimal? c s).isSome then none else some .badCast
+  | .raise _, _ => some .raised
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
@@ -249,6 +254,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
   | .decimal p _, aa, _ => if aa.int.all (·.fitsDigits p) then [] else [.overflow]
   | .ftod _, _, _ => [.badCast]
+  | .raise _, _, _ => [.raised]
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -391,6 +397,8 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     (ha : aa.Mem v) (hr : ar.Mem (f.apply v)) (hk : f.issue v = some k) : k ∈ f.mayIssue aa ar := by
   cases f <;> cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+  case raise.null | raise.bool | raise.int | raise.str | raise.list =>
+    simp only [Option.some.injEq] at hk; subst hk; simp [UnFn.mayIssue]
   case fmath.int f c =>
     simp only [domainIssue] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk

@@ -286,6 +286,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
     | .list k => k
     | _ => .other
   | .un .cardinality _ => .int
+  | .un (.raise _) _ => .other
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
@@ -1131,6 +1132,9 @@ def mkCall : String → List Expr → J Expr
   | "not_equal", [a, b] => pure (.un .not (.bin .eq a b))
   | "lt", [a, b] | "list_lt", [a, b] => pure (.bin .lt a b)
   | "cardinality", [a] => pure (.un .cardinality a)
+  -- A shim's guards (#185), which `--write-duckdb` writes.
+  | "sverify_raise", [a, .lit (.str msg)] => pure (.un (.raise msg) a)
+  | "sverify_is_number", [a] => pure (.un .isNum a)
   | "gt", [a, b] => pure (.bin .lt b a)
   | "lte", [a, b] => pure (.un .not (.bin .lt b a))
   | "gte", [a, b] => pure (.un .not (.bin .lt a b))

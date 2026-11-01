@@ -30,6 +30,7 @@ def UnFn.render : UnFn → String
   | .ftod s => s!"TO_DECIMAL_{s}" | .dtof s => s!"DECIMAL_TO_DOUBLE_{s}"
   | .structField i => s!"FIELD_{i}" | .listElement off => s!"ELEMENT_{off}"
   | .cardinality => "CARDINALITY"
+  | .raise msg => s!"RAISE_{msg.quote}" | .isNum => "IS_NUMBER"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"

@@ -120,6 +120,13 @@ inductive UnFn where
   /-- `cardinality(l)`: the number of elements, NULL ones included
   (`functions_list.yaml`). -/
   | cardinality
+  /-- A shim's guard (#185): always raises (`Issue.raised` in `Safety.lean`),
+  with the message `msg` and the value of its argument; DuckDB's `error()`.
+  Its value, which nobody sees, is `NULL`. -/
+  | raise (msg : String)
+  /-- `x` is a number (a shim's guard, #185). The SQL printers write `x IS NOT
+  NULL`, since in SQL a non-NULL operand of a numeric function is a number. -/
+  | isNum
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -282,6 +289,8 @@ def UnFn.apply : UnFn → Value → Value
   | .structField i, .list vs => vs.getD i .null
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
+  | .isNum, .int _ => .bool true
+  | .isNum, _ => .bool false
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/

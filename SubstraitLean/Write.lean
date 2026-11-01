@@ -39,7 +39,10 @@ def coreFns : List (Nat × String) := [
   (100, "sqrt"), (101, "exp"), (102, "ln"), (103, "log10"), (104, "log2"), (105, "sin"),
   (106, "cos"), (107, "tan"), (108, "asin"), (109, "acos"), (110, "atan"), (111, "atan2"),
   (112, "logb"), (113, "bitwise_and"), (114, "bitwise_or"), (115, "bitwise_xor"),
-  (116, "bitwise_shift_left"), (117, "bitwise_shift_right")]
+  (116, "bitwise_shift_left"), (117, "bitwise_shift_right"),
+  -- sverify's own: a shim's guards (#185), which the SQL printers write as
+  -- `error(…)` and `x IS NOT NULL`.
+  (118, "sverify_raise"), (119, "sverify_is_number")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -112,6 +115,8 @@ def UnFn.anchor : UnFn → Nat
   | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
   -- Lists and structs; field and element access are references, not calls.
   | .cardinality => 401
+  -- A shim's guards.
+  | .raise _ => 118 | .isNum => 119
   | .structField _ | .listElement _ => 0
 
 def BinFn.anchor : BinFn → Nat
@@ -416,6 +421,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .upper a => call (UnFn.anchor .upper) [writeExpr cols .str a]
   | .un .lower a => call (UnFn.anchor .lower) [writeExpr cols .str a]
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
+  | .un (.raise msg) a => call 118 [writeExpr cols (wkind cols a) a, writeLit .str (.str msg)]
   | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
   -- A reference into the value of `a` (#94).
   | .un (.structField i) a => reference (obj [("structField", obj [("field", toJson i)])])
