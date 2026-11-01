@@ -13,6 +13,7 @@ from deltalake import DeltaTable
 from ibis import _
 
 import sverify as sv
+from _pipelines import rows
 from sverify.errors import AuditError, PreconditionError
 from sverify.io import (
     Batch,
@@ -42,10 +43,6 @@ def ids(t):
     return t.select(t.id)
 
 
-def rows_of(node):
-    return sorted(tuple(r.values()) for r in node.to_arrow().to_pylist())
-
-
 class Feed:
     """A table that grows, read by a high-water mark on `ts`."""
 
@@ -72,14 +69,14 @@ def test_from_query_appends_by_its_cursor():
     f = feed()
     node = big(from_query(f.since, cursor_on="ts", name="payments"))
     node.refresh()
-    assert rows_of(node) == [(1, 10, 30)]
+    assert rows(node) == [(1, 10, 30)]
     f.add({"id": 3, "ts": 30, "amount": 50})
     report = node.refresh()
     [entry] = report["big"].report.sources
     assert (entry.start, entry.end, entry.mode) == (1, 2, "change feed")
     assert "appended to payments v1→v2" in entry.detail
     assert "assuming rows only arrive with a greater ts" in entry.detail
-    assert rows_of(node) == [(1, 10, 30), (3, 30, 50)]
+    assert rows(node) == [(1, 10, 30), (3, 30, 50)]
     # Nothing new: no new version.
     assert node.refresh()["big"].report.sources[0].mode == "unchanged"
 
@@ -90,7 +87,7 @@ def test_audit_catches_a_row_the_cursor_missed():
     node.refresh()
     f.add({"id": 3, "ts": 5, "amount": 70})  # late: below the cursor
     node.refresh()
-    assert rows_of(node) == [(1, 10, 30)]  # missed, as the report warned
+    assert rows(node) == [(1, 10, 30)]  # missed, as the report warned
     with pytest.raises(AuditError, match="read again in full"):
         node.refresh(audit=True)
     f.add({"id": 4, "ts": 40, "amount": 80})
@@ -108,11 +105,11 @@ def test_sources_of_your_own_pipe_into_steps():
     f = feed()
     node = from_query(f.since, cursor_on="ts", name="payments").pipe(big).pipe(ids)
     node.refresh()
-    assert rows_of(node) == [(1,)]
+    assert rows(node) == [(1,)]
     regions = from_frame(lambda: pa.table({"id": [1], "region": ["eu"]}), name="regions")
     out = regions.pipe(ids)
     out.refresh()
-    assert rows_of(out) == [(1,)]
+    assert rows(out) == [(1,)]
 
 
 def test_preconditions_are_checked_on_the_rows():
@@ -134,7 +131,7 @@ def test_from_frame_diffs_full_reads():
     [entry] = node.refresh()["big"].report.sources
     assert (entry.mode, entry.inserts, entry.deletes) == ("snapshot diff", 1, 1)
     assert "full reads" in entry.detail and "assuming" not in entry.detail
-    assert rows_of(node) == [(2, 2, 50), (3, 3, 60)]
+    assert rows(node) == [(2, 2, 50), (3, 3, 60)]
     # The same table again is no new version.
     assert node.refresh()["big"].report.sources[0].mode == "unchanged"
     assert src.latest() == 2
@@ -162,7 +159,7 @@ def test_a_source_of_changes_and_polars_frames():
     batches += later
     [entry] = node.refresh()["big"].report.sources
     assert (entry.inserts, entry.deletes) == (1, 1)
-    assert rows_of(node) == [(2, 2, 40), (3, 3, 50)]
+    assert rows(node) == [(2, 2, 40), (3, 3, 50)]
 
 
 def test_a_schema_for_a_source_that_starts_empty():
@@ -173,10 +170,10 @@ def test_a_schema_for_a_source_that_starts_empty():
         big(from_query(lambda s: None, cursor_on="ts", name="payments"))
     node = big(from_query(f.since, cursor_on="ts", name="payments", schema=schema))
     node.refresh()
-    assert rows_of(node) == []
+    assert rows(node) == []
     f.add({"id": 1, "ts": 1, "amount": 20})
     node.refresh()
-    assert rows_of(node) == [(1, 1, 20)]
+    assert rows(node) == [(1, 1, 20)]
 
 
 def test_a_batch_in_another_schema_is_refused():
@@ -198,7 +195,7 @@ def test_from_files_reads_new_files(tmp_path):
     (drop / "notes.txt").write_text("not a parquet file")
     [entry] = node.refresh()["big"].report.sources
     assert entry.inserts == 1 and "files are only added" in entry.detail
-    assert rows_of(node) == [(1, 1, 30), (2, 2, 40)]
+    assert rows(node) == [(1, 1, 30), (2, 2, 40)]
     node.refresh(audit=True)
     # A file rewritten in place is only noticed by an audit.
     pq.write_table(pa.table({"id": [1], "ts": [1], "amount": [31]}), drop / "a.parquet")
@@ -247,7 +244,7 @@ def test_a_versioned_source_built_with_the_batch_helpers():
     )
     [entry] = node.refresh()["big"].report.sources
     assert (entry.mode, entry.detail, entry.inserts) == ("change feed", "Δ from the log", 1)
-    assert rows_of(node) == [(1, 1, 30), (2, 2, 40), (3, 3, 50)]
+    assert rows(node) == [(1, 1, 30), (2, 2, 40), (3, 3, 50)]
 
 
 # -- sinks -----------------------------------------------------------------
@@ -323,7 +320,7 @@ def test_nodes_read_a_stored_node_from_what_was_written(tmp_path):
     [entry] = out.refresh()["ids"].report.sources
     assert (entry.mode, entry.inserts) == ("change feed", 1)
     assert entry.detail == "Δ as written to big v1→v2"
-    assert rows_of(out) == [(1,), (3,)]
+    assert rows(out) == [(1,), (3,)]
 
 
 def test_a_restarted_job_numbers_versions_above_the_recorded_ones(tmp_path):

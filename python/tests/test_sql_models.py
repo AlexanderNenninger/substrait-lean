@@ -6,6 +6,9 @@ from deltalake import DeltaTable
 from ibis import _
 
 import sverify as sv
+from _pipelines import arrow_table as table
+from _pipelines import paid_nonzero as paid
+from _pipelines import rows
 from sverify.engines import ENGINES, Unsupported, run
 from sverify.errors import PreconditionError, VerificationError
 from sverify.io import DeltaSink, StaticSource
@@ -20,12 +23,6 @@ ORDERS = pa.schema(
 CUSTOMERS = pa.schema([pa.field("name", pa.string()), pa.field("region", pa.string())])
 
 
-def table(schema, rows):
-    return pa.Table.from_pylist(
-        [dict(zip(schema.names, r, strict=True)) for r in rows], schema=schema
-    )
-
-
 def sources():
     orders = StaticSource(
         table(ORDERS, [(1, "ada", 5), (2, "bob", 7), (3, "ada", 0)]), version=1, name="orders"
@@ -34,11 +31,6 @@ def sources():
         table(CUSTOMERS, [("ada", "eu"), ("bob", "us")]), version=1, name="customers"
     )
     return orders, customers
-
-
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount > 0])
-def paid(orders):
-    return orders.filter(orders.amount > 0)
 
 
 @sv.transform(
@@ -55,10 +47,6 @@ def per_customer(orders):
 @sv.transform(requires={"t": [_.total >= 0, _.total.notnull()]}, ensures=[_.total > 6])
 def large(t):
     return t.filter(t.total > 6)
-
-
-def rows(node):
-    return sorted(tuple(r.values()) for r in node.to_arrow().to_pylist())
 
 
 def test_a_sql_node_between_ibis_nodes_fuses():

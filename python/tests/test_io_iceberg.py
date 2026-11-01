@@ -11,9 +11,10 @@ from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.table.snapshots import Operation
 
 import sverify as sv
+from _pipelines import batch, discharged, recomputed, rows
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.errors import PreconditionError
-from sverify.incremental import Pipeline, snapshot_diff
+from sverify.incremental import snapshot_diff
 from sverify.io import IcebergSink, IcebergSource
 from sverify.io._common import ColumnStats, stats_facts
 from sverify.io.iceberg import CONTRACT
@@ -27,12 +28,6 @@ SCHEMA_ORDERS = pa.schema(
     ]
 )
 T0 = datetime(2024, 1, 1, 0, 0, 0, 123456)
-
-
-def attached(sink, view):
-    """A sink writing `view` (what `node.write(sink)` sets up)."""
-    sink._attach(view)
-    return sink
 
 
 @pytest.fixture
@@ -71,16 +66,12 @@ def doubled(orders):
     return orders.select(orders.id, orders.customer, doubled=orders.amount * 2)
 
 
-def sources(found):
-    return {(p.table, p.condition): p.source for p in found}
-
-
 def test_appends_are_a_change_feed(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
-    assert big.versions == {"orders": 1}
-    assert sources(pipe.preconditions) == {
+    node = doubled(src)
+    first = node.refresh()["doubled"]
+    assert node.versions == {"orders": 1}
+    assert discharged(first.preconditions) == {
         ("orders", "_.id.notnull()"): SCHEMA,
         ("orders", "(_.amount >= 0)"): "file stats @v1",
         ("orders", f"(_.ts >= {datetime(2024, 1, 1)!r})"): "file stats @v1",
@@ -89,48 +80,45 @@ def test_appends_are_a_change_feed(catalog):
     }
     src.table().append(rows_table([(3, "cy", 1)]))
     src.table().append(rows_table([(4, "dan", 2)]))
-    report = pipe.refresh()
+    report = batch(node)
     [s] = report.sources
     assert (s.start, s.end, s.mode, s.inserts) == (1, 3, "change feed", 2)
     assert "Δ trusted as the files Iceberg appends v1→v3 added" in str(report)
-    assert sources(report.preconditions)[("orders", "(_.amount >= 0)")] == (
+    assert discharged(report.preconditions)[("orders", "(_.amount >= 0)")] == (
         "file stats @v3 (new files)"
     )
-    assert big.rows() == big.recompute()
-    assert big.versions == {"orders": 3}
+    assert rows(node) == recomputed(node, src)
+    assert node.versions == {"orders": 3}
 
 
 def test_row_level_deletes_fall_back_to_a_snapshot_diff(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
+    node = doubled(src)
+    node.refresh()
     src.table().delete("id = 1")
     src.table().append(rows_table([(3, "cy", 1)]))
-    report = pipe.refresh()
-    [s] = report.sources
+    [s] = batch(node).sources
     assert s.mode == "snapshot diff"
     assert "not append-only" in s.detail and "only the snapshots are trusted" in s.detail
     # The delete rewrote the first file: it and the appended file are read.
     assert "on the 1 + 2 data file(s) that changed" in s.detail
-    assert big.rows() == big.recompute() == [(2, "bob", 14), (3, "cy", 2)]
+    assert rows(node) == recomputed(node, src) == [(2, "bob", 14), (3, "cy", 2)]
 
 
 def test_iceberg_batch_violations_are_caught(catalog):
     src = make_orders(catalog, [(1, "ada", 5)])
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
+    node = doubled(src)
+    node.refresh()
     src.table().append(rows_table([(2, "eve", 1)]))
     with pytest.raises(PreconditionError, match="customer"):
-        pipe.refresh()
-    assert pipe.versions == {"orders": 1} and big.rows() == [(1, "ada", 10)]
+        node.refresh()
+    assert node.versions == {"orders": 1} and rows(node) == [(1, "ada", 10)]
 
 
 def test_iceberg_sink_carries_the_contract(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
-    sink = attached(IcebergSink(catalog, "db.big"), big)
-    assert sink._commit().mode == "created"
+    big = doubled(src).write(IcebergSink(catalog, "db.big"))
+    assert big.refresh().writes[0].mode == "created"
     out = catalog.load_table("db.big")
     assert {f.name: f.required for f in out.schema().fields} == {
         "id": False,
@@ -140,38 +128,34 @@ def test_iceberg_sink_carries_the_contract(catalog):
     contract = IcebergSource(catalog, "db.big").contract()
     assert contract is not None and contract.checks == {"sverify_1": "doubled >= 0"}
     assert out.current_snapshot().summary.get("sverify.epoch") == "1"
-    assert sink._commit().mode == "skipped"
+    assert big.refresh().writes[0].mode == "skipped"
     # Inserts only: an append. Then a deletion: position deletes.
     src.table().append(rows_table([(3, "cy", 1)]))
-    pipe.refresh()
-    assert sink._commit().mode == "append"
+    assert big.refresh().writes[0].mode == "append"
     src.table().delete("id = 2")
-    pipe.refresh()
-    assert sink._commit().mode == "row-level"
+    assert big.refresh().writes[0].mode == "row-level"
     got = catalog.load_table("db.big").scan().to_arrow().to_pylist()
-    assert sorted(tuple(r.values()) for r in got) == big.rows()
+    assert sorted(tuple(r.values()) for r in got) == rows(big)
 
     # A downstream job builds on the contract.
     @sv.transform(requires={"t": [_.doubled >= 0, _.doubled.notnull()]}, ensures=[_.half >= 0])
     def halved(t):
         return t.select(t.id, half=t.doubled // 2)
 
-    pipe2 = Pipeline(sv.connect())
-    halves = pipe2.view("halves", halved(pipe2.source("big", IcebergSource(catalog, "db.big"))))
-    assert sources(pipe2.preconditions) == {
+    halves = halved(IcebergSource(catalog, "db.big"))
+    assert discharged(halves.refresh()["halved"].preconditions) == {
         ("big", "(_.doubled >= 0)"): CONTRACT,
         ("big", "_.doubled.notnull()"): SCHEMA,
     }
-    assert halves.rows() == [(1, 5), (3, 1)]
+    assert rows(halves) == [(1, 5), (3, 1)]
     # Another writer voids the contract.
     catalog.load_table("db.big").append(
         pa.Table.from_pylist(
             [{"id": 9, "customer": "x", "doubled": -2}], schema=sink_schema_of(catalog)
         )
     )
-    pipe3 = Pipeline(sv.connect())
     with pytest.raises(PreconditionError, match="doubled >= 0"):
-        pipe3.view("halves", halved(pipe3.source("big", IcebergSource(catalog, "db.big"))))
+        halved(IcebergSource(catalog, "db.big")).refresh()
 
 
 def sink_schema_of(catalog):
@@ -184,34 +168,30 @@ def test_added_column_is_left_out(catalog):
     from pyiceberg.types import StringType
 
     src = make_orders(catalog, [(1, "ada", 5)])
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
+    node = doubled(src)
+    node.refresh()
     with src.table().update_schema() as update:
         update.add_column("note", StringType())
     wide = rows_table([(2, "bob", 1)]).append_column("note", pa.array(["new"]))
     src.table().append(wide)
-    [s] = pipe.refresh().sources
+    [s] = batch(node).sources
     assert s.mode == "change feed" and "schema: added note, read in the old schema" in s.detail
-    assert big.rows() == big.recompute() == [(1, "ada", 10), (2, "bob", 2)]
+    assert rows(node) == [(1, "ada", 10), (2, "bob", 2)]
 
 
-def test_restarted_pipeline_resumes_from_its_iceberg_sink(catalog):
+def test_restarted_job_resumes_from_its_iceberg_sink(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
-    attached(IcebergSink(catalog, "db.big"), big)._commit()
+    doubled(src).write(IcebergSink(catalog, "db.big")).refresh()
     src.table().append(rows_table([(3, "cy", 1)]))
     stored = IcebergSource(catalog, "db.big").stored()
     assert stored is not None and stored.sources == {"orders": 1}
-    pipe2 = Pipeline(sv.connect())
-    orders = pipe2.source("orders", src, version=stored.sources["orders"])
-    big2 = pipe2.view("big", doubled(orders), resume=stored)
-    assert big2.resumed is not None and big2.resumed.startswith("resumed from db.big@v")
-    sink2 = attached(IcebergSink(catalog, "db.big"), big2)
-    pipe2.refresh()
-    assert sink2._commit().mode == "append"
+    again = doubled(src).write(IcebergSink(catalog, "db.big"))
+    entry = again.refresh()["big"]
+    assert entry.started is not None and entry.started.startswith("resumed from db.big@v")
+    assert entry.write is not None and entry.write.mode == "append"
     got = catalog.load_table("db.big").scan().to_arrow().to_pylist()
-    assert sorted(tuple(r.values()) for r in got) == big2.rows() == big2.recompute()
+    assert sorted(tuple(r.values()) for r in got) == rows(again)
+    assert rows(again) == recomputed(doubled(src), src)
 
 
 def test_double_statistics_use_the_nan_count(catalog):
@@ -255,8 +235,8 @@ def test_a_delete_reads_only_the_changed_files(catalog, monkeypatch):
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
     src.table().append(rows_table([(3, "cy", 1)]))
     src.table().append(rows_table([(4, "dan", 2)]))
-    pipe = Pipeline(sv.connect())
-    big = pipe.view("big", doubled(pipe.source("orders", src)))
+    node = doubled(src)
+    node.refresh()
     old = src.snapshot().table
     src.table().delete("id = 3")
     import sverify.io.iceberg as ice
@@ -268,14 +248,14 @@ def test_a_delete_reads_only_the_changed_files(catalog, monkeypatch):
         return real(t, tasks)
 
     monkeypatch.setattr(ice, "_scan", spy)
-    batch = src.changes(3)
+    change = src.changes(3)
     # Copy-on-write: one file removed, none added (it held only id 3).
-    assert len(read) == 1 and batch.kind == "snapshot diff"
-    assert batch.changes is not None
+    assert len(read) == 1 and change.kind == "snapshot diff"
+    assert change.changes is not None
     want = snapshot_diff(old, src.snapshot().table)
-    assert batch.changes == want == sv.Changes(deletes=[(3, "cy", 1, T0)])
-    pipe.refresh(audit=True)
-    assert big.rows() == big.recompute() == [(1, "ada", 10), (2, "bob", 14), (4, "dan", 4)]
+    assert change.changes == want == sv.Changes(deletes=[(3, "cy", 1, T0)])
+    node.refresh(audit=True)
+    assert rows(node) == recomputed(node, src) == [(1, "ada", 10), (2, "bob", 14), (4, "dan", 4)]
 
 
 @sv.transform(
@@ -288,46 +268,39 @@ def amounts(orders):
 
 def test_sink_writes_a_change_as_position_deletes(catalog):
     src = make_orders(catalog, [(i, "c", i) for i in range(1, 101)])
-    pipe = Pipeline(sv.connect())
-    view = pipe.view("amounts", amounts(pipe.source("orders", src)))
-    sink = attached(IcebergSink(catalog, "db.amounts"), view)
-    sink._commit()
+    view = amounts(src).write(IcebergSink(catalog, "db.amounts"))
+    view.refresh()
     # Update two of 100 rows, delete one.
     src.table().delete("id IN (1, 2, 3)")
     src.table().append(rows_table([(1, "c", 10), (2, "c", 20)]))
-    pipe.refresh()
-    w = sink._commit()
+    w = view.refresh().writes[0]
     assert (w.mode, w.inserted, w.deleted) == ("row-level", 2, 3)
     out = catalog.load_table("db.amounts")
     # One data file of the two new rows and one delete file of three positions.
     assert written_entries(out) == {0: [2], 1: [3]}
     assert out.current_snapshot().summary.operation == Operation.OVERWRITE
     got = sorted(tuple(r.values()) for r in out.scan().to_arrow().to_pylist())
-    assert got == sorted(view.rows()) == sorted(view.recompute())
-    assert sink._commit().mode == "skipped"
+    assert got == rows(view) == recomputed(amounts(src), src)
+    assert view.refresh().writes[0].mode == "skipped"
 
 
 def test_sink_deletes_one_copy_of_a_duplicate(catalog):
     src = make_orders(catalog, [(1, "ada", 5), (2, "ada", 5), (3, "bob", 7)])
-    pipe = Pipeline(sv.connect())
-    orders = pipe.source("orders", src)
-    names = pipe.view("names", orders.select(orders.customer, orders.amount))
-    sink = attached(IcebergSink(catalog, "db.names"), names)
-    sink._commit()
+    names = src.pipe(lambda o: o.select(o.customer, o.amount))
+    names = names.write(IcebergSink(catalog, "db.names"))
+    names.refresh()
     src.table().delete("id = 1")
-    pipe.refresh()
-    w = sink._commit()
+    w = names.refresh().writes[0]
     assert (w.mode, w.inserted, w.deleted) == ("row-level", 0, 1)
     got = sorted(
         tuple(r.values()) for r in catalog.load_table("db.names").scan().to_arrow().to_pylist()
     )
-    assert got == names.rows() == [("ada", 5), ("bob", 7)]
+    assert got == rows(names) == [("ada", 5), ("bob", 7)]
     # Again: the deleted position is not deleted twice.
     src.table().delete("id = 2")
-    pipe.refresh()
-    assert sink._commit().deleted == 1
+    assert names.refresh().writes[0].deleted == 1
     got = catalog.load_table("db.names").scan().to_arrow().to_pylist()
-    assert [tuple(r.values()) for r in got] == names.rows() == [("bob", 7)]
+    assert [tuple(r.values()) for r in got] == rows(names) == [("bob", 7)]
 
 
 def test_reading_a_table_with_position_deletes(catalog):
@@ -336,27 +309,24 @@ def test_reading_a_table_with_position_deletes(catalog):
     superset, so the facts from them hold; the change is read from the
     changed files only and matches the full snapshot diff."""
     src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7), (3, "cy", 100)])
-    pipe = Pipeline(sv.connect())
-    view = pipe.view("amounts", amounts(pipe.source("orders", src)))
-    sink = attached(IcebergSink(catalog, "db.amounts"), view)
-    sink._commit()
+    view = amounts(src).write(IcebergSink(catalog, "db.amounts"))
+    view.refresh()
     down = IcebergSource(catalog, "db.amounts")
-    job2 = Pipeline(sv.connect())
-    copy = job2.view("copy", down_view(job2.source("amounts", down)))
+    copy = down_view(down)
+    copy.refresh()
     before = down.snapshot().table
     src.table().delete("id = 3")
-    pipe.refresh()
-    assert sink._commit().mode == "row-level"
+    assert view.refresh().writes[0].mode == "row-level"
     # The deleted 100 is still in the data file's statistics.
     snap = down.snapshot()
     assert '"amount" IS NOT NULL AND "amount" >= 5 AND "amount" <= 100' in [
         f.condition for f in snap.facts
     ]
-    batch = down.changes(job2.versions["amounts"])
-    assert batch.changes == snapshot_diff(before, snap.table)
-    assert "on the 1 + 1 data file(s) that changed" in batch.trusted
-    job2.refresh(audit=True)
-    assert copy.rows() == copy.recompute() == [(1, 5), (2, 7)]
+    change = down.changes(copy.versions["amounts"])
+    assert change.changes == snapshot_diff(before, snap.table)
+    assert "on the 1 + 1 data file(s) that changed" in change.trusted
+    copy.refresh(audit=True)
+    assert rows(copy) == recomputed(copy, down) == [(1, 5), (2, 7)]
 
 
 @sv.transform(requires={"t": [(_.amount >= 0) | _.amount.isnull()]}, ensures=[])
@@ -383,8 +353,5 @@ def test_nodes_store_in_iceberg_and_read_it_back(catalog):
     report = out.refresh(engine="polars")
     assert [w.mode for w in report.writes] == ["append", "append"]
     assert "Iceberg appends" in str(report["large"])
-    assert sorted(tuple(r.values()) for r in out.to_arrow().to_pylist()) == [
-        (1, "ada", 10),
-        (3, "cy", 8),
-    ]
+    assert rows(out) == [(1, "ada", 10), (3, "cy", 8)]
     assert len(catalog.load_table("db.large").scan().to_arrow()) == 2

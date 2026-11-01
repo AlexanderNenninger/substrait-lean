@@ -7,6 +7,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from _pipelines import bound_orders
 from sverify.contracts import violations
 from sverify.engines import create_table
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
@@ -89,12 +90,6 @@ def test_non_nullable_schema_is_used():
     strict = ibis.table({"id": "!int64", "amount": "int64"}, name="strict")
     assert sv.verify(strict.select("id"), ensures=[_.id.notnull()]).proved
     assert not sv.verify(strict.select("amount"), ensures=[_.amount.notnull()]).proved
-
-
-def bound_orders(rows):
-    con = sv.connect()
-    create_table(con, "orders", orders.schema(), rows)
-    return con.table("orders")
 
 
 def test_preconditions_are_checked_on_data():

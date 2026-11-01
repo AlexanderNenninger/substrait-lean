@@ -4,58 +4,34 @@ result, refreshed upstream first with each stored node written once."""
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from _pipelines import (
+    ORDERS,
+    arrow_table,
+    doubled,
+    make_orders,
+    orders_table,
+    paid,
+    recomputed,
+    rows,
+    spy_on,
+)
 from sverify import nodes
-from sverify.engines import create_table, delta_plans
+from sverify.contracts import label, violations
+from sverify.engines import ENGINES, create_table, delta_plans
 from sverify.errors import CompositionError, PreconditionError, VerificationError
-from sverify.io import DeltaSink, DeltaSource, StaticSource
+from sverify.io import DeltaSink, DeltaSource, StaticSource, sink_from
 
-ORDERS = pa.schema(
-    [
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("customer", pa.string()),
-        pa.field("amount", pa.int64()),
-    ]
-)
-
-
-def orders_table(rows):
-    return pa.Table.from_pylist(
-        [dict(zip(ORDERS.names, r, strict=True)) for r in rows], schema=ORDERS
-    )
-
-
-def make_orders(path, rows):
-    DeltaTable.create(path, ORDERS, configuration={"delta.enableChangeDataFeed": "true"})
-    write_deltalake(path, orders_table(rows), mode="append")
-    return DeltaSource(str(path))
-
-
-@sv.transform(
-    requires={"orders": [_.amount >= 0, _.id.notnull(), sv.unique("id")]},
-    ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
-)
-def paid(orders):
-    return orders.filter(orders.amount.notnull())
-
-
-@sv.transform(
-    requires={"t": [_.amount >= 0, _.amount.notnull(), sv.unique("id")]},
-    ensures=[_.doubled >= 0, _.doubled.notnull(), sv.unique("id")],
-)
-def doubled(t):
-    return t.select(t.id, t.customer, doubled=t.amount * 2)
+SETTINGS = settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
 
 @sv.transform(requires={"t": [_.amount.notnull()]}, ensures=[_.amount.notnull()])
 def big(t):
     return t.filter(t.amount > 5)
-
-
-def rows(node):
-    return sorted(tuple(r.values()) for r in node.to_arrow().to_pylist())
 
 
 def versions(uri):
@@ -286,14 +262,9 @@ def test_a_static_source_feeds_its_changes(tmp_path):
 def test_the_engine_is_chosen_at_refresh(tmp_path, engine, monkeypatch):
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     node = doubled(paid(orders))
-    used = []
-    real = sv.engine.run_plan
-
-    def spy(con, plan, eng=None):
-        used.append(eng or con.engine)
-        return real(con, plan, eng)
-
-    monkeypatch.setattr("sverify.incremental.run_plan", spy)
+    used = spy_on(
+        monkeypatch, "sverify.incremental.run_plan", lambda con, plan, eng=None: eng or con.engine
+    )
     node.refresh(engine=engine)
     write_deltalake(orders.uri, orders_table([(3, "cy", 1)]), mode="append")
     node.refresh(engine=engine)
@@ -327,3 +298,174 @@ def test_results_come_out_as_arrow_polars_pandas_and_ibis(tmp_path):
     assert sorted(node.to_polars()["doubled"].to_list()) == [10, 14]
     assert sorted(node.to_pandas()["doubled"]) == [10, 14]
     assert node.table.filter(_.doubled > 12).to_pandas()["customer"].tolist() == ["bob"]
+
+
+# -- contracts across refreshes -------------------------------------------------
+
+
+def static_orders(rows):
+    return StaticSource(orders_table(rows), version=1, name="orders")
+
+
+def ensures_hold(node, transform):
+    for c in transform.ensures:
+        assert violations(node.table, c) == 0, label(c)
+
+
+def test_the_first_refresh_checks_the_preconditions_on_the_sources():
+    node = doubled(paid(static_orders([(1, "ada", 5), (2, "bob", 0)])))
+    report = node.refresh()
+    assert {p.condition for p in report["doubled"].preconditions} == {
+        "(_.amount >= 0)",
+        "_.id.notnull()",
+        "unique(id)",
+    }
+    assert rows(node) == [(1, "ada", 10), (2, "bob", 0)]
+    node = doubled(paid(static_orders([(1, "ada", 5), (1, "bob", 7)])))
+    with pytest.raises(PreconditionError, match=r"unique\(id\)"):
+        node.refresh()
+
+
+@pytest.mark.parametrize(
+    ("batch", "error"),
+    [
+        (sv.Changes(inserts=[(3, "cy", -1)]), r"inserted row\(s\) of orders violate"),
+        (sv.Changes(inserts=[(2, "cy", 1)]), r"inserted key\(s\) of orders violate unique"),
+        (sv.Changes(inserts=[(3, "cy", 1), (3, "dan", 2)]), "unique"),
+    ],
+)
+def test_a_batch_violating_a_precondition_changes_nothing(batch, error):
+    src = static_orders([(1, "ada", 5), (2, "bob", 7)])
+    node = doubled(paid(src))
+    node.refresh()
+    src.apply(batch)
+    with pytest.raises(PreconditionError, match=error):
+        node.refresh()
+    assert rows(node) == [(1, "ada", 10), (2, "bob", 14)]
+    assert node.versions == {"orders": 1}
+
+
+def test_deleting_a_key_frees_it_for_the_same_batch():
+    src = static_orders([(1, "ada", 5), (2, "bob", 7)])
+    node = doubled(paid(src))
+    node.refresh()
+    src.apply(sv.Changes(inserts=[(2, "cy", 1)], deletes=[(2, "bob", 7)]))
+    node.refresh(audit=True)
+    assert rows(node) == recomputed(node, src) == [(1, "ada", 10), (2, "cy", 2)]
+
+
+def test_batches_are_checked_without_reading_the_tables(monkeypatch):
+    src = static_orders([(1, "ada", 5), (2, "bob", 7)])
+    node = doubled(paid(src))
+    node.refresh()
+    checked = spy_on(monkeypatch, "sverify.contracts.violations", lambda t, *a: t.get_name())
+    src.apply(sv.Changes(inserts=[(3, "cy", 1)]))
+    node.refresh()
+    assert checked == ["orders$inserts"]
+
+
+names = st.sampled_from(["ada", "bob", None])
+
+
+@st.composite
+def keyed_batch(draw, src):
+    """Inserts and deletes that keep `id` a key and `amount` non-negative."""
+    current = [tuple(r.values()) for r in src.table.to_pylist()]
+    deletes = draw(st.lists(st.sampled_from(current), unique=True, max_size=2)) if current else []
+    kept = {r[0] for r in current} - {r[0] for r in deletes}
+    fresh = st.integers(0, 8).filter(lambda i: i not in kept)
+    ids = draw(st.lists(fresh, unique=True, max_size=3))
+    amounts = st.integers(0, 30)
+    return sv.Changes(inserts=[(i, draw(names), draw(amounts)) for i in ids], deletes=deletes)
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@SETTINGS
+@given(data=st.data())
+def test_guarantees_hold_in_every_state(engine, data):
+    src = static_orders([])
+    node = doubled(paid(src))
+    node.refresh(engine=engine)
+    for _step in range(data.draw(st.integers(1, 4))):
+        src.apply(data.draw(keyed_batch(src)))
+        node.refresh(engine=engine)
+        assert rows(node) == recomputed(node, src)
+        ensures_hold(node, doubled)
+
+
+# -- jobs of stored nodes over stored nodes ---------------------------------------
+
+CUSTOMERS = pa.schema([pa.field("name", pa.string()), pa.field("city", pa.string())])
+
+
+@sv.transform(requires={"t": [_.doubled >= 0, sv.unique("id")]}, ensures=[_.big.notnull()])
+def flagged(t):
+    return t.select(t.id, t.customer, big=t.doubled > 20)
+
+
+def cities(flags, customers):
+    return flags.join(customers, flags.customer == customers.name).select("id", "big", "city")
+
+
+def located(base, customers):
+    # A left join has no delta rule: recomputed and diffed, and its change
+    # still flows on.
+    return base.left_join(customers, base.customer == customers.name).select(
+        "id", "doubled", "city"
+    )
+
+
+def job(orders, customers):
+    """base, by_city, located and rich: nodes over stored nodes in memory."""
+    base = doubled(paid(orders)).write(sink_from(lambda t: None, name="base"))
+    by_city = flagged(base).pipe(cities, customers=customers)
+    loc = base.pipe(located, customers=customers).write(sink_from(lambda t: None, name="located"))
+    rich = loc.pipe(lambda t: t.filter(t.doubled > 10))
+    return base, by_city, loc, rich
+
+
+def test_nodes_read_stored_nodes_and_contracts_connect():
+    customers = StaticSource(arrow_table(CUSTOMERS, [("ada", "Rome")]), name="customers")
+    base, by_city, loc, rich = job(static_orders([(1, "ada", 15), (2, "bob", 3)]), customers)
+    # `flagged`'s precondition on `base` was proved from `doubled`'s contract.
+    assert flagged.last_report is not None
+    assert flagged.last_report.requires == {
+        "doubled": ["(_.doubled >= 0)", "_.doubled.notnull()", "unique(id)"]
+    }
+    jobs = sv.group(base, by_city, loc, rich)
+    jobs.refresh()
+    assert [s.node for s in jobs.status().nodes if s.recomputed] == ["located"]
+    assert rows(by_city) == [(1, True, "Rome")]
+    assert rows(rich) == [(1, 30, "Rome")]
+
+
+customers_row = st.tuples(names, st.sampled_from(["Paris", "Rome", None]))
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@SETTINGS
+@given(data=st.data())
+def test_a_job_of_stored_nodes_matches_recompute(engine, data):
+    orders = static_orders([])
+    customers = StaticSource(
+        arrow_table(CUSTOMERS, data.draw(st.lists(customers_row, max_size=3))), name="customers"
+    )
+    nodes_ = job(orders, customers)
+    sv.group(*nodes_).refresh(engine=engine)
+    for _step in range(data.draw(st.integers(1, 4))):
+        current = [tuple(r.values()) for r in customers.table.to_pylist()]
+        deletes = data.draw(st.lists(st.sampled_from(current), max_size=1)) if current else []
+        orders.apply(data.draw(keyed_batch(orders)))
+        customers.apply(
+            sv.Changes(inserts=data.draw(st.lists(customers_row, max_size=2)), deletes=deletes)
+        )
+        sv.group(*nodes_).refresh(engine=engine)
+        fresh = job(
+            StaticSource(orders.table, name="orders"),
+            StaticSource(customers.table, name="customers"),
+        )
+        sv.group(*fresh).refresh(engine=engine)
+        for node, want in zip(nodes_, fresh, strict=True):
+            assert rows(node) == rows(want), node.name
+        ensures_hold(nodes_[0], doubled)
+        ensures_hold(nodes_[1], flagged)
