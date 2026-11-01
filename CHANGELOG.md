@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### Nodes compose left to right with `.pipe`
+
+A job now reads in the order its data flows
+([#189](https://github.com/AlexanderNenninger/substrait-lean/issues/189)).
+It adds to the API and changes nothing that exists.
+
+```python
+paid_orders = orders.pipe(paid).write(DeltaSink("lake/paid"))     # chain, then store
+enriched = paid_orders.pipe(enrich, customers=customers)          # fan-in by keyword
+regional = paid_orders.pipe(
+    sv.sql("SELECT o.*, c.region FROM orders o JOIN customers c ON c.cid = o.cid"),
+    customers=customers,
+)                                                                 # SQL is a step
+quick = orders.pipe(lambda t: t.filter(_.amount > 0))             # no contract
+sv.group(paid_orders.pipe(daily_totals), enriched).refresh()      # fan-out
+```
+
+- `Node.pipe(step, /, **inputs)`, and `pipe` on every source in
+  `sverify.io`, apply a step to the node: the chained node fills the step's
+  first table parameter, and the other inputs come by keyword. It builds the
+  same node and plan as the call form `paid(orders)`, which stays public.
+  A missing, duplicate or unknown input raises `TypeError` naming the step's
+  parameters.
+- A step is a contracted transform, a plain function from Ibis tables to an
+  Ibis table (a transform with no contract), or `sv.sql(query)`.
+- `sv.sql(query, *, as_=None)` without tables is a step whose inputs are the
+  tables the query reads (not its CTEs, and each once). The keyword inputs
+  bind their own names, and the chained node binds to the one table left
+  over. A table with no input, an unused chained node, a keyword the query
+  doesn't read, or an `as_` that isn't the table left over raises
+  `TypeError`. `sv.sql(query, orders=orders)` inside a transform is
+  unchanged.
+- The README, the tour and the API reference lead with `.pipe`.
+
 ## 0.2.0 (2026-11-01)
 
 A new public API, built around transforms that compose
