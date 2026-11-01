@@ -95,7 +95,8 @@ What such sources can and cannot promise:
 `Sink.write` gets a `SinkChange`: `inserts` and `deletes` since the last
 write (Arrow tables), or with `replace` the whole `table`, and the
 `contract` to record. sverify skips a state whose `contract.epoch` the sink
-has already committed. `committed()` reads the last contract back from the
+has already committed, unless another plan committed it (`contract.plan`
+differs): then it hands `write` the whole table with `replace`. `committed()` reads the last contract back from the
 sink, so that holds across restarts too; without it, sverify remembers for
 the life of the process.
 

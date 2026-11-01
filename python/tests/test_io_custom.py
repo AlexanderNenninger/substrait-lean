@@ -311,6 +311,18 @@ def test_a_restarted_job_skips_what_its_sink_committed(tmp_path):
     assert again.changes == []
 
 
+def test_a_restarted_job_with_another_plan_overwrites_its_sink(tmp_path):
+    big(payments_source()).write(ParquetSink(tmp_path / "big.parquet")).refresh()
+    # Same source version, so the same epoch: only the plan tells them apart.
+    again = ParquetSink(tmp_path / "big.parquet")
+    node = ids(payments_source()).write(again)
+    w = node.refresh().writes[0]
+    assert (w.mode, w.inserted) == ("overwrite", 2)
+    assert again.changes == [(True, 2, 0)]
+    assert pq.read_table(again.path).to_pylist() == [{"id": 1}, {"id": 2}]
+    assert node.refresh().writes[0].mode == "skipped"
+
+
 def test_nodes_read_a_stored_node_from_what_was_written(tmp_path):
     src = payments_source()
     stored = big(src).write(ParquetSink(tmp_path / "big.parquet"))
