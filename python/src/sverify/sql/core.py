@@ -47,13 +47,22 @@ from typing import Any, Literal
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 
-Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"]
+
+@dataclass(frozen=True)
+class Dec:
+    """`DECIMAL(p, s)` (#27), a kind in SQL and in the model (`Kind.dec`)."""
+
+    p: int
+    s: int
+
+
+Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
 zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
 used for columns whose Substrait type the model does not know."""
 
-LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"]
+LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"] | Dec
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
 
@@ -104,6 +113,8 @@ class Dialect:
         return '"' + ident.replace('"', '""') + '"'
 
     def type_name(self, kind: Kind) -> str:
+        if isinstance(kind, Dec):
+            return self.decimal_type(kind)
         return {
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
@@ -551,6 +562,63 @@ class Dialect:
 
     # Aggregates
 
+    # Decimals (#27). The reference computes them exactly; a dialect whose
+    # engine does too, with the hooks below, sets `decimals`.
+
+    decimals: bool = False
+
+    def decimal_type(self, k: Dec) -> str:
+        if not self.decimals:
+            raise Unsupported(
+                f"{self.name} does not compute decimals as the reference does yet (#27)"
+            )
+        return f"DECIMAL({k.p}, {k.s})"
+
+    def decimal_lit(self, m: int, k: Dec) -> str:
+        """The `DECIMAL(p, s)` of unscaled value `m`."""
+        sign, digits = ("-" if m < 0 else ""), str(abs(m)).rjust(k.s + 1, "0")
+        text = f"{sign}{digits[: len(digits) - k.s]}" + (f".{digits[-k.s :]}" if k.s else "")
+        return self.cast(f"'{text}'", k)
+
+    def decimal_arith(self, op: str, a: str, b: str, sa: int, k: Dec) -> str:
+        """`a op b` of decimals or integers, exactly, as a `DECIMAL(p, s)`. A
+        product widens `a` (of scale `sa`) to 38 digits first, so that the
+        engine's own result type cannot overflow before the reference's."""
+        if op == "*":
+            a = self.cast(a, Dec(38, sa))
+        return self.cast(f"({a} {op} {b})", k)
+
+    def decimal_neg(self, a: str) -> str:
+        return f"(-{a})"
+
+    def decimal_abs(self, a: str) -> str:
+        return f"ABS({a})"
+
+    def decimal_cast(self, a: str, k: Dec) -> str:
+        """A decimal, integer or double as a `DECIMAL(p, s)`, rounding half away
+        from zero to a smaller scale."""
+        return self.cast(a, k)
+
+    def decimal_to_int(self, a: str) -> str:
+        """Truncated toward zero; fails outside 64 bits."""
+        return self.cast(f"TRUNC({a})", "int")
+
+    def decimal_to_float(self, a: str) -> str:
+        """Correctly rounded: through the decimal's text."""
+        return self.cast(self.cast(a, "str"), "float")
+
+    def decimal_sum(self, v: str, k: Dec) -> str:
+        return self.cast(f"SUM({v})", k)
+
+    def decimal_avg(self, v: str, a: Dec, k: Dec) -> str:
+        """`SUM(v) / COUNT(v)` at scale `a.s + 4`, rounded half away from zero
+        (`roundDivInt?`), in 128-bit integers; NULL with no values."""
+        n = f"COUNT({v})"
+        u = f"CAST(SUM({v}) * {10**a.s} AS HUGEINT)"
+        q = f"(CASE WHEN {u} < 0 THEN -1 ELSE 1 END * ((2 * ABS({u}) * 10000 + {n}) // (2 * {n})))"
+        scaled = f"{self.cast(q, Dec(38, 0))} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
+        return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
+
     def int_sum(self, v: str) -> str:
         """`SUM` of the BIGINT column `v`, exactly; a sum outside 64 bits
         raises (DataFusion wraps around, Lean's sum is the true one)."""
@@ -704,7 +772,7 @@ class Un:
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
-        "strftime", "bucket", "reverse", "ascii", "replace", "fmath",
+        "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -756,7 +824,22 @@ class If:
     orelse: Expr
 
 
-Expr = Lit | Field | Un | Bin | If
+@dataclass(frozen=True)
+class DecOp:
+    """A `DECIMAL(p, s)` (#27), as `Parse.decimalCall` and decimal casts make
+    them. `lit` is the unscaled `value`; `add`, `sub` and `mul` of two decimals
+    or integers, `neg` and `abs` of one, are exact; `cast` of a decimal, an
+    integer or a double rounds half away from zero to a smaller scale. The
+    result has `p` digits, else the reference raises (`UnFn.decimal`)."""
+
+    op: Literal["lit", "add", "sub", "mul", "neg", "abs", "cast"]
+    args: tuple[Expr, ...]
+    p: int
+    s: int
+    value: int = 0
+
+
+Expr = Lit | Field | Un | Bin | If | DecOp
 
 
 @dataclass(frozen=True)
@@ -897,7 +980,8 @@ class Distinct:
 class Measure:
     """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
 
-    fn: Literal["count", "sum", "fsum", "avg", "min", "max"]
+    fn: Literal["count", "sum", "fsum", "avg", "min", "max", "dsum", "davg"]
+    """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
     filter: Expr | None = None
@@ -999,9 +1083,24 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
 
 def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
     """`Measure.kind`."""
+    if m.fn in ("dsum", "davg"):
+        a = kind(m.arg, cols)
+        if not isinstance(a, Dec):
+            raise Unsupported(f"{m.fn} of a non-decimal")
+        return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
     if m.fn in ("count", "sum"):
         return "int"
     return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
+
+
+def dsum_kind(a: Dec) -> Dec:
+    """A decimal `SUM` has ten more digits (`Measure.kind`)."""
+    return Dec(min(38, a.p + 10), a.s)
+
+
+def davg_kind(a: Dec) -> Dec:
+    """A decimal `AVG` has four more digits and decimal places (`decimalAvgs`)."""
+    return Dec(min(38, a.p + 4), a.s + 4)
 
 
 def _issue_free(e: Expr) -> bool:
@@ -1029,6 +1128,12 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 
 def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
     match e:
+        case DecOp(p=p, s=sc):
+            return Dec(p, sc)
+        case Un(op="dtrunc"):
+            return "int"
+        case Un(op="dtof"):
+            return "float"
         case Lit(value=v):
             return _lean_lit_kind(v)
         case Field(index=i):
@@ -1077,6 +1182,12 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
 
 def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
     match e:
+        case DecOp(p=p, s=sc):
+            return Dec(p, sc)
+        case Un(op="dtrunc"):
+            return "int"
+        case Un(op="dtof"):
+            return "float"
         case Lit(kind=k):
             return k
         case Field(index=i):
@@ -1222,6 +1333,10 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         return "str", "str"
     if "bool" in ty:
         return "bool", "bool"
+    # A scale of 0 is left out of the JSON (`typeKind`).
+    if isinstance(d := ty.get("decimal"), dict):
+        k = Dec(d.get("precision", 38), d.get("scale", 0))
+        return k, k
     return "other", None
 
 
@@ -1243,6 +1358,8 @@ class Const:
     value: Any = None
     scale: int = 0
     kind: Kind | None = None
+    precision: int = 0
+    """A decimal's (`dec`)."""
 
     def to_float(self) -> float | None:
         match self.tag:
@@ -1379,7 +1496,32 @@ def _cast_const(ty: dict, c: Const) -> Const:
             if c.tag == "str":
                 return c
             raise Unsupported("casts to strings are not supported")
+    if isinstance(lean, Dec):
+        return _cast_const_decimal(lean, c)
     raise Unsupported("unsupported cast type")
+
+
+def _cast_const_decimal(t: Dec, c: Const) -> Const:
+    """`castConst` to `DECIMAL(p, s)`: to a smaller scale rounds half away
+    from zero; a double is `round(x · 10ˢ)` computed in doubles."""
+    match c.tag:
+        case "int":
+            m = c.value * 10**t.s
+        case "dec":
+            m = (
+                c.value * 10 ** (t.s - c.scale)
+                if c.scale <= t.s
+                else _round_half_away(Fraction(c.value, 10 ** (c.scale - t.s)))
+            )
+        case "flt":
+            if not math.isfinite(c.value):
+                raise Unsupported("cannot cast NaN or infinity to a decimal")
+            m = _round_half_away(Fraction(c.value * 10.0**t.s))
+        case _:
+            raise Unsupported("cannot cast this value to a decimal")
+    if abs(m) >= 10**t.p:
+        raise Unsupported(f"cast to DECIMAL({t.p}, {t.s}) overflows")
+    return Const("dec", m, t.s, t, t.p)
 
 
 def _interval_micros(d: dict) -> int:
@@ -1411,6 +1553,12 @@ _LITERAL_KEYS = (
 def _year_months(ym: dict) -> int:
     return 12 * _int(_field(ym, "years") or 0) + _int(_field(ym, "months") or 0)
 
+
+#: `Parse.decimalPassThrough`: functions the integer path computes on
+#: decimals of one scale, keeping their type.
+_DECIMAL_PASS_THROUGH = (
+    "coalesce", "greatest", "least", "nullif", "greatest_skip_null", "least_skip_null",
+)  # fmt: skip
 
 _COMPARISONS = (
     "equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from",
@@ -1477,7 +1625,8 @@ def _const_literal(j: dict) -> Const:
                 return Const("flt", f, kind="float")
             raise Unsupported("malformed floating-point literal")
         case "decimal":
-            return Const("dec", _decode_decimal(_req(v, "value")), _nat_d(v, "scale"))
+            p, sc = _nat_d(v, "precision"), _nat_d(v, "scale")
+            return Const("dec", _decode_decimal(_req(v, "value")), sc, Dec(p, sc), p)
         case "intervalDayToSecond":
             return Const("int", _interval_micros(v), kind="interval")
         case "intervalCompound" | "intervalYearToMonth":
@@ -1537,6 +1686,8 @@ def _fold_call(name: str, cs: list[Const]) -> Const | None:
     match name, cs:
         case "arrow_cast", [c, Const(tag="str", value=ty)]:
             return _arrow_cast(c, ty)
+        case "negate", [Const(tag="dec") as c]:
+            return replace(c, value=-c.value)
         case "negate", [Const(tag="int") as c]:
             return Const("int", -c.value, kind=c.kind)
         case "negate", [c]:
@@ -1559,7 +1710,7 @@ def _fold_call(name: str, cs: list[Const]) -> Const | None:
     return None
 
 
-def _lit(c: Const) -> Lit:
+def _lit(c: Const) -> Expr:
     """`constExpr`."""
     match c.tag:
         case "int":
@@ -1572,7 +1723,9 @@ def _lit(c: Const) -> Lit:
             return Lit(c.value, "bool")
         case "null":
             return Lit(None, c.kind)
-    raise Unsupported("DECIMAL values are not supported; cast them to DOUBLE")
+    if c.tag == "dec":
+        return DecOp("lit", (), c.precision, c.scale, c.value)
+    raise Unsupported(f"unsupported constant {c.tag}")
 
 
 @dataclass
@@ -1718,6 +1871,18 @@ class _Parser:
                     return name == "round" and k == 1
 
                 out_ty = _field(v, "outputType")
+                # Decimals (#27): `Parse.decimalCall`.
+                if any(isinstance(lean_expr_kind(e, cols.lean), Dec) for e in parsed):
+                    if any(
+                        _arg_kind(cols.lean, a, e) == "float"
+                        for a, e in zip(arg_js, parsed, strict=True)
+                    ):
+                        raise Unsupported(
+                            f"{name} of a DECIMAL and a double is not supported; cast one of them"
+                        )
+                    dec = self.decimal_call(name, parsed, _field(v, "outputType"), cols)
+                    if dec is not None:
+                        return dec
                 # `Parse.wideIntDecimal`: other decimal results are not modelled.
                 decimal = isinstance(out_ty, dict) and "decimal" in out_ty
                 if decimal and not _wide_int_decimal(out_ty):
@@ -1793,6 +1958,23 @@ class _Parser:
                 # `Parse.wideIntDecimal`; a duration compared with an interval.
                 if k == "int" and _wide_int_decimal(_req(v, "type")):
                     return e
+                # Decimals (#27): rescaled, rounding half away from zero to a
+                # smaller scale; to an integer truncates toward zero.
+                if isinstance(target, Dec):
+                    if k in ("int", "float") or isinstance(k, Dec):
+                        return DecOp("cast", (e,), target.p, target.s)
+                    raise Unsupported(
+                        f"unsupported cast from {k} to DECIMAL({target.p}, {target.s})"
+                    )
+                if isinstance(k, Dec):
+                    if target == "int":
+                        bits = _int_bits(_req(v, "type"))
+                        # A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits fits a `BIGINT`.
+                        t = Un("dtrunc", e)
+                        return t if bits == 64 and k.p - k.s <= 18 else Un("narrow", t, digits=bits)
+                    if target == "float":
+                        return Un("dtof", e)
+                    raise Unsupported(f"unsupported cast from DECIMAL to {target}")
                 if k == "time" and _interval_type(_req(v, "type")):
                     return e
                 if target == "float" and k == "int":
@@ -1943,7 +2125,12 @@ class _Parser:
                     if d.tag == "int" and _get(cols.lean, c) == "float":
                         default = Lit(float(d.value), "float")
                     else:
-                        default = _lit(d)
+                        lit = _lit(d)
+                        if not isinstance(lit, Lit):
+                            raise Unsupported(
+                                f"{name} defaults of decimals are not supported yet (#27)"
+                            )
+                        default = lit
                 return part, sort, WinFn(name, c, offset, default)
             case "rank" | "dense_rank" | "percent_rank" | "cume_dist":
                 if args:
@@ -1963,6 +2150,8 @@ class _Parser:
                 m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
                 if m.distinct:
                     raise Unsupported("DISTINCT window aggregates are not supported")
+                if m.fn in ("dsum", "davg") or isinstance(lean_expr_kind(m.arg, cols.lean), Dec):
+                    raise Unsupported("window aggregates of decimals are not supported yet (#27)")
                 if not _issue_free(m.arg):
                     raise Unsupported(
                         "window aggregates of expressions are not supported; use a column"
@@ -2280,6 +2469,61 @@ class _Parser:
                 return Distinct(Emit(inp, keys))
         return Aggregate(inp, tuple(groups), tuple(self.measure(m, cols) for m in measures))
 
+    def decimal_call(self, name: str, args: list[Expr], out_ty: Any, cols: _Cols) -> Expr | None:
+        """`decimalCall`: a call with a `DECIMAL` argument (#27), or None where
+        the integer path computes it (one scale, `COALESCE` and friends)."""
+        tys: list[tuple[int, int]] = []
+        for e in args:
+            k = lean_expr_kind(e, cols.lean)
+            if isinstance(e, Lit) and e.value is None:
+                tys.append((1, 0))
+            elif isinstance(k, Dec):
+                tys.append((k.p, k.s))
+            elif k == "int":
+                tys.append((19, 0))
+            else:
+                raise Unsupported(f"{name} of a DECIMAL and a non-number is not supported")
+        declared = _lean_type_kind(out_ty)
+        dp = declared.p if isinstance(declared, Dec) else None
+
+        def check_scale(sc: int) -> None:
+            # A plan that declares a smaller scale rounds, which is not modelled.
+            if isinstance(declared, Dec) and declared.s != sc:
+                raise Unsupported(
+                    f"{name}: a DECIMAL result of scale {declared.s} where the exact one has {sc} "
+                    "is not supported"
+                )
+
+        one_scale = len({sc for _, sc in tys}) <= 1
+        match name, args, tys:
+            case (("add" | "subtract"), [a, b], [(p1, s1), (p2, s2)]):
+                sc = max(s1, s2)
+                check_scale(sc)
+                p = dp if dp is not None else min(38, max(p1 - s1, p2 - s2) + sc + 1)
+                return DecOp("add" if name == "add" else "sub", (a, b), p, sc)
+            case "multiply", [a, b], [(p1, s1), (p2, s2)]:
+                sc = s1 + s2
+                if sc > 38:
+                    raise Unsupported(
+                        "a DECIMAL product with more than 38 decimal places is not supported"
+                    )
+                check_scale(sc)
+                p = dp if dp is not None else min(38, p1 + p2 + 1)
+                return DecOp("mul", (a, b), p, sc)
+            case (("negate" | "subtract"), [a], [(p, sc)]):
+                return DecOp("neg", (a,), p, sc)
+            case "abs", [a], [(p, sc)]:
+                return DecOp("abs", (a,), p, sc)
+            case _, [a, b], _ if name in _COMPARISONS:
+                # SQL compares decimals of any scales, and with integers, exactly.
+                return _call(name, [a, b])
+        if name in ("is_null", "is_not_null"):
+            # `decimalScaleFree`: the scale does not matter.
+            return None
+        if name in _DECIMAL_PASS_THROUGH and one_scale:
+            return None
+        raise Unsupported(f"{name} of DECIMAL is not supported yet (#27)")
+
     def measure(self, mj: dict, cols: _Cols) -> Measure:
         """`parseMeasure`. `AVG` of integers averages their conversions to
         double; `COUNT(*)` may come with no argument."""
@@ -2304,12 +2548,28 @@ class _Parser:
             raise Unsupported(f"{name} takes one argument")
         k = lean_expr_kind(arg, cols.lean)
         # `AVG` is a double; Calcite's `AVG` of integers (`avg:i64`) is not.
-        if name == "avg" and "outputType" in m and _lean_type_kind(m["outputType"]) != "float":
+        decimal = isinstance(k, Dec)
+        if (
+            name == "avg"
+            and not decimal
+            and "outputType" in m
+            and _lean_type_kind(m["outputType"]) != "float"
+        ):
             raise Unsupported("avg with a non-double result is not supported")
-        fn: Literal["count", "sum", "fsum", "avg", "min", "max"]
+        fn: Literal["count", "sum", "fsum", "avg", "min", "max", "dsum", "davg"]
         match name, k:
             case "count", _:
                 fn = "count"
+            case "sum", Dec():
+                fn = "dsum"
+            case "avg", Dec():
+                if k.s > 34:
+                    raise Unsupported(
+                        "avg of a DECIMAL with more than 34 decimal places is not supported"
+                    )
+                fn = "davg"
+            case (("min" | "max"), Dec()):
+                fn = name
             case "sum", "int":
                 fn = "sum"
             case "sum", "float":
@@ -2377,6 +2637,8 @@ def _map_fields(e: Expr, f: Callable[[int], int]) -> Expr:
             return replace(e, left=_map_fields(a, f), right=_map_fields(b, f))
         case If(cond=c, then=t, orelse=o):
             return If(_map_fields(c, f), _map_fields(t, f), _map_fields(o, f))
+        case DecOp(args=args):
+            return replace(e, args=tuple(_map_fields(a, f) for a in args))
 
 
 US_PER_DAY = 86_400_000_000
@@ -2392,6 +2654,8 @@ def _reads_field(e: Expr) -> bool:
             return _reads_field(a) or _reads_field(b)
         case If(cond=c, then=t, orelse=o):
             return _reads_field(c) or _reads_field(t) or _reads_field(o)
+        case DecOp(args=args):
+            return any(_reads_field(a) for a in args)
     return False
 
 
@@ -3017,6 +3281,12 @@ class _Writer:
         match m.fn:
             case "count":
                 return f"COUNT({v})"
+            case "dsum" | "davg":
+                if not isinstance(kind, Dec):
+                    raise Unsupported(f"{m.fn} of a non-decimal")
+                if m.fn == "dsum":
+                    return d.decimal_sum(v, dsum_kind(kind))
+                return d.decimal_avg(v, kind, davg_kind(kind))
             case "sum":
                 return d.int_sum(v)
             case "fsum" | "avg":
@@ -3240,6 +3510,9 @@ class _Writer:
             case If(cond=c, then=t, orelse=o):
                 for x in (c, t, o):
                     self.check_refs(x, n)
+            case DecOp(args=args):
+                for x in args:
+                    self.check_refs(x, n)
 
     # Expressions
 
@@ -3284,6 +3557,12 @@ class _Writer:
                 return self.lit(e, ctx)
             case Field(index=i):
                 return ref(i)
+            case DecOp():
+                return self.decimal(e, ref, cols)
+            case Un(op="dtrunc", arg=a):
+                return d.decimal_to_int(go(a, kind(a)))
+            case Un(op="dtof", arg=a):
+                return d.decimal_to_float(go(a, kind(a)))
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
             case Un(op="is_null", arg=a):
@@ -3372,6 +3651,12 @@ class _Writer:
                 return d.int_pow_var(sa, self.int_operand(b, ref, cols, "POWER"))
             case Bin(op="list_lt", left=a, right=b):
                 return d.list_lt(go(a, None), go(b, None))
+            case Bin(op="eq" | "lt" as op, left=a, right=b) if isinstance(
+                kind(a), Dec
+            ) or isinstance(kind(b), Dec):
+                # Decimals compare exactly at any scales, and with integers (#27).
+                sa, sb = go(a, kind(a)), go(b, kind(b))
+                return d.eq(sa, sb) if op == "eq" else d.lt(sa, sb)
             case Bin(op="eq" | "lt" as op, left=a, right=b):
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
@@ -3538,6 +3823,26 @@ class _Writer:
                 sa, sb = (self.operand(x, "str", ref, cols, "trim") for x in (a, b))
                 return d.trim(sa, sb, *sides)
         raise Unsupported(f"unsupported expression {e!r}")
+
+    def decimal(self, e: DecOp, ref: Callable[[int], str], cols: list[Kind | None]) -> str:
+        """A decimal operation (#27) as the dialect computes it exactly."""
+        d = self.d
+        k = Dec(e.p, e.s)
+        if e.op == "lit":
+            return d.decimal_lit(e.value, k)
+        xs = [self.expr(a, ref, cols, expr_kind(a, cols)) for a in e.args]
+        match e.op, xs:
+            case ("add" | "sub" | "mul") as op, [a, b]:
+                ka = expr_kind(e.args[0], cols)
+                sa = ka.s if isinstance(ka, Dec) else 0
+                return d.decimal_arith({"add": "+", "sub": "-", "mul": "*"}[op], a, b, sa, k)
+            case "neg", [a]:
+                return d.decimal_neg(a)
+            case "abs", [a]:
+                return d.decimal_abs(a)
+            case "cast", [a]:
+                return d.decimal_cast(a, k)
+        raise Unsupported(f"decimal {e.op} of {len(xs)} arguments")
 
     def operand(
         self, e: Expr, want: Kind, ref: Callable[[int], str], cols: list[Kind | None], what: str

@@ -62,7 +62,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind, Unsupported, _timestamp_text
+from sverify.sql.core import I64_MAX, I64_MIN, Dec, Dialect, Kind, Unsupported, _timestamp_text
 
 #: The timestamps chrono represents (`Time.partMin`, `Time.partMax`): years
 #: -262143 to 262142.
@@ -98,6 +98,8 @@ class SparkDialect(Dialect):
         return "`" + ident.replace("`", "``") + "`"
 
     def type_name(self, kind: Kind) -> str:
+        if isinstance(kind, Dec):
+            return super().type_name(kind)
         if kind not in _TYPES:
             raise Unsupported(f"spark has no {kind} type (TIME needs Spark 4.1)")
         return _TYPES[kind]

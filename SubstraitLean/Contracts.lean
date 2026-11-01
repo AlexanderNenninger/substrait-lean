@@ -1243,6 +1243,70 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
         exact Expr.abs_sound h e
   | .hof f _ _ => HoFn.abs_sound f _ _
 
+/-! ## Constant decimals
+
+A decimal constant is its unscaled integer under `UnFn.decimal`, possibly
+brought to another scale by `Parse.upscale` (`· 10ᵏ`): `0.05` compared with a
+`DECIMAL(15, 4)` column is `DECIMAL_3_2(5) * 100`. The refinements below
+recognize integer literals, so conditions are first written with such
+constants folded (`Expr.normConst`, #27). -/
+
+/-- The integer a constant decimal expression evaluates to. -/
+def Expr.constInt? : Expr → Option Int
+  | .lit (.int k) => some k
+  | .un (.decimal _ _) a => a.constInt?
+  | .bin .dmul a b => a.constInt?.bind fun x => b.constInt?.map (x * ·)
+  | _ => none
+
+theorem Expr.constInt?_eval (row : Row) :
+    ∀ (e : Expr) {k : Int}, e.constInt? = some k → e.eval row = .int k := by
+  intro e
+  induction e with
+  | lit v => intro k h; cases v <;> simp_all [Expr.constInt?, Expr.eval]
+  | field => intro k h; simp [Expr.constInt?] at h
+  | un f a ih =>
+    intro k h
+    cases f
+    case decimal => simp only [Expr.constInt?] at h; simp [Expr.eval, ih h, UnFn.apply]
+    all_goals simp [Expr.constInt?] at h
+  | bin f a b iha ihb =>
+    intro k h
+    cases f
+    case dmul =>
+      cases ha : a.constInt? <;> cases hb : b.constInt? <;> simp [Expr.constInt?, ha, hb] at h
+      subst h
+      simp [Expr.eval, iha ha, ihb hb, BinFn.apply]
+    all_goals simp [Expr.constInt?] at h
+  | ifThen => intro k h; simp [Expr.constInt?] at h
+  | hof => intro k h; simp [Expr.constInt?] at h
+
+/-- `e` with its constant decimals folded to integer literals. -/
+def Expr.normConst : Expr → Expr
+  | .un f a => match (Expr.un f a).constInt? with
+    | some k => .lit (.int k)
+    | none => .un f a.normConst
+  | .bin f a b => match (Expr.bin f a b).constInt? with
+    | some k => .lit (.int k)
+    | none => .bin f a.normConst b.normConst
+  | .ifThen c t e => .ifThen c.normConst t.normConst e.normConst
+  | e => e
+
+theorem Expr.eval_normConst (row : Row) : ∀ e : Expr, e.normConst.eval row = e.eval row := by
+  intro e
+  induction e with
+  | un f a ih =>
+    simp only [Expr.normConst]
+    split
+    · rename_i k hk; rw [Expr.constInt?_eval row _ hk]; rfl
+    · simp [Expr.eval, ih]
+  | bin f a b iha ihb =>
+    simp only [Expr.normConst]
+    split
+    · rename_i k hk; rw [Expr.constInt?_eval row _ hk]; rfl
+    · simp [Expr.eval, iha, ihb]
+  | ifThen c t e ihc iht ihe => simp [Expr.normConst, Expr.eval, ihc, iht, ihe]
+  | lit | field | hof => rfl
+
 /-! ## Refinement by filter conditions -/
 
 /-- A column known to be a non-NULL integer, with its interval transformed. -/
@@ -1276,11 +1340,12 @@ theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (
 def refineCol (env : List AVal) (i : Nat) (f : AVal → AVal) : List AVal :=
   env.set i (f (env.getD i AVal.top))
 
-/-- What a row that makes `e` TRUE satisfies. Recognizes conjunctions,
+/-- What a row that makes `e` TRUE satisfies, for constants that are integer
+literals (`Expr.refine` folds the others first). Recognizes conjunctions,
 disjunctions, comparisons of a column with an integer constant, `IS NULL`
 and `IS NOT NULL`. -/
-def Expr.refine (env : List AVal) : Expr → List AVal
-  | .bin .and p q => q.refine (p.refine env)
+def Expr.refineL (env : List AVal) : Expr → List AVal
+  | .bin .and p q => q.refineL (p.refineL env)
   | .bin .lt (.field i) (.lit (.int k)) => refineCol env i (·.nonNullInt (·.atMost (k - 1)))
   | .bin .lt (.lit (.int k)) (.field i) => refineCol env i (·.nonNullInt (·.atLeast (k + 1)))
   | .un .not (.bin .lt (.field i) (.lit (.int k))) => refineCol env i (·.nonNullInt (·.atLeast k))
@@ -1299,13 +1364,13 @@ def Expr.refine (env : List AVal) : Expr → List AVal
   -- Arithmetic is NULL-propagating: a non-NULL `a - b` has non-NULL operands
   -- (DataFusion inlines computed columns such as `gap = ts - prev_ts`).
   | .un .not (.un .isNull (.bin .add a b)) =>
-      (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+      (Expr.un .not (.un .isNull b)).refineL ((Expr.un .not (.un .isNull a)).refineL env)
   | .un .not (.un .isNull (.bin .sub a b)) =>
-      (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+      (Expr.un .not (.un .isNull b)).refineL ((Expr.un .not (.un .isNull a)).refineL env)
   | .un .not (.un .isNull (.bin .mul a b)) =>
-      (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+      (Expr.un .not (.un .isNull b)).refineL ((Expr.un .not (.un .isNull a)).refineL env)
   -- `p OR q` (e.g. `x IN (1, 2)`): what `p` gives, or what `q` gives.
-  | .bin .or p q => List.zipWith AVal.join (p.refine env) (q.refine env)
+  | .bin .or p q => List.zipWith AVal.join (p.refineL env) (q.refineL env)
   -- `x IS NULL`: only NULL (so `x IS NULL OR x >= 0` keeps the bound).
   | .un .isNull (.field i) => refineCol env i fun a => ⟨a.null, none, false, false, false⟩
   | _ => env
@@ -1344,8 +1409,9 @@ theorem EnvMem.zip_right {e₁ e₂ : List AVal} {row : Row} (h : EnvMem e₂ ro
   simp only [getD_top_eq, List.getElem?_zipWith] at *
   split <;> simp_all [AVal.mem_top, AVal.mem_join_right]
 
-theorem Expr.refine_length (env : List AVal) (e : Expr) : (e.refine env).length = env.length := by
-  fun_induction Expr.refine env e <;> simp_all [refineCol_length]
+theorem Expr.refineL_length (env : List AVal) (e : Expr) :
+    (e.refineL env).length = env.length := by
+  fun_induction Expr.refineL env e <;> simp_all [refineCol_length]
 
 theorem lt_int_right {v : Value} {k : Int} (h : (BinFn.apply .lt v (.int k)).isTrue = true) :
     ∃ x, v = .int x ∧ x < k := by
@@ -1418,9 +1484,9 @@ theorem not_isNull_arith {f : BinFn} (hf : f = .add ∨ f = .sub ∨ f = .mul) {
   rcases hf with rfl | rfl | rfl <;> cases v <;> cases w <;>
     simp_all [BinFn.apply, UnFn.apply, Value.isTrue]
 
-theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
-    (ht : (e.eval row).isTrue = true) : EnvMem (e.refine env) row := by
-  fun_induction Expr.refine env e
+theorem Expr.refineL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = true) : EnvMem (e.refineL env) row := by
+  fun_induction Expr.refineL env e
   case case1 env p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht
     exact ihq (ihp h ht.1) ht.2
@@ -1522,6 +1588,17 @@ theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem e
     rw [hn] at this ⊢
     simpa [AVal.Mem] using this
   case case17 => exact h
+
+/-- What a row that makes `e` TRUE satisfies (`refineL`), with constant
+decimals folded first (`Expr.normConst`). -/
+def Expr.refine (env : List AVal) (e : Expr) : List AVal := e.normConst.refineL env
+
+theorem Expr.refine_length (env : List AVal) (e : Expr) : (e.refine env).length = env.length :=
+  Expr.refineL_length env _
+
+theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = true) : EnvMem (e.refine env) row :=
+  Expr.refineL_sound env _ h (by rwa [Expr.eval_normConst])
 
 /-! ## What a condition says about one expression
 
@@ -1627,17 +1704,17 @@ abbrev Assumptions := List (Expr × Cstr)
 def KsHold (ks : Assumptions) (row : Row) : Prop := ∀ p ∈ ks, p.2.Holds (p.1.eval row)
 
 /-- `c`'s constraint when it is TRUE (`pos`) or not, as assumptions. -/
-def Expr.cstrs (pos : Bool) (c : Expr) : Assumptions := (c.cstr pos).toList
+def Expr.cstrs (pos : Bool) (c : Expr) : Assumptions := (c.normConst.cstr pos).toList
 
 theorem KsHold.cons_cstrs {pos : Bool} {c : Expr} {ks : Assumptions} {row : Row}
     (ht : (c.eval row).isTrue = pos) (hks : KsHold ks row) : KsHold (c.cstrs pos ++ ks) row := by
   intro p hp
   simp only [List.mem_append, Expr.cstrs] at hp
   rcases hp with hp | hp
-  · cases hc : c.cstr pos with
+  · cases hc : c.normConst.cstr pos with
     | none => simp [hc] at hp
     | some sk => simp only [hc, Option.toList_some, List.mem_singleton] at hp; subst hp;
-                 exact Expr.cstr_sound hc ht
+                 exact Expr.cstr_sound hc (by rwa [Expr.eval_normConst])
   · exact hks p hp
 
 /-- Narrow the abstract value `a` of `e` by an assumption about `e`, or about
@@ -1679,16 +1756,16 @@ theorem narrowAll_sound {e : Expr} {row : Row} :
 /-- What a row on which `e` is *not* TRUE satisfies (the `ELSE` branch of a
 `CASE`). Recognizes the constraints of `Expr.cstr` on columns, and `OR`
 (neither side is TRUE) and `AND` (one side is not TRUE). -/
-def Expr.refineNeg (env : List AVal) : Expr → List AVal
-  | .bin .or p q => q.refineNeg (p.refineNeg env)
-  | .bin .and p q => List.zipWith AVal.join (p.refineNeg env) (q.refineNeg env)
+def Expr.refineNegL (env : List AVal) : Expr → List AVal
+  | .bin .or p q => q.refineNegL (p.refineNegL env)
+  | .bin .and p q => List.zipWith AVal.join (p.refineNegL env) (q.refineNegL env)
   | e => match e.cstr false with
     | some (.field i, k) => refineCol env i k.apply
     | _ => env
 
-theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
-    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNeg env) row := by
-  fun_induction Expr.refineNeg env e
+theorem Expr.refineNegL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNegL env) row := by
+  fun_induction Expr.refineNegL env e
   case case1 env p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_or3, Bool.or_eq_false_iff] at ht
     exact ihq (ihp h ht.1) ht.2
@@ -1702,6 +1779,14 @@ theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMe
     have hk := Expr.cstr_sound hc ht
     exact Cstr.apply_sound (by simpa [eval] using hk) (h i)
   case case4 => exact h
+
+/-- What a row that makes `e` FALSE or NULL satisfies (`refineNegL`), with
+constant decimals folded first. -/
+def Expr.refineNeg (env : List AVal) (e : Expr) : List AVal := e.normConst.refineNegL env
+
+theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNeg env) row :=
+  Expr.refineNegL_sound env _ h (by rwa [Expr.eval_normConst])
 
 /-! ## Relational facts
 
