@@ -759,6 +759,62 @@ def _is_nan(x: Exprs, op: Any) -> Json:
     return call("and", [call("is_not_null", [arg]), call("is_nan", [arg])])
 
 
+def _double_fn(name: str) -> Callable[[Exprs, Any], Json]:
+    # `SQRT(x)` and friends of doubles; DataFusion converts integers.
+    return lambda x, op: call(name, [x(op.arg, dt.float64)])
+
+
+def _double(v: float) -> Json:
+    return literal(v, dt.float64)
+
+
+def _log(x: Exprs, op: Any) -> Json:
+    # Ibis's SQL: `LN(x)`, `LOG2(x)` or `LOG10(x)` for a constant base 2 or
+    # 10, and `LN(x) / LN(b)` otherwise, which is Substrait's `logb(x, b)`.
+    arg = x(op.arg, dt.float64)
+    if op.base is None:
+        return call("ln", [arg])
+    if isinstance(op.base, ops.Literal) and op.base.value in (2, 10):
+        return call(f"log{op.base.value}", [arg])
+    return call("logb", [arg, x(op.base, dt.float64)])
+
+
+def _sign(x: Exprs, op: Any) -> Json:
+    # -1, 0 or 1 in the argument's type; NaN for NaN, which is tested first
+    # (NaN is above every number).
+    arg, t = x(op.arg), op.arg.dtype
+    ifs = [
+        (call("lt", [arg, literal(0, t)]), literal(-1, t)),
+        (call("gt", [arg, literal(0, t)]), literal(1, t)),
+    ]
+    if t.is_floating():
+        ifs.insert(0, (call("is_nan", [arg]), arg))
+    return if_then(ifs, arg)
+
+
+def _is_inf(x: Exprs, op: Any) -> Json:
+    # Ibis's SQL: `NOT isnan(x) AND abs(x) = inf`, which is this.
+    arg = x(op.arg, dt.float64)
+    inf = [call("equal", [arg, _double(s * math.inf)]) for s in (1, -1)]
+    return call("or", inf)
+
+
+def _bitwise(name: str) -> Callable[[Exprs, Any], Json]:
+    def rule(x: Exprs, op: Any) -> Json:
+        if "shift" in name and not op.dtype.is_int64():
+            # Narrower shifts lose bits at their own width.
+            raise Unsupported(f"shifts of {op.dtype} are not supported; cast to int64")
+        return call(name, [x(op.left, op.dtype), x(op.right, op.dtype)])
+
+    return rule
+
+
+def _xor(x: Exprs, op: Any) -> Json:
+    # Ibis's DataFusion SQL: `(a AND NOT b) OR (NOT a AND b)`.
+    a, b = x(op.left), x(op.right)
+    return call("or", [call("and", [a, call("not", [b])]), call("and", [call("not", [a]), b])])
+
+
 def _string_find(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0 (-1 when absent): one less than `strpos`.
     if op.end is not None:
@@ -900,6 +956,37 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.IsNan: _is_nan,
     ops.StringFind: _string_find,
     ops.ExtractWeekOfYear: _date_part("week"),
+    # Elementary functions and bitwise operations (`SubstraitLean/Numeric.lean`).
+    ops.Sqrt: _double_fn("sqrt"),
+    ops.Exp: _double_fn("exp"),
+    ops.Ln: _double_fn("ln"),
+    ops.Log: _log,
+    ops.Log10: _double_fn("log10"),
+    ops.Log2: _double_fn("log2"),
+    ops.Sin: _double_fn("sin"),
+    ops.Cos: _double_fn("cos"),
+    ops.Tan: _double_fn("tan"),
+    ops.Asin: _double_fn("asin"),
+    ops.Acos: _double_fn("acos"),
+    ops.Atan: _double_fn("atan"),
+    ops.Atan2: lambda x, op: call("atan2", [x(op.left, dt.float64), x(op.right, dt.float64)]),
+    # DataFusion's `COT(x)` is `1 / tan(x)`; `DEGREES` and `RADIANS` multiply
+    # by Rust's constants (`f64::to_degrees`, `to_radians`).
+    ops.Cot: lambda x, op: call("divide", [_double(1.0), call("tan", [x(op.arg, dt.float64)])]),
+    ops.Degrees: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(180 / math.pi)]),
+    ops.Radians: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(math.pi / 180)]),
+    ops.E: lambda x, op: _double(math.e),
+    ops.Pi: lambda x, op: _double(math.pi),
+    ops.Sign: _sign,
+    ops.IsInf: _is_inf,
+    ops.BitwiseAnd: _bitwise("bitwise_and"),
+    ops.BitwiseOr: _bitwise("bitwise_or"),
+    ops.BitwiseXor: _bitwise("bitwise_xor"),
+    ops.BitwiseLeftShift: _bitwise("bitwise_shift_left"),
+    ops.BitwiseRightShift: _bitwise("bitwise_shift_right"),
+    # `~x` is `x XOR -1`, as Ibis's DataFusion SQL writes it.
+    ops.BitwiseNot: lambda x, op: call("bitwise_xor", [x(op.arg), literal(-1, op.dtype)]),
+    ops.Xor: _xor,
     ops.ScalarSubquery: _scalar_subquery,
     ops.ExistsSubquery: _exists_subquery,
     ops.InSubquery: _in_subquery,

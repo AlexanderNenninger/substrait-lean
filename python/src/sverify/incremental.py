@@ -850,7 +850,8 @@ class IncrementalView:
 
     @property
     def contracted(self) -> bool:
-        return bool(self.requires or self.guarantees)
+        # A plain function's view requires nothing of each input: {"orders": []}.
+        return any(self.requires.values()) or bool(self.guarantees)
 
     def _replan(self, changed: set[str]) -> None:
         """Plan the view again over the current schemas of the `changed`

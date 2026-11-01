@@ -469,12 +469,6 @@ def test_widened_column_whose_values_fit_is_read_as_before(tmp_path):
     assert source_schema(node, "orders") == NARROW
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a node of a plain function counts as contracted (its view's requires is "
-    "{'orders': []}), so it refuses the schema change instead of planning again; "
-    "test_incremental.py covers the replanning on Pipeline views",
-)
 def test_a_node_without_a_contract_is_planned_again_for_a_dropped_column(tmp_path):
     src = narrow_orders(tmp_path / "o", [{"id": 1, "amount": 5}])
     node = src.pipe(ids)
@@ -484,6 +478,18 @@ def test_a_node_without_a_contract_is_planned_again_for_a_dropped_column(tmp_pat
     [s] = batch(node).sources
     assert s.mode == "recomputed" and "dropped amount" in s.detail
     assert rows(node) == [(1,), (2,)]
+
+
+def test_a_node_planned_again_overwrites_its_sink(tmp_path):
+    src = narrow_orders(tmp_path / "o", [{"id": 1, "amount": 5}])
+    node = src.pipe(ids).write(DeltaSink(str(tmp_path / "ids")))
+    assert node.refresh().writes[0].mode == "created"
+    only_id = pa.table({"id": pa.array([1, 2], pa.int64())})
+    write_deltalake(src.uri, only_id, mode="overwrite", schema_mode="overwrite")
+    # The plan reads another schema: its state replaces the old plan's.
+    [w] = node.refresh().writes
+    assert (w.mode, w.inserted) == ("overwrite", 2)
+    assert delta_rows(str(tmp_path / "ids")) == [(1,), (2,)]
 
 
 def test_incompatible_schema_change_under_a_contract_is_refused(tmp_path):
@@ -587,17 +593,61 @@ def test_resume_recomputes_another_plan(tmp_path):
     assert DeltaSource(src.uri).stored() is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the sink skips a state at an epoch it has committed, even from another "
-    "plan, so the table keeps the old plan's rows",
-)
 def test_another_plan_overwrites_the_sink(tmp_path):
     src, stored = job1(tmp_path)
     stored.refresh()
     other = doubled(src).write(DeltaSink(str(tmp_path / "big")))
     assert other.refresh().writes[0].mode == "overwrite"
     assert delta_rows(str(tmp_path / "big")) == sorted(rows(other), key=repr)
+
+
+def as_text(orders):
+    return orders.select(orders.customer, doubled=orders.amount.cast("string"))
+
+
+def constraints(uri):
+    config = DeltaTable(uri).metadata().configuration
+    return {k: v for k, v in config.items() if k.startswith("delta.constraints.")}
+
+
+def test_another_plan_with_other_columns_replaces_the_table(tmp_path):
+    src, stored = job1(tmp_path)
+    stored.refresh()
+    uri = str(tmp_path / "big")
+    assert constraints(uri) == {"delta.constraints.sverify_1": "doubled >= 0"}
+    # Another plan at the same source versions: other columns, no constraint.
+    other = src.pipe(as_text).write(DeltaSink(uri))
+    w = other.refresh().writes[0]
+    assert (w.mode, w.inserted, w.constraints) == ("overwrite", 2, {})
+    assert DeltaTable(uri).schema().to_arrow().names == ["customer", "doubled"]
+    assert constraints(uri) == {}
+    assert delta_rows(uri) == sorted(rows(other), key=repr) == [("ada", "5"), ("bob", "7")]
+    # The new plan's next state is a MERGE on its own rows.
+    write_deltalake(src.uri, orders_table([(3, "cy", 1)]), mode="append")
+    assert other.refresh().writes[0].mode == "merge"
+    assert delta_rows(uri) == sorted(rows(other), key=repr)
+    # Back to the first plan. Its constraint holds once its rows are in, so
+    # the commit that adds it records the epoch, and a restarted job resumes.
+    _, back = job1(tmp_path, src)
+    w = back.refresh().writes[0]
+    assert (w.mode, w.constraints) == ("overwrite", {"sverify_1": "doubled >= 0"})
+    assert constraints(uri) == {"delta.constraints.sverify_1": "doubled >= 0"}
+    _, again = job1(tmp_path, src)
+    entry = again.refresh()["big"]
+    assert entry.started is not None and entry.started.startswith("resumed from")
+    assert entry.write is not None and entry.write.mode == "skipped"
+    assert delta_rows(uri) == sorted(rows(again), key=repr)
+
+
+def test_a_constraint_of_another_writer_is_kept(tmp_path):
+    src = make_orders(tmp_path / "orders", [(1, "ada", 5)])
+    uri = str(tmp_path / "big")
+    src.pipe(as_text).write(DeltaSink(uri)).refresh()
+    DeltaTable(uri).alter.add_constraint({"named": "customer IS NOT NULL"})
+    _, other = job1(tmp_path, src)
+    with pytest.raises(ValueError, match="constraints the view does not guarantee"):
+        other.refresh()
+    assert delta_rows(uri) == [("ada", "5")]
 
 
 # -- Statistics: nullable columns, doubles, deletion vectors -------------------
@@ -722,8 +772,7 @@ def test_where_skips_files_the_reader_would_scan(tmp_path):
 # A node's stage is a `Pipeline` of one view whose sources it pins itself, so
 # these drive `Pipeline` directly: its guard against applying changes to a
 # source, a sink attached to a view without sources, resuming at another
-# version than the sink stored, and replanning views without a contract
-# (a node of a plain function counts as contracted; see the xfail above).
+# version than the sink stored, and replanning several views at once.
 
 
 def attached(sink, view):

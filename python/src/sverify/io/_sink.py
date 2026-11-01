@@ -48,8 +48,9 @@ class SinkChange:
         schema: The table's schema: the node's columns, NOT NULL where the
             node proves it.
         replace: True if the sink's contents must be replaced by `table`:
-            the first write, or contents this process did not write. Then
-            `inserts` is `table` and `deletes` is empty.
+            the first write, contents this process did not write, or
+            contents another plan wrote. Then `inserts` is `table` and
+            `deletes` is empty.
     """
 
     def __init__(
@@ -91,9 +92,10 @@ class Sink:
     rows added and removed since the last write, or the whole table, with
     the contract to record. sverify writes each state exactly once: it skips
     a state whose `contract.epoch` the sink has already committed
-    (`committed`). By default that record is kept in memory; override
-    `committed` to read it back from the sink, so a restarted job does not
-    write a state again. The nodes reading the stored node read what this
+    (`committed`), unless another plan (`contract.plan`) committed it: then
+    the whole table replaces that plan's rows. By default that record is
+    kept in memory; override `committed` to read it back from the sink, so
+    a restarted job does not write a state again. The nodes reading the stored node read what this
     process wrote, with its exact changes, unless `source` returns a source
     that reads the sink. A restarted job writes its first state in full.
 
@@ -233,7 +235,11 @@ class Sink:
             raise ValueError(f"no node is stored in {self.location}: node.write(sink) attaches one")
         contract = view_contract_record(view)
         done = self.committed()
-        if done is not None and done.epoch >= contract.epoch:
+        if done is not None and done.plan != contract.plan:
+            # Another plan's rows: neither skip this epoch nor write a change
+            # on top of them; replace them.
+            self._written = None
+        elif done is not None and done.epoch >= contract.epoch:
             check_same_state(self.location, done, contract)
             self._written = Counter(view.counts)
             self._keep(view, contract, None)

@@ -194,6 +194,36 @@ def test_restarted_job_resumes_from_its_iceberg_sink(catalog):
     assert rows(again) == recomputed(doubled(src), src)
 
 
+def as_text(orders):
+    return orders.select(orders.customer, doubled=orders.amount.cast("string"))
+
+
+def big_rows(catalog):
+    got = catalog.load_table("db.big").scan().to_arrow().to_pylist()
+    return sorted(tuple(r.values()) for r in got)
+
+
+def test_another_plan_overwrites_the_iceberg_sink(catalog):
+    src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
+    doubled(src).write(IcebergSink(catalog, "db.big")).refresh()
+    # Another plan at the same source versions, with a column of another
+    # type: the table gets its schema and its rows, not a skip.
+    other = src.pipe(as_text).write(IcebergSink(catalog, "db.big"))
+    w = other.refresh().writes[0]
+    assert (w.mode, w.inserted, w.deleted) == ("overwrite", 2, 0)
+    fields = catalog.load_table("db.big").schema().fields
+    assert [(f.name, str(f.field_type), f.required) for f in fields] == [
+        ("customer", "string", False),
+        ("doubled", "string", False),
+    ]
+    assert big_rows(catalog) == rows(other) == [("ada", "5"), ("bob", "7")]
+    contract = IcebergSource(catalog, "db.big").contract()
+    assert contract is not None and contract.plan == w.contract.plan
+    src.table().append(rows_table([(3, "cy", 1)]))
+    assert other.refresh().writes[0].mode == "append"
+    assert big_rows(catalog) == rows(other)
+
+
 def test_double_statistics_use_the_nan_count(catalog):
     schema = pa.schema(
         [pa.field("id", pa.int64(), nullable=False), pa.field("price", pa.float64())]

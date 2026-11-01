@@ -25,6 +25,7 @@ def UnFn.render : UnFn → String
   | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"
   | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
   | .strftime fmt => s!"STRFTIME_{fmt.quote}" | .bucket k o => s!"BUCKET_{k}_{o}"
+  | .fmath f => f.name.toUpper
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
@@ -36,6 +37,9 @@ def BinFn.render : BinFn → String
   | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
   | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN"
   | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
+  | .fatan2 => "ATAN2" | .flogb => "LOGB"
+  | .bit op => match op with
+    | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
 
 def Expr.render : Expr → String
   | .lit v => v.render

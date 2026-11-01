@@ -87,7 +87,8 @@ def test_aggregates_of_double_constants(con, sql, expected):
             13 * 3600 * 10**6,
         ),
         (
-            "SELECT COALESCE(DATE '2020-05-05', TIMESTAMP '2020-05-06 01:00') AS v FROM t LIMIT 1",
+            "SELECT COALESCE(DATE '2020-05-05', TIMESTAMP '2020-05-06 01:00:00') AS v "
+            "FROM t LIMIT 1",
             18387 * DAY,
         ),
     ],

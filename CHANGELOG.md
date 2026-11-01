@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Fixed: a sink kept another plan's rows after the plan changed
+
+If you use 0.3.0 and change a node's transform while keeping its sink,
+upgrade. The sink recorded which plan wrote each state, but only compared
+the state's epoch (the sum of the source versions) when deciding what to
+write. So a job restarted with a new plan, at source versions the sink had
+already committed, skipped the write: the table kept the old plan's rows and
+its contract, while the node held the new plan's state. On the next source
+change it merged the new plan's change on top of the old plan's rows, and
+the table was wrong from then on, without an error. This affected
+`DeltaSink`, `IcebergSink`, `sink_from` and sinks of your own that override
+`committed()`.
+
+A sink whose last commit came from another plan (`Contract.plan` differs) is
+now overwritten with the new plan's whole state, and the refresh reports the
+write as `overwrite`. `DeltaSink` replaces the table's schema and drops the
+CHECK constraints it added for the old plan that the new one does not prove,
+then adds the new plan's in the commit that records the epoch, so a job
+stopped in between writes the state again. `IcebergSink` replaces the
+table's schema in the overwrite's transaction. Constraints that another
+writer added still stop the write.
+
+A table is affected if you restarted a job with a changed plan before its
+sources moved on. If it has not written a change since, the first refresh
+after upgrading overwrites the table. If it has, that MERGE recorded the new
+plan, and the fix cannot tell the table is wrong: delete the table, or point
+the sink at a new location, and refresh to write it in full.
+
+### Fixed: a node without a contract is planned again after a schema change
+
+A node of a plain function, such as `orders.pipe(lambda t: t.select(t.id))`,
+counted as contracted, so a dropped column, or a column widened beyond what
+its values used to fit, raised `SchemaError` instead of planning the node
+again. It is now planned again and recomputed, and its sink is overwritten.
+
 ## 0.3.0 (2026-11-01)
 
 ### Licensed under the MPL-2.0

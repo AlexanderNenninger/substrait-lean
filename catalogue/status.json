@@ -272,15 +272,13 @@
   }
  },
  "fin-log-returns": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "Ln is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "Ln is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses"
   }
  },
  "fin-fifo-pnl": {
@@ -296,12 +294,12 @@
  "fin-realized-volatility": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "Ln is not supported",
+  "detail": "aggregate Multiply is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "Ln is not supported",
+   "detail": "aggregate Multiply is not supported",
    "datafusion": "runs"
   }
  },
