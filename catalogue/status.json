@@ -694,8 +694,8 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "duckdb": "runs",
-   "polars": "runs",
+   "duckdb": "error: Invalid Input Error: sverify: division by zero: 0.0",
+   "polars": "error: divide by zero (1 row(s))",
    "snowflake": "sql"
   }
  },

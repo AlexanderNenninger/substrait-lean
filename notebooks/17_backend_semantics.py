@@ -949,7 +949,8 @@ def _(E, render):
             snowflake="error: Division by zero",
             why="Everyone that runs follows IEEE: ±inf, or NaN for 0/0 and NaN/0. "
             "Snowflake raises even on doubles.",
-            picks="IEEE",
+            picks="an exception, as Substrait's `on_division_by_zero` = ERROR (#204); "
+            "a plan that asks for IEEE, LIMIT or NULL gets that",
         ).run(),
         E(
             "F6",

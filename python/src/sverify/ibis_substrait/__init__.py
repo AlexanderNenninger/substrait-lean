@@ -221,6 +221,14 @@ def call(name: str, args: Iterable[Json]) -> Json:
     }
 
 
+def ieee_divide(a: Json, b: Json) -> Json:
+    """`a / b` with `on_division_by_zero` = IEEE: `±inf` or NaN by zero rather
+    than an error (#204)."""
+    c = call("divide", [a, b])
+    c["scalarFunction"]["options"] = [{"name": "on_division_by_zero", "preference": ["IEEE"]}]
+    return c
+
+
 def field_ref(i: int) -> Json:
     return {"selection": {"directReference": {"structField": {"field": i}}, "rootReference": {}}}
 
@@ -970,9 +978,10 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Acos: _double_fn("acos"),
     ops.Atan: _double_fn("atan"),
     ops.Atan2: lambda x, op: call("atan2", [x(op.left, dt.float64), x(op.right, dt.float64)]),
-    # DataFusion's `COT(x)` is `1 / tan(x)`; `DEGREES` and `RADIANS` multiply
-    # by Rust's constants (`f64::to_degrees`, `to_radians`).
-    ops.Cot: lambda x, op: call("divide", [_double(1.0), call("tan", [x(op.arg, dt.float64)])]),
+    # DataFusion's `COT(x)` is `1 / tan(x)` in IEEE division, so `cot(0)` is
+    # `inf`; `DEGREES` and `RADIANS` multiply by Rust's constants
+    # (`f64::to_degrees`, `to_radians`).
+    ops.Cot: lambda x, op: ieee_divide(_double(1.0), call("tan", [x(op.arg, dt.float64)])),
     ops.Degrees: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(180 / math.pi)]),
     ops.Radians: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(math.pi / 180)]),
     ops.E: lambda x, op: _double(math.e),

@@ -94,7 +94,7 @@ class Overflow(RuntimeIssue):
 
 
 class DivisionByZero(RuntimeIssue):
-    """Integer division or remainder by zero."""
+    """Integer division or remainder by zero, or a double divided by zero."""
 
 
 class NegativeExponent(RuntimeIssue):
@@ -818,6 +818,12 @@ class Exprs:
             f = j["scalarFunction"]
             name = self.function(f.get("functionReference"))
             arg_js = [a["value"] for a in f.get("arguments", [])]
+            for o in f.get("options", []):
+                # Lean's written plans spell the other modes as a `CASE`
+                # (`Parse.divByZero`); this engine runs only those.
+                prefs = o.get("preference") or ["ERROR"]
+                if o.get("name") == "on_division_by_zero" and prefs[0] != "ERROR":
+                    raise Unsupported(f"on_division_by_zero = {prefs}")
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
@@ -1094,12 +1100,12 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
-            if name != "modulus":
+            if name not in ("divide", "modulus"):
                 return Val(ops[name], pl.Float64, issues(a, b))
-            # `BinFn.fmod` raises on a zero divisor, as on integers.
-            zero = b.expr.eq_missing(0.0)
-            by_zero = issue(zero & a.expr.is_not_null(), DivisionByZero, "modulus by zero")
-            return Val(ops[name], pl.Float64, (*issues(a, b), by_zero))
+            # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
+            # `NULL / 0.0` is NULL.
+            zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
+            return Val(ops[name], pl.Float64, (*issues(a, b), zero))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:
