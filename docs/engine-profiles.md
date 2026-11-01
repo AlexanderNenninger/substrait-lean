@@ -66,6 +66,38 @@ From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
 SQL strings are planned to go through Isthmus only, with DataFusion an
 execution backend (#211).
 
+## Profiles and shims in Lean (#185, first slice)
+
+`SubstraitLean/Profile.lean` states the scalar part:
+
+* An engine evaluation gives an **`Outcome`**, a value or an error.
+* A **`Profile`** gives each function's outcome; `Expr.evalP` evaluates under
+  one (strictly, left to right; a `CASE` takes one branch; a lambda runs on
+  every element).
+* **`Profile.reference`** raises exactly where `Safety.lean` reports an error,
+  and `Expr.evalP_reference` proves that evaluating under it is `eval`,
+  raising the first error `issues` reports. So the reference is one profile
+  among others.
+* **`Profile.duckdb s`** is the reference except where
+  `characterization/duckdb/FACTS.md` records a difference. So far that is
+  division and modulus by zero (R2–R5), which depend on the setting
+  `error_on_division_by_zero` (on by default since 2.0).
+* **`shimDuckDB s`** rewrites an expression into one DuckDB evaluates to the
+  reference's outcome. Its guards are two functions of the model:
+  `UnFn.raise` (always an error, `Issue.raised`; DuckDB's `error()`) and
+  `UnFn.isNum` (written `x IS NOT NULL`). So a shimmed plan is an ordinary
+  plan, written and run like any other. With the setting off, a division gets
+  `CASE WHEN x IS NOT NULL AND y = 0 THEN error() ELSE x / y END`; `NULL / 0`
+  is NULL in the reference. **`shimDuckDB_correct`** proves that the shimmed
+  expression, under DuckDB's profile, has the reference's outcome: the same
+  value, or an error.
+
+Trusted: that `Profile.duckdb` matches DuckDB (to be checked by the fuzzer),
+and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
+NOT NULL` included). Next: relations, the
+fuzzer check, writing shimmed plans for the SQL printer, and the other rows of
+the DuckDB diff.
+
 ## The translations today
 
 Each engine reaches the reference through a **translation**, a function from
