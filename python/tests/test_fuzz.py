@@ -75,13 +75,32 @@ def test_written_bare_double_literal(value):
     assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
 
 
-@pytest.mark.xfail(strict=True, reason="#96: 0.0 and a double NULL are an integer and NULL")
-@pytest.mark.parametrize("value", ["0.0", "CAST(NULL AS DOUBLE)"])
-def test_written_bare_double_zero_or_null(value):
-    """The model has `0.0` as code 0 and a double NULL as NULL, so the writer
-    cannot tell them from an integer: the engines give the right value with
-    an integer type. Needs the parser to keep a literal's kind."""
+@pytest.mark.parametrize(
+    "value",
+    [
+        "0.0",
+        "CAST(NULL AS DOUBLE)",
+        "- CAST(NULL AS DOUBLE)",
+        "TIMESTAMP '2024-01-01 00:00:00'",
+        "CAST(NULL AS TIMESTAMP)",
+        "DATE '2024-01-01'",
+        "CAST(NULL AS BOOLEAN)",
+        "CAST(NULL AS VARCHAR)",
+        "CASE WHEN b THEN 0.0 ELSE 1.5 END",
+        "CASE WHEN b THEN TIMESTAMP '2024-01-01 00:00:00' ELSE TIMESTAMP '2024-01-02 00:00:00' END",
+    ],
+)
+def test_written_projected_literal(value):
+    """#96: a projected literal has the type its source plan declares. The
+    model has `0.0` as code 0, a timestamp as microseconds and a typed NULL
+    as NULL; the engines check the values and the column types."""
     assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
+
+
+def test_written_projected_literal_read_by_a_filter():
+    """#96: the declared kind carries through to the relation reading it."""
+    sql = "SELECT c0 FROM (SELECT 0.0 AS c0 FROM t) AS q WHERE c0 = 0.0"
+    assert not finding(sql, "engines", {"t": [T_ROW]})
 
 
 def test_written_typed_null():
@@ -96,6 +115,14 @@ def test_written_string_null(fn):
     """#96: a NULL under a string function is written as a string NULL."""
     sql = f"SELECT {fn}(CAST(NULL AS VARCHAR)) AS c0 FROM t AS q"
     assert not finding(sql, "engines", {"t": [T_ROW]})
+
+
+def test_written_string_null_under_length():
+    """#96: `length`'s NULL argument is a string NULL, so every engine runs
+    the plan. (DataFusion's SQL gives an `int32` result, the plan `int64`.)"""
+    sql = "SELECT length(CAST(NULL AS VARCHAR)) AS c0 FROM t AS q"
+    found = finding(sql, "engines", {"t": [T_ROW]})
+    assert not [f for f in found if f.oracle.startswith("rows:")]
 
 
 def test_written_timestamp_literal_in_case():
@@ -148,16 +175,9 @@ def test_boolean_ordering():
     assert not finding("SELECT (b <= b) AS c0 FROM t AS q", "rows", {"t": [row]})
 
 
-@pytest.mark.parametrize(
-    "f",
-    [
-        Finding("rows:polars", "q", {}, "Unsupported('integer 607 does not fit in 64 bits')"),
-        Finding("rows:duckdb", "q", {}, "Cannot mix values of type TIMESTAMP and BIGINT"),
-        Finding("types:polars", "q", {}, "DataFusion's SQL: ['double']\npolars: ['int64']"),
-    ],
-)
-def test_known_findings_name_their_issue(f):
-    assert known(f) == 96
+def test_known_findings_name_their_issue():
+    f = Finding("types:polars", "q", {}, "DataFusion's SQL: ['int64']\npolars: ['int32']")
+    assert known(f) == 18
 
 
 def test_known_findings_need_the_symptom():
