@@ -518,7 +518,9 @@ def test_constructors_of_constants():
     plan = inline_tables(to_substrait(expr), {"t": [(None, None, None)]})
     got = lean_values(json.dumps(plan))
     assert got == [(19782, 1704164645000000, 34200000000)]
-    with pytest.raises(Unsupported, match="day is out of range"):
+    # The reason after the colon is CPython's: "day is out of range for month"
+    # up to 3.13, "day 30 must be in range 1..29 …" from 3.14.
+    with pytest.raises(Unsupported, match=r"DateFromYMD of \[2024, 2, 30\]: day "):
         to_substrait(D.select(a=ibis.date(2024, 2, 30)))
     with pytest.raises(Unsupported, match="of columns"):
         to_substrait(D.select(a=ibis.date(D.n, 1, 1)))
