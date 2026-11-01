@@ -578,6 +578,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     [
         ("SELECT a / b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a % b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
+        ("SELECT a % CAST(b AS DOUBLE) AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a / b AS q FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, 2) AS p FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, b) AS p FROM r WHERE b = -1", polars_engine.NegativeExponent),

@@ -55,16 +55,48 @@ def lean(con, sql: str) -> list[tuple]:
     return lean_values(json.dumps(inline_tables(plan, ROWS)))
 
 
-def refusal(con, sql: str) -> str:
-    code, out, err = run_checker((), substrait_json(con, sql))
-    assert code != 0
-    return out + err
+def nan_equal(rows: list[tuple]) -> list[tuple]:
+    return [tuple("NaN" if isinstance(v, float) and v != v else v for v in r) for r in rows]
 
 
-# R4 (#203): Substrait has no `modulus` on doubles; the integer one read the codes.
-@pytest.mark.parametrize("sql", ["SELECT x % 2.0 AS m FROM f", "SELECT x % 0.0 AS m FROM f"])
-def test_modulus_of_doubles_is_refused(con, sql):
-    assert "modulus of doubles" in refusal(con, sql)
+NAN = float("nan")
+
+
+# R4 (#203): `modulus` of doubles is C's `fmod`, as DataFusion computes `%`
+# (the integer one read the codes): the sign of the dividend; by zero, an error.
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT x % 2.0 AS m FROM f", [(1.5,), (0.0,), (None,)]),
+        ("SELECT -x % 2.0 AS m FROM f", [(-1.5,), (0.0,), (None,)]),
+        ("SELECT x % -2.0 AS m FROM f", [(1.5,), (0.0,), (None,)]),
+        ("SELECT x % CAST('inf' AS DOUBLE) AS m FROM f", [(7.5,), (0.0,), (None,)]),
+        ("SELECT CAST('inf' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1", [(NAN,)]),
+        ("SELECT CAST('nan' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1", [(NAN,)]),
+        # The filter proves the divisor is not zero.
+        ("SELECT x % x AS m FROM f WHERE x <> 0.0", [(0.0,)]),
+        # Exact: `a - b * trunc(a / b)` in doubles gives 0.0.
+        ("SELECT CAST('1e308' AS DOUBLE) % 3.0 AS m FROM f LIMIT 1", [(2.0,)]),
+    ],
+)
+def test_modulus_of_doubles_is_fmod(con, sql, expected):
+    assert nan_equal(lean(con, sql)) == nan_equal(expected)
+    by_datafusion = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
+    assert nan_equal(by_datafusion) == nan_equal(expected)
+
+
+@pytest.mark.parametrize(
+    ("sql", "errors"),
+    [
+        ("SELECT x % 0.0 AS m FROM f", ["division by zero"]),
+        ("SELECT 1.5 % x AS m FROM f", ["division by zero"]),
+        ("SELECT 1.5 % x AS m FROM f WHERE x <> 0.0", []),
+    ],
+)
+def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
+    """As on integers; `verify` proves it absent where the plan rules a zero
+    divisor out (DataFusion gives NaN)."""
+    assert [i.kind for i in sv.verify(sql, tables={"f": {"x": "float64"}}).errors] == errors
 
 
 # R7 (#205): an aggregate of a double constant adds doubles, not their codes.

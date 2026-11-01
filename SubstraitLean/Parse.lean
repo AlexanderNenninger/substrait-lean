@@ -203,8 +203,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _
-  | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fmod _ _
+  | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
@@ -818,10 +818,12 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
       some (some ["TIE_TO_EVEN"])
     else none
-  -- Every value is modelled (`divByZero`); integers have no `IEEE` or `LIMIT`.
+  -- Every value is modelled (`divByZero`). `IEEE` and `LIMIT` are only for
+  -- dividing doubles: integers have neither, and the remainder of doubles is
+  -- C's `fmod` (#203), whose IEEE value by zero is not `±∞`.
   | "on_division_by_zero" =>
     if base != "divide" && base != "modulus" then none
-    else if float then some (some ["ERROR", "IEEE", "NULL", "LIMIT"])
+    else if float && base == "divide" then some (some ["ERROR", "IEEE", "NULL", "LIMIT"])
     else some (some ["ERROR", "NULL"])
   | "on_domain_error" =>
     -- Outside their domains the elementary functions raise (`Numeric.lean`).
@@ -1157,6 +1159,10 @@ def mkFloatCall : String → List Expr → J Expr
   | "subtract", [a, b] => pure (.bin .fsub a b)
   | "multiply", [a, b] => pure (.bin .fmul a b)
   | "divide", [a, b] => pure (.bin .fdiv a b)
+  -- Substrait has no `modulus` of doubles, but DataFusion writes one; it is
+  -- C's `fmod`, as DuckDB, DataFusion and Spark compute `%`, and raises on a
+  -- zero divisor, as on integers (#203).
+  | "modulus", [a, b] => pure (.bin .fmod a b)
   -- Code negation would make NaN the smallest code; SQL's one NaN stays NaN.
   | "subtract", [a] | "negate", [a] =>
     pure (.ifThen (.bin .eq a (.lit (.int FloatCode.nan))) a (.un .fneg a))
@@ -1305,17 +1311,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- DataFusion's decimal division has a scale, for one.
     if (outTy.getObjVal? "decimal").toOption.isSome && !wideIntDecimal outTy then
       throw s!"{name}: decimal results are not supported"
-    let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-      "ceil", "round"] ++ doubleFns
+    let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
+      "floor", "ceil", "round"] ++ doubleFns
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) &&
       (out == .float || hasFloat || doubleFns.contains (baseName name))
     if arithmeticFns.bitFns.contains (baseName name) && hasFloat then
       throw s!"{baseName name} is only supported on integers"
-    -- Substrait's `modulus` has no `fp32`/`fp64` impl (#203); the integer one
-    -- would read the doubles' codes.
-    if baseName name == "modulus" && (out == .float || hasFloat) then
-      throw "modulus of doubles is not a Substrait function"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.
@@ -1338,6 +1340,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let mode := divByZeroMode (← arrD f "options")
       match baseName name, args with
       | "divide", [a, b] => return divByZero mode true (.bin .fdiv) a b
+      | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else
       let mode := divByZeroMode (← arrD f "options")

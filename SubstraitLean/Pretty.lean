@@ -30,7 +30,7 @@ def UnFn.render : UnFn → String
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
   | .and => "AND" | .or => "OR" | .fadd => "+." | .fsub => "-." | .fmul => "*." | .fdiv => "/."
-  | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^."
+  | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^." | .fmod => "%."
   | .concat => "||" | .strpos => "STRPOS" | .startsWith => "STARTS_WITH"
   | .endsWith => "ENDS_WITH" | .like => "LIKE"
   | .substr n => s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}"

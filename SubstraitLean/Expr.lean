@@ -97,6 +97,9 @@ inductive BinFn where
   | add | sub | mul | eq | lt | and | or
   /-- Double arithmetic, rounded like IEEE 754. -/
   | fadd | fsub | fmul | fdiv
+  /-- The remainder of doubles, C's `fmod` (`FloatCode.fmod`); by zero, an
+  error (`Safety.lean`). -/
+  | fmod
   /-- Integer division and remainder (truncating) and integer powers. -/
   | idiv | imod | ipow
   /-- `POWER` of doubles. -/
@@ -215,6 +218,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
   | .fdiv, .int a, .int b => .int (FloatCode.lift₂ (· / ·) a b)
+  | .fmod, .int a, .int b => .int (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
   -- Exponents beyond 64 overflow anyway (unless `|a| ≤ 1`); don't compute them.
