@@ -2,9 +2,9 @@
 
 **Prove a data pipeline's contracts before it runs, get the same result on
 [DuckDB](https://duckdb.org), [Polars](https://pola.rs),
-[DataFusion](https://datafusion.apache.org), [Spark](https://spark.apache.org)
-and Snowflake, and keep it up to date from Delta Lake and Iceberg change
-feeds.**
+[DataFusion](https://datafusion.apache.org) and
+[Spark](https://spark.apache.org), and keep it up to date from Delta Lake and
+Iceberg change feeds.**
 
 You write a transformation in [Ibis](https://ibis-project.org) or SQL and say
 what it assumes about its inputs (`requires`) and what it guarantees about
@@ -17,12 +17,25 @@ proves the guarantees for every possible input, or says why it can't. Then:
   before the job runs. Preconditions are checked on the data, or proved from
   Delta and Iceberg metadata.
 * **One plan gives the same answer on every engine.** The checked plan runs
-  on DuckDB, Polars or DataFusion, or is written as Snowflake or Spark SQL,
+  on DuckDB, Polars or DataFusion, or is written as Spark SQL,
   with NULLs, integer division, NaN, ties and overflow spelled out, or it is
   refused where an engine can't match.
 * **Results are kept up to date from the changes,** by delta plans proved
   equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
+
+sverify is a young, independent project, and for now it is purely
+observational: it tells you what it can and can't prove, and describes how
+each engine behaves as observed at pinned versions, without certifying or
+ranking them. It isn't affiliated with any engine's project or vendor. Use it
+as a careful second pair of eyes rather than a gate production depends on,
+and expect the API to keep changing between minor releases. What it's for is
+making data engineering more joyful: fewer 3 a.m. pages, fewer surprises
+between engines, more trust in the tables you hand on.
+
+**Snowflake support is mostly aspirational for now.** sverify writes
+Snowflake SQL, but has only checked it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), not on a
+real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)).
 
 ```bash
 pip install sverify                # or: uv add sverify
