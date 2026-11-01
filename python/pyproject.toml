@@ -49,6 +49,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sverify"]
+# The maintainer tooling in `tools/sverify_dev` is not in the wheel, but an
+# editable install (`uv sync`) puts it on `sys.path` next to `src`.
+dev-mode-dirs = ["src", "tools"]
 # The build hook adds `_bin/substrait-check` (a symlink there in editable installs).
 exclude = ["src/sverify/_bin"]
 
@@ -91,15 +94,15 @@ filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests", "scripts"]
+src = ["src", "tools", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [tool.pyrefly]
-project-includes = ["src", "tests", "scripts"]
+project-includes = ["src", "tools", "tests", "scripts"]
 # `test_polars` reuses the queries of the other test modules.
-search-path = ["src", "tests"]
+search-path = ["src", "tools", "tests"]
 
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.
@@ -171,7 +174,7 @@ cmd = "pytest -n auto --dist worksteal tests/test_isthmus.py tests/test_without_
 
 [tool.poe.tasks.fuzz]
 help = "Random queries with Lean as the oracle for $BUDGET seconds (default 600); prints new findings"
-cmd = "python -m sverify.fuzz --budget ${BUDGET}"
+cmd = "python -m sverify_dev.fuzz --budget ${BUDGET}"
 env = { BUDGET.default = "600" }
 
 [tool.poe.tasks.compare-sql]

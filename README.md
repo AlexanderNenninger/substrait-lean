@@ -648,9 +648,9 @@ tests the tour's transforms the same way.
 ### What is supported
 
 How much of the Ibis API gets through, from
-[`sverify/coverage.py`](python/src/sverify/coverage.py) and its cases in
-[`sverify/coverage_cases/`](python/src/sverify/coverage_cases) (regenerated on
-`main` after every merge by `uv run python -m sverify.coverage --write-readme`):
+[`sverify_dev/coverage.py`](python/tools/sverify_dev/coverage.py) and its cases in
+[`sverify_dev/coverage_cases/`](python/tools/sverify_dev/coverage_cases) (regenerated on
+`main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
 159 of 183 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
@@ -914,7 +914,7 @@ The parser ([Parse.lean](SubstraitLean/Parse.lean)) and writer
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
 `df_*.json` fixtures are real plans: the Ibis pipelines in
-`sverify/examples.py`, compiled by Ibis and DataFusion
+`sverify_dev/examples.py`, compiled by Ibis and DataFusion
 (`python/scripts/capture_fixtures.py`). The others are hand-written.
 
 ### How incremental views work
@@ -924,13 +924,18 @@ DuckDB (by default), Polars or DataFusion, using delta plans from Lean. Under
 a node's `refresh` is an incremental view (`sverify.incremental`, internal):
 
 ```python
+import ibis
 import sverify as sv
-from sverify.examples import PIPELINES, create_tables
+from sverify.engines import create_table
 from sverify.incremental import IncrementalView
 
 con = sv.connect()          # Arrow tables; plans run on DuckDB
-create_tables(con, orders_rows=[(1, "ada", 30)], customers_rows=[("ada", "Paris")])
-view = IncrementalView(con, PIPELINES["inner_join"], "v")
+orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+customers = ibis.table({"name": "string", "city": "string"}, name="customers")
+create_table(con, "orders", orders.schema(), [(1, "ada", 30)])
+create_table(con, "customers", customers.schema(), [("ada", "Paris")])
+query = orders.join(customers, orders.customer == customers.name).select(orders.id, customers.city)
+view = IncrementalView(con, query, "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
             "customers": sv.Changes(inserts=[("bob", "Rome")])})
 assert view.rows() == view.recompute()
@@ -957,7 +962,7 @@ How it works:
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
-recomputed from scratch. It runs every pipeline in `sverify/examples.py`:
+recomputed from scratch. It runs every pipeline in `sverify_dev/examples.py`:
 filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
 and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
@@ -1159,7 +1164,7 @@ tables of `con`, which are copied into a fresh in-process database for each
 run. Contracts take `engine=` for their runtime checks on data too:
 
 ```python
-view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+view = IncrementalView(con, query, "v", engine="duckdb")
 
 @sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
 def passthrough(orders): ...

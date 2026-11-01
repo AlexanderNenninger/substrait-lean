@@ -36,13 +36,14 @@ from sverify.engine import (
 )
 from sverify.engines import table_rows, written_plan
 from sverify.errors import PostconditionError, PreconditionError
-from sverify.examples import PIPELINES
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_rows, parse_rows
+from sverify_dev import examples
+from sverify_dev.examples import PIPELINES
 
 pytestmark = pytest.mark.backend("duckdb")
 
@@ -300,7 +301,7 @@ def incremental_plans() -> dict[str, str]:
     and the example pipelines."""
     plans = {n: json.dumps(fixture(n)) for n in ACCEPTED if "incremental: yes" in golden(n)}
     con = connect()
-    sv.examples.create_tables(con)
+    examples.create_tables(con)
     for name, expr in PIPELINES.items():
         plans[f"pipeline_{name}"] = substrait_json(con, ibis.to_sql(expr, dialect="datafusion"))
     return plans
@@ -657,7 +658,7 @@ def test_unsupported_constructs_raise():
 
 def test_incremental_view_on_duckdb():
     con = sv.connect()
-    sv.examples.create_tables(con, [(1, "ada", 30), (2, "bob", 5)], [("ada", "Paris")])
+    examples.create_tables(con, [(1, "ada", 30), (2, "bob", 5)], [("ada", "Paris")])
     view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
     assert view.rows() == view.recompute() == [(1, "Paris")]
     view.apply({"orders": sv.Changes(inserts=[(3, "ada", 1)], deletes=[(1, "ada", 30)])})
@@ -679,12 +680,12 @@ def test_contract_checks_on_duckdb():
         return orders.select(orders.amount)
 
     con = sv.connect()
-    sv.examples.create_tables(con, [(1, "ada", 30)])
+    examples.create_tables(con, [(1, "ada", 30)])
     passthrough(con.table("orders"))
-    sv.examples.create_tables(con, [(1, "ada", 300)])
+    examples.create_tables(con, [(1, "ada", 300)])
     with pytest.raises(PostconditionError):
         passthrough(con.table("orders"))
-    sv.examples.create_tables(con, [(1, "ada", -1)])
+    examples.create_tables(con, [(1, "ada", -1)])
     with pytest.raises(PreconditionError):
         passthrough(con.table("orders"))
 

@@ -36,8 +36,8 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - working-directory: python
         run: |
-          uv run --locked python -m sverify.catalogue --write-tables
-          uv run --locked python -m sverify.coverage --write-readme
+          uv run --locked python -m sverify_dev.catalogue --write-tables
+          uv run --locked python -m sverify_dev.coverage --write-readme
       - name: Push to main if anything changed
         run: |
           git status --short

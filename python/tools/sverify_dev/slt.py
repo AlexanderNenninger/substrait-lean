@@ -1,7 +1,7 @@
 """Replay DuckDB's sqllogictests through sverify (epic #185).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API.
 
 DuckDB's `test/sql/` holds about 4,800 `.test` files: queries with the
 results, or the errors, DuckDB's developers expect. They are the first
@@ -34,7 +34,7 @@ The translated SQL is in the ledger.
 
 `fetch` checks out `test/sql` at the DuckDB version `python/uv.lock` pins
 (sparse and shallow, into `~/.cache/sverify/duckdb-slt`); `parse` reads the
-`.test` format; `replay_file` runs one file; `python -m sverify.slt` replays
+`.test` format; `replay_file` runs one file; `python -m sverify_dev.slt` replays
 areas and writes a ledger per area (`characterization/duckdb/<area>.json`)
 and a summary table (`characterization/duckdb/README.md`).
 """

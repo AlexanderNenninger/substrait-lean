@@ -19,7 +19,6 @@ import ibis
 import sqlglot
 import sqlglot.expressions as sge
 
-from sverify import catalogue as cat
 from sverify.engine import (
     SqlError,
     connect,
@@ -29,6 +28,7 @@ from sverify.engine import (
     to_sql,
     written_plan,
 )
+from sverify_dev import catalogue as cat
 
 #: Functions whose window frame Calcite refuses; their frame changes nothing.
 RANKING = tuple(

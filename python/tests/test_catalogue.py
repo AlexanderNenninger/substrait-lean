@@ -1,6 +1,6 @@
 """The query catalogue (`catalogue/`) is well-formed and its claims hold.
 
-Every query is probed again exactly as `python -m sverify.catalogue --write`
+Every query is probed again exactly as `python -m sverify_dev.catalogue --write`
 recorded it in `catalogue/status.json`: compiled, checked by `substrait-check`,
 and, when verified, run on DataFusion, Polars and DuckDB over the synthetic
 tables (with the results compared) and written as Snowflake SQL. A change in
@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from sverify import catalogue as cat
+from sverify_dev import catalogue as cat
 
 if not cat.ROOT.is_dir():
     # An installed wheel (as the Wheels workflow tests it) has no repository.

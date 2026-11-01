@@ -15,8 +15,8 @@ from ibis import _
 
 import sverify as sv
 from sverify.engines import create_table, run
-from sverify.examples import create_tables, orders
 from sverify.io import DeltaSource
+from sverify_dev.examples import create_tables, orders
 
 #: Orders with a non-NULL key and a nullable amount.
 ORDERS = pa.schema(
@@ -52,14 +52,14 @@ def make_orders(path, rows, *, cdf=True, constraints=None) -> DeltaSource:
 
 
 def connect_with(orders=(), customers=()):
-    """A connection holding `sverify.examples`' orders and customers."""
+    """A connection holding `sverify_dev.examples`' orders and customers."""
     con = sv.connect()
     create_tables(con, orders, customers)
     return con
 
 
 def bound_orders(rows):
-    """`sverify.examples`' unbound `orders`, bound to `rows`."""
+    """`sverify_dev.examples`' unbound `orders`, bound to `rows`."""
     con = sv.connect()
     create_table(con, "orders", orders.schema(), rows)
     return con.table("orders")
