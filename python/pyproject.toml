@@ -3,6 +3,11 @@ name = "sverify"
 version = "0.2.0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, DataFusion, Snowflake and Spark"
 readme = "README.md"
+# MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
+# `LICENSE` is a copy of the repository's, since license files must sit under
+# this directory; `tests/test_license.py` keeps the two equal.
+license = "MPL-2.0 AND Apache-2.0"
+license-files = ["LICENSE", "src/sverify/ibis_substrait/LICENSE"]
 authors = [
     { name = "Alexander Nenninger", email = "alexander.nenninger@live.de" }
 ]
