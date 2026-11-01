@@ -9,7 +9,6 @@ public names (`Sink`, `SinkChange`, `sink_from`) are re-exported by
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property
@@ -17,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
+from sverify._weighted import consolidated, expanded, negated, positive
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
 from sverify.io._common import (
     Contract,
@@ -58,30 +58,37 @@ class SinkChange:
         view: IncrementalView,
         contract: Contract,
         schema: pa.Schema,
-        old: Counter[tuple] | None,
+        old: pa.Table | None,
     ):
         self.contract, self.schema = contract, schema
         self.replace = old is None
-        self._view, self._old, self._new = view, old, Counter(view.counts)
+        self._old, self._new = old, view.state
 
     @cached_property
     def table(self) -> pa.Table:
         """The node's whole state."""
-        return self._view._arrow(self._new).cast(self.schema)
+        return expanded(self._new).cast(self.schema)
+
+    @cached_property
+    def change(self) -> pa.Table:
+        """The weighted change from the state written last to this one
+        (`sverify._weighted`): the copies each row gains or loses."""
+        assert self._old is not None
+        return consolidated(self._new, negated(self._old))
 
     @cached_property
     def inserts(self) -> pa.Table:
         """The rows to add (with `replace`, every row)."""
         if self._old is None:
             return self.table
-        return self._view._arrow(self._new - self._old).cast(self.schema)
+        return expanded(positive(self.change)).cast(self.schema)
 
     @cached_property
     def deletes(self) -> pa.Table:
         """The rows to remove, one copy each (with `replace`, none)."""
         if self._old is None:
             return self.schema.empty_table()
-        return self._view._arrow(self._old - self._new).cast(self.schema)
+        return expanded(positive(negated(self.change))).cast(self.schema)
 
 
 class Sink:
@@ -158,7 +165,8 @@ class Sink:
     app_id: str
     location: str
     view: IncrementalView | None = None
-    _written: Counter[tuple] | None = None
+    _written: pa.Table | None = None
+    """The state written last, as a weighted table."""
     _last: Contract | None = None
     _kept: _Kept | None = None
 
@@ -241,7 +249,7 @@ class Sink:
             self._written = None
         elif done is not None and done.epoch >= contract.epoch:
             check_same_state(self.location, done, contract)
-            self._written = Counter(view.counts)
+            self._written = view.state
             self._keep(view, contract, None)
             return SinkWrite("skipped", self._version(), contract)
         change = SinkChange(view, contract, sink_schema(view, contract.not_null), self._written)
@@ -250,7 +258,7 @@ class Sink:
             mode = "overwrite" if change.replace else "update"
             n_in, n_out = change.inserts.num_rows, change.deletes.num_rows
             out = SinkWrite(mode, self._version(), contract, n_in, n_out)
-        self._written = Counter(view.counts)
+        self._written = view.state
         self._last = contract
         self._keep(view, contract, change)
         return out

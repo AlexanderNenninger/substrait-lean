@@ -8,10 +8,11 @@ view's Substrait plan with `Rel.delta`, splits it into union-free terms
 (`Rel.terms`) and applies the weight-column encoding (`Rel.weighted`). Lean
 proves the concatenated results are the change to the view
 (`Rel.incremental_sound`, `Rel.zeval_terms`, `Rel.weighted_eval`). This module
-is the trusted glue around it: it keeps the view as rows with multiplicities,
-builds the change tables, runs the delta plans on DataFusion or Polars and merges the
-result. A batch is computed completely before anything is replaced, so a
-failing batch changes nothing.
+is the trusted glue around it: it keeps the view as rows with multiplicities
+(a weighted Arrow table, `sverify._weighted`), builds the change tables, runs
+the delta plans on DataFusion or Polars and merges the result. A batch is
+computed completely before anything is replaced, so a failing batch changes
+nothing.
 
 A view of a contracted transformation (`sverify.transform`, possibly
 composed) keeps its proved postconditions in every state: the preconditions
@@ -50,7 +51,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal, Protocol
@@ -60,6 +60,21 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
+from sverify._weighted import (
+    WEIGHT,
+    concat,
+    consolidated,
+    deleted_count,
+    duplicate_keys,
+    expanded,
+    has_negative,
+    inserted_count,
+    negated,
+    negative,
+    positive,
+    rows_of,
+    weighted,
+)
 from sverify.contracts import (
     ON_DATA,
     Condition,
@@ -89,7 +104,6 @@ from sverify.engine import (
 from sverify.steps import Pipeable
 
 Row = tuple
-WEIGHT = "__weight"
 
 
 class NotIncremental(Exception):
@@ -154,8 +168,9 @@ class Changes:
     """Rows to insert into and delete from one table (bag semantics: each
     deleted row removes one occurrence).
 
-    Rows are tuples in the table's column order. An update is a delete of the
-    old row plus an insert of the new one. `StaticSource.apply` takes one.
+    Rows are an Arrow table with the table's columns, or tuples in the
+    table's column order. An update is a delete of the old row plus an insert
+    of the new one. `StaticSource.apply` takes one.
 
     Attributes:
         inserts: Rows to add. Default: none.
@@ -164,28 +179,30 @@ class Changes:
             Default: none.
     """
 
-    inserts: Sequence[Row] = field(default_factory=list)
-    deletes: Sequence[Row] = field(default_factory=list)
+    inserts: pa.Table | Sequence[Row] = field(default_factory=list)
+    deletes: pa.Table | Sequence[Row] = field(default_factory=list)
 
 
-def consolidate(ch: Changes) -> Changes:
-    """The net change: a row both inserted and deleted cancels out."""
-    net = Counter[tuple]()
-    examples: dict[tuple, Row] = {}
-    for rows, w in ((ch.inserts, 1), (ch.deletes, -1)):
-        for r in rows:
-            k = row_key(tuple(r))
-            net[k] += w
-            examples.setdefault(k, tuple(r))
-    return Changes(
-        inserts=[examples[k] for k, n in net.items() for _ in range(max(n, 0))],
-        deletes=[examples[k] for k, n in net.items() for _ in range(max(-n, 0))],
+def _as_table(rows: pa.Table | Sequence[Row], schema: pa.Schema) -> pa.Table:
+    """Rows in `schema`: an Arrow table's columns by name, or tuples in the
+    schema's order."""
+    if isinstance(rows, pa.Table):
+        return rows.select(schema.names).cast(schema)
+    return to_arrow(rows, schema)
+
+
+def change_table(ch: Changes, schema: pa.Schema) -> pa.Table:
+    """`ch` as one weighted table (`sverify._weighted`): each insert with
+    weight 1, each delete with -1, in that order and not added up."""
+    return concat(
+        [weighted(_as_table(ch.inserts, schema), 1), weighted(_as_table(ch.deletes, schema), -1)]
     )
 
 
-def snapshot_diff(old: pa.Table, new: pa.Table) -> Changes:
-    """The change turning `old` into `new` (bag difference)."""
-    return consolidate(Changes(inserts=arrow_rows(new), deletes=arrow_rows(old)))
+def snapshot_diff(old: pa.Table, new: pa.Table) -> pa.Table:
+    """The change turning `old` into `new` (bag difference), as a weighted
+    table."""
+    return consolidated(weighted(new, 1), weighted(old.cast(new.schema), -1))
 
 
 @dataclass
@@ -236,6 +253,7 @@ class SourceBatch:
     snapshot_facts: list[Fact]
     """What the metadata says about every row at `end`."""
     changes: Changes | None = None
+    """Its rows as given: Arrow tables or tuples."""
     facts: list[Fact] = field(default_factory=list)
     trusted: str = ""
     """E.g. "Δ trusted as coming from Delta CDF v3→v5"."""
@@ -303,7 +321,7 @@ class SourceBatch:
             since,
             until,
             list(snapshot_facts),
-            changes=Changes(inserts=_rows_of(inserts), deletes=_rows_of(deletes)),
+            changes=Changes(inserts=inserts, deletes=deletes),
             facts=list(facts),
             trusted=trusted,
             kind=kind,
@@ -345,10 +363,6 @@ class SourceBatch:
             fallback=reason,
             schema=table.schema if schema is None else schema,
         )
-
-
-def _rows_of(rows: pa.Table | Sequence[Row]) -> list[Row]:
-    return arrow_rows(rows) if isinstance(rows, pa.Table) else [tuple(r) for r in rows]
 
 
 class VersionedSource(Protocol):
@@ -485,10 +499,6 @@ def _conform(table: pa.Table, schema: pa.Schema) -> pa.Table:
     return pa.Table.from_arrays(cols, schema=schema)
 
 
-def _conform_rows(rows: Sequence[Row], new: pa.Schema, old: pa.Schema) -> list[Row]:
-    return arrow_rows(_conform(to_arrow(rows, new), old)) if rows else []
-
-
 def _facts_within(facts: Sequence[Fact], names: Sequence[str]) -> list[Fact]:
     """The facts that only mention columns in `names`."""
     keep = set(names)
@@ -560,7 +570,8 @@ class StaticSource(Pipeable):
 
     def __init__(self, table: pa.Table, version: int = 0, *, name: str = "table"):
         self.name = name
-        self._log: list[tuple[int, Changes]] = []
+        self._log: list[tuple[int, pa.Table]] = []
+        """Each `apply`'s version and change, as a weighted table."""
         self.replace(table, version)
 
     def replace(self, table: pa.Table, version: int) -> None:
@@ -584,8 +595,8 @@ class StaticSource(Pipeable):
         self._log, self._exact_since = [], version
 
     def apply(self, changes: Changes, version: int | None = None) -> None:
-        """Insert and delete rows (tuples in schema order), as `version`
-        (default: one above the current one).
+        """Insert and delete rows (an Arrow table, or tuples in schema
+        order), as `version` (default: one above the current one).
 
         The next `refresh` of a node reading the source gets exactly this
         change (several `apply` calls in between add up), so the node is
@@ -627,9 +638,10 @@ class StaticSource(Pipeable):
         version = self.version + 1 if version is None else version
         if version <= self.version:
             raise ValueError(f"a new table needs a version above {self.version}")
-        table = _apply_rows(self.table, changes, self.name)
+        change = change_table(changes, self.table.schema)
+        table = _apply_change(self.table, change, self.name)
         self.table, self.version, self.digest = table, version, table_digest(table)
-        self._log.append((version, changes))
+        self._log.append((version, change))
 
     def schema(self) -> pa.Schema:
         """The current table's schema."""
@@ -676,17 +688,12 @@ class StaticSource(Pipeable):
         if since == self.version:
             return SourceBatch.unchanged(since)
         if since >= self._exact_since:
-            inserts: list[Row] = []
-            deletes: list[Row] = []
-            for v, ch in self._log:
-                if v > since:
-                    inserts += ch.inserts
-                    deletes += ch.deletes
+            change = consolidated(*[ch for v, ch in self._log if v > since])
             return SourceBatch.from_changes(
                 since,
                 self.version,
-                inserts=inserts,
-                deletes=deletes,
+                inserts=expanded(positive(change)),
+                deletes=expanded(positive(negated(change))),
                 trusted=f"Δ as applied to {self.name} v{since}→v{self.version}",
                 schema=self.table.schema,
             )
@@ -787,7 +794,7 @@ class IncrementalView:
         self.resumed: str | None = None
         """How the view got its first state from `resume`, or why it could
         not and was computed instead."""
-        self.stored: tuple[str, Counter[tuple]] | None = None
+        self.stored: tuple[str, pa.Table] | None = None
         """Where the view's state was restored from, and that state."""
         reason = None if resume is None else self._mismatch(resume)
         if resume is not None and reason is None:
@@ -801,11 +808,11 @@ class IncrementalView:
             if resume is not None:
                 self.resumed = f"computed: {reason} (stored at {resume.where})"
         self.schema = result.schema
-        self.counts: Counter[tuple] = Counter()
-        self.examples: dict[tuple, Row] = {}
-        self._add(arrow_rows(result), 1)
+        self.state: pa.Table = consolidated(weighted(result, 1))
+        """The view's rows, each once with its number of copies (a weighted
+        table, `sverify._weighted`)."""
         if resume is not None and reason is None:
-            self.stored = (resume.where_key, Counter(self.counts))
+            self.stored = (resume.where_key, self.state)
         self._publish()
         self.table: ir.Table = con.table(name)
         """The view as a table for other queries; contracted transformations
@@ -865,24 +872,12 @@ class IncrementalView:
         self._plan(query, standalone=False)
         result = run_plan(self.con, self.plan, self.engine)
         self.schema = result.schema
-        self.counts, self.examples = Counter(), {}
-        self._add(arrow_rows(result), 1)
+        self.state = consolidated(weighted(result, 1))
         self._publish()
         self.table = self.con.table(self.name)
 
-    def _add(self, rows: Sequence[Row], weight: int) -> None:
-        for r in rows:
-            k = row_key(r)
-            self.counts[k] += weight
-            self.examples.setdefault(k, r)
-
-    def _arrow(self, counts: Mapping[tuple, int]) -> pa.Table:
-        return to_arrow(
-            [self.examples[k] for k, n in counts.items() for _ in range(n)], self.schema
-        )
-
     def _publish(self) -> None:
-        put_table(self.con, self.name, self._arrow(self.counts))
+        put_table(self.con, self.name, expanded(self.state))
 
     @property
     def versions(self) -> dict[str, int]:
@@ -892,8 +887,7 @@ class IncrementalView:
 
     def rows(self) -> list[Row]:
         """The view's contents as a bag of rows, in a canonical order."""
-        out = [self.examples[k] for k, n in self.counts.items() for _ in range(n)]
-        return sorted(out, key=lambda r: repr(row_key(r)))
+        return sorted(arrow_rows(expanded(self.state)), key=lambda r: repr(row_key(r)))
 
     def recompute(self) -> list[Row]:
         """The view computed from scratch, for checking."""
@@ -904,24 +898,25 @@ class IncrementalView:
         """Apply changes to base tables, and to every view of the pipeline."""
         self.pipeline.apply(changes)
 
-    def _delta(self, deltas: Mapping[str, ZRows]) -> tuple[Counter[tuple], dict[tuple, Row]]:
-        """The view's change, from its delta plans. The tables hold their old
-        contents; `t$delta` is loaded with each input's change."""
+    def _weighted(self, result: pa.Table) -> pa.Table:
+        """A delta plan's result (the view's columns, then the weight) as a
+        weighted table in the view's schema."""
+        schema = pa.schema([*self.schema, pa.field(WEIGHT, pa.int64())])
+        return result.rename_columns(schema.names).cast(schema)
+
+    def _delta(self, deltas: Mapping[str, pa.Table]) -> pa.Table:
+        """The view's change, from its delta plans, as a weighted table. The
+        tables hold their old contents; `t$delta` is loaded with each input's
+        change."""
         con = self.con
         try:
             for t in self.tables:
-                _load_delta_table(con, t, deltas.get(t, []))
-            delta = Counter[tuple]()
-            examples: dict[tuple, Row] = {}
-            for plan in self.deltas:
-                for r in arrow_rows(run_plan(con, plan, self.engine)):
-                    k = row_key(r[:-1])
-                    delta[k] += r[-1]
-                    examples.setdefault(k, r[:-1])
+                _load_delta_table(con, t, deltas.get(t))
+            parts = [self._weighted(run_plan(con, plan, self.engine)) for plan in self.deltas]
         finally:
             for t in self.tables:
                 con.drop(t + "$delta")
-        return delta, examples
+        return consolidated(*parts) if parts else weighted(self.schema.empty_table(), 1)
 
     def _result_on(self, new_tables: Mapping[str, pa.Table]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
@@ -935,30 +930,21 @@ class IncrementalView:
             for t, table in old.items():
                 put_table(con, t, table)
 
-    def _run_on(self, new_tables: Mapping[str, pa.Table]) -> list[Row]:
-        return arrow_rows(self._result_on(new_tables))
-
-    def _diff(self, new_tables: Mapping[str, pa.Table]) -> tuple[Counter[tuple], dict[tuple, Row]]:
-        """The view's change by recomputing it on the new inputs and diffing."""
-        rows = self._run_on(new_tables)
-        delta = Counter[tuple]()
-        examples: dict[tuple, Row] = {}
-        for r in rows:
-            k = row_key(r)
-            delta[k] += 1
-            examples.setdefault(k, r)
-        delta.subtract(self.counts)
-        return delta, examples
+    def _diff(self, new_tables: Mapping[str, pa.Table]) -> pa.Table:
+        """The view's change by recomputing it on the new inputs and diffing,
+        as a weighted table."""
+        new = self._result_on(new_tables).cast(self.schema)
+        return consolidated(weighted(new, 1), negated(self.state))
 
 
-ZRows = list[tuple[Row, int]]
-"""A change as rows with weights (positive: inserted, negative: deleted)."""
-
-
-def _load_delta_table(con: Connection, t: str, rows: ZRows) -> None:
+def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:
+    """Table `t$delta`: `change` (a weighted table, None: no change) in the
+    schema of `t` and the weight."""
     base = con.arrow[t].schema
     schema = pa.schema([*base, pa.field(WEIGHT, pa.int64())])
-    put_table(con, t + "$delta", to_arrow([(*r, w) for r, w in rows], schema))
+    if change is None:
+        change = schema.empty_table()
+    put_table(con, t + "$delta", change.rename_columns(schema.names).cast(schema))
 
 
 class Pipeline:
@@ -989,7 +975,6 @@ class Pipeline:
         """Preconditions on base tables, of every contracted view."""
         self.preconditions: list[Discharged] = []
         """How each precondition was established on the full base tables."""
-        self._keys: dict[tuple[str, tuple[str, ...]], Counter[tuple]] = {}
         self.sources: dict[str, VersionedSource] = {}
         self.versions: dict[str, int] = {}
         """The version of each source table the pipeline's state reflects."""
@@ -1063,12 +1048,8 @@ class Pipeline:
             new = [c for c in conds if label(c) not in known]
             for c in new:
                 if isinstance(c, Unique):
-                    index = Counter(
-                        _key_of(row, _positions(self.con, t, c)) for row in _rows(self.con, t)
-                    )
-                    if dup := sum(n - 1 for n in index.values() if n > 1):
+                    if dup := duplicate_keys(self.con.arrow[t], c.cols):
                         raise PreconditionError(f"{dup} row(s) of {t} violate {label(c)}")
-                    self._keys[(t, c.cols)] = index
                     self.preconditions.append(Discharged(t, label(c), ON_DATA))
             table = self.con.table(t)
             rowwise = [c for c in new if not isinstance(c, Unique)]
@@ -1078,20 +1059,22 @@ class Pipeline:
             self.requires.setdefault(t, []).extend(new)
 
     def _check_batch(
-        self, changes: Mapping[str, Changes], facts: Mapping[str, Sequence[Fact]]
-    ) -> tuple[dict[tuple[str, tuple[str, ...]], Counter[tuple]], list[Discharged]]:
+        self,
+        changes: Mapping[str, pa.Table],
+        new_tables: Mapping[str, pa.Table],
+        facts: Mapping[str, Sequence[Fact]],
+    ) -> list[Discharged]:
         """Establish the base-table preconditions on a batch alone: row
         conditions on the inserted rows (from `facts` about them where
-        possible), keys of the inserted rows against each other and the keys
-        the batch keeps. Returns the new key indexes."""
-        indexes = {}
+        possible), and keys of the inserted rows against the new table."""
         found: list[Discharged] = []
         for t, ch in changes.items():
             conds = self.requires.get(t, [])
             rowwise = [c for c in conds if not isinstance(c, Unique)]
-            if rowwise and ch.inserts:
+            inserts = rows_of(positive(ch))
+            if rowwise and inserts.num_rows:
                 name = t + "$inserts"
-                put_table(self.con, name, to_arrow(ch.inserts, self.con.arrow[t].schema))
+                put_table(self.con, name, inserts)
                 try:
                     found += discharge(
                         self.con.table(name),
@@ -1106,23 +1089,18 @@ class Pipeline:
             for c in conds:
                 if not isinstance(c, Unique):
                     continue
-                pos = _positions(self.con, t, c)
-                index = self._keys[(t, c.cols)].copy()
-                index.subtract(_key_of(r, pos) for r in ch.deletes)
-                inserted = [_key_of(r, pos) for r in ch.inserts]
-                index.update(inserted)
-                if clash := sum(1 for k in set(inserted) if index[k] > 1):
+                if inserts.num_rows and (clash := duplicate_keys(new_tables[t], c.cols, inserts)):
                     raise PreconditionError(f"{clash} inserted key(s) of {t} violate {label(c)}")
-                indexes[(t, c.cols)] = +index
                 found.append(Discharged(t, label(c), ON_DATA))
-        return indexes, found
+        return found
 
     def apply(self, changes: Mapping[str, Changes]) -> None:
         """Apply changes to base tables and bring every view up to date."""
         sourced = set(changes) & set(self.sources)
         if sourced:
             raise ValueError(f"{sorted(sourced)} change through their source; call refresh()")
-        self._apply(changes)
+        self._check_changed(changes)
+        self._apply({t: change_table(ch, self.con.arrow[t].schema) for t, ch in changes.items()})
 
     def refresh(
         self, *, audit: bool = False, until: Mapping[str, int] | None = None
@@ -1145,7 +1123,7 @@ class Pipeline:
         With `audit`, the batch is compared with the new snapshots and every
         view with its recomputation on the new tables, before anything is
         committed (`AuditError`): a mismatch changes nothing."""
-        changes: dict[str, Changes] = {}
+        changes: dict[str, pa.Table] = {}
         facts: dict[str, list[Fact]] = {}
         versions: dict[str, int] = {}
         snapshot_facts: dict[str, list[Fact]] = {}
@@ -1192,11 +1170,11 @@ class Pipeline:
                 facts[t] = batch.snapshot_facts
                 mode, detail = "recomputed", f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
             else:
-                ch = consolidate(batch.changes)
+                ch = consolidated(change_table(batch.changes, current.schema))
                 facts[t] = batch.facts
                 mode, detail = batch.kind, batch.trusted
             if audit and batch.changes is not None:
-                got = _apply_to_table(self.con, t, ch)
+                got = _apply_change(current, ch, t)
                 # A source that reads its table itself reads it again in full.
                 reread = getattr(src, "_reread", None)
                 want = reread(batch.end) if reread else src.snapshot(batch.end).table
@@ -1207,7 +1185,13 @@ class Pipeline:
             snapshot_facts[t] = batch.snapshot_facts
             report.append(
                 SourceRefresh(
-                    t, start, batch.end, mode, detail + note, len(ch.inserts), len(ch.deletes)
+                    t,
+                    start,
+                    batch.end,
+                    mode,
+                    detail + note,
+                    inserted_count(ch),
+                    deleted_count(ch),
                 )
             )
         replan = self._reading(set(rebuild))
@@ -1259,14 +1243,13 @@ class Pipeline:
         return out
 
     def _backup(self) -> tuple:
-        """What a refresh may change: tables, views, versions and keys."""
+        """What a refresh may change: tables, views and versions."""
         tables = {t: self.con.arrow[t] for t in [*self.sources, *self.views]}
         views = {v.name: dict(v.__dict__) for v in self._views}
-        return tables, views, dict(self.versions), dict(self._keys)
+        return tables, views, dict(self.versions)
 
     def _restore(self, backup: tuple) -> None:
-        tables, views, versions, keys = backup
-        self._keys = keys
+        tables, views, versions = backup
         for t, table in tables.items():
             if self.con.arrow[t] is not table:
                 put_table(self.con, t, table)
@@ -1280,15 +1263,26 @@ class Pipeline:
         """Compare every view's new state with its recomputation on the new
         tables, before the commit."""
         for v in self._views:
-            want = Counter(map(row_key, v._run_on(pending.new_tables)))
-            if +want != +pending.counts.get(v.name, v.counts):
+            want = v._result_on(pending.new_tables).cast(v.schema)
+            state = pending.states.get(v.name, v.state)
+            if consolidated(weighted(want, 1), negated(state)).num_rows:
                 raise AuditError(
                     f"view {v.name} differs from its recomputation; nothing was applied"
                 )
 
+    def _check_changed(self, changes: Mapping[str, object]) -> None:
+        """Raise unless every table in `changes` is a base table a view reads."""
+        bad = set(changes) & set(self.views)
+        if bad:
+            raise ValueError(f"views change only through their inputs: {sorted(bad)}")
+        read = {t for v in self._views for t in v.tables}
+        unknown = set(changes) - read
+        if unknown:
+            raise ValueError(f"no view reads {sorted(unknown)}")
+
     def _apply(
         self,
-        changes: Mapping[str, Changes],
+        changes: Mapping[str, pa.Table],
         *,
         facts: Mapping[str, Sequence[Fact]] | None = None,
         recompute: set[str] | None = None,
@@ -1300,83 +1294,67 @@ class Pipeline:
 
     def _prepare(
         self,
-        changes: Mapping[str, Changes],
+        changes: Mapping[str, pa.Table],
         *,
         facts: Mapping[str, Sequence[Fact]] | None = None,
         recompute: set[str] | None = None,
         versions: Mapping[str, int] | None = None,
     ) -> _Commit:
-        """Compute the new state of every table and view after `changes`,
-        without replacing anything. Views reading a table in `recompute`
-        (directly or through other views) are recomputed and diffed;
-        `versions` are recorded with the commit."""
-        views = self.views
-        bad = set(changes) & set(views)
-        if bad:
-            raise ValueError(f"views change only through their inputs: {sorted(bad)}")
-        read = {t for v in self._views for t in v.tables}
-        unknown = set(changes) - read
-        if unknown:
-            raise ValueError(f"no view reads {sorted(unknown)}")
+        """Compute the new state of every table and view after `changes`
+        (weighted tables), without replacing anything. Views reading a table
+        in `recompute` (directly or through other views) are recomputed and
+        diffed; `versions` are recorded with the commit."""
+        self._check_changed(changes)
         # New base tables first: this also checks that every delete exists.
-        new_tables = {t: _apply_to_table(self.con, t, ch) for t, ch in changes.items()}
-        indexes, found = self._check_batch(changes, facts or {})
-        deltas: dict[str, ZRows] = {
-            t: [(tuple(r), 1) for r in ch.inserts] + [(tuple(r), -1) for r in ch.deletes]
-            for t, ch in changes.items()
-        }
+        new_tables = {t: _apply_change(self.con.arrow[t], ch, t) for t, ch in changes.items()}
+        found = self._check_batch(changes, new_tables, facts or {})
+        deltas: dict[str, pa.Table] = {t: consolidated(ch) for t, ch in changes.items()}
         stale = set(recompute or ())
-        counts: dict[str, Counter[tuple]] = {}
+        states: dict[str, pa.Table] = {}
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
-            if not any(deltas.get(t) for t in v.tables):
+            if not any(t in deltas and deltas[t].num_rows for t in v.tables):
                 continue
             rerun = v.fallback is not None or any(t in stale for t in v.tables)
             if rerun:
                 stale.add(v.name)
-            delta, examples = v._diff(new_tables) if rerun else v._delta(deltas)
-            merged = v.counts.copy()
-            merged.update(delta)
-            if any(n < 0 for n in merged.values()):
+            delta = v._diff(new_tables) if rerun else v._delta(deltas)
+            merged = consolidated(v.state, delta)
+            if has_negative(merged):
                 raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
-            for k, r in examples.items():
-                v.examples.setdefault(k, r)
-            merged = +merged
-            deltas[v.name] = [(v.examples[k], n) for k, n in delta.items() if n != 0]
-            new_tables[v.name] = v._arrow(merged)
-            counts[v.name] = merged
-        return _Commit(changes, new_tables, indexes, dict(versions or {}), counts, found)
+            deltas[v.name] = delta
+            new_tables[v.name] = expanded(merged)
+            states[v.name] = merged
+        return _Commit(changes, new_tables, dict(versions or {}), states, found)
 
     def _commit(self, pending: _Commit) -> None:
         """Replace the tables, views and versions with their new state."""
         for t in pending.changes:
             put_table(self.con, t, pending.new_tables[t])
-        self._keys.update(pending.indexes)
         self.versions.update(pending.versions)
         views = self.views
-        for name, merged in pending.counts.items():
-            views[name].counts = merged
-            views[name]._publish()
+        for name, state in pending.states.items():
+            views[name].state = state
+            put_table(self.con, name, pending.new_tables[name])
 
 
 @dataclass
 class _Commit:
     """A pipeline's state after a batch, computed but not yet in place."""
 
-    changes: Mapping[str, Changes]
+    changes: Mapping[str, pa.Table]
     new_tables: dict[str, pa.Table]
-    indexes: dict[tuple[str, tuple[str, ...]], Counter[tuple]]
     versions: dict[str, int]
-    counts: dict[str, Counter[tuple]]
-    """The new contents of each view that changed."""
+    states: dict[str, pa.Table]
+    """The new contents of each view that changed, as weighted tables."""
     found: list[Discharged]
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:
     """Raise unless `got` (the state after the change) has the rows of
     `want` (the source's snapshot at `end`)."""
-    if Counter(map(row_key, arrow_rows(got))) != Counter(map(row_key, arrow_rows(want))):
+    if snapshot_diff(got, want).num_rows:
         if start == end:
             raise AuditError(
                 f"{t}@v{start} differs from the table read again in full: its batches missed "
@@ -1395,8 +1373,8 @@ def _conform_batch(batch: SourceBatch, schema: pa.Schema) -> SourceBatch:
     changes = batch.changes
     if changes is not None:
         changes = Changes(
-            inserts=_conform_rows(changes.inserts, new, schema),
-            deletes=_conform_rows(changes.deletes, new, schema),
+            inserts=_conform(_as_table(changes.inserts, new), schema),
+            deletes=_conform(_as_table(changes.deletes, new), schema),
         )
     return replace(
         batch,
@@ -1413,31 +1391,17 @@ def first_line(e: BaseException) -> str:
     return f"{type(e).__name__}: {text[0] if text else ''}"
 
 
-def _rows(con: Connection, t: str) -> list[Row]:
-    return arrow_rows(con.arrow[t])
-
-
-def _positions(con: Connection, t: str, key: Unique) -> list[int]:
-    names = con.arrow[t].schema.names
-    return [names.index(c) for c in key.cols]
-
-
-def _key_of(row: Row, positions: Sequence[int]) -> tuple:
-    return row_key(tuple(row[i] for i in positions))
-
-
-def _apply_to_table(con: Connection, t: str, ch: Changes) -> pa.Table:
-    return _apply_rows(con.arrow[t], ch, t)
-
-
-def _apply_rows(current: pa.Table, ch: Changes, t: str) -> pa.Table:
-    """`current` with the rows of `ch` deleted (one occurrence each) and inserted."""
-    rows = arrow_rows(current)
-    for r in ch.deletes:
-        k = row_key(tuple(r))
-        hit = next((i for i, x in enumerate(rows) if row_key(x) == k), None)
-        if hit is None:
-            raise ValueError(f"cannot delete {r!r} from {t}: no such row")
-        rows.pop(hit)
-    rows += [tuple(r) for r in ch.inserts]
-    return to_arrow(rows, current.schema)
+def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
+    """`current` with the rows of `change` (a weighted table) deleted (one
+    occurrence each) and inserted. Raises `ValueError`, naming a row, if a
+    delete is not in `current`, even where the change also inserts it."""
+    deletes = negative(change)
+    kept = consolidated(weighted(current, 1), deletes)
+    missing = negative(kept)
+    if missing.num_rows:
+        (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
+        raise ValueError(f"cannot delete {row!r} from {t}: no such row")
+    inserts = positive(change)
+    if not deletes.num_rows:
+        return concat([current, expanded(inserts)])
+    return expanded(consolidated(kept, inserts))
