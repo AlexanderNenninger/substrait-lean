@@ -104,7 +104,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | pa-funnel-ordered | [Ordered conversion funnel](https://cube.dev/blog/sql-queries-for-funnel-analysis) | ✓ | FPDS |  |
 | pa-cohort-retention | [Monthly cohort retention matrix](https://www.holistics.io/blog/calculate-cohort-retention-analysis-with-sql/) | ✓ | FPDS |  |
-| pa-day-n-retention | [Day-1 and day-7 retention](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | FPDS |  |
+| pa-day-n-retention | [Day-1 and day-7 retention](https://www.thoughtspot.com/sql-tutorial/a-drop-in-user-engagement) | ✓ | FS |  |
 | pa-first-touch | [First-touch attribution of purchases](https://github.com/dbt-labs/segment) | ✓ | FPDS |  |
 | pa-repeat-purchase-rate | [Repeat purchase rate](https://www.thoughtspot.com/sql-tutorial/sql-business-analytics-training) | ✓ | FPDS |  |
 | pa-users-without-orders | [Users who never ordered](https://www.postgresql.org/docs/current/functions-subquery.html) | ✓ | FPDS |  |

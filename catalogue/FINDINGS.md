@@ -272,13 +272,13 @@ semi-structured data.
 | iot | 12 | 9 | 0 | 3 | 0 | 12 | 9 | 9 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 10 | 0 | 2 | 2 | 13 | 10 | 10 | 9 |
-| product | 13 | 10 | 0 | 3 | 0 | 12 | 10 | 10 | 9 |
+| product | 13 | 10 | 0 | 3 | 0 | 12 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
 | tpcds | 8 | 0 | 5 | 3 | 0 | 8 | 5 | 5 | 0 |
 | tpch | 22 | 0 | 17 | 5 | 0 | 22 | 17 | 17 | 5 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 75 | 32 | 30 | 2 | 134 | 106 | 106 | 67 |
+| **all** | 139 | 75 | 32 | 30 | 2 | 134 | 105 | 105 | 67 |
 
 ### Feature frequency
 
@@ -408,6 +408,8 @@ Over the 107 queries that verify (some only as DOUBLE):
 | duckdb: differs | 1 |
 | polars: differs | 1 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 1 |
+| duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 1 |
+| polars: error: divide by zero (1 row(s)) | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency
