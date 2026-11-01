@@ -549,7 +549,8 @@ def test_rounding_matches_datafusion_bit_for_bit():
         "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
         "SELECT f, round(f, 1) AS x, round(f, -1) AS y FROM r",
         "SELECT f, power(f, 2.0) AS p FROM r",
-        "SELECT f, f / 10.0 AS x, 3.0 / f AS y FROM r",
+        # A zero divisor raises (`on_division_by_zero` = ERROR).
+        "SELECT f, f / 10.0 AS x, CASE WHEN f <> 0 THEN 3.0 / f END AS y FROM r",
     ]:
         df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
         assert repr(df) == repr(pl_rows), sql

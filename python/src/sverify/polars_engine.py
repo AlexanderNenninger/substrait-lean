@@ -803,6 +803,12 @@ class Exprs:
             f = j["scalarFunction"]
             name = self.function(f.get("functionReference"))
             arg_js = [a["value"] for a in f.get("arguments", [])]
+            for o in f.get("options", []):
+                # Lean's written plans spell the other modes as a `CASE`
+                # (`Parse.divByZero`); this engine runs only those.
+                prefs = o.get("preference") or ["ERROR"]
+                if o.get("name") == "on_division_by_zero" and prefs[0] != "ERROR":
+                    raise Unsupported(f"on_division_by_zero = {prefs}")
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:

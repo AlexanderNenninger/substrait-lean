@@ -1731,7 +1731,14 @@ class _Parser:
                         else e
                         for k, e in enumerate(parsed)
                     ]
+                    mode = _div_by_zero_mode(v)
+                    if name == "divide" and len(parsed) == 2 and mode != "ERROR":
+                        return _div_by_zero(mode, True, "fdiv", *parsed)
                     return _float_call(name, parsed)
+                mode = _div_by_zero_mode(v)
+                if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
+                    op = "idiv" if name == "divide" else "imod"
+                    return _div_by_zero(mode, False, op, *parsed)
                 return _call(name, parsed)
             case "ifThen":
                 # A `CASE` without `ELSE` is `ELSE NULL`.
@@ -2556,6 +2563,38 @@ def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
 
 def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
     return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
+
+
+def _div_by_zero_mode(f: dict) -> str:
+    """`Parse.divByZeroMode`: the first preference of `on_division_by_zero`,
+    or ERROR when the plan omits it."""
+    for o in _arr(f, "options"):
+        if o.get("name") == "on_division_by_zero" and o.get("preference"):
+            return o["preference"][0]
+    return "ERROR"
+
+
+def _div_by_zero(
+    mode: str, double: bool, op: Literal["fdiv", "idiv", "imod"], a: Expr, b: Expr
+) -> Expr:
+    """`Parse.divByZero`: `a / b` under `on_division_by_zero` = `mode`, a `CASE`
+    on the divisor around the division that raises on zero."""
+    if mode not in ("IEEE", "LIMIT", "NULL") or (not double and mode != "NULL"):
+        raise Unsupported(f"on_division_by_zero = {mode} is not supported")
+    lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
+    nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
+    is_nan = Bin("eq", a, nan)
+    if mode == "IEEE":
+        by_zero: Expr = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
+                           If(Bin("lt", lit(0.0), a), Lit(math.inf, "float"), nan)))  # fmt: skip
+    elif mode == "LIMIT":
+        by_zero = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
+                                     Lit(math.inf, "float")))  # fmt: skip
+    else:
+        by_zero = If(is_nan, nan, null) if double else null
+    zero = lit(0.0) if double else lit(0)
+    return If(Un("not", Bin("eq", b, zero)), Bin(op, a, b),
+              If(Un("is_null", b), null, If(Un("is_null", a), null, by_zero)))  # fmt: skip
 
 
 def _float_call(name: str, args: list[Expr]) -> Expr:

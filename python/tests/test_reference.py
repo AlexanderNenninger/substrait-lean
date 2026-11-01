@@ -198,3 +198,35 @@ def issues(plan: str) -> list[str]:
     code, out, err = run_checker(("--contract",), json.dumps(contract))
     assert code in (0, 4), err
     return [i["kind"] for i in json.loads(out)["issues"]]
+
+
+@pytest.mark.parametrize("op", ["/", "%"])
+def test_integer_division_by_zero_may_ask_for_null(op):
+    con = connect()
+    put_table(con, "i", pa.table({"a": pa.array([7, None, 7], pa.int64()), "b": [2, 0, 0]}))
+    plan = json.loads(substrait_json(con, f"SELECT a {op} b AS q FROM i"))
+    # `MIN / -1` overflows; the option changes only the zero divisor.
+    overflow = ["overflow"] if op == "/" else []
+    assert issues(json.dumps(plan)) == ["division by zero", *overflow]
+    for node in _dicts(plan):
+        if "scalarFunction" in node:
+            node["scalarFunction"]["options"] = [
+                {"name": "on_division_by_zero", "preference": ["NULL"]}
+            ]
+    plan_json = json.dumps(plan)
+    assert issues(plan_json) == overflow
+    expected = [(3 if op == "/" else 1,), (None,), (None,)]
+    rows = {"i": [(7, 2), (None, 0), (7, 0)]}
+    assert lean_values(json.dumps(inline_tables(plan, rows))) == expected
+    for engine in ("duckdb", "polars"):
+        assert arrow_rows(run_plan(con, written_plan(plan_json), engine)) == expected, engine
+
+
+def _dicts(node):
+    if isinstance(node, dict):
+        yield node
+        for v in node.values():
+            yield from _dicts(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _dicts(v)
