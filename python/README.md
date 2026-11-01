@@ -245,3 +245,15 @@ uv run poe qa                    # proofs, lint, typecheck, golden, Python tests
 ```
 
 See the [repository](https://github.com/AlexanderNenninger/substrait-lean) for setup details.
+
+## License
+
+sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/LICENSE) (MPL-2.0).
+You can use it in any product, open or proprietary, and your own code stays
+yours. If you distribute a modified version of sverify's own files, those
+files stay under the MPL and you share their source. The license applies file
+by file, so it never reaches the code around them.
+
+`python/src/sverify/ibis_substrait/` is derived from
+[ibis-substrait](https://github.com/ibis-project/ibis-substrait) and stays
+under the [Apache License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/ibis_substrait/LICENSE).

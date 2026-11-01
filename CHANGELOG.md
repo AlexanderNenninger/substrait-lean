@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Licensed under the MPL-2.0
+
+sverify now has a license, the Mozilla Public License 2.0; 0.2.0 and earlier
+were published without one. You can use sverify in open and proprietary
+products alike. If you distribute changes to sverify's own files, they stay
+under the MPL. The vendored `ibis_substrait` stays under Apache-2.0.
+
 ### Nodes compose left to right with `.pipe`
 
 A job now reads in the order its data flows
