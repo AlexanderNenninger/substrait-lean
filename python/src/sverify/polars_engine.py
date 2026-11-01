@@ -349,6 +349,21 @@ def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(q)
 
 
+def _fmod(s: pl.Series) -> pl.Series:
+    x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return pl.Series(np.fmod(x, y), dtype=pl.Float64)
+
+
+def fmod(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """C's `fmod` (`FloatCode.fmod`), the sign of `x`. Polars' `%` floors (the
+    sign of `y`) and makes `x % inf` NaN; numpy's `fmod` is C's."""
+    both = pl.struct(x.alias("x"), y.alias("y"))
+    r = both.map_batches(_fmod, return_dtype=pl.Float64, is_elementwise=True)
+    return pl.when(x.is_null() | y.is_null()).then(None).otherwise(r)
+
+
 def tdiv(a: pl.Expr, b: pl.Expr) -> pl.Expr:
     """Quotient truncated toward zero (`Int.tdiv`); Polars' `//` floors."""
     q = a // b
@@ -1070,14 +1085,15 @@ class Exprs:
             else:
                 shifted = _rows(shift_left, pl.Int64, a, Val(n, pl.Int64))
             return self.domain(bad, shifted, pl.Int64, name, a, b)
-        floats = ("add", "subtract", "multiply", "divide", "power")
+        floats = ("add", "subtract", "multiply", "divide", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             x, y = a.expr, b.expr
             # A sum or difference is never -0.0 here; the others can be.
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
-                   "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
+                   "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
+                   "power": canon(x.pow(y))}  # fmt: skip
             return Val(ops[name], pl.Float64, issues(a, b))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.

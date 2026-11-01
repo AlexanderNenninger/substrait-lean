@@ -281,6 +281,22 @@ class Dialect:
     def float_div(self, a: str, b: str) -> str:
         return f"({a} / {b})"
 
+    def float_mod(self, a: str, b: str) -> str:
+        """`FloatCode.fmod`, C's `fmod`: the sign of `a`; NaN for a NaN, an
+        infinite `a` or a zero `b`, and `a` for an infinite `b`. The edge cases
+        are written out, so that no engine raises on them (Spark's ANSI `%` by
+        zero) or differs; only finite operands reach the engine's `%`."""
+        nan, inf, ninf, zero = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf, 0.0))
+
+        def infinite(x: str) -> str:
+            return f"{x} = {inf} OR {x} = {ninf}"
+
+        return (
+            f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN {self.null('float')} "
+            f"WHEN {self.is_nan(a)} OR {self.is_nan(b)} OR {infinite(a)} OR {b} = {zero} "
+            f"THEN {nan} WHEN {infinite(b)} THEN {a} ELSE ({a} % {b}) END)"
+        )
+
     def float_neg(self, a: str) -> str:
         """IEEE negation; NaN stays NaN (`canon` makes `-0.0` zero)."""
         return f"(- {a})"
@@ -696,7 +712,7 @@ class Un:
 @dataclass(frozen=True)
 class Bin:
     op: Literal[
-        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
+        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
         "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
         "fatan2", "flogb", "bit",
@@ -1033,7 +1049,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2" | "flogb"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
         case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff" | "levenshtein" | "bit"):
             return "int"
@@ -1090,7 +1106,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return ka if ka in ("time", "interval") or kb is None else kb
         case Bin(op="mul", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2" | "flogb"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
         case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "levenshtein" | "bit"):
             return "int"
@@ -1695,8 +1711,8 @@ class _Parser:
                     raise Unsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (
-                    "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-                    "ceil", "round", *DOUBLE_FNS,
+                    "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
+                    "floor", "ceil", "round", *DOUBLE_FNS,
                 )  # fmt: skip
                 has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
@@ -2568,6 +2584,9 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Bin("fmul", a, b)
         case "divide", [a, b]:
             return Bin("fdiv", a, b)
+        # C's `fmod`, as DuckDB, DataFusion and Spark compute `%` (#203).
+        case "modulus", [a, b]:
+            return Bin("fmod", a, b)
         case (("subtract" | "negate"), [a]):
             return Un("fneg", a)
         case "abs", [a]:
@@ -3261,12 +3280,13 @@ class _Writer:
                     return sql
                 bad = f"({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)})"
                 return self.domain(sb, bad, sql, "int")
-            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" as op, left=a, right=b):
+            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" as op, left=a, right=b):
                 f = {
                     "fadd": d.float_add,
                     "fsub": d.float_sub,
                     "fmul": d.float_mul,
                     "fdiv": d.float_div,
+                    "fmod": d.float_mod,
                     "fpow": d.float_pow,
                 }[op]
                 sql = f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))

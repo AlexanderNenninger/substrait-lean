@@ -93,6 +93,36 @@ def isNan (c : Int) : Bool := c == nan
 /-- `(-1)^s · m · 2⁻¹⁰⁷⁴` for a finite code, as `(negative, m)`. -/
 def finiteParts (c : Int) : Bool × Nat := (c < 0, (c.natAbs - 1) / 2)
 
+/-- `fmod(a, b)`, the remainder of doubles in C and IEEE 754, which DuckDB,
+DataFusion and Spark compute for `%`: `a - b · trunc(a / b)`, with the sign of
+`a`. It is exact, so the codes give it without rounding: the magnitude of a
+finite double is an integer (`|x| · 2¹⁰⁷⁴`), and the remainder of the
+magnitudes is the magnitude of the remainder. NaN, an infinite `a` or a zero
+`b` give NaN, and an infinite `b` gives `a` (#203). -/
+def fmod (a b : Int) : Int :=
+  let (negative, ma) := finiteParts a
+  let mb := (finiteParts b).2
+  if infMag ≤ ma ∨ nanMag ≤ mb ∨ mb = 0 then nan
+  else if mb = infMag then a
+  else ofMag negative (ma % mb)
+
+#guard fmod (ofFloat 7.5) (ofFloat 2.0) == ofFloat 1.5
+#guard fmod (ofFloat (-7.5)) (ofFloat 2.0) == ofFloat (-1.5)
+#guard fmod (ofFloat 7.5) (ofFloat (-2.0)) == ofFloat 1.5
+-- `-0.0` in IEEE; the model's one zero.
+#guard fmod (ofFloat (-4.0)) (ofFloat 2.0) == 0 && fmod 0 (ofFloat 2.0) == 0
+#guard fmod (ofFloat 7.5) 0 == nan && fmod 0 0 == nan && fmod nan (ofFloat 2.0) == nan
+#guard fmod posInf (ofFloat 2.0) == nan && fmod negInf (ofFloat 2.0) == nan
+#guard fmod (ofFloat 7.5) posInf == ofFloat 7.5 && fmod (ofFloat (-7.5)) negInf == ofFloat (-7.5)
+#guard fmod (ofFloat 7.5) nan == nan && fmod posInf posInf == nan
+-- Exact where `a - b · trunc(a / b)` in doubles is not (it gives `0.0` for
+-- the first and third), across exponents and for subnormals.
+#guard fmod (ofFloat 1e308) (ofFloat 3.0) == ofFloat 2.0
+#guard fmod (ofFloat 1e308) (ofFloat 1e-300) == ofFloat 3.0195000970293847e-301
+#guard fmod (ofFloat 1152921504606846977.0) (ofFloat 7.0) == ofFloat 1.0
+#guard fmod (ofFloat 0.3) (ofFloat 0.1) == ofFloat 0.09999999999999998
+#guard fmod (ofFloat 5e-324) (ofFloat 2.0) == ofFloat 5e-324
+
 end Substrait.FloatCode
 
 namespace Substrait.Time

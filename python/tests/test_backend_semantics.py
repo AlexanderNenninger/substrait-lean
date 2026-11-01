@@ -315,6 +315,7 @@ FAITHFUL = [
     "SELECT a % b FROM dm",
     "SELECT v, v = 0.0, v < 0.0 FROM f0",
     "SELECT v / 0.0 FROM f",
+    "SELECT v % 2.0, v % 0.0, 7.5 % v, -7.5 % v FROM f",
     "SELECT v, CAST(v AS BIGINT) AS c FROM r",
     "SELECT v, round(v) FROM r",
     "SELECT s, length(s) FROM s",

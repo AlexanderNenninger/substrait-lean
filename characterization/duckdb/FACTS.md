@@ -59,7 +59,7 @@ refused.
 | R1′ | `abs(MIN)`, `divide(MIN, -1)` | no finding (`verify`: overflow error) | (in R1) |
 | R2 | integer `divide` by zero | no finding (`verify`: division by zero error) | 23 |
 | R3 | integer `modulus` by zero; remainder sign | no finding; `division_type` open, no diff | (in R2) |
-| R4 | `modulus` on `fp64` | fixed (#203): refused, no such Substrait function | 30 |
+| R4 | `modulus` on `fp64` | fixed (#203): C's `fmod` (no such Substrait function) | 30 |
 | R5 | `fp64` `divide` by zero | deviation: IEEE, not ERROR | 10 |
 | R6 | integer `sum` overflow | deviation: unbounded, and reported as a warning | 5 |
 | R7 | `sum`/`avg` of an `fp64` constant | fixed (#205) | 3 |
@@ -162,10 +162,18 @@ Evidence: `function/operator/test_division_by_zero.test:28,39,64`,
   has no case for it. On doubles, `imod` works on the float codes:
   `7.5 % 2.0` evaluated to a 300-digit integer, `d % 0.0` to NULL. A
   **deviation**, and a soundness bug, since the plan was accepted and the
-  result was wrong. **Fixed (#203):** until Substrait (or a sverify
-  extension) defines it, the reference refuses the call.
+  result was wrong. **Fixed (#203):** a `modulus` of doubles is C's
+  `fmod` (`FloatCode.fmod` in
+  [`Float.lean`](../../SubstraitLean/Float.lean)), as DuckDB, DataFusion and
+  Spark compute `%`: the sign of the dividend (`-7.5 % 2.0 = -1.5`); NaN for
+  a NaN, an infinite dividend or a zero divisor; the dividend for an
+  infinite divisor. It is exact, computed on the codes. Substrait has no such
+  impl; the reference takes the plan DataFusion writes as `fmod`.
 - **DuckDB (native):** `fmod` (`7.5 % 2 = 1.5`, `% 0.0` is NaN, or an error
-  with `error_on_division_by_zero`). Not needed while the reference refuses.
+  with `error_on_division_by_zero`). sverify writes out the NaN, infinite and
+  zero cases, so only finite operands reach `%`. Polars' `%` floors (the sign
+  of the divisor) and Spark's ANSI `%` raises on zero; the same shim, and
+  numpy's `fmod` for Polars, cover them.
 
 Evidence: `function/numeric/decimal_mod.test:5,10,16`,
 `function/numeric/test_mod.test:11`, `types/float/ieee_floating_points.test:24`,
@@ -332,7 +340,7 @@ means DuckDB's own operator, under its default settings.
 | | `overflow` (`MIN / -1`) | `ERROR` (default) | native |
 | `modulus` (`i8`…`i64`) | zero divisor | `ERROR` (default) | native; guard if the setting is off |
 | | `division_type` | open | `TRUNCATE` native; `FLOOR` shim |
-| `modulus` (`fp64`) | | | refuse (not in Substrait) |
+| `modulus` (`fp64`) | (none in Substrait) | `fmod`; NaN by zero | native on finite operands; NaN, ±inf and zero written out |
 | `divide` (`fp64`) | `on_division_by_zero` | `ERROR` (default) | native; guard if the setting is off |
 | | | `IEEE` | the setting off, or a shim |
 | | | `NULL`, `LIMIT` | shim |
