@@ -566,6 +566,12 @@ class Dialect:
         """TRUE when `a` is TRUE, FALSE when it is FALSE or NULL."""
         return f"({a} IS TRUE)"
 
+    def list_lt(self, a: str, b: str) -> str:
+        """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
+        prefix is smaller, two NULL elements are equal, and a NULL element
+        against a value makes the result NULL (#207)."""
+        raise Unsupported(f"{self.name}: ordering comparisons of lists are not implemented")
+
     def case_when(self, c: str, t: str, e: str) -> str:
         """`t` when `c` is TRUE, else `e` (also when `c` is NULL)."""
         return f"(CASE WHEN {c} THEN {t} ELSE {e} END)"
@@ -700,7 +706,7 @@ class Bin:
         "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
         "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
-        "fatan2", "flogb", "bit",
+        "fatan2", "flogb", "bit", "list_lt",
     ]  # fmt: skip
     left: Expr
     right: Expr
@@ -2407,6 +2413,8 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", Bin("eq", a, b))
         case "lt", [a, b]:
             return Bin("lt", a, b)
+        case "list_lt", [a, b]:
+            return Bin("list_lt", a, b)
         case "gt", [a, b]:
             return Bin("lt", b, a)
         case "lte", [a, b]:
@@ -3332,6 +3340,8 @@ class _Writer:
                 if isinstance(b, Lit) and isinstance(b.value, int) and b.kind == "int":
                     return d.int_pow(sa, b.value)
                 return d.int_pow_var(sa, self.int_operand(b, ref, cols, "POWER"))
+            case Bin(op="list_lt", left=a, right=b):
+                return d.list_lt(go(a, None), go(b, None))
             case Bin(op="eq" | "lt" as op, left=a, right=b):
                 ka, kb = kind(a), kind(b)
                 k = ka or kb

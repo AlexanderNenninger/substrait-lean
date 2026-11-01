@@ -681,7 +681,8 @@ where
 
 /-- Functions that compare their arguments: these must have one kind. -/
 def comparisonFns : List String :=
-  ["equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from"]
+  ["equal", "not_equal", "lt", "gt", "lte", "gte", "is_distinct_from", "is_not_distinct_from",
+   "list_lt"]
 
 /-- Functions on strings, with the positions of their arguments that are
 integers (`substring`'s start and length). -/
@@ -1001,7 +1002,7 @@ def mkCall : String → List Expr → J Expr
   | "multiply", [a, b] => pure (.bin .mul a b)
   | "equal", [a, b] => pure (.bin .eq a b)
   | "not_equal", [a, b] => pure (.un .not (.bin .eq a b))
-  | "lt", [a, b] => pure (.bin .lt a b)
+  | "lt", [a, b] | "list_lt", [a, b] => pure (.bin .lt a b)
   | "gt", [a, b] => pure (.bin .lt b a)
   | "lte", [a, b] => pure (.un .not (.bin .lt b a))
   | "gte", [a, b] => pure (.un .not (.bin .lt a b))
@@ -1234,6 +1235,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
         throw "date_diff takes two dates"
     checkArgKinds name cols parsed
+    -- Lists of lists: an engine would compare the inner lists natively, with
+    -- its own order for NULL elements (`Value.listLt3`).
+    if ["lt", "gt", "lte", "gte", "list_lt"].contains (baseName name) then
+      if parsed.any fun e => e.kind cols matches .list (.list _) then
+        throw s!"{baseName name} of lists of lists is not supported"
     -- A date literal is days and a timestamp literal microseconds, both
     -- integers in the model: comparing one with the other kind would compare
     -- the codes (#206). Producers cast one side; a plan that does not is refused.

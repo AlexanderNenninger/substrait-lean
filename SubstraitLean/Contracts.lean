@@ -1042,6 +1042,14 @@ theorem powAbs_sound {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
       · intro _ h; cases h
     · exact Bound.mem_top _
 
+/-- A comparison of two lists may be TRUE, FALSE or NULL; so may a value
+whose abstraction allows all three. -/
+theorem AVal.mem_ofLt3 {a : AVal} {o : Option Bool} (hn : a.null = true)
+    (ht : a.tt = true) (hf : a.ff = true) : a.Mem (Value.ofLt3 o) := by
+  cases o with
+  | none => exact hn
+  | some r => cases r <;> assumption
+
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
@@ -1097,6 +1105,9 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
       ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
     simp_all [BinFn.abs, BinFn.apply, and3, or3, AVal.Mem, AVal.nonBool, AVal.nonInt]
+  -- Two lists (`Value.listLt3`): TRUE, FALSE or NULL, all of which the
+  -- abstraction of a comparison of non-integers allows.
+  all_goals first | (apply AVal.mem_ofLt3 <;> split <;> rfl) | skip
   all_goals (split <;> simp_all [canLt, canGe])
   -- What is left: comparisons of two integers against their intervals, and
   -- of two strings.
@@ -1153,9 +1164,9 @@ def AVal.nonNullInt (a : AVal) (f : Bound → Bound) : AVal := ⟨false, a.int.m
 /-- `a` without NULL: what an operand of a TRUE `<` can be. -/
 def AVal.nonNullOrd (a : AVal) : AVal := ⟨false, a.int, a.tt, a.ff, a.str⟩
 
-/-- An integer, a string or a boolean: what `<` compares. -/
+/-- An integer, a string, a boolean or a list: what `<` compares. -/
 def Value.isOrd : Value → Bool
-  | .int _ | .str _ | .bool _ => true
+  | .int _ | .str _ | .bool _ | .list _ => true
   | _ => false
 
 /-- What a value known to equal (SQL `=`, so non-NULL) a value in `b` can be. -/
