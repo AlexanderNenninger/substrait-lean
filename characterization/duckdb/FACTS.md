@@ -59,13 +59,13 @@ refused.
 | R1′ | `abs(MIN)`, `divide(MIN, -1)` | no finding (`verify`: overflow error) | (in R1) |
 | R2 | integer `divide` by zero | no finding (`verify`: division by zero error) | 23 |
 | R3 | integer `modulus` by zero; remainder sign | no finding; `division_type` open, no diff | (in R2) |
-| R4 | `modulus` on `fp64` | deviation: no such Substrait function | 30 |
+| R4 | `modulus` on `fp64` | fixed (#203): C's `fmod` (no such Substrait function) | 30 |
 | R5 | `fp64` `divide` by zero | deviation: IEEE, not ERROR | 10 |
 | R6 | integer `sum` overflow | deviation: unbounded, and reported as a warning | 5 |
-| R7 | `sum`/`avg` of an `fp64` constant | deviation | 3 |
+| R7 | `sum`/`avg` of an `fp64` constant | fixed (#205) | 3 |
 | R8 | `cast` to a narrower integer that does not fit | no finding (`verify`: cast out of range error) | 10 |
 | R9 | `cast` of a double or decimal to an integer: rounding | open (truncate in Lean, round in DuckDB) | 28 |
-| R10 | `cast` between `date` and `timestamp` literals | deviation | 60 |
+| R10 | `cast` between `date` and `timestamp` literals | fixed (#206) | 60 |
 | R11 | `lt`/`gt`/… on lists | deviation (NULL on non-NULL inputs); order open | 22 |
 | R12 | `fp32` computed as `fp64` | deviation (width) | 5 |
 | R13 | `substring` with a negative start | open (`negative_start`) | 10 |
@@ -160,12 +160,21 @@ Evidence: `function/operator/test_division_by_zero.test:28,39,64`,
   ([`Parse.lean:956`](../../SubstraitLean/Parse.lean#L956));
   `mkFloatCall` ([`Parse.lean:1032`](../../SubstraitLean/Parse.lean#L1032))
   has no case for it. On doubles, `imod` works on the float codes:
-  `7.5 % 2.0` evaluates to a 300-digit integer, `d % 0.0` to NULL. A
-  **deviation**, and a soundness bug, since the plan is accepted and the
-  result is wrong. Until Substrait (or a sverify extension) defines it, the
-  reference refuses the call.
+  `7.5 % 2.0` evaluated to a 300-digit integer, `d % 0.0` to NULL. A
+  **deviation**, and a soundness bug, since the plan was accepted and the
+  result was wrong. **Fixed (#203):** a `modulus` of doubles is C's
+  `fmod` (`FloatCode.fmod` in
+  [`Float.lean`](../../SubstraitLean/Float.lean)), as DuckDB, DataFusion and
+  Spark compute `%`: the sign of the dividend (`-7.5 % 2.0 = -1.5`); NaN for
+  a NaN or an infinite dividend; the dividend for an infinite divisor. It is
+  exact, computed on the codes. A zero divisor is an error, as on integers and
+  as #185 decides for an omitted `on_division_by_zero`, so `verify` can prove
+  it absent. Substrait has no such impl; the reference takes the plan
+  DataFusion writes as `fmod`.
 - **DuckDB (native):** `fmod` (`7.5 % 2 = 1.5`, `% 0.0` is NaN, or an error
-  with `error_on_division_by_zero`). Not needed while the reference refuses.
+  with `error_on_division_by_zero`). sverify raises on a zero divisor and
+  writes out the NaN and infinite cases, so only finite operands reach `%`.
+  Polars' `%` floors (the sign of the divisor); numpy's `fmod` covers it.
 
 Evidence: `function/numeric/decimal_mod.test:5,10,16`,
 `function/numeric/test_mod.test:11`, `types/float/ieee_floating_points.test:24`,
@@ -210,10 +219,11 @@ fuzz: `fuzz__float_arith.json` (`d / d` with `d = 0.0`).
 ## R7. `sum`/`avg` of a double constant
 
 - **Substrait:** `sum(fp64)` returns `fp64?`.
-- **Lean:** `SUM(CAST('inf' AS DOUBLE))` evaluates to a 500-digit integer,
-  and `avg(42) OVER ()` to `inf`. The aggregate takes a constant argument
-  for an integer and adds float codes; over a double column it is right. A
-  **deviation** and a soundness bug.
+- **Lean:** `SUM(CAST('inf' AS DOUBLE))` evaluated to a 500-digit integer,
+  and `avg(42) OVER ()` to `inf`. The aggregate took a constant argument
+  for an integer and added float codes; over a double column it was right.
+  A **deviation** and a soundness bug. **Fixed (#205):** a constant
+  argument has its declared type, so `sum(fp64)` adds doubles.
 - **DuckDB (native):** IEEE sums (`inf`, `-inf`, `nan`).
 
 Evidence: `types/float/nan_aggregates.test:7`, `window/test_scalar_window.test:11`.
@@ -255,9 +265,13 @@ Evidence: `cast/decimal_integer_cast.test`, `cast/float_integer_cast.test`,
   `CAST(DATE '2020-05-05' AS TIMESTAMP)` takes the `.int → .time` branch
   ([`Parse.lean:1248`](../../SubstraitLean/Parse.lean#L1248)) and reads
   18387 days as 18387 µs. `(TIMESTAMP …)::DATE` keeps the microsecond count
-  as days. Then `ts >= DATE '1993-08-15'` compares microseconds with days,
-  and `COALESCE(date, timestamp)` mixes both codes. A **deviation** and a
-  soundness bug.
+  as days. Then `ts >= DATE '1993-08-15'` compared microseconds with days,
+  and `COALESCE(date, timestamp)` mixed both codes. A **deviation** and a
+  soundness bug. **Fixed (#206):** date and timestamp constants keep their
+  kinds; a cast from a date is that day at midnight, a cast from a
+  timestamp floors to its day, and a comparison of a date with a timestamp
+  that the plan does not cast is refused. A cast of a date *column* to a
+  timestamp is still refused, as before.
 - **DuckDB (native):** standard conversions.
 
 Evidence: `types/date/date_implicit_cast.test:13`,
@@ -327,7 +341,7 @@ means DuckDB's own operator, under its default settings.
 | | `overflow` (`MIN / -1`) | `ERROR` (default) | native |
 | `modulus` (`i8`…`i64`) | zero divisor | `ERROR` (default) | native; guard if the setting is off |
 | | `division_type` | open | `TRUNCATE` native; `FLOOR` shim |
-| `modulus` (`fp64`) | | | refuse (not in Substrait) |
+| `modulus` (`fp64`) | zero divisor (none in Substrait) | `ERROR`, as on integers | guard; native on finite operands, NaN and ±inf written out |
 | `divide` (`fp64`) | `on_division_by_zero` | `ERROR` (default) | native; guard if the setting is off |
 | | | `IEEE` | the setting off, or a shim |
 | | | `NULL`, `LIMIT` | shim |

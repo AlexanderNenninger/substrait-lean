@@ -197,14 +197,16 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .timeOfDay _ => .tod
   | .un (.strftime _) _ => .str
   | .un (.addMonths _ false) _ => .date
+  | .un (.fmath _) _ => .float
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fmod _ _
+  | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
-  | .bin .levenshtein _ _ => .int
+  | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin _ _ _ => .bool
@@ -281,6 +283,11 @@ inductive Const where
   /-- A double as its code (zero `0`, one NaN). -/
   | code (c : Int)
   | dec (m : Int) (scale : Nat)
+  /-- A `DATE`, in days since 1970-01-01. -/
+  | date (d : Int)
+  /-- A timestamp, in microseconds since 1970-01-01. Dates and timestamps keep
+  their kinds so that a cast between them converts the unit (#206). -/
+  | ts (us : Int)
   | str (s : String)
   | bool (b : Bool)
   | null
@@ -448,16 +455,20 @@ def castConst (ty : Json) (c : Const) : J Const := do
   | .time =>
     match c with
     | .str s => match Time.parseTimestamp? s with
-      | some us => return .int us
+      | some us => return .ts us
       | none => throw s!"cannot parse timestamp '{s}'"
-    | .int us => return .int us
+    | .int us | .ts us => return .ts us
+    -- That day at midnight.
+    | .date d => return .ts (d * Time.usPerDay)
     | _ => throw "cannot cast this value to a timestamp"
   | .date =>
     match c with
     | .str s => match Time.parseDate? s with
-      | some d => return .int d
+      | some d => return .date d
       | none => throw s!"cannot parse date '{s}'"
-    | .int d => return .int d
+    | .int d | .date d => return .date d
+    -- The day the instant falls on, rounding down.
+    | .ts us => return .date (Time.days us)
     | _ => throw "cannot cast this value to a date"
   | .str =>
     match c with
@@ -468,6 +479,7 @@ def castConst (ty : Json) (c : Const) : J Const := do
     | .int us =>
       if 0 ≤ us ∧ us < Time.usPerDay then return .int us
       else throw "a time of day outside 00:00 to 24:00"
+    | .ts us => return .int (Time.timeOfDay us)
     | _ => throw "cannot cast this value to a time of day"
   | _ =>
     -- A constant cast to a timestamp coarser than microseconds: only where it
@@ -478,8 +490,10 @@ def castConst (ty : Json) (c : Const) : J Const := do
         | .str s => match Time.parseTimestamp? s with
           | some us => pure us
           | none => throw s!"cannot parse timestamp '{s}'"
+        | .ts us => pure us
+        | .date d => pure (d * Time.usPerDay)
         | _ => throw "cannot cast this value to a timestamp"
-      if us % 10 ^ (6 - p) == 0 then return .int us
+      if us % 10 ^ (6 - p) == 0 then return .ts us
       else throw s!"cast to a timestamp of precision {p} truncates"
     throw "unsupported cast type"
 
@@ -561,6 +575,8 @@ def parseConstLiteral (j : Json) : J Const := do
       | throw "malformed decimal literal"
     return .dec (Base64.leSigned bytes) (← natD d "scale")
   | ("intervalDayToSecond", d) => return .int (← intervalMicros d)
+  | ("date", d) => return .date (← getInt d)
+  | ("timestamp", us) => return .ts (← getInt us)
   | ("intervalCompound", c) =>
     if let some ym := field? c "intervalYearToMonth" then
       if (← yearMonths ym) != 0 then
@@ -581,8 +597,8 @@ def parseConstLiteral (j : Json) : J Const := do
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
-    if p ≤ 6 then return .int (v * 10 ^ (6 - p))
-    else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
+    if p ≤ 6 then return .ts (v * 10 ^ (6 - p))
+    else if v % 10 ^ (p - 6) == 0 then return .ts (v / 10 ^ (p - 6))
     else throw "timestamps finer than microseconds are not supported"
   | (_, n) => return .int (← getInt n)
 
@@ -637,7 +653,7 @@ partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) 
 def constExpr : Const → J Expr
   | .int i => pure (.lit (.int i))
   | .flt f => pure (.lit (.int (FloatCode.ofFloat f)))
-  | .code c => pure (.lit (.int c))
+  | .code c | .date c | .ts c => pure (.lit (.int c))
   | .str s => pure (.lit (.str s))
   | .bool b => pure (.lit (.bool b))
   | .null => pure (.lit .null)
@@ -653,9 +669,15 @@ Isthmus writes) is checked against the arguments the parser sees; a literal
 argument (or one built only from literals) has no kind of its own (a
 timestamp literal is an integer), so only the signature speaks for it. -/
 
+/-- Functions of doubles only: integer arguments are converted. -/
+def doubleFns : List String := ["atan2", "logb"] ++ FMath.all.map (·.name)
+
 /-- Functions whose arguments are numbers, timestamps or intervals. -/
 def arithmeticFns : List String :=
-  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"]
+  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"] ++
+    bitFns ++ doubleFns
+where
+  bitFns := ["bitwise_not", "shift_left", "shift_right"] ++ BitOp.all.map (·.name)
 
 /-- Functions that compare their arguments: these must have one kind. -/
 def comparisonFns : List String :=
@@ -788,7 +810,8 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["divide", "modulus", "abs", "power"].contains base then some none
     else none
   | "rounding" =>
-    if !float then none
+    if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
+    else if !float then none
     -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
     else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
     -- Native doubles round to nearest, ties to even.
@@ -797,9 +820,14 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else none
   | "on_division_by_zero" =>
     if base != "divide" && base != "modulus" then none
-    else if float then some (some ["IEEE"]) else some none
+    -- Double `divide` is IEEE (#204); `modulus` raises, as on integers.
+    else if float && base == "divide" then some (some ["IEEE"]) else some none
   | "on_domain_error" =>
-    if base != "power" then none else if float then some (some ["NAN"]) else some none
+    -- Outside their domains the elementary functions raise (`Numeric.lean`).
+    if doubleFns.contains base then some (some ["ERROR"])
+    else if base != "power" then none else if float then some (some ["NAN"]) else some none
+  | "on_log_zero" =>
+    if ["ln", "log10", "log2", "logb"].contains base then some (some ["ERROR"]) else none
   -- The model's string matching is case-sensitive (`SubstraitLean/Text.lean`).
   | "case_sensitivity" =>
     if ["like", "contains", "starts_with", "ends_with", "strpos"].contains base then
@@ -1021,6 +1049,12 @@ def mkCall : String → List Expr → J Expr
     | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
   -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
   | "date_diff", [d, e] => pure (.bin .dateDiff d e)
+  -- Bitwise operations of integers (`SubstraitLean/Numeric.lean`); `NOT x`
+  -- is `x XOR -1`.
+  | "bitwise_not", [a] => pure (.bin (.bit .xor) a (.lit (.int (-1))))
+  | name, [a, b] => match BitOp.ofName? name with
+    | some op => pure (.bin (.bit op) a b)
+    | none => throw s!"unsupported function {name}/2"
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
   notDistinct (a b : Expr) : Expr :=
@@ -1084,6 +1118,10 @@ def mkFloatCall : String → List Expr → J Expr
   | "subtract", [a, b] => pure (.bin .fsub a b)
   | "multiply", [a, b] => pure (.bin .fmul a b)
   | "divide", [a, b] => pure (.bin .fdiv a b)
+  -- Substrait has no `modulus` of doubles, but DataFusion writes one; it is
+  -- C's `fmod`, as DuckDB, DataFusion and Spark compute `%`, and raises on a
+  -- zero divisor, as on integers (#203).
+  | "modulus", [a, b] => pure (.bin .fmod a b)
   -- Code negation would make NaN the smallest code; SQL's one NaN stays NaN.
   | "subtract", [a] | "negate", [a] =>
     pure (.ifThen (.bin .eq a (.lit (.int FloatCode.nan))) a (.un .fneg a))
@@ -1095,6 +1133,12 @@ def mkFloatCall : String → List Expr → J Expr
   | "round", [a] => pure (.un .fround a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
+  -- `SubstraitLean/Numeric.lean`.
+  | "atan2", [y, x] => pure (.bin .fatan2 y x)
+  | "logb", [x, b] => pure (.bin .flogb x b)
+  | name, [a] => match FMath.ofName? name with
+    | some f => pure (.un (.fmath f) a)
+    | none => throw s!"unsupported double function {name}/1"
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
 /-- Parse an expression over input columns of kinds `cols`. -/
@@ -1155,6 +1199,14 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
         throw "date_diff takes two dates"
     checkArgKinds name cols parsed
+    -- A date literal is days and a timestamp literal microseconds, both
+    -- integers in the model: comparing one with the other kind would compare
+    -- the codes (#206). Producers cast one side; a plan that does not is refused.
+    if comparisonFns.contains (baseName name) then
+      let ks := ((argJs.zip parsed).map fun (j, e) => argKind cols j e).filter
+        ([Kind.date, .time, .tod].contains ·)
+      if let k :: rest := ks then
+        if rest.any (· != k) then throw s!"{name}: compares a {repr k} with another kind of time"
     let onFloats :=
       (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ fns j) ||
       typeKind ((field? f "outputType").getD .null) == .float
@@ -1180,7 +1232,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let [kj, tj, oj] := argJs | throw "date_bin takes an interval, a timestamp and an origin"
       let some (0, k) ← intervalLit? kj | throw "date_bin needs a constant interval of days or less"
       if k ≤ 0 then throw "date_bin needs a positive interval"
-      let some (.int o) ← constOf? fns oj | throw "date_bin needs a constant origin"
+      let o ← match ← constOf? fns oj with
+        | some (.int o) | some (.ts o) => pure o
+        | _ => throw "date_bin needs a constant origin"
       let ts ← parseExpr fns cols bits tj
       if ts.kind cols != .time then throw "date_bin is only supported on timestamps"
       return .un (.bucket k.toNat o) ts
@@ -1216,10 +1270,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- DataFusion's decimal division has a scale, for one.
     if (outTy.getObjVal? "decimal").toOption.isSome && !wideIntDecimal outTy then
       throw s!"{name}: decimal results are not supported"
-    let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-      "ceil", "round"]
+    let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
+      "floor", "ceil", "round"] ++ doubleFns
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
-    let floatCall := floats.contains (baseName name) && (out == .float || hasFloat)
+    let floatCall := floats.contains (baseName name) &&
+      (out == .float || hasFloat || doubleFns.contains (baseName name))
+    if arithmeticFns.bitFns.contains (baseName name) && hasFloat then
+      throw s!"{baseName name} is only supported on integers"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.
@@ -1354,7 +1411,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | [a] => parseExpr fns cols bits a
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
-  let k := arg.kind cols
+  -- A double constant is its code, which `Expr.kind` calls an integer (#205).
+  let k := if args.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
   -- (`avg:i64` with an `i64` result), which it is not.

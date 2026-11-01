@@ -35,7 +35,11 @@ serves integers, doubles, dates and timestamps. -/
 def coreFns : List (Nat × String) := [
   (1, "not"), (2, "is_null"), (3, "negate"), (4, "add"), (5, "subtract"), (6, "multiply"),
   (7, "equal"), (8, "lt"), (9, "and"), (10, "or"), (11, "divide"),
-  (15, "floor"), (16, "ceil"), (17, "round"), (18, "modulus"), (19, "power"), (41, "nanvl")]
+  (15, "floor"), (16, "ceil"), (17, "round"), (18, "modulus"), (19, "power"), (41, "nanvl"),
+  (100, "sqrt"), (101, "exp"), (102, "ln"), (103, "log10"), (104, "log2"), (105, "sin"),
+  (106, "cos"), (107, "tan"), (108, "asin"), (109, "acos"), (110, "atan"), (111, "atan2"),
+  (112, "logb"), (113, "bitwise_and"), (114, "bitwise_or"), (115, "bitwise_xor"),
+  (116, "bitwise_shift_left"), (117, "bitwise_shift_right")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -86,6 +90,9 @@ def UnFn.anchor : UnFn → Nat
   -- Core
   | .not => 1 | .isNull => 2 | .neg | .fneg => 3 | .ffloor => 15 | .fceil => 16
   | .fround | .froundTo _ => 17
+  | .fmath f => match f with
+    | .sqrt => 100 | .exp => 101 | .ln => 102 | .log10 => 103 | .log2 => 104 | .sin => 105
+    | .cos => 106 | .tan => 107 | .asin => 108 | .acos => 109 | .atan => 110
   -- Strings
   | .upper => 20 | .lower => 21 | .length => 22 | .reverse => 200 | .ascii => 201 | .replace _ _ => 202
   -- Dates and times
@@ -99,7 +106,10 @@ def UnFn.anchor : UnFn → Nat
 def BinFn.anchor : BinFn → Nat
   -- Core
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
-  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
+  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod | .fmod => 18 | .ipow | .fpow => 19
+  | .fatan2 => 111 | .flogb => 112
+  | .bit op => match op with
+    | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
   | .substr _ => 32 | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
@@ -113,10 +123,13 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
 
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> exact of_decide_eq_true rfl
+  cases f <;> first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
 
 theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first | exact of_decide_eq_true rfl | (rename_i a b; cases a <;> cases b <;> decide)
+  cases f <;> first
+    | exact of_decide_eq_true rfl
+    | (rename_i a b; cases a <;> cases b <;> decide)
+    | (rename_i op; cases op <;> decide)
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
@@ -337,6 +350,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .ffloor a => canonical (call 15 [writeExpr cols .float a])
   | .un .fceil a => canonical (call 16 [writeExpr cols .float a])
   | .un .fround a => canonical (call 17 [writeExpr cols .float a])
+  | .un (.fmath f) a => canonical (call (UnFn.anchor (.fmath f)) [writeExpr cols .float a])
   | .un .neg a => call 3 [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
     call 24 [call 23 [writeExpr cols .str a, obj [("literal", writeValue (.str p))]]]
@@ -366,7 +380,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     match f with
     -- A sum or difference of canonical doubles is `-0.0` never, NaN only
     -- as `inf - inf`, which IEEE engines may make negative.
-    | .fadd | .fsub | .fmul | .fdiv | .fpow =>
+    | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
       canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.

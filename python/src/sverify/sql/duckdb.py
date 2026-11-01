@@ -18,6 +18,10 @@ ASCII-only in RE2. `upper`/`lower` map case with utf8proc (black boxes in
 Lean; `'ß'` stays one character, where DataFusion writes `'SS'`). So the SQL
 raises on non-ASCII text where they would differ from DataFusion (#70).
 
+Elementary functions are C's `libm`, as in Lean, except that `sin`, `cos`
+and `tan` raise on ±inf (Lean: NaN), so the SQL handles those. `<<` raises
+where bits are shifted out; Substrait's `shift_left` drops them.
+
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
 proleptic calendar with a year 0. DuckDB's timestamps reach beyond the years
@@ -28,6 +32,7 @@ timestamp 2⁶³ - 1 µs is DuckDB's `infinity` (and its range starts in 290309
 BC), which `date_trunc` leaves as it is.
 """
 
+import math
 from dataclasses import dataclass
 
 from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind
@@ -71,6 +76,29 @@ class DuckDBDialect(Dialect):
     def float_to_int(self, x: str) -> str:
         # The cast raises on NaN, ±inf and values outside 64 bits.
         return f"CAST(trunc({x}) AS BIGINT)"
+
+    def float_fn(self, name: str, x: str) -> str:
+        # C's libm, but `sin`, `cos` and `tan` raise on ±inf, where libm gives NaN.
+        sql = super().float_fn(name, x)
+        if name not in ("sin", "cos", "tan"):
+            return sql
+        return f"(CASE WHEN isinf({x}) THEN {self.float_lit(math.nan)} ELSE {sql} END)"
+
+    def bitwise(self, op: str, a: str, b: str) -> str:
+        # `<<` raises where bits are shifted out, so a left shift is a product
+        # of HUGEINTs (below 2¹²⁶), reduced into 64 bits.
+        match op:
+            case "bitwise_and":
+                return f"({a} & {b})"
+            case "bitwise_or":
+                return f"({a} | {b})"
+            case "bitwise_xor":
+                return f"xor({a}, {b})"
+            case "bitwise_shift_right":
+                return f"({a} >> {b})"
+        wide = f"(CAST({a} AS HUGEINT) * (CAST(1 AS HUGEINT) << {b}))"
+        m, h = 2**64, 2**63
+        return f"CAST(((({wide} + {h}) % {m}) + {m}) % {m} - {h} AS BIGINT)"
 
     def row_ordinal(self) -> str:
         return "rowid"

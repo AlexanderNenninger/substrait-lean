@@ -420,6 +420,14 @@ def run_semantics(cur) -> None:
     assert cur.execute(f"SELECT {d.int_mul(d.int_lit(-(2**31)), d.int_lit(2**32))}").fetchone() == (
         -(2**63),
     )
+    # The remainder of doubles is C's `fmod`; NaN for ±inf, an error by zero (#203).
+    m = [d.float_lit(v) for v in (7.5, -7.5, 2.0)]
+    mods = [d.float_mod(m[0], m[2]), d.float_mod(m[1], m[2]), d.float_mod(m[0], inf)]
+    mods += [d.float_mod(inf, m[2])]
+    row = cur.execute("SELECT " + ", ".join(f"{e} AS m{i}" for i, e in enumerate(mods))).fetchone()
+    assert row[:3] == (1.5, -1.5, 7.5) and math.isnan(row[3])
+    with pytest.raises(Exception, match="(?i)division by zero"):
+        cur.execute(f"SELECT {d.float_mod(m[0], zero)}").fetchall()
 
 
 @pytest.fixture(scope="module")

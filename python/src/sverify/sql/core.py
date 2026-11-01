@@ -281,6 +281,25 @@ class Dialect:
     def float_div(self, a: str, b: str) -> str:
         return f"({a} / {b})"
 
+    def float_mod(self, a: str, b: str) -> str:
+        """`BinFn.fmod`, C's `fmod`: the sign of `a`; NaN for a NaN or an
+        infinite `a`, and `a` for an infinite `b`. By zero it raises, as
+        `int_mod`, but `NULL % 0.0` is NULL. The edge cases are written out,
+        so that engines agree on them (Spark's ANSI `%` raises on zero, DuckDB
+        gives NaN); only finite operands reach the engine's `%`."""
+        nan, inf, ninf, zero = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf, 0.0))
+        by_zero = self.raise_("division by zero", b, "float") if self.guards else nan
+
+        def infinite(x: str) -> str:
+            return f"{x} = {inf} OR {x} = {ninf}"
+
+        return (
+            f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN {self.null('float')} "
+            f"WHEN {b} = {zero} THEN {by_zero} "
+            f"WHEN {self.is_nan(a)} OR {self.is_nan(b)} OR {infinite(a)} THEN {nan} "
+            f"WHEN {infinite(b)} THEN {a} ELSE ({a} % {b}) END)"
+        )
+
     def float_neg(self, a: str) -> str:
         """IEEE negation; NaN stays NaN (`canon` makes `-0.0` zero)."""
         return f"(- {a})"
@@ -317,6 +336,27 @@ class Dialect:
     def float_pow(self, a: str, b: str) -> str:
         """C's `pow`: IEEE results, no errors."""
         return f"POWER({a}, {b})"
+
+    # Elementary functions and bitwise operations (`SubstraitLean/Numeric.lean`).
+    # The writer guards their domains, so the hooks only see arguments inside them.
+
+    def float_fn(self, name: str, x: str) -> str:
+        """An elementary function (`FMath.name`) of a double in its domain, as
+        C's `libm` computes it (±inf and NaN in, IEEE results out)."""
+        return f"{name.upper()}({x})"
+
+    def float_atan2(self, y: str, x: str) -> str:
+        """C's `atan2`, for `(y, x)` other than `(0, 0)`."""
+        return f"ATAN2({y}, {x})"
+
+    def float_logb(self, x: str, b: str) -> str:
+        """`ln x / ln b`, for positive `x` and `b`, `b` not 1."""
+        return self.float_div(self.float_fn("ln", x), self.float_fn("ln", b))
+
+    def bitwise(self, op: str, a: str, b: str) -> str:
+        """A `BitOp` (`BitOp.name`) of 64-bit integers, in two's complement; a
+        shift's count `b` is in `0`–`63`, and bits shifted out are lost."""
+        raise Unsupported(f"{self.name}: {op} is not implemented")
 
     def float_to_int(self, x: str) -> str:
         """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
@@ -657,14 +697,15 @@ class Un:
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
-        "strftime", "bucket", "reverse", "ascii", "replace",
+        "strftime", "bucket", "reverse", "ascii", "replace", "fmath",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`, the bits of `narrow`, the months of `addMonths`."""
     param: str = ""
     """The pattern of `regexMatch` and `replace`, the part of `datePart`, the
-    unit of `dateTrunc`; `time` or `date` for `addMonths`."""
+    unit of `dateTrunc`; `time` or `date` for `addMonths`; the function of
+    `fmath` (`FMath.name`)."""
     origin: int = 0
     """The origin of `bucket` (whose width is `digits`)."""
     replacement: str = ""
@@ -674,9 +715,10 @@ class Un:
 @dataclass(frozen=True)
 class Bin:
     op: Literal[
-        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
+        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
         "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
+        "fatan2", "flogb", "bit",
     ]  # fmt: skip
     left: Expr
     right: Expr
@@ -684,6 +726,20 @@ class Bin:
     """The `n` of `substr n`."""
     sides: tuple[bool, bool] = (True, True)
     """`left` and `right` of `trim`."""
+    param: str = ""
+    """The operation of `bit` (`BitOp.name`)."""
+
+
+#: `FMath.name`: elementary functions of a double (`SubstraitLean/Numeric.lean`).
+FMATH = (
+    "sqrt", "exp", "ln", "log10", "log2", "sin", "cos", "tan", "asin", "acos", "atan",
+)  # fmt: skip
+#: `BitOp.name`: bitwise operations of integers.
+BITWISE = (
+    "bitwise_and", "bitwise_or", "bitwise_xor", "bitwise_shift_left", "bitwise_shift_right",
+)  # fmt: skip
+#: `Parse.doubleFns`: functions of doubles only.
+DOUBLE_FNS = ("atan2", "logb", *FMATH)
 
 
 @dataclass(frozen=True)
@@ -972,7 +1028,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return cols[i] if i < len(cols) else "other"
         case Un(op="neg", arg=a):
             return lean_expr_kind(a, cols)
-        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
+        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(
             op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part" | "ascii"
@@ -996,9 +1052,9 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff" | "levenshtein"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff" | "levenshtein" | "bit"):
             return "int"
         case Bin(op="date_add"):
             return "date"
@@ -1020,7 +1076,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return _get(cols, i)
         case Un(op="neg", arg=a):
             return expr_kind(a, cols)
-        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
+        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(
             op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part" | "ascii"
@@ -1053,9 +1109,9 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return ka if ka in ("time", "interval") or kb is None else kb
         case Bin(op="mul", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "levenshtein"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "levenshtein" | "bit"):
             return "int"
         case Bin(op="concat" | "substr" | "trim" | "repeat"):
             return "str"
@@ -1658,11 +1714,13 @@ class _Parser:
                     raise Unsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (
-                    "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-                    "ceil", "round",
+                    "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
+                    "floor", "ceil", "round", *DOUBLE_FNS,
                 )  # fmt: skip
                 has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
-                float_call = name in floats and (out == "float" or has_float)
+                float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
+                if name in (*BITWISE, "bitwise_not", "shift_left", "shift_right") and has_float:
+                    raise Unsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
                 # function, stands for that double.
                 if has_float or float_call:
@@ -2452,6 +2510,15 @@ def _call(name: str, args: list[Expr]) -> Expr:
             )
         case "levenshtein", [a, b]:
             return Bin("levenshtein", a, b)
+        # Bitwise operations (`SubstraitLean/Numeric.lean`); `NOT x` is `x XOR -1`.
+        case "bitwise_not", [a]:
+            return Bin("bit", a, Lit(-1, "int"), param="bitwise_xor")
+        case "shift_left", [a, b]:
+            return Bin("bit", a, b, param="bitwise_shift_left")
+        case "shift_right", [a, b]:
+            return Bin("bit", a, b, param="bitwise_shift_right")
+        case _, [a, b] if name in BITWISE:
+            return Bin("bit", a, b, param=name)
         case "regexp_match", _:
             raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
         # Timestamps (`SubstraitLean/Time.lean`).
@@ -2520,6 +2587,9 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Bin("fmul", a, b)
         case "divide", [a, b]:
             return Bin("fdiv", a, b)
+        # C's `fmod`, as DuckDB, DataFusion and Spark compute `%` (#203).
+        case "modulus", [a, b]:
+            return Bin("fmod", a, b)
         case (("subtract" | "negate"), [a]):
             return Un("fneg", a)
         case "abs", [a]:
@@ -2534,6 +2604,12 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Un("fround", a)
         case "round", [a, Lit(value=int(d), kind="int")] if not isinstance(d, bool):
             return Un("fround", a) if d == 0 else Un("froundTo", a, d)
+        case "atan2", [y, x]:
+            return Bin("fatan2", y, x)
+        case "logb", [x, b]:
+            return Bin("flogb", x, b)
+        case _, [a] if name in FMATH:
+            return Un("fmath", a, param=name)
     raise Unsupported(f"unsupported double function {name}/{len(args)}")
 
 
@@ -3184,12 +3260,36 @@ class _Writer:
             case Bin(op="and" | "or" as op, left=a, right=b):
                 f = d.and3 if op == "and" else d.or3
                 return f(go(a, "bool"), go(b, "bool"))
-            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" as op, left=a, right=b):
+            case Un(op="fmath", arg=a, param=name):
+                x = self.float_operand(a, ref, cols)
+                return self.domain(x, self.domain_error(name, x), d.canon(d.float_fn(name, x)))
+            case Bin(op="fatan2", left=a, right=b):
+                y, x = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                zero = d.float_lit(0.0)
+                bad = f"({d.float_eq(y, zero)} AND {d.float_eq(x, zero)})"
+                return self.domain(y, bad, d.canon(d.float_atan2(y, x)))
+            case Bin(op="flogb", left=a, right=b):
+                x, base = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                zero = d.float_lit(0.0)
+                bad = (
+                    f"(NOT {d.float_lt(zero, x)} OR NOT {d.float_lt(zero, base)} "
+                    f"OR {d.float_eq(base, d.float_lit(1.0))})"
+                )
+                return self.domain(x, bad, d.canon(d.float_logb(x, base)))
+            case Bin(op="bit", left=a, right=b, param=name):
+                sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
+                sql = d.bitwise(name, sa, sb)
+                if "shift" not in name:
+                    return sql
+                bad = f"({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)})"
+                return self.domain(sb, bad, sql, "int")
+            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" as op, left=a, right=b):
                 f = {
                     "fadd": d.float_add,
                     "fsub": d.float_sub,
                     "fmul": d.float_mul,
                     "fdiv": d.float_div,
+                    "fmod": d.float_mod,
                     "fpow": d.float_pow,
                 }[op]
                 sql = f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
@@ -3487,6 +3587,27 @@ class _Writer:
         sql = self.expr(e, ref, cols, "int")
         # Columns may be narrower than 64 bits; widen them so overflow means 64 bits.
         return sql if isinstance(e, Lit) or _is_int_arith(e) else self.d.cast(sql, "int")
+
+    def domain_error(self, name: str, x: str) -> str:
+        """Is the double `x` outside the domain of `FMath` `name`
+        (`FMath.inDomain`)? NULL for NULL; NaN is in every domain."""
+        d = self.d
+        zero = d.float_lit(0.0)
+        if name == "sqrt":
+            return d.float_lt(x, zero)
+        if name in ("ln", "log10", "log2"):
+            return f"(NOT {d.float_lt(zero, x)})"
+        if name in ("asin", "acos"):
+            below, above = d.float_lt(x, d.float_lit(-1.0)), d.float_lt(d.float_lit(1.0), x)
+            return f"({below} OR ({above} AND NOT {d.is_nan(x)}))"
+        return d.bool_lit(False)
+
+    def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:
+        """`sql`, raising where the arguments are outside the function's
+        domain (`Issue.domain`): Substrait's `on_domain_error` = ERROR."""
+        if not self.d.guards or bad == self.d.bool_lit(False):
+            return sql
+        return self.d.case_when(bad, self.d.raise_("domain error", dep, kind), sql)
 
     def float_operand(self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None]) -> str:
         k = expr_kind(e, cols)

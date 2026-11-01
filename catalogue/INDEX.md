@@ -34,9 +34,9 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | F | `arg_max` |
 | fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `stddev_var` |
 | fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✗ | F | `min_max` |
-| fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✗ | F | `math_transcendental` |
+| fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | FPD |  |
 | fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | FPD |  |
-| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `math_transcendental`, `stddev_var`, `agg_arithmetic` |
+| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `stddev_var`, `agg_arithmetic` |
 | fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | ✗ | — | `rows_frame` |
 
 ## h2o

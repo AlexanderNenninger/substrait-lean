@@ -475,6 +475,40 @@ def Bound.inChrono (b : Bound) : Bool :=
 def datePartAbs (p : Time.DatePart) (a : AVal) : AVal :=
   ⟨a.nonInt || !a.int.all Bound.inChrono, a.int.map (partBound p), false, false, false⟩
 
+/-! ## Domains
+
+The elementary functions, `atan2`, `logb` and the shifts are `NULL` (an
+error, `Issue.domain`) outside their domains (`SubstraitLean/Numeric.lean`).
+Their results are "some double" or "some integer", or `NULL` where an
+argument may be outside the domain. -/
+
+/-- Is every integer in `b` at least `l`? -/
+def Bound.allGe (b : Bound) (l : Int) : Bool := b.lo.any (l ≤ ·)
+
+/-- Is every integer in `b` at most `h`? -/
+def Bound.allLe (b : Bound) (h : Int) : Bool := b.hi.any (· ≤ h)
+
+/-- Is every double `a` describes in `f`'s domain? -/
+def FMath.safe (f : FMath) (a : AVal) : Bool :=
+  a.int.all fun b => f.lo?.all b.allGe && f.hi?.all b.allLe
+
+/-- Is every pair of arguments `a`, `b` describe in the function's domain? -/
+def BinFn.domainSafe : BinFn → AVal → AVal → Bool
+  | .fatan2, a, b => a.int.all (!·.has0) || b.int.all (!·.has0)
+  | .flogb, a, b => a.int.all (·.allGe 1) && b.int.all fun y =>
+      y.allGe 1 && (y.allGe (FloatCode.one + 1) || y.allLe (FloatCode.one - 1))
+  | .bit op, _, b => !op.isShift || b.int.all fun y => y.allGe 0 && y.allLe 63
+  | _, _, _ => true
+
+/-- Some integer, or `NULL` unless the argument is `safe`. -/
+def partialAbs (safe : Bool) (a : AVal) : AVal :=
+  ⟨a.nonInt || !safe, a.int.map fun _ => Bound.top, false, false, false⟩
+
+/-- Some integer, or `NULL` unless the arguments are `safe`. -/
+def partialAbs₂ (safe : Bool) (a b : AVal) : AVal :=
+  ⟨a.nonInt || b.nonInt || !safe,
+   (match a.int, b.int with | some _, some _ => some Bound.top | _, _ => none), false, false, false⟩
+
 def UnFn.abs : UnFn → AVal → AVal
   | .not, a => ⟨a.nonBool, none, a.ff, a.tt, false⟩
   | .isNull, a => ⟨false, none, a.null, a.int.isSome || a.tt || a.ff || a.str, false⟩
@@ -506,6 +540,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .asTime, a => monoAbs id a
   | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .bucket k o, a => monoAbs (Time.bucket k o) a
+  | .fmath f, a => partialAbs (f.safe a) a
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -546,11 +581,14 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .sub, a, b | .dateDiff, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
   | .dateAdd, a, b => arith Bound.add a b
-  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
+  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fmod, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
   | .ipow, a, b => powAbs a b
+  | .fatan2, a, b => partialAbs₂ (BinFn.domainSafe .fatan2 a b) a b
+  | .flogb, a, b => partialAbs₂ (BinFn.domainSafe .flogb a b) a b
+  | .bit op, a, b => partialAbs₂ (BinFn.domainSafe (.bit op) a b) a b
   | .concat, a, b | .trim _ _, a, b =>
       ⟨a.nonStr || b.nonStr, none, false, false, a.str && b.str⟩
   | .strpos, a, b | .levenshtein, a, b =>
@@ -654,6 +692,107 @@ theorem topAbs_sound {g : Int → Int} {f : UnFn}
   · exact ⟨Bound.top, by simp [hb], Bound.mem_top _⟩
   all_goals simp_all [AVal.Mem, AVal.nonInt]
 
+theorem partialAbs_sound {f : UnFn} {g : Int → Option Int} {safe : Bool} {a : AVal}
+    (hf : ∀ v, f.apply v = match v with
+      | .int c => (match g c with | some r => .int r | none => .null) | _ => .null)
+    (hs : safe = true → ∀ c, a.Mem (.int c) → (g c).isSome = true)
+    {v : Value} (h : a.Mem v) : (partialAbs safe a).Mem (f.apply v) := by
+  rw [hf]
+  rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs'⟩ | ⟨_, rfl, hs'⟩
+  · simp [partialAbs, AVal.Mem, AVal.nonInt, hn]
+  · cases hg : g i with
+    | some r => simp only [hg]; exact ⟨Bound.top, by simp [partialAbs, hb], Bound.mem_top _⟩
+    | none =>
+      simp only [hg]
+      cases hsafe : safe
+      · simp [partialAbs, AVal.Mem]
+      · have := hs hsafe i ⟨b, hb, hi⟩; simp [hg] at this
+  all_goals simp_all [partialAbs, AVal.Mem, AVal.nonInt]
+
+theorem partialAbs₂_sound {f : BinFn} {g : Int → Int → Option Int} {safe : Bool} {a b : AVal}
+    (hf : ∀ v w, f.apply v w = match v, w with
+      | .int i, .int j => (match g i j with | some r => .int r | none => .null) | _, _ => .null)
+    (hs : safe = true → ∀ i j, a.Mem (.int i) → b.Mem (.int j) → (g i j).isSome = true)
+    {v w : Value} (ha : a.Mem v) (hb : b.Mem w) : (partialAbs₂ safe a b).Mem (f.apply v w) := by
+  rw [hf]
+  rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
+  rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ | ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>
+  simp only [] <;> try (simp_all [partialAbs₂, AVal.Mem, AVal.nonInt]; done)
+  cases hg : g i j with
+  | some r => exact ⟨Bound.top, by simp [partialAbs₂, hx, hy], Bound.mem_top _⟩
+  | none =>
+    cases hsafe : safe
+    · simp [partialAbs₂, AVal.Mem]
+    · have := hs hsafe i j ⟨x, hx, hi⟩ ⟨y, hy, hj⟩; simp [hg] at this
+
+theorem Bound.allGe_le {b : Bound} {l i : Int} (h : b.allGe l = true) (hi : b.Mem i) : l ≤ i := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.allGe, Option.any_eq_true, decide_eq_true_eq] at h
+  obtain ⟨l', rfl, hl⟩ := h
+  have := hi.1 l' rfl; omega
+
+theorem Bound.le_allLe {b : Bound} {h i : Int} (hb : b.allLe h = true) (hi : b.Mem i) : i ≤ h := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.allLe, Option.any_eq_true, decide_eq_true_eq] at hb
+  obtain ⟨h', rfl, hh⟩ := hb
+  have := hi.2 h' rfl; omega
+
+theorem FMath.inDomain_of_safe {f : FMath} {a : AVal} {c : Int} (hs : f.safe a = true)
+    (hm : a.Mem (.int c)) : f.inDomain c = true := by
+  obtain ⟨b, hb, hc⟩ := hm
+  simp only [FMath.safe, hb, Option.all_some, Bool.and_eq_true] at hs
+  simp only [FMath.inDomain, Bool.and_eq_true, Bool.or_eq_true]
+  refine ⟨?_, .inl ?_⟩
+  · cases hl : f.lo? with
+    | none => rfl
+    | some l =>
+      simp only [hl, Option.all_some] at hs
+      simpa using Bound.allGe_le hs.1 hc
+  · cases hh : f.hi? with
+    | none => rfl
+    | some h =>
+      simp only [hh, Option.all_some] at hs
+      simpa using Bound.le_allLe hs.2 hc
+
+theorem BinFn.domainSafe_atan2 {a b : AVal} (hs : BinFn.domainSafe .fatan2 a b = true) {i j : Int}
+    (hi : a.Mem (.int i)) (hj : b.Mem (.int j)) : (atan2? i j).isSome = true := by
+  obtain ⟨x, hx, hi⟩ := hi
+  obtain ⟨y, hy, hj⟩ := hj
+  simp only [BinFn.domainSafe, hx, hy, Option.all_some, Bool.or_eq_true, Bool.not_eq_true'] at hs
+  simp only [atan2?]
+  split
+  · rename_i h0
+    rcases hs with hs | hs
+    · exact absurd h0.1 (Bound.ne_zero hi hs)
+    · exact absurd h0.2 (Bound.ne_zero hj hs)
+  · rfl
+
+theorem BinFn.domainSafe_logb {a b : AVal} (hs : BinFn.domainSafe .flogb a b = true) {i j : Int}
+    (hi : a.Mem (.int i)) (hj : b.Mem (.int j)) : (logb? i j).isSome = true := by
+  obtain ⟨x, hx, hi⟩ := hi
+  obtain ⟨y, hy, hj⟩ := hj
+  simp only [BinFn.domainSafe, hx, hy, Option.all_some, Bool.and_eq_true, Bool.or_eq_true] at hs
+  obtain ⟨h1, h2, h3⟩ := hs
+  have := Bound.allGe_le h1 hi
+  have := Bound.allGe_le h2 hj
+  have hne : j ≠ FloatCode.one := by
+    rcases h3 with h3 | h3
+    · have := Bound.allGe_le h3 hj; omega
+    · have := Bound.le_allLe h3 hj; omega
+  have hc : 0 < i ∧ 0 < j ∧ j ≠ FloatCode.one := ⟨by omega, by omega, hne⟩
+  simp only [logb?, hc, ne_eq, not_false_eq_true, and_self, ↓reduceIte, Option.isSome_some]
+
+theorem BinFn.domainSafe_bit {op : BitOp} {a b : AVal} (hs : BinFn.domainSafe (.bit op) a b = true)
+    {i j : Int} (hj : b.Mem (.int j)) : (op.apply i j).isSome = true := by
+  obtain ⟨y, hy, hj⟩ := hj
+  cases op <;> simp only [BinFn.domainSafe, BitOp.isShift, hy, Option.all_some, Bool.not_true,
+    Bool.false_or, Bool.and_eq_true] at hs <;> simp only [BitOp.apply, Option.isSome_some]
+  all_goals
+    have := Bound.allGe_le hs.1 hj
+    have := Bound.le_allLe hs.2 hj
+    have hc : 0 ≤ j ∧ j < 64 := ⟨by omega, by omega⟩
+    simp only [hc, and_self, ↓reduceIte, Option.isSome_some]
+
 theorem datePartAbs_sound (p : Time.DatePart) {a : AVal} {v : Value} (h : a.Mem v) :
     (datePartAbs p a).Mem (UnFn.apply (.datePart p) v) := by
   rcases mem_cases h with ⟨rfl, hn⟩ | ⟨ts, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
@@ -706,6 +845,9 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case fmath f =>
+    exact partialAbs_sound (fun v => by cases v <;> rfl)
+      (fun hs c hm => by simp [FMath.apply, FMath.inDomain_of_safe hs hm]) h
   case itos =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
@@ -912,10 +1054,20 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fdiv => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fmod => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ipow => exact powAbs_sound ha hb
+  case fatan2 =>
+    exact partialAbs₂_sound (fun v w => by cases v <;> cases w <;> rfl)
+      (fun hs _ _ hi hj => BinFn.domainSafe_atan2 hs hi hj) ha hb
+  case flogb =>
+    exact partialAbs₂_sound (fun v w => by cases v <;> cases w <;> rfl)
+      (fun hs _ _ hi hj => BinFn.domainSafe_logb hs hi hj) ha hb
+  case bit op =>
+    exact partialAbs₂_sound (fun v w => by cases v <;> cases w <;> rfl)
+      (fun hs _ _ _ hj => BinFn.domainSafe_bit hs hj) ha hb
   case concat | trim | strpos | startsWith | endsWith | like | substr | strRepeat | ilike
     | levenshtein =>
     rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>

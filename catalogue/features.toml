@@ -2,7 +2,7 @@
 #
 # `lean` is what `sverify` covers today on the way into Lean (its Ibis
 # producer for Ibis expressions, DataFusion's for SQL) and in the Lean model
-# and `substrait-check`, found by probing (`sverify.coverage` and the
+# and `substrait-check`, found by probing (`sverify_dev.coverage` and the
 # catalogue's own probes), not by reading:
 #   yes      it reaches the checker, which parses it and `Rel.eval` gives it SQL's meaning;
 #   partial  some forms only (the note says which);
@@ -107,7 +107,7 @@ dynamic_interval = { lean = "partial", description = "an interval built from a c
 interval_month = { lean = "yes", description = "x ± INTERVAL in months or years", note = "constant months added to a date or timestamp, clamped to the end of a shorter month (`Time.addMonths`), before any days, as DataFusion does" }
 date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps, and Ibis's DateDiff/delta of dates (`BinFn.dateDiff`); DataFusion's DATE - DATE is refused: a duration it compares wrongly with intervals" }
 interval_to_number = { lean = "partial", description = "a duration as a number of seconds (time weighting, rates per second)", note = "Ibis epoch_seconds() differences and delta(unit=\"day\") of dates work; casting an interval to a number is refused" }
-math_transcendental = { lean = "no", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "unsupported function ln/1" }
+math_transcendental = { lean = "yes", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "C's libm, with an error outside a function's domain (`SubstraitLean/Numeric.lean`); Spark runs only SQRT, Snowflake none of them" }
 epoch = { lean = "partial", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "Ibis epoch_seconds() works (built from date parts), and so do to_char/strftime with %Y %m %d %H %M %S %j %F %T; date_part('EPOCH') and other directives are refused" }
 time_of_day = { lean = "yes", description = "TIME values: CAST(ts AS TIME), clock parts, comparisons", note = "microseconds since midnight (`Kind.tod`); time + interval and truncating a time are refused (DataFusion cannot add intervals to times)" }
 timezone = { lean = "no", description = "time zones (AT TIME ZONE, tz-aware timestamps)" }

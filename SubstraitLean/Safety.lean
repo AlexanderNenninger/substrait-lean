@@ -14,7 +14,10 @@ through nanoseconds and gives garbage outside them (1677 to 2262), which is
 reported as an error too. Integer `+`, `-`, `*` and negation do not fail:
 they wrap around silently, so the result differs from `Rel.eval`'s
 (unbounded) integers; so does `date_trunc` to a day or less below `-2⁶³`. All of these are
-`Issue`s; wrapping is a warning, the rest are errors.
+`Issue`s; wrapping is a warning, the rest are errors. So are arguments
+outside a function's domain (`sqrt` of a negative, a shift by 64, …,
+`SubstraitLean/Numeric.lean`), where the reference raises and DataFusion
+gives an IEEE value or a wrapped shift instead: an error allows that.
 
 **When does DataFusion evaluate an expression?** (Checked against DataFusion
 51; this is the trusted part of the model.)
@@ -65,6 +68,13 @@ inductive Issue where
   from `wraps` because it comes from a group's rows, not from one row:
   `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
+  /-- An argument outside a function's domain (`SubstraitLean/Numeric.lean`):
+  `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
+  outside `[-1, 1]`, `atan2(0, 0)`, `logb` to a base that is not positive or
+  is 1, a shift count outside `0`–`63`. The reference raises (Substrait's
+  `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
+  instead, which an error allows (a refinement, epic #185). -/
+  | domain
   deriving Repr, DecidableEq
 
 def Issue.name : Issue → String
@@ -74,6 +84,7 @@ def Issue.name : Issue → String
   | .negExponent => "negative exponent"
   | .badRegex => "invalid regular expression"
   | .wraps | .sumWraps => "may wrap around"
+  | .domain => "domain error"
 
 /-- The arguments of a list of window functions' integer `SUM`s. -/
 def WinFn.sumArg? (fns : List WinFn) : List Expr :=
@@ -87,6 +98,9 @@ def Issue.isError : Issue → Bool
 def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)
 
 def wrapIf (i : Int) : Option Issue := if inI64 i then none else some .wraps
+
+/-- A domain error where a partial function has no result. -/
+def domainIssue (r : Option Int) : Option Issue := if r.isSome then none else some .domain
 
 def withinRange (lo hi i : Int) : Bool := decide (lo ≤ i) && decide (i ≤ hi)
 
@@ -117,6 +131,7 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .timeOfDay, .int ts | .strftime _, .int ts => rangeIssue Time.partMin Time.partMax ts ts
   -- DataFusion bins in nanoseconds, which wrap around outside ±2⁶³.
   | .bucket k o, .int ts => rangeIssue Time.nsMin Time.nsMax ts (Time.bucket k o ts)
+  | .fmath f, .int c => domainIssue (f.apply c)
   | _, _ => none
 
 def BinFn.issue : BinFn → Value → Value → Option Issue
@@ -126,12 +141,15 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .dateAdd, .int a, .int b => rangeIssue Time.dayMin Time.dayMax a (a + b)
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
-  | .imod, .int _, .int b => if b = 0 then some .divByZero else none
+  | .imod, .int _, .int b | .fmod, .int _, .int b => if b = 0 then some .divByZero else none
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
     else if inI64 (a ^ b.toNat) then none else some .overflow
   | .strRepeat, .str s, .int n => if Text.repeatFits s n then none else some .overflow
+  | .fatan2, .int y, .int x => domainIssue (atan2? y x)
+  | .flogb, .int x, .int b => domainIssue (logb? x b)
+  | .bit op, .int a, .int b => domainIssue (op.apply a b)
   | _, _, _ => none
 
 /-- The issues evaluating `e` on `row` runs into, each with the operation
@@ -210,6 +228,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .addMonths _ true, aa, ar => rangeMay Time.partMin Time.partMax aa ar
   | .timeOfDay, aa, _ | .strftime _, aa, _ => rangeMay Time.partMin Time.partMax aa aa
   | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
+  | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
   | _, _, _ => []
 
 /-- `|a|ᵏ` for the largest `|a|` in a finite interval. -/
@@ -249,11 +268,14 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .dateAdd, aa, _, ar, _, _ => rangeMay Time.dayMin Time.dayMax aa ar
   | .idiv, _, _, ar, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
-  | .imod, _, _, _, nz, _ => if nz then [] else [.divByZero]
+  | .imod, _, _, _, nz, _ | .fmod, _, _, _, nz, _ => if nz then [] else [.divByZero]
   | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
   | .strRepeat, _, ab, _, _, sz => repeatMay sz ab
+  | .fatan2, aa, ab, _, _, _ => if BinFn.domainSafe .fatan2 aa ab then [] else [.domain]
+  | .flogb, aa, ab, _, _, _ => if BinFn.domainSafe .flogb aa ab then [] else [.domain]
+  | .bit op, aa, ab, _, _, _ => if BinFn.domainSafe (.bit op) aa ab then [] else [.domain]
   | _, _, _, _, _, _ => []
 
 /-- Is `x`'s value never the integer 0? From its interval, an assumption
@@ -346,6 +368,15 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     (ha : aa.Mem v) (hr : ar.Mem (f.apply v)) (hk : f.issue v = some k) : k ∈ f.mayIssue aa ar := by
   cases f <;> cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+  case fmath.int f c =>
+    simp only [domainIssue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    simp only [UnFn.mayIssue]
+    split
+    · rename_i hn hs
+      simp [FMath.apply, FMath.inDomain_of_safe hs ha] at hn
+    · simp
   case neg.int i =>
     simp only [wrapIf] at hk
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
@@ -478,6 +509,18 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply] using hr)) hn
     · simp
   case dateAdd.int.int i j => exact rangeIssue_sound ha (by simpa [BinFn.apply] using hr) hk
+  case fatan2.int.int i j | flogb.int.int i j | bit.int.int op i j =>
+    simp only [domainIssue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    simp only [BinFn.mayIssue]
+    split
+    · rename_i hn hs
+      first
+        | exact absurd (BinFn.domainSafe_atan2 hs ha hb) hn
+        | exact absurd (BinFn.domainSafe_logb hs ha hb) hn
+        | exact absurd (BinFn.domainSafe_bit hs hb) hn
+    · simp
   case strRepeat.str.int s n =>
     simp only [BinFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
@@ -498,7 +541,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       · rename_i hn hfits
         exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply, hj] using hr)) hn
       · simp
-  case imod.int.int i j =>
+  case imod.int.int i j | fmod.int.int i j =>
     simp only [BinFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     subst hk
