@@ -39,6 +39,9 @@ to print rows rather than print wrong ones.
 
 namespace Substrait.Text
 
+/-- The characters at 1-based positions `a … a+n-1` that exist (Substrait's
+`negative_start` = `LEFT_OF_BEGINNING`: a start below 1 is left of the first
+character). -/
 def substr (s : String) (a : Int) (n : Option Nat) : String :=
   let cs := s.toList
   let lo := (a - 1).toNat
@@ -46,6 +49,19 @@ def substr (s : String) (a : Int) (n : Option Nat) : String :=
     | some n => (a - 1 + n).toNat
     | none => cs.length
   String.ofList ((cs.drop lo).take (hi - lo))
+
+/-- `substring` with `negative_start` = `WRAP_FROM_END`, the reference's
+choice when the plan omits it (#209): a negative start counts from the end,
+`-1` being the last character, so `substring('hello', -2, 2) = 'lo'`. A start
+that wraps to before the first character, and a start of 0, are left of the
+beginning, as DuckDB has it. -/
+def substrWrap (s : String) (a : Int) (n : Option Nat) : String :=
+  substr s (if a < 0 then a + s.length + 1 else a) n
+
+#guard substrWrap "hello" (-2) (some 2) == "lo" && substrWrap "hello" (-2) none == "lo"
+#guard substrWrap "hello" (-10) (some 7) == "he" && substrWrap "hello" 0 (some 2) == "h"
+#guard substrWrap "hello" (-6) (some 2) == "h" && substrWrap "hello" (-5) (some 1) == "h"
+#guard substrWrap "hello" 2 (some 3) == substr "hello" 2 (some 3)
 
 def findFrom (t : List Char) : List Char → Nat → Option Nat
   | cs, i =>

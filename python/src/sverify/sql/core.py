@@ -715,7 +715,8 @@ class Bin:
     sides: tuple[bool, bool] = (True, True)
     """`left` and `right` of `trim`."""
     param: str = ""
-    """The operation of `bit` (`BitOp.name`)."""
+    """The operation of `bit` (`BitOp.name`); `LEFT_OF_BEGINNING` for a
+    `substr` whose negative start does not wrap from the end."""
 
 
 #: `FMath.name`: elementary functions of a double (`SubstraitLean/Numeric.lean`).
@@ -1745,7 +1746,16 @@ class _Parser:
                 if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                     op = "idiv" if name == "divide" else "imod"
                     return _div_by_zero(mode, False, op, *parsed)
-                return _call(name, parsed)
+                out_e = _call(name, parsed)
+                if isinstance(out_e, Bin) and out_e.op == "substr":
+                    # A negative start wraps from the end unless the plan says
+                    # otherwise (`Text.substrWrap`, #209).
+                    start = _option(v, "negative_start", "WRAP_FROM_END")
+                    if start not in ("WRAP_FROM_END", "LEFT_OF_BEGINNING"):
+                        raise Unsupported(f"substring with negative_start = {start}")
+                    if start == "LEFT_OF_BEGINNING":
+                        out_e = replace(out_e, param=start)
+                return out_e
             case "ifThen":
                 # A `CASE` without `ELSE` is `ELSE NULL`.
                 orelse = _field(v, "else")
@@ -2573,13 +2583,18 @@ def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
     return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
 
 
-def _div_by_zero_mode(f: dict) -> str:
-    """`Parse.divByZeroMode`: the first preference of `on_division_by_zero`,
-    or ERROR when the plan omits it."""
+def _option(f: dict, name: str, default: str) -> str:
+    """`Parse.optionPref`: the first preference of option `name`, or `default`
+    when the plan omits it."""
     for o in _arr(f, "options"):
-        if o.get("name") == "on_division_by_zero" and o.get("preference"):
+        if o.get("name") == name and o.get("preference"):
             return o["preference"][0]
-    return "ERROR"
+    return default
+
+
+def _div_by_zero_mode(f: dict) -> str:
+    """`Parse.divByZeroMode`: `on_division_by_zero`, ERROR when omitted."""
+    return _option(f, "on_division_by_zero", "ERROR")
 
 
 def _div_by_zero(
@@ -3500,9 +3515,15 @@ class _Writer:
                 return self.ascii_only(
                     d.concat(sa, sb), d.levenshtein(sa, sb), "levenshtein", "int"
                 )
-            case Bin(op="substr", left=a, right=b, length=length):
+            case Bin(op="substr", left=a, right=b, length=length, param=start):
                 sa = self.operand(a, "str", ref, cols, "substring")
                 sb = self.int_operand(b, ref, cols, "substring")
+                if start != "LEFT_OF_BEGINNING" and not (
+                    isinstance(b, Lit) and isinstance(b.value, int) and b.value >= 0
+                ):
+                    # `Text.substrWrap`: a negative start counts from the end.
+                    shifted = d.int_add(d.int_add(sb, d.char_length(sa)), d.int_lit(1))
+                    sb = f"(CASE WHEN {sb} < {d.int_lit(0)} THEN {shifted} ELSE {sb} END)"
                 return self.substring(sa, sb, length)
             case Bin(op="trim", left=a, right=b, sides=sides):
                 sa, sb = (self.operand(x, "str", ref, cols, "trim") for x in (a, b))

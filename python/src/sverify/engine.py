@@ -43,6 +43,7 @@ from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
 from sverify.ibis_substrait import Unsupported, to_substrait_json
+from sverify.sql import core as sql
 
 Engine = Literal["duckdb", "polars", "datafusion"]
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
@@ -679,7 +680,43 @@ def datafusion_plan(plan_json: str) -> str:
     if code != 0:
         msg = (err or out).strip().splitlines()[-1:]
         raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
+    _check_datafusion_substrings(json.loads(out))
     return out
+
+
+def _check_datafusion_substrings(plan: dict) -> None:
+    """DataFusion's `substring` puts a negative start left of the beginning;
+    the reference counts it from the end (`Text.substrWrap`, #209). Refuse a
+    plan whose start may be negative unless it asks for `LEFT_OF_BEGINNING`."""
+    names = {
+        e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
+        for e in plan.get("extensions", [])
+        if "extensionFunction" in e
+    }
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            f = node.get("scalarFunction")
+            if isinstance(f, dict) and names.get(f.get("functionReference")) == "substring":
+                left = any(
+                    o.get("name") == "negative_start"
+                    and o.get("preference", [])[:1] == ["LEFT_OF_BEGINNING"]
+                    for o in f.get("options", [])
+                )
+                args = f.get("arguments", [])
+                lit = args[1].get("value", {}).get("literal", {}) if len(args) > 1 else {}
+                start = next((v for k, v in lit.items() if k in ("i8", "i16", "i32", "i64")), None)
+                if not left and (start is None or int(start) < 0):
+                    raise sql.Unsupported(
+                        "DataFusion's substring does not count a negative start from the end"
+                    )
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan)
 
 
 def run_plan(con: Connection, plan_json: str, engine: Engine | Any = None) -> pa.Table:

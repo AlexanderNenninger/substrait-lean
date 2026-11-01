@@ -1187,9 +1187,10 @@ the engine:
   counts the first row of each value, integer `SUM` raises outside 64 bits,
   and doubles are added in Lean's order (`list_reduce` over a list ordered
   by the ordinal), so the result has Lean's bits, not DataFusion's;
-* strings: lengths and positions count characters, a `substring` start below
-  1 is handled before it reaches the engine (which would count it from the
-  end), and `LIKE` names its escape character;
+* strings: lengths and positions count characters, a negative `substring`
+  start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
+  (either way the start is normalized before it reaches the engine), and
+  `LIKE` names its escape character;
 * `date_part` and `date_trunc` use the engine's calendar functions where they
   agree with `SubstraitLean/Time.lean` (ISO weeks, `dow` from Sunday,
   milliseconds within the minute), and the SQL raises where DataFusion's

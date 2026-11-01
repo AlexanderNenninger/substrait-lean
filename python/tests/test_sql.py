@@ -168,7 +168,7 @@ def integral(v: object) -> object:
     return int(v) if isinstance(v, Decimal) and v == int(v) else v
 
 
-def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list[tuple]]:
+def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple] | None, list[tuple]]:
     """The plan's rows on DataFusion and on DuckDB. DataFusion runs the plan
     as Lean writes it for DataFusion (`run_plan`, `--write-datafusion`): some
     fixtures are hand-written in encodings its protobuf parser no longer
@@ -176,7 +176,12 @@ def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list
     con = connect()
     for name, t in tables.items():
         put_table(con, name, t)
-    df = [tuple(map(integral, r)) for r in arrow_rows(run_plan(con, plan_json, "datafusion"))]
+    try:
+        df = [tuple(map(integral, r)) for r in arrow_rows(run_plan(con, plan_json, "datafusion"))]
+    except Unsupported:
+        # DataFusion cannot be made to give the reference result (a
+        # `substring` from a negative start, #209): only DuckDB and Lean.
+        df = None
     return df, duckdb_rows(plan_json, tables)
 
 
