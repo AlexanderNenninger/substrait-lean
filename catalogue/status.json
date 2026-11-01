@@ -109,8 +109,7 @@
  },
  "fin-running-balance": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "detail": "error: window aggregates of expressions are not supported; use a column",
   "datafusion": "runs",
   "as_double": {
    "checker": "verified",
@@ -124,159 +123,103 @@
   }
  },
  "fin-velocity-check": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "fin-impossible-travel": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": true,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": true,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql"
   }
  },
  "fin-duplicate-payments": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": true,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": true,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql"
   }
  },
  "fin-structuring": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "fin-reconciliation": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql"
   }
  },
  "fin-double-entry-check": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "fin-ar-aging": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "differs",
-    "polars": "differs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "fin-rfm": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "fin-dormant-reactivation": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(18, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql (tie_free)"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "sql (tie_free)"
   }
  },
  "fin-vwap": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Divide is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate Divide is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "duckdb": "error: Invalid Input Error: sverify: division by zero: 0.0",
+   "polars": "error: divide by zero (1 row(s))",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
  "fin-ohlc": {
@@ -336,12 +279,12 @@
  "fin-realized-volatility": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "aggregate Multiply is not supported",
+  "detail": "aggregate StandardDev is not supported",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
-   "detail": "aggregate Multiply is not supported",
+   "detail": "aggregate StandardDev is not supported",
    "datafusion": "runs"
   }
  },
@@ -434,7 +377,7 @@
  "h2o-groupby-q9": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "aggregate Power is not supported",
+  "detail": "aggregate Correlation is not supported",
   "datafusion": "runs"
  },
  "h2o-groupby-q10": {
@@ -506,10 +449,14 @@
   }
  },
  "iot-time-weighted-average": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Divide is not supported",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  }
  },
  "iot-silent-devices": {
   "checker": "verified",
@@ -599,8 +546,7 @@
  },
  "iot-daily-energy": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Subtract is not supported",
+  "detail": "error: max of doubles is not supported",
   "datafusion": "runs"
  },
  "iot-event-correlation": {
@@ -1110,35 +1056,23 @@
   "datafusion": "runs"
  },
  "tpcds-q03": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(7, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpcds-q07": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(7, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpcds-q27": {
@@ -1162,25 +1096,18 @@
   }
  },
  "tpcds-q42": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(7, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpcds-q51": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(7, 2) is not supported",
+  "detail": "error: window aggregates of expressions are not supported; use a column",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
@@ -1190,8 +1117,7 @@
  },
  "tpcds-q89": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(38, 2) is not supported",
+  "detail": "error: avg of DECIMAL over a window is not supported yet (#27)",
   "datafusion": "runs",
   "as_double": {
    "checker": "verified",
@@ -1206,8 +1132,7 @@
  },
  "tpcds-q98": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(7, 2) is not supported",
+  "detail": "error: window aggregates of expressions are not supported; use a column",
   "datafusion": "runs",
   "as_double": {
    "checker": "verified",
@@ -1221,333 +1146,223 @@
   }
  },
  "tpch-q01": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q02": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "detail": "error: min of doubles is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "duckdb": "refused: min of this type is not supported",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: min of this type is not supported"
   }
  },
  "tpch-q03": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q04": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql (tie_free)"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "sql (tie_free)"
   }
  },
  "tpch-q05": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q06": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q07": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q08": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q09": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q10": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q11": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate Multiply is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q12": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql (tie_free)"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "sql (tie_free)"
   }
  },
  "tpch-q13": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql (tie_free)"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "sql (tie_free)"
   }
  },
  "tpch-q14": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate Divide is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q15": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "detail": "error: max of doubles is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q16": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs (DataFusion's SQL differs)",
-    "polars": "runs (DataFusion's SQL differs)",
-    "snowflake": "sql (tie_free)"
-   }
+  "engines": {
+   "duckdb": "runs (DataFusion's SQL differs)",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "sql (tie_free)"
   }
  },
  "tpch-q17": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate Divide is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q18": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(38, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q19": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q20": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(38, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "tpch-q21": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "sql (tie_free)"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "sql (tie_free)"
   }
  },
  "tpch-q22": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "type decimal(15, 2) is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
-   }
+  "engines": {
+   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
+   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
   }
  },
  "win-dedup-latest": {

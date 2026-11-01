@@ -533,13 +533,17 @@ def probe_profile(
         lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
         detail = _first_line((lines or [out])[-1])
         return {"checker": "rejected", "detail": detail, "datafusion": ran}
+    try:
+        engines = probe_engines(con, written_plan(plan), reference, lambda: duckdb_rows(con, query))
+    except ValueError as e:
+        # `--write` refuses what no engine runs yet (decimals, #27).
+        detail = _first_line(e).split("rejects the plan: ")[-1].strip("[]'\"")
+        engines = dict.fromkeys(("polars", "duckdb", "snowflake"), f"refused: {detail}")
     result: dict[str, Any] = {
         "checker": "verified",
         "incremental": "incremental: yes" in out,
         "datafusion": ran,
-        "engines": probe_engines(
-            con, written_plan(plan), reference, lambda: duckdb_rows(con, query)
-        ),
+        "engines": engines,
     }
     if q.requires is not None:
         c = result["contract"] = probe_contract(con, q, schemas, profile, query)
@@ -676,7 +680,7 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"RecursiveQuery", {"recursive_cte"}),
     (r"Unnest", {"unnest", "generate_series"}),
     # sverify's Ibis producer
-    (r"type decimal\(", {"decimal"}),
+    (r"type decimal\(|of DECIMAL", {"decimal"}),
     (r"DateAdd|DateSub", {"interval_month", "interval_day_time", "dynamic_interval"}),
     (r"intervals in months", {"interval_month"}),
     (r"IntervalFromInteger", {"dynamic_interval"}),
