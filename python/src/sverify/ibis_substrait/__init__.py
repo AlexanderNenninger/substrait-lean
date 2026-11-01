@@ -348,6 +348,67 @@ def reference(segment: Json, expr: Json) -> Json:
     return {"selection": {"directReference": segment, "expression": expr}}
 
 
+#: The parameter of the innermost lambda.
+PARAM = {
+    "selection": {"directReference": {"structField": {"field": 0}}, "lambdaParameterReference": {}}
+}
+
+
+class _Body(Exprs):
+    """A lambda's body. The model's lambdas are closed (#94): the body reads
+    its parameter and constants, not the table's columns or an outer lambda's
+    parameter."""
+
+    def __init__(self, param: Any):
+        super().__init__({})
+        self.param = param
+
+    def translate(self, op: Any) -> Json:
+        if isinstance(op, ops.Argument):
+            if op != self.param:
+                raise Unsupported(
+                    "a lambda body that reads an outer lambda's parameter is not supported yet"
+                )
+            return PARAM
+        if isinstance(op, ops.Field):
+            raise Unsupported("a lambda body that reads the table's columns is not supported yet")
+        return super().translate(op)
+
+
+def lambda_json(param_type: Any, body: Json) -> Json:
+    """A lambda of one parameter of type `param_type`."""
+    params = {"types": [type_json(param_type)], "nullability": "NULLABILITY_REQUIRED"}
+    return {"lambda": {"parameters": params, "body": body}}
+
+
+def _higher_order(name: str) -> Callable[[Exprs, Any], Json]:
+    """`array.map(f)` and `array.filter(f)`: `transform` and `filter` with
+    `f` as a lambda (#94)."""
+
+    def rule(x: Exprs, op: Any) -> Json:
+        if op.index is not None:
+            raise Unsupported("lambdas that take the element's index are not supported")
+        body = _Body(op.param)(op.body)
+        return call(name, [x(op.arg), lambda_json(op.arg.dtype.value_type, body)])
+
+    return rule
+
+
+def _array_contains(x: Exprs, op: Any) -> Json:
+    # Ibis's `contains` is true where an element IS NOT DISTINCT FROM the
+    # value, as Polars has it: `any_match` with that predicate (#94). The
+    # lambda is closed, so the value is a constant.
+    if not isinstance(op.other, ops.Literal):
+        raise Unsupported(
+            "contains needs a constant value (a lambda reading a column is not supported yet)"
+        )
+    elem = op.arg.dtype.value_type
+    t = _common(elem, op.other.dtype)
+    param = PARAM if same_type(elem, t) or elem.is_null() else cast_json(PARAM, t)
+    body = call("is_not_distinct_from", [param, literal(op.other.value, t)])
+    return call("any_match", [x(op.arg), lambda_json(elem, body)])
+
+
 def _struct_field(x: Exprs, op: Any) -> Json:
     # A struct is positional in the model: the field by its ordinal.
     i = list(op.arg.dtype.names).index(op.field)
@@ -967,6 +1028,9 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.StructField: _struct_field,
     ops.ArrayIndex: _array_index,
     ops.ArrayLength: _unary("cardinality"),
+    ops.ArrayContains: _array_contains,
+    ops.ArrayMap: _higher_order("transform"),
+    ops.ArrayFilter: _higher_order("filter"),
     ops.StrRight: _str_right,
     ops.StringReplace: _replace,
     ops.StringAscii: _unary("ascii"),

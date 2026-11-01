@@ -60,7 +60,8 @@ def nestedFns : List (Nat × String) := [
   -- reads back as `lt`. Engines order lists with NULL elements their own
   -- way, so each needs to know a comparison is of lists (#207).
   (400, "list_lt"),
-  (401, "cardinality")]
+  (401, "cardinality"), (402, "any_match"), (403, "all_match"), (404, "transform"),
+  (405, "filter")]
 
 /-- Aggregate functions: new anchors 500–599. -/
 def aggregateFns : List (Nat × String) := [
@@ -221,6 +222,7 @@ def WKind.toKind : WKind → Parse.Kind
 def isConst : Expr → Bool
   | .lit _ => true
   | .field _ => false
+  | .hof _ l _ => isConst l
   | .un _ a => isConst a
   | .bin _ a b => isConst a && isConst b
   | .ifThen c t e => isConst c && isConst t && isConst e
@@ -347,6 +349,21 @@ def isLit : Expr → Bool
 def reference (seg e : Json) : Json :=
   obj [("selection", obj [("directReference", seg), ("expression", e)])]
 
+def HoFn.anchor : HoFn → Nat
+  | .anyMatch => 402 | .allMatch => 403 | .transform => 404 | .filter => 405
+
+/-- A closed lambda's body, written over the row `[x]`, with its references
+into the row as references to the lambda's parameter (`Parse.closeBody`
+reads them back). Nested lambdas are written already. -/
+partial def paramRefs : Json → Json
+  | .arr xs => .arr (xs.map paramRefs)
+  | j@(.obj kvs) =>
+    let es := Parse.entries kvs
+    if es.any (·.1 == "lambda") then j
+    else Json.mkObj (es.map fun (k, v) =>
+      if k == "rootReference" then ("lambdaParameterReference", obj []) else (k, paramRefs v))
+  | j => j
+
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
 def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
@@ -436,6 +453,14 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .ifThen c t e => obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool c), ("then", writeExpr cols ctx t)]]),
       ("else", writeExpr cols ctx e)])]
+  | .hof f l b =>
+    let kl := wkind cols l
+    let elem := match kl with | .list k => k | _ => .other
+    let lam := obj [("lambda", obj [
+      ("parameters", obj [("types", Json.arr #[kindType elem.toKind]),
+        ("nullability", "NULLABILITY_REQUIRED")]),
+      ("body", paramRefs (writeExpr [elem] (wkind [elem] b) b))])]
+    call (HoFn.anchor f) [writeExpr cols kl l, lam]
 
 /-- `baseSchema` of each table: the parsed one, or a placeholder of `i64`
 columns for tables the parser never saw. -/
@@ -485,6 +510,7 @@ def _root_.Substrait.Expr.decimalOps : Expr → Bool
   | .bin f a b =>
     (match f with | .dadd | .dsub | .dmul | .ddiv => true | _ => false) || a.decimalOps || b.decimalOps
   | .ifThen c t e => c.decimalOps || t.decimalOps || e.decimalOps
+  | .hof _ l b => l.decimalOps || b.decimalOps
 
 /-- Does some expression of the plan satisfy `p`? -/
 def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
@@ -500,9 +526,10 @@ def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
 
 def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOps
 
-/-- Does the expression reach into a struct or a list, or count a list (#94)?
-DataFusion 51 reads a reference into a value as a reference into the row, and
-its `cardinality([])` is NULL, so it gets no plans with these. -/
+/-- Does the expression reach into a struct or a list, count a list, or take
+a lambda (#94)? DataFusion 51 reads a reference into a value as a reference
+into the row, its `cardinality([])` is NULL, and its consumer has no lambdas,
+so it gets no plans with these. -/
 def _root_.Substrait.Expr.nestedAccess : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
@@ -510,6 +537,7 @@ def _root_.Substrait.Expr.nestedAccess : Expr → Bool
       a.nestedAccess
   | .bin _ a b => a.nestedAccess || b.nestedAccess
   | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
+  | .hof _ _ _ => true
 
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
@@ -623,6 +651,8 @@ def readsOnly (p : Nat → Bool) (e : Expr) : Bool :=
     | .bin _ a b => let (x, y) := go a; let (z, w) := go b; (x || z, y && w)
     | .ifThen c t e =>
       let (x, y) := go c; let (z, w) := go t; let (u, v) := go e; (x || z || u, y && w && v)
+    -- A lambda's body reads its parameter, not the row.
+    | .hof _ l _ => go l
   let (reads, all) := go e
   reads && all
 

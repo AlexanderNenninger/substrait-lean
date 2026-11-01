@@ -129,7 +129,7 @@ Polars, Spark, DataFusion):
   x -> p)`, which ORs the predicate's results in Kleene logic. The frontend
   chooses the predicate: Ibis's `contains` is `x IS NOT DISTINCT FROM v`
   (NULL matches NULL), and SQL functions keep their engine's meaning (Spark's
-  `array_contains` is `x = v`). This needs lambdas in `Expr` (a follow-up).
+  `array_contains` is `x = v`).
 
 The parser reads a reference into the input row with nested segments
 (`structField` with a `child`), and a reference into an expression's value
@@ -138,6 +138,33 @@ invalid plan, so it is refused. The writer writes both as references into the
 value. The abstraction does not look into lists: an element or a field is
 `AVal.top`, and a cardinality is a non-negative integer or NULL.
 
+## Lambdas (#94)
+
+`Expr.hof f l body` is a higher-order function of the list `l`
+(`functions_list.yaml`): `any_match` and `all_match` (the predicate's results
+ORed and ANDed in Kleene logic, `FALSE` and `TRUE` for `[]`), `transform`
+and `filter` (the elements the predicate is `TRUE` for). Each is `NULL` for a
+NULL list (`HoFn.apply`).
+
+**Lambdas are closed.** The body reads only its parameter, as field 0, and
+constants; it is evaluated on the one-field row `[x]`. So `Expr.eval` stays
+structurally recursive, the body is analysed like any expression (over
+`[AVal.top]`, without facts), and the functions that renumber a row's columns
+(`mapFields`, `shift`, `subst`) leave it alone. Reading the row's columns or
+an outer lambda's parameter (Substrait's `steps_out` > 0) is refused for now;
+both need parameter environments in `eval` and its proofs. Ibis's
+`contains(v)` therefore takes a constant `v`.
+
+* **Errors:** the body runs on every element, so its issues on any element
+  are the row's (`Expr.issues`, `Expr.mayIssues_sound`). `verify` reports
+  `x -> x * 2` as possibly wrapping around, and Polars raises where it does.
+* **Contracts:** `any_match` and `all_match` give a boolean or NULL;
+  `transform` and `filter` a list or NULL (`HoFn.abs`).
+* **Plans:** Substrait's `Lambda` with one parameter. Its body's references
+  are `lambdaParameterReference`s; the parser reads them as references into
+  `[x]` (`Parse.closeBody`) and the writer writes them back
+  (`Write.paramRefs`).
+
 ## Engines
 
 Polars runs lists, `collect` (sorting each group's rows when the measure is
@@ -145,11 +172,14 @@ ordered) and `UNNEST` (filtering empty and NULL lists before `explode`). The
 SQL dialects (DuckDB, Snowflake, Spark) refuse them with `Unsupported` for
 now; DuckDB's `ARRAY_AGG … ORDER BY` and `UNNEST` are part of #94.
 
-Polars also runs struct fields, list elements and `cardinality`. The SQL
+Polars also runs struct fields, list elements, `cardinality` and the
+higher-order functions (the body on `pl.element()` in `list.eval`; a body's
+errors are checked over every element). The SQL
 dialects refuse struct columns and references into values. DataFusion 51
 gets no plan with them (`Expr.nestedAccess`): its consumer reads a
 reference into an expression's value as a reference into the row, which gives
-a wrong column, and its `cardinality([])` is NULL.
+a wrong column, its `cardinality([])` is NULL, and it has no lambdas. The SQL
+dialects refuse lambdas too.
 
 ## Types in plans
 
@@ -166,11 +196,12 @@ the columns.
 
 ## Follow-ups (#94)
 
-Done: struct field access, list elements and `cardinality` (see above), on
+Done: struct field access, list elements and `cardinality`; closed lambdas
+with `any_match`, `all_match`, `transform` and `filter` (see above), on
 Polars. Still to do:
 
-* lambdas (`Expr` needs `Lambda` and lambda parameter references), and with
-  them `any_match` for `contains`, and `transform`/`filter`;
+* lambdas that read the row's columns or an outer lambda's parameter (so
+  `contains` of a column);
 * struct construction;
 * lists and structs in the SQL dialects (DuckDB first);
 * slicing, and `list.sum`/`min`/`max`/`sort`/`unique`.

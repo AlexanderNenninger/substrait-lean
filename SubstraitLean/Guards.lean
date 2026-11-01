@@ -57,6 +57,7 @@ def Expr.evalI (I : Impl) (row : Row) : Expr → Value
   | .un f a => I.un f (a.evalI I row)
   | .bin f a b => I.bin f (a.evalI I row) (b.evalI I row)
   | .ifThen c t e => if (c.evalI I row).isTrue then t.evalI I row else e.evalI I row
+  | .hof f l b => f.apply (l.evalI I row) fun x => b.evalI I [x]
 
 /-- **Unchecked evaluation is exact** where no issue happens. -/
 theorem Expr.evalI_eq {I : Impl} (hI : I.Faithful) {row : Row} :
@@ -76,6 +77,10 @@ theorem Expr.evalI_eq {I : Impl} (hI : I.Faithful) {row : Row} :
     split
     · rename_i hc; simp only [hc, ↓reduceIte] at h; exact evalI_eq hI h.2
     · rename_i hc; simp only [hc, Bool.false_eq_true, ↓reduceIte] at h; exact evalI_eq hI h.2
+  | .hof f l b, h => by
+    simp only [issues, List.append_eq_nil_iff, List.flatMap_eq_nil_iff] at h
+    simp only [evalI, eval, evalI_eq hI h.1]
+    exact HoFn.apply_congr f _ fun x hx => evalI_eq hI (h.2 x hx)
 
 theorem UnFn.issue_ne_sumWraps (f : UnFn) (v : Value) : f.issue v ≠ some .sumWraps := by
   unfold UnFn.issue wrapIf rangeIssue domainIssue
@@ -107,6 +112,11 @@ theorem Expr.issues_ne_sumWraps {row : Row} :
     · split at h
       · exact issues_ne_sumWraps h
       · exact issues_ne_sumWraps h
+  | .hof _ l b, p, h => by
+    simp only [issues, List.mem_append, List.mem_flatMap] at h
+    rcases h with h | ⟨_, _, h⟩
+    · exact issues_ne_sumWraps h
+    · exact issues_ne_sumWraps h
 
 theorem Expr.evalI_eq_of {I : Impl} (hI : I.Faithful) {row : Row} {e : Expr}
     (h : ∀ p ∈ e.issues row, p.1 = .sumWraps) : e.evalI I row = e.eval row :=
