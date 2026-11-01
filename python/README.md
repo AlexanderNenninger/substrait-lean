@@ -128,13 +128,13 @@ Three complete jobs from a catalogue of 139 real analytical queries, each
 from source tables to a sink, with what goes wrong without the checker. Open
 them in the browser:
 
-* [Duplicate card payments](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/01_duplicate_payments.py):
+* [Duplicate card payments](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/01_duplicate_payments.py):
   a self-join over a Delta table, refreshed from its Change Data Feed, where
   a watermark job would miss a late duplicate and keep a reversed one.
-* [Sensor alerts](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/02_sensor_alerts.py):
+* [Sensor alerts](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/02_sensor_alerts.py):
   `LAG` over an Iceberg table, where ties and a NaN reading change the alerts,
   and Snowflake and Spark need proved tie-freedom.
-* [An orders mart](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/main/notebooks/03_orders_mart.py):
+* [An orders mart](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/03_orders_mart.py):
   dbt tests as a proved contract on a point-in-time join to a type-2
   dimension, in Ibis and in SQL.
 
