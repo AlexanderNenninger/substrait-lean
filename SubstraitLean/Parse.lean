@@ -1038,6 +1038,9 @@ partial def declaredKind (fns : List (Nat × String)) (j : Json) : Kind :=
     | none =>
       if (field? l "boolean").isSome then .bool
       else if (field? l "varChar").isSome then .str
+      -- Read as microseconds whatever their precision (Isthmus: seconds).
+      else if (field? l "precisionTimestamp").isSome then .time
+      else if (field? l "precisionTime").isSome then .tod
       else typeKind l
   else if let some c := field? j "cast" then typeKind ((field? c "type").getD .null)
   else if let some f := field? j "scalarFunction" then
