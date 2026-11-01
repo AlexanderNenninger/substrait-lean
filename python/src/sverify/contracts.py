@@ -1127,6 +1127,13 @@ class ContractedTransform:
             raise error
         return out
 
+    def _pipe_args(self, chained: Any, inputs: Mapping[str, Any]) -> tuple[tuple, dict[str, Any]]:
+        """How `Node.pipe` passes the chained node and the keyword inputs:
+        the chained node in the first parameter, the rest by keyword."""
+        from sverify.steps import bind
+
+        return bind(self, chained, inputs)
+
     def __call__(self, *args, **kwargs) -> Any:
         """Build the result and prove the contract.
 
@@ -1250,10 +1257,12 @@ def transform(
     data instead, which needs inputs bound to a connection. `engine` says where
     those checks on data run (see the module docstring).
 
-    Called on sources (`sverify.io`) or nodes, the transform builds a
-    `sverify.Node` instead of an Ibis expression: transforms compose over
-    sources, `.write(sink)` stores a result, and `refresh` keeps it up to
-    date (see `sverify.Node`).
+    Piped from a source (`sverify.io`) or a node, `orders.pipe(doubled)`, or
+    called on one, `doubled(orders)`, the transform builds a `sverify.Node`
+    instead of an Ibis expression: transforms compose over sources,
+    `.write(sink)` stores a result, and `refresh` keeps it up to date (see
+    `sverify.Node`). `Node.pipe` also takes a plain function, which is a
+    transform with no contract.
 
     Args:
         requires: Preconditions, as a mapping from parameter name to
@@ -1304,7 +1313,7 @@ def transform(
         def doubled(orders):
             return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
 
-        big = doubled(orders)  # a Node, proved here
+        big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
         doubled.last_report.proved  # True
         doubled.last_report.facts["doubled"]  # 'an integer ≥ 22'
         big.refresh()
@@ -1321,14 +1330,14 @@ def transform(
         def plus_one(t):
             return t.select(t.id, plus=t.doubled + 1)
 
-        plus_one(big)  # proved from what doubled guarantees
+        big.pipe(plus_one)  # proved from what doubled guarantees
 
         @sv.transform(requires={"t": [_.doubled >= 100]})
         def huge(t):
             return t
 
         try:
-            huge(big)
+            big.pipe(huge)
         except CompositionError as e:
             print(str(e).split(";")[0])
         # huge needs (_.doubled >= 100) (it is TRUE or FALSE) on 't'
@@ -1344,7 +1353,7 @@ def transform(
             return orders.select(orders.id, total=orders.amount + 1)
 
         try:
-            total(orders)
+            orders.pipe(total)
         except VerificationError as e:
             print(str(e).splitlines()[0])
         # could not prove: (_.total > 5) (it is TRUE or FALSE)

@@ -65,6 +65,7 @@ from sverify.io._common import (
     stats_facts,
     view_contract_record,
 )
+from sverify.steps import Pipeable
 
 CONSTRAINT = "Delta constraint"
 INSERT = ("insert", "update_postimage")
@@ -152,7 +153,7 @@ def _basename(uri: str) -> str:
     return PurePosixPath(uri.rstrip("/")).name or uri
 
 
-class DeltaSource:
+class DeltaSource(Pipeable):
     """A Delta table read by version, as the input of transforms.
 
     With `where` (a SQL condition on the columns), the source is the rows on
