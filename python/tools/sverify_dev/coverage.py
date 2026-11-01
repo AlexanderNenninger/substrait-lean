@@ -54,6 +54,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sverify.engine import run_checker, written_plan
+from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
     CASES,
     DATAFUSION_SQL,
@@ -63,8 +65,6 @@ from sverify_dev.coverage_cases import (
     UNORDERED_LISTS,
 )
 from sverify_dev.coverage_cases._common import TABLES, Case, L, M, Status, T, U
-from sverify.engine import run_checker, written_plan
-from sverify.ibis_substrait import Unsupported, to_substrait_json
 
 __all__ = [
     "CASES",

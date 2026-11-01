@@ -15,8 +15,8 @@ from ibis import _
 
 import sverify as sv
 from sverify.engines import create_table, run
-from sverify_dev.examples import create_tables, orders
 from sverify.io import DeltaSource
+from sverify_dev.examples import create_tables, orders
 
 #: Orders with a non-NULL key and a nullable amount.
 ORDERS = pa.schema(

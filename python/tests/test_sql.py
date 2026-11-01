@@ -36,13 +36,13 @@ from sverify.engine import (
 )
 from sverify.engines import table_rows, written_plan
 from sverify.errors import PostconditionError, PreconditionError
-from sverify_dev.examples import PIPELINES
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
 from sverify.sql.duckdb import DUCKDB, DuckDBDialect
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_rows, parse_rows
+from sverify_dev.examples import PIPELINES
 
 pytestmark = pytest.mark.backend("duckdb")
 

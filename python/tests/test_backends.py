@@ -32,7 +32,6 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify import polars_engine
-from sverify_dev import coverage
 from sverify.engine import canonical as canonical_table
 from sverify.engine import (
     connect,
@@ -50,6 +49,7 @@ from sverify.sql.core import Aggregate, Fetch, Rel, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.sql.spark import SPARK
 from sverify.testing import canonical
+from sverify_dev import coverage
 
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
 

@@ -28,10 +28,10 @@ import sqlglot
 import sverify as sv
 from sverify.engine import run_checker
 from sverify.engines import create_table, substrait_json, written_plan
-from sverify_dev.examples import PIPELINES, create_tables
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
+from sverify_dev.examples import PIPELINES, create_tables
 
 pytestmark = pytest.mark.backend("snowflake")
 

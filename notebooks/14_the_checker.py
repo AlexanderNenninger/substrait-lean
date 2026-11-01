@@ -69,10 +69,9 @@ def _():
     import json
     import subprocess
 
+    import ibis
     import sverify as sv
     from sverify.engine import checker_path
-    import ibis
-
     from sverify.engines import create_table, substrait_json, written_plan
 
     con = sv.connect()  # plans run on DuckDB by default
