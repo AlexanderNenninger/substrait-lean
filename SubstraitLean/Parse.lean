@@ -33,6 +33,15 @@ def valuesKey (n : Nat) (rows : Relation) : String := s!"$values {n} {reprStr ro
 
 def isValuesKey (t : String) : Bool := t.startsWith "$values "
 
+/-- The entry in `Tables` of the kinds a projection's source plan declares for
+its expressions, where they say more than `Expr.kind`: the model has a
+timestamp, a double's `0.0` and a typed `NULL` as plain values (#96). Its
+`baseSchema` has one type per expression, `{}` where `Expr.kind` holds. -/
+def projectKey (es : List Expr) : String := s!"$project {reprStr es}"
+
+/-- An entry of `Tables` that is not a named table. -/
+def isInternalKey (t : String) : Bool := t.startsWith "$"
+
 abbrev P := StateT Tables J
 
 /-- Present, non-null field. -/
@@ -237,7 +246,12 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .filter r _ | .fetch r _ _ => r.kinds tables
   | .project r es =>
       let ks := r.kinds tables
-      ks ++ es.map (·.kind ks)
+      let declared := match tables.lookup (projectKey es) with
+        | some (_, s) => schemaKinds s
+        | none => []
+      ks ++ es.zipIdx.map fun (e, i) => match declared[i]? with
+        | some k => if k == .other then e.kind ks else k
+        | none => e.kind ks
   | .emit r m =>
       let ks := r.kinds tables
       m.map (ks.getD · .other)
@@ -1012,21 +1026,43 @@ where
   pick (better : Expr → Expr → Expr) (a b : Expr) : Expr :=
     .ifThen (.un .isNull a) b (.ifThen (.un .isNull b) a (.ifThen (better a b) b a))
 
-/-- Does the argument stand for a double though its expression may not say
-so? A literal double is just its code, which `Expr.kind` calls an integer:
-a double literal, a cast to a double, or a `CASE` with such branches (#97). -/
-partial def doubleJ (j : Json) : Bool :=
+/-- The kind the source plan declares for an expression: a literal's type,
+a cast's target, a function's output type, a `CASE`'s branches' (a double if one is).
+DataFusion gives functions no output type: arithmetic, rounding and
+`COALESCE`-like functions with a double argument give a double (`- CAST(NULL
+AS DOUBLE)`, `- COALESCE(0.0, 0.0)`; DataFusion casts mixed arguments). -/
+partial def declaredKind (fns : List (Nat × String)) (j : Json) : Kind :=
   if let some l := field? j "literal" then
-    (field? l "fp64").isSome || (field? l "fp32").isSome
-  else if let some c := field? j "cast" then
-    typeKind ((field? c "type").getD .null) == .float
-  else if let some t := field? j "ifThen" then
-    let ifs := ((t.getObjValAs? (Array Json) "ifs").toOption.getD #[]).toList
-    (ifs.filterMap (field? · "then")).any doubleJ || ((field? t "else").map doubleJ).getD false
-  else false
+    match field? l "null" with
+    | some t => typeKind t
+    | none =>
+      if (field? l "boolean").isSome then .bool
+      else if (field? l "varChar").isSome then .str
+      else typeKind l
+  else if let some c := field? j "cast" then typeKind ((field? c "type").getD .null)
+  else if let some f := field? j "scalarFunction" then
+    match typeKind ((field? f "outputType").getD .null) with
+    | .other =>
+      let name := (fns.lookup ((natD f "functionReference").toOption.getD 0)).map baseName
+      let args := (((field? f "arguments").bind (·.getArr? |>.toOption)).getD #[]).toList
+      if name.any (arithmeticFns ++ ["coalesce", "nullif", "greatest", "least", "nanvl", "round",
+          "floor", "ceil"]).contains &&
+          args.any fun a => declaredKind fns ((field? a "value").getD .null) == .float then .float
+      else .other
+    | k => k
+  else if let some i := field? j "ifThen" then
+    let ifs := (((field? i "ifs").bind (·.getArr? |>.toOption)).getD #[]).toList
+    let ks := (ifs.filterMap (field? · "then") ++ (field? i "else").toList).map (declaredKind fns)
+    if ks.contains .float then .float else (ks.find? (· != .other)).getD .other
+  else .other
 
-#guard doubleJ (Json.mkObj [("literal", Json.mkObj [("fp64", Json.num 2)])])
-#guard !doubleJ (Json.mkObj [("literal", Json.mkObj [("i64", "1")])])
+/-- Does the argument stand for a double though its expression may not say
+so? A literal double is just its code, which `Expr.kind` calls an integer
+(#97). -/
+def doubleJ (fns : List (Nat × String)) (j : Json) : Bool := declaredKind fns j == .float
+
+#guard doubleJ [] (Json.mkObj [("literal", Json.mkObj [("fp64", Json.num 2)])])
+#guard !doubleJ [] (Json.mkObj [("literal", Json.mkObj [("i64", "1")])])
 
 /-- Arithmetic whose result is a double. -/
 def mkFloatCall : String → List Expr → J Expr
@@ -1105,7 +1141,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
         throw "date_diff takes two dates"
     checkArgKinds name cols parsed
-    let onFloats := (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ j) ||
+    let onFloats :=
+      (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ fns j) ||
       typeKind ((field? f "outputType").getD .null) == .float
     checkOptions name onFloats (← arrD f "options")
     -- Substrait's `greatest`/`least` are `NULL` if any argument is; DataFusion
@@ -1167,7 +1204,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       throw s!"{name}: decimal results are not supported"
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
       "ceil", "round"]
-    let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ j
+    let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) && (out == .float || hasFloat)
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
@@ -1185,7 +1222,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return .lit (.int (if floatCall then FloatCode.ofFloat 1.0 else 1))
     if floatCall then
       let args := (argJs.zip args).zipIdx.map fun ((j, e), k) =>
-        if e.kind cols == .int && !keepInt k && !(e matches .lit _) && !doubleJ j then
+        if e.kind cols == .int && !keepInt k && !(e matches .lit _) && !doubleJ fns j then
           Expr.un .itof e
         else e
       mkFloatCall (baseName name) args
@@ -1659,6 +1696,39 @@ def parseLifted (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Rel
   let bits := lifted.bits (← get)
   return (lifted, ← rewritten.mapM fun e => (parseExpr fns cols bits e : J Expr))
 
+/-- A type of kind `k`, as `typeKind` reads it back; `{}` for others. -/
+def kindSchemaType : Kind → Json
+  | .float => Json.mkObj [("fp64", Json.mkObj [])]
+  | .time => Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 6)])]
+  | .date => Json.mkObj [("date", Json.mkObj [])]
+  | .tod => Json.mkObj [("precisionTime", Json.mkObj [("precision", 6)])]
+  | .str => Json.mkObj [("string", Json.mkObj [])]
+  | .bool => Json.mkObj [("bool", Json.mkObj [])]
+  | _ => Json.mkObj []
+
+#guard [Kind.float, .time, .date, .tod, .str, .bool].all fun k => typeKind (kindSchemaType k) == k
+
+/-- Record the kinds a projection's source plan declares (`projectKey`)
+where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
+or typed `NULL` (#96). Projections with the same expressions share an entry;
+where their kinds differ, `Expr.kind` holds. -/
+def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : List Json)
+    (es : List Expr) : P Unit := do
+  let key := projectKey es
+  let prev := (← get).lookup key
+  let refined : List Kind := (ejs.zip es).map fun (j, e) =>
+    let k := declaredKind fns j
+    if [Kind.int, .other].contains (e.kind cols) &&
+        [Kind.float, .time, .date, .tod, .str, .bool].contains k then k else Kind.other
+  if prev.isNone && refined.all (· == .other) then return
+  let refined := match prev with
+    | some (_, s) =>
+      let pk := schemaKinds s
+      refined.zipIdx.map fun ((k : Kind), (i : Nat)) => if pk[i]? == some k then k else Kind.other
+    | none => refined
+  modify ((key, es.length, Json.mkObj [("struct", Json.mkObj [
+    ("types", Json.arr (refined.map kindSchemaType).toArray)])]) :: ·)
+
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
   if let some f := field? j "scalarFunction" then
@@ -1713,7 +1783,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
-        if es.isEmpty then pure inp else pure (.project inp es)
+        if es.isEmpty then pure inp else
+          recordDeclaredKinds fns cols ejs es
+          pure (.project inp es)
     | "cross" => pure (.cross (← input "left") (← input "right"))
     | "join" =>
       let ty := match field? r "type" with

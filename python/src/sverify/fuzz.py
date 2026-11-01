@@ -316,37 +316,6 @@ class Refused(Exception):
 REFUSALS = (polars_engine.Unsupported, sql_core.Unsupported)
 
 KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
-    # Lean's written plan types a bare literal by its value: a double becomes
-    # an `i64` holding its code, a timestamp an integer, a NULL an `i64` NULL.
-    (
-        96,
-        lambda f: (
-            f.oracle.startswith("rows:")
-            and any(
-                m in f.detail
-                for m in (
-                    "does not fit in 64 bits",
-                    "incompatible type",
-                    "Expect TypeSignatureClass",
-                    "must be boolean type, but got Int64",
-                    "dtype Null",
-                    "got `null`",
-                    "and BIGINT",
-                    "BIGINT and TIMESTAMP",
-                    "i64 field: Value out of range",
-                    "Failed to coerce then (Int64)",
-                )
-            )
-        ),
-    ),
-    # The same, seen as a column type: the literal comes back as an integer.
-    (
-        96,
-        lambda f: (
-            f.oracle.startswith("types:")
-            and any(t in f.detail.splitlines()[-1] for t in ("int64", "'?'"))
-        ),
-    ),
     # One integer kind in the model: a widening cast of an `int32` is dropped.
     (
         18,
