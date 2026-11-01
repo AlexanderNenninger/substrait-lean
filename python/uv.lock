@@ -3456,10 +3456,12 @@ dependencies = [
 all = [
     { name = "datafusion" },
     { name = "deltalake" },
+    { name = "hypothesis" },
     { name = "numpy" },
     { name = "polars" },
     { name = "pyiceberg", extra = ["pyarrow"] },
     { name = "pyspark" },
+    { name = "pytest" },
 ]
 datafusion = [
     { name = "datafusion" },
@@ -3476,6 +3478,10 @@ polars = [
 ]
 spark = [
     { name = "pyspark" },
+]
+testing = [
+    { name = "hypothesis" },
+    { name = "pytest" },
 ]
 
 [package.dev-dependencies]
@@ -3502,16 +3508,18 @@ requires-dist = [
     { name = "datafusion", marker = "extra == 'datafusion'", specifier = "==51.0.0" },
     { name = "deltalake", marker = "extra == 'delta'", specifier = ">=1.6.6" },
     { name = "duckdb", specifier = ">=2.0.0" },
+    { name = "hypothesis", marker = "extra == 'testing'", specifier = ">=6.170.14" },
     { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
     { name = "numpy", marker = "extra == 'polars'", specifier = ">=2.5.4" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg"], marker = "extra == 'all'" },
+    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "testing"], marker = "extra == 'all'" },
 ]
-provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "all"]
+provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "testing", "all"]
 
 [package.metadata.requires-dev]
 dev = [

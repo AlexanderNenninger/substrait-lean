@@ -21,8 +21,9 @@ dynamic: false
 
 # Sections in the order a data engineer looks for things: what a transform
 # promises, how its result is built, stored and kept up to date, where its
-# tables live, where it runs, what can go wrong. The public API is the ten
-# top-level names plus `sverify.io`, `sverify.engines` and `sverify.errors`;
+# tables live, where it runs, how to test it, what can go wrong. The public
+# API is the top-level names plus `sverify.io`, `sverify.engines`,
+# `sverify.testing` and `sverify.errors`;
 # everything else is internal (CHANGELOG.md, 0.2.0). `Node`'s results
 # (`Refresh`, `Status`, `Group`) live in `sverify.nodes` and are documented
 # because users hold them, not because they are imported.
@@ -126,6 +127,19 @@ reference:
       - engines.written_plan
       - engines.run_substrait_json
       - engines.delta_plans
+
+  - title: Testing
+    desc: >
+      Test transforms and their contracts with pytest (`sverify.testing`).
+      Installing sverify registers a pytest plugin with the fixtures
+      `sv_source` (in-memory sources) and `sv_engine` (a test per installed
+      engine).
+    contents:
+      - testing.assert_contract
+      - testing.assert_engines_agree
+      - testing.cases
+      - testing.source
+      - testing.installed_engines
 
   - title: Errors
     desc: What sverify raises, and when (`sverify.errors`).

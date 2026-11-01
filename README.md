@@ -599,6 +599,22 @@ run it instead of the original on data that meets the preconditions
 [docs/optimizations.md](docs/optimizations.md) compares these with what the
 engines already do.
 
+### Testing with pytest
+
+Installing sverify registers a pytest plugin, so your suite can test its
+transforms without a conftest. `sverify.testing.assert_contract(node)`
+asserts that a node's contract is proved; with `data=` and `expected=` it
+also runs the node on those rows, checks the preconditions and
+postconditions on them, and diffs the output against the expected rows.
+`assert_engines_agree(node, data)` runs it on every installed engine and
+diffs their results. `cases(node)` is a Hypothesis strategy of inputs that
+meet the preconditions (`pip install 'sverify[testing]'`). The fixtures are
+`sv_source(rows, schema, name=...)`, an in-memory source, and `sv_engine`,
+which runs a test once per installed engine (`--sv-engines=duckdb,polars`
+picks them). [`python/tests/test_plugin_example.py`](python/tests/test_plugin_example.py)
+is an example test file, and [`python/tests/test_tour.py`](python/tests/test_tour.py)
+tests the tour's transforms the same way.
+
 ### What is supported
 
 How much of the Ibis API gets through, from

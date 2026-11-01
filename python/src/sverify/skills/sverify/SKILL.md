@@ -5,8 +5,8 @@ description: >
   package. Use when a user wants to state what an Ibis or SQL transformation
   assumes about its inputs and guarantees about its output (not NULL, unique
   keys, value ranges, no division by zero), check those guarantees before the
-  pipeline runs, read a sverify Report, or fix a postcondition sverify could
-  not prove.
+  pipeline runs, read a sverify Report, fix a postcondition sverify could
+  not prove, or test transforms and their contracts with pytest.
 ---
 
 # sverify: contracts proved before a pipeline runs
@@ -112,6 +112,58 @@ wrap-around) doesn't. Guard a divisor with `NULLIF`/`ifelse`, or bound it in
 * `"runtime"`: check the unproved postconditions on the output data instead,
   at refresh (raises `PostconditionError`).
 * `"warn"`: warn and continue.
+
+## Test transforms with pytest
+
+Installing sverify registers a pytest plugin. In a test suite, assert the
+contract, run the node on a few rows, and compare the engines; with
+`expected=`, a failure lists the missing and unexpected rows, and test data
+that breaks a precondition is reported with its rows.
+
+```python
+from sverify.testing import assert_contract, assert_engines_agree, cases, source
+
+
+def test_big_orders():  # with the plugin: def test_big_orders(sv_source, sv_engine)
+    orders = source([], {"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+    node = orders.pipe(big_orders)
+    assert_contract(node)  # every contract in the node's lineage is proved
+    data = {"orders": [(1, "ada", 30), (2, "bob", 5)]}
+    out = assert_contract(node, data=data, expected=[{"id": 1, "doubled": 60}])
+    assert out.num_rows == 1
+    assert_engines_agree(node, data)  # every installed engine gives the same rows
+
+
+test_big_orders()
+```
+
+* `data` names every table the node reads: its sources, and the stored nodes
+  (`.write`) it reads. Rows are tuples in column order, dicts, or Arrow
+  tables; `expected` is compared as a bag.
+* Fixtures: `sv_source(rows, schema, name=...)` is `source`; a test taking
+  `sv_engine` runs once per installed engine (pass it as `engine=`);
+  `pytest --sv-engines=duckdb,polars` picks them, `-p no:sverify` turns the
+  plugin off.
+* `cases(node, max_rows=5)` is a Hypothesis strategy of input tables that
+  meet the preconditions (`pip install 'sverify[testing]'`), for property
+  tests of the code around a node:
+
+```python
+from hypothesis import given, settings
+
+ORDERS = {"id": "int64", "customer": "string", "amount": "int64"}
+node = source([], ORDERS, name="orders").pipe(big_orders)
+
+
+@settings(max_examples=10, deadline=None)
+@given(cases(node))
+def test_doubles_are_big(data):
+    out = assert_contract(node, data=data)
+    assert all(d > 20 for d in out["doubled"].to_pylist())
+
+
+test_doubles_are_big()
+```
 
 ## Gotchas
 

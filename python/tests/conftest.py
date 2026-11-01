@@ -2,9 +2,10 @@
 
 Every test runs under one backend, which is also a marker: `poe test-polars`
 (`pytest -m polars`) runs the Polars tests, and CI runs one job per backend.
-A test's backend is its `engine` parameter, else its `backend` mark (on the
-test or as the module's `pytestmark`), else `core`: Lean, the producers, and
-DataFusion as the reference. Tests comparing two engines with each other stay
+A test's backend is its `engine` parameter (or `sv_engine`, from sverify's
+pytest plugin), else its `backend` mark (on the test or as the module's
+`pytestmark`), else `core`: Lean, the producers, and DataFusion as the
+reference. Tests comparing two engines with each other stay
 in `core`. DataFusion is an optional extra of `sverify`, but the tests need it
 (it is in the `dev` group); `test_without_datafusion.py` blocks it.
 
@@ -90,8 +91,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def backend(item: pytest.Item) -> str:
     callspec = getattr(item, "callspec", None)
-    if callspec is not None and "engine" in callspec.params:
-        return callspec.params["engine"]
+    for param in ("engine", "sv_engine"):  # `sv_engine`: sverify's pytest plugin
+        if callspec is not None and param in callspec.params:
+            return callspec.params[param]
     if mark := item.get_closest_marker("backend"):
         return mark.args[0]
     return "core"
