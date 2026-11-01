@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-01)
 
 ### Licensed under the MPL-2.0
 
@@ -102,6 +102,33 @@ installing sverify registers a pytest plugin (the `pytest11` entry point
 
 `python/tests/test_plugin_example.py` is an example test file, and
 `python/tests/test_tour.py` tests the tour's transforms with the plugin.
+
+### Ibis string functions
+
+More of Ibis's string API is checked and runs on every engine
+([#49](https://github.com/AlexanderNenninger/substrait-lean/issues/49)):
+`lpad`/`rpad`, `repeat`, `reverse`, `replace`, `ilike`, `ascii`,
+`levenshtein`, `right`, `find` with a start, `join` (`concat_ws`),
+`find_in_set`, `capitalize` and slices. Each has the meaning of Ibis's
+DataFusion SQL, by code point. A `repeat` past 2³¹ − 1 bytes is an
+`overflow` error, which the checker rules out for a constant string with a
+bounded count.
+
+- Polars computes all of them exactly. DuckDB, Snowflake and Spark raise
+  "non-ASCII text differs between engines" for `reverse`, `ascii`,
+  `levenshtein` and `ilike` on non-ASCII text, and refuse `replace` with an
+  empty pattern.
+- `translate` is refused: DataFusion translates grapheme clusters.
+
+### Fixes
+
+- Written plans keep a projected literal's declared type: doubles,
+  timestamps and typed NULLs no longer come out integer-typed
+  ([#96](https://github.com/AlexanderNenninger/substrait-lean/issues/96)).
+- The tour notebooks declare the extras they use (`sverify[datafusion]`,
+  `sverify[datafusion,polars]`), so they run in their own sandbox, as molab
+  runs them
+  ([#197](https://github.com/AlexanderNenninger/substrait-lean/issues/197)).
 
 ## 0.2.0 (2026-11-01)
 
