@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Maintainer tooling leaves the wheel
+
+The coverage harness, the query catalogue, the fuzzers, DuckDB's
+sqllogictest replay and the example pipelines (`sverify.coverage`,
+`sverify.catalogue`, `sverify.fuzz`, `sverify.duckdb_fuzz`, `sverify.slt`,
+`sverify.examples`) were internal, and only the tests and CI used them. They
+now live in `python/tools/sverify_dev` in the repository and are no longer
+installed with sverify: about 4,000 lines fewer in the wheel.
+
 ### Fixed: a sink kept another plan's rows after the plan changed
 
 If you use 0.3.0 and change a node's transform while keeping its sink,
@@ -36,6 +45,19 @@ A node of a plain function, such as `orders.pipe(lambda t: t.select(t.id))`,
 counted as contracted, so a dropped column, or a column widened beyond what
 its values used to fit, raised `SchemaError` instead of planning the node
 again. It is now planned again and recomputed, and its sink is overwritten.
+
+### Fixed: `%` of doubles gave wrong values
+
+A plan that takes the remainder of doubles, such as `x % 2.5`, passed the
+check but was evaluated on the doubles' internal codes, so its values were
+wrong (`7.5 % 2.0` came out as a 300-digit integer). It is now C's `fmod`,
+as DuckDB, DataFusion and Spark compute `%`: the result has the sign of the
+dividend (`-7.5 % 2.0` is `-1.5`), an infinite dividend or a NaN give NaN,
+and an infinite divisor gives the dividend. The value is exact. A zero
+divisor is an error, as for integers, so `verify` reports "division by zero"
+unless the plan rules it out (`WHERE y <> 0.0`). The Polars translation gives
+the same results, although Polars' own `%` takes the divisor's sign.
+Substrait itself defines no `modulus` of doubles (#203).
 
 ## 0.3.0 (2026-11-01)
 

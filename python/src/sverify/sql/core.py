@@ -282,6 +282,25 @@ class Dialect:
     def float_div(self, a: str, b: str) -> str:
         return f"({a} / {b})"
 
+    def float_mod(self, a: str, b: str) -> str:
+        """`BinFn.fmod`, C's `fmod`: the sign of `a`; NaN for a NaN or an
+        infinite `a`, and `a` for an infinite `b`. By zero it raises, as
+        `int_mod`, but `NULL % 0.0` is NULL. The edge cases are written out,
+        so that engines agree on them (Spark's ANSI `%` raises on zero, DuckDB
+        gives NaN); only finite operands reach the engine's `%`."""
+        nan, inf, ninf, zero = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf, 0.0))
+        by_zero = self.raise_("division by zero", b, "float") if self.guards else nan
+
+        def infinite(x: str) -> str:
+            return f"{x} = {inf} OR {x} = {ninf}"
+
+        return (
+            f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN {self.null('float')} "
+            f"WHEN {b} = {zero} THEN {by_zero} "
+            f"WHEN {self.is_nan(a)} OR {self.is_nan(b)} OR {infinite(a)} THEN {nan} "
+            f"WHEN {infinite(b)} THEN {a} ELSE ({a} % {b}) END)"
+        )
+
     def float_neg(self, a: str) -> str:
         """IEEE negation; NaN stays NaN (`canon` makes `-0.0` zero)."""
         return f"(- {a})"
@@ -703,7 +722,7 @@ class Un:
 @dataclass(frozen=True)
 class Bin:
     op: Literal[
-        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
+        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
         "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
         "fatan2", "flogb", "bit", "list_lt",
@@ -1040,7 +1059,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "bool"
         case Bin(op="add" | "sub" | "mul", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2" | "flogb"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
         case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff" | "levenshtein" | "bit"):
             return "int"
@@ -1097,7 +1116,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return ka if ka in ("time", "interval") or kb is None else kb
         case Bin(op="mul", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" | "fatan2" | "flogb"):
+        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
         case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "levenshtein" | "bit"):
             return "int"
@@ -1702,8 +1721,8 @@ class _Parser:
                     raise Unsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (
-                    "add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-                    "ceil", "round", *DOUBLE_FNS,
+                    "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
+                    "floor", "ceil", "round", *DOUBLE_FNS,
                 )  # fmt: skip
                 has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
@@ -1738,8 +1757,9 @@ class _Parser:
                         for k, e in enumerate(parsed)
                     ]
                     mode = _div_by_zero_mode(v)
-                    if name == "divide" and len(parsed) == 2 and mode != "ERROR":
-                        return _div_by_zero(mode, True, "fdiv", *parsed)
+                    if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
+                        op = "fdiv" if name == "divide" else "fmod"
+                        return _div_by_zero(mode, True, op, *parsed)
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
                 if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
@@ -2583,11 +2603,12 @@ def _div_by_zero_mode(f: dict) -> str:
 
 
 def _div_by_zero(
-    mode: str, double: bool, op: Literal["fdiv", "idiv", "imod"], a: Expr, b: Expr
+    mode: str, double: bool, op: Literal["fdiv", "fmod", "idiv", "imod"], a: Expr, b: Expr
 ) -> Expr:
     """`Parse.divByZero`: `a / b` under `on_division_by_zero` = `mode`, a `CASE`
-    on the divisor around the division that raises on zero."""
-    if mode not in ("IEEE", "LIMIT", "NULL") or (not double and mode != "NULL"):
+    on the divisor around the division that raises on zero. `IEEE` and `LIMIT`
+    are only for dividing doubles (`Parse.optionAccepts`)."""
+    if mode not in ("IEEE", "LIMIT", "NULL") or (op != "fdiv" and mode != "NULL"):
         raise Unsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
@@ -2616,6 +2637,9 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
             return Bin("fmul", a, b)
         case "divide", [a, b]:
             return Bin("fdiv", a, b)
+        # C's `fmod`, as DuckDB, DataFusion and Spark compute `%` (#203).
+        case "modulus", [a, b]:
+            return Bin("fmod", a, b)
         case (("subtract" | "negate"), [a]):
             return Un("fneg", a)
         case "abs", [a]:
@@ -3309,12 +3333,13 @@ class _Writer:
                     return sql
                 bad = f"({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)})"
                 return self.domain(sb, bad, sql, "int")
-            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow" as op, left=a, right=b):
+            case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" as op, left=a, right=b):
                 f = {
                     "fadd": d.float_add,
                     "fsub": d.float_sub,
                     "fmul": d.float_mul,
                     "fdiv": d.float_div,
+                    "fmod": d.float_mod,
                     "fpow": d.float_pow,
                 }[op]
                 sa, sb = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)

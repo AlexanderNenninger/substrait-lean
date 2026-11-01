@@ -21,7 +21,10 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.coverage import (
+from sverify.engine import connect, create_table, put_table, run_sql, to_sql
+from sverify.ibis_substrait import Unsupported, to_substrait
+from sverify.testing import EPOCH, canonical, inline_tables, lean_values
+from sverify_dev.coverage import (
     CASES,
     DATAFUSION_SQL,
     MEMTABLES,
@@ -31,9 +34,6 @@ from sverify.coverage import (
     T,
     U,
 )
-from sverify.engine import connect, create_table, put_table, run_sql, to_sql
-from sverify.ibis_substrait import Unsupported, to_substrait
-from sverify.testing import EPOCH, canonical, inline_tables, lean_values
 
 VERIFIED = [c for c in CASES if c.expected == "verified"]
 #: Known gaps between Lean and DataFusion, fixed elsewhere.

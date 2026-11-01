@@ -32,8 +32,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.examples import orders
 from sverify.testing import canonical, inline_tables, lean_values
+from sverify_dev.examples import orders
 
 T = ibis.schema({"a": "int64", "b": "int64", "s": "string"})
 F = ibis.schema({"k": "int64", "x": "float64"})

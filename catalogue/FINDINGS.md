@@ -267,18 +267,18 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DataFusion runs | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 6 | 0 | 1 | 0 | 7 | 6 | 6 | 6 |
-| finance | 18 | 1 | 10 | 7 | 0 | 17 | 10 | 10 | 4 |
+| finance | 18 | 2 | 10 | 6 | 0 | 17 | 11 | 11 | 4 |
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 9 | 0 | 3 | 0 | 12 | 9 | 9 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 10 | 0 | 2 | 2 | 13 | 10 | 10 | 9 |
-| product | 13 | 10 | 0 | 3 | 0 | 12 | 10 | 10 | 9 |
+| product | 13 | 10 | 0 | 3 | 0 | 12 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
 | tpcds | 8 | 0 | 5 | 3 | 0 | 8 | 5 | 5 | 0 |
 | tpch | 22 | 0 | 17 | 5 | 0 | 22 | 17 | 17 | 5 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 74 | 32 | 31 | 2 | 134 | 105 | 105 | 67 |
+| **all** | 139 | 75 | 32 | 30 | 2 | 134 | 105 | 105 | 67 |
 
 ### Feature frequency
 
@@ -344,7 +344,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `cte` | relational | 3 | 2% | yes |
 | `scalar_subquery` | relational | 3 | 2% | yes |
 | `full_join` | relational | 2 | 1% | yes |
-| `math_transcendental` | expressions | 2 | 1% | no |
+| `math_transcendental` | expressions | 2 | 1% | yes |
 | `percentile` | aggregation | 2 | 1% | no |
 | `epoch` | expressions | 2 | 1% | partial |
 | `interval_to_number` | expressions | 2 | 1% | partial |
@@ -384,7 +384,6 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `min_max` | 4 | 1 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
 | `arg_max` | 3 | 3 | no | first_value aggregates are refused |
 | `rows_frame` | 3 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
-| `math_transcendental` | 2 | 1 | no | unsupported function ln/1 |
 | `percentile` | 2 | 1 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
 | `grouping_sets` | 2 | 0 | no |  |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
@@ -400,7 +399,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 106 queries that verify (some only as DOUBLE):
+Over the 107 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
@@ -408,6 +407,9 @@ Over the 106 queries that verify (some only as DOUBLE):
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 5 |
 | duckdb: differs | 1 |
 | polars: differs | 1 |
+| snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 1 |
+| duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 1 |
+| polars: error: divide by zero (1 row(s)) | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency

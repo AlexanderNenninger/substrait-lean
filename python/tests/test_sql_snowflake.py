@@ -28,10 +28,11 @@ import sqlglot
 import sverify as sv
 from sverify.engine import run_checker
 from sverify.engines import create_table, substrait_json, written_plan
-from sverify.examples import PIPELINES, create_tables
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
+from sverify_dev import examples
+from sverify_dev.examples import PIPELINES, create_tables
 
 pytestmark = pytest.mark.backend("snowflake")
 
@@ -140,7 +141,7 @@ def ordered_plans() -> dict[str, dict]:
 
 def feature_plans() -> dict[str, dict]:
     """DISTINCT, aggregates, semi, anti and outer joins and string functions."""
-    o, c = sv.examples.orders, sv.examples.customers
+    o, c = examples.orders, examples.customers
     exprs = {
         "distinct": o.select("customer", "amount").distinct(),
         "semi_join": o.semi_join(c, o.customer == c.name),
@@ -168,7 +169,7 @@ def feature_plans() -> dict[str, dict]:
 
 FEATURE_PLANS = feature_plans()
 #: Sorted in Lean's order: the only ties in `ORDERS` are equal rows.
-SORTED = {"order_by": sv.examples.orders.order_by([sv.examples.orders.amount.desc(), "id"])}
+SORTED = {"order_by": examples.orders.order_by([examples.orders.amount.desc(), "id"])}
 
 
 DELTA_PLANS = {
@@ -419,6 +420,14 @@ def run_semantics(cur) -> None:
     assert cur.execute(f"SELECT {d.int_mul(d.int_lit(-(2**31)), d.int_lit(2**32))}").fetchone() == (
         -(2**63),
     )
+    # The remainder of doubles is C's `fmod`; NaN for ±inf, an error by zero (#203).
+    m = [d.float_lit(v) for v in (7.5, -7.5, 2.0)]
+    mods = [d.float_mod(m[0], m[2]), d.float_mod(m[1], m[2]), d.float_mod(m[0], inf)]
+    mods += [d.float_mod(inf, m[2])]
+    row = cur.execute("SELECT " + ", ".join(f"{e} AS m{i}" for i, e in enumerate(mods))).fetchone()
+    assert row[:3] == (1.5, -1.5, 7.5) and math.isnan(row[3])
+    with pytest.raises(Exception, match="(?i)division by zero"):
+        cur.execute(f"SELECT {d.float_mod(m[0], zero)}").fetchall()
 
 
 @pytest.fixture(scope="module")

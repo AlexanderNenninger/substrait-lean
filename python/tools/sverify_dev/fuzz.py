@@ -1,7 +1,7 @@
 """Random queries with Lean's semantics as the oracle (SQLancer-style).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API.
 
 A Hypothesis strategy draws well-typed SQL queries over two small tables (`t`
 with integer, double, string, boolean and timestamp columns, `u` with an
@@ -22,7 +22,7 @@ compares:
    those where a predicate is TRUE, FALSE and NULL, together.
 
 A query outside the model (the producer or the checker refuses it) is not a
-finding. `python -m sverify.fuzz` runs a budget of random queries and prints
+finding. `python -m sverify_dev.fuzz` runs a budget of random queries and prints
 each distinct, shrunk disagreement; `tests/test_fuzz.py` runs a small budget.
 
 This module needs Hypothesis, which only the `dev` group installs.

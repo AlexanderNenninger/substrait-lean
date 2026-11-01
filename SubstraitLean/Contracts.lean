@@ -353,6 +353,20 @@ theorem Bound.fitsBits_mem {n : Nat} {b : Bound} {i : Int} (h : b.fitsBits n = t
   simp only [_root_.Substrait.fitsBits, Bool.and_eq_true, decide_eq_true_eq]
   omega
 
+/-- Does every integer of the interval fit in `p` decimal digits? -/
+def Bound.fitsDigits (p : Nat) (b : Bound) : Bool :=
+  b.lo.any (-(10 ^ p : Int) < ·) && b.hi.any (· < 10 ^ p)
+
+theorem Bound.fitsDigits_mem {p : Nat} {b : Bound} {i : Int} (h : b.fitsDigits p = true)
+    (hi : b.Mem i) : _root_.Substrait.fitsDigits p i = true := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.fitsDigits, Bool.and_eq_true, Option.any_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨lo, rfl, hlo⟩, ⟨hi', rfl, hhi⟩⟩ := h
+  have h1 := hi.1 lo rfl
+  have h2 := hi.2 hi' rfl
+  simp only [_root_.Substrait.fitsDigits, Bool.and_eq_true, decide_eq_true_eq]
+  omega
+
 /-- `CAST(x AS INT)`: the integer itself, or NULL where it may not fit. -/
 def narrowAbs (n : Nat) (a : AVal) : AVal :=
   ⟨a.nonInt || a.int.any (!·.fitsBits n), a.int, false, false, false⟩
@@ -523,6 +537,10 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
   | .wrap _, a => a
+  | .decimal _ _, a | .dkind _ _, a => a
+  | .dround _, a | .dtrunc _, a | .dtof _, a =>
+      ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  | .ftod _, a => partialAbs false a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
   | .length, a | .ascii, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
@@ -580,8 +598,12 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .add, a, b => arith Bound.add a b
   | .sub, a, b | .dateDiff, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
+  | .dadd, a, b => arith Bound.add a b
+  | .dsub, a, b => arith Bound.sub a b
+  | .dmul, a, b => arith Bound.mul a b
+  | .ddiv, a, b => partialAbs₂ false a b
   | .dateAdd, a, b => arith Bound.add a b
-  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
+  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fmod, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
@@ -843,6 +865,14 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · exact absurd (Bound.fitsBits_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
+  case decimal => simpa [UnFn.abs, UnFn.apply] using h
+  case dkind => simpa [UnFn.abs, UnFn.apply] using h
+  case dround k => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case dtrunc k => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case dtof s => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case ftod s =>
+    exact partialAbs_sound (g := fun c => FloatCode.toDecimal? c s) (fun v => by cases v <;> rfl)
+      (fun hs => by simp at hs) h
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fmath f =>
@@ -1058,10 +1088,17 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dateAdd => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case mul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dadd => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dsub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dmul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case ddiv =>
+    exact partialAbs₂_sound (g := roundDivInt?) (fun v w => by cases v <;> cases w <;> rfl)
+      (fun hs => by simp at hs) ha hb
   case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fdiv => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fmod => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb

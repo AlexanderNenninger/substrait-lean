@@ -103,7 +103,7 @@ Rows compare as bags, or in order when an ORDER BY reaches the result. Doubles c
 - **Ibis is not SQL.** Notebook 15's "leaky" entries mean different things per Ibis backend: `row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`, and the default window frame is the whole partition. Give both `--sql` and `--ibis` when the question is about Ibis.
 - **Snowflake is never executed.** Its SQL is generated and (in the catalogue) parsed with sqlglot only. It refuses sorts, FETCH and windows over named tables (no row order) unless `tie_free=True`, and so does Spark for windows.
 - **Native DataFusion can be wrong** where Lean refuses. For example, `NOT IN (subquery)` with a NULL returns rows (quirk N3); the parser refuses that plan, so nothing is proved.
-- **`catalogue/status.json` is a snapshot.** If the checker or producers changed on your branch, re-probe the query from `python/` with `uv run python -m sverify.catalogue <query-id>`; `--write` re-probes everything and rewrites `status.json`.
+- **`catalogue/status.json` is a snapshot.** If the checker or producers changed on your branch, re-probe the query from `python/` with `uv run python -m sverify_dev.catalogue <query-id>`; `--write` re-probes everything and rewrites `status.json`.
 - **Notebook entries are static prose plus code.** The `why`, `std`, `snowflake` and `picks` fields are written answers. The row tables in the notebook are computed when it runs, so for actual rows, run the probe (or the notebook).
 
 ## Troubleshooting

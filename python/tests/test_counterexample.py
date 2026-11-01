@@ -13,7 +13,7 @@ from sverify.contracts import violations
 from sverify.counterexample import Counterexample
 from sverify.engines import create_table
 from sverify.errors import VerificationError
-from sverify.examples import customers, orders
+from sverify_dev.examples import customers, orders
 
 
 def left(o, c):

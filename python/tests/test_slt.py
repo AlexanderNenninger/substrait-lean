@@ -1,4 +1,4 @@
-"""The sqllogictest replay harness (`sverify.slt`): parsing DuckDB's `.test`
+"""The sqllogictest replay harness (`sverify_dev.slt`): parsing DuckDB's `.test`
 format, comparing results as DuckDB's runner does, translating DuckDB SQL,
 and replaying a small test file end to end. No network: the files are
 written here, in DuckDB's format."""
@@ -9,7 +9,7 @@ import textwrap
 
 import pytest
 
-from sverify import slt
+from sverify_dev import slt
 
 pytestmark = pytest.mark.backend("duckdb")
 

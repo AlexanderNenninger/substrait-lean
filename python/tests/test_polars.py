@@ -35,9 +35,9 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engines import ENGINES, delta_plans
-from sverify.examples import PIPELINES, create_tables
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.testing import canonical, inline_tables, lean_rows, lean_values
+from sverify_dev.examples import PIPELINES, create_tables
 from test_numeric import DOUBLES, INT_QUERIES, MIN, F
 from test_numeric import PIPELINES as NUMERIC_PIPELINES
 from test_numeric import R as NUMERIC_R
@@ -578,6 +578,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     [
         ("SELECT a / b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a % b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
+        ("SELECT a % CAST(b AS DOUBLE) AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a / b AS q FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, 2) AS p FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, b) AS p FROM r WHERE b = -1", polars_engine.NegativeExponent),

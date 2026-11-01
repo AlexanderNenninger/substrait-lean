@@ -648,12 +648,12 @@ tests the tour's transforms the same way.
 ### What is supported
 
 How much of the Ibis API gets through, from
-[`sverify/coverage.py`](python/src/sverify/coverage.py) and its cases in
-[`sverify/coverage_cases/`](python/src/sverify/coverage_cases) (regenerated on
-`main` after every merge by `uv run python -m sverify.coverage --write-readme`):
+[`sverify_dev/coverage.py`](python/tools/sverify_dev/coverage.py) and its cases in
+[`sverify_dev/coverage_cases/`](python/tools/sverify_dev/coverage_cases) (regenerated on
+`main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
-146 of 170 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+159 of 183 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
@@ -663,18 +663,19 @@ How much of the Ibis API gets through, from
 | lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* |
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✗ min over a sliding frame · ✗ window sum of an expression |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
+| math | ✓ sign *inc.* · ✓ sqrt *inc.* · ✓ exp *inc.* · ✓ ln *inc.* · ✓ log10, log2 *inc.* · ✓ log(base) *inc.* · ✓ trigonometry *inc.* · ✓ degrees, radians *inc.* · ✓ pi, e *inc.* · ✓ isinf *inc.* · ✓ bitwise *inc.* · ✓ shifts *inc.* · ✓ logical xor *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✗ date from columns · ✗ string to timestamp · ✗ time + interval · ✗ time truncate · ✗ strftime other directives · – between_time |
 
-Every engine runs the plans of the 146 verified operations, except:
+Every engine runs the plans of the 159 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 145 | non-equi join |
-| DuckDB | 139 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
-| Snowflake | 116 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · replace '' · rolling sum by time (with `tie_free=True` it runs) |
-| Spark | 113 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · replace '' · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
+| Polars | 158 | non-equi join |
+| DuckDB | 152 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
+| Snowflake | 122 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · rolling sum by time (with `tie_free=True` it runs) |
+| Spark | 121 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
 <!-- coverage:end -->
 
 The engines refuse what they cannot do as Lean does: `<` on strings is
@@ -913,7 +914,7 @@ The parser ([Parse.lean](SubstraitLean/Parse.lean)) and writer
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
 `df_*.json` fixtures are real plans: the Ibis pipelines in
-`sverify/examples.py`, compiled by Ibis and DataFusion
+`sverify_dev/examples.py`, compiled by Ibis and DataFusion
 (`python/scripts/capture_fixtures.py`). The others are hand-written.
 
 ### How incremental views work
@@ -923,13 +924,18 @@ DuckDB (by default), Polars or DataFusion, using delta plans from Lean. Under
 a node's `refresh` is an incremental view (`sverify.incremental`, internal):
 
 ```python
+import ibis
 import sverify as sv
-from sverify.examples import PIPELINES, create_tables
+from sverify.engines import create_table
 from sverify.incremental import IncrementalView
 
 con = sv.connect()          # Arrow tables; plans run on DuckDB
-create_tables(con, orders_rows=[(1, "ada", 30)], customers_rows=[("ada", "Paris")])
-view = IncrementalView(con, PIPELINES["inner_join"], "v")
+orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+customers = ibis.table({"name": "string", "city": "string"}, name="customers")
+create_table(con, "orders", orders.schema(), [(1, "ada", 30)])
+create_table(con, "customers", customers.schema(), [("ada", "Paris")])
+query = orders.join(customers, orders.customer == customers.name).select(orders.id, customers.city)
+view = IncrementalView(con, query, "v")
 view.apply({"orders": sv.Changes(inserts=[(3, "bob", 7)], deletes=[(1, "ada", 30)]),
             "customers": sv.Changes(inserts=[("bob", "Rome")])})
 assert view.rows() == view.recompute()
@@ -956,7 +962,7 @@ How it works:
 
 `python/tests/test_incremental.py` is a differential test (with `hypothesis`):
 after random insert/delete batches, the maintained view must equal the query
-recomputed from scratch. It runs every pipeline in `sverify/examples.py`:
+recomputed from scratch. It runs every pipeline in `sverify_dev/examples.py`:
 filters and projections, inner joins, self-joins, `UNION ALL`, cross products,
 and a filter-join-compute chain. It also runs one plain-SQL query, so the SQL
 entry point stays covered.
@@ -1158,7 +1164,7 @@ tables of `con`, which are copied into a fresh in-process database for each
 run. Contracts take `engine=` for their runtime checks on data too:
 
 ```python
-view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+view = IncrementalView(con, query, "v", engine="duckdb")
 
 @sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
 def passthrough(orders): ...
