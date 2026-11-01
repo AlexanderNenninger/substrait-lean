@@ -396,4 +396,50 @@ theorem shimDuckDB_correct (s : DuckDBSettings) :
     exact Outcome.agree_bind (shimDuckDB_correct s l l' hl row) fun v =>
       HoFn.applyP_agree f v fun x => shimDuckDB_correct s b b' hb [x]
 
+/-! ## Plans that cannot raise
+
+For a plan `verify` proves error-free from its contract, no shim is needed:
+an engine whose profile agrees with the reference wherever the reference
+does not raise (`Impl.Faithful`) gives `Rel.eval`'s rows, by guard
+elimination (`Rel.guardFree_sound`). DuckDB's profile is such a profile. The
+benchmark queries of #229 take this route. -/
+
+/-- A profile's values, where it does not raise: what an engine computes. -/
+def Profile.impl (p : Profile) : Impl :=
+  ⟨fun f v => (p.un f v).val, fun f v w => (p.bin f v w).val⟩
+
+theorem Profile.reference_faithful : Profile.reference.impl.Faithful :=
+  ⟨fun f v h => by simp [Profile.impl, Profile.reference, raiseIf, h, Outcome.val],
+   fun f v w h => by simp [Profile.impl, Profile.reference, raiseIf, h, Outcome.val]⟩
+
+/-- **DuckDB's profile agrees with the reference wherever the reference does
+not raise.** -/
+theorem Profile.duckdb_faithful (s : DuckDBSettings) : (Profile.duckdb s).impl.Faithful := by
+  refine ⟨fun f v h => Profile.reference_faithful.1 f v h, fun f v w h => ?_⟩
+  have hr := Profile.reference_faithful.2 f v w h
+  simp only [Profile.impl] at hr ⊢
+  simp only [Profile.duckdb]
+  split
+  · rename_i x
+    split
+    · rename_i hd
+      simp only [Bool.and_eq_true] at hd
+      cases f <;> simp_all [BinFn.divides, BinFn.issue]
+    · exact hr
+  · exact hr
+
+/-- **A verified plan runs correctly on DuckDB.** When `Rel.mayIssues` reports
+nothing but integer `SUM`s that may wrap (which keep their check), on every
+catalog that satisfies the preconditions `A`, `F`, evaluating the plan with
+DuckDB's functions gives `Rel.eval`'s rows, under any settings. Trusted: that
+`Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
+theorem Rel.duckdb_sound (s : DuckDBSettings) {cat : Catalog} (hcat : cat.WF)
+    {A : String → List AVal} {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hs : r.looseSub = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) :
+    r.evalI (Profile.duckdb s).impl cat = r.eval cat :=
+  Rel.guardFree_sound hcat hA hF hT hwf hs hm (Profile.duckdb_faithful s)
+
 end Substrait
