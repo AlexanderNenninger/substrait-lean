@@ -8,6 +8,9 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _pipelines import arrow_table as table
+from _pipelines import paid_nonzero as paid
+from _pipelines import rows
 from sverify.errors import CompositionError
 from sverify.io import DeltaSink, StaticSource
 
@@ -22,12 +25,6 @@ CUSTOMERS = pa.schema([pa.field("cid", pa.string()), pa.field("region", pa.strin
 REGIONS = pa.schema([pa.field("region", pa.string()), pa.field("manager", pa.string())])
 
 
-def table(schema, rows):
-    return pa.Table.from_pylist(
-        [dict(zip(schema.names, r, strict=True)) for r in rows], schema=schema
-    )
-
-
 def sources():
     orders = StaticSource(
         table(ORDERS, [(1, "ada", 30), (2, "bob", 0), (3, "ada", 7)]), name="orders"
@@ -35,11 +32,6 @@ def sources():
     customers = StaticSource(table(CUSTOMERS, [("ada", "eu"), ("bob", "us")]), name="customers")
     regions = StaticSource(table(REGIONS, [("eu", "eve"), ("us", "uma")]), name="regions")
     return orders, customers, regions
-
-
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount > 0])
-def paid(orders):
-    return orders.filter(orders.amount > 0)
 
 
 @sv.transform(requires={"t": [_.amount > 0]}, ensures=[_.doubled > 0])
@@ -55,10 +47,6 @@ def enrich(orders, customers):
 @sv.transform()
 def daily_totals(t):
     return t.group_by("cid").aggregate(total=t.amount.sum())
-
-
-def rows(node):
-    return sorted(tuple(r.values()) for r in node.to_arrow().to_pylist())
 
 
 # -- chaining -------------------------------------------------------------------
