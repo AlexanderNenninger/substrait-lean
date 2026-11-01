@@ -59,7 +59,8 @@ def nestedFns : List (Nat × String) := [
   -- sverify's own: `lt` of two lists (`Value.listLt3`), which the parser
   -- reads back as `lt`. Engines order lists with NULL elements their own
   -- way, so each needs to know a comparison is of lists (#207).
-  (400, "list_lt")]
+  (400, "list_lt"),
+  (401, "cardinality")]
 
 /-- Aggregate functions: new anchors 500–599. -/
 def aggregateFns : List (Nat × String) := [
@@ -108,6 +109,9 @@ def UnFn.anchor : UnFn → Nat
   | .wrap _ => 0
   -- Decimals are not written yet (`Rel.decimalOps`).
   | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
+  -- Lists and structs; field and element access are references, not calls.
+  | .cardinality => 401
+  | .structField _ | .listElement _ => 0
 
 def BinFn.anchor : BinFn → Nat
   -- Core
@@ -181,6 +185,8 @@ def kindType : Parse.Kind → Json
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
+  | .struct ks => obj [("struct", obj [("types", Json.arr (ks.attach.map fun ⟨k, _⟩ => kindType k).toArray),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .int | .other => i64Type
 where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
 
@@ -192,12 +198,14 @@ interval (#65). -/
 inductive WKind where
   | int | float | time | date | interval | str | bool | tod | other
   | list (elem : WKind)
+  | struct (fields : List WKind)
   | dec (p s : Nat)
   deriving BEq
 
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
+  | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => ofKind k)
   | .dec p s => .dec p s
   -- Zoned timestamps are only compared with each other (`checkArgKinds`).
   | .timeTz => .other
@@ -206,6 +214,7 @@ def WKind.ofKind : Parse.Kind → WKind
 def WKind.toKind : WKind → Parse.Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
+  | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)
   | .dec p s => .dec p s
 
 /-- An expression without field references. -/
@@ -292,6 +301,8 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | .list e, .list [] => obj [("emptyList", obj [("type", kindType e.toKind)])]
   | .list e, .list vs =>
     obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
+  | .struct _, .null => obj [("null", kindType k.toKind)]
+  | .struct _, .list vs => obj [("struct", obj [("fields", Json.arr (vs.map writeValue).toArray)])]
   -- A bare double, which no context types (#96).
   | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
@@ -331,6 +342,10 @@ def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
 def isLit : Expr → Bool
   | .lit _ => true
   | _ => false
+
+/-- A field reference with the segment `seg` into the value of `e`. -/
+def reference (seg e : Json) : Json :=
+  obj [("selection", obj [("directReference", seg), ("expression", e)])]
 
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
@@ -385,6 +400,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .lower a => call (UnFn.anchor .lower) [writeExpr cols .str a]
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
   | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
+  -- A reference into the value of `a` (#94).
+  | .un (.structField i) a => reference (obj [("structField", obj [("field", toJson i)])])
+      (writeExpr cols (wkind cols a) a)
+  | .un (.listElement off) a => reference (obj [("listElement", obj [("offset", toJson off)])])
+      (writeExpr cols (wkind cols a) a)
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
@@ -466,17 +486,30 @@ def _root_.Substrait.Expr.decimalOps : Expr → Bool
     (match f with | .dadd | .dsub | .dmul | .ddiv => true | _ => false) || a.decimalOps || b.decimalOps
   | .ifThen c t e => c.decimalOps || t.decimalOps || e.decimalOps
 
-def _root_.Substrait.Rel.decimalOps : Rel → Bool
+/-- Does some expression of the plan satisfy `p`? -/
+def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
   | .read _ | .values _ _ => false
-  | .filter r c => r.decimalOps || c.decimalOps
-  | .project r es => r.decimalOps || es.any (·.decimalOps)
-  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.decimalOps
-  | .cross a b | .unionAll a b => a.decimalOps || b.decimalOps
-  | .join a b _ on | .semi a b _ on => a.decimalOps || b.decimalOps || on.decimalOps
+  | .filter r c => r.anyExpr p || p c
+  | .project r es => r.anyExpr p || es.any p
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.anyExpr p
+  | .cross a b | .unionAll a b => a.anyExpr p || b.anyExpr p
+  | .join a b _ on | .semi a b _ on => a.anyExpr p || b.anyExpr p || p on
   | .window r _ _ fns =>
-    r.decimalOps || fns.any (fun | .agg m _ _ => m.exprs.any (·.decimalOps) | _ => false)
-  | .aggregate r gs ms =>
-    r.decimalOps || gs.any (·.decimalOps) || ms.any fun m => m.exprs.any (·.decimalOps)
+    r.anyExpr p || fns.any (fun | .agg m _ _ => m.exprs.any p | _ => false)
+  | .aggregate r gs ms => r.anyExpr p || gs.any p || ms.any fun m => m.exprs.any p
+
+def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOps
+
+/-- Does the expression reach into a struct or a list, or count a list (#94)?
+DataFusion 51 reads a reference into a value as a reference into the row, and
+its `cardinality([])` is NULL, so it gets no plans with these. -/
+def _root_.Substrait.Expr.nestedAccess : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with | .structField _ | .listElement _ | .cardinality => true | _ => false) ||
+      a.nestedAccess
+  | .bin _ a b => a.nestedAccess || b.nestedAccess
+  | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
 
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind

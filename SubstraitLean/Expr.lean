@@ -108,6 +108,18 @@ inductive UnFn where
   | ftod (s : Nat)
   /-- A decimal of scale `s` to a double, correctly rounded (`FloatCode.ofDecimal`). -/
   | dtof (s : Nat)
+  /-- Field `i` of a struct (Substrait's `StructField` reference segment). A
+  struct is the list of its fields (`docs/nested-values.md`); a NULL struct
+  has NULL fields. -/
+  | structField (i : Nat)
+  /-- Element `off` of a list (Substrait's `ListElement` reference segment):
+  zero-based, a negative offset counting from the end (`-1` is the last
+  element), `NULL` out of range in either direction, without wrapping
+  (`Value.listElement`, #94). -/
+  | listElement (off : Int)
+  /-- `cardinality(l)`: the number of elements, NULL ones included
+  (`functions_list.yaml`). -/
+  | cardinality
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -184,6 +196,18 @@ def roundDivInt? (a b : Int) : Option Int :=
 #guard roundDivInt? 5 2 == some 3 && roundDivInt? (-5) 2 == some (-3) && roundDivInt? 4 2 == some 2
 #guard roundDivInt? 1 0 == none && roundDivInt? 0 7 == some 0
 
+/-- Element `off` of `vs`: zero-based, from the end for a negative `off`,
+`NULL` out of range (Substrait's `ListElement`). -/
+def Value.listElement (off : Int) (vs : List Value) : Value :=
+  let k := if off < 0 then vs.length + off else off
+  if 0 ≤ k then vs.getD k.toNat .null else .null
+
+#guard Value.listElement 1 [.int 1, .int 2, .int 3] == .int 2
+#guard Value.listElement (-1) [.int 1, .int 2, .int 3] == .int 3
+#guard Value.listElement 3 [.int 1, .int 2, .int 3] == .null
+#guard Value.listElement (-4) [.int 1, .int 2, .int 3] == .null
+#guard Value.listElement 0 [] == .null
+
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
   | .isNull, .null => .bool true
@@ -236,6 +260,9 @@ def UnFn.apply : UnFn → Value → Value
     | some m => .int m
     | none => .null
   | .dtof s, .int i => .int (FloatCode.ofDecimal i s)
+  | .structField i, .list vs => vs.getD i .null
+  | .listElement off, .list vs => Value.listElement off vs
+  | .cardinality, .list vs => .int vs.length
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/

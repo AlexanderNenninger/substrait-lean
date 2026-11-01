@@ -128,6 +128,9 @@ def literal(v: object) -> dict:
         if not v:
             return {"literal": {"emptyList": {"type": {"i64": {}}}}}
         return {"literal": {"list": {"values": [literal(x)["literal"] for x in v]}}}
+    if isinstance(v, dict):
+        # A struct is its fields, in order (`docs/nested-values.md`).
+        return {"literal": {"struct": {"fields": [literal(x)["literal"] for x in v.values()]}}}
     raise TypeError(f"no literal for {v!r}")
 
 

@@ -118,6 +118,9 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
     IO.eprintln "error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
     return 1
   if df then
+    if plan.root.anyExpr Expr.nestedAccess then
+      IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"
+      return 1
     if let some (code, msg) := checkPlan plan then
       IO.eprintln msg; return code
   IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.root plan.names df).compress

@@ -559,6 +559,10 @@ def UnFn.abs : UnFn → AVal → AVal
   | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .bucket k o, a => monoAbs (Time.bucket k o) a
   | .fmath f, a => partialAbs (f.safe a) a
+  -- The abstraction does not look into lists: an element or a field is
+  -- anything.
+  | .structField _, _ | .listElement _, _ => AVal.top
+  | .cardinality, _ => ⟨true, some (.ge 0), false, false, false⟩
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -914,6 +918,9 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case upper | lower | length | reverse | ascii | replace =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem, Text.ascii_nonneg]
+  case structField | listElement => exact AVal.mem_top _
+  case cardinality =>
+    cases v <;> simp [UnFn.abs, UnFn.apply, AVal.Mem, Bound.ge, Bound.Mem]
   case regexMatch p =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp only [UnFn.abs, UnFn.apply, AVal.Mem]
