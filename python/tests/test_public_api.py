@@ -1,5 +1,5 @@
-"""The public API is `sverify`, `sverify.io`, `sverify.engines` and
-`sverify.errors`, and every name in it is documented: a class or function by
+"""The public API is `sverify`, `sverify.io`, `sverify.engines`,
+`sverify.testing` and `sverify.errors`, and every name in it is documented: a class or function by
 its own docstring, any other value in its module's docstring."""
 
 import importlib
@@ -7,7 +7,7 @@ import inspect
 
 import pytest
 
-PUBLIC = ["sverify", "sverify.io", "sverify.engines", "sverify.errors"]
+PUBLIC = ["sverify", "sverify.io", "sverify.engines", "sverify.testing", "sverify.errors"]
 
 
 def documented(module, name: str) -> bool:

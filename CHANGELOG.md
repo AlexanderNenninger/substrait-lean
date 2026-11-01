@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### A pytest plugin for transforms and contracts
+
+`sverify.testing` is now public
+([#180](https://github.com/AlexanderNenninger/substrait-lean/issues/180)), and
+installing sverify registers a pytest plugin (the `pytest11` entry point
+`sverify`, off with `-p no:sverify`).
+
+- `assert_contract(node)` asserts that every contract in a node's lineage is
+  proved. With `data=` it runs the node on those rows: test data that breaks
+  a precondition is reported with its rows, the output is checked against
+  the postconditions, and with `expected=` it is diffed against the expected
+  rows (missing and unexpected rows, as bags).
+- `assert_engines_agree(node, data)` runs the node on every installed engine
+  and diffs their results.
+- `cases(node, max_rows=5)` is a Hypothesis strategy of input tables that
+  meet a node's preconditions, for property tests of the code around it.
+  It needs the new `testing` extra (`pip install 'sverify[testing]'`).
+- The fixtures `sv_source(rows, schema, name=...)` (an in-memory source,
+  also `sverify.testing.source`) and `sv_engine`, which runs a test once per
+  installed engine (`installed_engines()`), or per engine of
+  `--sv-engines=duckdb,polars`.
+
+`python/tests/test_plugin_example.py` is an example test file, and
+`python/tests/test_tour.py` tests the tour's transforms with the plugin.
+
 ## 0.2.0 (2026-11-01)
 
 A new public API, built around transforms that compose

@@ -93,6 +93,35 @@ except VerificationError as e:
 # could not prove: (_.total > 5) (it is TRUE or FALSE)
 ```
 
+## Testing with pytest
+
+`sverify.testing` has assertions for your test suite, and installing sverify
+registers a pytest plugin with two fixtures: `sv_source` makes an in-memory
+source from rows, and a test that takes `sv_engine` runs once per installed
+engine.
+
+```python
+from sverify.testing import assert_contract, assert_engines_agree, source
+
+
+def test_big_orders():
+    orders = source([], {"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+    node = big_orders(orders)
+    assert_contract(node)  # the contract is proved
+    data = {"orders": [(1, "ada", 30), (2, "bob", 5)]}
+    assert_contract(node, data=data, expected=[(1, 60)])  # and holds on these rows
+    assert_engines_agree(node, data)  # DuckDB, Polars and DataFusion agree
+
+
+test_big_orders()
+```
+
+A failure lists the rows: those of the test data that break a precondition,
+or the expected rows that are missing and the ones that were not expected.
+`sverify.testing.cases(node)` is a Hypothesis strategy of inputs that meet
+the preconditions, for property tests of the code around a node
+(`pip install 'sverify[testing]'`).
+
 ## SQL models
 
 A transform's body can be SQL, over its inputs by name. It is proved,
@@ -175,6 +204,9 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   `sv.group(a, b)` several outputs against the same source versions.
 * Filters, projections, inner and cross joins and `UNION ALL` are
   maintained from the changes; anything else is recomputed and diffed.
+* `sverify.testing` has `assert_contract`, `assert_engines_agree` and the
+  Hypothesis strategy `cases` for pytest, with the plugin's `sv_engine` and
+  `sv_source` fixtures.
 * `sverify.engines` has the engines, SQL dialects and plans
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.
