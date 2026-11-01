@@ -1,0 +1,100 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "1d0db38904205bec4d6f6f6a1f6cec3e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "552590755a8f31178e3c214c0ac4f849",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"sverify-a-guided-tour\">sverify: a guided tour</h1>\n<span class=\"paragraph\">Somewhere downstream of every pipeline you write, someone is relying on\nit: the customer waiting for a refund, whoever gets paged at 3 a.m., the\nanalyst whose dashboard has to add up. <code>sverify</code> checks the pipeline for\nthem <strong>before it runs</strong>. You write the\ntransformation in <a href=\"https://ibis-project.org\" rel=\"noopener noreferrer\" target=\"_blank\">Ibis</a> or SQL, as usual,\nand say what it may assume about its inputs and what it guarantees\nabout its output. A checker written in <a href=\"https://lean-lang.org\" rel=\"noopener noreferrer\" target=\"_blank\">Lean</a>\nproves the guarantees for every possible input, or tells you why it\ncan't. Then you get:</span>\n<ol>\n<li><strong>Contracts proved, not tested.</strong> \"No NULL city\", \"one row per\n   device and minute\", \"no amount below zero\" hold on every input that\n   meets the preconditions, not just on yesterday's data: the checks you\n   would write as dbt tests or expectations, done once, at definition\n   time. Division by zero, integer overflow and bad casts are ruled out\n   the same way.</li>\n<li><strong>One plan, the same answer on every engine.</strong> The checked plan runs\n   on DuckDB, Polars or DataFusion, or is written as Snowflake or Spark\n   SQL, and means the same thing on each: NULLs, integer division, NaN,\n   ties and overflow are spelled out, or the plan is refused where an\n   engine can't match.</li>\n<li><strong>Results kept up to date from the changes.</strong> Read the change feed\n   of a Delta or Iceberg table, and update the result with plans proved\n   to equal a full recompute, instead of a hand-written watermark job.\n   Sinks write each state exactly once and carry the contract to the\n   next job.</li>\n</ol></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "7b658c8fbc77f71f122cf36817e41e30",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"start-with-a-workflow\">Start with a workflow</h2>\n<span class=\"paragraph\">The first three chapters are complete jobs, condensed from the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> of 139 real analytical queries.\nEach starts from source tables, states and proves a contract, runs on\nevery engine, keeps up with new data and writes a sink, and each shows\nwhat goes wrong without the checker:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: right;\"></th>\n<th style=\"text-align: left;\">workflow</th>\n<th style=\"text-align: left;\">sources and sinks</th>\n<th style=\"text-align: left;\">what it catches</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: right;\">1</td>\n<td style=\"text-align: left;\"><a href=\"?file=01_duplicate_payments.py\">Duplicate card payments</a></td>\n<td style=\"text-align: left;\">Delta, Change Data Feed</td>\n<td style=\"text-align: left;\">a self-join matching rows with themselves; a watermark job missing a late duplicate and keeping a reversed one</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">2</td>\n<td style=\"text-align: left;\"><a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a></td>\n<td style=\"text-align: left;\">Iceberg</td>\n<td style=\"text-align: left;\"><code>LAG</code> over ties; a NaN reading raising an alert; Snowflake and Spark tables without row order</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">3</td>\n<td style=\"text-align: left;\"><a href=\"?file=03_orders_mart.py\">An orders mart</a></td>\n<td style=\"text-align: left;\">Delta, a type-2 dimension</td>\n<td style=\"text-align: left;\"><code>not_null(city)</code> failing after a left join; <code>/</code> meaning three things on three engines</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "f371f90ee39d9d10d972abeadc55cc7d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"thirty-seconds-of-it\">Thirty seconds of it</h2>\n<span class=\"paragraph\">A transformation with a contract: the input has no negative amounts\n(<code>requires</code>), so the output has no negative and no NULL <code>doubled</code>\n(<code>ensures</code>). Calling the function asks Lean for a proof before the\nexpression is handed back:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "f6f57050e4a1014d5c0059f4ad7c5158",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.doubled &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.doubled.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($2 * 2)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>id</code></td>\n<td>any integer or NULL</td>\n</tr>\n<tr>\n<td><code>doubled</code></td>\n<td>an integer \u2265 22</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "0920071276055996d3f8064a67331f92",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Both postconditions are \u2705 <strong>proved</strong>, and the bottom table is what Lean\nworked out about every output column on its own: <code>doubled</code> is at least\n22, because the filter keeps amounts of at least 11.\n<a href=\"?file=04_contracts.py\">Contracts</a> explains how.</span>\n<h2 id=\"the-rest-of-the-tour\">The rest of the tour</h2>\n<span class=\"paragraph\"><strong>Features</strong>, one per chapter, with examples to change and break:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: right;\"></th>\n<th style=\"text-align: left;\">chapter</th>\n<th style=\"text-align: left;\">what it covers</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: right;\">4</td>\n<td style=\"text-align: left;\"><a href=\"?file=04_contracts.py\">Contracts</a></td>\n<td style=\"text-align: left;\"><code>requires</code>/<code>ensures</code>, what Lean tracks, <code>on_unproved</code>, contracts on real data</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">5</td>\n<td style=\"text-align: left;\"><a href=\"?file=05_keys_and_relations.py\">Keys and relations</a></td>\n<td style=\"text-align: left;\"><code>sv.unique</code>, facts between columns, joins</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">6</td>\n<td style=\"text-align: left;\"><a href=\"?file=06_runtime_errors.py\">Runtime errors</a></td>\n<td style=\"text-align: left;\">division by zero, overflow, casts; proving they can't happen</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">7</td>\n<td style=\"text-align: left;\"><a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a></td>\n<td style=\"text-align: left;\">LAG, LEAD, ROW_NUMBER, ties; aligning two sensors</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">8</td>\n<td style=\"text-align: left;\"><a href=\"?file=08_composition.py\">Composing contracts</a></td>\n<td style=\"text-align: left;\">proving one step's preconditions from the previous step</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">9</td>\n<td style=\"text-align: left;\"><a href=\"?file=09_incremental_views.py\">Incremental views</a></td>\n<td style=\"text-align: left;\">a transform on a source becomes a node that <code>refresh</code> keeps up to date from changes alone; what is refused, and how the update rules work</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">10</td>\n<td style=\"text-align: left;\"><a href=\"?file=10_pipelines.py\">Pipelines</a></td>\n<td style=\"text-align: left;\">nodes over nodes, <code>.write</code> to store them, fallbacks, contracts that hold in every state</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">11</td>\n<td style=\"text-align: left;\"><a href=\"?file=11_engines.py\">Engines and SQL</a></td>\n<td style=\"text-align: left;\">DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">12</td>\n<td style=\"text-align: left;\"><a href=\"?file=12_values.py\">Doubles, time and text</a></td>\n<td style=\"text-align: left;\">NaN and \u22120.0, timestamps and intervals, calendar functions, strings</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\"><strong>Under the hood</strong>, for when you want to know why the \u2705 can be trusted:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: right;\"></th>\n<th style=\"text-align: left;\">chapter</th>\n<th style=\"text-align: left;\">what it covers</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: right;\">13</td>\n<td style=\"text-align: left;\"><a href=\"?file=13_plans_and_proofs.py\">Plans, meaning and proofs</a></td>\n<td style=\"text-align: left;\">Substrait plans, Lean's interpreter, theorems, NULL</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">14</td>\n<td style=\"text-align: left;\"><a href=\"?file=14_the_checker.py\">The checker</a></td>\n<td style=\"text-align: left;\"><code>substrait-check</code>: well-formedness, Lean as a reference engine, Ibis coverage</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">15</td>\n<td style=\"text-align: left;\"><a href=\"?file=15_trust.py\">What is proved, what is trusted</a></td>\n<td style=\"text-align: left;\">the trusted boundary, a glossary and a map of the code</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">16</td>\n<td style=\"text-align: left;\"><a href=\"?file=16_datafusion_semantics.py\">DataFusion's surprising semantics</a></td>\n<td style=\"text-align: left;\">appendix: every DataFusion quirk, checked against the Lean model</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">17</td>\n<td style=\"text-align: left;\"><a href=\"?file=17_backend_semantics.py\">One expression, many engines</a></td>\n<td style=\"text-align: left;\">appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">No knowledge of formal verification is needed for any of it.</span>\n<h2 id=\"opening-the-tour\">Opening the tour</h2>\n<span class=\"paragraph\">Open the whole folder, so the links between chapters work:</span>\n<div class=\"language-bash codehilite\"><pre><span></span><code>uvx<span class=\"w\"> </span>marimo<span class=\"w\"> </span>edit<span class=\"w\"> </span>--sandbox<span class=\"w\"> </span>notebooks<span class=\"w\">      </span><span class=\"c1\"># from the project root</span>\n</code></pre></div>\n<span class=\"paragraph\"><code>--sandbox</code> gives each notebook its own environment with <code>sverify</code>\ninstalled from <code>python/</code> (the first start takes a minute). The Lean\nchecker must be built once with <code>lake build</code> (see the README's\nDevelopment section). <code>uvx marimo run --sandbox --include-code\nnotebooks</code> shows the same chapters as read-only apps.</span>\n<h2 id=\"is-everything-set-up\">Is everything set up?</h2></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "24d9e858c5da75c357b529c820267eb8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eThe Lean checker &#92;u003ccode&#92;u003esubstrait-check&#92;u003c/code&#92;u003e is installed. You&#x27;re ready to go: start with the first workflow.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

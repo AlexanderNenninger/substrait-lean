@@ -1,0 +1,113 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "c4f18f3f36750108bf8046b29e82eba0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 14. <a href=\"?file=14_the_checker.py\">The checker</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 16. <a href=\"?file=16_datafusion_semantics.py\">DataFusion's surprising semantics</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "7b745fede25fcda8fdd054336f443032",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"15-what-is-proved-what-is-trusted\">15. What is proved, what is trusted</h1>\n<span class=\"paragraph\">Sooner or later someone will ask you what exactly they're trusting when\nthey see a \u2705, and they deserve a straight answer. A proof is only as good as\nwhat it is about. Every \u2705 in this tour is a\ntheorem about the Lean model <code>Rel</code>. Between your Ibis code and the\nmodel, and between the model and the engine, there is code that is not\nproved. Here is the honest picture:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "77ec7506c607e1d3aa4cb736b8185407",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-mermaid data-diagram='&quot;&#92;n    graph LR&#92;n      I[&#92;&quot;Ibis or SQL&#92;&quot;] --&#92;u003e|&#92;&quot;Ibis producer, or DataFusion&#x27;s&#92;u003cbr/&#92;u003eor Isthmus for SQL&#92;&quot;| J[&#92;&quot;Substrait JSON&#92;&quot;]&#92;n      J --&#92;u003e|&#92;&quot;parser&#92;u003cbr/&#92;u003eTRUSTED \u00b7 golden tests, round trips&#92;&quot;| M[&#92;&quot;Lean model: Rel&#92;&quot;]&#92;n      M --&#92;u003e|&#92;&quot;PROVED&#92;u003cbr/&#92;u003econtracts, keys, runtime errors,&#92;u003cbr/&#92;u003erewrites, update plans&#92;&quot;| M2[&#92;&quot;verdicts,&#92;u003cbr/&#92;u003eupdate plans&#92;&quot;]&#92;n      M2 --&#92;u003e|&#92;&quot;writer, translators, SQL generator&#92;u003cbr/&#92;u003eTRUSTED \u00b7 differential tests&#92;&quot;| D[&#92;&quot;DuckDB \u00b7 Polars \u00b7 DataFusion \u00b7&#92;u003cbr/&#92;u003eSpark \u00b7 Snowflake&#92;&quot;]&#92;n      style M fill:#d4f4dd,stroke:#2e8b57&#92;n      style M2 fill:#d4f4dd,stroke:#2e8b57&#92;n    &quot;'></marimo-mermaid>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "807f8e57aaced1d69e059c81de6b86ef",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>Proved (green):</strong> everything about <code>Rel</code>: the meaning of every\noperator, type safety, the rewrites, the abstract interpreter behind\ncontracts, keys and relations between columns, window functions and\ntie-breaking, the absence of runtime errors, composition of contracts,\nthe incremental update plans and their weight-column encoding, and the\nchain rule for views over views. Lean checks these mechanically, and\n<code>#print axioms</code> in <code>SubstraitLean/Examples.lean</code> confirms no step was\nskipped: the proofs use only Lean's three standard axioms.</span>\n<span class=\"paragraph\"><strong>Trusted, guarded by tests:</strong></span>\n<ul>\n<li>the JSON <strong>parser</strong> and <strong>writer</strong> (do they translate plans faithfully?)\n  and the rewrites the parser does on the way in (<code>IN</code> lists, <code>COALESCE</code>,\n  <code>RIGHT JOIN</code>, \u2026), guarded by golden tests and round trips;</li>\n<li>the column descriptions taken from table <strong>schemas</strong>;</li>\n<li><strong>when</strong> DataFusion evaluates an expression (lazy <code>CASE</code>, eager <code>AND</code>,\n  merged filters), which the runtime-error analysis relies on;</li>\n<li>the <code>sverify</code> <strong>glue</strong>: change tables, consolidation, merging;</li>\n<li>Delta and Iceberg: that a <strong>change feed</strong> turns the old snapshot into\n  the new one, that writers enforce nullability and constraints, and\n  that <strong>file statistics</strong> are correct (each refresh report names what\n  it trusted);</li>\n<li>the <strong>Polars translator</strong>, the <strong>SQL generator</strong>, and each <strong>engine</strong>\n  itself.</li>\n</ul>\n<span class=\"paragraph\">The randomized tests compare the engines with each other and with\nLean's <code>Rel.eval</code>, compare incremental views with full recomputation,\ncheck that proved postconditions hold on random data, and check that\nengines only ever fail where an error was reported. They have caught\nreal engine bugs: an early version found DuckDB's Substrait reader\nrunning <code>UNION ALL</code> as <code>UNION DISTINCT</code>, which is why DuckDB now runs\ngenerated SQL instead.</span>\n<span class=\"paragraph\">This is the normal shape of verified systems: a small proved core, plus\na clearly labelled trusted boundary that is tested hard.</span>\n<h2 id=\"what-the-model-doesnt-cover-yet\">What the model doesn't cover yet</h2>\n<ul>\n<li>framed window aggregates (running totals, moving averages), ranks and\n  <code>NTILE</code>;</li>\n<li>incremental maintenance of aggregates, left, semi and anti joins,\n  <code>DISTINCT</code>, <code>LIMIT</code> and windows (a node recomputes those and diffs the result);</li>\n<li>relations needing more than \"column plus constant\", string contents,\n  DECIMAL columns, counts across rows;</li>\n<li><em>completeness</em>: contracts say what every output row satisfies, not\n  that no row is lost. The converse is a Lean theorem per plan today\n  (<code>IoT.window_complete</code> in <code>SubstraitLean/Completeness.lean</code>), not\n  something the checker reports.</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "4de327e4923c7130fa4206f592a828b8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-accordion data-labels='[&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eGlossary&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eWhere to look in the code&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;,&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eTry it yourself&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;]' data-multiple='false' data-expanded='[]'><div><span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><strong>Plan / relation (<code>Rel</code>):</strong> a tree of operators: Read, Filter, Project, Emit, Join, \u2026</li>\n<li><strong>Semantics (<code>Rel.eval</code>):</strong> the reference interpreter that <em>defines</em> what a plan means.</li>\n<li><strong>Theorem:</strong> a statement quantified over <em>all</em> inputs, checked by Lean.</li>\n<li><strong>Hypothesis:</strong> a condition a theorem needs (e.g. \"the filter only reads old columns\").</li>\n<li><strong>Well-formed (<code>Rel.WF</code>):</strong> every column reference exists and union inputs agree on width.</li>\n<li><strong>Precondition / postcondition:</strong> what a transformation assumes about its inputs / guarantees about its output.</li>\n<li><strong>Abstract interpretation:</strong> running a plan on descriptions of values (can it be NULL? which values?) instead of values.</li>\n<li><strong>Key:</strong> columns no two rows agree on (<code>sv.unique</code>).</li>\n<li><strong>Deterministic:</strong> no ties in a window's order, so the engine has no choices to make.</li>\n<li><strong>Hoare triple <code>{P} f {Q}</code>:</strong> if <code>P</code> holds before <code>f</code>, <code>Q</code> holds after.</li>\n<li><strong>Bag:</strong> a table where duplicate rows count; order doesn't matter.</li>\n<li><strong>Z-set:</strong> a bag where rows carry integer weights; negative means deleted.</li>\n<li><strong>Delta (<code>\u0394</code>):</strong> the change to a table, or to a query result.</li>\n<li><strong>Linear operator:</strong> one that handles each row independently, so <code>Q(A + \u0394A) = Q(A) + Q(\u0394A)</code>.</li>\n<li><strong><code>Perm</code>:</strong> \"same rows, possibly in a different order.\"</li>\n<li><strong>Trusted base:</strong> the parts not covered by proofs.</li>\n</ul></span></div><div><span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th style=\"text-align: left;\">Topic</th>\n<th style=\"text-align: left;\">File</th>\n<th style=\"text-align: left;\">Key names</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\">Values, NULL logic</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Expr.lean</code></td>\n<td style=\"text-align: left;\"><code>and3</code>, <code>isTrue_and3</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Operators, meaning, type safety</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Rel.lean</code></td>\n<td style=\"text-align: left;\"><code>Rel.eval</code>, <code>Rel.WF</code>, <code>Rel.eval_arity</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Optimizer rewrites</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Rewrites.lean</code></td>\n<td style=\"text-align: left;\"><code>filter_filter</code>, <code>filter_project_pushdown</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Executable checker</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Check.lean</code></td>\n<td style=\"text-align: left;\"><code>Rel.checkWF</code>, <code>checkWF_iff</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Contracts</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Contracts.lean</code>, <code>ContractCheck.lean</code></td>\n<td style=\"text-align: left;\"><code>Rel.aeval_sound</code>, <code>contract_sound</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Keys, ties</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Keys.lean</code></td>\n<td style=\"text-align: left;\"><code>Rel.keys_sound</code>, <code>window_tiebreak</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Windows</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Window.lean</code></td>\n<td style=\"text-align: left;\"><code>ROW_NUMBER</code>, <code>LAG</code>, <code>LEAD</code>, ranks, <code>NTILE</code>, aggregates and <code>FIRST_VALUE</code>/<code>LAST_VALUE</code>/<code>NTH_VALUE</code> over ROWS and RANGE frames</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Doubles, time, text</td>\n<td style=\"text-align: left;\"><code>Float.lean</code>, <code>Rounding.lean</code>, <code>Time.lean</code>, <code>Text.lean</code></td>\n<td style=\"text-align: left;\"><code>round_mono</code>, <code>Time.trunc_mono</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Runtime errors</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Safety.lean</code></td>\n<td style=\"text-align: left;\"><code>Rel.mayIssues_sound</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Composition, pipelines</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Compose.lean</code></td>\n<td style=\"text-align: left;\"><code>Triple.compose</code>, <code>Triple.maintained</code>, <code>Rel.chain_sound</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Incremental maintenance</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Incremental.lean</code>, <code>Terms.lean</code>, <code>Weighted.lean</code></td>\n<td style=\"text-align: left;\"><code>zeval_add</code>, <code>delta_correct</code>, <code>weighted_eval</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Substrait JSON</td>\n<td style=\"text-align: left;\"><code>SubstraitLean/Parse.lean</code>, <code>Write.lean</code></td>\n<td style=\"text-align: left;\"><code>parsePlan</code>, <code>writePlan</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">CLI</td>\n<td style=\"text-align: left;\"><code>Main.lean</code></td>\n<td style=\"text-align: left;\"><code>substrait-check</code>, <code>--write</code>, <code>--contract</code>, <code>--delta</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Python package</td>\n<td style=\"text-align: left;\"><code>python/src/sverify/</code></td>\n<td style=\"text-align: left;\"><code>transform</code>, <code>verify</code>, <code>Node</code>, <code>group</code>, <code>asof_join</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">Engines, SQL</td>\n<td style=\"text-align: left;\"><code>python/src/sverify/polars_engine.py</code>, <code>sql/</code></td>\n<td style=\"text-align: left;\"><code>sverify.engines.run</code>, <code>to_sql</code></td>\n</tr>\n</tbody>\n</table></span></div><div><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-bash codehilite\"><pre><span></span><code>lake<span class=\"w\"> </span>build<span class=\"w\">                     </span><span class=\"c1\"># check every proof (seconds; no Mathlib)</span>\n<span class=\"nb\">cd</span><span class=\"w\"> </span>python<span class=\"w\"> </span><span class=\"o\">&amp;&amp;</span><span class=\"w\"> </span>uv<span class=\"w\"> </span>run<span class=\"w\"> </span>poe<span class=\"w\"> </span>qa<span class=\"w\">     </span><span class=\"c1\"># proofs, lint, types, golden and Python tests</span>\n</code></pre></div>\n<span class=\"paragraph\">A good first exercise in Lean: in <code>Rewrites.lean</code>, try to prove\n<code>filter_project_pushdown</code> <strong>without</strong> the hypothesis <code>hp</code>. Lean gets\nstuck exactly where a filter reads a column that only exists after the\nprojection.</span></span></div></marimo-accordion>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "66ddc13cff56167a77303e67a562abc0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">That's the tour, apart from the two appendices. The README has the full\nreference: every proved theorem, the modelling choices, and the engine\nnotes.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "c4f18f3f36750108bf8046b29e82eba0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 14. <a href=\"?file=14_the_checker.py\">The checker</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 16. <a href=\"?file=16_datafusion_semantics.py\">DataFusion's surprising semantics</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

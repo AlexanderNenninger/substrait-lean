@@ -1,0 +1,191 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "92ed6416450d308c45b6f9beab676ae2"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "91b13092ad509a5cf726814f5486ac7d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 10. <a href=\"?file=10_pipelines.py\">Pipelines</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 12. <a href=\"?file=12_values.py\">Doubles, time and text</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "990a9e0f179739e0f4fe283543f745eb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"11-engines-and-sql\">11. Engines and SQL</h1>\n<span class=\"paragraph\">Say your pipeline was proved and tested on DuckDB on your laptop, and\nthe platform team wants it on Spark next quarter. The proof hasn't\nchanged, but will the answers?</span>\n<span class=\"paragraph\">A proof is about the Lean model. Whether an engine <em>computes</em> what the\nmodel says is a separate question, and engines disagree with each other\nmore than you'd think: about NULL join keys, NaN, integer overflow, the\nrounding of integer division, the order of ties. So plans in <code>sverify</code>\ncome from one producer (the vendored Ibis producer, or DataFusion's for\nSQL strings), but they can <strong>run</strong> on three engines in process\n(<code>sverify.engines.ENGINES</code>), and on Spark:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\">engine</th>\n<th style=\"text-align: left;\">how the plan runs</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\"><code>\"duckdb\"</code> (default)</td>\n<td style=\"text-align: left;\">the SQL generator (<code>sverify.engines.to_sql</code>) writes the plan as DuckDB SQL</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"polars\"</code></td>\n<td style=\"text-align: left;\">a translator turns the plan into a Polars <code>LazyFrame</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"datafusion\"</code></td>\n<td style=\"text-align: left;\">DataFusion's own Substrait consumer (the <code>sverify[datafusion]</code> extra)</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"spark\"</code>, or a Spark session</td>\n<td style=\"text-align: left;\">the SQL generator writes Spark SQL (the <code>sverify[spark]</code> extra; below)</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">Polars and DuckDB run <strong>Lean's written form</strong> of the plan\n(<code>sverify.engines.written_plan</code>, chapter 14), so what runs is exactly\nwhat was checked. Their translators\ndon't take engine defaults: they spell out the model's semantics, so\nthat disagreements with Lean show up as test failures instead of quiet\ndifferences.</span>\n<h2 id=\"the-same-plan-on-three-engines\">The same plan on three engines</h2>\n<span class=\"paragraph\">We'll line them up. Pick a query; each engine runs the same checked\nplan (<code>sverify.engines.run(con, plan, engine)</code>), next to Lean's\nreference interpreter:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "25901849d3dc12e0f86ea09c9a91a68a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "e2774716d0447bdad92d0ab1d1b46482",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>t</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>v</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.5</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>NaN</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>u</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>nothing</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "496c4a486ca5129c4c25abe0937087a9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='7238a309-29d4-e64c-3522-6f58b0b398ed'><marimo-dropdown data-initial-value='[&quot;join on a key that can be NULL&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;join on a key that can be NULL&quot;,&quot;integer division (truncates)&quot;,&quot;doubles: NaN&quot;,&quot;qty + 1 (MAX overflows)&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "65c573fdb2deeab580dddaff78c1ac92",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">select</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">k</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">qty</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"p\">.</span><span class=\"n\">label</span><span class=\"w\"> </span><span class=\"k\">from</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"w\"> </span><span class=\"k\">join</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"w\"> </span><span class=\"k\">on</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"p\">.</span><span class=\"n\">k</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">u</span><span class=\"p\">.</span><span class=\"n\">k</span>\n</code></pre></div></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>Lean's Rel.eval</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>duckdb</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>polars</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>datafusion</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>k</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>label</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9223372036854775807</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>alpha</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>beta</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eAll three engines agree \u2713&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "c045b0d71657414b29afcd848cfec29a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What to look for:</span>\n<ul>\n<li><strong>NULL join keys</strong> never match (<code>NULL = NULL</code> is not TRUE), on every\n  engine, because each translator says so explicitly.</li>\n<li><strong>Integer division truncates</strong> toward zero, as in DataFusion and Lean\n  (<code>-7 / 2 = -3</code>). Polars' own <code>//</code> floors (<code>-4</code>); the translator uses\n  truncation instead.</li>\n<li><strong>NaN</strong> is one value, equal to itself and above every number, so\n  <code>NaN &gt; 0</code> is TRUE; and \u22120.0 is 0.0 (chapter 12), on every engine.</li>\n<li><strong><code>qty + 1</code> on the largest integer</strong> is where engines really differ:\n  DataFusion silently wraps around to the smallest integer, while the\n  Polars and DuckDB translators <strong>raise</strong>, because Lean's integers are\n  unbounded and a wrapped result is not the model's answer. That's the\n  \"may wrap around\" warning of chapter 6, made visible.</li>\n</ul>\n<span class=\"paragraph\"><strong>Lean's column</strong> is missing for the last two queries. Values in the\nmodel are untyped: a double is stored as a very large integer code\n(<code>SubstraitLean/Float.lean</code>), so the checker's printer can't tell a\ndouble from an integer beyond 64 bits, and shows neither faithfully.\nThe test suite compares doubles through the engines instead.</span>\n<h2 id=\"choosing-the-engine-for-a-node\">Choosing the engine for a node</h2>\n<span class=\"paragraph\">A node (chapters 9 and 10) doesn't fix its engine when you build it:\nthe plan is the same everywhere, and you pick where it runs each time\nyou refresh, with <code>node.refresh(engine=\"polars\")</code>, <code>\"datafusion\"</code>,\n<code>\"spark\"</code> or a Spark session (DuckDB in memory is the default). We'll\nbuild the NULL-key join as a transform over <code>t</code> and <code>u</code> and refresh a\nfresh node on each engine:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "78e9775ead7e8c86f07df25418e64711",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"duckdb\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]], \"polars\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]], \"datafusion\": [[\"a\", 7, \"alpha\"], [\"a\", \"text/plain+bigint:9223372036854775807\", \"alpha\"], [\"b\", -7, \"beta\"]]}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "18e0847a5e475ef9d714991979873640",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The same rows on every engine, and the NULL key matches nothing. A node\nkeeps its state between refreshes, so the next refresh may use another\nengine than the last one. Contracts checked on the data can name an\nengine too:</span>\n<div class=\"language-python codehilite\"><pre><span></span><code><span class=\"n\">node</span><span class=\"o\">.</span><span class=\"n\">refresh</span><span class=\"p\">(</span><span class=\"n\">engine</span><span class=\"o\">=</span><span class=\"s2\">\"polars\"</span><span class=\"p\">)</span>   <span class=\"c1\"># or \"datafusion\", \"spark\", a SparkSession</span>\n\n<span class=\"nd\">@sv</span><span class=\"o\">.</span><span class=\"n\">transform</span><span class=\"p\">(</span><span class=\"n\">ensures</span><span class=\"o\">=</span><span class=\"p\">[</span><span class=\"o\">...</span><span class=\"p\">],</span> <span class=\"n\">on_unproved</span><span class=\"o\">=</span><span class=\"s2\">\"runtime\"</span><span class=\"p\">,</span> <span class=\"n\">engine</span><span class=\"o\">=</span><span class=\"s2\">\"duckdb\"</span><span class=\"p\">)</span>\n<span class=\"k\">def</span><span class=\"w\"> </span><span class=\"nf\">step</span><span class=\"p\">(</span><span class=\"n\">orders</span><span class=\"p\">):</span> <span class=\"o\">...</span>\n</code></pre></div>\n<h2 id=\"sql-for-duckdb-snowflake-and-spark\">SQL for DuckDB, Snowflake and Spark</h2>\n<span class=\"paragraph\">Often the data already lives in a warehouse, and the plan has to go to\nit rather than the other way round. The SQL generator,\n<code>sverify.engines.to_sql</code>, writes a checked plan, or one of Lean's update plans, as SQL whose\nresult is <code>Rel.eval</code> of the plan. Nothing is left to engine defaults:\ncolumns are positional (<code>c0</code>, <code>c1</code>, \u2026), filters keep only TRUE rows (<code>IS\nTRUE</code>), integers are checked against 64 bits, every <code>ORDER BY</code> says\nwhere NULLs go. Each engine's differences go through a <code>Dialect</code>:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "a526e419199084a1379d4f4176fdd4d9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='Kclp-1' random-id='af48166c-6613-e158-abd4-54a461e42f5d'><marimo-text-area data-initial-value='&quot;select k, qty * 2 as doubled from t where qty &#92;u003e 0&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery over t(k, qty, v)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-placeholder='&quot;&quot;' data-disabled='false' data-debounce='true' data-full-width='true' data-rows='2'></marimo-text-area></marimo-ui-element><marimo-ui-element object-id='Kclp-0' random-id='8e4631bf-a286-dbeb-b605-39956932f2a5'><marimo-radio data-initial-value='&quot;duckdb&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003edialect&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;duckdb&quot;,&quot;snowflake&quot;,&quot;spark&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "aa0287fc9c897e40a90b1ce11aa1e8aa",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">SELECT</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"k\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"doubled\"</span>\n<span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">  </span><span class=\"k\">SELECT</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span>\n<span class=\"w\">  </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">    </span><span class=\"k\">SELECT</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"p\">(</span>\n<span class=\"w\">        </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">BIGINT</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"o\">*</span><span class=\"w\"> </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"mi\">2</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">BIGINT</span><span class=\"p\">)</span>\n<span class=\"w\">      </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">    </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">SELECT</span>\n<span class=\"w\">        </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span>\n<span class=\"w\">      </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">        </span><span class=\"k\">SELECT</span>\n<span class=\"w\">          </span><span class=\"ss\">\"k\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">          </span><span class=\"ss\">\"qty\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">          </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"ss\">\"v\"</span><span class=\"w\"> </span><span class=\"o\">+</span><span class=\"w\"> </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"s1\">'0'</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">DOUBLE</span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span>\n<span class=\"w\">        </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"t\"</span>\n<span class=\"w\">      </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s4</span>\n<span class=\"w\">      </span><span class=\"k\">WHERE</span>\n<span class=\"w\">        </span><span class=\"p\">(</span>\n<span class=\"w\">          </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"mi\">0</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">BIGINT</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span>\n<span class=\"w\">          </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">IS</span><span class=\"w\"> </span><span class=\"k\">TRUE</span>\n<span class=\"w\">        </span><span class=\"p\">)</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s3</span>\n<span class=\"w\">  </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s2</span>\n<span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s1</span>\n</code></pre></div></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "93ad7ce230ba3f059df0a6f77b688911",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Long, but every line is there for a reason. Try\n<code>select k, row_number() over (partition by k order by qty) as rn from t</code>\nin each dialect: DuckDB gets an ordinal column so ties break the way\nLean's stable sort breaks them, while <strong>Snowflake and Spark refuse</strong>,\nbecause their tables have no row order to break ties with. If a\ncontract report says <code>deterministic</code> (chapter 7), pass <code>tie_free=True</code>\nto promise there are no ties.</span>\n<span class=\"paragraph\">Snowflake-specific choices: integers are <code>NUMBER(38,0)</code> checked against\nthe 64-bit range, timestamps <code>TIMESTAMP_NTZ(6)</code>, intervals counts of\nmicroseconds (Snowflake has no interval type), every identifier quoted.\nWhere Snowflake can't match the model, the query raises or is refused\ninstead of answering differently, as for an interval-valued result\ncolumn.</span>\n<h2 id=\"spark-and-databricks\">Spark and Databricks</h2>\n<span class=\"paragraph\">The Spark dialect (<code>sverify.engines.SPARK</code>) targets Spark 4 and\nDatabricks SQL; it is also what <code>node.refresh(engine=\"spark\")</code> runs. It\nassumes the session settings of <code>sverify.engines.SPARK_CONF</code>, above all\n<code>spark.sql.ansi.enabled</code>: without ANSI mode an overflow wraps around and\na bad cast is NULL. Spark answers several of\n<a href=\"?file=17_backend_semantics.py\">chapter 17</a>'s questions its own way, and\neach is spelled out or refused:</span>\n<ul>\n<li><code>/</code> of integers is a double, so division is <code>div</code>; <code>/</code> of doubles\n  raises on a zero divisor in ANSI mode, so <code>x / 0.0</code> is written as the\n  IEEE \u00b1inf or NaN.</li>\n<li><code>CAST(9.3e18 AS BIGINT)</code> saturates instead of raising, and <code>FLOOR</code>\n  and <code>CEIL</code> return integers: each is checked or repaired.</li>\n<li><code>SUM</code> of <code>BIGINT</code> raises on an overflowing partial sum, though Lean's\n  total may fit: it adds <code>DECIMAL(38,0)</code> instead.</li>\n<li><code>TIMESTAMP</code> is the session time zone's (<code>TIMESTAMP_LTZ</code>), and so is\n  what <code>date_trunc</code> returns: the SQL stays in <code>TIMESTAMP_NTZ</code>.</li>\n<li><code>POWER</code> of doubles is Java's <code>Math.pow</code> (within 1 ulp of C's), so it\n  is refused, as are sorts and windows over a table without\n  <code>tie_free=True</code>. Over <code>VALUES</code>, a <code>SUM</code> of doubles adds in Lean's\n  order (<code>aggregate</code> over the sorted list).</li>\n</ul>\n<span class=\"paragraph\">Unlike Snowflake, Spark runs locally: the tests run every coverage case\nand every query of the Snowflake suite on a local Spark session and\ncompare them with <code>Rel.eval</code>. DataFusion's own departures from the model\nare in <a href=\"?file=16_datafusion_semantics.py\">chapter 16</a>.</span>\n<h2 id=\"testing-the-engines-against-the-model\">Testing the engines against the model</h2>\n<span class=\"paragraph\">Moving a pipeline to another engine is only safe if every engine gives\nthe model's answer. The Lean evaluator is the specification. The test\nsuite runs every fixture and every update plan on DataFusion, Polars and\nDuckDB with random tables and compares them with each other and with\n<code>Rel.eval</code>, row for row in Lean's order where order matters (<code>LIMIT</code>,\nwindows). The Snowflake SQL is checked by parsing and by running it on\n<a href=\"https://github.com/tekumara/fakesnow\" rel=\"noopener noreferrer\" target=\"_blank\">fakesnow</a>, a Snowflake emulator,\nor on a real account if you configure one.</span>\n<span class=\"paragraph\">You can now run a checked plan, or refresh a node, on DuckDB, Polars,\nDataFusion or Spark, or hand it to Snowflake as SQL, and you know where an engine could\ndepart from the model: the translators and the SQL generator spell out\nthe model's semantics and raise or refuse rather than answer\ndifferently, and the tests compare the engines with <code>Rel.eval</code>. That\nends the tour of what you can build. Chapter 12,\n<a href=\"?file=12_values.py\">Doubles, time and text</a>, starts the reference and\ndeep-dive part, with how the model treats the values themselves.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "91b13092ad509a5cf726814f5486ac7d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 10. <a href=\"?file=10_pipelines.py\">Pipelines</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 12. <a href=\"?file=12_values.py\">Doubles, time and text</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

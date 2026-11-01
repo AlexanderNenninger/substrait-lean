@@ -1,0 +1,230 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "8fd46153e9968623e95e9e10880ac2c8"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "953b6927ad71698fb348e29f015a0f9c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 13. <a href=\"?file=13_plans_and_proofs.py\">Plans, meaning and proofs</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 15. <a href=\"?file=15_trust.py\">What is proved, what is trusted</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "4486d5b9e83f229f091c93fc2b16fba3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"14-the-checker\">14. The checker</h1>\n<span class=\"paragraph\">Say a reviewer asks what actually happens when you call\n<code>@sv.transform</code>. The answer is a small command-line program that does\nthe work. The Lean project compiles to it,\n<code>substrait-check</code>. It is the bridge between the proofs and real queries:\nit reads a Substrait plan (as JSON), translates it into the Lean model\n<code>Rel</code>, and runs checks that are <strong>proved</strong> to answer the mathematical\nquestions they claim to answer. <code>sverify</code> calls it behind the scenes for\neverything in the rest of the tour, and you can run it yourself.</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\">Mode</th>\n<th style=\"text-align: left;\">What it does</th>\n<th style=\"text-align: left;\">Used by</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\"><code>substrait-check plan.json</code></td>\n<td style=\"text-align: left;\">show the plan, check it is well-formed, evaluate it</td>\n<td style=\"text-align: left;\">this chapter</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>--write plan.json</code></td>\n<td style=\"text-align: left;\">write the plan back out from Lean's model</td>\n<td style=\"text-align: left;\">the engines (chapter 11)</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>--contract contract.json</code></td>\n<td style=\"text-align: left;\">prove postconditions from preconditions</td>\n<td style=\"text-align: left;\">contracts (chapters 4\u20138)</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>--delta plan.json</code></td>\n<td style=\"text-align: left;\">the proved update plans for incremental views</td>\n<td style=\"text-align: left;\">chapters 9\u201310</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">Exit codes: 0 fine, 1 unsupported or unparseable, 2 ill-formed, 3 not\nincrementally maintainable, 4 a postcondition not proved.</span>\n<h2 id=\"a-real-plan\">A real plan</h2>\n<span class=\"paragraph\">Let's start with some tables, registered in DataFusion, which compiles\nthe SQL here:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "3abd411c30074c11f97e1d635d4fd402",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "b514bf5307573e4385d4db58fb14d473",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>sverify.engines.substrait_json</code> asks DataFusion for the Substrait plan of a query.\nEdit the SQL and the checker re-runs. Try a join (<code>select o.id, c.city\nfrom orders o join customers c on o.customer = c.name</code>), a <code>limit 2</code>, or\na <code>group by</code> (which the model doesn't cover yet).</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "8b7afc00c3b8fd98d45203bb9a18d2de",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='c879d0ec-f8fe-0ab1-d448-294558c7089b'><marimo-text-area data-initial-value='&quot;select id, amount * 2 as doubled from orders where amount &#92;u003e 10&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eSQL over orders(id, customer, amount) and customers(name, city)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-placeholder='&quot;&quot;' data-disabled='false' data-debounce='true' data-full-width='true' data-rows='2'></marimo-text-area></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "c0694ddf6e8fc4d6a0370b3f96631f85",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>$ substrait-check plan.json\nEmit [3, 4]\n  Project +[$0, ($2 * 2)]\n    Filter (10 &lt; $2)\n      Read orders\ntables: orders(3)\narity: 2\nwell-formed: yes\nincremental: yes\nroundtrip: ok\nrows (0):\n</code></pre></div></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "5c05f64d2315732efe1b014f401a8ac7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What each line means, for the default query:</span>\n<ul>\n<li><strong>The tree</strong> is the plan, printed from Lean's model, root first.\n  <code>$2</code> is column 2 of the operator's input, here <code>amount</code>. The Project\n  appends two columns, a copy of <code>id</code> (<code>$0</code>) and <code>amount * 2</code>, as columns\n  3 and 4, and the Emit keeps just those two.</li>\n<li><strong><code>tables</code></strong>: the tables the plan reads, with their number of columns.</li>\n<li><strong><code>arity</code></strong>: how many columns the result has.</li>\n<li><strong><code>well-formed: yes</code></strong>: every column reference exists. This is decided\n  by <code>Rel.checkWF</code>, which is <em>proved</em> to agree with the mathematical\n  definition <code>Rel.WF</code> (theorem <code>checkWF_iff</code>). So the type-safety theorem\n  <code>Rel.eval_arity</code> applies: every output row has exactly <code>arity</code> columns.</li>\n<li><strong><code>incremental: yes</code></strong>: the plan can be maintained from changes alone\n  (chapter 9). Also a decision procedure with a proof (<code>isIncremental_iff</code>).</li>\n<li><strong><code>roundtrip: ok</code></strong>: writing the <code>Rel</code> back to JSON and reading it again\n  gives the same <code>Rel</code>. That guards the parser, which is <em>trusted</em> code\n  (chapter 15).</li>\n<li><strong><code>rows (0)</code></strong>: named tables carry only their schema here, no data.</li>\n</ul>\n<h2 id=\"ruling-out-column-bugs\">Ruling out column bugs</h2>\n<span class=\"paragraph\">Since columns are numbered, a classic bug is a reference to a column that\ndoesn't exist. Move the slider to change which column the filter reads,\nby editing the plan's JSON directly:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "929be360b70e816f66b9a6eb7489bd6f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='99c61eb4-ac83-555e-b097-424ce69dca66'><marimo-slider data-initial-value='2' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ethe filter reads column &#36;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='5' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "4aee582b360fb632ea2938a27d0e183d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [3, 4]\n  Project +[$0, ($2 * 2)]\n    Filter (10 &lt; $2)\n      Read orders\ntables: orders(3)\narity: 2\nwell-formed: yes\nincremental: yes\nroundtrip: ok\n</code></pre></div></span><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eWell-formed: the filter reads &#92;u003ccode&#92;u003eorders&#92;u003c/code&#92;u003e, whose 3 columns are &#92;u003ccode&#92;u003e&#36;0&#92;u003c/code&#92;u003e to &#92;u003ccode&#92;u003e&#36;2&#92;u003c/code&#92;u003e.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "f7f26cc89a7d98d8518c18ab871f28de",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">(<code>$0</code> is well-formed but compares <code>id</code> instead of <code>amount</code> with 10:\nwell-formedness rules out references to nothing, not references to the\nwrong thing.\nCatching <em>that</em> is what contracts are for, from chapter 4 on.)</span>\n<h2 id=\"lean-as-a-reference-engine\">Lean as a reference engine</h2>\n<span class=\"paragraph\"><code>Rel.eval</code> is executable, so the checker can also <em>run</em> a plan, as long\nas the data is inside the plan. <code>sverify.testing.inline_tables</code> replaces\neach table read by a Substrait <code>VALUES</code> list, and <code>lean_rows</code> runs that\nplan through <code>Rel.eval</code>. This is how the test suite compares the engines\nagainst the Lean semantics, the definition of correct.</span>\n<span class=\"paragraph\">Here is your query from above, run by Lean and by DataFusion on the same\nrows:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "9ab8bf0fb8d02fcca8b6d3fa54a0fff1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>Lean's Rel.eval</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>60</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>DataFusion</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>60</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eSame rows \u2713 (as bags: order aside)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "1c16de55c0b0a588c390735da0b746a4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"writing-plans-back-out\">Writing plans back out</h2>\n<span class=\"paragraph\"><code>--write</code> prints the plan as Lean understood it, as Substrait JSON\nproduced from the <code>Rel</code> (<code>sverify.engines.written_plan</code> in Python). That is the plan\nthe other engines run (chapter 11), so whatever runs is exactly what was\nchecked, not DataFusion's original JSON. Here are the first few hundred\ncharacters for your query:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "86e6acf26ca90b09c246d0e958413718",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-json codehilite\"><pre><span></span><code><span class=\"p\">{</span><span class=\"nt\">\"extensions\"</span><span class=\"p\">:[{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">1</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"not\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">2</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"is_null\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">3</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"negate\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">4</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"add\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">5</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"subtract\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">6</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"multiply\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">7</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"equal\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">8</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"lt\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">9</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"and\"</span><span class=\"p\">}},{</span><span class=\"nt\">\"extensionFunction\"</span><span class=\"p\">:{</span><span class=\"nt\">\"functionAnchor\"</span><span class=\"p\">:</span><span class=\"mi\">10</span><span class=\"p\">,</span><span class=\"nt\">\"name\"</span><span class=\"p\">:</span><span class=\"s2\">\"or\"</span><span class=\"p\">}},{</span><span class=\"err\">\"exten\u2026</span>\n</code></pre></div></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "55d83b0413cd68f1a5b908558f7d8caa",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"how-much-of-ibis-gets-through\">How much of Ibis gets through</h2>\n<span class=\"paragraph\">Not every query fits the Lean model yet. <code>sverify.coverage</code> compiles a\nlist of Ibis operations and hands each to the checker: \u2713 means it is\nverified (so contracts apply), \u2717 that the checker refuses it, \u2013 that Ibis\nor DataFusion fails before there is a plan, and <em>inc.</em> that it can also\nbe maintained incrementally. Refusing is the safe default: a plan outside\nthe model is never checked against the wrong semantics.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "3ea5f791fa4546332103ef6d87cd205a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">131 of 154 probed Ibis operations reach the checker (\u2713 verified, \u2717 rejected by the checker, \u2013 fails in Ibis or DataFusion; <em>inc.</em> marks incremental maintenance).</span>\n<table>\n<thead>\n<tr>\n<th>Area</th>\n<th>Operations</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>rows</td>\n<td>\u2713 filter, select <em>inc.</em> \u00b7 \u2713 mutate <em>inc.</em> \u00b7 \u2713 drop, rename <em>inc.</em> \u00b7 \u2713 drop_null <em>inc.</em> \u00b7 \u2713 isnull <em>inc.</em> \u00b7 \u2713 between <em>inc.</em> \u00b7 \u2713 isin <em>inc.</em> \u00b7 \u2713 notin <em>inc.</em> \u00b7 \u2713 ifelse <em>inc.</em> \u00b7 \u2713 cases <em>inc.</em> \u00b7 \u2713 order_by <em>inc.</em> \u00b7 \u2713 limit \u00b7 \u2713 limit with offset \u00b7 \u2713 order_by + limit \u00b7 \u2717 sample \u00b7 \u2713 order_by expression <em>inc.</em> \u00b7 \u2717 limit expression \u00b7 \u2717 limit count() \u00b7 \u2713 fill_null table <em>inc.</em> \u00b7 \u2713 fill_null all <em>inc.</em> \u00b7 \u2713 memtable <em>inc.</em> \u00b7 \u2713 constant table <em>inc.</em> \u00b7 \u2713 alias <em>inc.</em> \u00b7 \u2713 sql view <em>inc.</em> \u00b7 \u2713 sql query <em>inc.</em></td>\n</tr>\n<tr>\n<td>joins</td>\n<td>\u2713 inner join <em>inc.</em> \u00b7 \u2713 non-equi join <em>inc.</em> \u00b7 \u2713 cross join <em>inc.</em> \u00b7 \u2713 left join \u00b7 \u2713 right join \u00b7 \u2713 outer join \u00b7 \u2713 semi join \u00b7 \u2713 anti join \u00b7 \u2713 isin subquery \u00b7 \u2713 isin subquery in select \u00b7 \u2713 notin subquery \u00b7 \u2713 scalar subquery in select \u00b7 \u2713 scalar subquery, one row \u00b7 \u2717 scalar subquery, many rows \u00b7 \u2713 exists \u00b7 \u2713 not exists \u00b7 \u2713 exists, uncorrelated \u00b7 \u2717 correlated scalar subquery \u00b7 \u2713 union all <em>inc.</em> \u00b7 \u2713 union distinct \u00b7 \u2713 intersect \u00b7 \u2713 difference \u00b7 \u2713 intersect all \u00b7 \u2713 difference all</td>\n</tr>\n<tr>\n<td>aggregation</td>\n<td>\u2713 count() \u00b7 \u2713 group_by sum \u00b7 \u2713 count, max, mean \u00b7 \u2713 nunique \u00b7 \u2713 sum(where=) \u00b7 \u2713 having \u00b7 \u2713 value_counts \u00b7 \u2713 distinct \u00b7 \u2717 distinct(on=) \u00b7 \u2717 std \u00b7 \u2713 collect \u00b7 \u2713 collect ordered \u00b7 \u2717 collect include_null \u00b7 \u2713 scalar subquery \u00b7 \u2713 unnest</td>\n</tr>\n<tr>\n<td>lists</td>\n<td>\u2713 unnest column \u00b7 \u2717 unnest keep_empty \u00b7 \u2713 list literal <em>inc.</em> \u00b7 \u2713 list column <em>inc.</em></td>\n</tr>\n<tr>\n<td>windows</td>\n<td>\u2713 row_number \u00b7 \u2713 lag \u00b7 \u2713 rank \u00b7 \u2713 dense_rank \u00b7 \u2713 cumsum \u00b7 \u2713 sum over group \u00b7 \u2717 rolling mean (rows) \u00b7 \u2717 rolling mean (interval) \u00b7 \u2713 ntile \u00b7 \u2713 first \u00b7 \u2713 percent_rank, cume_dist \u00b7 \u2713 running mean \u00b7 \u2713 rolling sum (interval) \u00b7 \u2713 rolling sum (range) \u00b7 \u2713 last, nth \u00b7 \u2713 max, count over frame \u00b7 \u2717 min over a sliding frame \u00b7 \u2717 window sum of an expression</td>\n</tr>\n<tr>\n<td>numbers</td>\n<td>\u2713 +, -, * <em>inc.</em> \u00b7 \u2713 float division <em>inc.</em> \u00b7 \u2713 integer division <em>inc.</em> \u00b7 \u2713 mod <em>inc.</em> \u00b7 \u2713 abs <em>inc.</em> \u00b7 \u2713 round <em>inc.</em> \u00b7 \u2713 ceil, floor <em>inc.</em> \u00b7 \u2713 power <em>inc.</em> \u00b7 \u2713 greatest <em>inc.</em> \u00b7 \u2713 least <em>inc.</em> \u00b7 \u2713 clip <em>inc.</em> \u00b7 \u2713 cast int \u2192 double <em>inc.</em> \u00b7 \u2713 cast int \u2192 string <em>inc.</em> \u00b7 \u2713 cast double \u2192 int <em>inc.</em></td>\n</tr>\n<tr>\n<td>nulls</td>\n<td>\u2713 fill_null <em>inc.</em> \u00b7 \u2713 coalesce <em>inc.</em> \u00b7 \u2713 nullif <em>inc.</em></td>\n</tr>\n<tr>\n<td>strings</td>\n<td>\u2713 upper <em>inc.</em> \u00b7 \u2713 length <em>inc.</em> \u00b7 \u2713 concat <em>inc.</em> \u00b7 \u2713 substr <em>inc.</em> \u00b7 \u2713 contains <em>inc.</em> \u00b7 \u2713 startswith <em>inc.</em> \u00b7 \u2713 like <em>inc.</em> \u00b7 \u2713 re_search <em>inc.</em> \u00b7 \u2713 strip <em>inc.</em></td>\n</tr>\n<tr>\n<td>time</td>\n<td>\u2713 timestamp + interval <em>inc.</em> \u00b7 \u2713 compare with literal <em>inc.</em> \u00b7 \u2713 year <em>inc.</em> \u00b7 \u2713 date <em>inc.</em> \u00b7 \u2713 truncate <em>inc.</em> \u00b7 \u2713 date + days <em>inc.</em> \u00b7 \u2713 date - months <em>inc.</em> \u00b7 \u2713 date + years <em>inc.</em> \u00b7 \u2713 date - column days <em>inc.</em> \u00b7 \u2713 timestamp + months <em>inc.</em> \u00b7 \u2713 constant interval arithmetic <em>inc.</em> \u00b7 \u2713 date - date <em>inc.</em> \u00b7 \u2713 date delta <em>inc.</em> \u00b7 \u2713 date parts <em>inc.</em> \u00b7 \u2713 date truncate <em>inc.</em> \u00b7 \u2713 day_of_week <em>inc.</em> \u00b7 \u2713 day_of_week name <em>inc.</em> \u00b7 \u2713 iso_year <em>inc.</em> \u00b7 \u2713 epoch_seconds <em>inc.</em> \u00b7 \u2713 millisecond, microsecond <em>inc.</em> \u00b7 \u2717 timestamp + column interval \u00b7 \u2717 date + column months \u00b7 \u2717 timestamp delta \u00b7 \u2713 bucket <em>inc.</em> \u00b7 \u2713 group_by_dynamic (no overlap) \u00b7 \u2713 rolling sum by time \u00b7 \u2713 offset_by months and days <em>inc.</em> \u00b7 \u2713 month end <em>inc.</em> \u00b7 \u2717 group_by_dynamic (overlapping) \u00b7 \u2713 time of day <em>inc.</em> \u00b7 \u2713 time parts <em>inc.</em> \u00b7 \u2713 compare times <em>inc.</em> \u00b7 \u2713 strftime <em>inc.</em> \u00b7 \u2713 timestamp from unix <em>inc.</em> \u00b7 \u2713 date from constants <em>inc.</em> \u00b7 \u2713 timestamp from constants <em>inc.</em> \u00b7 \u2717 date from columns \u00b7 \u2717 string to timestamp \u00b7 \u2717 time + interval \u00b7 \u2717 time truncate \u00b7 \u2717 strftime other directives \u00b7 \u2013 between_time</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">Every engine runs the plans of the 131 verified operations, except:</span>\n<table>\n<thead>\n<tr>\n<th>Engine</th>\n<th>Runs</th>\n<th>Refuses</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>Polars</td>\n<td>130</td>\n<td>non-equi join</td>\n</tr>\n<tr>\n<td>DuckDB</td>\n<td>125</td>\n<td>non-equi join \u00b7 collect \u00b7 collect ordered \u00b7 unnest \u00b7 unnest column \u00b7 list literal</td>\n</tr>\n<tr>\n<td>Snowflake</td>\n<td>102</td>\n<td>order_by (with <code>tie_free=True</code> it runs) \u00b7 limit \u00b7 limit with offset \u00b7 order_by + limit \u00b7 order_by expression (with <code>tie_free=True</code> it runs) \u00b7 non-equi join \u00b7 scalar subquery, one row \u00b7 count, max, mean \u00b7 collect \u00b7 collect ordered \u00b7 scalar subquery \u00b7 unnest \u00b7 unnest column \u00b7 list literal \u00b7 row_number (with <code>tie_free=True</code> it runs) \u00b7 lag (with <code>tie_free=True</code> it runs) \u00b7 rank (with <code>tie_free=True</code> it runs) \u00b7 dense_rank (with <code>tie_free=True</code> it runs) \u00b7 cumsum (with <code>tie_free=True</code> it runs) \u00b7 sum over group \u00b7 ntile (with <code>tie_free=True</code> it runs) \u00b7 first (with <code>tie_free=True</code> it runs) \u00b7 percent_rank, cume_dist (with <code>tie_free=True</code> it runs) \u00b7 running mean \u00b7 rolling sum (interval) (with <code>tie_free=True</code> it runs) \u00b7 rolling sum (range) (with <code>tie_free=True</code> it runs) \u00b7 last, nth (with <code>tie_free=True</code> it runs) \u00b7 max, count over frame (with <code>tie_free=True</code> it runs) \u00b7 rolling sum by time (with <code>tie_free=True</code> it runs)</td>\n</tr>\n<tr>\n<td>Spark</td>\n<td>99</td>\n<td>order_by (with <code>tie_free=True</code> it runs) \u00b7 limit \u00b7 limit with offset \u00b7 order_by + limit \u00b7 order_by expression (with <code>tie_free=True</code> it runs) \u00b7 non-equi join \u00b7 scalar subquery, one row \u00b7 count, max, mean \u00b7 collect \u00b7 collect ordered \u00b7 scalar subquery \u00b7 unnest \u00b7 unnest column \u00b7 list literal \u00b7 row_number (with <code>tie_free=True</code> it runs) \u00b7 lag (with <code>tie_free=True</code> it runs) \u00b7 rank (with <code>tie_free=True</code> it runs) \u00b7 dense_rank (with <code>tie_free=True</code> it runs) \u00b7 cumsum (with <code>tie_free=True</code> it runs) \u00b7 sum over group \u00b7 ntile (with <code>tie_free=True</code> it runs) \u00b7 first (with <code>tie_free=True</code> it runs) \u00b7 percent_rank, cume_dist (with <code>tie_free=True</code> it runs) \u00b7 running mean \u00b7 rolling sum (interval) (with <code>tie_free=True</code> it runs) \u00b7 rolling sum (range) (with <code>tie_free=True</code> it runs) \u00b7 last, nth (with <code>tie_free=True</code> it runs) \u00b7 max, count over frame (with <code>tie_free=True</code> it runs) \u00b7 rolling sum by time (with <code>tie_free=True</code> it runs) \u00b7 time of day \u00b7 time parts \u00b7 compare times</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "953b6927ad71698fb348e29f015a0f9c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 13. <a href=\"?file=13_plans_and_proofs.py\">Plans, meaning and proofs</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 15. <a href=\"?file=15_trust.py\">What is proved, what is trusted</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

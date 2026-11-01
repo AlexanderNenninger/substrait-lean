@@ -1,0 +1,230 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "276cb288376d2e2a17f8ceb5c7398ddb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 12. <a href=\"?file=12_values.py\">Doubles, time and text</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 14. <a href=\"?file=14_the_checker.py\">The checker</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "059746a021d951eea9d6a82c4d64516a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"13-plans-meaning-and-proofs\">13. Plans, meaning and proofs</h1>\n<span class=\"paragraph\">The chapters so far were about using the library. If you're the person\nwho has to explain to a reviewer why a \u2705 can be trusted, this part is\nfor you. It starts with the three ideas everything rests on:</span>\n<ol>\n<li>a query is a <strong>plan</strong>, a tree of small operators;</li>\n<li>a plan has a <strong>meaning</strong>, given by an interpreter that serves as the\n   definition of \"correct\";</li>\n<li>a <strong>theorem</strong> is a claim about <em>all</em> inputs, and Lean checks its proof.</li>\n</ol>\n<span class=\"paragraph\">Along the way you'll see why SQL's NULL makes \"obviously true\" claims\nfalse, and why that is exactly the kind of bug proofs catch and tests\nmiss.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "daddbca9828a2d25742dd45689adf001",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"a-query-is-a-tree-of-operators\">A query is a tree of operators</h2>\n<span class=\"paragraph\">When you write</span>\n<div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">SELECT</span><span class=\"w\"> </span><span class=\"n\">id</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">amount</span><span class=\"w\"> </span><span class=\"o\">*</span><span class=\"w\"> </span><span class=\"mi\">2</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">doubled</span>\n<span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"n\">orders</span>\n<span class=\"k\">WHERE</span><span class=\"w\"> </span><span class=\"n\">amount</span><span class=\"w\"> </span><span class=\"o\">&gt;</span><span class=\"w\"> </span><span class=\"mi\">10</span>\n</code></pre></div>\n<span class=\"paragraph\">a database does not run the text. It first turns it into a <strong>plan</strong>: a tree\nof small operators, each consuming the rows of its child.\n<a href=\"https://substrait.io\" rel=\"noopener noreferrer\" target=\"_blank\">Substrait</a> is an open standard for such plans, so\nengines like DataFusion, DuckDB and Polars can exchange them. In this\nproject, DataFusion writes the plan and Lean reads it.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "69b4e1d803eb1317e752d7a57b01112f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-mermaid data-diagram='&quot;&#92;n    graph BT&#92;n      R[&#92;&quot;Read orders&#92;u003cbr/&#92;u003e(id, customer, amount)&#92;&quot;] --&#92;u003e F[&#92;&quot;Filter&#92;u003cbr/&#92;u003e10 &amp;lt; amount&#92;&quot;]&#92;n      F --&#92;u003e P[&#92;&quot;Project&#92;u003cbr/&#92;u003eappend amount * 2&#92;&quot;]&#92;n      P --&#92;u003e E[&#92;&quot;Emit&#92;u003cbr/&#92;u003ekeep columns 0 and 3&#92;&quot;]&#92;n    &quot;'></marimo-mermaid>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "63da4cfafbb5357fc55de20a1885c514",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Two Substrait quirks worth knowing, because the Lean model copies them:</span>\n<ul>\n<li><strong>Columns are numbered, not named.</strong> <code>amount</code> is just \"column 2\"\n  (counting from 0). In Lean this is written <code>$2</code>.</li>\n<li><strong>Project only <em>adds</em> columns.</strong> It appends <code>amount * 2</code> as column 3; a\n  separate <strong>Emit</strong> step then keeps columns 0 and 3. So <code>SELECT</code> is\n  really \"Project, then Emit\".</li>\n</ul>\n<span class=\"paragraph\">In Lean, a plan is a value of the type <code>Rel</code>, with one case per operator.\nHere is the start of its definition, from <code>SubstraitLean/Rel.lean</code>:</span>\n<div class=\"language-lean codehilite\"><pre><span></span><code><span class=\"kd\">inductive</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"w\"> </span><span class=\"n\">where</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">read</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">table</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">String</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">values</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">arity</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Nat</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">rows</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Relation</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">filter</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">input</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">cond</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Expr</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">project</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">input</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">exprs</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">List</span><span class=\"w\"> </span><span class=\"n\">Expr</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">emit</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">input</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">mapping</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">List</span><span class=\"w\"> </span><span class=\"n\">Nat</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">cross</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">left</span><span class=\"w\"> </span><span class=\"n\">right</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">|</span><span class=\"w\"> </span><span class=\"n\">join</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">left</span><span class=\"w\"> </span><span class=\"n\">right</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">type</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">JoinType</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">on</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Expr</span><span class=\"o\">)</span>\n<span class=\"w\">  </span><span class=\"bp\">\u2026</span>\n</code></pre></div>\n<span class=\"paragraph\">Read <code>| filter (input : Rel) (cond : Expr)</code> as: \"a filter is built from\nan input plan and a condition\". The recursion (a filter's input is\nitself a plan) is what makes a plan a tree.</span>\n<h2 id=\"a-plan-has-a-meaning-the-reference-interpreter\">A plan has a meaning: the reference interpreter</h2>\n<span class=\"paragraph\">To prove anything about plans, we first need to say <em>precisely</em> what each\noperator does. In Lean this is a function <code>Rel.eval</code> that takes a plan\nand the tables, and returns the result rows. It is written for clarity, not\nspeed: it is the <strong>definition</strong> of correct, against which everything else\nis measured.</span>\n<span class=\"paragraph\">Below is a line-for-line Python mirror of the Lean definitions, so you can\nsee there is no magic. (The Lean versions are in <code>SubstraitLean/Expr.lean</code>\nand <code>SubstraitLean/Rel.lean</code>.)</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "9143dc30be62a3de8955fc51a38faaf8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "07617cb7a8f6f58cdc6e80d1b34fcf85",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "d0b0044005e530d44d2fbaf68daf5fe1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>orders</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>30</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>query(orders)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>60</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "4e2a103ff8c9b480b877adf87bc2ff12",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Notice order 3 disappeared. Its amount is NULL, <code>10 &lt; NULL</code> is NULL\n(\"unknown\"), and a filter only keeps rows whose condition is <strong>true</strong>.\nKeep that in mind; it is the source of most surprises below.</span>\n<h2 id=\"what-a-theorem-looks-like\">What a theorem looks like</h2>\n<span class=\"paragraph\">Optimizers constantly rewrite plans into faster, <em>supposedly equivalent</em>\nones. A classic rewrite merges two filters:</span>\n<blockquote>\n<span class=\"paragraph\"><code>Filter(Filter(r, p), q)</code> \u27f6 <code>Filter(r, p AND q)</code></span>\n</blockquote>\n<span class=\"paragraph\">Here is how <code>SubstraitLean/Rewrites.lean</code> states and proves it:</span>\n<div class=\"language-lean codehilite\"><pre><span></span><code><span class=\"kd\">theorem</span><span class=\"w\"> </span><span class=\"n\">filter_filter</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">r</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">p</span><span class=\"w\"> </span><span class=\"n\">q</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Expr</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Catalog</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">:</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">filter</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">filter</span><span class=\"w\"> </span><span class=\"n\">r</span><span class=\"w\"> </span><span class=\"n\">p</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"n\">q</span><span class=\"o\">)</span><span class=\"bp\">.</span><span class=\"n\">eval</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"bp\">=</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">filter</span><span class=\"w\"> </span><span class=\"n\">r</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"bp\">.</span><span class=\"n\">bin</span><span class=\"w\"> </span><span class=\"bp\">.</span><span class=\"n\">and</span><span class=\"w\"> </span><span class=\"n\">p</span><span class=\"w\"> </span><span class=\"n\">q</span><span class=\"o\">))</span><span class=\"bp\">.</span><span class=\"n\">eval</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"o\">:=</span><span class=\"w\"> </span><span class=\"kd\">by</span>\n<span class=\"w\">  </span><span class=\"n\">simp</span><span class=\"w\"> </span><span class=\"o\">[</span><span class=\"n\">eval</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">List.filter_filter</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">Expr.eval</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">BinFn.apply</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">isTrue_and3</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">Bool.and_comm</span><span class=\"o\">]</span>\n</code></pre></div>\n<span class=\"paragraph\">How to read it:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\">Piece</th>\n<th style=\"text-align: left;\">Meaning</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\"><code>theorem filter_filter</code></td>\n<td style=\"text-align: left;\">the claim's name</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>(r : Rel) (p q : Expr) (cat : Catalog)</code></td>\n<td style=\"text-align: left;\"><strong>for every</strong> plan <code>r</code>, every two conditions <code>p</code>, <code>q</code>, and every database <code>cat</code></td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\u2026 .eval cat = \u2026 .eval cat</code></td>\n<td style=\"text-align: left;\">both plans return exactly the same rows</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>:= by simp [...]</code></td>\n<td style=\"text-align: left;\">the proof: unfold the definitions and simplify. Lean checks every step mechanically</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">The \"for every\" is the whole point. A test picks <em>some</em> <code>r</code>, <code>p</code>, <code>q</code> and\nsome data; the theorem covers <strong>all</strong> of them, including tables with\nmillions of rows you will never generate.</span>\n<span class=\"paragraph\">The proof relies on one small fact, <code>isTrue_and3</code>: <code>p AND q</code> is true\nexactly when both <code>p</code> and <code>q</code> are true, <em>even with NULLs</em>. That fact only\ninvolves a handful of cases, so we can check every one of them right here,\nwhich is exactly what Lean's proof does (it splits into cases and checks\neach):</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "518d90aa4d6e9a28b43c4d81fffdcd01",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>p</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>q</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>p AND q</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>keep? (merged)</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>keep? (two filters)</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>same</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2713</td></tr></tbody></table>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "a91df49b4337aee8cef15bbf2dfc059a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">All nine cases agree, so the merged filter keeps exactly the rows the two\nseparate filters keep. Lean checks the same nine cases, and then lifts the\nresult to <em>every</em> table by reasoning about lists in general.</span>\n<h2 id=\"why-null-breaks-obvious-rewrites\">Why NULL breaks \"obvious\" rewrites</h2>\n<span class=\"paragraph\">Here's a rewrite that looks harmless:</span>\n<blockquote>\n<span class=\"paragraph\"><code>WHERE a = a</code> \u27f6 <code>WHERE true</code>  <em>(every value equals itself, right?)</em></span>\n</blockquote>\n<span class=\"paragraph\">It's <strong>wrong</strong>: <code>NULL = NULL</code> is NULL, not true, so the original query\ndrops rows where <code>a</code> is NULL and the rewritten one keeps them.</span>\n<span class=\"paragraph\">Testing finds this bug only if your test data happens to contain NULLs.\nTry it: generate random test tables and see how often the bug is caught.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "d77615a10af2d6e5049f52c563af017f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='Hstk-0' random-id='f1d20d3a-5712-00e8-7ee2-915c64061eb5'><marimo-slider data-initial-value='0.0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003echance a value is NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='0' data-stop='0.5' data-step='0.01' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='Hstk-1' random-id='4a3d58a4-b4a1-e7e7-07c5-7b2ef33184c7'><marimo-slider data-initial-value='20' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003enumber of random test tables&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='200' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "2d8a9282ed51a4f13dc578e7667cf0ac",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eThe bug was caught by &#92;u003cstrong&#92;u003e0 of 20&#92;u003c/strong&#92;u003e random tests.&#92;u003cbr /&#92;u003e&#92;nWith no NULLs in the data, every test passes, and the bug ships.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "f9462c57f4d9ab317c3379aa35699b34",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Lean can't be fooled this way. To claim the rewrite is correct you would\nhave to prove <code>(a = a)</code> is true <strong>for every</strong> value of <code>a</code>, and the case\n<code>a = NULL</code> makes that impossible. The proof attempt fails, which tells you\nthe rewrite is unsound before it ever reaches production.</span>\n<h2 id=\"the-fine-print-hypotheses\">The fine print: hypotheses</h2>\n<span class=\"paragraph\">Some rewrites are only correct <em>under conditions</em>. For example, a filter\ncan be moved below a Project (so fewer rows get the expensive new column),\n<strong>but only if the filter doesn't read the new column</strong>. Lean makes such\nconditions explicit as hypotheses:</span>\n<div class=\"language-lean codehilite\"><pre><span></span><code><span class=\"kd\">theorem</span><span class=\"w\"> </span><span class=\"n\">filter_project_pushdown</span><span class=\"w\"> </span><span class=\"o\">{</span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Catalog</span><span class=\"o\">}</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">hcat</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">cat.WF</span><span class=\"o\">)</span>\n<span class=\"w\">    </span><span class=\"o\">{</span><span class=\"n\">r</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Rel</span><span class=\"o\">}</span><span class=\"w\"> </span><span class=\"o\">{</span><span class=\"n\">es</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">List</span><span class=\"w\"> </span><span class=\"n\">Expr</span><span class=\"o\">}</span><span class=\"w\"> </span><span class=\"o\">{</span><span class=\"n\">p</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Expr</span><span class=\"o\">}</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">hr</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">r.WF</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">hp</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">p.refsLt</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">r.arity</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"o\">))</span><span class=\"w\"> </span><span class=\"o\">:</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">filter</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">project</span><span class=\"w\"> </span><span class=\"n\">r</span><span class=\"w\"> </span><span class=\"n\">es</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"n\">p</span><span class=\"o\">)</span><span class=\"bp\">.</span><span class=\"n\">eval</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"bp\">=</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">project</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">filter</span><span class=\"w\"> </span><span class=\"n\">r</span><span class=\"w\"> </span><span class=\"n\">p</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"n\">es</span><span class=\"o\">)</span><span class=\"bp\">.</span><span class=\"n\">eval</span><span class=\"w\"> </span><span class=\"n\">cat</span>\n</code></pre></div>\n<ul>\n<li><code>hcat</code>, <code>hr</code>: the tables and the input plan are <em>well-formed</em>: every\n  column reference points at a column that exists (next chapter).</li>\n<li><code>hp</code>: the condition <code>p</code> only references columns that exist <em>before</em>\n  the projection (<code>refsLt</code> = \"all column references are less than\").</li>\n</ul>\n<span class=\"paragraph\">Hypotheses are not a weakness. They are the precise conditions under which\nthe optimization is allowed, written down where a machine can check them.</span>\n<span class=\"paragraph\">Everything the library proves later (contracts, keys, the absence of\nruntime errors, incremental updates) is a theorem of this shape: a\nstatement about <code>Rel.eval</code> for <em>every</em> database, under hypotheses that the\nchecker verifies for your particular plan.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "10d0160fa7f879a702eabd3b4d517411",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-accordion data-labels='[&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eTry it in Lean&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;]' data-multiple='false' data-expanded='[]'><div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">In <code>SubstraitLean/Rewrites.lean</code>, try to prove <code>filter_project_pushdown</code>\n<strong>without</strong> the hypothesis <code>hp</code>. Lean gets stuck exactly where a filter\nreads a column that only exists after the projection. <code>lake build</code> from\nthe project root re-checks every proof in a few seconds.</span></span></div></marimo-accordion>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "276cb288376d2e2a17f8ceb5c7398ddb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 12. <a href=\"?file=12_values.py\">Doubles, time and text</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 14. <a href=\"?file=14_the_checker.py\">The checker</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

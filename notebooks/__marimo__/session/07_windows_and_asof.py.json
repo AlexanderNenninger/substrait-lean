@@ -1,0 +1,191 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "481f7cb65f783224b187372ec9c519b2"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "cefc1c8b2d55ae1700fde913e41f1b0f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 6. <a href=\"?file=06_runtime_errors.py\">Runtime errors</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 8. <a href=\"?file=08_composition.py\">Composing contracts</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "03c4bdb05d7821f0a37a1dd5a9d95d9d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"7-windows-and-asof-joins\">7. Windows and ASOF joins</h1>\n<span class=\"paragraph\">Say the maintenance team asks how long each sensor went quiet between\nreadings, because a long silence means a unit they should replace\nbefore it fails outright. For that you need, for every reading, the one\nbefore it.</span>\n<span class=\"paragraph\">Time-series pipelines constantly look at <em>neighbouring</em> rows like this:\nthe previous reading of the same sensor, the next event of the same\nuser, the position of a row within its group. SQL does this with\n<strong>window functions</strong>:</span>\n<div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"n\">LAG</span><span class=\"p\">(</span><span class=\"n\">ts</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"n\">OVER</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">PARTITION</span><span class=\"w\"> </span><span class=\"k\">BY</span><span class=\"w\"> </span><span class=\"n\">sensor</span><span class=\"w\"> </span><span class=\"k\">ORDER</span><span class=\"w\"> </span><span class=\"k\">BY</span><span class=\"w\"> </span><span class=\"n\">ts</span><span class=\"p\">)</span>\n</code></pre></div>\n<span class=\"paragraph\">reads \"for each row, the <code>ts</code> of the previous row of the same sensor,\nin <code>ts</code> order\" (NULL for the first one). The model supports <code>LAG</code>,\n<code>LEAD</code> and <code>ROW_NUMBER</code>, with any sort directions, NULLs first or last,\noffsets and defaults (<code>SubstraitLean/Window.lean</code>).</span>\n<h2 id=\"lag-lead-and-row_number\">LAG, LEAD and ROW_NUMBER</h2></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "9e4fce7795ed4b47e872a01a33776c23",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "8769bc34bc24b7e97800eaef23c5a30f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>with_neighbours(readings)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>sensor</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>v</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>prev_ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>next_v</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>rn</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:05</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:07</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:05</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:01</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>8.5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:04</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>8.5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:01</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "b9e8cf2952fbef1569d889bcc901c480",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">(Ibis numbers rows from 0.) What can be proved about these columns?\nLean knows that <code>LAG(ts)</code> comes from an <strong>earlier</strong> row of the same\npartition, so <code>prev_ts &lt;= ts</code>; that a lagged partition column equals the\nrow's own; and that <code>ROW_NUMBER()</code> is never negative. Guard the first\nrow's NULL with <code>isnull() | \u2026</code>, as in the contract below.</span>\n<h2 id=\"ties-when-previous-isnt-well-defined\">Ties: when \"previous\" isn't well defined</h2>\n<span class=\"paragraph\">Sensors sometimes report twice in the same instant. If two readings of\na sensor have the <strong>same</strong> <code>ts</code>, which one is \"previous\"? SQL doesn't\nsay; the engine picks, and may pick differently on the next run. A\nproof about one choice would say nothing about the other. So unless\n<code>requires</code> gives a key on the partition and order columns, Lean\nreports every postcondition as <em>undetermined</em> and\n<code>report.deterministic</code> is <code>False</code>. With the key, earlier means strictly\nearlier: <code>prev_ts &lt; ts</code>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "f8b7510b7464f11e17a87b0501d18bab",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='Xref-0' random-id='795df6c9-2bef-1a3c-45ca-241e13efa5c1'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "4a1981e497887236b6b9afd9e4b11428",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>report.deterministic</code> is <strong>True</strong></span></span><span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.prev_ts.isnull() | (_.prev_ts &lt; _.ts))</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.rn &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($5 - 1)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>sensor</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>v</code></td>\n<td>any double or NULL</td>\n</tr>\n<tr>\n<td><code>prev_ts</code></td>\n<td>any timestamp or NULL</td>\n</tr>\n<tr>\n<td><code>next_v</code></td>\n<td>any double or NULL</td>\n</tr>\n<tr>\n<td><code>rn</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "71973a19773fad923745cb460ddc4e8e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The theorem that makes the keyed case trustworthy is <code>window_tiebreak</code>\n(<code>SubstraitLean/Keys.lean</code>): when a window's partition and sort columns\ncontain a key of its input, <strong>every</strong> way of sorting the input by the\nwindow's keys gives the same rows. So the proof describes what\nDataFusion computes, however it breaks ties internally.</span>\n<h2 id=\"asof-joins-aligning-two-sensors\">ASOF joins: aligning two sensors</h2>\n<span class=\"paragraph\">An accelerometer samples at 100 Hz, a gyroscope at 130 Hz, so their\ntimestamps rarely line up. To train a model on both you want, for each\naccelerometer sample, the <strong>latest gyroscope sample at or before it</strong>,\nand only if it is recent enough. That is an <em>ASOF join</em>. DataFusion\ndoesn't have one (and Ibis's <code>asof_join</code> compiles to DuckDB syntax), so\n<code>sv.asof_join</code> builds it from parts Lean understands: a range join, then\n<code>ROW_NUMBER</code> to keep the latest match.</span>\n<span class=\"paragraph\">The model will be trained on these pairs, so a gyroscope reading from\nthe future would quietly leak information it can't have in production.\nThe contract says what an ASOF join promises: one output row per\naccelerometer sample, never a gyroscope sample from the future, and\nnever one older than the tolerance.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "a386d631c54a9134e0008273d13b7eec",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='RGSE-0' random-id='775818f1-d8c6-8556-dbde-014c68010b79'><marimo-slider data-initial-value='10' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003etolerance (ms)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='1' data-stop='20' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='RGSE-1' random-id='3f057dfe-dd80-c202-07f2-9fc15f6b5101'><marimo-radio data-initial-value='&quot;left&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ehow&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;left&quot;,&quot;inner&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element><marimo-ui-element object-id='RGSE-2' random-id='e1728d60-d9da-556c-70f9-ba6743905eae'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires gyr: unique(device, ts)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "9bde6afffacc8fe221fb173f2bc305f5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(device, ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.ts_right.isnull() | (_.ts_right &lt;= _.ts))</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>ts_right IS NULL OR ts_right &gt;= ts - INTERVAL '10 milliseconds'</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($1 - 10000)</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($6 - 1)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>device</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>a</code></td>\n<td>any double or NULL</td>\n</tr>\n<tr>\n<td><code>ts_right</code></td>\n<td>any timestamp or NULL</td>\n</tr>\n<tr>\n<td><code>g</code></td>\n<td>any double or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "2fd596042a5bf7a833381b7cc36c4b42",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>100</strong> output rows for 100 accelerometer samples; <strong>100</strong> found a gyroscope sample within the tolerance.</span></span><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>the first rows</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>device</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts_right</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>g</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.010</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.007</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.020</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.015</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.030</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.023</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.040</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.038</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.050</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.046</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>6.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.060</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>6.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.053</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.070</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2024-05-01 07:00:00.069</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>9.0</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "ee2f9fe96072060ac38c9220a6ffa1ed",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Things to try:</span>\n<ul>\n<li><strong>Lower the tolerance</strong> below 8 ms. The gyroscope samples every 7.7 ms,\n  so some accelerometer samples find no partner. With <code>how=\"left\"</code> they\n  stay, with NULLs; with <code>\"inner\"</code> they disappear. The proofs hold\n  either way.</li>\n<li><strong>Drop the key on <code>gyr</code>.</strong> Two gyroscope readings at the same instant\n  would tie for \"latest\", so the result is undetermined, and every\n  postcondition is refused (here as a warning, thanks to\n  <code>on_unproved=\"warn\"</code>).</li>\n</ul>\n<span class=\"paragraph\">One-row-per-sample comes from the key analysis: <code>ROW_NUMBER()</code> over a\npartition is a key together with the partition columns, and the filter\n<code>rank = 0</code> drops the rank from that key.</span>\n<span class=\"paragraph\">Windows are covered by contracts but <strong>not maintained incrementally</strong>\nyet: chapter 10 shows how a pipeline recomputes such views instead.\nFramed aggregates (<code>AVG(v) OVER (ROWS 5 PRECEDING)</code>), <code>RANK</code> and running\nsums are not supported yet.</span>\n<span class=\"paragraph\">You can now prove facts about neighbouring rows, tell when ties leave a\nwindow's result up to the engine, and align two sensors with an ASOF\njoin that never reaches into the future. The maintenance team's gaps\nand the model's training pairs both rest on proofs. <strong>Next up:</strong>\n<a href=\"?file=08_composition.py\">Composing contracts</a>, where one step's\npromises become the next step's assumptions.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "cefc1c8b2d55ae1700fde913e41f1b0f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 6. <a href=\"?file=06_runtime_errors.py\">Runtime errors</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 8. <a href=\"?file=08_composition.py\">Composing contracts</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

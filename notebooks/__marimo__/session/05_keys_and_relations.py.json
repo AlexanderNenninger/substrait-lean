@@ -1,0 +1,243 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "053228b87adf2669010125c49cc85af5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 4. <a href=\"?file=04_contracts.py\">Contracts</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 6. <a href=\"?file=06_runtime_errors.py\">Runtime errors</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "74454fb8c313ac3a381ab76f5c389cd9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"5-keys-and-relations\">5. Keys and relations</h1>\n<span class=\"paragraph\">Say you add each customer's city to the orders table so finance can sum\nrevenue by city. If one customer appears twice in <code>customers</code>, their\norders are counted twice, and the totals stop matching the ledger\nwithout anyone being told why.</span>\n<span class=\"paragraph\">The facts in chapter 4 were about one value at a time: \"this column is\nnever NULL\", \"this one is at least 22\". Facts like \"one row per order\"\nare of another kind, and two such kinds matter as much in practice:</span>\n<ul>\n<li><strong>keys</strong>: \"no two rows have the same <code>id</code>\", a fact about pairs of rows;</li>\n<li><strong>relations between columns</strong>: \"<code>end</code> is after <code>start</code>\", \"<code>t1</code> is\n  exactly one minute after <code>t0</code>\", a fact about two values in one row.</li>\n</ul>\n<h2 id=\"keys-with-svunique\">Keys with <code>sv.unique</code></h2>\n<span class=\"paragraph\"><code>sv.unique(\"id\")</code> says the listed columns identify a row. In <code>requires</code>\nit is a promise about an input (checked on the data when the input is\nbound, like any precondition). In <code>ensures</code> it is <strong>proved</strong>: keys\nsurvive filters and projections, and joins whose condition pins down at\nmost one partner on the other side.</span>\n<span class=\"paragraph\">Joining orders with customers keeps one row per order only if each\ncustomer name appears once. We'll try it both ways with the switch:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "66ce54d61ea0e95cb5e2cd9ba3eeef39",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "6717b555005503f244e120e3097277bc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='lEQa-0' random-id='17dfe81b-6879-12eb-f0be-0b258ad2cd20'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires customers: unique(name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "a5dde2e3a8287b868fa38108c066e39a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(id)</code></td>\n<td>\u274c not shown to be a key; fails on <code>orders(id, customer, amount) = [(0, 'b', 0)], customers(name, city) = [('b', ''), ('b', '')] gives (id, customer, city) = [(0, 'b', ''), (0, 'b', '')]</code></td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>id</code></td>\n<td>any integer or NULL</td>\n</tr>\n<tr>\n<td><code>customer</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>city</code></td>\n<td>a string or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "2925176bd5ebc3fbb96a2dc538830db1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Without the key on <code>name</code>, Lean refuses, and rightly so: here is the\ncounterexample it could not rule out, run on DataFusion. <code>bob</code> moved and\nwas entered twice, once per city, so his one order shows up twice and\nfinance's totals are off by his 5.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "fb8e212c5a0d7805d9ef0937f601eeda",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>customers</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>name</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>with_city: id 2 twice</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "8d38f550ae6b24f5a232f3b939f19c5f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With the key in <code>requires</code>, calling a contracted function on these\ntables stops at the precondition check instead, before finance sees a\nnumber:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "ea8ae0d58ac25fa32cac3ce04f120237",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003ePreconditionError&#92;u003c/strong&#92;u003e: 1 row(s) of customers violate unique(name)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "9c6fe41ecfc2a506a3109a25923a0b7b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Other ways to get a key, all proved in <code>SubstraitLean/Keys.lean</code>\n(<code>Rel.keys_sound</code>):</span>\n<ul>\n<li><code>DISTINCT</code> rows are a key: all their columns together;</li>\n<li>semi and anti joins keep the left side's keys (they only drop rows);</li>\n<li>a filter <code>x = 3</code> drops <code>x</code> from a key: <code>unique(id, customer)</code> and\n  <code>customer = 'ada'</code> give <code>unique(id)</code>;</li>\n<li><code>ROW_NUMBER()</code> with the partition columns is a key (chapter 7).</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "75ebd05b3b48d3ebeacbfa871285460c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(id)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>id</code></td>\n<td>any integer or NULL</td>\n</tr>\n<tr>\n<td><code>amount</code></td>\n<td>any integer or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "b04335ded545dcb1155421b4c725423c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"relations-between-columns\">Relations between columns</h2>\n<span class=\"paragraph\">Filter and join conditions such as <code>a.t = b.t + 1</code>, <code>start &lt; end</code> or\n<code>value != -9999</code> become <strong>facts about the row</strong>, and they survive\nprojections, joins and unions. Postconditions such as <code>t1 - t0 == 1</code> or\n<code>t1 &gt; t0</code> then follow.</span>\n<span class=\"paragraph\">Say you prepare training data for a forecasting model. Readings arrive\nonce a minute, <code>-9999</code> marks a sensor error, and the model needs pairs\nof <em>consecutive</em> clean readings. Whoever trains it will assume each pair\nis exactly one minute apart and that no <code>-9999</code> slipped through, so\nwe'll prove both. The pipeline joins the clean readings with\nthemselves, one minute apart:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "7195bbbae64c73414c2375d44ad7cc54",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "f427d5409abbcecd5eb9107c8d92fc65",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='iLit-0' random-id='9d75e9ca-aa32-b07e-e8db-7fba45e5a317'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires minute IS NOT NULL&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='iLit-1' random-id='1c8f759e-2fa9-724c-d75f-49ec5ffdf69f'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires unique(sensor, minute)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='iLit-2' random-id='9f217ffc-a333-334e-2e64-6564fc6fc599'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline keeps only sensor &#x27;a&#x27;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "f72544805c84204ba03b128086244b05",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>((_.t1 - _.t0) == 1)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.t1 &gt; _.t0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.v0 != -9999)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.v1 != -9999)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(t0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($1 + 1)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>t0</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>t1</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>v0</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>v1</code></td>\n<td>any integer</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "15bcecce5ddc925aa52621fde3a01587",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What each switch does:</span>\n<ul>\n<li><strong><code>minute IS NOT NULL</code></strong>: without it, <code>t1 - t0 == 1</code> is \"TRUE or NULL\".\n  The join condition <code>w1.minute = w0.minute + 1</code> is TRUE only for\n  non-NULL values, but Lean only derives that for plain column\n  comparisons, not through the <code>+ 1</code>. Lean is conservative: when it\n  can't see a reason, it says so.</li>\n<li><strong><code>unique(sensor, minute)</code></strong>: one reading per sensor and minute. Within\n  sensor <code>a</code> that makes <code>minute</code> a key, and the join finds at most one\n  <code>t1</code> per <code>t0</code>, so <code>unique(t0)</code> holds.</li>\n<li><strong>only sensor <code>a</code></strong>: with several sensors the join pairs readings of\n  <em>different</em> sensors too (there's no <code>sensor</code> in the join condition), so\n  <code>t0</code> repeats. The relations still hold: they're about each row.</li>\n</ul>\n<span class=\"paragraph\">The facts behind these proofs are <code>Expr.factsOf_sound</code> and\n<code>Rel.facts_sound</code> in <code>SubstraitLean/Contracts.lean</code>: a fact <code>x \u2212 y \u2208 [lo,\nhi]</code> or <code>x \u2260 k</code> taken from a condition holds on every row that passes\nit, and is kept by every operator above.</span>\n<span class=\"paragraph\">Relations that need more than \"a column plus a constant\" (<code>a &lt; 2 * b</code>)\nand relations between strings are not tracked yet.</span>\n<span class=\"paragraph\">You can now prove that a result has one row per key, and that its\ncolumns keep the relations the filters and joins set up. Finance's\njoin stays one row per order, and whoever trains the model gets pairs\nexactly one minute apart, as they assume. <strong>Next up:</strong>\n<a href=\"?file=06_runtime_errors.py\">Runtime errors</a>, where a plan that is\ncorrect can still crash, or quietly give a wrong number.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "053228b87adf2669010125c49cc85af5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 4. <a href=\"?file=04_contracts.py\">Contracts</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 6. <a href=\"?file=06_runtime_errors.py\">Runtime errors</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

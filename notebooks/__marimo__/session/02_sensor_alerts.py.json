@@ -1,0 +1,459 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "66e133e3515e277cb5be2ba7affd10ca"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "975297839401b94a7cbff267ba02857d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 1. <a href=\"?file=01_duplicate_payments.py\">Duplicate card payments</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 3. <a href=\"?file=03_orders_mart.py\">An orders mart</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "9419ba27331b2a6426fbc45da5011742",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an <strong>alert at every reading that is the\nthird or more in a row above 30 \u00b0C</strong>.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines quietly disagree. Three things go\nwrong in practice, and we'll run into each:</span>\n<ul>\n<li><strong>ties</strong>: two readings of a device at the same instant make\n  \"previous reading\" ambiguous, and each engine picks one;</li>\n<li><strong>NaN</strong>: a glitching sensor sends NaN, and in SQL <code>NaN &gt; 30</code> is TRUE\n  (NaN sorts above every number), while in Python and pandas it is\n  False, so a prototype and the production job disagree;</li>\n<li><strong>warehouses without row order</strong>: Snowflake and Spark tables have no\n  order to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in chapter 1, the job reads the source, states and proves a contract,\nruns on every engine, keeps up with new data and writes a sink.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "ce9cee24d1644b7307a8e38a2c279967",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-source-an-iceberg-table-of-readings\">1. The source: an Iceberg table of readings</h2>\n<span class=\"paragraph\">Iceberg wants a catalog, so a small SQLite one in a temporary folder\nplays the part of Glue, a REST catalog or Unity. <code>device_id</code> and <code>ts</code>\nare <code>required</code>. Two of the devices are troublemakers: device 2 skipped\na reading (NULL), and device 3 had a glitch and sent NaN. We'll see what\neach of them does to the alerts.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "82f75f3fc0c7553324bfc23743b79851",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "795a4d9654ef827e4f0beafff633c383",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>plant.readings (Iceberg)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>device_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>temperature</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>29.5</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:01</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>31.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:02</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>32.5</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:03</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>33.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>35.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:01</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:02</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>36.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>31.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:01</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>NaN</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:02</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>32.0</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "0d201d58fbe743033ce5728bb48cb379",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-rule-and-the-first-thing-the-checker-says\">2. The rule, and the first thing the checker says</h2>\n<span class=\"paragraph\">Straight from the catalogue, three high readings in a row:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "498613db43b03a32a7ce367dc8b3fbad",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "ab2a986684ebb2494ff9e717d194f99e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Think of whoever gets paged at 3 a.m. They'll assume that every alert\nmeans the temperature really is above 30, and that one hot minute pages\nthem once, not three times. Those are reasonable things to rely on, so\nlet's write them down and ask the checker. First, with no assumptions\nabout the input:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "3de81ba4896df170b769e50a3d455a1f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "f959c954796924727df4462e3884f7f6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><blockquote>\n<span class=\"paragraph\">\u26a0\ufe0f rows may tie in a window's ORDER BY, so the engine decides their order. Declare <code>unique(...)</code> on the partition and order columns of the input.</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.temperature &gt; 30)</code></td>\n<td>\u274c undetermined: rows may tie in a window's ORDER BY, and the engine orders them</td>\n</tr>\n<tr>\n<td><code>unique(device_id, ts)</code></td>\n<td>\u274c undetermined: rows may tie in a window's ORDER BY</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>device_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>temperature</code></td>\n<td>a double &gt; 30.0</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "a1b0cf8be62d968a059254137d024bfd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Nothing is proved, not even <code>temperature &gt; 30</code>, which is in the filter.\nThe verdict is <strong>undetermined</strong>: if a device can send two readings with\nthe same <code>ts</code>, which one is \"previous\" depends on how the engine breaks\nthe tie, and engines break ties differently from run to run. The\ncatalogue found this in 44 of its 139 queries (dedup, top-N, <code>LAG</code> over\nequal timestamps); it is the most common way for engines to disagree.</span>\n<span class=\"paragraph\">The fix is to say what the source promises: at most one reading per\ndevice and minute. That's a promise the sensor team can make, and one\nwe'll hold them to later.</span>\n<h2 id=\"3-the-nan-glitch\">3. The NaN glitch</h2>\n<span class=\"paragraph\">With that key, we try again, and also ask that no alert is a NaN: the\nperson paged needs a temperature, not a glitch.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "e363ec1672f5f042c6634d0ae1b6980a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "314b7bca4b6a1208d10e7f1b8f1b55e0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.temperature &gt; 30)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>~_.temperature.isnan()</code></td>\n<td>\u274c TRUE or FALSE</td>\n</tr>\n<tr>\n<td><code>unique(device_id, ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>device_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>temperature</code></td>\n<td>a double &gt; 30.0</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "a8898e1da0df01123036d4a9ddc9f3c0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>temperature &gt; 30</code> and the key are proved now. <code>~isnan()</code> is refused,\nand the checker is right. In SQL, <code>NaN &gt; 30</code> is TRUE: NaN sorts above\nevery number, so device 3's glitch counts as hot and pages someone.\nWe'll want to rule that out. Python says the opposite, which is how a\nrule tested in pandas misbehaves in the warehouse:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "183662173ec4ece4589613b98f042e8e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"Python: nan > 30\": false, \"DuckDB: 'nan'::double > 30\": true}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "b9ac515b0583c1fb8195ed640a8b0a93",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">So we say what a high reading is. NaN then breaks the run, like a\nmissing reading does:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "b32b2ff5723bbdadf1b8213dd4c3a7ed",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "2a705346df14ff21c93700af2f6cfa00",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-both-rules-on-the-data\">4. Both rules on the data</h2>\n<span class=\"paragraph\">We put both versions side by side as nodes over the Iceberg source,\nand refresh them together with <code>sv.group</code>, so they see the same\nsnapshot. The naive rule gets an empty contract, <code>sv.transform()</code>, which\npromises nothing but lets it read the source too. Building the <code>alerts</code>\nnode proves its contract:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "8862726503d61f05d754964a6789a59d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "1745b4fa3afaaa2dbd05ec4629da70ac",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.temperature &gt; 30)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>~_.temperature.isnan()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(device_id, ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>device_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>temperature</code></td>\n<td>a double &gt; 30.0</td>\n</tr>\n</tbody>\n</table></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>naive rule</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>device_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>temperature</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:03</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>33.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:02</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>32.0</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>alerts (contracted)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>device_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>temperature</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:03</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>33.0</td></tr></tbody></table></div></div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The naive rule alerts on device 3 because of the NaN; the contracted one doesn't. Device 2's missing reading breaks its run in both.</span></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "e943bbacd472118a4099ed7dda1bfd0a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-every-engine-and-the-warehouses\">5. Every engine, and the warehouses</h2>\n<span class=\"paragraph\">The alerts may run on a laptop today and in the warehouse tomorrow.\nDuckDB, Polars and DataFusion run the checked plan with the same rows,\nwhichever <code>engine=</code> the node is refreshed with.\nSnowflake and Spark tables have no row order, so sverify <strong>refuses</strong> to\nwrite a window for them unless you promise the order keys have no ties.\nThe report's <code>deterministic</code> is exactly that promise, proved from the\nkey, so it can be passed on:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "66c4607a7a82827c6553eb8a1550dcdf",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<pre class='text-xs'>&quot;Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model&#x27;s list order (windows run with tie_free=True)&quot;</pre>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
+      "code_hash": "c5c76f0b15828743ae17c73d049d537f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>tie_free=True</code> the SQL is written. Without the key, <code>deterministic</code>\nwould be <code>False</code>, and passing <code>tie_free=True</code> anyway would be an\nunproved promise.</span>\n<h2 id=\"6-new-readings-and-a-sensor-that-sends-twice\">6. New readings, and a sensor that sends twice</h2>\n<span class=\"paragraph\">A window isn't incrementally maintainable (yet), and the node says so\nup front instead of maintaining it incorrectly. Such a node is\n<strong>recomputed and diffed</strong> on each refresh; its change still flows to the\nsink and to nodes downstream:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZBYS",
+      "code_hash": "1ac149cdc898e5723d5c7eb6e1ec2aef",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "alerts: readings@v1; recomputed (not incrementally maintainable (left join, fetch or window))\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "aLJB",
+      "code_hash": "48d98533ffa8b69bd29ecdababaa30c6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">We store the node in an Iceberg sink with <code>.write</code>, and its first\nrefresh writes the first state. The sink keeps the contract in the table\nproperties and in every snapshot summary:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nHfw",
+      "code_hash": "0f60f3af0f9a5e47323c11d7db0c4d03",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "alerts:\n  computed\n  requires readings: unique(device_id, ts) (checked on data)\n  wrote alerts from readings@v1: created v1, 1 row(s) written, 0 deleted\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "xXTn",
+      "code_hash": "d558987450f165b15d3ecad1ebf5e215",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Device 2 keeps running hot, and two more readings arrive. Iceberg\nappends are read from the files they added, and the keys of the new\nrows are checked against the rows kept:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "AjVT",
+      "code_hash": "56003746bcc9e20ad2c0622dac143338",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "alerts:\n  readings@v1\u2192v2: 2 insert(s), 0 delete(s); \u0394 trusted as the files Iceberg appends v1\u2192v2 added\n  requires readings: unique(device_id, ts) (checked on data)\n  view alerts: readings@v2\n  wrote alerts from readings@v2: append v2, 1 row(s) written, 0 deleted\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "pHFh",
+      "code_hash": "35cb1052e6042f5e1e75d91ab440acb9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>alerts</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>device_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>temperature</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:03</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>33.0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-07-01 12:04</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>38.0</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "NCOB",
+      "code_hash": "a042ff67101d6c798f0cdaa21dcc6787",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Device 2's 12:03 reading doesn't alert (12:01 was missing); 12:04 does.</span>\n<span class=\"paragraph\">Then device 1 sends two readings for 12:04. That is exactly the case\nthe key rules out, and the one that would make the\nalerts depend on the engine. The refresh refuses the batch, and\n<strong>nothing changes</strong>: the node and the sink stay at the last good\nversion, and the next refresh retries from there.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "aqbW",
+      "code_hash": "e028f72ba3effc19de6ec1f8a1673a33",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<pre class='text-xs'>&#x27;1 inserted key(s) of readings violate unique(device_id, ts)&#x27;</pre>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TRpd",
+      "code_hash": "aee48b464980c1293c485e18bb43c451",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have alerts the on-call engineer can rely on. The checker found\ntwo real bugs before anything ran, an alert that depended on how ties\nwere broken and a NaN reading that would have paged someone, and nobody\nwas woken up for either. The key is checked on every batch, so a sensor\nthat sends twice stops the job instead of making it engine-dependent.\nThe same plan runs on DuckDB, Polars and DataFusion, and you get\nSnowflake or Spark SQL only once the tie-freedom it needs is proved. The\nwindow node is honest about not being incremental, and stays up to date\nby recomputation, with its change written to the sink.</span>\n<span class=\"paragraph\"><strong>Next up:</strong> <a href=\"?file=03_orders_mart.py\">An orders mart in SQL and Ibis</a>,\nwhere a dashboard's dbt tests become a contract. Windows and ties are\ncovered in depth in <a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a>,\nNaN and other double semantics in <a href=\"?file=12_values.py\">Doubles, time and text</a>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

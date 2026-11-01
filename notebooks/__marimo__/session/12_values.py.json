@@ -1,0 +1,282 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "481f7cb65f783224b187372ec9c519b2"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "39214b7152718bc7f0e1513401759aa1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 11. <a href=\"?file=11_engines.py\">Engines and SQL</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 13. <a href=\"?file=13_plans_and_proofs.py\">Plans, meaning and proofs</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "65ad37f9b7d48d8930cfe2d0cc9b48d1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"12-doubles-time-and-text\">12. Doubles, time and text</h1>\n<span class=\"paragraph\">Say one of your sensors sends NaN, or a timestamp lands at the far edge\nof the calendar. Integers are the easy case; real pipelines are full of\nfloating-point measurements, timestamps and strings, each with traps of\nits own, and sooner or later your data finds them. The\nLean model pins each of them down, bit for bit where it matters, because\na proof about the wrong semantics proves nothing.</span>\n<h2 id=\"doubles-nan-infinities-and-one-zero\">Doubles: NaN, infinities and one zero</h2>\n<span class=\"paragraph\">In Python (and in IEEE 754 comparisons) <code>NaN</code> is not equal to anything,\nnot even itself, and every comparison with it is false. SQL engines\n(PostgreSQL, DuckDB, Spark, Snowflake) do something else, and so does the\nmodel: doubles are ordered</span>\n<blockquote>\n<span class=\"paragraph\">\u2212\u221e &lt; \u2026 &lt; 0.0 &lt; \u2026 &lt; +\u221e &lt; NaN</span>\n</blockquote>\n<span class=\"paragraph\">with <strong>one NaN</strong>, equal to itself and <em>larger than every number</em>, and\n<strong>one zero</strong>: IEEE's \u22120.0 <em>is</em> 0.0, so <code>-0.0 &gt;= 0</code> holds and \u22120.0 never\nshows in a result. (DataFusion's own order, <code>f64::total_cmp</code>, splits\nboth; <code>sverify</code> stores DataFusion's tables the model's way, see\n<a href=\"?file=16_datafusion_semantics.py\">chapter 16</a>.) Here it is, live:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "803ace7009c764974b37318be9cae417",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "4ece8c374cea343466949a22a6a29b15",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>the table's doubles, as the model has them</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>v</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>positive</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>equals_nan</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>below_inf</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-9999.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-1.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0.0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>inf</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>NaN</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "17424479e554aebe4c875b583ff9cb82",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Two consequences that bite in practice:</span>\n<ul>\n<li><strong><code>v &gt; 0</code> keeps NaN rows.</strong> A filter you meant as \"positive readings\"\n  lets glitches through. Only an upper bound (<code>v &lt; 1e9</code>, say) removes NaN.</li>\n<li><strong>\u22120.0 is 0.0</strong>: the table was given both zeros and holds one, so\n  <code>-0.0 &gt;= 0</code> is TRUE, <code>DISTINCT</code> keeps one zero, and <code>-1 * 0.0</code> is\n  <code>0.0</code>, on every engine.</li>\n</ul>\n<span class=\"paragraph\">Lean models doubles exactly, as integer codes in the same order\n(<code>SubstraitLean/Float.lean</code>), so the proofs know all of this. Build a\nfilter and see whether \"no NaN\" follows:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "6c7e81f8109faee27097394ebbdd937e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='Xref-0' random-id='fc1df237-2f7a-fabb-0331-0d21ac46a32c'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep v &amp;gt; 0&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='Xref-1' random-id='35bacf42-edde-9375-e102-ac682da8bb15'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003ekeep v &amp;lt; 1e9&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element><marimo-ui-element object-id='Xref-2' random-id='68bdf879-616b-82c6-ae3d-2bc8b577df19'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003edrop the error code v = -9999&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "de817c5154c2436b281b3557b1ec6f30",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>~_.v.isnan()</code></td>\n<td>\u274c TRUE or FALSE; fails on <code>m(v) = [(nan,)] gives (v) = [(nan,)]</code></td>\n</tr>\n<tr>\n<td><code>(_.v != -9999.0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.v.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>v</code></td>\n<td>a double &gt; 0.0</td>\n</tr>\n</tbody>\n</table></span><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>kept rows</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>v</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1.5</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>NaN</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>inf</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "f84b8771cfae1a9acb35cbe8fdcf7175",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Comparisons with constants are exact, including sentinels like <code>-9999.0</code>\nand boundaries like <code>v &gt; 0.5</code> versus <code>v &gt;= 0.5</code>. Arithmetic on doubles\n(<code>v * 2.5</code>) is only known to give \"some double\", because rounding isn't\nmodelled. <code>FLOOR</code>, <code>CEIL</code>, <code>ROUND</code> and the cast to an integer <em>are</em>\nexact and monotone, so a bounded double rounds to a bounded integer:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "d17ab4cf157f1438f4cc7635700892b8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>~_.v.isnan()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.scaled &gt;= 0)</code></td>\n<td>\u274c TRUE or FALSE</td>\n</tr>\n<tr>\n<td><code>(_.rounded &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.rounded &lt;= 1)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>v</code></td>\n<td>a double \u2265 0.0 and \u2264 1.0</td>\n</tr>\n<tr>\n<td><code>scaled</code></td>\n<td>any double</td>\n</tr>\n<tr>\n<td><code>rounded</code></td>\n<td>an integer in [0, 1]</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "844032705a78ba25d609d77b0cab77e7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"timestamps-and-intervals\">Timestamps and intervals</h2>\n<span class=\"paragraph\">Timestamps are microseconds since 1970 (UTC) in the model; intervals are\ndurations. Comparisons with literals, <code>ts + interval</code>, <code>ts1 - ts0</code> and\njoins on time are all tracked, like integers. The calendar functions are\ncomputed exactly on the Gregorian calendar (<code>SubstraitLean/Time.lean</code>),\nand Lean proves they <strong>grow with the timestamp</strong>, so a range of\ntimestamps gives a range of years, of truncated months, and so on.</span>\n<span class=\"paragraph\">Pick a time window and see what Lean derives:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "737fb9d0c701a96069eb3e24a81fb8b7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='emfo-0' random-id='ca6e2770-8db6-2d3a-7692-8d06e12d9838'><marimo-date data-initial-value='&quot;2024-03-01&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003efrom&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='&quot;0001-01-01&quot;' data-stop='&quot;9999-12-31&quot;' data-full-width='false' data-disabled='false'></marimo-date></marimo-ui-element><marimo-ui-element object-id='emfo-1' random-id='c940a894-068b-1d68-57c1-e55a6ade9254'><marimo-date data-initial-value='&quot;2024-04-01&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003euntil (exclusive)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='&quot;0001-01-01&quot;' data-stop='&quot;9999-12-31&quot;' data-full-width='false' data-disabled='false'></marimo-date></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "8589d05e2c1072f18e985ca42c135026",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>column</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>what Lean knows</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a timestamp in [2024-03-01 00:00:00, 2024-03-31 23:59:59.999999]</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>year</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>the integer 2024</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>hour</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>an integer in [0, 23]</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>month_start</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a timestamp = 2024-03-01 00:00:00</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>week_start</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a timestamp in [2024-02-26 00:00:00, 2024-03-25 00:00:00]</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a_minute_later</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a timestamp in [2024-03-01 00:01:00, 2024-04-01 00:00:59.999999]</td></tr></tbody></table>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "f4b5acd5b560e52cb07b64ba37fd1c74",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Within one calendar year, <code>year</code> is that exact integer. Truncations stay\ninside the window's range (rounded down), <code>hour</code> is in <code>[0, 23]</code> (a\nproved range, not monotone). Without the filter, Lean warns that\ntruncating to a month <strong>may fail</strong>: DataFusion can't truncate timestamps\nnear the ends of its range (chapter 6 shows how such warnings work).</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "320955f4627e7fda6698f9221677a879",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>runtime</td>\n<td>\u274c may fail: overflow: DATE_TRUNC_month($0)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>month_start</code></td>\n<td>any timestamp or NULL</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "bcc6b1dd1a953beb7665d698266f337c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"text\">Text</h2>\n<span class=\"paragraph\">Strings are sequences of Unicode characters in the model.\n<code>substring</code>, <code>strpos</code>, <code>character_length</code>, <code>trim</code>, <code>||</code> and <code>LIKE</code> are\ncomputed exactly, and the test suite checks them against DataFusion on\nrandom strings. Here is Lean's <code>Rel.eval</code> next to DataFusion on some\nawkward words:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "db806baaefdbc6f3013e55e47484b41b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>Lean</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>word</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>middle</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>len</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>literal_percent</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>trimmed</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>eszett</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Gr\u00fc\u00dfe</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>r\u00fc\u00df</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Gr\u00fc\u00dfe</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>na\u00efve </td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a\u00efv</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>6</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>na\u00efve</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a%b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>%b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a%b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>DataFusion</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>word</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>middle</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>len</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>literal_percent</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>trimmed</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>eszett</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Gr\u00fc\u00dfe</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>r\u00fc\u00df</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Gr\u00fc\u00dfe</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>na\u00efve </td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a\u00efv</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>6</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>false</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>na\u00efve</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a%b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>%b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>true</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>a%b</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "f5c426c598aa52dc38b739cbbcd45f90",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>UPPER</code>, <code>LOWER</code> and regular expressions are <strong>black boxes</strong>: Lean knows\nthey return a string (or a boolean), and no proof depends on <em>which</em>\none, because Unicode case mapping and regex engines are big and\nengine-specific. A regular expression is a possible runtime error unless\nLean can see it compiles: patterns in a conservative subset of Rust's\nsyntax are accepted, anything fancier is reported. A back-reference like\n<code>\\1</code> isn't supported by DataFusion's engine at all:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "758415c59cfd7cddf9ce974956361287",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.n &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.shout.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u274c may fail: invalid regular expression: REGEXP_MATCH_\"(a|b)\\1\"($0)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>n</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>shout</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>has_digits</code></td>\n<td>TRUE or FALSE</td>\n</tr>\n<tr>\n<td><code>repeated</code></td>\n<td>TRUE or FALSE</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "aa8e0478b5c6ed2ddaab16c2ca0290a3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">String <em>contents</em> aren't tracked by contracts yet: <code>startswith('acc')</code> in\na filter doesn't let Lean prove <code>startswith('ac')</code> afterwards. Lengths,\nNULLs and errors are.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "39214b7152718bc7f0e1513401759aa1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 11. <a href=\"?file=11_engines.py\">Engines and SQL</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 13. <a href=\"?file=13_plans_and_proofs.py\">Plans, meaning and proofs</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

@@ -1,0 +1,388 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "1546c7695898a77c345e0bccb2a5a75b"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "4b8e441c9787a80bb09ba7d4d9725655",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 2. <a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 4. <a href=\"?file=04_contracts.py\">Contracts</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "3a8bb06d25c00c038715dcca0c9d6a61",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\n<strong>revenue per city and day</strong>. The regional managers' bonuses depend on\nit, so when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind every analytics team has, with one\nsubtlety: the city is the customer's city <em>when the order was placed</em>.\nCustomers move,\nso the city comes from a type-2 slowly changing dimension (dbt snapshots\nbuild these), and the join is a point-in-time join\n(<code>dbt-scd2-point-in-time</code> in the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query\ncatalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. Those run after the model has been\nbuilt, on the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. Better that it fails\nhere than in a regional manager's inbox.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "8bf27d0d06dc231c2fbdff59e96ab354",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-sources-two-delta-tables\">1. The sources: two Delta tables</h2>\n<span class=\"paragraph\"><code>customer_history</code> has one row per customer and version: <code>[valid_from,\nvalid_to)</code>, with <code>valid_to</code> NULL for the current one. Customer 1 moved\nfrom Paris to Lyon on 2 May, and takes their orders' revenue with them.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "518e10b48020dffa18fda8b9b1cafcff",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "39bd193b3d4cddea3a2eee8586f42a07",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>orders</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>order_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>order_ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount_cents</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1200</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>800</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4599</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 18:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 12:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>customer_history</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>valid_from</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>valid_to</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-02 00:00</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lyon</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-02 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "60dd8ce137162818eaeb11901ecd93a7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-model-and-its-tests-as-a-contract\">2. The model, and its tests as a contract</h2>\n<span class=\"paragraph\">The join takes the history row whose range contains the order time.\nThe ranges are half-open, so an order at the instant of a move gets the\nnew city, and the current row's NULL <code>valid_to</code> means \"still valid\":\ntwo of the catalogue's pitfalls for this query.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "684c96479c166e9d44f8430f96d781c6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "30d9b524f553da1cde821f38288d9e2e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">We check the first version, where <code>city</code> is the dimension's column as\nis:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "5842a3b9632cf6d67c4fbc5beee1d52c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "cdb5c1b36caf720cf073f6003aee1f94",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>_.city.notnull()</code></td>\n<td>\u274c TRUE or FALSE; fails on <code>orders(order_id, customer_id, order_ts, amount_cents) = [(0, 0, datetime.datetime(2024, 1, 1, 0, 0), 0)], history(customer_id, city, valid_from, valid_to) = [] gives (city, day, n_orders, revenue_cents) = [(None, 1704067200000000, 1, 0)]</code></td>\n</tr>\n<tr>\n<td><code>_.day.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(city, day)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.revenue_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: $2</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>city</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>day</code></td>\n<td>a timestamp \u2265 2000-01-01 00:00:00</td>\n</tr>\n<tr>\n<td><code>n_orders</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>revenue_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "b1ec6b20c27cf4c364092032decf3cf1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>not_null(city)</code> is refused, although <code>city</code> is NOT NULL in the\ndimension and every order in the sample data has a city. The checker\nknows what the data doesn't show: an order whose customer has no\nhistory row yet (a new customer whose snapshot hasn't run), or one\nplaced before the customer's first <code>valid_from</code>, matches nothing in the\nleft join, and its city is NULL. That's dbt's <code>relationships</code> test\nfailing in production after passing in CI.</span>\n<span class=\"paragraph\">The other tests are proved: the grouping columns are a key of an\naggregate's output, <code>revenue_cents &gt;= 0</code> follows from the precondition\non amounts (and the <code>fill_null</code> for an empty sum), and <code>day</code> is never\nNULL because <code>order_ts</code> isn't. The warning says an integer <code>SUM</code> over\nenough rows can leave 64 bits: DataFusion would then wrap around\nsilently, while sverify's DuckDB and Polars runners raise.</span>\n<span class=\"paragraph\">Someone has to decide what such an order counts as, and the dashboard's\nreaders would rather see an <code>unknown</code> row than revenue that silently\nvanished. So we say it:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "94948ab76a278e3ae002193376e92bb0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "72477c7fe71be7f64eaaf034de8216f0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"the-same-model-in-sql\">The same model in SQL</h3>\n<span class=\"paragraph\">If your team writes its models in SQL, <code>sv.verify</code> checks the SQL text\nagainst the same kind of contract (conditions can be SQL snippets too).\nThe SQL needs <code>coalesce</code> around the <code>SUM</code> for the same reason the Ibis\nneeds <code>fill_null</code>:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "0437b0d141aa612e3b15f38a0ac404f0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "requires orders: amount_cents >= 0\nrequires orders: unique(order_id)\nensures city is not null: proved\nensures revenue_cents >= 0: proved\nensures unique(city, day): proved\nwarning: may wrap around: DATE_TRUNC_day($2)\nwarning: may wrap around: $3\nknown about the output:\n  city: a string\n  day: any integer\n  n_orders: an integer \u2265 0\n  revenue_cents: an integer \u2265 0\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "fe67bb4dcf9292d502a2a40aaca1c1db",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">(A SQL string can be verified, but nodes are built from Ibis\ntransforms, and that is how contracts travel from one step to the\nnext; that is why the job below uses the Ibis version.)</span>\n<h2 id=\"3-build-it-from-the-delta-tables\">3. Build it from the Delta tables</h2>\n<span class=\"paragraph\">Now we wire it up. The model reads both tables as sources, and calling\nit on them builds a node. A left join and an aggregate have no proven\ndelta rules yet, so the node is recomputed on each refresh, and its\nstatus says so:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "e138fc265ab98c3d5cc8f0e4d2405f9f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "daily_city_revenue: orders@v1, history@v0; recomputed (not incrementally maintainable (left join, fetch or window))\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "b17f28f0cdc161beba60b9a7d7867245",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>daily_city_revenue</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>day</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>n_orders</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>revenue_cents</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lyon</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>800</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1200</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4699</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "7ca41ffbbf18edd34814e93c38539602",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Paris on 1 May, Lyon on 3 May: customer 1's orders follow the move.</span>\n<h2 id=\"4-same-answer-on-every-engine-unlike-the-sql-text\">4. Same answer on every engine, unlike the SQL text</h2>\n<span class=\"paragraph\">The same SQL text doesn't mean the same thing everywhere. Suppose\nsomeone adds an average order value as <code>revenue_cents / n_orders</code>:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "4e1e4aebc33e1b91d5aba9481a614185",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"DuckDB\": \"text/plain+float:2349.5\", \"DataFusion\": 2349}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "c5e2e1e6a8709c88a4c17ab5a1aaeaf6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">DuckDB's <code>/</code> on integers gives a double, DataFusion's (and\nPostgreSQL's) truncates, Snowflake's gives a NUMBER with extra\ndecimals, and Spark's a double. A model moved from DuckDB in\ndevelopment to Snowflake in production changes its numbers without an\nerror, and the first to notice is whoever reconciles the dashboard with\nfinance. sverify's translations write out what the plan means instead\n(integer division truncates, on every engine), so the checked plan gives\nthe same rows on each, whichever <code>engine=</code> the node is refreshed with:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "2453a9f95b07f0dded04932e0763b02e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"engines that agree\": [\"duckdb\", \"polars\", \"datafusion\"], \"Snowflake SQL\": \"1624 characters\", \"Spark SQL\": \"1871 characters\"}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "89ac66c4320e98f8e7ac0974d2bc1c58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-the-next-day-a-move-and-a-new-customer\">5. The next day: a move and a new customer</h2>\n<span class=\"paragraph\">Overnight, the snapshot job records that customer 2 moved from Rome to\nMilan at 15:00 on 3 May: the old row is closed and a new one added. And\na new customer, 4, places an order before their first snapshot.</span>\n<span class=\"paragraph\">Before the changes land, we store the mart in a Delta table with\n<code>.write</code>; its first refresh creates the table.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
+      "code_hash": "bd1a60a26d9922bce25e24dcd587799d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "daily_city_revenue:\n  computed\n  requires orders: unique(order_id) (checked on data)\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime.datetime(2000, 1, 1, 0, 0)) (file stats @v1)\n  wrote daily_city_revenue from orders@v1, history@v0: created v2, 4 row(s) written, 0 deleted\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "ZBYS",
+      "code_hash": "77d8a04ae98d5396c89814aab277a3d4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "daily_city_revenue:\n  orders@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v2\n  history@v0\u2192v2: 2 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v2\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime.datetime(2000, 1, 1, 0, 0)) (file stats @v2 (new files))\n  requires orders: unique(order_id) (checked on data)\n  view daily_city_revenue: orders@v2, history@v2\n  wrote daily_city_revenue from orders@v2, history@v2: merge v3, 3 row(s) written, 1 deleted\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "aLJB",
+      "code_hash": "e689874100afb4ee08cdd17d78894254",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>daily_city_revenue</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>day</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>n_orders</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>revenue_cents</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lyon</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>800</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Milan</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-01 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1200</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Rome</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-03 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4599</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>unknown</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-05-04 00:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>500</td></tr></tbody></table></div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Order 4 (18:00 on 3 May) moved from Rome to Milan, and customer 4's order is counted under <code>unknown</code> instead of disappearing or making <code>city</code> NULL. The sink merged the change in one commit; its NOT NULL and CHECK constraints are the proved tests.</span></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nHfw",
+      "code_hash": "e166ff9906bb269a9c9dd6e1d9fea660",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a dashboard model whose tests can't fail in production for\na reason CI didn't see. Its dbt tests became a contract proved before\nthe model runs, and the one that would have failed, <code>not_null(city)</code>\nafter a left join, failed at definition time instead of on the\ndashboard. The preconditions came from Delta metadata where possible.\nThe checked plan gives the same rows on DuckDB, Polars and DataFusion,\nand as Snowflake or Spark SQL, where the same SQL text would not. And\nalthough the model is outside the incremental fragment, it still runs\nas a node, recomputed and diffed, with its sink merged exactly\nonce per state.</span>\n<span class=\"paragraph\"><strong>Next up:</strong> the rest of the tour explains each feature in turn,\nstarting with <a href=\"?file=04_contracts.py\">Contracts</a>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

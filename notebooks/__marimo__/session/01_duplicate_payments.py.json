@@ -1,0 +1,491 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "3e091da30ab6835998f3f769a51aa228"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "792ac6b4c7d290e90a6d43eac3ebfe73",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><a href=\"?file=00_start_here.py\">Contents</a> \u00b7 2. <a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "6279813eee5e57f586466f8ae374175c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these <strong>double charges</strong>, the same card\npaying the same amount at the same merchant twice within five minutes,\nand refund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>); stream processors write it as an interval\njoin, and here it is a self-join on a Delta Lake table of card\ntransactions. The refund queue trusts what you hand it, so it has to be\nright: no pair twice, no charge matched with itself, and nothing left\nover when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its <strong>contract</strong>: what it assumes\n   about the input, and what the refund queue may rely on;</li>\n<li>have the contract <strong>proved</strong> before any data runs;</li>\n<li>run the same checked plan on DuckDB, Polars and DataFusion, and write\n   it as Snowflake and Spark SQL;</li>\n<li><strong>maintain the result from the change feed</strong> when new transactions\n   arrive and old ones are reversed, and see what the usual \"process\n   the new rows\" job gets wrong;</li>\n<li>write it to a Delta table that carries the contract, so the next job\n   can build on it.</li>\n</ol></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "8c33c64911cb5ac40218de466022bf4d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"1-the-source-a-delta-table-of-transactions\">1. The source: a Delta table of transactions</h2>\n<span class=\"paragraph\">Amounts are integer cents: money as DOUBLE does not compare exactly, and\nan equality of amounts is the whole rule. The table has the Change Data\nFeed on (so later runs can read what changed) and a CHECK constraint\nthat amounts are not negative. The data has one real double charge, a\nnear miss on card 11 half an hour apart, and card 12, whose two payments\narrived without a merchant at all.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "1b200ba2dcc316b506464a77c2d67dcd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "0250b69cc5180b9d5376432398b62e54",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>transactions (Delta, version 0 + constraint = v1)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>txn_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>card_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>merchant</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount_cents</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ts</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>10</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>coffee</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>450</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 08:00</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>10</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>coffee</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>450</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 08:02</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>11</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>books</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2599</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 09:00</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>11</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>books</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2599</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 09:30</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>12</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 10:00</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>6</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>12</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>999</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 10:01</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "b9e937fd9372989d0c3763376e900e62",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-rule-and-its-contract\">2. The rule and its contract</h2>\n<span class=\"paragraph\">We'll write the rule in Ibis, state what it assumes and what it\npromises, and have the checker prove it before any data runs. The rule\nis plain Ibis; the decorator writes down what everyone involved is\ncounting on:</span>\n<ul>\n<li><strong><code>requires</code></strong>: what the job assumes about its input. Transaction ids\n  are unique, amounts are not negative, and timestamps are before 2100\n  (so adding five minutes can't overflow).</li>\n<li><strong><code>ensures</code></strong>: what the refund queue relies on. One row per pair,\n  the first transaction before its duplicate, a merchant on every row, a\n  non-negative amount, and the duplicate no earlier than the first.</li>\n</ul>\n<span class=\"paragraph\">The checks in <code>ensures</code> are the ones you would otherwise write as dbt\ntests (<code>unique</code>, <code>not_null</code>, <code>accepted_range</code>, an expression test) and\nrun on yesterday's data, hoping yesterday contained the bad case. Here\nthey are proved for <strong>every</strong> input that meets <code>requires</code>, before the\njob runs.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "aca0d037dbc70cde3c44b62eab8c0ee0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "c5cd3e3a0d54a5552b0c036ab3106b09",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now we build it. The Delta table is a source, and calling the rule on\nit builds a node. Building the node proves the contract (a\n<code>VerificationError</code> would stop here), and its first refresh loads the\ncurrent snapshot:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "17d3dce0a6a5ad02f4f3a7b2a0ad6694",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "1c7b4061d0ba2126499b64a7f4840831",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "9d4cc8bb8dc55f6a566b8a5b2909a627",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Every postcondition is \u2705 proved, and no runtime error is possible. How\neach one follows:</span>\n<ul>\n<li><strong><code>unique(first_txn, duplicate_txn)</code></strong>: <code>txn_id</code> is a key of the\n  input, so a pair of ids identifies a pair of rows.</li>\n<li><strong><code>merchant</code> is never NULL</strong>, although the column is nullable: rows\n  only join when <code>a.merchant = b.merchant</code> is TRUE, and <code>NULL = NULL</code> is\n  not. Card 12's payments never match. (pandas' <code>merge</code> <em>does</em> match\n  NaN with NaN, and a Polars join does with <code>nulls_equal=True</code>: a port\n  of this rule to a dataframe library can change its result.)</li>\n<li><strong><code>first_ts &lt;= duplicate_ts</code></strong> comes from the join condition, which\n  holds on every output row.</li>\n</ul>\n<span class=\"paragraph\">Each precondition was established without trusting anyone's word for\nit, and the first refresh says how:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "6e924dd06505742dacb11461401add9c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "[\"transactions: unique(txn_id) (checked on data)\", \"transactions: (_.amount_cents >= 0) (Delta constraint)\", \"transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v1)\"]"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "8ee955f2d0d2854e58abebda4a7a0703",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The amount bound comes from the table's <strong>Delta CHECK constraint</strong>, the\ntimestamp bound from the <strong>file statistics</strong> (the maximum <code>ts</code> of each\nfile), and the key is checked on the data, since Delta doesn't enforce\nkeys. A later batch only checks the files it added.</span>\n<span class=\"paragraph\">The node holds the one double charge in the data, and neither the near\nmiss nor card 12's merchant-less pair:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "fc780e700e42f988e5290c3aa2099b1d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>duplicate_payments</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>first_txn</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>duplicate_txn</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>card_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>merchant</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount_cents</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>first_ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>duplicate_ts</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>10</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>coffee</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>450</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 08:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 08:02</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "83529cc2ad05741b0554d9be22e9833e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"break-the-rule\">Break the rule</h3>\n<span class=\"paragraph\">The easiest bug in a self-join is forgetting that a row matches itself,\nand the customer would find out first: every payment refunded as its own\nduplicate. Switch off <code>a.txn_id &lt; b.txn_id</code> (or loosen it to <code>&lt;=</code>) and\nthe contract is re-checked:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "4b80bb040ec206b5e152a39550fecb77",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='9594b6d2-abc9-98cc-f4ba-bb07adab142e'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "368036c5f86ae37af13d4fb84e8afd75",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "08e96d673e2db4444693f51e91f967fe",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused: the checker can't prove it,\nbecause it is false. With no condition at all, each pair also appears\nin both orders, and each double charge would be refunded twice. In\nneither case did anything have to run, and no test data had to contain\nthe bad case.</span>\n<h2 id=\"3-one-plan-every-engine\">3. One plan, every engine</h2>\n<span class=\"paragraph\">Maybe you develop on DuckDB on a laptop and the job runs somewhere else\nin production. The node's plan is the one Lean checked. sverify runs it\non each engine through its own translation, which keeps Lean's\nsemantics (NULL keys never match, integers don't wrap around, ties\nbreak one way) or refuses the plan. So a node refreshed with\n<code>engine=</code> has the same rows everywhere:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "4182e4e6402d0231e5a5c68ae99215d2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"duckdb\": 1, \"polars\": 1, \"datafusion\": 1}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "574d9e815637a6ffd0b0497631c01935",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make for you:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "936f437bb73d2c4acd3f41919378da4f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='fe3c4a32-549a-41e9-9f4a-78d146094c78'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "2461340f0719750c41469bcaf302ad00",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">SELECT</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"first_txn\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"duplicate_txn\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"card_id\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"merchant\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"amount_cents\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c5\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"first_ts\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c6\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"duplicate_ts\"</span>\n<span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">  </span><span class=\"k\">SELECT</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c5\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c5\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c9\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c6\"</span>\n<span class=\"w\">  </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">    </span><span class=\"k\">SELECT</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c5\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c6\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c7\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c8\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c9\"</span>\n<span class=\"w\">    </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">SELECT</span>\n<span class=\"w\">        </span><span class=\"ss\">\"txn_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"card_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"merchant\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"amount_cents\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"ts\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">      </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"transactions\"</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s3</span>\n<span class=\"w\">    </span><span class=\"k\">INNER</span><span class=\"w\"> </span><span class=\"k\">JOIN</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">SELECT</span>\n<span class=\"w\">        </span><span class=\"ss\">\"txn_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"card_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"merchant\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"amount_cents\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"ts\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">      </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"transactions\"</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s4</span>\n<span class=\"w\">      </span><span class=\"k\">ON</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">        </span><span class=\"p\">(</span>\n<span class=\"w\">          </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"p\">(</span>\n<span class=\"w\">                </span><span class=\"p\">(</span>\n<span class=\"w\">                  </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span>\n<span class=\"w\">                </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">                  </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span>\n<span class=\"w\">                </span><span class=\"p\">)</span>\n<span class=\"w\">              </span><span class=\"p\">)</span>\n<span class=\"w\">              </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">                </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span>\n<span class=\"w\">              </span><span class=\"p\">)</span>\n<span class=\"w\">            </span><span class=\"p\">)</span>\n<span class=\"w\">            </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span>\n<span class=\"w\">            </span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"k\">NOT</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">            </span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">          </span><span class=\"k\">NOT</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"n\">DATEADD</span><span class=\"p\">(</span><span class=\"n\">MICROSECOND</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">300000000</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">          </span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"p\">)</span>\n<span class=\"w\">      </span><span class=\"p\">)</span>\n<span class=\"w\">  </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s2</span>\n<span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s1</span>\n</code></pre></div></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
+      "code_hash": "cfc956ef39ce671e72f4fff16fddcec9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-new-transactions-keeping-the-result-up-to-date\">4. New transactions: keeping the result up to date</h2>\n<span class=\"paragraph\">An hour later, two things have happened to the source table:</span>\n<ul>\n<li>transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a\n  duplicate of transaction <strong>3</strong>, which was loaded in the first run;</li>\n<li>transaction 2 was <strong>reversed</strong> and deleted, so the coffee pair is no\n  longer a double charge.</li>\n</ul></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZBYS",
+      "code_hash": "4a0d5c15880b512113b357ddd8a36b43",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"num_added_files\": 2, \"num_removed_files\": 1, \"num_deleted_rows\": 1, \"num_copied_rows\": 5, \"execution_time_ms\": 5, \"scan_time_ms\": 2, \"rewrite_time_ms\": 0}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "aLJB",
+      "code_hash": "f06ee6c45d8f90363307fc08a43b484c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"the-usual-incremental-job\">The usual incremental job</h3>\n<span class=\"paragraph\">The common way to avoid recomputing the self-join is a watermark: find\nthe duplicates among the rows that arrived since the last run, and\nappend them to the output. It runs fast, and it is wrong twice, once\nfor each of the two changes:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nHfw",
+      "code_hash": "f933bbfb27e977c120354850f7c9c27e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "[[1, 2]]"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "xXTn",
+      "code_hash": "4dc85ec3b1e76631708d5858a82da7c4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">It <strong>misses (3, 7)</strong>, because transaction 3 is not among the new rows,\nand it <strong>keeps (1, 2)</strong>, because an append-only job never sees the\nreversal, so that customer gets a refund for a charge that no longer\nexists. Fixing that by hand means joining the new rows with the old\nones both ways, and handling deletes and updates: that is the delta rule\nof a join, <code>\u0394(A \u22c8 B) = \u0394A \u22c8 (B + \u0394B) + A \u22c8 \u0394B</code>, and it is easy to get\nsubtly wrong.</span>\n<h3 id=\"the-nodes-refresh\">The node's refresh</h3>\n<span class=\"paragraph\"><code>dups.refresh()</code> reads the Change Data Feed from the version the node\nwas computed at, checks the preconditions on the new rows only, and\nruns the delta plans Lean derived and <strong>proved</strong> to give the same result\nas a full recompute:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "AjVT",
+      "code_hash": "3d85771e79403912b1dffcd1a8c0489e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "duplicate_payments:\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v3 (new files))\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "pHFh",
+      "code_hash": "cc75b8d7449f5aa21a54d8b261d2d608",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>duplicate_payments after the refresh</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>first_txn</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>duplicate_txn</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>card_id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>merchant</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount_cents</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>first_ts</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>duplicate_ts</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>11</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>books</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2599</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 09:00</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2026-03-02 09:03</td></tr></tbody></table></div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The late duplicate is found and the reversed pair is gone, and the node holds the same rows as a new one computed from scratch.</span></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "NCOB",
+      "code_hash": "dcb1a4d2e125242e71abaa181f1033c3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The report names the one thing the proof takes on trust: that the\nchange feed really turns the old snapshot into the new one (\"\u0394 trusted\nas coming from Delta CDF\"). Where the feed is gone (CDF off, files\nvacuumed), the refresh diffs the two snapshots instead, and says so.\n<code>dups.refresh(audit=True)</code> also compares every batch with a recompute\nbefore it is applied.</span>\n<h2 id=\"5-the-sink-carries-the-contract\">5. The sink carries the contract</h2>\n<span class=\"paragraph\"><code>dups.write(DeltaSink(...))</code> stores the node in a Delta table, and every\nrefresh writes it <strong>exactly once per state</strong>: the commit is keyed by the\nsource versions, so a retried job can't write a batch twice. The first\nwrite creates the table; the proved guarantees become NOT NULL columns\nand CHECK constraints, and the commit metadata records the plan and the\ncontract. Later writes MERGE only the change.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "aqbW",
+      "code_hash": "bb9fbbbefd9621d19b93e37e99abb1dd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime.datetime(2100, 1, 1, 0, 0)) (file stats @v3)\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "TRpd",
+      "code_hash": "b2cc9a1ad2d6459983b0f57ff2839ad2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<pre class='text-xs'>Contract(view=&#x27;duplicate_payments&#x27;, plan=&#x27;f0dec9a4e386ed61df087a4f3104b2599ae4dcb7591900def7ae317bc2eceb5d&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={})</pre>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TXez",
+      "code_hash": "24b2d9c1f07ad942a1708ffb14a5e0cc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now the refund queue's own job reads that table. Whoever maintains it\ndoesn't have to trust your word, or re-check your data: its\npreconditions are discharged from the table's schema and constraints,\nwhich the contract put there:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "dNNg",
+      "code_hash": "0b1f77b12d737057e3e57a85f3d04763",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "[\"dups: _.merchant.notnull() (schema)\", \"dups: (_.amount_cents >= 0) (Delta constraint)\"]"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "yCnT",
+      "code_hash": "fbc1459cf71d6845dec48dfb3f23aeef",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You now have a refund queue you can trust. Its assumptions were proved\nbefore a single row ran, and a bug that would have broken one was caught\nat definition time, not by a customer. The preconditions came from\nDelta's own constraints and file statistics where it has them, and from\nthe data where it doesn't. The same plan gives the same rows on DuckDB,\nPolars and DataFusion and is written as Snowflake or Spark SQL. It stays\nright as charges arrive and get reversed, where the watermark job got\ntwo rows wrong, and the next job can build on its table without checking\nagain.</span>\n<span class=\"paragraph\"><strong>Next up:</strong> <a href=\"?file=02_sensor_alerts.py\">Sensor alerts from an Iceberg table</a>,\nwhere ties and NaN get involved. The features used here are explained\nin <a href=\"?file=04_contracts.py\">Contracts</a>,\n<a href=\"?file=09_incremental_views.py\">Incremental views</a>,\n<a href=\"?file=10_pipelines.py\">Pipelines</a> and <a href=\"?file=11_engines.py\">Engines and SQL</a>.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

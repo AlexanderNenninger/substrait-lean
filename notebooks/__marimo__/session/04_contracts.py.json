@@ -1,0 +1,230 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "481f7cb65f783224b187372ec9c519b2"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "48d672a9cace2e993ae6425736cc9890",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 3. <a href=\"?file=03_orders_mart.py\">An orders mart</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 5. <a href=\"?file=05_keys_and_relations.py\">Keys and relations</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "f69f52c8964e9bf83fdef6239b0532d2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"4-contracts\">4. Contracts</h1>\n<span class=\"paragraph\">Say a colleague's transformation feeds the billing job you own. Its\ndocstring promises the new column is never negative and never NULL, and\ncustomers are invoiced on that promise. You'd rather it were proved than\npromised.</span>\n<span class=\"paragraph\">In verified programming you state what a function <strong>requires</strong> of its\ninputs (preconditions) and what it <strong>ensures</strong> about its output\n(postconditions), and the machine proves the second follows from the\nfirst. <code>sverify</code> brings that to data transformations: a function from\nIbis tables to an Ibis table, with a decorator that states the contract.\nWe'll write one.</span>\n<h2 id=\"a-first-contract\">A first contract</h2></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "6c0d95f2b5c12a73aef8ef8f8a5a5297",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.doubled &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.doubled.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>id IS NOT NULL</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($2 * 2)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>doubled</code></td>\n<td>an integer \u2265 22</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "332c6670f9e018a15f182a0c8f362b61",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>requires</code> maps each <strong>parameter</strong> of the function to conditions on\n  that input. <code>ensures</code> lists conditions on the output.</li>\n<li>Conditions are Ibis expressions over the table's columns (<code>_.amount &gt;= 0</code>,\n  using Ibis's <code>_</code> placeholder, or a function of the table) or SQL\n  snippets (<code>\"id IS NOT NULL\"</code>).</li>\n<li>Calling <code>doubled(orders)</code> builds the Ibis expression as usual. Before\n  returning it, <code>sverify</code> sends the plan and the conditions to the Lean\n  checker (<code>substrait-check --contract</code>), which tries to <strong>prove</strong> every\n  postcondition. The verdicts are in <code>.last_report</code>.</li>\n<li>The first table of the report has the verdicts. The second is\n  everything Lean established about each output column, whether you\n  asked or not: a free, proved data dictionary.</li>\n<li>The \u26a0\ufe0f row says <code>amount * 2</code> may leave the 64-bit range and wrap around,\n  since nothing bounds <code>amount</code> from above. Chapter 6 is about these.</li>\n</ul>\n<span class=\"paragraph\"><code>sv.verify(expr, requires=..., ensures=...)</code> does the same for an\nexpression without a decorator; it returns the report instead of raising.</span>\n<h2 id=\"how-does-lean-know-doubled-22\">How does Lean know <code>doubled \u2265 22</code>?</h2>\n<span class=\"paragraph\">Lean never sees a single order. It runs the plan on <em>descriptions</em> of\nvalues instead of values: for each column, whether it can be NULL and\nwhich values it can hold. This is called <em>abstract interpretation</em>.\nEach operator updates the descriptions:</span>\n<ul>\n<li>the precondition says <code>amount &gt;= 0</code> is TRUE on every input row, so\n  <code>amount</code> is a non-NULL integer \u2265 0 (<code>NULL &gt;= 0</code> is NULL, not TRUE);</li>\n<li>the filter <code>amount &gt; 10</code> keeps only rows where that is TRUE, so <code>amount</code>\n  is a non-NULL integer \u2265 11 afterwards (NULL &gt; 10 is not TRUE);</li>\n<li><code>amount * 2</code> is then an integer \u2265 22, and never NULL.</li>\n</ul>\n<span class=\"paragraph\">A postcondition is proved when its description says it can only be TRUE.\nChange the transformation and the conditions below, and we'll watch\nwhat Lean can establish:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "8f0a13d644a1c9d40f1441ae16d1acb0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='PKri-0' random-id='0cd611fb-f042-ae00-be5f-26c10048b24a'><marimo-slider data-initial-value='10' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003efilter: keep orders with amount &amp;gt;&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='-10' data-stop='50' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><marimo-ui-element object-id='PKri-1' random-id='8b86507a-c66a-f3b6-49c6-c4e77202dd90'><marimo-slider data-initial-value='2' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003enew column: doubled = amount \u00d7&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-start='-3' data-stop='5' data-steps='[]' data-debounce='false' data-disabled='false' data-orientation='&quot;horizontal&quot;' data-show-value='true' data-include-input='false' data-full-width='false'></marimo-slider></marimo-ui-element><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='PKri-2' random-id='c1e97372-1941-d504-8933-0a80c1e2c045'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires amount \u2265 0&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='PKri-3' random-id='f47ea2b5-1dc4-7a09-d390-710c8e7a24fd'><marimo-checkbox data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires amount \u2264 100&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element></div><marimo-ui-element object-id='PKri-4' random-id='b8a764a8-5769-a88a-957b-bff08231381f'><marimo-text data-initial-value='&quot;doubled &#92;u003e= 20&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eensures (SQL)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-placeholder='&quot;&quot;' data-kind='&quot;text&quot;' data-full-width='true' data-disabled='false' data-debounce='true'></marimo-text></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "2e6dd2d1299576d7d4bc63378fccd83d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>step</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>what Lean knows about amount</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>\u2026 about doubled</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>orders (input)</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>an integer \u2265 0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'></td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>after filter amount > 10</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>an integer \u2265 11</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'></td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled = amount \u00d7 2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'></td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>an integer \u2265 22</td></tr></tbody></table><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003ccode&#92;u003edoubled &amp;gt;= 20&#92;u003c/code&#92;u003e is &#92;u003cstrong&#92;u003eproved&#92;u003c/strong&#92;u003e \u2713&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "545a520200ac12caaaf278abd3397463",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Things to try: untick <em>amount \u2265 0</em> and pick a negative factor; set the\nthreshold below 0; untick it again, ask for <code>doubled IS NOT NULL</code> and\nthink about why it holds even though <code>amount</code> can now be NULL in the\ninput; tick <em>amount \u2264 100</em> and ask for <code>doubled &lt;= 200</code>.</span>\n<h2 id=\"when-a-proof-fails\">When a proof fails</h2>\n<span class=\"paragraph\">A promise that doesn't follow is better caught here than by billing. It\nis refused, with what Lean <em>could</em> establish. Here the precondition\nallows <code>amount = 0</code>, so <code>total</code> can be 1:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "492c0f8fe4f89438707f46cb655fe4ce",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>VerificationError: could not prove: (_.total &gt; 5) (it is TRUE or FALSE)\nrequires orders: (_.amount &gt;= 0)\nensures (_.total &gt; 5): NOT proved (it is TRUE or FALSE)\n  counterexample: orders(id, customer, amount) = [(0, '', 0)] gives (id, total) = [(0, 1)]\nwarning: may wrap around: ($2 + 1)\nknown about the output:\n  id: any integer or NULL\n  total: an integer \u2265 1\n</code></pre></div></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "d601fd1b6426b04f2f3053b0e28a514f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\"It is TRUE or FALSE\" is Lean's honest answer: for some allowed inputs\n<code>total &gt; 5</code> holds, for others it doesn't. Lean never guesses. A refusal\ncan also mean the truth is out of reach of the analysis (the end of this\nchapter lists what it tracks), so a \u274c is \"not proved\", not \"false\".</span>\n<h2 id=\"contracts-on-real-data\">Contracts on real data</h2>\n<span class=\"paragraph\">So far the table had no data: the proof is about <em>every</em> possible\n<code>orders</code>. Real tables come from upstream systems you don't control, and\nbinding the function to them adds two things:</span>\n<ol>\n<li><strong>Preconditions are checked on the data</strong> at call time, because they\n   are assumptions about the outside world, and the outside world lies.\n   A violation raises <code>PreconditionError</code>.</li>\n<li><strong>Unproved postconditions</strong> can be checked on the output instead of\n   refusing the call, with <code>on_unproved</code>:</li>\n</ol>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\"><code>on_unproved=</code></th>\n<th style=\"text-align: left;\">what happens when a postcondition isn't proved</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\"><code>\"error\"</code> (default)</td>\n<td style=\"text-align: left;\">raise <code>VerificationError</code>; nothing runs</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"runtime\"</code></td>\n<td style=\"text-align: left;\">run the pipeline and check that condition on the actual output; raise <code>PostconditionError</code> on a violation</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><code>\"warn\"</code></td>\n<td style=\"text-align: left;\">issue a warning and carry on</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">Some data, with a sneaky NULL:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "0b11448bbe361d6b6086a919a69d92c6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>orders</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>30</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "8b8ec17bf75edfe3ee0aad73bb0808d1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 2rem'><marimo-ui-element object-id='emfo-0' random-id='a0548dc9-2313-ad47-f7e8-3884a7cf1e64'><marimo-radio data-initial-value='&quot;runtime&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eon_unproved&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;error&quot;,&quot;runtime&quot;,&quot;warn&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element><marimo-ui-element object-id='emfo-1' random-id='8cc36739-e907-931e-bf00-53ba42722b55'><marimo-switch data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003erequires amount \u2265 0&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "d0e6413c16c994c4dbac741dd76531c0",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003ePostconditionError&#92;u003c/strong&#92;u003e: 1 output row(s) violate (_.amount &amp;lt; 100)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "03374bfc9a720d09281c21e7c80abe76",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With the default settings, <code>amount &lt; 100</code> can't be proved (nothing bounds\n<code>amount</code>), so <code>\"runtime\"</code> checks it on the output. It fails for one row,\nand it's <code>cy</code>'s: <strong>NULL &lt; 100 is not TRUE</strong>, so the NULL row counts as a\nviolation. A contract condition must be TRUE, not merely \"not FALSE\".</span>\n<span class=\"paragraph\">Switch on <em>requires amount \u2265 0</em>: now the precondition check fails first,\nfor the same NULL. Pass <code>check_requires=False</code> to <code>sv.transform</code> to trust\nthe inputs instead (the proofs then rest on that trust).</span>\n<h3 id=\"schemas-count-too\">Schemas count too</h3>\n<span class=\"paragraph\">A column declared non-nullable (<code>\"!int64\"</code> in Ibis) is never NULL, and\nLean knows it, so <code>amount IS NOT NULL</code> needs no precondition:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "bf57dc4c40ee35dc0917f5ae678b283d",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>amount IS NOT NULL</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>amount</code></td>\n<td>any integer</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "fb050a814e98070d53e612f8dc500d08",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"the-theorem-behind-the\">The theorem behind the \u2705</h2>\n<span class=\"paragraph\">When a reviewer asks why they should believe a \u2705, this is the answer.\nEvery \u2705 in this tour is an instance of <code>contract_sound</code> in\n<code>SubstraitLean/Contracts.lean</code>:</span>\n<div class=\"language-lean codehilite\"><pre><span></span><code><span class=\"kd\">theorem</span><span class=\"w\"> </span><span class=\"n\">contract_sound</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">hcat</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">cat.WF</span><span class=\"o\">)</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">hS</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">row</span><span class=\"w\"> </span><span class=\"bp\">\u2208</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">)</span><span class=\"bp\">.</span><span class=\"n\">rows</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">EnvMem</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">S</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"n\">row</span><span class=\"o\">)</span><span class=\"w\">               </span><span class=\"c1\">-- rows match the schema</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">hpre</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">row</span><span class=\"w\"> </span><span class=\"bp\">\u2208</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">)</span><span class=\"bp\">.</span><span class=\"n\">rows</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">e</span><span class=\"w\"> </span><span class=\"bp\">\u2208</span><span class=\"w\"> </span><span class=\"n\">pre</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">e.eval</span><span class=\"w\"> </span><span class=\"n\">row</span><span class=\"o\">)</span><span class=\"bp\">.</span><span class=\"n\">isTrue</span><span class=\"o\">)</span><span class=\"w\">  </span><span class=\"c1\">-- preconditions hold</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">hQ</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">Q.WF</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"o\">)</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">hproved</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">Q.aeval</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"k\">fun</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"w\"> </span><span class=\"bp\">=&gt;</span><span class=\"w\"> </span><span class=\"n\">tableEnv</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">S</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">pre</span><span class=\"w\"> </span><span class=\"n\">t</span><span class=\"o\">))</span><span class=\"bp\">.</span><span class=\"n\">all</span><span class=\"w\"> </span><span class=\"n\">AVal.certainlyTrue</span><span class=\"o\">)</span><span class=\"w\"> </span><span class=\"o\">:</span>\n<span class=\"w\">    </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">row</span><span class=\"w\"> </span><span class=\"bp\">\u2208</span><span class=\"w\"> </span><span class=\"n\">Q.eval</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"bp\">\u2200</span><span class=\"w\"> </span><span class=\"n\">v</span><span class=\"w\"> </span><span class=\"bp\">\u2208</span><span class=\"w\"> </span><span class=\"n\">row</span><span class=\"o\">,</span><span class=\"w\"> </span><span class=\"n\">v</span><span class=\"w\"> </span><span class=\"bp\">=</span><span class=\"w\"> </span><span class=\"bp\">.</span><span class=\"n\">bool</span><span class=\"w\"> </span><span class=\"n\">true</span><span class=\"w\">                   </span><span class=\"c1\">-- postconditions hold</span>\n</code></pre></div>\n<span class=\"paragraph\">Read: <em>if every input row matches its schema and satisfies the\npreconditions, and the abstract interpretation (<code>aeval</code>) says every\npostcondition is certainly TRUE, then every postcondition is TRUE on\nevery output row.</em> <code>hproved</code> is what the checker computes for your plan;\nthe rest are assumptions about the data, which <code>sverify</code> checks when the\ndata is there.</span>\n<h2 id=\"what-lean-tracks\">What Lean tracks</h2>\n<span class=\"paragraph\">Per column: whether it can be NULL, an integer or double range, which\nbooleans it can be, timestamps, and whether it can be a string. Filters\nsuch as <code>amount &gt; 10</code>, <code>x = 3</code>, <code>x IN (1, 2, 3)</code> and <code>x IS NOT NULL</code>\nrefine those facts; arithmetic, comparisons, <code>AND</code>/<code>OR</code>/<code>NOT</code> with SQL's\nNULL semantics, <code>CASE</code>, <code>COALESCE</code>, joins and <code>UNION ALL</code> propagate them.\nThe next chapters add <strong>keys</strong> and <strong>relations between columns</strong> (5),\nruntime errors (6) and window functions (7); doubles, time and text\nhave a chapter of their own (12).</span>\n<span class=\"paragraph\">Not tracked yet: relations that need more than \"column plus constant\"\n(<code>a &lt; 2 * b</code>), string contents, DECIMAL columns, and counts across rows.\nPostconditions like those are refused rather than guessed; use\n<code>on_unproved=\"runtime\"</code> to check them on the data instead.</span>\n<span class=\"paragraph\">You can now put a contract on a transformation, read what Lean proved\nabout every column, and choose what happens when a promise can't be\nproved. The billing job gets a column whose promises were proved\nbefore any data ran, and the assumptions about upstream data are\nchecked when the data arrives. <strong>Next up:</strong>\n<a href=\"?file=05_keys_and_relations.py\">Keys and relations</a>, where the facts\nare about pairs of rows and pairs of columns.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "48d672a9cace2e993ae6425736cc9890",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 3. <a href=\"?file=03_orders_mart.py\">An orders mart</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 5. <a href=\"?file=05_keys_and_relations.py\">Keys and relations</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

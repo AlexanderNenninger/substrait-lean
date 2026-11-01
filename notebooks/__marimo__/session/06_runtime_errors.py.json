@@ -1,0 +1,152 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "112cd9b89e583f38cac1baa0aacf78c4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 5. <a href=\"?file=05_keys_and_relations.py\">Keys and relations</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 7. <a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "8e9c37862700935f82d7080afbc1a1c7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"6-runtime-errors\">6. Runtime errors</h1>\n<span class=\"paragraph\">Say you're on call this week. At 3 a.m. a pipeline that was \"correct\"\ncrashes on a row nobody expected, and you're the one it pages. A\npipeline that quietly writes a wrong number instead is worse: nobody\ngets paged at all.</span>\n<span class=\"paragraph\">Some operations can <strong>fail</strong> in DataFusion, and some silently give a\n<strong>wrong</strong> answer:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\"></th>\n<th style=\"text-align: left;\">operation</th>\n<th style=\"text-align: left;\">what goes wrong</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\">\u274c error</td>\n<td style=\"text-align: left;\">integer <code>/</code> or <code>%</code> by zero</td>\n<td style=\"text-align: left;\">the query fails</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">\u274c error</td>\n<td style=\"text-align: left;\"><code>-9223372036854775808 / -1</code></td>\n<td style=\"text-align: left;\">the result doesn't fit in 64 bits; the query fails</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">\u274c error</td>\n<td style=\"text-align: left;\"><code>CAST(x AS BIGINT)</code> of NaN, \u00b1\u221e or a huge double (also after <code>ROUND</code>)</td>\n<td style=\"text-align: left;\">the query fails</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">\u274c error</td>\n<td style=\"text-align: left;\">integer <code>POWER</code> with a negative exponent or a huge result</td>\n<td style=\"text-align: left;\">the query fails</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">\u274c error</td>\n<td style=\"text-align: left;\">a regular expression that doesn't compile</td>\n<td style=\"text-align: left;\">the query fails</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">\u274c error</td>\n<td style=\"text-align: left;\">truncating a timestamp near the ends of its range to a month or year</td>\n<td style=\"text-align: left;\">DataFusion panics or returns garbage</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\">\u26a0\ufe0f warning</td>\n<td style=\"text-align: left;\"><code>+</code>, <code>-</code>, <code>*</code> leaving 64 bits</td>\n<td style=\"text-align: left;\">DataFusion <strong>wraps around</strong> silently: <code>2\u2076\u00b2 + 2\u2076\u00b2</code> gives <code>-2\u2076\u00b3</code></td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">Lean's model computes with exact (unbounded) integers, and\n<code>SubstraitLean/Safety.lean</code> lists, for every operation of a plan, which\nof these can happen. Theorem <code>Rel.mayIssues_sound</code> proves the list\ncomplete: <strong>if the report lists no error, no input can trigger one.</strong>\n<code>@sv.transform</code> refuses a transformation that may fail, even with no\npostconditions at all.</span>\n<h2 id=\"guards-and-where-datafusion-respects-them\">Guards, and where DataFusion respects them</h2>\n<span class=\"paragraph\">The usual fix is a <em>guard</em>: make sure the divisor isn't zero before\ndividing. Whether a guard works depends on <strong>when DataFusion evaluates\neach part</strong>, and that is less obvious than it looks. The table below\nhas a row for each kind of trouble: a zero divisor, <code>MIN</code> divided by\n<code>-1</code>, and doubles a <code>BIGINT</code> can't hold. Pick a variant, and we'll\nshow Lean's report next to DataFusion actually running it on that\ntable.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "f074dc494faf0756c464ee9f83352e59",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "5526d65f751325e2bcdbd5bd1f978e76",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>t   (MIN and MAX are the smallest and largest 64-bit integers)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>qty</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>n</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>7</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3.4</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1e+30</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>MIN</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>-1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>NaN</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>MAX</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>50.0</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "b33cadcffbec3c4752ef0027fa6fcda7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='8688a88d-614b-738d-5faf-d14f8428ad4d'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty % n&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "0052397b697d681120979b16004bd5de",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eLean &#92;u003cstrong&#92;u003ecan&#x27;t rule out&#92;u003c/strong&#92;u003e a runtime error.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;warn&quot;'></marimo-callout-output><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>runtime</td>\n<td>\u274c may fail: division by zero: ($0 % $1)</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u274c may fail: division by zero: ($0 / $1)</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u274c may fail: overflow: ($0 / $1)</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: (($0 / $1) - 1)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>x</code></td>\n<td>any integer or NULL</td>\n</tr>\n</tbody>\n</table></span><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003eDataFusion fails:&#92;u003c/strong&#92;u003e &#92;u003ccode&#92;u003eConversion Error: Type DOUBLE with value inf can&#x27;t be cast because the value is out of range for the destination type INT64&#92;u003c/code&#92;u003e&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output></div></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "453d48548bf79fe9b63d2b89caf5edf1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">What the variants show:</span>\n<ul>\n<li><strong><code>nullif(n, 0)</code> and <code>CASE</code></strong> are reliable guards: DataFusion evaluates\n  a <code>CASE</code> branch only when its condition holds, and <code>NULLIF</code> is a <code>CASE</code>\n  underneath. Lean evaluates each branch <em>knowing</em> its condition.</li>\n<li><strong>A filter below a projection</strong> works too: the projection only sees\n  rows that passed. But <code>n != 0</code> doesn't rule out <code>MIN / -1</code>, so\n  division still may overflow; <code>n &gt; 0</code> fixes that.</li>\n<li><strong>The same <code>AND</code></strong> is not a guard: DataFusion may evaluate both sides\n  of an <code>AND</code>, so <code>qty % n</code> runs on the <code>n = 0</code> row anyway.</li>\n<li><strong>An earlier filter</strong> is not a guard either, which surprises\n  everyone: DataFusion's optimizer <em>merges</em> the two filters into one\n  <code>AND</code>. Lean models that (<code>Rel.loose</code>), so it reports the error, and\n  DataFusion indeed fails.</li>\n<li><strong><code>round(amount)</code></strong> becomes a cast to <code>BIGINT</code>, which fails on <code>1e30</code>\n  and NaN. Bounding <code>amount</code> first makes it safe, because <code>ROUND</code> is\n  exact and monotone in the model (<code>FloatCode.round_mono</code>).</li>\n<li><strong><code>qty + 1</code></strong> only warns: on <code>MAX</code> it wraps around to <code>MIN</code>. No\n  error, but not the mathematical answer either.</li>\n</ul>\n<h2 id=\"contracts-refuse-possible-errors\">Contracts refuse possible errors</h2>\n<span class=\"paragraph\">For whoever is on call, this is the part that matters: a contracted\ntransformation must be proved free of runtime errors, not only correct\nwhen it runs. Warnings (wrap-around) don't block it:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "b258449332b0fd91d678ee61f800ba3c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003ccode&#92;u003eratio&#92;u003c/code&#92;u003e: &#92;u003cstrong&#92;u003eVerificationError&#92;u003c/strong&#92;u003e: could not prove: no runtime error (division by zero: (&#36;0 % &#92;u003cmarimo-tex class=&#92;&quot;arithmatex&#92;&quot;&#92;u003e||(1)), no runtime error (division by zero: (||)&#92;u003c/marimo-tex&#92;u003e0 / &#92;u003cmarimo-tex class=&#92;&quot;arithmatex&#92;&quot;&#92;u003e||(1)), no runtime error (overflow: (||)&#92;u003c/marimo-tex&#92;u003e0 / &#36;1))&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003ccode&#92;u003esafe_ratio&#92;u003c/code&#92;u003e: proved free of runtime errors \u2713&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "72dea1172c6b8e250f455a22aae7395c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>Report.errors</code> and <code>Report.warnings</code> list the issues; <code>Report.proved</code> is\ntrue only when every postcondition is proved <strong>and</strong> there are no errors.</span>\n<span class=\"paragraph\">What's trusted here is the timing: <em>when</em> DataFusion evaluates an\nexpression (lazy <code>CASE</code>, eager <code>AND</code>/<code>OR</code>, merged filters). The test\nsuite runs DataFusion and DuckDB on random data, including the extreme\nvalues, and checks that they only ever fail where Lean reported an error.</span>\n<span class=\"paragraph\">You can now tell a guard that works from one that only looks like it,\nand a contract refuses any plan that could crash, so the 3 a.m. page\nfor a zero divisor never comes. <strong>Next up:</strong>\n<a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a>, where each row\nlooks at its neighbours.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "112cd9b89e583f38cac1baa0aacf78c4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 5. <a href=\"?file=05_keys_and_relations.py\">Keys and relations</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 7. <a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

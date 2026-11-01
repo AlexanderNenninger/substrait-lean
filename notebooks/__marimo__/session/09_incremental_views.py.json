@@ -1,0 +1,360 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "0ac7db64cbc642bcef694d3e076b9211"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "9e4aed489b9c01d2272efbeb534869cb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 8. <a href=\"?file=08_composition.py\">Composing contracts</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 10. <a href=\"?file=10_pipelines.py\">Pipelines</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "55584bbab56cf2605e46548c3360a28e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"9-incremental-views\">9. Incremental views</h1>\n<span class=\"paragraph\">Say your dashboard table is a join over a few million orders, and a\nhundred orders change every hour. Recomputing the whole join each time\nis slow; hand-written incremental logic (\"only process rows where\n<code>updated_at</code> is newer than\u2026\") is fast, but tends to go wrong silently:\ndeletes are missed, late rows are skipped, a join gets a new match.\nNobody notices until the analyst reading the dashboard finds totals\nthat no longer add up.</span>\n<span class=\"paragraph\"><em>Incremental view maintenance</em> computes only the <strong>change</strong> to the\nresult from the <strong>changes</strong> to the inputs. A transform you call on\nsources is a <em>node</em>, and <code>node.refresh()</code> keeps it up to date with\nupdate rules proved correct in Lean, on DuckDB, Polars, DataFusion or\nSpark (chapter 11). We'll use it first, see what it recomputes\ninstead, and then look at how it works.</span>\n<h2 id=\"keeping-a-join-up-to-date\">Keeping a join up to date</h2>\n<span class=\"paragraph\">You write the query once, as an Ibis transform. Called on two sources\nit builds a node; <code>refresh()</code> computes its result once, and from then on\nkeeps it up to date from the inserts and deletes alone. Here the\nsources are in-memory tables (<code>StaticSource</code>, from <code>sverify.io</code>); Delta\nand Iceberg tables work the same way (chapter 1 reads a Delta table):</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "d4d161c4e88e3bb783523c0a656c60da",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='bkHC-0' random-id='be57b9c3-7378-8812-3566-922032ac37f4'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;id&#92;&quot;:1,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;},{&#92;&quot;id&#92;&quot;:2,&#92;&quot;city&#92;&quot;:&#92;&quot;Oslo&#92;&quot;},{&#92;&quot;id&#92;&quot;:3,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;}]&quot;' data-total-rows='3' data-total-columns='2' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-field-types='[[&quot;id&quot;,[&quot;integer&quot;,&quot;int64&quot;]],[&quot;city&quot;,[&quot;string&quot;,&quot;str&quot;]]]' data-show-filters='true' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "5f0bbacb8ecc03971af23da2cdb4cb94",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>orders.apply(sv.Changes(inserts=[...], deletes=[...]))</code> changes a\nsource and gives it a new version; the next <code>view.refresh()</code> gets\nexactly that change and updates the view from it. To check, we build\nthe same node again and refresh it: a node that has never been\nrefreshed computes its result from scratch. We'll throw some changes at\nit: press the button to change both tables at once, at random.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "d604778f21e8328199db6d76001478ef",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='0052aabb-dd45-d5bb-19c8-f566f90055f1'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eApply a random batch of changes&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "a4054aa5d0136ea045a2e311d36831f5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 1rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><em>Press the button to change both tables at once.</em></span></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>maintained view</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>recomputed from scratch</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Oslo</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eAfter 0 batch(es): the maintained view &#92;u003cstrong&#92;u003eequals&#92;u003c/strong&#92;u003e full recomputation \u2713. Each batch runs 3 Lean-generated update plans on DuckDB.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "e8ad7ac6710046b860c353d0fc47d1c5",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-can-be-maintained\">What can be maintained</h2>\n<span class=\"paragraph\">A view that is quietly wrong is worse than no view, so the rule is\nstrict. Filters, computed columns, inner joins (self-joins too), cross\njoins, <code>UNION ALL</code> and <code>ORDER BY</code> are maintained from their changes.\nEverything else is <strong>recomputed and diffed</strong> on every refresh instead\nof being maintained wrongly: left, semi and anti joins (a left join's\nNULL-padded rows must be <em>retracted</em> when a match turns up later),\n<code>DISTINCT</code>, <code>LIMIT</code> (it depends on row order), windows, and aggregates\n(contracts work on them, but their update rules aren't proved yet).\nThe result is just as right, but it costs a full run per refresh, and\n<code>node.status()</code> tells you which kind of node you have. Pick one:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "bb8c37013386af8e155a67128ae62124",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='82ae6c25-7854-9d58-67d4-e30908eb92e4'><marimo-dropdown data-initial-value='[&quot;a left join&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;the inner join above&quot;,&quot;orders.limit(2)&quot;,&quot;a left join&quot;,&quot;orders.distinct()&quot;,&quot;total amount per customer&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "a4160f671d0b6ffa21b8f1bb99e71922",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003ccode&#92;u003enode.status()&#92;u003c/code&#92;u003e: located: orders@v0, customers@v0; recomputed (not incrementally maintainable (left join, fetch or window))&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;info&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "c9ced16ea132b3ffe1153c8cf8aae71b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">A recomputed node's change, the difference between its new and its old\nresult, still flows to the nodes that read it; that is how chapters 2\nand 3 maintain a window and an aggregate. The reason <code>status()</code> gives\nis a short, generic one; the list above is the full one.</span>\n<span class=\"paragraph\">Nodes are built from Ibis transforms: a view written as a SQL string\nhas no public counterpart yet. And the view is a table like any other:\n<code>view.table</code> is an Ibis table to query further, and <code>view.to_arrow()</code>,\n<code>to_polars()</code> and <code>to_pandas()</code> hand you its rows.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "858e1b14718f4b296794bd8d9f69b337",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"how-it-works-rows-with-weights\">How it works: rows with weights</h2>\n<span class=\"paragraph\">So how does the view know what changed? The trick that makes it\ntractable is to give every row a <strong>weight</strong>:</span>\n<ul>\n<li><code>+1</code>: this row was inserted,</li>\n<li><code>\u22121</code>: this row was deleted,</li>\n<li>an update is a delete plus an insert.</li>\n</ul>\n<span class=\"paragraph\">A table with weights is called a <em>Z-set</em>. Adding a batch of changes\nmeans putting the weighted rows together and summing the weights per\nrow. Here's a small mirror of <code>SubstraitLean/Incremental.lean</code>, and a\nquery over it:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "637149f7c9392ca85172422ba72c3716",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "dd7fd696ce212adb0d4d1444a842a3fd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Pick some changes to <code>orders</code>:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "95bf47a8bdef2b125458a9849089e8a6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.25rem'><marimo-ui-element object-id='iLit-0' random-id='c1f13703-a902-d519-5fb0-beee082bd60d'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eDelete order 1 (ada, 30)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-1' random-id='53ad7ccb-86dc-2356-08c8-20f7f76ecca8'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 4 (cy, 50)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-2' random-id='2ff2d008-11d7-4aa5-573d-701247c68e4c'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eUpdate order 2: amount 5 \u2192 20&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-3' random-id='0e9cab68-07a2-74a4-7369-9262fa636a70'><marimo-checkbox data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 5 (dee, amount NULL)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "00fe210d8867877c1e3c68cd09ee9fb9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "a693369563528066f8048417b90e8fd6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 1.5rem'><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>\u0394 orders (the changes)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>30</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#c0392b;font-weight:600'>\u22121</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>50</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#c0392b;font-weight:600'>\u22121</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>20</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>query(\u0394 orders): the change to the result</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>60</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#c0392b;font-weight:600'>\u22121</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>40</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div></div><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>old result</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>60</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>old + change (incremental)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>40</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>recomputed from scratch</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>40</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>100</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eIncremental result &#92;u003cstrong&#92;u003eequals&#92;u003c/strong&#92;u003e full recomputation \u2713&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "b2b7176ba4879ca045d91d1d14508851",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For this query the rule is simple: <strong>run the same query on only the\nchanges</strong>, then add the result to the old one. That works because\nfilter and project treat each row independently (they are <em>linear</em>).\nIn Lean that is theorem <code>Rel.zeval_add</code>:</span>\n<div class=\"language-lean codehilite\"><pre><span></span><code><span class=\"kd\">theorem</span><span class=\"w\"> </span><span class=\"n\">Rel.zeval_add</span><span class=\"w\"> </span><span class=\"o\">:</span><span class=\"w\"> </span><span class=\"n\">r.Incremental</span><span class=\"w\"> </span><span class=\"bp\">\u2192</span>\n<span class=\"w\">    </span><span class=\"o\">(</span><span class=\"n\">r.zeval</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"bp\">+</span><span class=\"w\"> </span><span class=\"n\">\u0394</span><span class=\"o\">))</span><span class=\"bp\">.</span><span class=\"n\">Perm</span><span class=\"w\"> </span><span class=\"o\">(</span><span class=\"n\">r.zeval</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"bp\">++</span><span class=\"w\"> </span><span class=\"n\">r.zdelta</span><span class=\"w\"> </span><span class=\"n\">cat</span><span class=\"w\"> </span><span class=\"n\">\u0394</span><span class=\"o\">)</span>\n</code></pre></div>\n<span class=\"paragraph\">Read: <em>for every plan in the supported fragment, evaluating on the\nupdated database gives the old result plus the delta (in some order:\n<code>Perm</code> means \"same rows, possibly reordered\").</em></span>\n<h2 id=\"joins-are-trickier\">Joins are trickier</h2>\n<span class=\"paragraph\">A join pairs rows from two tables. If <strong>both</strong> tables change, the new\nresult has four kinds of pairs:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: left;\"></th>\n<th style=\"text-align: left;\">old customers <code>B</code></th>\n<th style=\"text-align: left;\">new customers <code>\u0394B</code></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: left;\"><strong>old orders <code>A</code></strong></td>\n<td style=\"text-align: left;\"><code>A \u00d7 B</code>: already in the old result</td>\n<td style=\"text-align: left;\"><code>A \u00d7 \u0394B</code>: new</td>\n</tr>\n<tr>\n<td style=\"text-align: left;\"><strong>new orders <code>\u0394A</code></strong></td>\n<td style=\"text-align: left;\"><code>\u0394A \u00d7 B</code>: new</td>\n<td style=\"text-align: left;\"><code>\u0394A \u00d7 \u0394B</code>: new, and easy to forget</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">So the change to a join is <code>\u0394A \u00d7 B + \u0394A \u00d7 \u0394B + A \u00d7 \u0394B</code>. Forgetting the\nbottom-right cell is a classic bug in hand-written incremental\npipelines. Toggle it off to see what goes wrong:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "3bb69a931a55fd4fc3987c650a08fba6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='TqIu-0' random-id='6e420333-3b72-75fa-6b38-956f44f46885'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "9d48ed0c98a5514df4e70eeb721c53f2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Customer changes: insert <strong>cy (Lima)</strong>, delete <strong>bob (Oslo)</strong>. Order changes: as selected above.</span></span><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>incremental (old join + delta)</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>name</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>50</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lima</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>recomputed from scratch</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>amount</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>name</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>city</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>weight</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;opacity:.5'>NULL</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Paris</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>4</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>50</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>Lima</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap;color:#2e8b57;font-weight:600'>+1</td></tr></tbody></table></div></div><marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eEqual \u2713&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;'></marimo-callout-output></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "DnEU",
+      "code_hash": "0116e9e4ff6b6c8d10dc394959cd699a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With the default changes, turning the switch off breaks the result in\ntwo ways:</span>\n<ul>\n<li>the pair <em>order 4 + customer <code>cy</code></em> is missing. Both are new, so only\n  the corner term produces it;</li>\n<li>phantom <code>bob</code> rows appear, one with weight <strong>\u22121</strong>: a row that \"exists\n  minus one times\". The updated order 2 was paired with the <em>old</em> <code>bob</code>,\n  and only the corner term cancels that pairing with <code>bob</code>'s deletion.</li>\n</ul>\n<span class=\"paragraph\">Lean proves the full rule once and for all, and goes one step further:\n<code>Rel.delta</code> <em>generates</em> the update plan automatically, as an ordinary\nplan that reads the old tables and the change tables, and\n<code>Rel.delta_correct</code> proves the generated plan computes exactly the\nchange. Since the update plan is an ordinary plan, any engine can run\nit.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ulZA",
+      "code_hash": "fedf37150aeb448e946000471652245a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"what-runs-on-each-batch\">What runs on each batch</h2>\n<span class=\"paragraph\">The three update plans are exactly the three new cells of the join\ntable above, as Lean wrote them; <code>sverify.engines.delta_plans(view.plan)</code>\ngives them to you. <code>orders$delta</code> and\n<code>customers$delta</code> are the change tables, with a trailing <code>__weight</code>\ncolumn; old tables get weight 1 (<code>Project +[1]</code>), and the join\nmultiplies weights (<code>$3 * $6</code>):</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ecfG",
+      "code_hash": "b2c349148d60ca10da347b49914e6cb1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 5, 7]\n  Project +[($3 * $6)]\n    InnerJoin ($1 = $4)\n      Read orders$delta\n      Project +[1]\n        Read customers\n</code></pre></div></span><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 5, 7]\n  Project +[($3 * $6)]\n    InnerJoin ($1 = $4)\n      Read orders$delta\n      Read customers$delta\n</code></pre></div></span><span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-text codehilite\"><pre><span></span><code>Emit [0, 5, 7]\n  Project +[($3 * $6)]\n    InnerJoin ($1 = $4)\n      Project +[1]\n        Read orders\n      Read customers$delta\n</code></pre></div></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Pvdt",
+      "code_hash": "c7f55d86477c5d5014dd24063fc7c8dc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Step by step:</span>\n<ol>\n<li>The transform becomes a Substrait plan (sverify's Ibis producer);\n   <code>view.plan</code> is that plan as Lean checked and wrote it.</li>\n<li><code>substrait-check --delta</code> builds the update plan (<code>Rel.delta</code>),\n   splits it into pieces without <code>UNION ALL</code> (<code>Rel.terms</code>), and encodes\n   each row's weight as the <code>__weight</code> column (<code>Rel.weighted</code>). Each step\n   has a theorem saying it computes exactly the change to the result;\n   <code>Rel.weighted_eval</code> covers running it on an ordinary engine.</li>\n<li>On each refresh, <code>sverify</code> registers the change tables, runs the\n   plans, sums the weights per row, and merges the result into the\n   view's state.</li>\n</ol>\n<span class=\"paragraph\">A batch is computed completely before anything is replaced, so if\nanything fails, nothing changes. A change that can't happen at all,\nsuch as deleting a row that doesn't exist, doesn't even get that far:\nthe source refuses it, and neither <code>orders</code> nor the view moves.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZBYS",
+      "code_hash": "5cd9c8406ca152670bfe2c2f6a432d98",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003eValueError&#92;u003c/strong&#92;u003e: cannot delete (99, &#x27;nobody&#x27;, 1) from orders: no such row. &#92;u003ccode&#92;u003eorders&#92;u003c/code&#92;u003e is still at version 0, and the view still reflects {&#x27;orders&#x27;: 0, &#x27;customers&#x27;: 0}: True.&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;warn&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "aLJB",
+      "code_hash": "0a34f4fa5aa69862761ffed9da57bd58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"how-do-i-know-its-right\">How do I know it's right?</h3>\n<span class=\"paragraph\">Before you point a dashboard at it, you'll want more than a demo. The\ntheorems cover the Lean model. The rest (the JSON translation, the\nPython glue, the engine itself) is covered by randomized tests: they\ngenerate random tables and random batches, with NULLs and duplicates,\nand after every batch compare the maintained view with a full\nrecompute, as the button above does. In production you can ask for\nthe same check on every batch: <code>view.refresh(audit=True)</code> compares the\nbatch with recomputation before applying it, and raises <code>AuditError</code>\n(from <code>sverify.errors</code>) instead of applying a wrong one.</span>\n<span class=\"paragraph\">You can now keep a join up to date from its changes alone, with update\nrules proved in Lean, and you know which queries are recomputed rather\nthan maintained wrongly. Next up, <a href=\"?file=10_pipelines.py\">Pipelines</a>\nstacks transforms into layers, stores the ones others read, so each\nchange flows through every layer, and brings back the contracts of\nchapter 8.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nHfw",
+      "code_hash": "9e4aed489b9c01d2272efbeb534869cb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 8. <a href=\"?file=08_composition.py\">Composing contracts</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 10. <a href=\"?file=10_pipelines.py\">Pipelines</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

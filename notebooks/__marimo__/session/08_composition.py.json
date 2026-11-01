@@ -1,0 +1,191 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "475dc274377cc179ea59334f108f9d58",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "4158f9b97db2e78ab0cbb0a47bfea080",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 7. <a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 9. <a href=\"?file=09_incremental_views.py\">Incremental views</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "7275b5631c4cefb666dfeb33f2cb8fde",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"8-composing-contracts\">8. Composing contracts</h1>\n<span class=\"paragraph\">Say the billing team owns a step that cleans up <code>orders</code>, and you own\nthe step after it, which doubles the amounts for a promotion. You've\nnever read their code, and you shouldn't have to; but if a negative\namount slips past them, your step doubles it and your name is on the\nincident.</span>\n<span class=\"paragraph\">What you rely on is their contract. If each step has one, the contracts\nshould <strong>compose</strong>: when one step's output feeds another, the downstream\nstep's preconditions should follow from what the upstream step\nguarantees, with no need to check the intermediate data.</span>\n<span class=\"paragraph\">That is exactly what happens. When the input of a contracted function is\nthe result of another contracted function, <code>sverify</code>:</span>\n<ol>\n<li><strong>proves</strong> the downstream preconditions from the upstream contract\n   (they are never checked on data), and</li>\n<li>proves the downstream postconditions assuming <strong>only</strong> what the\n   upstream step guarantees, not what its code happens to do.</li>\n</ol>\n<h2 id=\"two-steps-that-fit-together\">Two steps that fit together</h2></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "bc90d05de8d5841bd29938a677ca1dd7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<span class=\"markdown prose dark:prose-invert contents\"><table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>(_.doubled &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.doubled.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>runtime</td>\n<td>\u26a0\ufe0f may wrap around: ($2 * 2)</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>id</code></td>\n<td>any integer or NULL</td>\n</tr>\n<tr>\n<td><code>customer</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>doubled</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "cddb07580294a4375dd4cb670d0b4dbe",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The <code>requires paid: \u2026</code> rows say what <code>doubled</code> was allowed to assume: the\nguarantees of <code>paid</code>, not facts about <code>orders</code>. Each link is a <strong>Hoare\ntriple</strong>, the classic notation of program verification: <code>{P} f {Q}</code>\nmeans \"if <code>P</code> holds before <code>f</code>, then <code>Q</code> holds after\". The rule</span>\n<blockquote>\n<span class=\"paragraph\"><code>{P} g {Q}</code> and <code>{Q} f {S}</code> give <code>{P} f \u2218 g {S}</code></span>\n</blockquote>\n<span class=\"paragraph\">is theorem <code>Triple.compose</code> in <code>SubstraitLean/Compose.lean</code>.</span>\n<h2 id=\"when-the-link-breaks\">When the link breaks</h2>\n<span class=\"paragraph\">Now we'll swap the step upstream for one that promises less. Pick what\nfeeds <code>doubled</code>:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "1ee3a6c68dbf2cf71cfe254091408fe8",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='5442573a-af78-b404-8e89-5fe2593fc85a'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "85d21a2fc162e943f3165fd0f9c32986",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003eCompositionError&#92;u003c/strong&#92;u003e: doubled needs (_.amount &amp;gt;= 0) (it is TRUE or FALSE) on &#x27;t&#x27;; not_null only guarantees _.amount.notnull()&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "c20d909c8fce4b3b47fb630496def220",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><strong><code>not_null</code></strong> guarantees too little: <code>doubled</code> needs <code>amount \u2265 0</code>, and\n  nothing upstream promises it. The error names both sides of the\n  broken link. (<code>not_null</code>'s own code would happen to keep negative\n  amounts, but that's beside the point: only the contract counts.)</li>\n<li><strong>A plain Ibis step</strong> carries no contract of its own. What follows from\n  its operations is still proved: <code>amount &gt; 0</code> implies both of\n  <code>doubled</code>'s preconditions. With only <code>amount IS NOT NULL</code>, the\n  missing <code>amount \u2265 0</code> is treated like a precondition on a base table:\n  checked on the data if there is data, assumed otherwise. That's why\n  that choice goes through here.</li>\n<li>A precondition can also follow from more than the upstream <code>ensures</code>:\n  it is proved as an extra postcondition of the upstream function, from\n  that function's own preconditions. Keys (<code>sv.unique</code>) propagate the\n  same way.</li>\n</ul>\n<h2 id=\"on-real-data\">On real data</h2>\n<span class=\"paragraph\">With bound tables, only the <strong>base</strong> tables are checked: <code>paid</code>'s\npreconditions on <code>orders</code>. The intermediate result is never inspected;\n<code>doubled</code>'s preconditions were proved. Here are three orders that meet\n<code>paid</code>'s preconditions, including cy's, with an amount of 0:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "52042106cf5a8a50b1a2ba98bd26995c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>doubled(paid(orders))</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>id</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>doubled</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>60</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bob</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>10</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>3</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>0</td></tr></tbody></table></div><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now add an order that breaks <code>paid</code>'s precondition:</span></span></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "535a801484997d66bcbec459c36ffb3c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-callout-output data-html='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003e&#92;u003cstrong&#92;u003ePreconditionError&#92;u003c/strong&#92;u003e from &#92;u003ccode&#92;u003epaid&#92;u003c/code&#92;u003e: 1 row(s) of orders violate unique(id)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;'></marimo-callout-output>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "7ec8617c6b08108474e9bce7ab43ee13",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"where-did-a-result-come-from\">Where did a result come from?</h2>\n<span class=\"paragraph\">When the analyst downstream asks why they can trust a number, you'll\nwant to say what it rests on. <code>sverify.contracts.provenance(expr)</code> shows\nwhat a contracted result assumed and what it guarantees: <code>guarantees</code>\nare its proved postconditions, <code>external</code> the preconditions on base\ntables that the whole chain rests on.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "0f805902b438c3d8b620480420ef1365",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>guarantees</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>(_.doubled >= 0)</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>_.doubled.notnull()</td></tr></tbody></table><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>base table</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>assumed</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>orders</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>(_.amount >= 0)</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>orders</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>unique(id)</td></tr></tbody></table></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "181aaaccb186804a8b7b5f309a3c9ab4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">You can now chain steps written by different teams and have every link\nproved from their contracts alone. The intermediate data is never\nchecked, a step that promises too little is caught before anything\nruns, and <code>provenance</code> tells the analyst what a number rests on.</span>\n<span class=\"paragraph\">Orders keep arriving, though, so composed results also need to be\n<strong>kept up to date</strong>. Next up,\n<a href=\"?file=09_incremental_views.py\">Incremental views</a> maintains a query\nfrom its changes alone; chapter 10 then maintains\n<code>doubled(paid(orders))</code> incrementally, and shows how its guarantees\nkeep holding while the data changes.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "4158f9b97db2e78ab0cbb0a47bfea080",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 7. <a href=\"?file=07_windows_and_asof.py\">Windows and ASOF joins</a> \u00b7 <a href=\"?file=00_start_here.py\">Contents</a> \u00b7 9. <a href=\"?file=09_incremental_views.py\">Incremental views</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}
