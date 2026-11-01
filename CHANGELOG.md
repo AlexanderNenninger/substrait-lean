@@ -43,11 +43,12 @@ A plan that takes the remainder of doubles, such as `x % 2.5`, passed the
 check but was evaluated on the doubles' internal codes, so its values were
 wrong (`7.5 % 2.0` came out as a 300-digit integer). It is now C's `fmod`,
 as DuckDB, DataFusion and Spark compute `%`: the result has the sign of the
-dividend (`-7.5 % 2.0` is `-1.5`), a zero divisor, an infinite dividend or a
-NaN give NaN, and an infinite divisor gives the dividend. The value is exact.
-The Polars and Spark translations give the same results, although Polars'
-own `%` takes the divisor's sign and Spark's ANSI mode raises on a zero
-divisor. Substrait itself defines no `modulus` of doubles (#203).
+dividend (`-7.5 % 2.0` is `-1.5`), an infinite dividend or a NaN give NaN,
+and an infinite divisor gives the dividend. The value is exact. A zero
+divisor is an error, as for integers, so `verify` reports "division by zero"
+unless the plan rules it out (`WHERE y <> 0.0`). The Polars translation gives
+the same results, although Polars' own `%` takes the divisor's sign.
+Substrait itself defines no `modulus` of doubles (#203).
 
 ## 0.3.0 (2026-11-01)
 

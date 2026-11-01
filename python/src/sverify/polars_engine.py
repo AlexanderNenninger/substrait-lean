@@ -1094,7 +1094,12 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
-            return Val(ops[name], pl.Float64, issues(a, b))
+            if name != "modulus":
+                return Val(ops[name], pl.Float64, issues(a, b))
+            # `BinFn.fmod` raises on a zero divisor, as on integers.
+            zero = b.expr.eq_missing(0.0)
+            by_zero = issue(zero & a.expr.is_not_null(), DivisionByZero, "modulus by zero")
+            return Val(ops[name], pl.Float64, (*issues(a, b), by_zero))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:

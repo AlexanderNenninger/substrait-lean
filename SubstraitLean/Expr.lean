@@ -97,7 +97,8 @@ inductive BinFn where
   | add | sub | mul | eq | lt | and | or
   /-- Double arithmetic, rounded like IEEE 754. -/
   | fadd | fsub | fmul | fdiv
-  /-- The remainder of doubles, C's `fmod` (`FloatCode.fmod`). -/
+  /-- The remainder of doubles, C's `fmod` (`FloatCode.fmod`); by zero, an
+  error (`Safety.lean`). -/
   | fmod
   /-- Integer division and remainder (truncating) and integer powers. -/
   | idiv | imod | ipow

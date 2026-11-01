@@ -141,7 +141,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .dateAdd, .int a, .int b => rangeIssue Time.dayMin Time.dayMax a (a + b)
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
-  | .imod, .int _, .int b => if b = 0 then some .divByZero else none
+  | .imod, .int _, .int b | .fmod, .int _, .int b => if b = 0 then some .divByZero else none
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
@@ -268,7 +268,7 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .dateAdd, aa, _, ar, _, _ => rangeMay Time.dayMin Time.dayMax aa ar
   | .idiv, _, _, ar, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
-  | .imod, _, _, _, nz, _ => if nz then [] else [.divByZero]
+  | .imod, _, _, _, nz, _ | .fmod, _, _, _, nz, _ => if nz then [] else [.divByZero]
   | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
@@ -541,7 +541,7 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       · rename_i hn hfits
         exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply, hj] using hr)) hn
       · simp
-  case imod.int.int i j =>
+  case imod.int.int i j | fmod.int.int i j =>
     simp only [BinFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     subst hk

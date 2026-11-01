@@ -282,19 +282,22 @@ class Dialect:
         return f"({a} / {b})"
 
     def float_mod(self, a: str, b: str) -> str:
-        """`FloatCode.fmod`, C's `fmod`: the sign of `a`; NaN for a NaN, an
-        infinite `a` or a zero `b`, and `a` for an infinite `b`. The edge cases
-        are written out, so that no engine raises on them (Spark's ANSI `%` by
-        zero) or differs; only finite operands reach the engine's `%`."""
+        """`BinFn.fmod`, C's `fmod`: the sign of `a`; NaN for a NaN or an
+        infinite `a`, and `a` for an infinite `b`. By zero it raises, as
+        `int_mod`, but `NULL % 0.0` is NULL. The edge cases are written out,
+        so that engines agree on them (Spark's ANSI `%` raises on zero, DuckDB
+        gives NaN); only finite operands reach the engine's `%`."""
         nan, inf, ninf, zero = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf, 0.0))
+        by_zero = self.raise_("division by zero", b, "float") if self.guards else nan
 
         def infinite(x: str) -> str:
             return f"{x} = {inf} OR {x} = {ninf}"
 
         return (
             f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN {self.null('float')} "
-            f"WHEN {self.is_nan(a)} OR {self.is_nan(b)} OR {infinite(a)} OR {b} = {zero} "
-            f"THEN {nan} WHEN {infinite(b)} THEN {a} ELSE ({a} % {b}) END)"
+            f"WHEN {b} = {zero} THEN {by_zero} "
+            f"WHEN {self.is_nan(a)} OR {self.is_nan(b)} OR {infinite(a)} THEN {nan} "
+            f"WHEN {infinite(b)} THEN {a} ELSE ({a} % {b}) END)"
         )
 
     def float_neg(self, a: str) -> str:

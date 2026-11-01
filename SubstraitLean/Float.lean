@@ -97,8 +97,9 @@ def finiteParts (c : Int) : Bool × Nat := (c < 0, (c.natAbs - 1) / 2)
 DataFusion and Spark compute for `%`: `a - b · trunc(a / b)`, with the sign of
 `a`. It is exact, so the codes give it without rounding: the magnitude of a
 finite double is an integer (`|x| · 2¹⁰⁷⁴`), and the remainder of the
-magnitudes is the magnitude of the remainder. NaN, an infinite `a` or a zero
-`b` give NaN, and an infinite `b` gives `a` (#203). -/
+magnitudes is the magnitude of the remainder. NaN or an infinite `a` give
+NaN, and an infinite `b` gives `a`. A zero `b` gives NaN here, but the model
+reports it as a division by zero (`BinFn.issue`), as for integers (#203). -/
 def fmod (a b : Int) : Int :=
   let (negative, ma) := finiteParts a
   let mb := (finiteParts b).2

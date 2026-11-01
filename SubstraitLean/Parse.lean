@@ -820,7 +820,8 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else none
   | "on_division_by_zero" =>
     if base != "divide" && base != "modulus" then none
-    else if float then some (some ["IEEE"]) else some none
+    -- Double `divide` is IEEE (#204); `modulus` raises, as on integers.
+    else if float && base == "divide" then some (some ["IEEE"]) else some none
   | "on_domain_error" =>
     -- Outside their domains the elementary functions raise (`Numeric.lean`).
     if doubleFns.contains base then some (some ["ERROR"])
@@ -1118,7 +1119,8 @@ def mkFloatCall : String → List Expr → J Expr
   | "multiply", [a, b] => pure (.bin .fmul a b)
   | "divide", [a, b] => pure (.bin .fdiv a b)
   -- Substrait has no `modulus` of doubles, but DataFusion writes one; it is
-  -- C's `fmod`, as DuckDB, DataFusion and Spark compute `%` (#203).
+  -- C's `fmod`, as DuckDB, DataFusion and Spark compute `%`, and raises on a
+  -- zero divisor, as on integers (#203).
   | "modulus", [a, b] => pure (.bin .fmod a b)
   -- Code negation would make NaN the smallest code; SQL's one NaN stays NaN.
   | "subtract", [a] | "negate", [a] =>
