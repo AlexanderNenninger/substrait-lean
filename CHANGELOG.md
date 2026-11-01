@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-11-01)
 
 A new public API, built around transforms that compose
 ([#164](https://github.com/AlexanderNenninger/substrait-lean/issues/164)).
