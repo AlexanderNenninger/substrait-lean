@@ -267,7 +267,8 @@ class Dialect:
             f"ELSE {self.int_product(a, b)} END)"
         )
 
-    # Doubles: IEEE 754, so x / 0 is ±inf or NaN rather than an error.
+    # Doubles: IEEE 754. A zero divisor raises (`on_division_by_zero` = ERROR,
+    # guarded in `expr`); the plan writes `IEEE`, `NULL` and `LIMIT` as a `CASE`.
 
     def float_add(self, a: str, b: str) -> str:
         return f"({a} + {b})"
@@ -3269,9 +3270,15 @@ class _Writer:
                     "fdiv": d.float_div,
                     "fpow": d.float_pow,
                 }[op]
-                sql = f(self.float_operand(a, ref, cols), self.float_operand(b, ref, cols))
+                sa, sb = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
-                return sql if op in ("fadd", "fsub") else d.canon(sql)
+                sql = sql if op in ("fadd", "fsub") else d.canon(sql)
+                if op != "fdiv" or not d.guards:
+                    return sql
+                # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
+                zero = f"({sa} IS NOT NULL AND {sb} = {d.float_lit(0.0)})"
+                return d.case_when(zero, d.raise_("division by zero", sb, "float"), sql)
             case Bin(op="add" | "sub" | "mul" as op, left=a, right=b):
                 return self.arith(op, a, b, ref, cols)
             case Bin(op="idiv" | "imod" as op, left=a, right=b):

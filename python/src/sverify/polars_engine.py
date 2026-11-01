@@ -94,7 +94,7 @@ class Overflow(RuntimeIssue):
 
 
 class DivisionByZero(RuntimeIssue):
-    """Integer division or remainder by zero."""
+    """Integer division or remainder by zero, or a double divided by zero."""
 
 
 class NegativeExponent(RuntimeIssue):
@@ -1078,7 +1078,11 @@ class Exprs:
             # A sum or difference is never -0.0 here; the others can be.
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
-            return Val(ops[name], pl.Float64, issues(a, b))
+            if name != "divide":
+                return Val(ops[name], pl.Float64, issues(a, b))
+            # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
+            zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, "divide by zero")
+            return Val(ops[name], pl.Float64, (*issues(a, b), zero))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:
