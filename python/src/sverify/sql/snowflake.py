@@ -259,6 +259,12 @@ class SnowflakeDialect(Dialect):
     def is_ascii(self, s: str) -> str:
         return f"(OCTET_LENGTH(TO_BINARY({s}, 'UTF-8')) = LENGTH({s}))"
 
+    def octet_length(self, s: str) -> str:
+        return f"OCTET_LENGTH(TO_BINARY({s}, 'UTF-8'))"
+
+    def levenshtein(self, s: str, t: str) -> str:
+        return f"EDITDISTANCE({s}, {t})"
+
     def strpos(self, s: str, t: str) -> str:
         return (
             f"(CASE WHEN {s} IS NULL OR {t} IS NULL THEN NULL WHEN {t} = {self.str_lit('')} "

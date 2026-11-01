@@ -12,12 +12,27 @@ against DataFusion 51 by `python/tests/test_text.py`:
 * `LIKE` matches `%` (any characters) and `_` (one character); a backslash
   makes the next character literal, and a trailing backslash is itself.
 * `btrim`/`ltrim`/`rtrim` remove characters of a set from the ends.
+* `repeat(s, n)` is `s` `n` times (`''` for `n ≤ 0`); a result of more than
+  `2³¹ - 1` bytes fails (`Text.repeatFits`), as Arrow's `Utf8` offsets are
+  32-bit (`Utf8View` input too; DataFusion writes `Utf8`).
+* `reverse(s)` reverses the characters (combining marks move with them).
+* `replace(s, p, r)` is Rust's `str::replace`: every non-overlapping `p`,
+  from the left, becomes `r`; an empty `p` puts `r` before every character
+  and at the end.
+* `ascii(s)` is the code point of the first character, `0` for `''`.
+* `levenshtein(s, t)` counts single-character insertions, deletions and
+  substitutions.
 
-`UPPER`, `LOWER` and regular expressions are **black boxes**: `opaque`
+`translate` is not modelled: DataFusion translates grapheme clusters, not
+characters (`translate('e\u{301}e', 'e', 'x')` is `'e\u{301}x'`).
+
+`UPPER`, `LOWER`, `ILIKE` and regular expressions are **black boxes**: `opaque`
 functions, so no proof depends on what they compute. Their meaning is Rust's
 (`str::to_uppercase`, the `regex` crate), which DataFusion and Polars use;
 the SQL translations refuse at run time what their engines compute
-differently (#70). Lean's evaluator maps ASCII case only, and evaluates no
+differently (#70). `ILIKE` folds case with Unicode's simple case folding (the
+`regex` crate's `(?i)`, so `'É' ILIKE 'é'` but not `'ß' ILIKE 'SS'`). Lean's
+evaluator maps ASCII case only, and evaluates no
 regular expressions: it panics instead, and `substrait-check` then refuses
 to print rows rather than print wrong ones.
 -/
@@ -83,6 +98,54 @@ def trim (left right : Bool) (s set : String) : String :=
   let cs := if right then (trimLeft cs.reverse set.toList).reverse else cs
   String.ofList cs
 
+/-! ## Repeating, reversing, replacing -/
+
+/-- The longest string DataFusion's `repeat` writes, in bytes. -/
+def repeatMax : Nat := 2 ^ 31 - 1
+
+/-- Does `repeat(s, n)` fit in `repeatMax` bytes? (`n ≤ 0` gives `''`.) -/
+def repeatFits (s : String) (n : Int) : Bool := decide (s.utf8ByteSize * n.toNat ≤ repeatMax)
+
+def repeatStr (s : String) (n : Int) : String := String.join (List.replicate n.toNat s)
+
+def reverse (s : String) : String := String.ofList s.toList.reverse
+
+/-- Replace every `p` (not empty) in `cs`, from the left; `fuel` is at least
+`cs.length`. -/
+def replaceGo (p r : List Char) : Nat → List Char → List Char
+  | 0, cs => cs
+  | _ + 1, [] => []
+  | n + 1, c :: cs =>
+    if p.isPrefixOf (c :: cs) then r ++ replaceGo p r n ((c :: cs).drop p.length)
+    else c :: replaceGo p r n cs
+
+def replace (s p r : String) : String :=
+  let cs := s.toList
+  if p.isEmpty then String.ofList (r.toList ++ cs.flatMap fun c => c :: r.toList)
+  else String.ofList (replaceGo p.toList r.toList cs.length cs)
+
+def ascii (s : String) : Int :=
+  match s.toList with
+  | c :: _ => c.toNat
+  | [] => 0
+
+/-! ## Edit distance -/
+
+/-- The next row of the edit distance table: `prev` is the row of the
+characters before `c`, `left` the entry to the left of the one computed. -/
+def levRow (c : Char) : List Char → List Nat → Nat → List Nat
+  | b :: bs, p0 :: p1 :: ps, left =>
+    let v := min (min (p1 + 1) (left + 1)) (p0 + if c == b then 0 else 1)
+    v :: levRow c bs (p1 :: ps) v
+  | _, _, _ => []
+
+def levenshtein (s t : String) : Nat :=
+  let ts := t.toList
+  let step (prev : List Nat) (c : Char) : List Nat :=
+    let first := prev.headD 0 + 1
+    first :: levRow c ts prev first
+  ((s.toList.foldl step (List.range (ts.length + 1))).getLast?).getD 0
+
 /-! ## Black boxes -/
 
 def asciiOnly (f : String → String) (what : String) (s : String) : String :=
@@ -96,6 +159,13 @@ def lowerAscii (s : String) : String := asciiOnly String.toLower "LOWER" s
 @[implemented_by upperAscii] opaque upper : String → String
 /-- `LOWER`: Unicode case mapping. -/
 @[implemented_by lowerAscii] opaque lower : String → String
+
+def ilikeAscii (s p : String) : Bool :=
+  if (s ++ p).toList.all fun c => c.toNat < 128 then like s.toLower p.toLower
+  else panic! s!"ILIKE of non-ASCII text is not evaluated in Lean"
+
+/-- `s ILIKE p`: `LIKE` with Unicode's simple case folding. -/
+@[implemented_by ilikeAscii] opaque ilike : String → String → Bool
 
 /-- Panics on every call (the message depends on the pattern, so it is not a
 constant the compiler evaluates once). -/
@@ -204,6 +274,16 @@ def simpleRegex (p : String) : Bool :=
 #guard !like "ABC" "a%" && like "a\\" "a\\" && like "abc" "a\\bc" && !like "a\\bc" "a\\bc"
 #guard like "" "%" && !like "" "_"
 #guard trim true true "  ab  " " " == "ab" && trim true true "xyabyx" "xy" == "ab"
+#guard repeatStr "ab" 3 == "ababab" && repeatStr "ab" (-1) == "" && repeatStr "ab" 0 == ""
+#guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
+#guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
+#guard reverse "héllo" == "olléh" && reverse "" == ""
+#guard replace "ab" "" "x" == "xaxbx" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"
+#guard replace "" "" "x" == "x" && replace "abcabc" "bc" "Z" == "aZaZ"
+#guard ascii "" == 0 && ascii "é" == 233 && ascii "ab" == 97
+#guard levenshtein "kitten" "sitting" == 3 && levenshtein "" "" == 0 && levenshtein "abc" "" == 3
+#guard levenshtein "" "ab" == 2 && levenshtein "é" "e" == 1 && levenshtein "flaw" "lawn" == 2
+#guard ilikeAscii "ABC" "a%" && ilikeAscii "abc" "A_C" && !ilikeAscii "abd" "a_c"
 #guard simpleRegex "^a" && simpleRegex "(a)(b)" && simpleRegex "\\d{4}-\\d{2}" && simpleRegex "[a-z]+$"
 #guard !simpleRegex "(" && !simpleRegex "a**" && !simpleRegex "[]" && !simpleRegex "(?i)a"
 #guard !simpleRegex "a{3,2}" && !simpleRegex "*a"

@@ -57,6 +57,10 @@ inductive UnFn where
   | itos
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
   | upper | lower | length
+  /-- `reverse(s)` and `ascii(s)` (the first code point, `0` for `''`). -/
+  | reverse | ascii
+  /-- `replace(s, p, r)` for a constant pattern `p` and replacement `r`. -/
+  | replace (p r : String)
   /-- `array_length(regexp_match(s, p))` for a constant pattern `p` (a black box):
   `NULL` if `p` does not match. -/
   | regexMatch (p : String)
@@ -98,6 +102,10 @@ inductive BinFn where
   | substr (n : Option Nat)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
+  /-- `repeat(s, n)`: `''` where DataFusion fails (`Text.repeatFits`). -/
+  | strRepeat
+  /-- `s ILIKE p` (a black box) and `levenshtein(s, t)`. -/
+  | ilike | levenshtein
   /-- `d + n` days of a DATE (`d + INTERVAL 'n' DAY`). -/
   | dateAdd
   /-- `d - e` of DATEs, in days. -/
@@ -136,6 +144,9 @@ def UnFn.apply : UnFn → Value → Value
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)
   | .length, .str s => .int s.length
+  | .reverse, .str s => .str (Text.reverse s)
+  | .ascii, .str s => .int (Text.ascii s)
+  | .replace p r, .str s => .str (Text.replace s p r)
   | .regexMatch p, .str s => match Text.regexMatch s p with
     | some k => .int (k + 1)
     | none => .null
@@ -205,6 +216,9 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .like, .str a, .str b => .bool (Text.like a b)
   | .substr n, .str s, .int a => .str (Text.substr s a n)
   | .trim l r, .str s, .str set => .str (Text.trim l r s set)
+  | .strRepeat, .str s, .int n => .str (if Text.repeatFits s n then Text.repeatStr s n else "")
+  | .ilike, .str a, .str b => .bool (Text.ilike a b)
+  | .levenshtein, .str a, .str b => .int (Text.levenshtein a b)
   | .dateAdd, .int d, .int n => .int (d + n)
   | .dateDiff, .int d, .int e => .int (d - e)
   | _, _, _ => .null

@@ -6,7 +6,8 @@ import SubstraitLean.Contracts
 DataFusion fails at run time on integer division or remainder by zero, on
 `MIN / -1`, on integer powers with a negative exponent or a result outside
 64 bits, on `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, on
-an invalid regular expression, on `date_trunc` to a week, month, quarter or
+an invalid regular expression, on `repeat` writing more than `2³¹ - 1`
+bytes, on `date_trunc` to a week, month, quarter or
 year outside ±2⁶³ nanoseconds, and on date arithmetic (`DATE ± days`, adding
 months) outside the years `chrono` represents. `date_trunc` of a DATE goes
 through nanoseconds and gives garbage outside them (1677 to 2262), which is
@@ -48,7 +49,8 @@ open FloatCode (minI64 maxI64 castLo castHi)
 inductive Issue where
   /-- Integer division or remainder by zero. -/
   | divByZero
-  /-- A result outside 64 bits where DataFusion fails (`MIN / -1`, `POWER`). -/
+  /-- A result outside 64 bits where DataFusion fails (`MIN / -1`, `POWER`),
+  or a `repeat` beyond `Text.repeatMax` bytes. -/
   | overflow
   /-- `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value. -/
   | badCast
@@ -129,6 +131,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
     else if inI64 (a ^ b.toNat) then none else some .overflow
+  | .strRepeat, .str s, .int n => if Text.repeatFits s n then none else some .overflow
   | _, _, _ => none
 
 /-- The issues evaluating `e` on `row` runs into, each with the operation
@@ -224,17 +227,34 @@ def powFits (aa ab : AVal) : Bool :=
     | none => false
   | _, _ => true
 
-/-- `nz`: the divisor is never the integer 0. -/
-def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → List Issue
-  | .add, _, _, ar, _ | .sub, _, _, ar, _ | .mul, _, _, ar, _ =>
+/-- The UTF-8 size of a constant string. -/
+def Expr.strBytes? : Expr → Option Nat
+  | .lit (.str s) => some s.utf8ByteSize
+  | _ => none
+
+/-- `repeat(s, n)` fits for every `n` of `ab`, where `s` has `sz` bytes if
+it is a constant: `n ≤ 0`, or `sz · n ≤ Text.repeatMax`. -/
+def repeatFitsAbs : Option Nat → AVal → Bool
+  | some m, ab => m == 0 || ab.int.all (·.hi.any fun h => decide ((m : Int) * h ≤ Text.repeatMax))
+  | none, ab => ab.int.all (·.hi.any (· ≤ 0))
+
+def repeatMay (sz : Option Nat) (ab : AVal) : List Issue :=
+  if repeatFitsAbs sz ab then [] else [.overflow]
+
+/-- `nz`: the divisor is never the integer 0; `sz`: the first argument's
+size, if it is a constant string. -/
+def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat → List Issue
+  | .add, _, _, ar, _, _ | .sub, _, _, ar, _, _ | .mul, _, _, ar, _, _ =>
     if ar.intFits then [] else [.wraps]
-  | .dateAdd, aa, _, ar, _ => rangeMay Time.dayMin Time.dayMax aa ar
-  | .idiv, _, _, ar, nz => (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
-  | .imod, _, _, _, nz => if nz then [] else [.divByZero]
-  | .ipow, aa, ab, _, _ =>
+  | .dateAdd, aa, _, ar, _, _ => rangeMay Time.dayMin Time.dayMax aa ar
+  | .idiv, _, _, ar, nz, _ =>
+    (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
+  | .imod, _, _, _, nz, _ => if nz then [] else [.divByZero]
+  | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
-  | _, _, _, _, _ => []
+  | .strRepeat, _, ab, _, _, sz => repeatMay sz ab
+  | _, _, _, _, _, _ => []
 
 /-- Is `x`'s value never the integer 0? From its interval, an assumption
 `x ≠ 0`, a fact `$j ≠ -c` for `x = $j + c`, or both branches of a `CASE`. -/
@@ -258,7 +278,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
   | .bin f a b =>
     a.mayIssues env fs ks ++ b.mayIssues env fs ks ++
       (f.mayIssue (a.absD env fs ks) (b.absD env fs ks) ((Expr.bin f a b).absD env fs ks)
-        (b.nonZero env fs ks)).map (·, .bin f a b)
+        (b.nonZero env fs ks) a.strBytes?).map (·, .bin f a b)
   | .ifThen c t e =>
     let ac := c.absD env fs ks
     c.mayIssues env fs ks ++
@@ -406,10 +426,47 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     · exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
     · exact rangeIssue_sound ha (by simpa [UnFn.apply] using hr) hk
 
-theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : Bool} {k : Issue}
+theorem repeatMay_sound {sz : Option Nat} {ab : AVal} {s : String} {n : Int}
+    (hb : ab.Mem (.int n)) (hsz : ∀ m, sz = some m → s.utf8ByteSize = m)
+    (hk : Text.repeatFits s n = false) : Issue.overflow ∈ repeatMay sz ab := by
+  obtain ⟨y, hy, hn⟩ := hb
+  simp only [repeatMay]
+  split
+  · rename_i hfits
+    exfalso
+    simp only [Text.repeatFits, decide_eq_false_iff_not, Nat.not_le] at hk
+    have hpos : 0 < n := by
+      rcases Int.lt_or_le 0 n with h | h
+      · exact h
+      · simp [Int.toNat_of_nonpos h] at hk
+    cases sz with
+    | some m =>
+      have hs := hsz m rfl
+      simp only [repeatFitsAbs, Bool.or_eq_true, beq_iff_eq, hy, Option.all_some,
+        Option.any_eq_true, decide_eq_true_eq] at hfits
+      rcases hfits with h0 | ⟨h, hh, hle⟩
+      · subst h0; simp [hs] at hk
+      · have hnh := hn.2 h hh
+        have h1 : (s.utf8ByteSize : Int) * n ≤ (m : Int) * h := by
+          rw [hs]; exact Int.mul_le_mul_of_nonneg_left hnh (Int.natCast_nonneg m)
+        have h2 : ((s.utf8ByteSize * n.toNat : Nat) : Int) = (s.utf8ByteSize : Int) * n := by
+          rw [Int.natCast_mul, Int.toNat_of_nonneg (Int.le_of_lt hpos)]
+        have h3 : ((Text.repeatMax : Nat) : Int) < ((s.utf8ByteSize * n.toNat : Nat) : Int) :=
+          Int.ofNat_lt.mpr hk
+        omega
+    | none =>
+      simp only [repeatFitsAbs, hy, Option.all_some, Option.any_eq_true, decide_eq_true_eq] at hfits
+      obtain ⟨h, hh, hle⟩ := hfits
+      have := hn.2 h hh
+      omega
+  · simp
+
+theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : Bool}
+    {sz : Option Nat} {k : Issue}
     (ha : aa.Mem v) (hb : ab.Mem w) (hr : ar.Mem (f.apply v w))
-    (hnz : nz = true → ∀ j, w = .int j → j ≠ 0) (hk : f.issue v w = some k) :
-    k ∈ f.mayIssue aa ab ar nz := by
+    (hnz : nz = true → ∀ j, w = .int j → j ≠ 0)
+    (hsz : ∀ m s, sz = some m → v = .str s → s.utf8ByteSize = m) (hk : f.issue v w = some k) :
+    k ∈ f.mayIssue aa ab ar nz sz := by
   cases f <;> cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at hk
   case add.int.int i j | sub.int.int i j | mul.int.int i j =>
     simp only [wrapIf] at hk
@@ -421,6 +478,12 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply] using hr)) hn
     · simp
   case dateAdd.int.int i j => exact rangeIssue_sound ha (by simpa [BinFn.apply] using hr) hk
+  case strRepeat.str.int s n =>
+    simp only [BinFn.mayIssue]
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    rename_i hnf
+    exact repeatMay_sound hb (fun m hm => hsz m s hm rfl) (by simpa using hnf)
   case idiv.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     split at hk
@@ -501,6 +564,15 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
         · simp at hfits
       · simp
 
+theorem Expr.strBytes?_sound (row : Row) (e : Expr) :
+    ∀ m s, e.strBytes? = some m → e.eval row = .str s → s.utf8ByteSize = m := by
+  intro m s hm hs
+  match e, hm with
+  | .lit (.str t), hm =>
+    simp only [Expr.strBytes?, Option.some.injEq] at hm
+    simp only [Expr.eval, Value.str.injEq] at hs
+    subst hs; exact hm
+
 theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {row : Row}
     (h : EnvMem env row) (hfs : FactsHold fs row) (hks : KsHold ks row) :
     ∀ (e : Expr), ∀ p ∈ e.issues row, p ∈ e.mayIssues env fs ks
@@ -532,7 +604,7 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
         subst hp
         exact List.mem_map_of_mem (BinFn.mayIssue_sound f (Expr.absD_sound h hfs hks a)
           (Expr.absD_sound h hfs hks b) (Expr.absD_sound h hfs hks (.bin f a b))
-          (fun hnz => Expr.nonZero_sound h hfs hks b hnz) hi)
+          (fun hnz => Expr.nonZero_sound h hfs hks b hnz) (Expr.strBytes?_sound row a) hi)
   | .ifThen c t e, p, hp => by
     simp only [Expr.issues, List.mem_append] at hp
     simp only [Expr.mayIssues, List.mem_append]

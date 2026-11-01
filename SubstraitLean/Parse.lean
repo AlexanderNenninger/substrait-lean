@@ -180,8 +180,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ | .un (.narrow _) _ => .int
   | .un (.wrap _) a => a.kind cols
-  | .un .itos _ | .un .upper _ | .un .lower _ => .str
-  | .un .length _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
+  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _ => .str
+  | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
   | .un (.addMonths _ true) _ | .un .asTime _ | .un (.bucket _ _) _ => .time
@@ -194,9 +194,10 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
       | .lit _ => b.kind cols
       | _ => a.kind cols
   | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
-  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _ => .int
+  | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
+  | .bin .levenshtein _ _ => .int
   | .bin .dateAdd _ _ => .date
-  | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ => .str
+  | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
   -- than the other one.
@@ -651,7 +652,9 @@ integers (`substring`'s start and length). -/
 def stringFns : List (String × List Nat) :=
   [("upper", []), ("lower", []), ("character_length", []), ("char_length", []), ("length", []),
    ("str_concat", []), ("concat", []), ("strpos", []), ("starts_with", []), ("ends_with", []),
-   ("like", []), ("substring", [1, 2]), ("btrim", []), ("ltrim", []), ("rtrim", [])]
+   ("like", []), ("substring", [1, 2]), ("btrim", []), ("ltrim", []), ("rtrim", []),
+   ("reverse", []), ("ascii", []), ("replace", []), ("repeat", [1]), ("ilike", []),
+   ("levenshtein", [])]
 
 /-- Functions on booleans. -/
 def booleanFns : List String := ["and", "or", "not", "xor"]
@@ -978,6 +981,14 @@ def mkCall : String → List Expr → J Expr
   | "btrim", [a, b] => pure (.bin (.trim true true) a b)
   | "ltrim", [a, b] => pure (.bin (.trim true false) a b)
   | "rtrim", [a, b] => pure (.bin (.trim false true) a b)
+  | "reverse", [a] => pure (.un .reverse a)
+  | "ascii", [a] => pure (.un .ascii a)
+  | "replace", [a, .lit (.str p), .lit (.str r)] => pure (.un (.replace p r) a)
+  | "replace", [_, _, _] => throw "replace needs a constant pattern and replacement"
+  | "repeat", [a, n] => pure (.bin .strRepeat a n)
+  | "ilike", [a, b] | "ilike", [a, b, .lit .null] => pure (.bin .ilike a b)
+  | "ilike", [_, _, _] => throw "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+  | "levenshtein", [a, b] => pure (.bin .levenshtein a b)
   | "regexp_match", _ => throw "regexp_match is only supported as array_length(regexp_match(s, p))"
   -- Timestamps (`SubstraitLean/Time.lean`).
   | "date_part", [.lit (.str p), a] | "datepart", [.lit (.str p), a] =>

@@ -473,6 +473,35 @@ class Dialect:
         side = "BOTH" if left and right else "LEADING" if left else "TRAILING"
         return f"TRIM({side} {chars} FROM {s})"
 
+    def octet_length(self, s: str) -> str:
+        """The size of `s` in UTF-8 bytes."""
+        return f"OCTET_LENGTH({s})"
+
+    def repeat(self, s: str, n: str) -> str:
+        """`s` `n` times, '' for `n ≤ 0`."""
+        return f"REPEAT({s}, CASE WHEN {n} < {self.int_lit(0)} THEN {self.int_lit(0)} ELSE {n} END)"
+
+    def reverse(self, s: str) -> str:
+        """The characters of `s` backwards; engines that reverse grapheme
+        clusters agree on ASCII text (the writer guards it)."""
+        return f"REVERSE({s})"
+
+    def replace(self, s: str, pattern: str, replacement: str) -> str:
+        """Every non-overlapping `pattern` (not empty) from the left."""
+        return f"REPLACE({s}, {pattern}, {replacement})"
+
+    def first_code_point(self, s: str) -> str:
+        """The code point of the first character, 0 for '' (ASCII `s` only)."""
+        return f"ASCII({s})"
+
+    def ilike(self, s: str, pattern: str) -> str:
+        """`LIKE` ignoring case (ASCII text only), with `like`'s escapes."""
+        return f"({s} ILIKE {pattern} ESCAPE {self.str_lit(chr(92))})"
+
+    def levenshtein(self, s: str, t: str) -> str:
+        """The edit distance in characters (ASCII text only)."""
+        return f"LEVENSHTEIN({s}, {t})"
+
     def regex_search(self, s: str, pattern: str) -> str:
         """Does the regular expression (a constant) match somewhere in `s`?
         Regular expressions are black boxes in Lean; each engine has its
@@ -628,16 +657,18 @@ class Un:
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
-        "strftime", "bucket",
+        "strftime", "bucket", "reverse", "ascii", "replace",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`, the bits of `narrow`, the months of `addMonths`."""
     param: str = ""
-    """The pattern of `regexMatch`, the part of `datePart`, the unit of
-    `dateTrunc`; `time` or `date` for `addMonths`."""
+    """The pattern of `regexMatch` and `replace`, the part of `datePart`, the
+    unit of `dateTrunc`; `time` or `date` for `addMonths`."""
     origin: int = 0
     """The origin of `bucket` (whose width is `digits`)."""
+    replacement: str = ""
+    """The replacement of `replace`."""
 
 
 @dataclass(frozen=True)
@@ -645,7 +676,7 @@ class Bin:
     op: Literal[
         "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
-        "like", "substr", "trim", "date_add", "date_diff",
+        "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
     ]  # fmt: skip
     left: Expr
     right: Expr
@@ -943,9 +974,11 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return lean_expr_kind(a, cols)
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
-        case Un(op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part"):
+        case Un(
+            op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part" | "ascii"
+        ):
             return "int"
-        case Un(op="itos" | "upper" | "lower"):
+        case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
             return "str"
         case Un(op="date_trunc"):
             return "time"
@@ -965,11 +998,11 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
         case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff" | "levenshtein"):
             return "int"
         case Bin(op="date_add"):
             return "date"
-        case Bin(op="concat" | "substr" | "trim"):
+        case Bin(op="concat" | "substr" | "trim" | "repeat"):
             return "str"
         case Bin():
             return "bool"
@@ -989,9 +1022,11 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return expr_kind(a, cols)
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo"):
             return "float"
-        case Un(op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part"):
+        case Un(
+            op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part" | "ascii"
+        ):
             return "int"
-        case Un(op="itos" | "upper" | "lower"):
+        case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
             return "str"
         case Un(op="date_trunc"):
             return "time"
@@ -1020,9 +1055,9 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return expr_kind(a, cols) or expr_kind(b, cols)
         case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fpow"):
             return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos"):
+        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "levenshtein"):
             return "int"
-        case Bin(op="concat" | "substr" | "trim"):
+        case Bin(op="concat" | "substr" | "trim" | "repeat"):
             return "str"
         case Bin():
             return "bool"
@@ -2404,6 +2439,24 @@ def _call(name: str, args: list[Expr]) -> Expr:
             chars = rest[0] if rest else Lit(" ", "str")
             sides = {"btrim": (True, True), "ltrim": (True, False), "rtrim": (False, True)}[name]
             return Bin("trim", a, chars, sides=sides)
+        case "reverse", [a]:
+            return Un("reverse", a)
+        case "ascii", [a]:
+            return Un("ascii", a)
+        case "replace", [a, Lit(value=str(pattern)), Lit(value=str(replacement))]:
+            return Un("replace", a, param=pattern, replacement=replacement)
+        case "replace", [_, _, _]:
+            raise Unsupported("replace needs a constant pattern and replacement")
+        case "repeat", [a, b]:
+            return Bin("repeat", a, b)
+        case "ilike", ([a, b] | [a, b, Lit(value=None)]):
+            return Bin("ilike", a, b)
+        case "ilike", [_, _, _]:
+            raise Unsupported(
+                "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+            )
+        case "levenshtein", [a, b]:
+            return Bin("levenshtein", a, b)
         case "regexp_match", _:
             raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
         # Timestamps (`SubstraitLean/Time.lean`).
@@ -3276,13 +3329,49 @@ class _Writer:
                 sa, sb = (self.operand(x, "str", ref, cols, op) for x in (a, b))
                 f = {"strpos": d.strpos, "starts_with": d.starts_with, "ends_with": d.ends_with}
                 return f[op](sa, sb)
-            case Bin(op="like", left=a, right=b):
-                sa, sb = (self.operand(x, "str", ref, cols, "LIKE") for x in (a, b))
+            case Bin(op="like" | "ilike" as op, left=a, right=b):
+                sa, sb = (self.operand(x, "str", ref, cols, op.upper()) for x in (a, b))
                 if isinstance(b, Lit):
                     pattern = None if b.value is None else d.str_lit(like_pattern(b.value))
                 else:
                     pattern = d.like_pattern(sb)
-                return d.null("bool") if pattern is None else d.like(sa, pattern)
+                if pattern is None:
+                    return d.null("bool")
+                if op == "like":
+                    return d.like(sa, pattern)
+                # A black box: Unicode case folding, which engines do with their own tables.
+                text = sa if isinstance(b, Lit) and b.value.isascii() else d.concat(sa, sb)
+                return self.ascii_only(text, d.ilike(sa, pattern), "ILIKE", "bool")
+            case Un(op="reverse", arg=a):
+                x = self.operand(a, "str", ref, cols, "reverse")
+                return self.ascii_only(x, d.reverse(x), "reverse")
+            case Un(op="ascii", arg=a):
+                x = self.operand(a, "str", ref, cols, "ascii")
+                return self.ascii_only(x, d.first_code_point(x), "ascii", "int")
+            case Un(op="replace", arg=a, param=pattern, replacement=replacement):
+                if not pattern:
+                    # Rust puts the replacement around every character; SQL engines
+                    # return the string unchanged.
+                    raise Unsupported("replace with an empty pattern differs between engines")
+                x = self.operand(a, "str", ref, cols, "replace")
+                return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
+            case Bin(op="repeat", left=a, right=b):
+                sa = self.operand(a, "str", ref, cols, "repeat")
+                n = self.int_operand(b, ref, cols, "repeat")
+                r = d.repeat(sa, n)
+                if not d.guards:
+                    return r
+                # `Text.repeatFits`; the count capped so that the product fits.
+                cap = d.int_lit(REPEAT_MAX + 1)
+                capped = f"(CASE WHEN {n} > {cap} THEN {cap} ELSE {n} END)"
+                big = f"({capped} * {d.octet_length(sa)} > {d.int_lit(REPEAT_MAX)})"
+                fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str")
+                return d.case_when(big, fail, r)
+            case Bin(op="levenshtein", left=a, right=b):
+                sa, sb = (self.operand(x, "str", ref, cols, "levenshtein") for x in (a, b))
+                return self.ascii_only(
+                    d.concat(sa, sb), d.levenshtein(sa, sb), "levenshtein", "int"
+                )
             case Bin(op="substr", left=a, right=b, length=length):
                 sa = self.operand(a, "str", ref, cols, "substring")
                 sb = self.int_operand(b, ref, cols, "substring")
@@ -3458,6 +3547,8 @@ NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
 DAY_MIN, DAY_MAX = -96465292, 95026236
 PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
+#: The longest string DataFusion's `repeat` writes, in bytes (`Text.repeatMax`).
+REPEAT_MAX = 2**31 - 1
 
 
 def like_pattern(p: str) -> str:

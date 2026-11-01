@@ -490,8 +490,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .narrow n, a => narrowAbs n a
   | .wrap _, a => a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
-  | .upper, a | .lower, a => ⟨a.nonStr, none, false, false, a.str⟩
-  | .length, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
+  | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
+  | .length, a | .ascii, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
   -- `NULL` when the pattern does not match.
   | .regexMatch _, a => ⟨true, if a.str then some (.ge 1) else none, false, false, false⟩
   | .datePart p, a => datePartAbs p a
@@ -553,11 +553,12 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .ipow, a, b => powAbs a b
   | .concat, a, b | .trim _ _, a, b =>
       ⟨a.nonStr || b.nonStr, none, false, false, a.str && b.str⟩
-  | .strpos, a, b =>
+  | .strpos, a, b | .levenshtein, a, b =>
       ⟨a.nonStr || b.nonStr, if a.str && b.str then some (.ge 0) else none, false, false, false⟩
-  | .startsWith, a, b | .endsWith, a, b | .like, a, b =>
+  | .startsWith, a, b | .endsWith, a, b | .like, a, b | .ilike, a, b =>
       ⟨a.nonStr || b.nonStr, none, a.str && b.str, a.str && b.str, false⟩
-  | .substr _, a, b => ⟨a.nonStr || b.nonInt, none, false, false, a.str && b.int.isSome⟩
+  | .substr _, a, b | .strRepeat, a, b =>
+      ⟨a.nonStr || b.nonInt, none, false, false, a.str && b.int.isSome⟩
   | .eq, a, b =>
       let mismatch := a.null || b.null || (a.int.isSome && (b.tt || b.ff || b.str)) ||
         ((a.tt || a.ff) && (b.int.isSome || b.str)) || (a.str && (b.int.isSome || b.tt || b.ff))
@@ -681,6 +682,9 @@ theorem datePartAbs_sound (p : Time.DatePart) {a : AVal} {v : Value} (h : a.Mem 
 theorem Text.strpos_nonneg (s t : String) : 0 ≤ Text.strpos s t := by
   unfold Text.strpos; split <;> omega
 
+theorem Text.ascii_nonneg (s : String) : 0 ≤ Text.ascii s := by
+  unfold Text.ascii; split <;> omega
+
 theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     (f.abs a).Mem (f.apply v) := by
   cases f
@@ -735,9 +739,9 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ |
       ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
-  case upper | lower | length =>
+  case upper | lower | length | reverse | ascii | replace =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
-      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem]
+      simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem, Text.ascii_nonneg]
   case regexMatch p =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp only [UnFn.abs, UnFn.apply, AVal.Mem]
@@ -912,7 +916,8 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ipow => exact powAbs_sound ha hb
-  case concat | trim | strpos | startsWith | endsWith | like | substr =>
+  case concat | trim | strpos | startsWith | endsWith | like | substr | strRepeat | ilike
+    | levenshtein =>
     rcases mem_cases ha with ⟨rfl, h⟩ | ⟨i, x, rfl, hx, hi⟩ | ⟨rfl, h⟩ | ⟨rfl, h⟩ | ⟨s, rfl, h⟩ | ⟨_, rfl, h⟩ <;>
     rcases mem_cases hb with ⟨rfl, h'⟩ | ⟨j, y, rfl, hy, hj⟩ | ⟨rfl, h'⟩ | ⟨rfl, h'⟩ |
       ⟨s', rfl, h'⟩ | ⟨_, rfl, h'⟩ <;>

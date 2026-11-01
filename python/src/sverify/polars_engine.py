@@ -447,6 +447,47 @@ def like(s: str, p: str) -> bool:
     return _LIKE[p].fullmatch(s) is not None
 
 
+def ilike_regex(p: str) -> str:
+    """`Text.ilike`'s pattern as a regular expression of the `regex` crate,
+    whose `(?i)` folds case as DataFusion's `ILIKE` does (Unicode's simple
+    case folding). Every literal character is an escape `\\x{…}`."""
+    out, k = [], 0
+    while k < len(p):
+        c = p[k]
+        if c == "\\" and k + 1 < len(p):
+            c, k = p[k + 1], k + 1
+            out.append(f"\\x{{{ord(c):X}}}")
+        else:
+            out.append(".*" if c == "%" else "." if c == "_" else f"\\x{{{ord(c):X}}}")
+        k += 1
+    return "(?is)^" + "".join(out) + "$"
+
+
+#: `Text.repeatMax`: the longest string DataFusion's `repeat` writes, in bytes.
+REPEAT_MAX = 2**31 - 1
+
+
+def repeat(s: str, n: int) -> str:
+    """`Text.repeatStr`, '' where it does not fit (the row raises)."""
+    return s * n if n > 0 and len(s.encode()) * n <= REPEAT_MAX else ""
+
+
+def ascii_code(s: str) -> int:
+    """`Text.ascii`: the first code point, 0 for ''."""
+    return ord(s[0]) if s else 0
+
+
+def levenshtein(s: str, t: str) -> int:
+    """`Text.levenshtein`: insertions, deletions and substitutions of characters."""
+    prev = list(range(len(t) + 1))
+    for i, c in enumerate(s, 1):
+        cur = [i]
+        for j, d in enumerate(t, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (c != d)))
+        prev = cur
+    return prev[-1]
+
+
 def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
     """`Text.substr`: the characters at 1-based positions `a … a+n-1`."""
     start = wide(a) - 1
@@ -736,6 +777,14 @@ class Exprs:
                     return Val(lit_expr(one, dtype), dtype)
             if name == "array_length" and len(arg_js) == 1:
                 return self.regex_match(arg_js[0])
+            if name == "replace" and len(arg_js) == 3:
+                # `Text.replace` is Python's `str.replace` (an empty pattern too).
+                s_, p_, r_ = (self(a) for a in arg_js)
+                if any(v.dtype not in (pl.String, pl.Null) for v in (s_, p_, r_)):
+                    raise Unsupported(f"replace of {[s_.dtype, p_.dtype, r_.dtype]}")
+                out = _rows(str.replace, pl.String, s_, p_, r_)
+                return Val(out, pl.String, issues(s_, p_, r_))
+
             if name in ("date_part", "date_trunc") and len(arg_js) == 2:
                 which, ts = self.constant(arg_js[0], f"{name}'s unit"), self(arg_js[1])
                 if not isinstance(which, str) or ts.dtype not in (US, pl.Date, pl.Time):
@@ -914,6 +963,10 @@ class Exprs:
                 return Val(e.str.to_lowercase(), pl.String, a.issues)
             if name == "character_length":
                 return Val(e.str.len_chars().cast(pl.Int64), pl.Int64, a.issues)
+            if name == "reverse":
+                return Val(_rows(lambda s: s[::-1], pl.String, a), pl.String, a.issues)
+            if name == "ascii":
+                return Val(_rows(ascii_code, pl.Int64, a), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
             # A zero result is the one zero, as in `onMag`.
@@ -974,7 +1027,7 @@ class Exprs:
             return Val(pl.when(zero).then(None).otherwise(q.expr), pl.Int64,
                        (*q.issues, by_zero))  # fmt: skip
         strings = ("str_concat", "strpos", "starts_with", "ends_with", "like", "substring",
-                   "btrim", "ltrim", "rtrim")  # fmt: skip
+                   "btrim", "ltrim", "rtrim", "repeat", "levenshtein", "ilike")  # fmt: skip
         if name in strings:
             return self.string(name, a, b)
         if name in ("equal", "lt"):
@@ -991,6 +1044,15 @@ class Exprs:
         """The binary functions of `SubstraitLean/Text.lean`."""
         if name == "substring":
             return self.substring(a, b, None)
+        if name == "repeat":
+            if a.dtype not in (pl.String, pl.Null) or b.dtype not in (pl.Int64, pl.Null):
+                raise Unsupported(f"repeat of {a.dtype} and {b.dtype}")
+            # `Text.repeatFits`, with the count capped so that the product fits.
+            cap = REPEAT_MAX + 1
+            n = pl.when(b.expr > cap).then(cap).otherwise(b.expr)
+            big = issue(n * a.expr.str.len_bytes().cast(pl.Int64) > REPEAT_MAX, Overflow,
+                        "repeat beyond 2^31 - 1 bytes")  # fmt: skip
+            return Val(_rows(repeat, pl.String, a, b), pl.String, (*issues(a, b), big))
         if unify(a.dtype, b.dtype, name) not in (pl.String, pl.Null):
             raise Unsupported(f"{name} of {a.dtype} and {b.dtype}")
         x, y, found = a.expr, b.expr, issues(a, b)
@@ -1001,6 +1063,10 @@ class Exprs:
             return Val(e, pl.Boolean, found)
         if name == "strpos":
             return Val(_rows(strpos, pl.Int64, a, b), pl.Int64, found)
+        if name == "levenshtein":
+            return Val(_rows(levenshtein, pl.Int64, a, b), pl.Int64, found)
+        if name == "ilike":
+            return Val(x.str.contains(_rows(ilike_regex, pl.String, b)), pl.Boolean, found)
         if name == "like":
             return Val(_rows(like, pl.Boolean, a, b), pl.Boolean, found)
         # Trimming: Polars strips whitespace for a NULL set, Lean gives NULL.
