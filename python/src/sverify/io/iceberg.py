@@ -26,6 +26,7 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import Any, Literal
 
 import pyarrow as pa
@@ -56,7 +57,6 @@ except ImportError as e:
 from sverify.contracts import Fact
 from sverify.incremental import (
     Changes,
-    IncrementalView,
     Snapshot,
     SourceBatch,
     Stored,
@@ -65,16 +65,8 @@ from sverify.incremental import (
     first_line,
     row_key,
 )
-from sverify.io._common import (
-    ColumnStats,
-    Contract,
-    SinkWrite,
-    check_same_state,
-    q,
-    sink_schema,
-    stats_facts,
-    view_contract_record,
-)
+from sverify.io._common import ColumnStats, Contract, SinkWrite, q, stats_facts
+from sverify.io._sink import Sink, SinkChange
 
 CONTRACT = "Iceberg contract"
 KEY = "sverify.contract"
@@ -304,18 +296,18 @@ class IcebergSource:
         files = _live_files(t, current)
         snapshot_facts = self._facts(t, files, f"file stats @v{end}")
         if end == since:
-            return SourceBatch(since, end, snapshot_facts)
+            return SourceBatch.unchanged(since, snapshot_facts)
         between = [s for s in _ancestry(t) if since < _version(s) <= end]
         old = _at(t, since)
         schema = _arrow_schema(t)
         if since != 0 and old is None:
-            return SourceBatch(
+            return SourceBatch.from_snapshot(
                 since,
                 end,
-                snapshot_facts,
-                snapshot=_read(t, current),
+                _read(t, current),
+                reason=f"Iceberg snapshot v{since} is not an ancestor of v{end} (expired?)",
+                snapshot_facts=snapshot_facts,
                 schema=schema,
-                fallback=f"Iceberg snapshot v{since} is not an ancestor of v{end} (expired?)",
             )
         appends = all(
             s.summary is not None and s.summary.operation == Operation.APPEND for s in between
@@ -331,22 +323,23 @@ class IcebergSource:
                     )
                 )
             except Exception as e:
-                return SourceBatch(
+                return SourceBatch.from_snapshot(
                     since,
                     end,
-                    snapshot_facts,
-                    snapshot=_read(t, current),
+                    _read(t, current),
+                    reason=f"Iceberg snapshots v{since}→v{end} unreadable: {first_line(e)}",
+                    snapshot_facts=snapshot_facts,
                     schema=schema,
-                    fallback=f"Iceberg snapshots v{since}→v{end} unreadable: {first_line(e)}",
                 )
             paths = {task.file.file_path for task in came}
             changed = [e for e in files if e["data_file"]["file_path"] in paths]
-            return SourceBatch(
+            return SourceBatch.from_changes(
                 since,
                 end,
-                snapshot_facts,
-                changes=changes,
+                inserts=changes.inserts,
+                deletes=changes.deletes,
                 facts=self._facts(t, changed, f"file stats @v{end} (changed files)"),
+                snapshot_facts=snapshot_facts,
                 kind="snapshot diff",
                 schema=schema,
                 trusted=(
@@ -364,12 +357,12 @@ class IcebergSource:
             if task.file.file_path in paths
         ]
         inserted = ArrowScan(t.metadata, t.io, t.schema(), AlwaysTrue()).to_table(tasks)
-        return SourceBatch(
+        return SourceBatch.from_changes(
             since,
             end,
-            snapshot_facts,
-            changes=Changes(inserts=arrow_rows(inserted.cast(schema))),
+            inserts=inserted.cast(schema),
             facts=self._facts(t, added, f"file stats @v{end} (new files)"),
+            snapshot_facts=snapshot_facts,
             trusted=f"Δ trusted as the files Iceberg appends v{since}→v{end} added",
             schema=schema,
         )
@@ -531,7 +524,7 @@ def _commit_rows(
     snapshot.commit()
 
 
-class IcebergSink:
+class IcebergSink(Sink):
     """Stores a node in an Iceberg table, exactly once per state:
     `node.write(IcebergSink(catalog, identifier))`, written by every
     `refresh`.
@@ -546,7 +539,7 @@ class IcebergSink:
     also the table property `sverify.contract`, and columns the view proves
     NOT NULL are `required`. `name` is the table's name in the plans that
     read the stored node (default: the last part of `identifier`); `app_id`
-    defaults to `sverify:<node name>`.
+    defaults to `sverify:<name>`.
 
     The node `write` returns reads the table as an `IcebergSource` and builds
     on the contract the stored node proved. A restarted job that builds the
@@ -559,7 +552,7 @@ class IcebergSink:
         catalog: A pyiceberg catalog.
         identifier: The sink table's identifier; the first write creates it.
         app_id: The application id recorded in each snapshot. Default:
-            `"sverify:<node name>"`.
+            `"sverify:<name>"`.
         name: The table's name in the plans that read the stored node.
             Default: the last part of `identifier`.
 
@@ -578,53 +571,49 @@ class IcebergSink:
         name: str | None = None,
     ):
         self.catalog, self.identifier = catalog, identifier
-        self.name = name or identifier.rsplit(".", 1)[-1]
-        self.app_id = app_id
-        self.view: IncrementalView | None = None
-        self._written: Counter[tuple] | None = None
+        name = name or identifier.rsplit(".", 1)[-1]
+        super().__init__(name, app_id=app_id, location=identifier)
 
-    def _attach(self, view: IncrementalView) -> None:
-        """Write `view` from now on."""
-        self.view = view
-        self.app_id = self.app_id or f"sverify:{view.name}"
-        self._written = None
-        if view.stored is not None and view.stored[0] == self.identifier:
-            self._written = view.stored[1]
-
-    def _source(self) -> IcebergSource:
+    def source(self) -> IcebergSource:
         """The table as a source, for the nodes that read the stored node."""
         return IcebergSource(self.catalog, self.identifier, name=self.name)
 
     def _stored(self) -> Stored | None:
         if not self.catalog.table_exists(self.identifier):
             return None
-        return self._source().stored()
+        return self.source().stored()
 
-    def _commit(self) -> SinkWrite:
-        """Write the attached view's state, unless the table has it."""
-        if self.view is None or self.app_id is None:
-            raise ValueError(
-                f"no node is stored in {self.identifier}: node.write(sink) attaches one"
-            )
-        view, app_id = self.view, self.app_id
-        contract = view_contract_record(view)
-        schema = sink_schema(view, contract.not_null)
-        props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: app_id}
+    def _version(self) -> int | None:
         if not self.catalog.table_exists(self.identifier):
+            return None
+        return _version(self.catalog.load_table(self.identifier).current_snapshot())
+
+    def committed(self) -> Contract | None:
+        """The table's contract, with the epoch of the last snapshot this
+        sink's `app_id` wrote, or None."""
+        if not self.catalog.table_exists(self.identifier):
+            return None
+        t = self.catalog.load_table(self.identifier)
+        mine = [s for s in _ancestry(t) if s.summary and s.summary.get(APP) == self.app_id]
+        text = t.properties.get(KEY)
+        if not mine or text is None:
+            return None
+        epoch = int(mine[0].summary.get(EPOCH, "-1"))  # type: ignore[union-attr]
+        return replace(Contract.from_json(text), epoch=epoch)
+
+    def write(self, change: SinkChange) -> SinkWrite:
+        """Create or overwrite the table, or write the change as position
+        deletes and new rows, in one snapshot that records the contract."""
+        assert self.view is not None
+        view, contract, schema = self.view, change.contract, change.schema
+        props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}
+        created = not self.catalog.table_exists(self.identifier)
+        if created:
             t = self.catalog.create_table(
                 self.identifier, schema=schema, properties={KEY: contract.to_json()}
             )
-            created = True
         else:
             t = self.catalog.load_table(self.identifier)
-            mine = [s for s in _ancestry(t) if s.summary and s.summary.get(APP) == app_id]
-            if mine and int(mine[0].summary.get(EPOCH, "-1")) >= contract.epoch:  # type: ignore[union-attr]
-                text = t.properties.get(KEY)
-                committed = None if text is None else Contract.from_json(text)
-                check_same_state(self.identifier, committed, contract)
-                self._written = Counter(view.counts)
-                return SinkWrite("skipped", _version(t.current_snapshot()), contract)
-            created = False
         counts, old = view.counts, self._written
         positions: dict[str, list[int]] | None = None
         if not created and old is not None and t.spec().is_unpartitioned():
@@ -633,12 +622,11 @@ class IcebergSink:
         mode: Literal["created", "append", "row-level", "overwrite"]
         if positions is None:
             mode = "created" if created else "overwrite"
-            rows = view._arrow(counts).cast(schema)
+            rows = change.table
             deleted = 0
         else:
-            assert old is not None
             mode = "row-level" if positions else "append"
-            rows = view._arrow(Counter({k: n - old[k] for k, n in counts.items()})).cast(schema)
+            rows = change.inserts
             deleted = sum(len(p) for p in positions.values())
         with t.transaction() as tx:
             tx.set_properties({KEY: contract.to_json()})
@@ -646,6 +634,5 @@ class IcebergSink:
                 tx.overwrite(rows, snapshot_properties=props)
             else:
                 _commit_rows(tx, t, rows, _position_deletes(t, positions), props)
-        self._written = Counter(counts)
         version = _version(self.catalog.load_table(self.identifier).current_snapshot())
         return SinkWrite(mode, version, contract, rows.num_rows, deleted)

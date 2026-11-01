@@ -6,7 +6,8 @@ description: >
   result up to date from a table's change feed instead of recomputing it,
   replace a watermark ("rows newer than…") job, store results in a Delta or
   Iceberg table exactly once, chain jobs through stored tables, resume a
-  restarted job, or prove preconditions from table metadata.
+  restarted job, prove preconditions from table metadata, read from an API
+  or a folder of files, write to a sink of their own, or set up credentials.
 ---
 
 # sverify jobs: Delta and Iceberg, kept up to date
@@ -138,3 +139,7 @@ versions, sharing the stored nodes they read; `.status()` reports on each.
 
 [references/table-formats.md](references/table-formats.md): Iceberg, file
 pruning, static sources, chaining jobs through stored tables.
+
+[references/custom-io.md](references/custom-io.md): your own sources (an
+API, files, `from_query`, `from_frame`) and sinks (`Sink`, `sink_from`), and
+credentials for S3, GCS, Azure and Iceberg catalogs (`Storage`).

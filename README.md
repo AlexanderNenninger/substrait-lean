@@ -480,6 +480,19 @@ version for every input; `regions.apply(sv.Changes(...))` changes some rows,
 and `regions.replace(new_table, version=2)` swaps the table, which recomputes
 the nodes that read it.
 
+**Your own sources and sinks** take one method each. A `sverify.io.Source`
+implements `read(since)`, which returns the new rows and a cursor;
+`from_query(fn, cursor_on="ts")`, `from_frame(fn)` and `from_files(path)`
+build one from a function or a directory. sverify numbers the reads as
+versions, works out the change, and says in the report what the reads
+assume ("rows only arrive with a greater ts"), which `refresh(audit=True)`
+checks. A `sverify.io.Sink` implements `write(change)` and optionally
+`committed()`, and sverify writes each state once, with its contract;
+`sink_from(fn)` hands the whole table to a function. `Storage` holds object
+store credentials, or a function that renews them, for every table that
+needs them. [Chapter 10](notebooks/10_pipelines.py) of the tour walks
+through both.
+
 **A restarted job resumes from its sink** instead of recomputing: build the
 same nodes again and refresh. A stored node takes the stored rows only if
 its plan and source versions match what the sink recorded; otherwise it is
@@ -695,7 +708,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 7 | [Windows and ASOF joins](notebooks/07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
 | 8 | [Composing contracts](notebooks/08_composition.py) | proving one step's preconditions from the previous step |
 | 9 | [Incremental views](notebooks/09_incremental_views.py) | nodes kept up to date from changes, what is recomputed, Z-sets and delta rules |
-| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state |
+| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state, your own source and sink |
 | 11 | [Engines and SQL](notebooks/11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
 | 12 | [Doubles, time and text](notebooks/12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
 | 13 | [Plans, meaning and proofs](notebooks/13_plans_and_proofs.py) | under the hood: Substrait plans, Lean's interpreter, theorems, NULL |
