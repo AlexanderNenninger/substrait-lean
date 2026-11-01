@@ -24,11 +24,14 @@ field offsets threaded through join chains, follow upstream's
 
 from __future__ import annotations
 
+import base64
 import contextvars
 import datetime as dt_
+import functools
 import json
 import math
 from collections.abc import Callable, Iterable, Mapping
+from decimal import Decimal
 from typing import Any
 
 import ibis
@@ -73,6 +76,10 @@ def _type_json(dtype: Any) -> Json:
         return {f"i{dtype.nbytes * 8}": NULLABLE}
     if dtype.is_float64():
         return {"fp64": NULLABLE}
+    if dtype.is_decimal():
+        if dtype.precision is None or dtype.scale is None:
+            raise Unsupported("decimals of unknown precision are not supported")
+        return {"decimal": {"precision": dtype.precision, "scale": dtype.scale, **NULLABLE}}
     if dtype.is_floating():
         raise Unsupported(f"{dtype} is not supported; use float64")
     if dtype.is_string():
@@ -125,6 +132,8 @@ def literal(value: Any, dtype: Any) -> Json:
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"
         return {"literal": {"fp64": text}}
+    if dtype.is_decimal():
+        return decimal_literal(value, dtype)
     if dtype.is_string():
         return {"literal": {"string": str(value)}}
     if dtype.is_timestamp():
@@ -153,6 +162,32 @@ def literal(value: Any, dtype: Any) -> Json:
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
     raise Unsupported(f"literal of type {dtype} is not supported")
+
+
+def decimal_type_of(value: Any) -> Any:
+    """The narrowest `DECIMAL(p, s)` that holds `value` exactly."""
+    d = Decimal(value)
+    if not d.is_finite():
+        raise Unsupported(f"decimal {d} is not supported")
+    s = max(0, -int(d.as_tuple().exponent))
+    digits = len(str(abs(int(d.scaleb(s)))))
+    return dt.Decimal(precision=max(digits, s, 1), scale=s, nullable=True)
+
+
+def decimal_literal(value: Any, dtype: Any) -> Json:
+    """A `DECIMAL(p, s)` literal: its unscaled value as 16 little-endian bytes
+    of two's complement. A decimal of unknown precision (Ibis's constants) gets
+    the narrowest type that holds it."""
+    if dtype.precision is None or dtype.scale is None:
+        dtype = decimal_type_of(value)
+    unscaled = Decimal(value).scaleb(dtype.scale)
+    if unscaled != unscaled.to_integral_value():
+        raise Unsupported(f"{value} has more than {dtype.scale} decimal places")
+    if len(str(abs(int(unscaled)))) > dtype.precision:
+        raise Unsupported(f"{value} does not fit {dtype}")
+    raw = int(unscaled).to_bytes(16, "little", signed=True)
+    body = {"value": base64.b64encode(raw).decode(), "precision": dtype.precision}
+    return {"literal": {"decimal": {**body, "scale": dtype.scale}}}
 
 
 _INTERVAL_MICROS = {
@@ -294,11 +329,37 @@ class Exprs:
         self.windows = windows or {}
 
     def __call__(self, op: Any, to: Any = None) -> Json:
-        """`op`, cast to `to` when its type differs."""
+        """`op`, cast to `to` when its type differs. A decimal `to` gives
+        the scale: a decimal or integer is brought to it exactly (#27)."""
+        if to is not None and to.is_decimal() and not op.dtype.is_null():
+            return self.rescaled(op, to)
         e = self.translate(op)
-        if to is not None and not op.dtype.is_null() and not same_type(op.dtype, to):
+        if to is not None and not op.dtype.is_null() and not same_type(exact(op), to):
             return cast_json(e, to)
         return e
+
+    def operand(self, op: Any) -> Json:
+        """An argument of decimal arithmetic or a comparison, which the model
+        computes at a common scale itself: a float constant as its decimal."""
+        if _float_const(op):
+            return literal(_const_decimal(op), dt.Decimal(precision=None, scale=None))
+        return self(op)
+
+    def rescaled(self, op: Any, to: Any) -> Json:
+        """`op` at the scale of the decimal `to`: a cast to that scale with
+        the integer digits it has, or a constant at that scale."""
+        t, s = exact(op), to.scale
+        v = op.value if isinstance(op, ops.Literal) else None
+        if _float_const(op) or (isinstance(v, int | Decimal) and not isinstance(v, bool)):
+            d = _const_decimal(op) if _float_const(op) else Decimal(op.value)
+            if d == d.quantize(Decimal(1).scaleb(-s)):
+                digits = len(str(abs(int(d.scaleb(s)))))
+                return decimal_literal(d, _decimal(max(digits, s, 1), s))
+        e = self.translate(op)
+        if t.is_decimal() or t.is_integer():
+            p, s0 = _digits(t, op)
+            return e if s0 == s else cast_json(e, _decimal(p - s0 + s, s))
+        return cast_json(e, to)
 
     def translate(self, op: Any) -> Json:
         if op in self.windows:
@@ -311,6 +372,136 @@ class Exprs:
 
 def _common(*types: Any) -> Any:
     return dt.highest_precedence([t for t in types if not t.is_null()] or [dt.null])
+
+
+# --------------------------------------------------------------------------
+# Decimals (#27, #67)
+#
+# Ibis types decimal arithmetic loosely: `decimal(15, 2) * decimal(15, 2)` is a
+# `decimal(15, 2)` to Ibis, but its SQL computes the product exactly, at scale
+# 4, as the Lean model does. The plan follows the SQL, so the producer works
+# out each decimal's exact type here, as `Parse.decimalCall` does: `+` and `-`
+# at the larger scale with one more integer digit, `×` at the sum of the
+# scales, `SUM` ten more digits, `AVG` four more digits and decimal places,
+# all at most 38 digits. A float constant next to a decimal is a decimal, as
+# Ibis writes it into SQL (`0.05`); any other double makes a double.
+
+
+def _float_const(op: Any) -> bool:
+    return (
+        isinstance(op, ops.Literal)
+        and op.dtype.is_floating()
+        and isinstance(op.value, float)
+        and math.isfinite(op.value)
+    )
+
+
+def _const_decimal(op: Any) -> Decimal:
+    """A float constant as the decimal Ibis's SQL writes for it."""
+    return Decimal(repr(op.value))
+
+
+def _digits(t: Any, op: Any) -> tuple[int, int]:
+    """`(precision, scale)` of a decimal, an integer (a constant's own digits,
+    else a `BIGINT`'s 19) or a float constant (its decimal)."""
+    if _float_const(op):
+        d = decimal_type_of(_const_decimal(op))
+        return d.precision, d.scale
+    if t.is_decimal():
+        return t.precision, t.scale
+    if isinstance(op, ops.Literal) and isinstance(op.value, int):
+        return max(1, len(str(abs(op.value)))), 0
+    return 19, 0
+
+
+def _decimal_args(*args: Any) -> bool:
+    """Whether `args` compute as decimals: one of them is a decimal, and the
+    others are decimals, integers, float constants or NULL."""
+    ts = [exact(a) for a in args]
+    return any(t.is_decimal() for t in ts) and all(
+        t.is_decimal() or t.is_integer() or t.is_null() or _float_const(a)
+        for a, t in zip(args, ts, strict=True)
+    )
+
+
+def _decimal(p: int, s: int) -> Any:
+    return dt.Decimal(precision=min(38, p), scale=s, nullable=True)
+
+
+def _common_exact(args: Iterable[Any], t: Any) -> Any:
+    """The type `args` are brought to as one value (`CASE`, `COALESCE`): the
+    largest scale and the most integer digits, or a double."""
+    args = [a for a in args if not a.dtype.is_null()]
+    if not _decimal_args(*args):
+        return dt.float64 if any(exact(a).is_floating() for a in args) else t
+    ds = [_digits(exact(a), a) for a in args]
+    s = max(s for _, s in ds)
+    return _decimal(max(p - s0 for p, s0 in ds) + s, s)
+
+
+def _field_exact(rel: Any, name: str) -> Any:
+    """The exact type of column `name` of `rel`, from the expression that
+    computes it."""
+    schema: Any = rel.schema
+    for attr in ("values", "groups", "metrics"):
+        v = getattr(rel, attr, None)
+        if v is not None and name in v:
+            return exact(v[name])
+    if isinstance(rel, ops.Set):
+        sides = [ops.Field(rel.left, name), ops.Field(rel.right, name)]
+        return _common_exact(sides, schema[name])
+    parent = getattr(rel, "parent", None)
+    if isinstance(parent, ops.Relation) and name in parent.schema:
+        return exact(ops.Field(parent, name))
+    return schema[name]
+
+
+def exact(op: Any) -> Any:
+    """The type of `op`'s value in the plan: Ibis's, except for decimals."""
+    return _exact(op)
+
+
+@functools.cache
+def _exact(op: Any) -> Any:
+    t = op.dtype
+    if not t.is_decimal():
+        return t
+    match op:
+        case ops.Literal(value=v) if v is not None:
+            return decimal_type_of(v)
+        case ops.Field():
+            return _field_exact(op.rel, op.name)
+        case ops.ScalarSubquery():
+            rel: Any = op.rel
+            return _field_exact(rel, rel.schema.names[0])
+        case ops.WindowFunction():
+            return exact(op.func)
+        case ops.Add() | ops.Subtract() | ops.Multiply():
+            if not _decimal_args(op.left, op.right):
+                return dt.float64
+            p1, s1 = _digits(exact(op.left), op.left)
+            p2, s2 = _digits(exact(op.right), op.right)
+            if isinstance(op, ops.Multiply):
+                return _decimal(p1 + p2 + 1, s1 + s2)
+            s = max(s1, s2)
+            return _decimal(max(p1 - s1, p2 - s2) + s + 1, s)
+        case ops.Negate() | ops.Abs() | ops.Min() | ops.Max():
+            return exact(op.arg)
+        case ops.Sum():
+            a = exact(op.arg)
+            return _decimal(a.precision + 10, a.scale) if a.is_decimal() else t
+        case ops.Mean():
+            a = exact(op.arg)
+            return _decimal(a.precision + 4, a.scale + 4) if a.is_decimal() else t
+        case ops.IfElse():
+            return _common_exact([op.true_expr, op.false_null_expr], t)
+        case ops.SearchedCase() | ops.SimpleCase():
+            return _common_exact([*op.results, op.default], t)
+        case ops.Coalesce() | ops.Greatest() | ops.Least():
+            return _common_exact(op.arg, t)
+        case ops.NullIf():
+            return exact(op.arg)
+    return t
 
 
 def _field(x: Exprs, op: Any) -> Json:
@@ -327,13 +518,22 @@ def _literal(x: Exprs, op: Any) -> Json:
 
 
 def _arith(name: str) -> Callable[[Exprs, Any], Json]:
-    """Ibis computes in the operation's type: cast the operands to it."""
-    return lambda x, op: call(name, [x(op.left, op.dtype), x(op.right, op.dtype)])
+    """Ibis computes in the operation's type: cast the operands to it. The
+    model computes decimals at their exact scales itself."""
+
+    def rule(x: Exprs, op: Any) -> Json:
+        if exact(op).is_decimal():
+            return call(name, [x.operand(op.left), x.operand(op.right)])
+        return call(name, [x(op.left, exact(op)), x(op.right, exact(op))])
+
+    return rule
 
 
 def _compare(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
-        t = _common(op.left.dtype, op.right.dtype)
+        if _decimal_args(op.left, op.right):
+            return call(name, [x.operand(op.left), x.operand(op.right)])
+        t = _common(exact(op.left), exact(op.right))
         return call(name, [x(op.left, t), x(op.right, t)])
 
     return rule
@@ -474,7 +674,7 @@ def _cast(x: Exprs, op: Any) -> Json:
 
 
 def _variadic(name: str) -> Callable[[Exprs, Any], Json]:
-    return lambda x, op: call(name, [x(a, op.dtype) for a in op.arg])
+    return lambda x, op: call(name, [x(a, exact(op)) for a in op.arg])
 
 
 def _clip(x: Exprs, op: Any) -> Json:
@@ -489,34 +689,40 @@ def _clip(x: Exprs, op: Any) -> Json:
 
 
 def _between(x: Exprs, op: Any) -> Json:
-    t = _common(op.arg.dtype, op.lower_bound.dtype, op.upper_bound.dtype)
-    a = x(op.arg, t)
-    return call(
-        "and", [call("gte", [a, x(op.lower_bound, t)]), call("lte", [a, x(op.upper_bound, t)])]
-    )
+    if _decimal_args(op.arg, op.lower_bound, op.upper_bound):
+        a, lo, hi = x.operand(op.arg), x.operand(op.lower_bound), x.operand(op.upper_bound)
+    else:
+        t = _common(exact(op.arg), exact(op.lower_bound), exact(op.upper_bound))
+        a, lo, hi = x(op.arg, t), x(op.lower_bound, t), x(op.upper_bound, t)
+    return call("and", [call("gte", [a, lo]), call("lte", [a, hi])])
 
 
 def _in_values(x: Exprs, op: Any) -> Json:
-    t = _common(op.value.dtype, *(o.dtype for o in op.options))
+    args = [op.value, *op.options]
+    t = _common_exact(args, _common(*(exact(a) for a in args)))
     return {"singularOrList": {"value": x(op.value, t), "options": [x(o, t) for o in op.options]}}
 
 
 def _if_else(x: Exprs, op: Any) -> Json:
-    return if_then([(x(op.bool_expr), x(op.true_expr, op.dtype))], x(op.false_null_expr, op.dtype))
+    t = exact(op)
+    return if_then([(x(op.bool_expr), x(op.true_expr, t))], x(op.false_null_expr, t))
 
 
 def _searched_case(x: Exprs, op: Any) -> Json:
-    ifs = [(x(c), x(r, op.dtype)) for c, r in zip(op.cases, op.results, strict=True)]
-    return if_then(ifs, x(op.default, op.dtype))
+    t = exact(op)
+    ifs = [(x(c), x(r, t)) for c, r in zip(op.cases, op.results, strict=True)]
+    return if_then(ifs, x(op.default, t))
 
 
 def _simple_case(x: Exprs, op: Any) -> Json:
-    t = _common(op.base.dtype, *(c.dtype for c in op.cases))
+    args = [op.base, *op.cases]
+    t = _common_exact(args, _common(*(exact(a) for a in args)))
+    r_t = exact(op)
     ifs = [
-        (call("equal", [x(op.base, t), x(c, t)]), x(r, op.dtype))
+        (call("equal", [x(op.base, t), x(c, t)]), x(r, r_t))
         for c, r in zip(op.cases, op.results, strict=True)
     ]
-    return if_then(ifs, x(op.default, op.dtype))
+    return if_then(ifs, x(op.default, r_t))
 
 
 def _string_contains(x: Exprs, op: Any) -> Json:
@@ -1005,7 +1211,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Coalesce: _variadic("coalesce"),
     ops.Greatest: _variadic("greatest"),
     ops.Least: _variadic("least"),
-    ops.NullIf: lambda x, op: call("nullif", [x(op.arg, op.dtype), x(op.null_if_expr, op.dtype)]),
+    ops.NullIf: lambda x, op: call("nullif", [x(op.arg, exact(op)), x(op.null_if_expr, exact(op))]),
     ops.Clip: _clip,
     ops.Uppercase: _unary("upper"),
     ops.Lowercase: _unary("lower"),
@@ -1456,13 +1662,43 @@ def _row_number_from_zero(x: Exprs, v: Any) -> Json:
 def _aggregate(op: Any) -> Json:
     x = Exprs({op.parent: 0})
     groups = [x(g) for g in op.groups.values()]
+    metrics = list(op.metrics.values())
+    # Arithmetic over reductions (`a.sum() / b.sum()`, #67): each reduction
+    # is a measure of its own, and a projection computes the metrics from them.
+    reductions = _reductions(metrics)
     body: Json = {
         "input": rel(op.parent),
         "groupingExpressions": groups,
         "groupings": [{"expressionReferences": list(range(len(groups)))}] if groups else [],
-        "measures": [measure(x, m) for m in op.metrics.values()],
+        "measures": [measure(x, m) for m in reductions],
     }
-    return {"aggregate": body}
+    if reductions == metrics:
+        return {"aggregate": body}
+    g = len(groups)
+    cols = {v: i for i, v in enumerate(op.groups.values())}
+    cols |= {r: g + i for i, r in enumerate(reductions)}
+    y = Exprs({}, cols)
+    exprs = [field_ref(i) for i in range(g)] + [y(m) for m in metrics]
+    return project_rel({"aggregate": body}, g + len(reductions), exprs)
+
+
+def _reductions(metrics: Iterable[Any]) -> list[Any]:
+    """The reductions in `metrics`, each once, in order of appearance."""
+    found: list[Any] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, ops.Reduction):
+            if node not in found:
+                found.append(node)
+            return
+        if isinstance(node, ops.Value):
+            for a in node.__args__:
+                for v in a if isinstance(a, tuple) else (a,):
+                    walk(v)
+
+    for m in metrics:
+        walk(m)
+    return found
 
 
 def _sort_key(x: Exprs, k: Any) -> Json:

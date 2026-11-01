@@ -23,6 +23,14 @@ CASES: list[Case] = [
         V,
         lambda: t.group_by("name").aggregate(n=t.count(), m=t.qty.max(), a=t.amount.mean()),
     ),
+    case(
+        "aggregation",
+        "arithmetic over aggregates",
+        V,
+        lambda: t.group_by("name").aggregate(
+            ratio=t.qty.sum() / t.id.sum(), spread=t.qty.max() - t.qty.min()
+        ),
+    ),
     case("aggregation", "nunique", V, lambda: t.group_by("name").aggregate(n=t.id.nunique())),
     case(
         "aggregation",
