@@ -1,0 +1,14 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "conjunction",
+  "summary": {"agree": 3, "disagree": 0, "refused": 0, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "conjunction/or_between.test", "line": 38, "sql": "SELECT pk FROM tab0 WHERE (col0 BETWEEN 67 AND 0 OR col0 > 17 AND (col0 > 3));", "expected": "[\"0\", \"1\", \"2\", \"3\", \"4\", \"5\", \"6\", \"7\", \"8\", \"9\"]", "duckdb": "[[\"0\"], [\"1\"], [\"2\"], [\"3\"], [\"4\"], [\"5\"], [\"6\"], [\"7\"], [\"8\"], [\"9\"]]", "lean": "[[\"0\"], [\"1\"], [\"2\"], [\"3\"], [\"4\"], [\"5\"], [\"6\"], [\"7\"], [\"8\"], [\"9\"]]", "engine": "[[\"0\"], [\"1\"], [\"2\"], [\"3\"], [\"4\"], [\"5\"], [\"6\"], [\"7\"], [\"8\"], [\"9\"]]", "cls": "agree"},
+    {"file": "conjunction/or_comparison.test", "line": 38, "sql": "SELECT pk FROM tab0 WHERE col0 < 84 OR col0 < 8 ;", "expected": "[\"1\", \"2\", \"3\", \"4\", \"5\", \"7\", \"8\"]", "duckdb": "[[\"1\"], [\"2\"], [\"3\"], [\"4\"], [\"5\"], [\"7\"], [\"8\"]]", "lean": "[[\"1\"], [\"2\"], [\"3\"], [\"4\"], [\"5\"], [\"7\"], [\"8\"]]", "engine": "[[\"1\"], [\"2\"], [\"3\"], [\"4\"], [\"5\"], [\"7\"], [\"8\"]]", "cls": "agree"},
+    {"file": "conjunction/or_comparison.test", "line": 49, "sql": "select pk from tab0 where col0 = 37 or col0 = 86", "expected": "[\"0\", \"1\"]", "duckdb": "[[\"0\"], [\"1\"]]", "lean": "[[\"0\"], [\"1\"]]", "engine": "[[\"0\"], [\"1\"]]", "cls": "agree"}
+  ]
+}

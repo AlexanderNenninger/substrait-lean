@@ -1,0 +1,27 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "keywords",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 16},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 18, "sql": "SELECT \"COL\"\"UMN\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 23, "sql": "SELECT \"TA\"\"BLE\".\"COL\"\"UMN\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 28, "sql": "SELECT \"SCH\"\"EMA\".\"TA\"\"BLE\".\"COL\"\"UMN\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 43, "sql": "SELECT \"COL\"\"UMN\".\"SO\"\"ME\".\"I\"\"N\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 48, "sql": "SELECT \"TA\"\"BLE\".\"COL\"\"UMN\".\"SO\"\"ME\".\"I\"\"N\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 53, "sql": "SELECT \"SCH\"\"EMA\".\"TA\"\"BLE\".\"COL\"\"UMN\".\"SO\"\"ME\".\"I\"\"N\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 59, "sql": "SELECT ((\"SCH\"\"EMA\".\"TA\"\"BLE\".\"COL\"\"UMN\").\"SO\"\"ME\").\"I\"\"N\" FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/escaped_quotes_expressions.test", "line": 65, "sql": "SELECT \"SCH\"\"EMA\".\"TA\"\"BLE\".\"COL\"\"UMN\"['SO\"ME']['I\"N'] FROM \"SCH\"\"EMA\".\"TA\"\"BLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 26, "sql": "SELECT \"COLUMN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 31, "sql": "SELECT \"TABLE\".\"COLUMN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 36, "sql": "SELECT \"SCHEMA\".\"TABLE\".\"COLUMN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 51, "sql": "SELECT \"COLUMN\".\"SOME\".\"IN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 56, "sql": "SELECT \"TABLE\".\"COLUMN\".\"SOME\".\"IN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 61, "sql": "SELECT \"SCHEMA\".\"TABLE\".\"COLUMN\".\"SOME\".\"IN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 67, "sql": "SELECT ((\"SCHEMA\".\"TABLE\".\"COLUMN\").\"SOME\").\"IN\" FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "keywords/keywords_in_expressions.test", "line": 73, "sql": "SELECT \"SCHEMA\".\"TABLE\".\"COLUMN\"['SOME']['IN'] FROM \"SCHEMA\".\"TABLE\";", "cls": "skipped", "reason": "setting collation or macro"}
+  ]
+}

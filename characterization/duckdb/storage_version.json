@@ -1,0 +1,16 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "storage_version",
+  "summary": {"agree": 0, "disagree": 0, "refused": 5, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "storage_version/storage_hyperloglog.test", "line": 21, "sql": "SELECT count(*) FROM db_v110.tbl;", "cls": "refused", "reason": "tables: Catalog Error: Table with name tbl does not exist! Did you mean \"db_v110.tbl\"?"},
+    {"file": "storage_version/storage_hyperloglog.test", "line": 26, "sql": "SELECT sum(i) FROM db_v110.tbl;", "cls": "refused", "reason": "tables: Catalog Error: Table with name tbl does not exist! Did you mean \"db_v110.tbl\"?"},
+    {"file": "storage_version/storage_hyperloglog.test", "line": 49, "sql": "SELECT count(*) FROM db_v120.tbl;", "cls": "refused", "reason": "tables: Catalog Error: Table with name tbl does not exist! Did you mean \"db_v110.tbl or db_v120.tbl\"?"},
+    {"file": "storage_version/storage_hyperloglog.test", "line": 54, "sql": "SELECT sum(i) FROM db_v120.tbl;", "cls": "refused", "reason": "tables: Catalog Error: Table with name tbl does not exist! Did you mean \"db_v110.tbl or db_v120.tbl\"?"},
+    {"file": "storage_version/storage_hyperloglog.test", "line": 60, "sql": "SELECT (SELECT count(*) FROM db_v110.tbl), (SELECT count(*) FROM db_v120.tbl);", "cls": "refused", "reason": "tables: Catalog Error: Table with name tbl does not exist! Did you mean \"db_v110.tbl or db_v120.tbl\"?"}
+  ]
+}

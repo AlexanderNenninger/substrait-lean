@@ -1,0 +1,19 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "function/uuid",
+  "summary": {"agree": 2, "disagree": 0, "refused": 6, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {"function/uuid/test_uuid_function.test": "require icu"},
+  "results": [
+    {"file": "function/uuid/test_uuid.test", "line": 18, "sql": "SELECT COUNT(*) FROM (SELECT a FROM t1 JOIN t2 ON (a=b) JOIN t3 ON (b=c)) s1", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
+    {"file": "function/uuid/test_uuid.test", "line": 33, "sql": "SELECT COUNT(DISTINCT u) FROM uuids;", "expected": "[\"10\"]", "duckdb": "[[\"10\"]]", "lean": "[[\"10\"]]", "engine": "[[\"10\"]]", "cls": "agree"},
+    {"file": "function/uuid/test_uuid.test", "line": 39, "sql": "SELECT * FROM uuids ORDER BY gen_random_uuid();", "cls": "refused", "reason": "translate: sqlglot reads the query differently"},
+    {"file": "function/uuid/test_uuid.test", "line": 43, "sql": "SELECT gen_random_uuid() FROM uuids; SELECT uuidv4() FROM uuids; SELECT uuidv7() FROM uuids;", "cls": "refused", "reason": "translate: not one statement"},
+    {"file": "function/uuid/test_uuid.test", "line": 50, "sql": "SELECT DISTINCT substring(uuid()::varchar, 15, 1) FROM range(100);", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "function/uuid/test_uuid.test", "line": 55, "sql": "SELECT DISTINCT substring(uuidv4()::varchar, 15, 1) FROM range(100);", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "function/uuid/test_uuid.test", "line": 61, "sql": "SELECT DISTINCT substring(uuidv7()::varchar, 15, 1) FROM range(100);", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "function/uuid/test_uuid.test", "line": 68, "sql": "SELECT DISTINCT substring(uuid()::varchar, 20, 1) AS x FROM range(100) ORDER BY x", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"}
+  ]
+}

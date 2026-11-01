@@ -1,0 +1,32 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "show_select",
+  "summary": {"agree": 1, "disagree": 0, "refused": 20, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {"show_select/show_settings_extension.test": "require icu"},
+  "results": [
+    {"file": "show_select/describe_rowid.test", "line": 19, "sql": "select * from someview;", "expected": "ok", "duckdb": "[[\"0\", \"abc\"]]", "lean": "[[\"0\", \"abc\"]]", "engine": "[[\"0\", \"abc\"]]", "cls": "agree"},
+    {"file": "show_select/describe_rowid.test", "line": 22, "sql": "select column_name, column_type from (describe someview);", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: ) at Line: 1, Column: 56\"), None)"},
+    {"file": "show_select/describe_subquery.test", "line": 5, "sql": "SELECT column_name FROM (DESCRIBE SELECT 42 AS a)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 35\"), None)"},
+    {"file": "show_select/describe_subquery.test", "line": 10, "sql": "SELECT t.column_name FROM (DESCRIBE SELECT 42 AS a) t", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 37\"), None)"},
+    {"file": "show_select/describe_subquery.test", "line": 21, "sql": "SELECT t.column_name FROM (DESCRIBE t) t", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: ) at Line: 1, Column: 38\"), None)"},
+    {"file": "show_select/describe_subquery.test", "line": 26, "sql": "FROM (SHOW databases) t", "cls": "refused", "reason": "translate: sqlglot reads the query differently"},
+    {"file": "show_select/describe_subquery.test", "line": 29, "sql": "SELECT column_name FROM (DESCRIBE ( DESCRIBE SELECT * FROM (SELECT 32 as a)));", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: ), found: SELECT at Line: 1, Column: 45\"), None)"},
+    {"file": "show_select/show_quote_identifier.test", "line": 8, "sql": "SELECT column_name, column_type FROM (DESCRIBE \"s1\"\".tbl\")", "cls": "refused", "reason": "tables: Parser Error: unterminated quoted identifier  LINE 1: SELECT * FROM \"s1\".tbl\"                               ^"},
+    {"file": "show_select/show_select_constraints.test", "line": 24, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4, c1 FROM integers)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 31, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4 FROM integers WHERE c1=42)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 37, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4 FROM integers LIMIT 5)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 43, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4 FROM integers ORDER BY c1 LIMIT 5)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 49, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4 FROM integers USING SAMPLE 5)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 55, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4 FROM integers, (SELECT 84))", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 61, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT t.c1, integers.c1 FROM integers JOIN (SELECT 84 c1) t USING (c1))", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 71, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4, c1 FROM my_view)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/show_select_constraints.test", "line": 78, "sql": "SELECT column_name, key FROM (DESCRIBE SELECT c4 + 1 AS expr FROM integers LIMIT 5)", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 40\"), None)"},
+    {"file": "show_select/summarize_subquery.test", "line": 4, "sql": "SELECT column_name, min FROM (SUMMARIZE SELECT 42 AS a);", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: SELECT at Line: 1, Column: 41\"), None)"},
+    {"file": "show_select/summarize_subquery.test", "line": 12, "sql": "SELECT column_name, min FROM (SUMMARIZE tbl);", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: joined table, found: ) at Line: 1, Column: 44\"), None)"},
+    {"file": "show_select/summarize_subquery.test", "line": 21, "sql": "SELECT i, column_name, min, max FROM range(2) t(i), LATERAL ( \tSUMMARIZE SELECT i + j AS x FROM range(2) u(j) ) ORDER B…", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: SELECT, VALUES, or a subquery in the query body, found: SUMMARIZE at Line: 1, Colu…"},
+    {"file": "show_select/test_summarize.test", "line": 14, "sql": "SELECT UNNEST(['i', 'j', 'k', 'd', 'e']) column_names,        UNNEST(['INTEGER', 'VARCHAR', 'HUGEINT', 'DOUBLE', 'BLOB'…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported plan type: Unnest { input: Projection(Projection { expr: [Alias(Alias { expr: Sca…"}
+  ]
+}

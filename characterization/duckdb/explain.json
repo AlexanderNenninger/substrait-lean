@@ -1,0 +1,22 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "explain",
+  "summary": {"agree": 3, "disagree": 0, "refused": 3, "skipped": 5},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "explain/explain_all_statements.test", "line": 50, "sql": "SELECT * FROM integers", "expected": "[\"1\"]", "duckdb": "[[\"1\"]]", "lean": "[[\"1\"]]", "engine": "[[\"1\"]]", "cls": "agree"},
+    {"file": "explain/explain_all_statements.test", "line": 96, "sql": "SELECT f(1)", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "explain/explain_all_statements.test", "line": 103, "sql": "SELECT f(1)", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "explain/test_explain_analyze.test", "line": 65, "sql": "SELECT 42", "expected": "ok", "duckdb": "[[\"42\"]]", "lean": "[[\"42\"]]", "engine": "[[\"42\"]]", "cls": "agree"},
+    {"file": "explain/test_explain_analyze.test", "line": 71, "sql": "SELECT * FROM read_csv('{TEST_DIR}/test.json', columns={'json': 'VARCHAR'}, sep='🦆');", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "explain/test_explain_analyze.test", "line": 89, "sql": "SELECT * FROM read_csv('{TEST_DIR}/test.json', columns={'json': 'VARCHAR'}, sep='🦆');", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "explain/tree_renderer_branches.test", "line": 182, "sql": "SELECT 42 WHERE 'left<&' <> 'right>' /* renderer comment */", "expected": "[\"42\"]", "duckdb": "[[\"42\"]]", "lean": "[[\"42\"]]", "engine": "[[\"42\"]]", "cls": "agree"},
+    {"file": "explain/tree_renderer_branches.test", "line": 190, "sql": "SELECT contains(content, 'sql-num'),        contains(content, 'sql-str'),        contains(content, 'sql-comment'),     …", "cls": "refused", "reason": "producer: Plan(\"table function 'READ_TEXT' not found\")"},
+    {"file": "explain/tree_renderer_branches.test", "line": 213, "sql": "SELECT count(*) FROM read_csv_auto('{TEST_DIR}/tree_renderer_input.csv')", "cls": "refused", "reason": "producer: Plan(\"table function 'READ_CSV_AUTO' not found\")"},
+    {"file": "explain/tree_renderer_branches.test", "line": 221, "sql": "SELECT contains(content, 'read=') FROM read_text('{TEST_DIR}/tree_renderer_compact.txt')", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "explain/tree_renderer_branches.test", "line": 238, "sql": "SELECT contains(content, 'written=') FROM read_text('{TEST_DIR}/tree_renderer_compact_write.txt')", "cls": "refused", "reason": "producer: Plan(\"table function 'READ_TEXT' not found\")"}
+  ]
+}

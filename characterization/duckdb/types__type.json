@@ -1,0 +1,17 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "types/type",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 6},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "types/type/test_make_get_type.test", "line": 4, "sql": "SELECT get_type(NULL);", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "types/type/test_make_get_type.test", "line": 9, "sql": "SELECT get_type(1);", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "types/type/test_make_get_type.test", "line": 14, "sql": "SELECT get_type('hello');", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "types/type/test_make_get_type.test", "line": 19, "sql": "SELECT make_type('STRUCT', a := make_type('INTEGER'), b := make_type('VARCHAR'));", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "types/type/test_make_get_type.test", "line": 24, "sql": "SELECT make_type('STRUCT', make_type('INTEGER'), b := make_type('VARCHAR'));", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "types/type/test_make_get_type.test", "line": 29, "sql": "SELECT make_type('LIST', make_type('STRUCT', a := make_type('STRUCT', x := make_type('INTEGER')), b := make_type('VARCH…", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"}
+  ]
+}

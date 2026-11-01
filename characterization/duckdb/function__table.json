@@ -1,0 +1,28 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "function/table",
+  "summary": {"agree": 0, "disagree": 0, "refused": 5, "skipped": 12},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "function/table/multi_file_array_parameter.test", "line": 5, "sql": "SELECT * FROM read_csv(NULL::INTEGER[3]);", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/table/multi_file_array_parameter.test", "line": 10, "sql": "SELECT * FROM read_blob(NULL::VARCHAR[1]);", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/table/multi_file_array_parameter.test", "line": 15, "sql": "SELECT * FROM read_text(NULL::VARCHAR[1]);", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/table/multi_file_array_parameter.test", "line": 20, "sql": "SELECT * FROM glob(NULL::VARCHAR[2]);", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/table/multi_file_array_parameter.test", "line": 29, "sql": "SELECT * FROM read_csv(['__TEST_DIR__/multi_file_array.csv']::VARCHAR[1]);", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_empty_projection.test", "line": 14, "sql": "SELECT count(*) FROM read_duckdb('__TEST_DIR__/rd_empty_projection.db', table_name := 't')", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_empty_projection.test", "line": 19, "sql": "SELECT 42 FROM read_duckdb('__TEST_DIR__/rd_empty_projection.db', table_name := 't') LIMIT 2", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_empty_projection.test", "line": 25, "sql": "SELECT count(*) FROM read_duckdb(['__TEST_DIR__/rd_empty_projection.db', '__TEST_DIR__/rd_empty_projection.db'], table_…", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_empty_projection.test", "line": 30, "sql": "SELECT count(i), count(*) FROM read_duckdb('__TEST_DIR__/rd_empty_projection.db', table_name := 't')", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_struct_children.test", "line": 14, "sql": "SELECT * FROM read_duckdb('__TEST_DIR__/rd_struct.db')", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_struct_children.test", "line": 19, "sql": "SELECT s.a, n.x.y, i FROM read_duckdb('__TEST_DIR__/rd_struct.db')", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_struct_children.test", "line": 24, "sql": "SELECT count(*) FROM read_duckdb('__TEST_DIR__/rd_struct.db') WHERE s.a IS NULL", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "function/table/read_duckdb_struct_children.test", "line": 29, "sql": "SELECT * FROM read_duckdb('__TEST_DIR__/rd_struct.db', table_name := NULL)", "cls": "refused", "reason": "producer: Plan(\"table function 'READ_DUCKDB' not found\")"},
+    {"file": "function/table/read_duckdb_struct_children.test", "line": 34, "sql": "SELECT * FROM read_duckdb('__TEST_DIR__/rd_struct.db', schema_name := NULL)", "cls": "refused", "reason": "producer: Plan(\"table function 'READ_DUCKDB' not found\")"},
+    {"file": "function/table/system_metadata_empty.test", "line": 5, "sql": "SELECT count(*) >= 0 FROM duckdb_grammar_extensions();", "cls": "refused", "reason": "producer: Plan(\"table function 'DUCKDB_GRAMMAR_EXTENSIONS' not found\")"},
+    {"file": "function/table/system_metadata_empty.test", "line": 10, "sql": "SELECT count(*) >= 0 FROM duckdb_coordinate_systems();", "cls": "refused", "reason": "producer: Plan(\"table function 'DUCKDB_COORDINATE_SYSTEMS' not found\")"},
+    {"file": "function/table/system_metadata_empty.test", "line": 15, "sql": "SELECT typeof(database_oid), typeof(crs_oid), typeof(projjson) FROM duckdb_coordinate_systems() LIMIT 0;", "cls": "refused", "reason": "producer: Plan(\"table function 'DUCKDB_COORDINATE_SYSTEMS' not found\")"}
+  ]
+}

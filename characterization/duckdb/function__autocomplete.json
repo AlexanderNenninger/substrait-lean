@@ -1,0 +1,12 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "function/autocomplete",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {"function/autocomplete/alter_table.test": "require autocomplete", "function/autocomplete/copy.test": "require autocomplete", "function/autocomplete/create_function.test": "require autocomplete", "function/autocomplete/create_schema.test": "require autocomplete", "function/autocomplete/create_sequence.test": "require autocomplete", "function/autocomplete/create_table.test": "require autocomplete", "function/autocomplete/create_type.test": "require autocomplete", "function/autocomplete/drop.test": "require autocomplete", "function/autocomplete/explain_sql.test": "require autocomplete", "function/autocomplete/expressions.test": "require autocomplete", "function/autocomplete/hidden_database.test": "require autocomplete", "function/autocomplete/identical_schema_table.test": "require autocomplete", "function/autocomplete/insert_into.test": "require autocomplete", "function/autocomplete/pragma.test": "require autocomplete", "function/autocomplete/scalar_functions.test": "require autocomplete", "function/autocomplete/select.test": "require autocomplete", "function/autocomplete/setting.test": "require autocomplete", "function/autocomplete/show.test": "require autocomplete", "function/autocomplete/sql_format.test": "require autocomplete", "function/autocomplete/sql_format_literals.test": "require autocomplete", "function/autocomplete/suggest_file.test": "require notwindows", "function/autocomplete/table_functions.test": "require autocomplete", "function/autocomplete/tpch.test": "require autocomplete", "function/autocomplete/views.test": "require autocomplete", "function/autocomplete/window.test": "require autocomplete"},
+  "results": [
+
+  ]
+}

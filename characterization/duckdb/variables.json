@@ -1,0 +1,28 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "variables",
+  "summary": {"agree": 0, "disagree": 0, "refused": 3, "skipped": 14},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "variables/test_variable_syntax.test", "line": 8, "sql": "SELECT $animal", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 14, "sql": "SELECT $animal = getvariable('animal')", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 22, "sql": "SELECT $x + 1", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 30, "sql": "SELECT $x, $greeting", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 38, "sql": "SELECT $animal", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 47, "sql": "SELECT $animal", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: an expression, found: % at Line: 1, Column: 8\"), None)"},
+    {"file": "variables/test_variable_syntax.test", "line": 53, "sql": "SELECT $does_not_exist", "cls": "refused", "reason": "producer: SQL(ParserError(\"Expected: an expression, found: % at Line: 1, Column: 8\"), None)"},
+    {"file": "variables/test_variable_syntax.test", "line": 155, "sql": "SELECT i FROM t WHERE i > $threshold ORDER BY i", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 161, "sql": "SELECT count(*) FROM t WHERE i <= $threshold", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variable_syntax.test", "line": 187, "sql": "SELECT i FROM t ORDER BY i LIMIT $limit_val", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "variables/test_variables.test", "line": 8, "sql": "SELECT GETVARIABLE('animal')", "cls": "refused", "reason": "producer: Invalid function 'getvariable'"},
+    {"file": "variables/test_variables.test", "line": 24, "sql": "SELECT _('animal')", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "variables/test_variables.test", "line": 33, "sql": "SELECT GETVARIABLE('animal')", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "variables/test_variables.test", "line": 38, "sql": "FROM duckdb_variables();", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "variables/test_variables.test", "line": 51, "sql": "SELECT GETVARIABLE('animal')", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "variables/test_variables.test", "line": 66, "sql": "SELECT GETVARIABLE('animals')", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "variables/test_variables.test", "line": 77, "sql": "SELECT GETVARIABLE('xxx')", "cls": "skipped", "reason": "setting collation or macro"}
+  ]
+}
