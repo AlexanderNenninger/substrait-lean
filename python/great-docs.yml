@@ -67,6 +67,27 @@ reference:
       - io.StaticSource
       - io.SinkWrite
       - io.Contract
+      - io.Storage
+
+  - title: Your own sources and sinks
+    desc: >
+      Read from an API, a database or a folder of files with one `read`
+      method, and write anywhere with one `write` method; sverify keeps the
+      versions, the changes, the contract and the exactly-once writes.
+      Table formats with metadata implement the full `VersionedSource`
+      protocol.
+    contents:
+      - io.Source
+      - io.Batch
+      - io.from_query
+      - io.from_frame
+      - io.from_files
+      - io.Sink
+      - io.SinkChange
+      - io.sink_from
+      - io.VersionedSource
+      - io.Snapshot
+      - io.SourceBatch
 
   - title: Engines and SQL
     desc: >

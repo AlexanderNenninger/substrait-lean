@@ -179,6 +179,10 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   `sv.group(a, b)` several outputs against the same source versions.
 * Filters, projections, inner and cross joins and `UNION ALL` are
   maintained from the changes; anything else is recomputed and diffed.
+* `sverify.io` has Delta, Iceberg and in-memory sources and sinks, and
+  base classes for your own: a `Source` implements `read(since)`
+  (`from_query`, `from_frame` and `from_files` build one), a `Sink`
+  implements `write(change)` (`sink_from` wraps a function).
 * `sverify.engines` has the engines, SQL dialects and plans
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.

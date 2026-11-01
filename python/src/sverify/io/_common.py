@@ -255,29 +255,32 @@ class Contract:
         Returns:
             The contract.
         """
-        return Contract(**json.loads(text))
+        known = Contract.__dataclass_fields__
+        return Contract(**{k: v for k, v in json.loads(text).items() if k in known})
 
 
 @dataclass
 class SinkWrite:
-    """What storing a node's state did, in a Delta or Iceberg table.
+    """What storing a node's state did, in any sink.
 
     `mode` is how: `created` the table, `overwrite` it, `merge` the change
     (Delta), `append` the new rows or write the change `row-level` (Iceberg),
-    or `skipped` a state the table already holds. `version` is the table's
-    version afterwards; `constraints` are the CHECK constraints the table
-    has for the node's guarantees (Delta). `print` it for a one-line
-    summary. A refresh's report lists the writes it made.
+    `update` it with the change (a sink of your own), or `skipped` a state
+    the table already holds. `version` is the table's version afterwards;
+    `constraints` are the CHECK constraints the table has for the node's
+    guarantees (Delta). `print` it for a one-line summary. A refresh's
+    report lists the writes it made.
 
     Attributes:
         mode: `"created"` (the first write made the table), `"overwrite"`
-            (a new sink replaced the table's rows), `"merge"` (the change in
-            one MERGE commit, Delta), `"append"` (the change only added rows,
+            (the table's rows were replaced), `"merge"` (the change in one
+            MERGE commit, Delta), `"append"` (the change only added rows,
             Iceberg), `"row-level"` (position deletes and new rows in one
-            snapshot, Iceberg) or `"skipped"` (the table already has this
-            state's epoch).
-        version: The table's version afterwards (Delta), or its snapshot
-            sequence number (Iceberg).
+            snapshot, Iceberg), `"update"` (the change, written by a sink of
+            your own) or `"skipped"` (the table already has this state's
+            epoch).
+        version: The table's version afterwards (Delta), its snapshot
+            sequence number (Iceberg), or None if the sink has no versions.
         contract: What the commit recorded.
         inserted: Rows written.
         deleted: Rows deleted.
@@ -285,8 +288,8 @@ class SinkWrite:
             guarantees, by name (Delta; empty for Iceberg).
     """
 
-    mode: Literal["created", "overwrite", "merge", "append", "row-level", "skipped"]
-    version: int
+    mode: Literal["created", "overwrite", "merge", "append", "row-level", "update", "skipped"]
+    version: int | None
     contract: Contract
     inserted: int = 0
     deleted: int = 0
@@ -295,9 +298,11 @@ class SinkWrite:
     def __str__(self) -> str:
         src = ", ".join(f"{t}@v{n}" for t, n in self.contract.sources.items())
         if self.mode == "skipped":
-            return f"{self.contract.view} from {src}: already committed (v{self.version})"
+            at = "" if self.version is None else f" (v{self.version})"
+            return f"{self.contract.view} from {src}: already committed{at}"
+        at = "" if self.version is None else f" v{self.version}"
         return (
-            f"{self.contract.view} from {src}: {self.mode} v{self.version}, "
+            f"{self.contract.view} from {src}: {self.mode}{at}, "
             f"{self.inserted} row(s) written, {self.deleted} deleted"
         )
 
