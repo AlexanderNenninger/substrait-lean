@@ -406,10 +406,13 @@ def _string_contains(x: Exprs, op: Any) -> Json:
     return call("gt", [call("strpos", [x(op.haystack), x(op.needle)]), literal(0, dt.int64)])
 
 
-def _like(x: Exprs, op: Any) -> Json:
-    if op.escape is not None:
-        raise Unsupported("LIKE with an escape character is not supported")
-    return call("like", [x(op.arg), x(op.pattern)])
+def _like(name: str) -> Callable[[Exprs, Any], Json]:
+    def rule(x: Exprs, op: Any) -> Json:
+        if op.escape is not None:
+            raise Unsupported(f"{name.upper()} with an escape character is not supported")
+        return call(name, [x(op.arg), x(op.pattern)])
+
+    return rule
 
 
 def _trim(name: str) -> Callable[[Exprs, Any], Json]:
@@ -428,6 +431,80 @@ def _substring(x: Exprs, op: Any) -> Json:
     )
     args = [x(op.arg), start] + ([] if op.length is None else [x(op.length, dt.int64)])
     return call("substring", args)
+
+
+def _string_slice(x: Exprs, op: Any) -> Json:
+    # Ibis's rewrite: `end - start` characters from `start` (0 if omitted).
+    start = ops.Literal(0, dt.int64) if op.start is None else op.start
+    if op.end is None:
+        length = None
+    elif isinstance(start, ops.Literal) and isinstance(op.end, ops.Literal):
+        length = ops.Literal(op.end.value - start.value, dt.int64)
+    else:
+        length = ops.Subtract(op.end, start)
+    return _substring(x, ops.Substring(op.arg, start=start, length=length))
+
+
+def _capitalize(x: Exprs, op: Any) -> Json:
+    # Ibis's rewrite: the first character in upper case, the rest in lower case.
+    arg, one = x(op.arg), literal(1, dt.int64)
+    first = call("upper", [call("substring", [arg, one, one])])
+    rest = call("lower", [call("substring", [arg, literal(2, dt.int64)])])
+    return call("str_concat", [first, rest])
+
+
+def _pad(left: bool) -> Callable[[Exprs, Any], Json]:
+    def rule(x: Exprs, op: Any) -> Json:
+        # Ibis's DataFusion SQL: `s` if it has `length` characters or more,
+        # otherwise `pad` repeated `length - length(s)` times on that side (a
+        # longer `pad` is not cut to `length`).
+        arg, n = x(op.arg), x(op.length, dt.int64)
+        size = call("character_length", [arg])
+        fill = call("repeat", [x(op.pad), call("subtract", [n, size])])
+        padded = call("str_concat", [fill, arg] if left else [arg, fill])
+        return if_then([(call("lte", [n, size]), arg)], padded)
+
+    return rule
+
+
+def _str_right(x: Exprs, op: Any) -> Json:
+    # DataFusion's `right(s, n)`: the last `n` characters, or all but the
+    # first `-n` for a negative `n`.
+    arg, n, one = x(op.arg), x(op.nchars, dt.int64), literal(1, dt.int64)
+    last = call("add", [call("subtract", [call("character_length", [arg]), n]), one])
+    start = if_then([(call("lt", [n, literal(0, dt.int64)]), call("subtract", [one, n]))], last)
+    return call("substring", [arg, start])
+
+
+def _replace(x: Exprs, op: Any) -> Json:
+    if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
+        raise Unsupported("replace needs a constant pattern and replacement")
+    return call("replace", [x(op.arg), x(op.pattern), x(op.replacement)])
+
+
+def _string_join(x: Exprs, op: Any) -> Json:
+    # `concat_ws(sep, …)`: the arguments that are not NULL, joined by `sep`
+    # ('' if all are NULL, NULL if `sep` is). Each is `sep || a`, or '' for a
+    # NULL `a`; the first `sep` is dropped.
+    sep, empty = x(op.sep), literal("", dt.string)
+    parts = [call("coalesce", [call("str_concat", [sep, x(a)]), empty]) for a in op.arg]
+    start = call("add", [call("character_length", [sep]), literal(1, dt.int64)])
+    return call("substring", [chain("str_concat", parts), start])
+
+
+def _find_in_set(x: Exprs, op: Any) -> Json:
+    # Ibis's DataFusion SQL: `array_position(make_array(values), needle) - 1`,
+    # -1 if absent; NULL finds a NULL value.
+    needle = x(op.needle)
+    ifs = [
+        (call("is_not_distinct_from", [needle, x(v)]), literal(k, dt.int64))
+        for k, v in enumerate(op.values)
+    ]
+    return if_then(ifs, literal(-1, dt.int64))
+
+
+def _translate(x: Exprs, op: Any) -> Json:
+    raise Unsupported("translate: DataFusion replaces grapheme clusters, not characters")
 
 
 def _string_concat(x: Exprs, op: Any) -> Json:
@@ -684,9 +761,18 @@ def _is_nan(x: Exprs, op: Any) -> Json:
 
 def _string_find(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0 (-1 when absent): one less than `strpos`.
-    if op.start is not None or op.end is not None:
-        raise Unsupported("find with start or end is not supported")
-    return call("subtract", [call("strpos", [x(op.arg), x(op.substr)]), literal(1, dt.int64)])
+    if op.end is not None:
+        raise Unsupported("find with an end is not supported")
+    arg, sub, one = x(op.arg), x(op.substr), literal(1, dt.int64)
+    if op.start is None:
+        return call("subtract", [call("strpos", [arg, sub]), one])
+    # Ibis's DataFusion SQL: from `start`, as
+    # `COALESCE(NULLIF(strpos(substring(s, start + 1), t) + start, start), 0) - 1`.
+    start = x(op.start, dt.int64)
+    rest = call("substring", [arg, call("add", [start, one])])
+    pos = call("add", [call("strpos", [rest, sub]), start])
+    found = call("coalesce", [call("nullif", [pos, start]), literal(0, dt.int64)])
+    return call("subtract", [found, one])
 
 
 # Subqueries are uncorrelated here (a column of the outer query is outside
@@ -754,11 +840,25 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.StartsWith: lambda x, op: call("starts_with", [x(op.arg), x(op.start)]),
     ops.EndsWith: lambda x, op: call("ends_with", [x(op.arg), x(op.end)]),
     ops.StringContains: _string_contains,
-    ops.StringSQLLike: _like,
+    ops.StringSQLLike: _like("like"),
+    ops.StringSQLILike: _like("ilike"),
     ops.Strip: _trim("btrim"),
     ops.LStrip: _trim("ltrim"),
     ops.RStrip: _trim("rtrim"),
     ops.Substring: _substring,
+    ops.StringSlice: _string_slice,
+    ops.Capitalize: _capitalize,
+    ops.LPad: _pad(left=True),
+    ops.RPad: _pad(left=False),
+    ops.Repeat: lambda x, op: call("repeat", [x(op.arg), x(op.times, dt.int64)]),
+    ops.Reverse: _unary("reverse"),
+    ops.StrRight: _str_right,
+    ops.StringReplace: _replace,
+    ops.StringAscii: _unary("ascii"),
+    ops.StringJoin: _string_join,
+    ops.FindInSet: _find_in_set,
+    ops.Levenshtein: lambda x, op: call("levenshtein", [x(op.left), x(op.right)]),
+    ops.Translate: _translate,
     ops.StringConcat: _string_concat,
     ops.RegexSearch: _regex_search,
     ops.ExtractYear: _date_part("year"),

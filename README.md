@@ -1540,11 +1540,13 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation that may
   leave 64 bits. Where DataFusion fails instead (division, `POWER`, casts), the
   value in the model is `NULL`.
-* **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`
-  and `character_length` are computed exactly, checked against DataFusion by
-  `python/tests/test_text.py`. `UPPER`, `LOWER` and regular expressions are black
-  boxes (`opaque`): no proof depends on what they compute, and Lean's evaluator
-  handles only ASCII case and no regular expressions. A pattern is an error unless
+* **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`,
+  `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
+  computed exactly, checked against DataFusion by `python/tests/test_text.py`; a
+  `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
+  `ILIKE` and regular expressions are black boxes (`opaque`): no proof depends on what
+  they compute, and Lean's evaluator handles only ASCII case and no regular
+  expressions. `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error unless
   `Text.simpleRegex` accepts it, a conservative subset of Rust's syntax that is
   tested to compile.
 * **Timestamps are microseconds (UTC).** `date_part` and `date_trunc` are computed
