@@ -833,7 +833,3 @@ def table_rows(con: Connection, name: str) -> list[tuple]:
     """
     t = con.arrow[name]
     return [tuple(r.values()) for r in t.to_pylist()]
-
-
-def plan_json_obj(plan_json: str) -> dict:
-    return json.loads(plan_json)

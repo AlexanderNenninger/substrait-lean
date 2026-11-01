@@ -19,24 +19,30 @@ on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
 `Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
 
+Users meet this module through nodes (`sverify.nodes`): `Node.pipe` composes
+contracted transforms over sources, `.write` stores a node in a sink and ends
+a stage, and `Node.refresh` (or `sv.group(...).refresh()` for several nodes)
+brings the stages up to date, upstream first. Each stage is one
+`IncrementalView`, maintained by a `Pipeline`, the internal engine behind
+nodes; a stored node's table is a source of the stages that read it.
+
 A `Pipeline` maintains views that read each other. Each view's change becomes
 the change table of the views that read it (the DBSP chain rule,
 `Rel.chain_sound`). A view without a delta rule (left join, fetch, window) is
 recomputed and diffed, which still yields its change for the views
 downstream (`ZSet.diff_correct`).
 
-A pipeline can read its base tables from a table format (`sverify.io`):
-`Pipeline.source` loads a snapshot and records its version, and `refresh`
-applies the format's change feed from the recorded version to the latest,
-advancing the version in the same commit. The feed is trusted to turn the
-old snapshot into the new one (`ChangeFeed`, `Rel.cdf_sound` in
-`SubstraitLean/TableFormat.lean`), and every `RefreshReport` says so; where
-the feed is unavailable, the new snapshot is diffed against the view's state
-instead and the views reading it are recomputed (`ChangeFeed.of_diff`).
-A source whose schema changed is read in the schema the views were checked
-against where its data still fits (added columns, widened types); otherwise
-the views reading it are planned and checked again on the new schema and
-recomputed (`SchemaChange`).
+Sources come from a table format (`sverify.io`): `Pipeline.source` loads a
+snapshot and records its version, and a refresh applies the format's change
+feed from the recorded version to the latest, advancing the version in the
+same commit. The feed is trusted to turn the old snapshot into the new one
+(`ChangeFeed`, `Rel.cdf_sound` in `SubstraitLean/TableFormat.lean`), and
+every `RefreshReport` says so; where the feed is unavailable, the new
+snapshot is diffed against the view's state instead and the views reading it
+are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read
+in the schema the views were checked against where its data still fits
+(added columns, widened types); otherwise the views reading it are planned
+and checked again on the new schema and recomputed (`SchemaChange`).
 """
 
 from __future__ import annotations
