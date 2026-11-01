@@ -12,9 +12,10 @@ from pyiceberg.table.snapshots import Operation
 
 import sverify as sv
 from _pipelines import batch, discharged, recomputed, rows
+from sverify._weighted import consolidated
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.errors import PreconditionError
-from sverify.incremental import snapshot_diff
+from sverify.incremental import arrow_rows, change_table, snapshot_diff
 from sverify.io import IcebergSink, IcebergSource
 from sverify.io._common import ColumnStats, stats_facts
 from sverify.io.iceberg import CONTRACT
@@ -28,6 +29,11 @@ SCHEMA_ORDERS = pa.schema(
     ]
 )
 T0 = datetime(2024, 1, 1, 0, 0, 0, 123456)
+
+
+def as_diff(batch) -> list[tuple]:
+    """A batch's change as `snapshot_diff` gives one: rows with weights."""
+    return arrow_rows(consolidated(change_table(batch.changes, batch.schema)))
 
 
 @pytest.fixture
@@ -282,8 +288,10 @@ def test_a_delete_reads_only_the_changed_files(catalog, monkeypatch):
     # Copy-on-write: one file removed, none added (it held only id 3).
     assert len(read) == 1 and change.kind == "snapshot diff"
     assert change.changes is not None
-    want = snapshot_diff(old, src.snapshot().table)
-    assert change.changes == want == sv.Changes(deletes=[(3, "cy", 1, T0)])
+    deletes, inserts = change.changes.deletes, change.changes.inserts
+    assert isinstance(deletes, pa.Table) and isinstance(inserts, pa.Table)
+    assert arrow_rows(deletes) == [(3, "cy", 1, T0)] and inserts.num_rows == 0
+    assert as_diff(change) == arrow_rows(snapshot_diff(old, src.snapshot().table))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src) == [(1, "ada", 10), (2, "bob", 14), (4, "dan", 4)]
 
@@ -353,7 +361,7 @@ def test_reading_a_table_with_position_deletes(catalog):
         f.condition for f in snap.facts
     ]
     change = down.changes(copy.versions["amounts"])
-    assert change.changes == snapshot_diff(before, snap.table)
+    assert as_diff(change) == arrow_rows(snapshot_diff(before, snap.table))
     assert "on the 1 + 1 data file(s) that changed" in change.trusted
     copy.refresh(audit=True)
     assert rows(copy) == recomputed(copy, down) == [(1, 5), (2, 7)]

@@ -58,16 +58,16 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
+from sverify._weighted import expanded, negated, positive
 from sverify.contracts import Fact
 from sverify.incremental import (
-    Changes,
     Snapshot,
     SourceBatch,
     Stored,
     arrow_rows,
-    consolidate,
     first_line,
     row_key,
+    snapshot_diff,
 )
 from sverify.io._common import ColumnStats, Contract, SinkWrite, q, stats_facts
 from sverify.io._sink import Sink, SinkChange
@@ -341,12 +341,7 @@ class IcebergSource(Pipeable):
             ops = sorted({str(s.summary.operation.value) for s in between if s.summary})
             try:
                 gone, came = _changed_tasks(t, old, current)
-                changes = consolidate(
-                    Changes(
-                        inserts=arrow_rows(_scan(t, came).cast(schema)),
-                        deletes=arrow_rows(_scan(t, gone).cast(schema)),
-                    )
-                )
+                diff = snapshot_diff(_scan(t, gone).cast(schema), _scan(t, came).cast(schema))
             except Exception as e:
                 return SourceBatch.from_snapshot(
                     since,
@@ -361,8 +356,8 @@ class IcebergSource(Pipeable):
             return SourceBatch.from_changes(
                 since,
                 end,
-                inserts=changes.inserts,
-                deletes=changes.deletes,
+                inserts=expanded(positive(diff)),
+                deletes=expanded(positive(negated(diff))),
                 facts=self._facts(t, changed, f"file stats @v{end} (changed files)"),
                 snapshot_facts=snapshot_facts,
                 kind="snapshot diff",
@@ -630,8 +625,7 @@ class IcebergSink(Sink):
     def write(self, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
         deletes and new rows, in one snapshot that records the contract."""
-        assert self.view is not None
-        view, contract, schema = self.view, change.contract, change.schema
+        contract, schema = change.contract, change.schema
         props = {PLAN: contract.plan, EPOCH: str(contract.epoch), APP: self.app_id}
         created = not self.catalog.table_exists(self.identifier)
         if created:
@@ -640,10 +634,10 @@ class IcebergSink(Sink):
             )
         else:
             t = self.catalog.load_table(self.identifier)
-        counts, old = view.counts, self._written
         positions: dict[str, list[int]] | None = None
-        if not created and old is not None and t.spec().is_unpartitioned():
-            removed = Counter({k: old[k] - counts[k] for k in old if old[k] > counts[k]})
+        if not created and not change.replace and t.spec().is_unpartitioned():
+            # The rows that went: as many as the change deletes, so tuples.
+            removed = Counter(map(row_key, arrow_rows(change.deletes)))
             positions = _positions(t, schema, removed) if removed else {}
         mode: Literal["created", "append", "row-level", "overwrite"]
         if positions is None:

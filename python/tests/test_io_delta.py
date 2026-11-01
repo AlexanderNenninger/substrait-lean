@@ -2,7 +2,6 @@
 sinks, on local tables in temporary directories."""
 
 import shutil
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -26,6 +25,7 @@ from _pipelines import (
     rows,
     spy_on,
 )
+from sverify._weighted import WEIGHT
 from sverify.contracts import ON_DATA, SCHEMA, label
 from sverify.engine import Engine
 from sverify.engines import create_table
@@ -152,9 +152,10 @@ def test_audit_catches_a_wrong_view_before_the_commit(tmp_path, monkeypatch):
     real = IncrementalView._delta
 
     def wrong(self, deltas):
-        delta, examples = real(self, deltas)
-        delta = Counter({k: 2 * n for k, n in delta.items()})
-        return delta, examples
+        delta = real(self, deltas)
+        return delta.set_column(
+            delta.num_columns - 1, WEIGHT, pc.call_function("multiply", [delta.column(WEIGHT), 2])
+        )
 
     monkeypatch.setattr(IncrementalView, "_delta", wrong)
     with pytest.raises(AuditError, match="big differs from its recomputation; nothing was applied"):

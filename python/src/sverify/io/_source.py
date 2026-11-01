@@ -17,20 +17,19 @@ on it are checked on the rows.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from sverify._weighted import expanded, negated, positive, weighted
 from sverify.engine import plain_schema
 from sverify.incremental import (
-    Changes,
     Snapshot,
     SourceBatch,
-    _apply_rows,
-    arrow_rows,
+    _apply_change,
     snapshot_diff,
 )
 from sverify.steps import Pipeable
@@ -344,14 +343,14 @@ class Source(Pipeable, ABC):
                 inserts = deletes = empty
             else:
                 diff = snapshot_diff(st.table, rows)
-                inserts = pa.Table.from_pylist(_dicts(diff.inserts, rows), schema=rows.schema)
-                deletes = pa.Table.from_pylist(_dicts(diff.deletes, rows), schema=rows.schema)
+                inserts = expanded(positive(diff))
+                deletes = expanded(positive(negated(diff)))
             table = rows
         elif batch.kind == "changes":
             inserts = rows
             deletes = empty if batch.deletes is None else self._fit(batch.deletes)
-            changes = Changes(arrow_rows(inserts), arrow_rows(deletes))
-            table = _apply_rows(st.table, changes, self.name)
+            change = pa.concat_tables([weighted(inserts, 1), weighted(deletes, -1)])
+            table = _apply_change(st.table, change, self.name)
         else:
             raise ValueError(f"{self.name}: unknown batch kind {batch.kind!r}")
         st.cursor = batch.cursor
@@ -386,11 +385,6 @@ class Source(Pipeable, ABC):
         st = self._st()
         assert version == st.version
         return self._fit(self.reread(st.cursor))
-
-
-def _dicts(rows: Sequence[tuple], like: pa.Table) -> list[dict[str, Any]]:
-    names = like.schema.names
-    return [dict(zip(names, r, strict=True)) for r in rows]
 
 
 class _Query(Source):
