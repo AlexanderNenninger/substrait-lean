@@ -252,6 +252,45 @@ def or3 : Value → Value → Value
   | .bool false, .bool false => .bool false
   | _, _ => .null
 
+mutual
+/-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
+the codes of doubles and times) by value, strings by code point, `FALSE <
+TRUE`, and lists lexicographically (`Value.listLt3`). -/
+def Value.lt3 : Value → Value → Option Bool
+  | .int a, .int b => some (decide (a < b))
+  | .str a, .str b => some (decide (a < b))
+  | .bool a, .bool b => some (!a && b)
+  | .list as, .list bs => Value.listLt3 as bs
+  | _, _ => none
+
+/-- Lists element by element (#207): the first position where the elements
+differ decides, and a proper prefix sorts first. Two `NULL`s at a position
+are equal, as in list equality; a `NULL` against a value decides nothing,
+so the result is `NULL` (`[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is
+NULL). -/
+def Value.listLt3 : List Value → List Value → Option Bool
+  | [], [] => some false
+  | [], _ :: _ => some true
+  | _ :: _, [] => some false
+  | x :: xs, y :: ys =>
+    match x, y with
+    | .null, .null => Value.listLt3 xs ys
+    | .null, _ | _, .null => none
+    | x, y => if x = y then Value.listLt3 xs ys else Value.lt3 x y
+end
+
+#guard Value.listLt3 [.int 1, .null] [.int 2] == some true
+#guard Value.listLt3 [.int 1, .null] [.int 1, .int 3] == none
+#guard Value.listLt3 [.null, .int 1] [.null, .int 2] == some true
+#guard Value.listLt3 [.int 1] [.int 1, .int 2] == some true
+#guard Value.listLt3 [.int 1, .int 2] [.int 1, .int 2] == some false
+#guard Value.listLt3 [.list [.int 1, .int 2]] [.list [.int 1, .int 3]] == some true
+
+/-- A three-valued answer as a value. -/
+def Value.ofLt3 : Option Bool → Value
+  | some r => .bool r
+  | none => .null
+
 /-- Arithmetic and comparisons are null-propagating; ill-typed calls yield
 `null` (a well-typed plan never reaches those cases). -/
 def BinFn.apply : BinFn → Value → Value → Value
@@ -270,6 +309,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .lt, .str a, .str b => .bool (decide (a < b))
   -- FALSE < TRUE, as in DataFusion.
   | .lt, .bool a, .bool b => .bool (!a && b)
+  -- Lexicographically, element by element (#207).
+  | .lt, .list a, .list b => Value.ofLt3 (Value.listLt3 a b)
   | .fadd, .int a, .int b => .int (FloatCode.lift₂ (· + ·) a b)
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)

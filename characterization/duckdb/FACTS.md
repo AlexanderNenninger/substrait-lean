@@ -66,7 +66,7 @@ refused.
 | R8 | `cast` to a narrower integer that does not fit | no finding (`verify`: cast out of range error) | 10 |
 | R9 | `cast` of a double or decimal to an integer: rounding | open (truncate in Lean, round in DuckDB) | 28 |
 | R10 | `cast` between `date` and `timestamp` literals | fixed (#206) | 60 |
-| R11 | `lt`/`gt`/… on lists | deviation (NULL on non-NULL inputs); order open | 22 |
+| R11 | `lt`/`gt`/… on lists | fixed (#207): lexicographic; DuckDB shim | 22 |
 | R12 | `fp32` computed as `fp64` | deviation (width) | 5 |
 | R13 | `substring` with a negative start | open (`negative_start`) | 10 |
 | R14 | `-0.0` and `0.0` | open (#89) | 2 |
@@ -286,10 +286,19 @@ Evidence: `types/date/date_implicit_cast.test:13`,
 - **Substrait:** `lt(x, y)` (and `gt`, `lte`, `gte`) takes `any1`, and
   "if either/both of `x` and `y` are `null`, `null` is returned"; it does
   not define an order on lists.
-- **Lean:** `[1, 2] < [1, 3]` is NULL on every row. NULL on non-NULL inputs
-  is a **deviation**. Which order applies, element-wise or none (refuse), is
-  **open**.
-- **DuckDB (native):** element-wise, lexicographic.
+- **Lean:** `[1, 2] < [1, 3]` was NULL on every row, a **deviation**.
+  **Fixed (#207)**, with the order decided on #209: lexicographic, element
+  by element (`Value.listLt3`). A proper prefix sorts first, two NULL
+  elements at a position are equal (as in list equality), and a NULL
+  element against a value makes the result NULL: `[1, NULL] < [2]` is
+  TRUE, `[1, NULL] < [1, 3]` is NULL, `[NULL, 1] < [NULL, 2]` is TRUE.
+  Lists of lists are refused. The written plan spells the comparison
+  `list_lt`, so every engine knows it compares lists.
+- **DuckDB (shim):** lexicographic natively, but a NULL element sorts above
+  every value, so `[1, NULL] < [1, 3]` is FALSE. The shim finds the first
+  position whose elements are distinct (`list_position` over
+  `IS DISTINCT FROM`) and gives NULL when one of them is NULL. DataFusion
+  sorts NULL first and Polars has no list order: both refuse.
 
 Evidence: `types/list/list_comparison.test:136-186`,
 `types/list/list_null_members.test`, `join/test_nested_inequality.test:57,94`.
@@ -354,7 +363,7 @@ means DuckDB's own operator, under its default settings.
 | | | `RETURN_NULL` | native (`TRY_CAST`) |
 | `cast` `fp64` → integer | rounding | open | round native; truncate shim (`trunc` first) |
 | `substring` | `negative_start` | open | `WRAP_FROM_END` native; `LEFT_OF_BEGINNING` shim |
-| `lt` … on lists | | open | native if element-wise; else refuse |
+| `lt` … on lists | | lexicographic | shim (`list_lt`: NULL where a NULL element decides) |
 
 The guard for `error_on_division_by_zero = false` is
 `CASE WHEN y = 0 THEN error('division by zero') ELSE … END`. With the

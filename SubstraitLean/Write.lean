@@ -55,7 +55,11 @@ def temporalFns : List (Nat × String) := [
 
 /-- Lists and structs: new anchors 400–499. -/
 def nestedFns : List (Nat × String) := [
-  (24, "array_length")]
+  (24, "array_length"),
+  -- sverify's own: `lt` of two lists (`Value.listLt3`), which the parser
+  -- reads back as `lt`. Engines order lists with NULL elements their own
+  -- way, so each needs to know a comparison is of lists (#207).
+  (400, "list_lt")]
 
 /-- Aggregate functions: new anchors 500–599. -/
 def aggregateFns : List (Nat × String) := [
@@ -403,6 +407,9 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
     | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]
     | .strRepeat => call 203 [writeExpr cols .str a, writeExpr cols .int b]
+    | .lt => match ka, kb with
+      | .list _, _ | _, .list _ => call 400 [writeExpr cols ka a, writeExpr cols kb b]
+      | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ | .ilike | .levenshtein =>
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
     | _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]

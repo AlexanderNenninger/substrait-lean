@@ -153,6 +153,20 @@ class DuckDBDialect(Dialect):
         odd = f"regexp_matches({p}, {self.str_lit(r'(^|[^\\])(\\\\)*\\$')})"
         return f"(CASE WHEN {odd} THEN {p} || {self.str_lit(chr(92))} ELSE {p} END)"
 
+    def list_lt(self, a: str, b: str) -> str:
+        # DuckDB orders a NULL element above every value; the reference makes
+        # the comparison NULL where such an element decides it. `k` is the
+        # first position where the elements are distinct (NULL equals NULL).
+        k = (
+            f"list_position(list_transform(range(1, least(len({a}), len({b})) + 1), "
+            f"lambda i: {a}[i] IS DISTINCT FROM {b}[i]), true)"
+        )
+        return (
+            f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL "
+            f"WHEN {k} IS NULL THEN len({a}) < len({b}) "
+            f"WHEN {a}[{k}] IS NULL OR {b}[{k}] IS NULL THEN NULL ELSE {a}[{k}] < {b}[{k}] END)"
+        )
+
     def substring(self, s: str, start: str, length: str | None) -> str:
         return (
             f"substring({s}, {start})" if length is None else f"substring({s}, {start}, {length})"

@@ -55,6 +55,13 @@ def lean(con, sql: str) -> list[tuple]:
     return lean_values(json.dumps(inline_tables(plan, ROWS)))
 
 
+def refusal(con, sql: str) -> str:
+    """The checker's message refusing `sql`."""
+    code, out, err = run_checker((), substrait_json(con, sql))
+    assert code != 0
+    return out + err
+
+
 def nan_equal(rows: list[tuple]) -> list[tuple]:
     return [tuple("NaN" if isinstance(v, float) and v != v else v for v in r) for r in rows]
 
@@ -262,3 +269,46 @@ def _dicts(node):
     elif isinstance(node, list):
         for v in node:
             yield from _dicts(v)
+
+
+# R11 (#207): lists are ordered lexicographically; a NULL element that decides
+# the comparison makes it NULL, two NULLs at a position are equal.
+LISTS = [
+    ([1, None], [2], True),
+    ([1, None], [1, 3], None),
+    ([None, 1], [None, 2], True),
+    ([1], [1, 2], True),
+    ([1, 2], [1, 2], False),
+    ([], [1], True),
+    ([2], [], False),
+    (None, [1], None),
+]
+
+
+def test_lists_compare_lexicographically():
+    con = connect()
+    ty = pa.list_(pa.int64())
+    put_table(
+        con,
+        "l",
+        pa.table(
+            {"a": pa.array([r[0] for r in LISTS], ty), "b": pa.array([r[1] for r in LISTS], ty)}
+        ),
+    )
+    plan = substrait_json(con, "SELECT a < b AS lt, b > a AS gt FROM l")
+    expected = [(r[2], r[2]) for r in LISTS]
+    rows = {"l": [(r[0], r[1]) for r in LISTS]}
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), rows))) == expected
+    written = written_plan(plan)
+    assert arrow_rows(run_plan(con, written, "duckdb")) == expected
+    # Polars has no list order, and DataFusion's puts NULL first: both refuse.
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="list_lt"):
+            run_plan(con, written, engine)
+
+
+def test_lists_of_lists_are_not_ordered():
+    con = connect()
+    ty = pa.list_(pa.list_(pa.int64()))
+    put_table(con, "n", pa.table({"a": pa.array([[[1]]], ty), "b": pa.array([[[2]]], ty)}))
+    assert "lists of lists" in refusal(con, "SELECT a < b AS lt FROM n")
