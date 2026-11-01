@@ -15,8 +15,52 @@ permissions:
 # `poe qa`, split into jobs that run side by side. Every job that installs
 # sverify builds substrait-check (the editable install's build hook runs lake),
 # from the shared lake cache when the Lean sources have not changed.
+#
+# A pull request that changes only docs (`docs/`, `.claude/`, Markdown at the
+# root other than README.md, which tests run) skips everything but `static`,
+# and float-bounds runs only when its own package changes. A push to main
+# always runs everything.
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      floats: ${{ steps.diff.outputs.floats }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "floats=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE"...HEAD)
+          printf '%s\n' "$files"
+          # Here-strings, not pipes: under `pipefail` an early exit of `grep -q`
+          # could fail the pipe.
+          if grep -qvE '^(docs/|\.claude/|[^/]+\.md$)' <<< "$files" \
+             || grep -qx 'README\.md' <<< "$files"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qE '^(float-bounds/|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
+             <<< "$files"; then
+            echo "floats=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "floats=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lean:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,12 +91,15 @@ jobs:
       - run: uv run --no-sync --project python poe -e simple -C python lint
       - run: uv run --no-sync --project python poe -e simple -C python typecheck
 
-  # One job per backend of `tests/conftest.py`.
+  # The backends of `tests/conftest.py`; the quick ones share a job, so they
+  # pay for the setup once.
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        backend: [core, datafusion, duckdb, polars, snowflake, spark]
+        backends: [core, duckdb, spark, datafusion polars snowflake]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,11 +110,20 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
-      - run: uv run --locked --project python poe -C python test-${{ matrix.backend }}
+      - env:
+          BACKENDS: ${{ matrix.backends }}
+        run: |
+          status=0
+          for b in $BACKENDS; do
+            uv run --locked --project python poe -C python "test-$b" || status=1
+          done
+          exit $status
 
   # Isthmus as the SQL producer: its tests, and every SQL string the suite
   # compiles, compiled by Isthmus too and compared with DataFusion's plan.
   isthmus:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,6 +140,8 @@ jobs:
       - run: uv run --locked --project python poe -C python compare-sql
 
   notebooks:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,6 +157,8 @@ jobs:
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.
   float-bounds:
+    needs: changes
+    if: needs.changes.outputs.floats == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,11 +170,13 @@ jobs:
       - working-directory: float-bounds
         run: lake exe cache get && lake build --wfail
 
-  # The check the `main` ruleset requires: green only if every job above is.
+  # The check the `main` ruleset requires: green only if every job above
+  # passed or was skipped by `changes`. A job skipped for any other reason
+  # follows a failed `changes`, which this catches.
   qa:
-    needs: [lean, static, test, isthmus, notebooks, float-bounds]
+    needs: [changes, lean, static, test, isthmus, notebooks, float-bounds]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+      - if: needs.changes.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: exit 1

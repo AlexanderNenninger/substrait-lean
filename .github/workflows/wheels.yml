@@ -5,8 +5,8 @@ name: Wheels
 # wheel from it, which checks that the sdist is complete. Tags `v*` also
 # publish the wheels and one sdist to PyPI, and then the release's notebooks
 # to the `published` branch, which molab opens; PRs that change the packaging
-# only build and test. macOS wheels are built only for releases, the weekly
-# run and manual runs; PRs build and test on Linux.
+# only build and test. Every platform builds only for releases, the weekly
+# run and manual runs; PRs build on x86 Linux alone.
 on:
   push:
     tags: ["v*"]
@@ -51,14 +51,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS runners are scarce and cost more than Linux ones, so macOS builds
-        # and tests run only for a release (`push`, which fires only on `v*`
-        # tags), the weekly run and when started by hand; pull requests use
-        # Linux.
+        # Every platform builds only for a release (`push`, which fires only on
+        # `v*` tags), the weekly run and when started by hand. A pull request
+        # builds on x86 Linux alone: it checks the packaging, and the weekly
+        # run catches a problem on the other platforms.
         os: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'workflow_dispatch'
           || github.event_name == 'schedule')
           && '["ubuntu-latest", "ubuntu-24.04-arm", "macos-15", "macos-15-intel"]'
-          || '["ubuntu-latest", "ubuntu-24.04-arm"]') }}
+          || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
