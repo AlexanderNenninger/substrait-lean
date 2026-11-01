@@ -26,6 +26,8 @@ def UnFn.render : UnFn → String
   | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
   | .strftime fmt => s!"STRFTIME_{fmt.quote}" | .bucket k o => s!"BUCKET_{k}_{o}"
   | .fmath f => f.name.toUpper
+  | .decimal p s => s!"DECIMAL_{p}_{s}" | .dkind p s => s!"AS_DECIMAL_{p}_{s}" | .dround k => s!"DROUND_{k}" | .dtrunc k => s!"DTRUNC_{k}"
+  | .ftod s => s!"TO_DECIMAL_{s}" | .dtof s => s!"DECIMAL_TO_DOUBLE_{s}"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
@@ -38,6 +40,7 @@ def BinFn.render : BinFn → String
   | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN"
   | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
   | .fatan2 => "ATAN2" | .flogb => "LOGB"
+  | .dadd => "+" | .dsub => "-" | .dmul => "*" | .ddiv => "/ROUND"
   | .bit op => match op with
     | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
 

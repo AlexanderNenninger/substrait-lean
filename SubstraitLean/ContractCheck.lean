@@ -52,7 +52,7 @@ open Parse
 def typeEnv (ty : Json) : AVal :=
   -- Doubles, timestamps and dates are integer codes (`SubstraitLean/Float.lean`).
   let ints := ["i8", "i16", "i32", "i64", "fp32", "fp64", "precisionTimestamp", "timestamp", "date"]
-  let kinds := ints ++ ["string", "varchar", "fixedChar", "bool"]
+  let kinds := ints ++ ["string", "varchar", "fixedChar", "bool", "decimal"]
   let kind := (kinds.find? fun k => (ty.getObjVal? k).toOption.isSome).getD ""
   let body := ty.getObjValD kind
   let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
@@ -62,6 +62,11 @@ def typeEnv (ty : Json) : AVal :=
   else if ints.contains kind then ⟨nullable, some Bound.top, false, false, false⟩
   else if ["string", "varchar", "fixedChar"].contains kind then ⟨nullable, none, false, false, true⟩
   else if kind == "bool" then ⟨nullable, none, true, true, false⟩
+  -- A decimal is its unscaled integer, of at most `p` digits (#27): what makes
+  -- `a + b` of two columns fit its precision.
+  else if kind == "decimal" then
+    let p := (body.getObjValAs? Nat "precision").toOption.getD 38
+    ⟨nullable, some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, false, false, false⟩
   else AVal.top
 
 def schemaEnv (schema : Json) : List AVal :=

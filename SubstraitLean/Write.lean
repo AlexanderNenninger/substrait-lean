@@ -102,12 +102,15 @@ def UnFn.anchor : UnFn → Nat
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
+  -- Decimals are not written yet (`Rel.decimalOps`).
+  | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
 
 def BinFn.anchor : BinFn → Nat
   -- Core
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod | .fmod => 18 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
+  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11
   | .bit op => match op with
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
@@ -170,6 +173,8 @@ def kindType : Parse.Kind → Json
   | .timeTz => obj [("precisionTimestampTz", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
+  | .dec p s => obj [("decimal", obj [("precision", toJson p), ("scale", toJson s),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
   | .int | .other => i64Type
@@ -183,11 +188,13 @@ interval (#65). -/
 inductive WKind where
   | int | float | time | date | interval | str | bool | tod | other
   | list (elem : WKind)
+  | dec (p s : Nat)
   deriving BEq
 
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
+  | .dec p s => .dec p s
   -- Zoned timestamps are only compared with each other (`checkArgKinds`).
   | .timeTz => .other
 
@@ -195,6 +202,7 @@ def WKind.ofKind : Parse.Kind → WKind
 def WKind.toKind : WKind → Parse.Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
+  | .dec p s => .dec p s
 
 /-- An expression without field references. -/
 def isConst : Expr → Bool
@@ -433,6 +441,36 @@ def projKinds (schemas : Schemas) (ks : List WKind) (es : List Expr) : List WKin
     | some k => if k == .other then wkind ks e else .ofKind k
     | none => wkind ks e
 
+/-- A `SUM`'s kind: an integer, or a decimal with ten more digits (#27). -/
+def sumKind : WKind → WKind
+  | .dec p s => .dec (min 38 (p + 10)) s
+  | _ => .int
+
+/-- Does the expression compute with decimals (#27)? The engines get no plans
+with these until they emulate the reference's decimals. -/
+def _root_.Substrait.Expr.decimalOps : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with
+      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => true
+      | _ => false) ||
+      a.decimalOps
+  | .bin f a b =>
+    (match f with | .dadd | .dsub | .dmul | .ddiv => true | _ => false) || a.decimalOps || b.decimalOps
+  | .ifThen c t e => c.decimalOps || t.decimalOps || e.decimalOps
+
+def _root_.Substrait.Rel.decimalOps : Rel → Bool
+  | .read _ | .values _ _ => false
+  | .filter r c => r.decimalOps || c.decimalOps
+  | .project r es => r.decimalOps || es.any (·.decimalOps)
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.decimalOps
+  | .cross a b | .unionAll a b => a.decimalOps || b.decimalOps
+  | .join a b _ on | .semi a b _ on => a.decimalOps || b.decimalOps || on.decimalOps
+  | .window r _ _ fns =>
+    r.decimalOps || fns.any (fun | .agg m _ _ => m.exprs.any (·.decimalOps) | _ => false)
+  | .aggregate r gs ms =>
+    r.decimalOps || gs.any (·.decimalOps) || ms.any fun m => m.exprs.any (·.decimalOps)
+
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .read t => (Parse.schemaKinds (schemas t (cat t).arity)).map .ofKind
@@ -454,14 +492,16 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           ks.getD c .other
         | .agg m _ _ => match m.fn with
-          | .count | .sum => .int
+          | .count => .int
+          | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg => .float
           | .min | .max => wkind ks m.arg
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
-        | .count | .sum => .int
+        | .count => .int
+        | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg => .float
         | .min | .max => wkind ks m.arg
         | .collect => .list (wkind ks m.arg)
