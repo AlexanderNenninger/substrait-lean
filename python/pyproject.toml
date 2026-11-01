@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.1.0"
+version = "0.2.0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, DataFusion, Snowflake and Spark"
 readme = "README.md"
 authors = [
