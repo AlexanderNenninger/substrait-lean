@@ -176,6 +176,8 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
   | .bin f a b =>
     a.issues row ++ b.issues row ++ ((f.issue (a.eval row) (b.eval row)).map (·, .bin f a b)).toList
   | .ifThen c t e => c.issues row ++ if (c.eval row).isTrue then t.issues row else e.issues row
+  -- The lambda runs on every element.
+  | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues [x]
 
 /-! ## What may go wrong, abstractly -/
 
@@ -325,6 +327,8 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
     c.mayIssues env fs ks ++
       (if ac.tt then t.mayIssues (c.refine env) fs (c.cstrs true ++ ks) else []) ++
       (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs (c.cstrs false ++ ks) else [])
+  -- The body on any element: it reads only its parameter.
+  | .hof _ l b => l.mayIssues env fs ks ++ b.mayIssues [AVal.top] [] []
 
 /-! ## Soundness for expressions -/
 
@@ -705,6 +709,16 @@ theorem Expr.mayIssues_sound {env : List AVal} {fs : List Fact} {ks : Assumption
           · simp [AVal.nonBool, hs]
         simp only [this, ite_true]
         exact Expr.mayIssues_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e p hp
+  | .hof _ l b, p, hp => by
+    simp only [Expr.issues, List.mem_append, List.mem_flatMap] at hp
+    simp only [Expr.mayIssues, List.mem_append]
+    rcases hp with hp | ⟨x, _, hp⟩
+    · exact .inl (Expr.mayIssues_sound h hfs hks l p hp)
+    · -- The body sees one element, which `AVal.top` describes.
+      have hx : EnvMem [AVal.top] [x] := fun i => by
+        cases i <;> simp [AVal.mem_top]
+      exact .inr (Expr.mayIssues_sound hx (fun _ hf => by simp at hf)
+        (fun _ hk => by simp at hk) b p hp)
 
 /-! ## Plans -/
 

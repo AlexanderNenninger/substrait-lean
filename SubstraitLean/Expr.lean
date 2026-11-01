@@ -160,12 +160,31 @@ inductive BinFn where
   | ddiv
   deriving Repr, DecidableEq
 
+/-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
+take a lambda (#94). -/
+inductive HoFn where
+  /-- `any_match`: the predicate's results ORed in Kleene logic. -/
+  | anyMatch
+  /-- `all_match`: the predicate's results ANDed in Kleene logic. -/
+  | allMatch
+  /-- `transform`: the function applied to every element. -/
+  | transform
+  /-- `filter`: the elements the predicate is `TRUE` for. -/
+  | filter
+  deriving Repr, DecidableEq
+
 inductive Expr where
   | lit (v : Value)
   | field (i : Nat)
   | un (f : UnFn) (a : Expr)
   | bin (f : BinFn) (a b : Expr)
   | ifThen (c t e : Expr)
+  /-- `f(l, x -> body)`: a higher-order function of the list `l`, with a
+  *closed* lambda. Its body reads only the lambda's parameter, as field 0,
+  so it is evaluated on the one-field row `[x]` and analysed as an expression
+  of its own; reading the row's columns or an outer lambda's parameter is
+  left for later (#94). -/
+  | hof (f : HoFn) (l body : Expr)
   deriving Repr, DecidableEq
 
 /-- Does `i` fit in a signed integer of `bits` bits? -/
@@ -279,6 +298,48 @@ def or3 : Value → Value → Value
   | .bool false, .bool false => .bool false
   | _, _ => .null
 
+/-- A higher-order function of a list value, with the lambda `p`: `NULL` for
+anything but a list (`functions_list.yaml`). -/
+def HoFn.apply (f : HoFn) (v : Value) (p : Value → Value) : Value :=
+  match f, v with
+  | .anyMatch, .list vs => vs.foldr (fun x acc => or3 (p x) acc) (.bool false)
+  | .allMatch, .list vs => vs.foldr (fun x acc => and3 (p x) acc) (.bool true)
+  | .transform, .list vs => .list (vs.map p)
+  | .filter, .list vs => .list (vs.filter fun x => (p x).isTrue)
+  | _, _ => .null
+
+/-- The elements of a list value; none of anything else. -/
+def Value.elems : Value → List Value
+  | .list vs => vs
+  | _ => []
+
+/-- A higher-order function only applies its lambda to the list's elements. -/
+theorem HoFn.apply_congr (f : HoFn) (v : Value) {p q : Value → Value}
+    (h : ∀ x ∈ v.elems, p x = q x) : f.apply v p = f.apply v q := by
+  cases v <;> cases f <;> simp only [HoFn.apply]
+  case list.anyMatch vs | list.allMatch vs =>
+    simp only [Value.elems] at h
+    induction vs with
+    | nil => rfl
+    | cons x xs ih =>
+      simp only [List.foldr_cons, h x (by simp),
+        ih fun y hy => h y (List.mem_cons_of_mem x hy)]
+  case list.transform vs =>
+    simp only [Value.elems] at h
+    exact congrArg Value.list (List.map_congr_left h)
+  case list.filter vs =>
+    simp only [Value.elems] at h
+    congr 1
+    exact List.filter_congr fun x hx => by rw [h x hx]
+
+-- `any_match`: `TRUE` if some element matches, else `NULL` if some
+-- predicate is `NULL`, else `FALSE`; `FALSE` for `[]`.
+#guard HoFn.anyMatch.apply (.list [.int 1, .null]) (fun x => if x == .int 1 then .bool true else if x == .null then .null else .bool false) == .bool true
+#guard HoFn.anyMatch.apply (.list [.int 2, .null]) (fun x => if x == .null then .null else .bool false) == .null
+#guard HoFn.anyMatch.apply (.list []) (fun _ => .bool true) == .bool false
+#guard HoFn.allMatch.apply (.list []) (fun _ => .bool false) == .bool true
+#guard HoFn.anyMatch.apply .null (fun _ => .bool true) == .null
+
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
 the codes of doubles and times) by value, strings by code point, `FALSE <
@@ -386,14 +447,17 @@ def Expr.eval (row : Row) : Expr → Value
   | .un f a => f.apply (a.eval row)
   | .bin f a b => f.apply (a.eval row) (b.eval row)
   | .ifThen c t e => if (c.eval row).isTrue then t.eval row else e.eval row
+  | .hof f l b => f.apply (l.eval row) fun x => b.eval [x]
 
-/-- All field references in the expression are `< n`. -/
+/-- All field references in the expression are `< n`. A lambda's body is
+evaluated on its parameter alone, so its references are not the row's. -/
 def Expr.refsLt (n : Nat) : Expr → Prop
   | .lit _ => True
   | .field i => i < n
   | .un _ a => a.refsLt n
   | .bin _ a b => a.refsLt n ∧ b.refsLt n
   | .ifThen c t e => c.refsLt n ∧ t.refsLt n ∧ e.refsLt n
+  | .hof _ l _ => l.refsLt n
 
 theorem isTrue_and3 (a b : Value) :
     (and3 a b).isTrue = (a.isTrue && b.isTrue) := by
@@ -418,5 +482,6 @@ theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
   | un f a ih => simp [eval, ih he]
   | bin f a b iha ihb => simp [eval, iha he.1, ihb he.2]
   | ifThen c t e ihc iht ihe => simp [eval, ihc he.1, iht he.2.1, ihe he.2.2]
+  | hof f l b ihl _ => simp [eval, ihl he]
 
 end Substrait

@@ -46,12 +46,17 @@ def BinFn.render : BinFn → String
   | .bit op => match op with
     | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
 
+def HoFn.name : HoFn → String
+  | .anyMatch => "ANY_MATCH" | .allMatch => "ALL_MATCH" | .transform => "TRANSFORM"
+  | .filter => "FILTER"
+
 def Expr.render : Expr → String
   | .lit v => v.render
   | .field i => s!"${i}"
   | .un f a => s!"{f.render}({a.render})"
   | .bin f a b => s!"({a.render} {f.render} {b.render})"
   | .ifThen c t e => s!"IF {c.render} THEN {t.render} ELSE {e.render}"
+  | .hof f l b => s!"{f.name}({l.render}, $0 -> {b.render})"
 
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"

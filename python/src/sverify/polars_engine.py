@@ -793,10 +793,13 @@ def narrow_int(v: Val, bits: int) -> Val:
 
 
 class Exprs:
-    """Translates expressions over input columns of the given dtypes."""
+    """Translates expressions over input columns of the given dtypes, or, with
+    `param`, a lambda's body over its parameter of that dtype (#94)."""
 
-    def __init__(self, functions: Mapping[int, str], dtypes: list[DType]):
-        self.functions, self.dtypes = functions, dtypes
+    def __init__(
+        self, functions: Mapping[int, str], dtypes: list[DType], param: DType | None = None
+    ):
+        self.functions, self.dtypes, self.param = functions, dtypes, param
 
     def function(self, ref: Any) -> str:
         anchor = int(ref or 0)
@@ -827,6 +830,8 @@ class Exprs:
             sel = j["selection"]
             if "expression" in sel:
                 return self.segments(self(sel["expression"]), sel["directReference"])
+            if self.param is not None:
+                return self.parameter(sel)
             i = self.field_index(sel)
             column = Val(pl.col(col(i)), self.dtypes[i])
             child = sel["directReference"]["structField"].get("child")
@@ -845,6 +850,8 @@ class Exprs:
                 prefs = o.get("preference") or ["ERROR"]
                 if o.get("name") == "on_division_by_zero" and prefs[0] != "ERROR":
                     raise Unsupported(f"on_division_by_zero = {prefs}")
+            if name in ("any_match", "all_match", "transform", "filter"):
+                return self.higher_order(name, arg_js)
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
@@ -1022,6 +1029,59 @@ class Exprs:
         if len(args) == 2:
             return self.binary(name, *args)
         raise Unsupported(f"unsupported function {name}/{len(args)} on {types}")
+
+    def parameter(self, sel: dict) -> Val:
+        """A reference in a lambda's body: only to its own parameter, which
+        is the list element (`Parse.closeBody`)."""
+        ref = sel.get("lambdaParameterReference")
+        if ref is None or int(ref.get("stepsOut", 0)) != 0:
+            raise Unsupported("a lambda body reads only its own parameter")
+        sf = sel["directReference"]["structField"]
+        if int(sf.get("field", 0)) != 0:
+            raise Unsupported("lambdas have one parameter")
+        assert self.param is not None
+        element = Val(pl.element(), self.param)
+        child = sf.get("child")
+        return element if child is None else self.segments(element, child)
+
+    def higher_order(self, name: str, arg_js: list) -> Val:
+        """`HoFn.apply`: `any_match`, `all_match` (Kleene OR and AND of the
+        predicate over the elements), `transform` and `filter`, with the
+        lambda's body run on each element (`list.eval`)."""
+        if len(arg_js) != 2 or "lambda" not in arg_js[1]:
+            raise Unsupported(f"{name} takes a list and a lambda")
+        lst = self(arg_js[0])
+        if not isinstance(lst.dtype, pl.List):
+            raise Unsupported(f"{name} of a value of type {lst.dtype}")
+        inner: Any = lst.dtype.inner
+        body = Exprs(self.functions, [], param=inner)(arg_js[1]["lambda"]["body"])
+        # The lambda runs on every element (`Expr.issues`): a row fails where
+        # one of its elements does.
+        lifted = tuple(
+            Issue(lst.expr.list.eval(i.flag).list.any().fill_null(False), i.kind, i.message)
+            for i in body.issues
+        )
+        found = (*lst.issues, *lifted)
+        each = lst.expr.list.eval(body.expr)
+        if name == "transform":
+            return Val(each, pl.List(materialize(body.dtype)), found)
+        if name == "filter":
+            kept = lst.expr.list.eval(pl.element().filter(body.expr.fill_null(False)))
+            return Val(kept, lst.dtype, found)
+        # Kleene: one decisive element decides; else a NULL makes it NULL.
+        decisive = name == "any_match"
+        hit = each.list.eval(pl.element().fill_null(not decisive) == decisive).list.any()
+        unknown = each.list.eval(pl.element().is_null()).list.any()
+        out = (
+            pl.when(lst.expr.is_null())
+            .then(None)
+            .when(hit)
+            .then(decisive)
+            .when(unknown)
+            .then(None)
+            .otherwise(not decisive)
+        )
+        return Val(out, pl.Boolean, found)
 
     def segments(self, base: Val, seg: dict) -> Val:
         """`base` followed by reference segments (`Parse.segments`): a struct

@@ -305,6 +305,10 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
     | .lit _ => litKind v
     | _ => e.kind cols
   | .ifThen _ t _ => t.kind cols
+  | .hof .anyMatch _ _ | .hof .allMatch _ _ => .bool
+  | .hof .filter l _ => l.kind cols
+  -- The body's kind over the element's.
+  | .hof .transform l b => .list (b.kind [match l.kind cols with | .list k => k | _ => .other])
 
 /-- Renumber field references. -/
 def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
@@ -313,6 +317,8 @@ def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
   | .un g a => .un g (a.mapFields f)
   | .bin g a b => .bin g (a.mapFields f) (b.mapFields f)
   | .ifThen c t e => .ifThen (c.mapFields f) (t.mapFields f) (e.mapFields f)
+  -- A lambda's body reads its parameter, not the row.
+  | .hof g l b => .hof g (l.mapFields f) b
 
 def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   match m.fn with
@@ -818,6 +824,7 @@ def _root_.Substrait.Expr.readsField : Expr → Bool
   | .un _ a => a.readsField
   | .bin _ a b => a.readsField || b.readsField
   | .ifThen c t e => c.readsField || t.readsField || e.readsField
+  | .hof _ l _ => l.readsField
 
 def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
   let base := baseName name
@@ -899,6 +906,7 @@ def evaluates (x : Expr) : Expr → Bool
   | e@(.un _ a) => e == x || evaluates x a
   | e@(.bin _ a b) => e == x || evaluates x a || evaluates x b
   | e@(.ifThen c _ _) => e == x || evaluates x c
+  | e@(.hof _ l _) => e == x || evaluates x l
 
 /-- The condition `c`, also evaluating each of `xs` on every row. Expressions
 it evaluates already are left out, so the parser reads its own written plans
@@ -1390,6 +1398,40 @@ partial def segments (cols : List Kind) (base : Expr) (seg : Json) :
   | some c => segments cols e c
   | none => return e
 
+/-- The higher-order functions on lists (`functions_list.yaml`). -/
+def hofFn? : String → Option HoFn
+  | "any_match" => some .anyMatch
+  | "all_match" => some .allMatch
+  | "transform" => some .transform
+  | "filter" => some .filter
+  | _ => none
+
+/-- A JSON object's entries. -/
+def entries (kvs : Std.TreeMap.Raw String Json compare) : List (String × Json) :=
+  kvs.foldl (fun acc k v => acc ++ [(k, v)]) []
+
+/-- A lambda's body as an expression over the one-field row `[x]`: its
+parameter references (`lambdaParameterReference`, `stepsOut` 0) become
+references into the row. The model's lambdas are closed (#94), so a body
+that reads the row's columns or an outer lambda's parameter is refused.
+Nested lambdas are left alone: they are closed when they are parsed. -/
+partial def closeBody (j : Json) : J Json := do
+  match j with
+  | .arr xs => return .arr (← xs.mapM closeBody)
+  | .obj kvs =>
+    let es := entries kvs
+    if es.any (·.1 == "lambda") then return j
+    if es.any fun (k, _) => k == "rootReference" || k == "outerReference" then
+      throw "a lambda body that reads the row's columns is not supported yet (#94)"
+    let es ← es.mapM fun (k, v) => do
+      if k == "lambdaParameterReference" then
+        if (v.getObjValAs? Nat "stepsOut").toOption.getD 0 != 0 then
+          throw "a lambda body that reads an outer lambda's parameter is not supported yet (#94)"
+        return ("rootReference", Json.mkObj [])
+      return (k, ← closeBody v)
+    return Json.mkObj es
+  | _ => return j
+
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
     J Expr := do
@@ -1430,6 +1472,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let some name := fns.lookup anchor
       | throw s!"function reference {anchor} is not declared in extensions"
     let argJs ← (← arrD f "arguments").mapM fun a => field a "value"
+    -- `f(l, x -> body)`, with a closed lambda (#94).
+    if let some hf := hofFn? (baseName name) then
+      let [lj, fj] := argJs | throw s!"{name} takes a list and a lambda"
+      let some lam := field? fj "lambda" | throw s!"{name}: its second argument must be a lambda"
+      let ps ← arrD (← field lam "parameters") "types"
+      if ps.length != 1 then throw s!"{name}: a lambda of {ps.length} parameters"
+      let l ← parseExpr fns cols bits lj
+      let elem ← match l.kind cols with
+        | .list k => pure k
+        | .other => pure .other
+        | k => throw s!"{name} of a value of kind {repr k}"
+      let body ← parseExpr fns [elem] [] (← closeBody (← field lam "body"))
+      return .hof hf l body
     -- `array_length(regexp_match(s, p))`: NULL if `p` does not match.
     if baseName name == "array_length" then
       if let [j] := argJs then

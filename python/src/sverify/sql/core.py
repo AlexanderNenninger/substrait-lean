@@ -1642,6 +1642,8 @@ class _Parser:
                 full_name = self.name(_nat_d(v, "functionReference"))
                 name = _base_name(full_name)
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
+                if name in ("any_match", "all_match", "transform", "filter"):
+                    raise Unsupported("lambdas have no SQL form yet (#94)")
                 # `array_length(regexp_match(s, p))`: NULL if `p` does not match.
                 if name == "array_length" and len(arg_js) == 1:
                     g = _field(arg_js[0], "scalarFunction")

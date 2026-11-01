@@ -638,6 +638,43 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       | some x, some y => ⟨a.nonInt || b.nonInt, none, canLt x y || t, canGe x y || f, false⟩
       | _, _ => ⟨true, none, t, f, false⟩
 
+/-- A higher-order function's result: a boolean or `NULL` (`any_match`,
+`all_match`), or a list or `NULL`, which the abstraction does not look into. -/
+def HoFn.abs : HoFn → AVal
+  | .anyMatch | .allMatch => ⟨true, none, true, true, false⟩
+  | .transform | .filter => AVal.top
+
+theorem or3_bool_or_null (a b : Value) : or3 a b = .null ∨ ∃ x, or3 a b = .bool x := by
+  unfold or3; split <;> simp
+
+theorem and3_bool_or_null (a b : Value) : and3 a b = .null ∨ ∃ x, and3 a b = .bool x := by
+  unfold and3; split <;> simp
+
+theorem HoFn.abs_sound (f : HoFn) (v : Value) (p : Value → Value) : f.abs.Mem (f.apply v p) := by
+  have key : ∀ r : Value, (r = .null ∨ ∃ x, r = .bool x) →
+      (⟨true, none, true, true, false⟩ : AVal).Mem r := by
+    rintro r (rfl | ⟨x, rfl⟩)
+    · rfl
+    · cases x <;> rfl
+  cases f
+  case transform | filter => exact AVal.mem_top _
+  case anyMatch =>
+    apply key
+    cases v
+    case list vs =>
+      cases vs with
+      | nil => exact .inr ⟨false, rfl⟩
+      | cons x xs => exact or3_bool_or_null _ _
+    all_goals exact .inl rfl
+  case allMatch =>
+    apply key
+    cases v
+    case list vs =>
+      cases vs with
+      | nil => exact .inr ⟨true, rfl⟩
+      | cons x xs => exact and3_bool_or_null _ _
+    all_goals exact .inl rfl
+
 def Expr.abs (env : List AVal) : Expr → AVal
   | .lit v => AVal.ofValue v
   | .field i => env.getD i AVal.top
@@ -647,6 +684,7 @@ def Expr.abs (env : List AVal) : Expr → AVal
       let ac := c.abs env
       (if ac.tt then t.abs env else AVal.bot).join
         (if ac.nonBool || ac.ff then e.abs env else AVal.bot)
+  | .hof f _ _ => f.abs
 
 /-- Shapes of a value, for case analysis in the binary soundness proofs. -/
 theorem mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
@@ -1199,6 +1237,7 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
         exact Expr.abs_sound h e
+  | .hof f _ _ => HoFn.abs_sound f _ _
 
 /-! ## Refinement by filter conditions -/
 
@@ -2521,6 +2560,7 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
       (if ac.tt then t.absD (c.refine env) fs (c.cstrs true ++ ks) else AVal.bot).join
         (if ac.nonBool || ac.ff then e.absD (c.refineNeg env) fs (c.cstrs false ++ ks)
          else AVal.bot)
+  | .hof f l b => narrowAll ks (.hof f l b) f.abs
 
 theorem Bound.mem_exact_iff {k i : Int} : (Bound.exact k).Mem i ↔ i = k := by
   simp only [Bound.Mem, Bound.exact, Option.some.injEq]
@@ -2794,6 +2834,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
         rw [ite_eq_left this]
         have hf : (c.eval row).isTrue = false := by simpa using hct
         exact Expr.absD_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e
+  | .hof f _ _ => narrowAll_sound hks (HoFn.abs_sound f _ _)
 
 /-! ## Abstract plan evaluation -/
 
@@ -3167,6 +3208,7 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .un f a => .un f (a.subst cols)
   | .bin f a b => .bin f (a.subst cols) (b.subst cols)
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
+  | .hof f l b => .hof f (l.subst cols) b
 
 theorem getD_map_eval (cols : List Expr) (row : Row) (i : Nat) :
     (cols.map (·.eval row)).getD i .null = (cols.getD i (.lit .null)).eval row := by
@@ -3182,6 +3224,7 @@ theorem Expr.eval_subst (cols : List Expr) (row : Row) :
   | .ifThen c t e => by
       simp [subst, eval, Expr.eval_subst cols row c, Expr.eval_subst cols row t,
         Expr.eval_subst cols row e]
+  | .hof f l b => by simp [subst, eval, Expr.eval_subst cols row l]
 
 /-- A plan that only computes columns of one table (`Read` under projects and
 emits) as expressions over that table's columns. Preconditions are given as
