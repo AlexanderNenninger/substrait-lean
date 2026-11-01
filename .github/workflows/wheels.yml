@@ -137,21 +137,37 @@ jobs:
   # The wheel is tagged `py3-none-<platform>`, so it installs on every Python
   # from 3.12 on. Test the very wheel `build` made (no rebuild) on the newer
   # ones: on releases, by hand and weekly, not on pull requests.
+  # Which Pythons test-pythons runs on which platform: every one on Linux,
+  # and only the oldest and the newest on macOS, whose runners are scarce and
+  # cost more. The versions in between have the same macOS build and differ
+  # from the outer ones only in CPython, which Linux covers.
+  test-matrix:
+    if: github.event_name != 'pull_request' && !inputs.notebooks
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.matrix.outputs.include }}
+    steps:
+      - id: matrix
+        env:
+          PYTHONS: ${{ inputs.pythons || '["3.13", "3.14", "3.15"]' }}
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os
+
+          pythons = sorted(json.loads(os.environ["PYTHONS"]), key=lambda v: tuple(map(int, v.split("."))))
+          edges = sorted({pythons[0], pythons[-1]}, key=pythons.index)
+          include = [{"os": os_, "python": p} for os_ in ("ubuntu-latest", "ubuntu-24.04-arm") for p in pythons]
+          include += [{"os": os_, "python": p} for os_ in ("macos-15", "macos-15-intel") for p in edges]
+          print("include=" + json.dumps(include))
+          PY
+
   test-pythons:
     if: github.event_name != 'pull_request'
-    needs: build
+    needs: [build, test-matrix]
     strategy:
       fail-fast: false
       matrix:
-        # macOS runners are scarce and cost more than Linux ones, so macOS builds
-        # and tests run only for a release (`push`, which fires only on `v*`
-        # tags), the weekly run and when started by hand; pull requests use
-        # Linux.
-        os: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-          || github.event_name == 'schedule')
-          && '["ubuntu-latest", "ubuntu-24.04-arm", "macos-15", "macos-15-intel"]'
-          || '["ubuntu-latest", "ubuntu-24.04-arm"]') }}
-        python: ${{ fromJSON(inputs.pythons || '["3.13", "3.14", "3.15"]') }}
+        include: ${{ fromJSON(needs.test-matrix.outputs.include) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
