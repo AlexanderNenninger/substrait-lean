@@ -109,6 +109,11 @@ class BadRegex(RuntimeIssue):
     """A regular expression that does not compile."""
 
 
+class DomainError(RuntimeIssue):
+    """An argument outside a function's domain (`sqrt` of a negative, a
+    shift count outside 0–63, …): Substrait's `on_domain_error` = ERROR."""
+
+
 def col(i: int) -> str:
     """Columns are positional (Substrait refers to fields by ordinal)."""
     return f"c{i}"
@@ -420,6 +425,39 @@ def _rows(fn, out: DType, *vals: Val) -> pl.Expr:
 
     args = pl.struct([v.expr.alias(f"a{k}") for k, v in enumerate(vals)])
     return args.map_batches(apply, return_dtype=out, is_elementwise=True)
+
+
+#: `FMath.name`s whose Polars counterparts are C's libm (as Lean's are).
+FMATH_NATIVE = {
+    "sqrt": pl.Expr.sqrt, "exp": pl.Expr.exp, "ln": pl.Expr.log, "sin": pl.Expr.sin,
+    "cos": pl.Expr.cos, "tan": pl.Expr.tan, "asin": pl.Expr.arcsin, "acos": pl.Expr.arccos,
+    "atan": pl.Expr.arctan,
+}  # fmt: skip
+#: Polars' `log10` is not libm's, and it has no `log2`: Python's `math` calls libm.
+FMATH_ROWS = {"log10": math.log10, "log2": math.log2}
+
+
+def fmath_domain_error(name: str, e: pl.Expr) -> pl.Expr | None:
+    """`FMath.inDomain` fails (NaN is in every domain; Polars puts NaN
+    above every number)."""
+    if name == "sqrt":
+        return e < 0.0
+    if name in ("ln", "log10", "log2"):
+        return e <= 0.0
+    if name in ("asin", "acos"):
+        return (e < -1.0) | ((e > 1.0) & ~e.is_nan())
+    return None
+
+
+#: `BitOp.name`.
+BITWISE = (
+    "bitwise_and", "bitwise_or", "bitwise_xor", "bitwise_shift_left", "bitwise_shift_right",
+)  # fmt: skip
+
+
+def shift_left(a: int, b: int) -> int:
+    """`BitOp.shl` for `b` in 0–63: the bits shifted out are lost."""
+    return ((a << b) + 2**63) % 2**64 - 2**63
 
 
 def strpos(s: str, t: str) -> int:
@@ -976,7 +1014,29 @@ class Exprs:
                 return Val(canon(e.ceil()), t, a.issues)
             if name == "round":
                 return Val(canon(e.round(0, mode="half_away_from_zero")), t, a.issues)
+            if name in FMATH_NATIVE or name in FMATH_ROWS:
+                return self.fmath(name, a)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
+
+    def fmath(self, name: str, a: Val) -> Val:
+        """`UnFn.fmath`: `NULL` and a `DomainError` outside the domain."""
+        e = a.expr
+        bad = fmath_domain_error(name, e)
+        safe = e if bad is None else pl.when(bad).then(1.0).otherwise(e)
+        if name in FMATH_NATIVE:
+            y = FMATH_NATIVE[name](safe)
+        else:
+            y = _rows(FMATH_ROWS[name], pl.Float64, Val(safe, pl.Float64))
+        y = canon(y)
+        if bad is None:
+            return Val(y, pl.Float64, a.issues)
+        err = issue(bad, DomainError, f"{name} outside its domain")
+        return Val(pl.when(bad).then(None).otherwise(y), pl.Float64, (*a.issues, err))
+
+    def domain(self, bad: pl.Expr, y: pl.Expr, out: DType, what: str, *vals: Val) -> Val:
+        """`y`, or `NULL` and a `DomainError` where `bad`."""
+        err = issue(bad, DomainError, f"{what} outside its domain")
+        return Val(pl.when(bad).then(None).otherwise(y), out, (*issues(*vals), err))
 
     def binary(self, name: str, a: Val, b: Val) -> Val:
         ta, tb = a.dtype, b.dtype
@@ -984,6 +1044,32 @@ class Exprs:
             # The writer's `canonical`: NaN becomes the fallback.
             x, y = a.expr, b.expr
             return Val(pl.when(x.is_nan()).then(y).otherwise(x), pl.Float64, issues(a, b))
+        if name in ("atan2", "logb"):
+            if unify(ta, tb, name) not in (pl.Float64, pl.Null):
+                raise Unsupported(f"{name} of {ta} and {tb}")
+            x, y = a.expr.cast(pl.Float64), b.expr.cast(pl.Float64)
+            if name == "atan2":
+                bad = (x == 0.0) & (y == 0.0)
+                return self.domain(bad, canon(pl.arctan2(x, y)), pl.Float64, name, a, b)
+            # `ln x / ln b` (`logb?`), with the arguments made safe where it fails.
+            bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
+            sx = pl.when(bad).then(2.0).otherwise(x)
+            sy = pl.when(bad).then(2.0).otherwise(y)
+            return self.domain(bad, canon(fdiv(sx.log(), sy.log())), pl.Float64, name, a, b)
+        if name in BITWISE:
+            if unify(ta, tb, name) not in (pl.Int64, pl.Null):
+                raise Unsupported(f"{name} of {ta} and {tb}")
+            x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
+            if name in ("bitwise_and", "bitwise_or", "bitwise_xor"):
+                out = {"bitwise_and": x & y, "bitwise_or": x | y, "bitwise_xor": x ^ y}[name]
+                return Val(out, pl.Int64, issues(a, b))
+            bad = (y < 0) | (y > 63)
+            n = pl.when(bad).then(0).otherwise(y)
+            if name == "bitwise_shift_right":
+                shifted = _rows(lambda v, k: v >> k, pl.Int64, a, Val(n, pl.Int64))
+            else:
+                shifted = _rows(shift_left, pl.Int64, a, Val(n, pl.Int64))
+            return self.domain(bad, shifted, pl.Int64, name, a, b)
         floats = ("add", "subtract", "multiply", "divide", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:

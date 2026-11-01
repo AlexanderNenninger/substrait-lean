@@ -2,6 +2,7 @@ import SubstraitLean.Value
 import SubstraitLean.Rounding
 import SubstraitLean.Text
 import SubstraitLean.Time
+import SubstraitLean.Numeric
 
 /-!
 # Scalar expressions
@@ -22,13 +23,15 @@ operators (`fadd`, …), computed with native floats; rounding a double to an
 integer is exact (see `SubstraitLean/Rounding.lean`).
 
 Integer division and remainder truncate toward zero, as in DataFusion. Where
-DataFusion raises an error (division by zero, a cast out of range, …) the
-value here is `null`; `SubstraitLean/Safety.lean` says when that happens.
+an operation raises an error (division by zero, a cast out of range, a domain
+error, …) the value here is `null`; `SubstraitLean/Safety.lean` says when
+that happens.
 
 String functions are in `SubstraitLean/Text.lean` (`UPPER`, `LOWER` and
 regular expressions are black boxes there); timestamps are microseconds and dates
 days; `date_part`, `date_trunc` and month arithmetic are in
-`SubstraitLean/Time.lean`.
+`SubstraitLean/Time.lean`. Elementary functions of doubles and bitwise
+operations are in `SubstraitLean/Numeric.lean`.
 -/
 
 namespace Substrait
@@ -86,6 +89,8 @@ inductive UnFn where
   /-- `date_bin(INTERVAL k, ts, origin)`: the start of `ts`'s `k`-microsecond
   bucket (`Time.bucket`). -/
   | bucket (k : Nat) (origin : Int)
+  /-- `sqrt`, `ln`, `sin`, … of a double: `NULL` outside its domain. -/
+  | fmath (f : FMath)
   deriving Repr, DecidableEq
 
 inductive BinFn where
@@ -110,6 +115,10 @@ inductive BinFn where
   | dateAdd
   /-- `d - e` of DATEs, in days. -/
   | dateDiff
+  /-- `atan2(y, x)` and `logb(x, b)` of doubles: `NULL` outside their domain. -/
+  | fatan2 | flogb
+  /-- `&`, `|`, `^` and the shifts of integers (`BitOp`). -/
+  | bit (op : BitOp)
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -165,6 +174,9 @@ def UnFn.apply : UnFn → Value → Value
   | .asTime, .int n => .int n
   | .strftime fmt, .int ts => .str (Time.strftime fmt ts)
   | .bucket k o, .int ts => .int (Time.bucket k o ts)
+  | .fmath f, .int c => match f.apply c with
+    | some r => .int r
+    | none => .null
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -221,6 +233,15 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .levenshtein, .str a, .str b => .int (Text.levenshtein a b)
   | .dateAdd, .int d, .int n => .int (d + n)
   | .dateDiff, .int d, .int e => .int (d - e)
+  | .fatan2, .int y, .int x => match atan2? y x with
+    | some r => .int r
+    | none => .null
+  | .flogb, .int x, .int b => match logb? x b with
+    | some r => .int r
+    | none => .null
+  | .bit op, .int a, .int b => match op.apply a b with
+    | some r => .int r
+    | none => .null
   | _, _, _ => .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules

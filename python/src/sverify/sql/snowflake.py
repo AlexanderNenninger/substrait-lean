@@ -177,6 +177,25 @@ class SnowflakeDialect(Dialect):
     def int_to_float(self, a: str) -> str:
         return f"CAST({a} AS FLOAT)"
 
+    def float_fn(self, name: str, x: str) -> str:
+        raise Unsupported(
+            f"Snowflake's {name.upper()} is not documented to be C's libm, "
+            "which the Lean model uses"
+        )
+
+    def float_atan2(self, y: str, x: str) -> str:
+        raise Unsupported("Snowflake's ATAN2 is not documented to be C's libm")
+
+    def float_logb(self, x: str, b: str) -> str:
+        raise Unsupported("Snowflake's LN is not documented to be C's libm")
+
+    def bitwise(self, op: str, a: str, b: str) -> str:
+        # Exact on 64-bit integers; shifts of NUMBER(38) are wider than 64 bits.
+        fn = {"bitwise_and": "BITAND", "bitwise_or": "BITOR", "bitwise_xor": "BITXOR"}.get(op)
+        if fn is None:
+            raise Unsupported(f"Snowflake's bit shifts are not 64-bit ({op})")
+        return f"{fn}({a}, {b})"
+
     def is_nan(self, x: str) -> str:
         return f"({x} = {NAN})"
 
