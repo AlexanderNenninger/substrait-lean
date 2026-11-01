@@ -33,9 +33,13 @@ and expect the API to keep changing between minor releases. What it's for is
 making data engineering more joyful: fewer 3 a.m. pages, fewer surprises
 between engines, more trust in the tables you hand on.
 
-**Snowflake support is mostly aspirational for now.** sverify writes
-Snowflake SQL, but has only checked it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), not on a
-real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)).
+Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
+
+| Tier | Engines | What it means today |
+|---|---|---|
+| **1** | DuckDB | Characterized as a diff against the reference model, with proved shims. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
+| **2** | Polars, Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. Polars and Spark aim for Tier 1. |
+| **3** | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), not on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
 ```bash
 pip install sverify                # or: uv add sverify
@@ -162,7 +166,9 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is planned by DataFusion
-(`pip install 'sverify[datafusion]'`), or by Isthmus without it.
+(`pip install 'sverify[datafusion]'`), or by Isthmus without it. Isthmus is
+planned to become the only SQL frontend, with DataFusion an execution
+backend only ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
 
 ## Workflows
 

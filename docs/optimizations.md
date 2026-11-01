@@ -2,12 +2,14 @@
 
 `sverify` checks a plan in Lean and then compiles it to an engine. This note
 surveys optimizations the checker could justify with a proof, and ranks them
-by what engines cannot already do. Two of them are prototyped:
+by what engines cannot already do. Two of them are implemented and public:
 
-* **guard elimination**: `SubstraitLean/Guards.lean`, plus `guards=False`
-  in `sverify.sql.to_sql`, `polars_engine.run` and `duckdb_engine.run`;
+* **guard elimination**: `SubstraitLean/Guards.lean`, `Report.guard_free`,
+  and `guards=False` in `sverify.engines.to_sql` (and in
+  `polars_engine.run` and `duckdb_engine.run`);
 * **sharded evaluation**: `SubstraitLean/Partition.lean`,
-  `substrait-check --shard` and `sverify.partition`.
+  `substrait-check --shard` and `sverify.engines.run_sharded`
+  (`sverify.partition`).
 
 The rest are filed as issues under the roadmap epic #29 (#74–#83).
 
@@ -39,13 +41,13 @@ the checker know that the engine does not?** The checker knows three things:
 
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
-| 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Prototype**, proved |
+| 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | **Public**, proved: `Report.guard_free`, `to_sql(…, guards=False)` |
 | 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination (#76), implied filters (#78), outer to inner joins (#77), join elimination (#75), GROUP BY through FDs (#79), eager aggregation (#80) |
-| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Prototype**, proved, including split keys (#74) |
+| 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | **Public**, proved, including split keys (#74): `sverify.engines.run_sharded` |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | #81 |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | #82 (later) |
 
-## 1. Guard elimination (prototype)
+## 1. Guard elimination
 
 **Problem.** Lean's integers are unbounded, so the SQL of every dialect
 checks each operation. `Snowflake` wraps `+`, `-`, `*` in an `IFF(… BETWEEN
@@ -111,7 +113,7 @@ so such products go guard-free; a half-open range still gives ⊤. The
 elimination is also all or nothing per plan; per-expression elimination is a
 follow-up in #83.
 
-## 2. Sharded evaluation (prototype)
+## 2. Sharded evaluation
 
 **Setting.** The sharded tables `S` are split over shards `cs`, and every
 other table is broadcast (`Sharding S K cat cs`). A table may have a
