@@ -409,6 +409,14 @@ def translate(sql: str, null_order: str = "nulls_last") -> tuple[str, str, list[
     tree = _parse(sql, d["duckdb"])
     if not isinstance(tree, exp.Query):
         raise ValueError(f"not a query: {type(tree).__name__}")
+    for node in tree.walk():
+        # sqlglot writes these with another meaning in DataFusion's SQL:
+        # `strftime`'s format in Postgres's syntax, DuckDB's top-n
+        # `min(x, n)` as `LEAST(x, n)`.
+        if isinstance(node, (exp.TimeToStr, exp.StrToTime, exp.StrToDate)) or (
+            isinstance(node, (exp.Min, exp.Max)) and node.expressions
+        ):
+            raise ValueError(f"sqlglot: does not translate {node.key}")
     # An item names its NULL order if every implicit ordering reads it alike.
     small, large = (_parse(sql, d[o]) for o in ("nulls_are_small", "nulls_are_large"))
     trios = zip(
@@ -574,9 +582,21 @@ SEMANTIC = {
     "search_path", "sqlite_all_varchar", "timezone", "variable",
 }  # fmt: skip
 
+#: Statements after which a name no longer means what DataFusion takes it to:
+#: a collation, a macro or function named like a builtin, a user type.
+_REDEFINES = re.compile(
+    r"\bCOLLATE\b|\bCREATE\s+(OR\s+REPLACE\s+)?(TEMP\w*\s+)?(MACRO|FUNCTION|TYPE)\b", re.I
+)
+
 _SETTING = re.compile(
     r"^\s*(SET|PRAGMA|RESET)\s+(?:(?:GLOBAL|SESSION|LOCAL)\s+)?(\w+)\s*(?:(?:=|TO)\s*(.*?))?\s*;?\s*$",
     re.I | re.S,
+)
+
+#: DuckDB errors from reading the query, not from running it.
+_FRONTEND = tuple(
+    f"error: {k} Error"
+    for k in ("Binder", "Parser", "Catalog", "Not implemented", "Dependency", "Syntax")
 )
 
 _PROBE = re.compile(r"^\s*(\(\s*)*(SELECT|WITH|VALUES|FROM|TABLE)\b", re.I)
@@ -629,17 +649,27 @@ class Replay:
                 "WHERE schema_name = 'main' AND NOT internal"
             ).fetchall()
         }
+        # DuckDB's identifiers are case-insensitive; DataFusion lowercases
+        # unquoted ones.
+        lower = {k.lower(): k for k in known}
+        for name in list(self.con.arrow):
+            if name != ONE and name.lower() not in lower:
+                self.con.drop(name)  # dropped or renamed in DuckDB
+                self.synced.pop(name, None)
         rows: dict[str, list[tuple]] = {}
-        for name in tables:
-            if name == ONE or name not in known:
+        for ref in tables:
+            name = lower.get(ref.lower())
+            if ref == ONE or name is None:
                 continue
             if self.synced.get(name) != self.version:
                 table = self.arrow(f'SELECT * FROM "{name}"')
                 if table.num_rows > MAX_ROWS:
                     raise OverflowError(f"table {name} has {table.num_rows} rows")
-                self.con.put(name, table)
+                for alias in {name, name.lower()}:
+                    self.con.put(alias, table)
                 self.synced[name] = self.version
-            rows[name] = table_rows(self.con, name)
+            for alias in {name, name.lower()}:
+                rows[alias] = table_rows(self.con, name)
         rows[ONE] = [(0,)]
         return rows
 
@@ -650,6 +680,8 @@ class Replay:
         except duckdb.Error:
             ok = False
         self.version += 1
+        if ok and _REDEFINES.search(rec.sql):
+            self.settings.add("collation or macro")
         if ok and (m := _SETTING.match(rec.sql)):
             verb, name, value = m.group(1).upper(), m.group(2).lower(), (m.group(3) or "")
             value = value.strip().strip("'\"").lower()
@@ -693,8 +725,12 @@ class Replay:
             res.duckdb = ddb_err
         self.version += 1  # a query can have side effects (nextval, …)
 
-        if self.settings:
-            res.reason = "setting " + ", ".join(sorted(self.settings))
+        if self.settings or _REDEFINES.search(rec.sql):
+            res.reason = "setting " + ", ".join(sorted(self.settings or {"collation"}))
+            return res
+        if expect_error and ddb_err and ddb_err.startswith(_FRONTEND):
+            # DuckDB's binder or parser, not what the query computes.
+            res.reason = "DuckDB frontend error"
             return res
         try:
             sql, back, tables, ordered = translate(rec.sql, self.null_order)
@@ -732,7 +768,7 @@ class Replay:
 
         try:
             plan = substrait_json(self.con, sql)
-            schema = self.con.datafusion.sql(sql).schema()
+            schema = _schema(self.con, sql)
         except Exception as e:  # noqa: BLE001 - the producer refusing
             res.cls, res.reason = "refused", f"producer: {_datafusion_message(e)}"
             return res
@@ -759,6 +795,10 @@ class Replay:
             lean_err = _error(e)
         if lean_err is not None:
             res.lean = lean_err
+            if "not evaluated" in lean_err:
+                # A black box (`Main.check`): Lean knows no rows to compare.
+                res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
+                return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
         if expect_error and not lean_ok and (issues := _issues(sql, self.con)):
             # Not an agreement (`Rel.eval` gives rows), but the verifier warns.
@@ -840,6 +880,18 @@ def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
     return plan
 
 
+def _schema(con: Any, sql: str) -> pa.Schema:
+    """The query's output schema after DataFusion's type coercion (the
+    unanalysed plan's can still say `Int64` for a `CASE` of an integer and a
+    double): the result's, if DataFusion runs it."""
+    from sverify.engine import run_sql
+
+    try:
+        return run_sql(con, sql).schema
+    except Exception:  # noqa: BLE001 - a runtime error: the plan's schema
+        return con.datafusion.sql(sql).schema()
+
+
 def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
     """Lean's values as a table of DataFusion's output schema: timestamps
     and dates come back as integer codes."""
@@ -849,16 +901,19 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
     for i, f in enumerate(schema):
         col = [r[i] for r in values]
         t = f.type
-        if pa.types.is_timestamp(t):
-            col = [None if v is None else EPOCH + dt.timedelta(microseconds=v) for v in col]
-            t = pa.timestamp("us", t.tz)
-        elif pa.types.is_date(t):
-            col = [None if v is None else EPOCH.date() + dt.timedelta(days=v) for v in col]
-            t = pa.date32()
-        elif pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_string_view(t):
-            t = pa.string()
         try:
-            cols.append(pa.array(col, t))
+            if pa.types.is_timestamp(t):
+                col = [None if v is None else EPOCH + dt.timedelta(microseconds=v) for v in col]
+                t = pa.timestamp("us", t.tz)
+            elif pa.types.is_date(t):
+                col = [None if v is None else EPOCH.date() + dt.timedelta(days=v) for v in col]
+                t = pa.date32()
+            elif pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_string_view(t):
+                t = pa.string()
+            arr = pa.array(col, t)
+            if pa.types.is_integer(t) and any(isinstance(v, float) for v in col):
+                raise TypeError("a double in an integer column")
+            cols.append(arr)
         except (pa.ArrowInvalid, pa.ArrowTypeError, OverflowError, TypeError):
             # A value outside the type (an unbounded integer, …): as text.
             cols.append(pa.array([None if v is None else str(v) for v in col], pa.string()))
@@ -888,7 +943,9 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
             continue
         try:
             results.append(rp.probe(rec))
-        except Exception as e:  # noqa: BLE001 - the harness must go on
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as e:  # noqa: BLE001 - the harness goes on (a DataFusion panic, …)
             results.append(
                 Result(
                     rel,
@@ -909,7 +966,9 @@ def _replay_one(args: tuple[str, str]) -> tuple[str, list[dict], str | None]:
     path, rel = args
     try:
         results, skip = replay_file(Path(path), rel)
-    except Exception as e:  # noqa: BLE001
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:  # noqa: BLE001
         return rel, [], f"harness: {_error(e)}"
     return rel, [asdict(r) for r in results], skip
 
@@ -1011,23 +1070,48 @@ def test_files(root: Path, areas: Sequence[str]) -> dict[str, list[tuple[str, st
     return found
 
 
+def replay_files(
+    files: list[tuple[str, str]], jobs: int
+) -> Iterator[tuple[str, list[dict], str | None]]:
+    """`_replay_one` on each file, in `jobs` processes. The files a dying
+    worker takes down (a crash in a native library) are retried one by one,
+    and a file that crashes alone is skipped."""
+    broken: list[tuple[str, str]] = []
+    with concurrent.futures.ProcessPoolExecutor(jobs) as pool:
+        futures = {pool.submit(_replay_one, f): f for f in files}
+        for fut in concurrent.futures.as_completed(futures):
+            try:
+                yield fut.result()
+            except concurrent.futures.process.BrokenProcessPool:
+                broken.append(futures[fut])
+    for f in sorted(broken):
+        with concurrent.futures.ProcessPoolExecutor(1) as pool:
+            try:
+                yield pool.submit(_replay_one, f).result()
+            except concurrent.futures.process.BrokenProcessPool:
+                yield f[1], [], "harness: the replay process crashed"
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("areas", nargs="*", help="areas under test/sql (default: all)")
     parser.add_argument("--version", help="DuckDB version (default: uv.lock's)")
     parser.add_argument("--out", type=Path, default=LEDGER)
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
+    parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
     args = parser.parse_args(argv)
     version = args.version or duckdb_version()
     root = fetch(version)
     for area, files in test_files(root, args.areas).items():
+        path = args.out / f"{area.replace('/', '__')}.json"
+        if args.resume and path.exists():
+            continue
         results: list[dict] = []
         skipped: dict[str, str] = {}
-        with concurrent.futures.ProcessPoolExecutor(args.jobs) as pool:
-            for rel, res, skip in pool.map(_replay_one, files, chunksize=4):
-                results += res
-                if skip:
-                    skipped[rel] = skip
+        for rel, res, skip in replay_files(files, args.jobs):
+            results += res
+            if skip:
+                skipped[rel] = skip
         path = write_ledger(area, version, results, skipped, args.out)
         counts = Counter(r["cls"] for r in results)
         print(f"{area}: {dict(counts)} ({len(skipped)} files skipped) -> {path}", flush=True)

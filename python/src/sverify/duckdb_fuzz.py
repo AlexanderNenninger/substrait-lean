@@ -29,6 +29,7 @@ import json
 import random
 import re
 import subprocess
+import sys
 import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
@@ -41,7 +42,7 @@ from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
 from sverify import fuzz, slt
-from sverify.fuzz import BOOL, INT
+from sverify.fuzz import BOOL, DOUBLE, INT
 
 I64 = 2**63
 
@@ -69,6 +70,12 @@ TARGETS = {
         ints=[None, 0, 0, 1, -1, 2, -2, 7, -7, I64 - 1, -I64],
         literals=["0", "1", "-1", "2", "-2", "7", "CAST(NULL AS BIGINT)"],
         kinds={INT: ["arith", "coalesce", "nullif"], BOOL: ["cmp", "isnull"]},
+    ),
+    # Double arithmetic over NaN, ±∞ and zero, with integers cast to doubles.
+    "float_arith": Target(
+        ints=[None, 0, 1, -1, 2, 2**53 + 1],
+        literals=["0", "1", "-1", "2"],
+        kinds={DOUBLE: ["arith", "neg", "abs", "cast_int"], BOOL: ["cmp", "isnull"]},
     ),
 }
 
@@ -106,6 +113,17 @@ def _rows(rows: list[tuple]) -> str:
 
 def _text(v: object) -> str:
     return "NULL" if v is None else str(v)
+
+
+def _same_rows(a: list[tuple], b: list[tuple], ordered: bool) -> bool:
+    """`sverify.fuzz.same_rows`, which cannot sort integers past a double's
+    range (Lean's unbounded ones): those compare exactly."""
+    try:
+        return fuzz.same_rows(a, b, ordered)
+    except OverflowError:
+        if not ordered:
+            a, b = sorted(map(repr, a)), sorted(map(repr, b))
+        return list(map(repr, a)) == list(map(repr, b)) if ordered else a == b
 
 
 def kind(o: Outcome) -> str:
@@ -147,7 +165,7 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     if lean_rows is None or duck_rows is None:
         agree = lean_rows is None and duck_rows is None
     else:
-        agree = fuzz.same_rows(lean_rows, duck_rows, query.ordered)
+        agree = _same_rows(lean_rows, duck_rows, query.ordered)
     issues = [] if agree else slt._issues(query.sql, s.con)
     return Outcome(query.sql, s.tables, lean, duck, agree, issues)
 
@@ -167,6 +185,9 @@ def search(target: str, budget: float, seed: int = 0) -> tuple[list[Outcome], in
         try:
             out = check(*case)
         except fuzz.Refused:
+            return None
+        except Exception as e:  # noqa: BLE001 - a harness error is not a finding
+            print(f"harness: {e!r}", file=sys.stderr)
             return None
         checked[0] += 1
         return out
