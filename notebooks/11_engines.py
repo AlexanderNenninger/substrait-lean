@@ -4,7 +4,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "sqlglot==30.27.0",
-#     "sverify[datafusion,polars]==0.2.0",
+#     "sverify[datafusion,polars]==0.3.0",
 # ]
 # ///
 
@@ -232,7 +232,7 @@ def _(ENGINES, T_ROWS, T_SCHEMA, U_ROWS, U_SCHEMA, sv):
 
     by_engine = {}
     for _engine in ENGINES:
-        _node = labelled(_t, _u)
+        _node = _t.pipe(labelled, u=_u)
         _node.refresh(engine=_engine)
         by_engine[_engine] = sorted(tuple(r.values()) for r in _node.to_arrow().to_pylist())
     by_engine

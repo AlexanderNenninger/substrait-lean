@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "1546c7695898a77c345e0bccb2a5a75b"
+    "script_metadata_hash": "2ac23723c9995f3e8b7a98b40b330bcb"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "3a8bb06d25c00c038715dcca0c9d6a61",
+      "code_hash": "3207de044e4a8a11719b9d6b0eb2dc6a",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\n<strong>revenue per city and day</strong>. The regional managers' bonuses depend on\nit, so when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind every analytics team has, with one\nsubtlety: the city is the customer's city <em>when the order was placed</em>.\nCustomers move,\nso the city comes from a type-2 slowly changing dimension (dbt snapshots\nbuild these), and the join is a point-in-time join\n(<code>dbt-scd2-point-in-time</code> in the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query\ncatalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. Those run after the model has been\nbuilt, on the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. Better that it fails\nhere than in a regional manager's inbox.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\n<strong>revenue per city and day</strong>. The regional managers' bonuses depend on\nit, so when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind every analytics team has, with one\nsubtlety: the city is the customer's city <em>when the order was placed</em>.\nCustomers move,\nso the city comes from a type-2 slowly changing dimension (dbt snapshots\nbuild these), and the join is a point-in-time join\n(<code>dbt-scd2-point-in-time</code> in the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query\ncatalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. Those run after the model has been\nbuilt, on the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. Better that it fails\nhere than in a regional manager's inbox.</span></span>"
           }
         }
       ],
@@ -222,7 +222,7 @@
     },
     {
       "id": "ROlb",
-      "code_hash": "e138fc265ab98c3d5cc8f0e4d2405f9f",
+      "code_hash": "3e86a2a7a1fc564c267a7b7e6af6c062",
       "outputs": [
         {
           "type": "data",
@@ -294,7 +294,7 @@
     },
     {
       "id": "ulZA",
-      "code_hash": "2453a9f95b07f0dded04932e0763b02e",
+      "code_hash": "11d1d683b07db0edb79ed9f6053fbe95",
       "outputs": [
         {
           "type": "data",

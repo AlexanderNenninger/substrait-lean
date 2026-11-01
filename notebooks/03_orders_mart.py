@@ -6,7 +6,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyarrow==26.0.0",
-#     "sverify[datafusion,polars,delta]==0.2.0",
+#     "sverify[datafusion,polars,delta]==0.3.0",
 # ]
 # ///
 
@@ -47,7 +47,7 @@ def _(mo):
     so the city comes from a type-2 slowly changing dimension (dbt snapshots
     build these), and the join is a point-in-time join
     (`dbt-scd2-point-in-time` in the [query
-    catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md)).
+    catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md)).
 
     In dbt this model would come with tests: `not_null(city)`,
     `unique(city, day)`, `revenue >= 0`. Those run after the model has been
@@ -329,7 +329,7 @@ def _(mo):
 def _(DeltaSource, daily_city_revenue, lake):
     orders = DeltaSource(str(lake / "orders"))
     history = DeltaSource(str(lake / "customer_history"), name="history")
-    mart = daily_city_revenue(orders, history)
+    mart = orders.pipe(daily_city_revenue, history=history)
     assert daily_city_revenue.last_report.proved
     mart.refresh()
     print(mart.status())
@@ -390,7 +390,7 @@ def _(ENGINES, SNOWFLAKE, SPARK, daily_city_revenue, history, mart, orders, to_s
 
     _results = {}
     for _engine in ENGINES:
-        _node = daily_city_revenue(orders, history)
+        _node = orders.pipe(daily_city_revenue, history=history)
         _node.refresh(engine=_engine)
         _results[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _results.values()}) == 1

@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+    "script_metadata_hash": "858299bf8f2891c716eaa75523e9e740"
   },
   "cells": [
     {
@@ -77,7 +77,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='8688a88d-614b-738d-5faf-d14f8428ad4d'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty % n&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='66d0bd92-a3eb-6a00-2530-db96749db045'><marimo-dropdown data-initial-value='[&quot;qty // n (no guard)&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epipeline&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;qty // n (no guard)&quot;,&quot;filter n != 0, then select qty % n&quot;,&quot;filter n != 0, then select qty // n&quot;,&quot;filter n &#92;u003e 0, then select qty // n&quot;,&quot;select qty % nullif(n, 0)&quot;,&quot;select CASE WHEN n != 0 THEN qty % n ELSE 0 END&quot;,&quot;filter (n != 0) AND (qty % n &#92;u003e 1)&quot;,&quot;filter n != 0, then filter qty % n &#92;u003e 1&quot;,&quot;select round(amount) (a cast to BIGINT)&quot;,&quot;filter 0 &#92;u003c= amount &#92;u003c= 100, then round(amount)&quot;,&quot;select qty + 1&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
           }
         }
       ],

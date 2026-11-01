@@ -6,7 +6,7 @@
 #     "marimo",
 #     "pyarrow==26.0.0",
 #     "pyiceberg[sql-sqlite]",
-#     "sverify[datafusion,polars,iceberg]==0.2.0",
+#     "sverify[datafusion,polars,iceberg]==0.3.0",
 # ]
 # ///
 
@@ -45,7 +45,7 @@ def _(mo):
 
     The sensors write a reading per device per minute to an Iceberg table,
     and the rule is `iot-consecutive-threshold` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md) (Azure Stream Analytics'
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md) (Azure Stream Analytics'
     `MATCH_RECOGNIZE` example). In SQL that is two `LAG`s over a window.
     Window queries are where engines quietly disagree. Three things go
     wrong in practice, and we'll run into each:
@@ -313,8 +313,8 @@ def _(mo):
 @app.cell
 def _(IcebergSource, alerts, catalog, sv, three_high):
     readings = IcebergSource(catalog, "plant.readings")
-    naive = sv.transform()(three_high)(readings)
-    alerts_node = alerts(readings)
+    naive = readings.pipe(three_high)  # a plain function: no contract
+    alerts_node = readings.pipe(alerts)
     report = alerts.last_report
     assert report.proved and report.deterministic
     sv.group(naive, alerts_node).refresh()
@@ -363,7 +363,7 @@ def _(ENGINES, SNOWFLAKE, Unsupported, alerts, alerts_node, readings, report, to
 
     _rows = {}
     for _engine in ENGINES:
-        _node = alerts(readings)
+        _node = readings.pipe(alerts)
         _node.refresh(engine=_engine)
         _rows[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _rows.values()}) == 1
@@ -432,7 +432,7 @@ def _(mo):
 def _(alerts, minute, readings, readings_batch, readings_table, stored):
     readings_table.append(readings_batch((2, minute(3), 37.0), (2, minute(4), 38.0)))
     print(stored.refresh())
-    _from_scratch = alerts(readings)
+    _from_scratch = readings.pipe(alerts)
     _from_scratch.refresh()
     _rows = sorted(map(repr, stored.to_arrow().to_pylist()))
     assert _rows == sorted(map(repr, _from_scratch.to_arrow().to_pylist()))

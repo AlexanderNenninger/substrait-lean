@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+    "script_metadata_hash": "858299bf8f2891c716eaa75523e9e740"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "7b658c8fbc77f71f122cf36817e41e30",
+      "code_hash": "9b28c914a494bba2517816da35cbf56b",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"start-with-a-workflow\">Start with a workflow</h2>\n<span class=\"paragraph\">The first three chapters are complete jobs, condensed from the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> of 139 real analytical queries.\nEach starts from source tables, states and proves a contract, runs on\nevery engine, keeps up with new data and writes a sink, and each shows\nwhat goes wrong without the checker:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: right;\"></th>\n<th style=\"text-align: left;\">workflow</th>\n<th style=\"text-align: left;\">sources and sinks</th>\n<th style=\"text-align: left;\">what it catches</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: right;\">1</td>\n<td style=\"text-align: left;\"><a href=\"?file=01_duplicate_payments.py\">Duplicate card payments</a></td>\n<td style=\"text-align: left;\">Delta, Change Data Feed</td>\n<td style=\"text-align: left;\">a self-join matching rows with themselves; a watermark job missing a late duplicate and keeping a reversed one</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">2</td>\n<td style=\"text-align: left;\"><a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a></td>\n<td style=\"text-align: left;\">Iceberg</td>\n<td style=\"text-align: left;\"><code>LAG</code> over ties; a NaN reading raising an alert; Snowflake and Spark tables without row order</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">3</td>\n<td style=\"text-align: left;\"><a href=\"?file=03_orders_mart.py\">An orders mart</a></td>\n<td style=\"text-align: left;\">Delta, a type-2 dimension</td>\n<td style=\"text-align: left;\"><code>not_null(city)</code> failing after a left join; <code>/</code> meaning three things on three engines</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"start-with-a-workflow\">Start with a workflow</h2>\n<span class=\"paragraph\">The first three chapters are complete jobs, condensed from the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> of 139 real analytical queries.\nEach starts from source tables, states and proves a contract, runs on\nevery engine, keeps up with new data and writes a sink, and each shows\nwhat goes wrong without the checker:</span>\n<table>\n<thead>\n<tr>\n<th style=\"text-align: right;\"></th>\n<th style=\"text-align: left;\">workflow</th>\n<th style=\"text-align: left;\">sources and sinks</th>\n<th style=\"text-align: left;\">what it catches</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"text-align: right;\">1</td>\n<td style=\"text-align: left;\"><a href=\"?file=01_duplicate_payments.py\">Duplicate card payments</a></td>\n<td style=\"text-align: left;\">Delta, Change Data Feed</td>\n<td style=\"text-align: left;\">a self-join matching rows with themselves; a watermark job missing a late duplicate and keeping a reversed one</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">2</td>\n<td style=\"text-align: left;\"><a href=\"?file=02_sensor_alerts.py\">Sensor alerts</a></td>\n<td style=\"text-align: left;\">Iceberg</td>\n<td style=\"text-align: left;\"><code>LAG</code> over ties; a NaN reading raising an alert; Snowflake and Spark tables without row order</td>\n</tr>\n<tr>\n<td style=\"text-align: right;\">3</td>\n<td style=\"text-align: left;\"><a href=\"?file=03_orders_mart.py\">An orders mart</a></td>\n<td style=\"text-align: left;\">Delta, a type-2 dimension</td>\n<td style=\"text-align: left;\"><code>not_null(city)</code> failing after a left join; <code>/</code> meaning three things on three engines</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],

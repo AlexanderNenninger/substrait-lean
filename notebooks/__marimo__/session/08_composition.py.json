@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "acaebe48b0ec88d2335a80d09744b6e5"
+    "script_metadata_hash": "858299bf8f2891c716eaa75523e9e740"
   },
   "cells": [
     {
@@ -77,7 +77,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='5442573a-af78-b404-8e89-5fe2593fc85a'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='48aad79f-7afe-9d38-8ad7-c9f184633a30'><marimo-radio data-initial-value='&quot;not_null (guarantees only that amount is not NULL)&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eupstream step&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;paid (guarantees amount \u2265 0 and not NULL)&quot;,&quot;not_null (guarantees only that amount is not NULL)&quot;,&quot;a plain Ibis filter: amount &#92;u003e 0&quot;,&quot;a plain Ibis filter: amount IS NOT NULL&quot;]' data-inline='false' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],

@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "3e091da30ab6835998f3f769a51aa228"
+    "script_metadata_hash": "7f2295495b4ab820a1694f4813011e1d"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "6279813eee5e57f586466f8ae374175c",
+      "code_hash": "e93603846ce9af7b540c617fe47b8db9",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these <strong>double charges</strong>, the same card\npaying the same amount at the same merchant twice within five minutes,\nand refund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>); stream processors write it as an interval\njoin, and here it is a self-join on a Delta Lake table of card\ntransactions. The refund queue trusts what you hand it, so it has to be\nright: no pair twice, no charge matched with itself, and nothing left\nover when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its <strong>contract</strong>: what it assumes\n   about the input, and what the refund queue may rely on;</li>\n<li>have the contract <strong>proved</strong> before any data runs;</li>\n<li>run the same checked plan on DuckDB, Polars and DataFusion, and write\n   it as Snowflake and Spark SQL;</li>\n<li><strong>maintain the result from the change feed</strong> when new transactions\n   arrive and old ones are reversed, and see what the usual \"process\n   the new rows\" job gets wrong;</li>\n<li>write it to a Delta table that carries the contract, so the next job\n   can build on it.</li>\n</ol></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these <strong>double charges</strong>, the same card\npaying the same amount at the same merchant twice within five minutes,\nand refund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>); stream processors write it as an interval\njoin, and here it is a self-join on a Delta Lake table of card\ntransactions. The refund queue trusts what you hand it, so it has to be\nright: no pair twice, no charge matched with itself, and nothing left\nover when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its <strong>contract</strong>: what it assumes\n   about the input, and what the refund queue may rely on;</li>\n<li>have the contract <strong>proved</strong> before any data runs;</li>\n<li>run the same checked plan on DuckDB, Polars and DataFusion, and write\n   it as Snowflake and Spark SQL;</li>\n<li><strong>maintain the result from the change feed</strong> when new transactions\n   arrive and old ones are reversed, and see what the usual \"process\n   the new rows\" job gets wrong;</li>\n<li>write it to a Delta table that carries the contract, so the next job\n   can build on it.</li>\n</ol></span>"
           }
         }
       ],
@@ -124,7 +124,7 @@
     },
     {
       "id": "RGSE",
-      "code_hash": "17d3dce0a6a5ad02f4f3a7b2a0ad6694",
+      "code_hash": "a558b15b105644ad839ed12d26e03f43",
       "outputs": [
         {
           "type": "data",
@@ -220,7 +220,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='9594b6d2-abc9-98cc-f4ba-bb07adab142e'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='34f80271-5b30-b740-e5f7-a06b8f427f62'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -254,7 +254,7 @@
     },
     {
       "id": "Vxnm",
-      "code_hash": "4182e4e6402d0231e5a5c68ae99215d2",
+      "code_hash": "a00353967a5c1e90c11a4c69bc3a6e06",
       "outputs": [
         {
           "type": "data",
@@ -285,7 +285,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='fe3c4a32-549a-41e9-9f4a-78d146094c78'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='a5c72907-e51d-6c9c-8d10-c6eb18c36b4a'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -324,7 +324,7 @@
         {
           "type": "data",
           "data": {
-            "application/json": "{\"num_added_files\": 2, \"num_removed_files\": 1, \"num_deleted_rows\": 1, \"num_copied_rows\": 5, \"execution_time_ms\": 5, \"scan_time_ms\": 2, \"rewrite_time_ms\": 0}"
+            "application/json": "{\"num_added_files\": 2, \"num_removed_files\": 1, \"num_deleted_rows\": 1, \"num_copied_rows\": 5, \"execution_time_ms\": 6, \"scan_time_ms\": 2, \"rewrite_time_ms\": 0}"
           }
         }
       ],
@@ -371,7 +371,7 @@
     },
     {
       "id": "AjVT",
-      "code_hash": "3d85771e79403912b1dffcd1a8c0489e",
+      "code_hash": "337cf4bb3700ff4a5d10b91fecb9bc17",
       "outputs": [
         {
           "type": "data",
@@ -442,7 +442,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<pre class='text-xs'>Contract(view=&#x27;duplicate_payments&#x27;, plan=&#x27;f0dec9a4e386ed61df087a4f3104b2599ae4dcb7591900def7ae317bc2eceb5d&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={})</pre>"
+            "text/html": "<pre class='text-xs'>Contract(view=&#x27;duplicate_payments&#x27;, plan=&#x27;a2a9585129158014f7a47c8a602b7695d5acc699c3f9c9c56b8038be3e21a1ca&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={})</pre>"
           }
         }
       ],
@@ -463,7 +463,7 @@
     },
     {
       "id": "dNNg",
-      "code_hash": "0b1f77b12d737057e3e57a85f3d04763",
+      "code_hash": "1cf5fb2b888c4fd0aebf0559c67b96f2",
       "outputs": [
         {
           "type": "data",

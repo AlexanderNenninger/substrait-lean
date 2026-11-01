@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify==0.2.0",
+#     "sverify==0.3.0",
 # ]
 # ///
 

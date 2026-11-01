@@ -7,7 +7,7 @@
 #     "numpy",
 #     "polars",
 #     "pyarrow==26.0.0",
-#     "sverify[datafusion,polars]==0.2.0",
+#     "sverify[datafusion,polars]==0.3.0",
 # ]
 # ///
 

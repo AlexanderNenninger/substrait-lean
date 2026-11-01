@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "66e133e3515e277cb5be2ba7affd10ca"
+    "script_metadata_hash": "5e201f2cb4613037d7bccfa1d4448c21"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "9419ba27331b2a6426fbc45da5011742",
+      "code_hash": "a7f384dfc3bea9a04bee0323b880af1f",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an <strong>alert at every reading that is the\nthird or more in a row above 30 \u00b0C</strong>.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines quietly disagree. Three things go\nwrong in practice, and we'll run into each:</span>\n<ul>\n<li><strong>ties</strong>: two readings of a device at the same instant make\n  \"previous reading\" ambiguous, and each engine picks one;</li>\n<li><strong>NaN</strong>: a glitching sensor sends NaN, and in SQL <code>NaN &gt; 30</code> is TRUE\n  (NaN sorts above every number), while in Python and pandas it is\n  False, so a prototype and the production job disagree;</li>\n<li><strong>warehouses without row order</strong>: Snowflake and Spark tables have no\n  order to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in chapter 1, the job reads the source, states and proves a contract,\nruns on every engine, keeps up with new data and writes a sink.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"2-sensor-alerts-from-an-iceberg-table\">2. Sensor alerts from an Iceberg table</h1>\n<span class=\"paragraph\">Say you look after a plant's temperature sensors. When a machine runs\nhot for three minutes in a row, someone on call gets paged, and if the\nalert is wrong in either direction, it's their night or the machine\nthat pays for it. You want an <strong>alert at every reading that is the\nthird or more in a row above 30 \u00b0C</strong>.</span>\n<span class=\"paragraph\">The sensors write a reading per device per minute to an Iceberg table,\nand the rule is <code>iot-consecutive-threshold</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a> (Azure Stream Analytics'\n<code>MATCH_RECOGNIZE</code> example). In SQL that is two <code>LAG</code>s over a window.\nWindow queries are where engines quietly disagree. Three things go\nwrong in practice, and we'll run into each:</span>\n<ul>\n<li><strong>ties</strong>: two readings of a device at the same instant make\n  \"previous reading\" ambiguous, and each engine picks one;</li>\n<li><strong>NaN</strong>: a glitching sensor sends NaN, and in SQL <code>NaN &gt; 30</code> is TRUE\n  (NaN sorts above every number), while in Python and pandas it is\n  False, so a prototype and the production job disagree;</li>\n<li><strong>warehouses without row order</strong>: Snowflake and Spark tables have no\n  order to break ties with.</li>\n</ul>\n<span class=\"paragraph\">As in chapter 1, the job reads the source, states and proves a contract,\nruns on every engine, keeps up with new data and writes a sink.</span></span>"
           }
         }
       ],
@@ -254,7 +254,7 @@
     },
     {
       "id": "Vxnm",
-      "code_hash": "8862726503d61f05d754964a6789a59d",
+      "code_hash": "d8b375904c5e5c8f6721a32f9108f028",
       "outputs": [
         {
           "type": "data",
@@ -293,7 +293,7 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "66c4607a7a82827c6553eb8a1550dcdf",
+      "code_hash": "0be8204ae7f269988135af58ee5afa9d",
       "outputs": [
         {
           "type": "data",
@@ -385,7 +385,7 @@
     },
     {
       "id": "AjVT",
-      "code_hash": "56003746bcc9e20ad2c0622dac143338",
+      "code_hash": "3693522e69bebe56bb65feb66e71e1a9",
       "outputs": [
         {
           "type": "data",

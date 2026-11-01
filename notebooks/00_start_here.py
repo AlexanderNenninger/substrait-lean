@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify==0.2.0",
+#     "sverify==0.3.0",
 # ]
 # ///
 
@@ -61,7 +61,7 @@ def _(mo):
     ## Start with a workflow
 
     The first three chapters are complete jobs, condensed from the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.2.0/catalogue/INDEX.md) of 139 real analytical queries.
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.3.0/catalogue/INDEX.md) of 139 real analytical queries.
     Each starts from source tables, states and proves a contract, runs on
     every engine, keeps up with new data and writes a sink, and each shows
     what goes wrong without the checker:

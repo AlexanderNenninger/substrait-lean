@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "0ac7db64cbc642bcef694d3e076b9211"
+    "script_metadata_hash": "30bb591f9eabd2b8364ba44c99c9f460"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "55584bbab56cf2605e46548c3360a28e",
+      "code_hash": "9422b127ff23ee0e2f63fdf6442e3591",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"9-incremental-views\">9. Incremental views</h1>\n<span class=\"paragraph\">Say your dashboard table is a join over a few million orders, and a\nhundred orders change every hour. Recomputing the whole join each time\nis slow; hand-written incremental logic (\"only process rows where\n<code>updated_at</code> is newer than\u2026\") is fast, but tends to go wrong silently:\ndeletes are missed, late rows are skipped, a join gets a new match.\nNobody notices until the analyst reading the dashboard finds totals\nthat no longer add up.</span>\n<span class=\"paragraph\"><em>Incremental view maintenance</em> computes only the <strong>change</strong> to the\nresult from the <strong>changes</strong> to the inputs. A transform you call on\nsources is a <em>node</em>, and <code>node.refresh()</code> keeps it up to date with\nupdate rules proved correct in Lean, on DuckDB, Polars, DataFusion or\nSpark (chapter 11). We'll use it first, see what it recomputes\ninstead, and then look at how it works.</span>\n<h2 id=\"keeping-a-join-up-to-date\">Keeping a join up to date</h2>\n<span class=\"paragraph\">You write the query once, as an Ibis transform. Called on two sources\nit builds a node; <code>refresh()</code> computes its result once, and from then on\nkeeps it up to date from the inserts and deletes alone. Here the\nsources are in-memory tables (<code>StaticSource</code>, from <code>sverify.io</code>); Delta\nand Iceberg tables work the same way (chapter 1 reads a Delta table):</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"9-incremental-views\">9. Incremental views</h1>\n<span class=\"paragraph\">Say your dashboard table is a join over a few million orders, and a\nhundred orders change every hour. Recomputing the whole join each time\nis slow; hand-written incremental logic (\"only process rows where\n<code>updated_at</code> is newer than\u2026\") is fast, but tends to go wrong silently:\ndeletes are missed, late rows are skipped, a join gets a new match.\nNobody notices until the analyst reading the dashboard finds totals\nthat no longer add up.</span>\n<span class=\"paragraph\"><em>Incremental view maintenance</em> computes only the <strong>change</strong> to the\nresult from the <strong>changes</strong> to the inputs. A source piped into a\ntransform is a <em>node</em>, and <code>node.refresh()</code> keeps it up to date with\nupdate rules proved correct in Lean, on DuckDB, Polars, DataFusion or\nSpark (chapter 11). We'll use it first, see what it recomputes\ninstead, and then look at how it works.</span>\n<h2 id=\"keeping-a-join-up-to-date\">Keeping a join up to date</h2>\n<span class=\"paragraph\">You write the query once, as an Ibis transform. We pipe one source into\nit and pass the other by keyword, which builds a node; <code>refresh()</code> computes its result once, and from then on\nkeeps it up to date from the inserts and deletes alone. Here the\nsources are in-memory tables (<code>StaticSource</code>, from <code>sverify.io</code>); Delta\nand Iceberg tables work the same way (chapter 1 reads a Delta table):</span></span>"
           }
         }
       ],
@@ -46,12 +46,12 @@
     },
     {
       "id": "bkHC",
-      "code_hash": "d4d161c4e88e3bb783523c0a656c60da",
+      "code_hash": "680db8b2277e452edcf185c7db7019bc",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='bkHC-0' random-id='be57b9c3-7378-8812-3566-922032ac37f4'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;id&#92;&quot;:1,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;},{&#92;&quot;id&#92;&quot;:2,&#92;&quot;city&#92;&quot;:&#92;&quot;Oslo&#92;&quot;},{&#92;&quot;id&#92;&quot;:3,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;}]&quot;' data-total-rows='3' data-total-columns='2' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-field-types='[[&quot;id&quot;,[&quot;integer&quot;,&quot;int64&quot;]],[&quot;city&quot;,[&quot;string&quot;,&quot;str&quot;]]]' data-show-filters='true' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='bkHC-0' random-id='f8974cd7-5485-c180-3f35-ccd4ddb1d81b'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;id&#92;&quot;:1,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;},{&#92;&quot;id&#92;&quot;:2,&#92;&quot;city&#92;&quot;:&#92;&quot;Oslo&#92;&quot;},{&#92;&quot;id&#92;&quot;:3,&#92;&quot;city&#92;&quot;:&#92;&quot;Paris&#92;&quot;}]&quot;' data-total-rows='3' data-total-columns='2' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='10' data-field-types='[[&quot;id&quot;,[&quot;integer&quot;,&quot;int64&quot;]],[&quot;city&quot;,[&quot;string&quot;,&quot;str&quot;]]]' data-show-filters='true' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
           }
         }
       ],
@@ -77,7 +77,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='0052aabb-dd45-d5bb-19c8-f566f90055f1'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eApply a random batch of changes&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='PKri-0' random-id='3e85e6b9-ab68-012a-153c-244a440577e0'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eApply a random batch of changes&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element>"
           }
         }
       ],
@@ -85,7 +85,7 @@
     },
     {
       "id": "Xref",
-      "code_hash": "a4054aa5d0136ea045a2e311d36831f5",
+      "code_hash": "523c8ef86d412ca70414cee86f7189f8",
       "outputs": [
         {
           "type": "data",
@@ -111,12 +111,12 @@
     },
     {
       "id": "BYtC",
-      "code_hash": "bb8c37013386af8e155a67128ae62124",
+      "code_hash": "7284f639fbb7b4cca11fbfa4d878247f",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='82ae6c25-7854-9d58-67d4-e30908eb92e4'><marimo-dropdown data-initial-value='[&quot;a left join&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;the inner join above&quot;,&quot;orders.limit(2)&quot;,&quot;a left join&quot;,&quot;orders.distinct()&quot;,&quot;total amount per customer&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='8b5caf80-e6a7-f6ec-a44c-f5c5364a5de9'><marimo-dropdown data-initial-value='[&quot;a left join&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003equery&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;the inner join above&quot;,&quot;orders.limit(2)&quot;,&quot;a left join&quot;,&quot;orders.distinct()&quot;,&quot;total amount per customer&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='false' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
           }
         }
       ],
@@ -194,7 +194,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.25rem'><marimo-ui-element object-id='iLit-0' random-id='c1f13703-a902-d519-5fb0-beee082bd60d'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eDelete order 1 (ada, 30)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-1' random-id='53ad7ccb-86dc-2356-08c8-20f7f76ecca8'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 4 (cy, 50)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-2' random-id='2ff2d008-11d7-4aa5-573d-701247c68e4c'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eUpdate order 2: amount 5 \u2192 20&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-3' random-id='0e9cab68-07a2-74a4-7369-9262fa636a70'><marimo-checkbox data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 5 (dee, amount NULL)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.25rem'><marimo-ui-element object-id='iLit-0' random-id='984a617b-64ef-7f45-fc72-33a6ff119cef'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eDelete order 1 (ada, 30)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-1' random-id='b045b31c-0ba9-98ec-4c64-8b79a81b6249'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 4 (cy, 50)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-2' random-id='0b6c5e8d-4cd1-7306-b943-fcc4e534cbef'><marimo-checkbox data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eUpdate order 2: amount 5 \u2192 20&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element><marimo-ui-element object-id='iLit-3' random-id='4d4f1548-97f3-2034-3649-7f4a8fcdcbd7'><marimo-checkbox data-initial-value='false' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert order 5 (dee, amount NULL)&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-checkbox></marimo-ui-element></div>"
           }
         }
       ],
@@ -246,7 +246,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='TqIu-0' random-id='6e420333-3b72-75fa-6b38-956f44f46885'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='TqIu-0' random-id='9a5a39d2-ec13-cbcd-6cea-b72a41d0857b'><marimo-switch data-initial-value='true' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003einclude the \u0394A \u00d7 \u0394B term&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-disabled='false'></marimo-switch></marimo-ui-element>"
           }
         }
       ],

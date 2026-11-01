@@ -4,7 +4,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyarrow==26.0.0",
-#     "sverify[delta]==0.2.0",
+#     "sverify[delta]==0.3.0",
 # ]
 # ///
 
@@ -41,7 +41,10 @@ def _(mo):
 
     Real pipelines are layered like that: cleaned tables feed joined tables
     feed reports. In `sverify` the layers are transforms composed directly,
-    each called on the one below. Without a `.write` in between they
+    each piped from the one below, so the code reads in the order the data
+    flows: `orders.pipe(paid).pipe(doubled)` is the same node as the call
+    form `doubled(paid(orders))`. The other inputs of a layer come by
+    keyword, as `base.pipe(cities, customers=customers)`. Without a `.write` in between they
     **fuse** into one plan, maintained as one incremental view (chapter 9).
     `.write(sink)` **stores** a layer, as a cache in the middle of a job or
     as its output; the layers above read the stored table as a versioned
@@ -49,7 +52,7 @@ def _(mo):
     once and shared, and only changes flow through the layers.
 
     This chapter brings chapters 8 and 9 together: the base layer is the
-    contracted `doubled(paid(orders))`, and its guarantees keep holding in
+    contracted `orders.pipe(paid).pipe(doubled)`, and its guarantees keep holding in
     **every** state of the pipeline, not only the first.
 
     ## Three layers
@@ -109,12 +112,12 @@ def _():
         name="customers",
     )
 
-    base = doubled(paid(orders)).write(DeltaSink(str(lake / "base")))
-    by_city = cities(base, customers)
-    by_location = located(base, customers)
+    base = orders.pipe(paid).pipe(doubled).write(DeltaSink(str(lake / "base")))
+    by_city = base.pipe(cities, customers=customers)
+    by_location = base.pipe(located, customers=customers)
     monday = sv.group(by_city, by_location)
     print(monday.refresh())
-    return base, by_city, by_location, customers, monday, orders, sv
+    return base, by_city, by_location, cities, customers, lake, monday, orders, pa, sv
 
 
 @app.cell(hide_code=True)
@@ -122,7 +125,7 @@ def _(mo):
     mo.mermaid(
         """
         graph BT
-          O["orders"] --> B["base (Delta table)<br/>doubled(paid(orders)), one fused plan"]
+          O["orders"] --> B["base (Delta table)<br/>orders.pipe(paid).pipe(doubled), one fused plan"]
           B --> C["cities<br/>inner join customers"]
           B --> L["located<br/>left join customers<br/>(recomputed)"]
           K["customers"] --> C
@@ -139,7 +142,7 @@ def _(base, mo, monday):
         "* `paid` and `doubled` have no `.write` between them, so they fuse into "
         "one plan; `.write(DeltaSink(...))` stores the result as `base`. `cities` and "
         "`located` read `base`'s Delta table, not `orders`.\n"
-        "* A contracted transform called on a stored node builds on what that node's "
+        "* A contracted transform piped from a stored node builds on what that node's "
         "plan proved, as in a direct composition: `cities` requires "
         "`_.doubled.notnull()` of `base`, which `doubled` guarantees, so it is "
         "checked once, when the node is built, and never on the data. A precondition "
@@ -312,10 +315,142 @@ def _(mo):
     restarts, building the same nodes again is enough: the first refresh
     resumes each stored node from its table when the plan and the source
     versions match, rather than computing it again.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Your own source and sink
+
+    Say the customers don't live in the lake at all. The CRM team gives you
+    an API that returns the customers who signed up after a given time, and
+    finance wants the city report as a Parquet file on their share, not as
+    a Delta table. Neither needs a table format.
+
+    A source you write is one method, `read(since)`: it returns the rows
+    that are new since the last read and a cursor to start from next time,
+    as a `Batch`. A sink you write is one method too, `write(change)`: it
+    stores what a refresh hands it. sverify does the rest: it numbers the
+    reads as versions, works out what changed, checks the preconditions,
+    and decides when a state needs writing at all.
+
+    We'll read the CRM with `from_query`, which builds a source from a
+    function and the column to keep a high-water mark on, and write the
+    report with a sink of our own that keeps the contract next to the file,
+    so a restarted job knows what it already wrote.
+    """)
+    return
+
+
+@app.cell
+def _(base, cities, lake, pa, sv):
+    import pyarrow.parquet as pq
+    from sverify.io import Contract, Sink, from_query
+
+    crm_signups = [
+        {"name": "ada", "city": "Paris", "signed_up": 1},
+        {"name": "cy", "city": "Lima", "signed_up": 2},
+    ]
+
+    def signed_up_after(since):
+        """The CRM's API: customers who signed up after `since`."""
+        return pa.Table.from_pylist(
+            [c for c in crm_signups if since is None or c["signed_up"] > since]
+        )
+
+    class ParquetFile(Sink):
+        """The report as a Parquet file, with its contract next to it."""
+
+        def __init__(self, path):
+            super().__init__(path.stem, location=str(path))
+            self.path, self.record = path, path.with_suffix(".contract.json")
+
+        def committed(self):
+            if not self.record.exists():
+                return None
+            return Contract.from_json(self.record.read_text())
+
+        def write(self, change):
+            pq.write_table(change.table, self.path)
+            self.record.write_text(change.contract.to_json())
+
+    crm = from_query(signed_up_after, cursor_on="signed_up", name="crm")
+    report = base.pipe(cities, customers=crm).write(ParquetFile(lake / "city_report.parquet"))
+    print(report.refresh())
+
+    crm_signups.append({"name": "bob", "city": "Oslo", "signed_up": 3})
+    print(report.refresh())
+    return crm_signups, report
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The first refresh read the CRM in full as version 1 and wrote the
+    file; the second read only bob, as version 2. The report line says
+    what that rests on: the rows were *appended*, assuming customers only
+    arrive with a greater `signed_up`. That is the watermark job's
+    assumption from chapter 1, and it can break: a sign-up the CRM records
+    late, with an earlier time, falls below the cursor and is never read.
+
+    We'll record one and refresh with `audit=True`, which reads the source
+    again in full, up to the cursor, and compares it with what the batches
+    built.
+    """)
+    return
+
+
+@app.cell
+def _(crm_signups, report):
+    from sverify.errors import AuditError
+
+    crm_signups.append({"name": "dee", "city": "Rome", "signed_up": 2})  # late
+    print(report.refresh())  # nothing new above the cursor: dee is missed
+    try:
+        report.refresh(audit=True)
+    except AuditError as e:
+        print(f"AuditError: {e}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The plain refresh saw nothing new; the audit caught the row the cursor
+    skipped, and applied nothing. A source you write can't promise more than
+    its reads do, so be plain about it: give an `assumes=` that says what
+    your batches rely on, and audit now and then.
+
+    The rest of the toolkit, in `sverify.io`:
+
+    * `from_frame(fn)` reads the whole table on every refresh and diffs it
+      against the last read, so the change is exact and nothing is assumed;
+      `from_files(path)` reads the files that are new in a directory.
+      Subclass `Source` for anything else; a batch can also be a whole
+      table (`kind="snapshot"`) or rows added and removed
+      (`kind="changes"`).
+    * A sink's `write` gets a `SinkChange`: the rows added and removed
+      since its last write, or the whole table on the first, with the
+      contract to record. `committed()` reads that contract back, so each
+      state is written once even across restarts; leave it out and sverify
+      remembers for the life of the process. `sink_from(fn)` hands the
+      whole table to a function.
+    * These sources have no metadata, so preconditions on them are checked
+      on the rows, and they keep the table in memory. A restarted job reads
+      them in full again, and numbers its versions above the ones its
+      sinks recorded, so nothing is skipped by mistake. A table format with
+      statistics and a change feed implements the full `VersionedSource`
+      protocol instead, as Delta and Iceberg do.
+    * Credentials stay out of your code: `Storage` holds object store
+      options, or a function that fetches fresh ones, and is shared by
+      every table that needs it.
 
     You can now stack transforms into layers that pass only their changes
     along, store the ones others read, and rely on every contract's
-    guarantees in every state while only the batch is checked. Next up,
+    guarantees in every state while only the batch is checked, whether the
+    data comes from a lake, an API or a folder of files. Next up,
     [Engines and SQL](?file=11_engines.py) runs the same checked plans on
     Polars and DataFusion, and as SQL for Snowflake and Spark.
     """)

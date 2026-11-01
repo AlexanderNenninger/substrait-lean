@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "64239920a39a80c8d02f322b63975ee0"
+    "script_metadata_hash": "a5b9942336985ae148ced6ab010e0855"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "6b681727ff320b22194bd83667dd35f2",
+      "code_hash": "707f3ccf73f51be3f5e8fa65ff4becf9",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"10-pipelines\">10. Pipelines</h1>\n<span class=\"paragraph\">Say you own the Monday report the sales team presents. It reads orders\nby city, which read the cleaned orders, which read the raw <code>orders</code>\nfeed, and a bad row anywhere below ends up on their slides.</span>\n<span class=\"paragraph\">Real pipelines are layered like that: cleaned tables feed joined tables\nfeed reports. In <code>sverify</code> the layers are transforms composed directly,\neach called on the one below. Without a <code>.write</code> in between they\n<strong>fuse</strong> into one plan, maintained as one incremental view (chapter 9).\n<code>.write(sink)</code> <strong>stores</strong> a layer, as a cache in the middle of a job or\nas its output; the layers above read the stored table as a versioned\nsource, through its change feed. So an intermediate result is computed\nonce and shared, and only changes flow through the layers.</span>\n<span class=\"paragraph\">This chapter brings chapters 8 and 9 together: the base layer is the\ncontracted <code>doubled(paid(orders))</code>, and its guarantees keep holding in\n<strong>every</strong> state of the pipeline, not only the first.</span>\n<h2 id=\"three-layers\">Three layers</h2></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"10-pipelines\">10. Pipelines</h1>\n<span class=\"paragraph\">Say you own the Monday report the sales team presents. It reads orders\nby city, which read the cleaned orders, which read the raw <code>orders</code>\nfeed, and a bad row anywhere below ends up on their slides.</span>\n<span class=\"paragraph\">Real pipelines are layered like that: cleaned tables feed joined tables\nfeed reports. In <code>sverify</code> the layers are transforms composed directly,\neach piped from the one below, so the code reads in the order the data\nflows: <code>orders.pipe(paid).pipe(doubled)</code> is the same node as the call\nform <code>doubled(paid(orders))</code>. The other inputs of a layer come by\nkeyword, as <code>base.pipe(cities, customers=customers)</code>. Without a <code>.write</code> in between they\n<strong>fuse</strong> into one plan, maintained as one incremental view (chapter 9).\n<code>.write(sink)</code> <strong>stores</strong> a layer, as a cache in the middle of a job or\nas its output; the layers above read the stored table as a versioned\nsource, through its change feed. So an intermediate result is computed\nonce and shared, and only changes flow through the layers.</span>\n<span class=\"paragraph\">This chapter brings chapters 8 and 9 together: the base layer is the\ncontracted <code>orders.pipe(paid).pipe(doubled)</code>, and its guarantees keep holding in\n<strong>every</strong> state of the pipeline, not only the first.</span>\n<h2 id=\"three-layers\">Three layers</h2></span>"
           }
         }
       ],
@@ -46,7 +46,7 @@
     },
     {
       "id": "bkHC",
-      "code_hash": "ccc696db7b4238ba0ae0087084446e11",
+      "code_hash": "6dc582231162b5ca049a143a14bd4b8d",
       "outputs": [
         {
           "type": "data",
@@ -66,12 +66,12 @@
     },
     {
       "id": "lEQa",
-      "code_hash": "48fd8eca20d41835c43df8036c57ad9c",
+      "code_hash": "477a7050cd7f2b6f9c834f6d1e46a247",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-mermaid data-diagram='&quot;&#92;n    graph BT&#92;n      O[&#92;&quot;orders&#92;&quot;] --&#92;u003e B[&#92;&quot;base (Delta table)&#92;u003cbr/&#92;u003edoubled(paid(orders)), one fused plan&#92;&quot;]&#92;n      B --&#92;u003e C[&#92;&quot;cities&#92;u003cbr/&#92;u003einner join customers&#92;&quot;]&#92;n      B --&#92;u003e L[&#92;&quot;located&#92;u003cbr/&#92;u003eleft join customers&#92;u003cbr/&#92;u003e(recomputed)&#92;&quot;]&#92;n      K[&#92;&quot;customers&#92;&quot;] --&#92;u003e C&#92;n      K --&#92;u003e L&#92;n      style B fill:#d4f4dd,stroke:#2e8b57&#92;n    &quot;'></marimo-mermaid>"
+            "text/html": "<marimo-mermaid data-diagram='&quot;&#92;n    graph BT&#92;n      O[&#92;&quot;orders&#92;&quot;] --&#92;u003e B[&#92;&quot;base (Delta table)&#92;u003cbr/&#92;u003eorders.pipe(paid).pipe(doubled), one fused plan&#92;&quot;]&#92;n      B --&#92;u003e C[&#92;&quot;cities&#92;u003cbr/&#92;u003einner join customers&#92;&quot;]&#92;n      B --&#92;u003e L[&#92;&quot;located&#92;u003cbr/&#92;u003eleft join customers&#92;u003cbr/&#92;u003e(recomputed)&#92;&quot;]&#92;n      K[&#92;&quot;customers&#92;&quot;] --&#92;u003e C&#92;n      K --&#92;u003e L&#92;n      style B fill:#d4f4dd,stroke:#2e8b57&#92;n    &quot;'></marimo-mermaid>"
           }
         }
       ],
@@ -79,12 +79,12 @@
     },
     {
       "id": "PKri",
-      "code_hash": "4f01c3183cbe3eea576ca7b0f99259e3",
+      "code_hash": "e8cb4b894bf48baf4afb5ad3e3c6745a",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>paid</code> and <code>doubled</code> have no <code>.write</code> between them, so they fuse into one plan; <code>.write(DeltaSink(...))</code> stores the result as <code>base</code>. <code>cities</code> and <code>located</code> read <code>base</code>'s Delta table, not <code>orders</code>.</li>\n<li>A contracted transform called on a stored node builds on what that node's plan proved, as in a direct composition: <code>cities</code> requires <code>_.doubled.notnull()</code> of <code>base</code>, which <code>doubled</code> guarantees, so it is checked once, when the node is built, and never on the data. A precondition <code>base</code> doesn't guarantee raises <code>CompositionError</code> right there.</li>\n<li><code>sv.group(by_city, by_location)</code> refreshes both reports against the same source versions; <code>base</code> is refreshed and written once for the two of them, upstream first. Its first refresh checked <code>paid</code>'s preconditions on all of <code>orders</code> (the <code>requires \u2026 (checked on data)</code> lines above).</li>\n<li><code>located</code> is a left join, so it is <strong>recomputed and diffed</strong> on each refresh (chapter 9). Its change would still flow to any node reading it. <code>status()</code> says so:</li>\n</ul>\n<div class=\"language-text codehilite\"><pre><span></span><code>cities: base@v2, customers@v0\nlocated: base@v2, customers@v0; recomputed (not incrementally maintainable (left join, fetch or window))\nbase: orders@v0; stored in /tmp/tmpzeeuq3p9/base\n</code></pre></div></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><ul>\n<li><code>paid</code> and <code>doubled</code> have no <code>.write</code> between them, so they fuse into one plan; <code>.write(DeltaSink(...))</code> stores the result as <code>base</code>. <code>cities</code> and <code>located</code> read <code>base</code>'s Delta table, not <code>orders</code>.</li>\n<li>A contracted transform piped from a stored node builds on what that node's plan proved, as in a direct composition: <code>cities</code> requires <code>_.doubled.notnull()</code> of <code>base</code>, which <code>doubled</code> guarantees, so it is checked once, when the node is built, and never on the data. A precondition <code>base</code> doesn't guarantee raises <code>CompositionError</code> right there.</li>\n<li><code>sv.group(by_city, by_location)</code> refreshes both reports against the same source versions; <code>base</code> is refreshed and written once for the two of them, upstream first. Its first refresh checked <code>paid</code>'s preconditions on all of <code>orders</code> (the <code>requires \u2026 (checked on data)</code> lines above).</li>\n<li><code>located</code> is a left join, so it is <strong>recomputed and diffed</strong> on each refresh (chapter 9). Its change would still flow to any node reading it. <code>status()</code> says so:</li>\n</ul>\n<div class=\"language-text codehilite\"><pre><span></span><code>cities: base@v2, customers@v0\nlocated: base@v2, customers@v0; recomputed (not incrementally maintainable (left join, fetch or window))\nbase: orders@v0; stored in /tmp/tmpjqfg31mb/base\n</code></pre></div></span>"
           }
         }
       ],
@@ -110,7 +110,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='SFPL-0' random-id='a831f03c-5247-3b34-6cb0-2c2ce93e33a6'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eNew orders and a new customer&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='SFPL-1' random-id='3fbcc2e1-683c-1afe-a168-32aca40ecee6'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with an existing id&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='SFPL-2' random-id='d7a2d3fc-fb7f-2926-7543-8a1126660d0f'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with a negative amount&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element></div>"
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='SFPL-0' random-id='d4be0009-da0e-a083-3f93-fe00ecedef26'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eNew orders and a new customer&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;success&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='SFPL-1' random-id='7ea8feac-42f2-4b10-13fa-3d8728f3a02c'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with an existing id&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element><marimo-ui-element object-id='SFPL-2' random-id='3c8460bf-a1fd-505d-ba02-e3e548bd89d4'><marimo-button data-initial-value='0' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eInsert an order with a negative amount&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-kind='&quot;danger&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element></div>"
           }
         }
       ],
@@ -157,12 +157,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "ba9bfe81297af4bce91064311cf8d9d8",
+      "code_hash": "b301931b46d76ff10e30573b409ea3c4",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"why-the-guarantees-survive-every-batch\">Why the guarantees survive every batch</h2>\n<span class=\"paragraph\">Whoever reads <code>base</code> relies on its guarantees on the hundredth batch as\nmuch as on the first. <code>paid</code>'s preconditions were checked on all of\n<code>orders</code> once, on the first refresh. After that, only <strong>the batch</strong> is\nchecked:</span>\n<ul>\n<li>row conditions (<code>amount &gt;= 0</code>) on the inserted rows;</li>\n<li>keys (<code>unique(id)</code>) among the inserted rows and against the keys of\n  the rows the batch keeps.</li>\n</ul>\n<span class=\"paragraph\">That is enough, by theorem <code>Spec.update</code> in <code>SubstraitLean/Compose.lean</code>:\na table's contract survives a batch if the inserted rows satisfy the row\nconditions and their keys clash with neither each other nor the kept\nrows. <code>Triple.maintained</code> then says a contracted view's guarantees hold\nin the new state. So <code>base</code> satisfies <code>doubled \u2265 0</code> and is non-NULL\nafter every batch, without ever re-checking the whole table, and the\nDelta table it is written to records those guarantees with every\nversion, for the layers that read it.</span>\n<span class=\"paragraph\">The layering itself is <code>Rel.chain_sound</code> (DBSP's <em>chain rule</em>): when a\nview reads another view's stored result, and gets that view's change as\nits change table (here, through the Delta change feed), its own update\nplan is still correct. For a recomputed view, <code>ZSet.diff_correct</code> shows\n<code>new \u2212 old</code> is a valid change to pass on.</span>\n<span class=\"paragraph\">Each refresh brings the layers up to date upstream first and writes\nevery stored node exactly once per state. If the job stops and\nrestarts, building the same nodes again is enough: the first refresh\nresumes each stored node from its table when the plan and the source\nversions match, rather than computing it again.</span>\n<span class=\"paragraph\">You can now stack transforms into layers that pass only their changes\nalong, store the ones others read, and rely on every contract's\nguarantees in every state while only the batch is checked. Next up,\n<a href=\"?file=11_engines.py\">Engines and SQL</a> runs the same checked plans on\nPolars and DataFusion, and as SQL for Snowflake and Spark.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"why-the-guarantees-survive-every-batch\">Why the guarantees survive every batch</h2>\n<span class=\"paragraph\">Whoever reads <code>base</code> relies on its guarantees on the hundredth batch as\nmuch as on the first. <code>paid</code>'s preconditions were checked on all of\n<code>orders</code> once, on the first refresh. After that, only <strong>the batch</strong> is\nchecked:</span>\n<ul>\n<li>row conditions (<code>amount &gt;= 0</code>) on the inserted rows;</li>\n<li>keys (<code>unique(id)</code>) among the inserted rows and against the keys of\n  the rows the batch keeps.</li>\n</ul>\n<span class=\"paragraph\">That is enough, by theorem <code>Spec.update</code> in <code>SubstraitLean/Compose.lean</code>:\na table's contract survives a batch if the inserted rows satisfy the row\nconditions and their keys clash with neither each other nor the kept\nrows. <code>Triple.maintained</code> then says a contracted view's guarantees hold\nin the new state. So <code>base</code> satisfies <code>doubled \u2265 0</code> and is non-NULL\nafter every batch, without ever re-checking the whole table, and the\nDelta table it is written to records those guarantees with every\nversion, for the layers that read it.</span>\n<span class=\"paragraph\">The layering itself is <code>Rel.chain_sound</code> (DBSP's <em>chain rule</em>): when a\nview reads another view's stored result, and gets that view's change as\nits change table (here, through the Delta change feed), its own update\nplan is still correct. For a recomputed view, <code>ZSet.diff_correct</code> shows\n<code>new \u2212 old</code> is a valid change to pass on.</span>\n<span class=\"paragraph\">Each refresh brings the layers up to date upstream first and writes\nevery stored node exactly once per state. If the job stops and\nrestarts, building the same nodes again is enough: the first refresh\nresumes each stored node from its table when the plan and the source\nversions match, rather than computing it again.</span></span>"
           }
         }
       ],
@@ -170,6 +170,85 @@
     },
     {
       "id": "Hstk",
+      "code_hash": "86527aa6e8ac4d8a9ac5789f06a5b04c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"your-own-source-and-sink\">Your own source and sink</h2>\n<span class=\"paragraph\">Say the customers don't live in the lake at all. The CRM team gives you\nan API that returns the customers who signed up after a given time, and\nfinance wants the city report as a Parquet file on their share, not as\na Delta table. Neither needs a table format.</span>\n<span class=\"paragraph\">A source you write is one method, <code>read(since)</code>: it returns the rows\nthat are new since the last read and a cursor to start from next time,\nas a <code>Batch</code>. A sink you write is one method too, <code>write(change)</code>: it\nstores what a refresh hands it. sverify does the rest: it numbers the\nreads as versions, works out what changed, checks the preconditions,\nand decides when a state needs writing at all.</span>\n<span class=\"paragraph\">We'll read the CRM with <code>from_query</code>, which builds a source from a\nfunction and the column to keep a high-water mark on, and write the\nreport with a sink of our own that keeps the contract next to the file,\nso a restarted job knows what it already wrote.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "8419264076fc90bc554d0c130e6d5b75",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "base:\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncity_report:\n  computed\n  wrote city_report from base@v2, crm@v1: overwrite, 2 row(s) written, 0 deleted\nbase:\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncity_report:\n  base@v2: no new version\n  crm@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as rows appended to crm v1\u2192v2, assuming rows only arrive with a greater signed_up\n  view city_report: base@v2, crm@v2\n  wrote city_report from base@v2, crm@v2: update, 1 row(s) written, 0 deleted\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "iLit",
+      "code_hash": "9a20533a6eadfc41bd23096d6964524e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The first refresh read the CRM in full as version 1 and wrote the\nfile; the second read only bob, as version 2. The report line says\nwhat that rests on: the rows were <em>appended</em>, assuming customers only\narrive with a greater <code>signed_up</code>. That is the watermark job's\nassumption from chapter 1, and it can break: a sign-up the CRM records\nlate, with an earlier time, falls below the cursor and is never read.</span>\n<span class=\"paragraph\">We'll record one and refresh with <code>audit=True</code>, which reads the source\nagain in full, up to the cursor, and compares it with what the batches\nbuilt.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "24d74e1fe42ff4d4172c9a3a44b88727",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "base:\n  orders@v0: no new version\n  view base: orders@v0\n  wrote base from orders@v0: already committed (v2)\ncity_report:\n  base@v2: no new version\n  crm@v2: no new version\n  view city_report: base@v2, crm@v2\n  wrote city_report from base@v2, crm@v2: already committed\nAuditError: crm@v2 differs from the table read again in full: its batches missed rows; nothing was applied\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "44ff08f4e6a40a1531c22f6aa42ea5a3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The plain refresh saw nothing new; the audit caught the row the cursor\nskipped, and applied nothing. A source you write can't promise more than\nits reads do, so be plain about it: give an <code>assumes=</code> that says what\nyour batches rely on, and audit now and then.</span>\n<span class=\"paragraph\">The rest of the toolkit, in <code>sverify.io</code>:</span>\n<ul>\n<li><code>from_frame(fn)</code> reads the whole table on every refresh and diffs it\n  against the last read, so the change is exact and nothing is assumed;\n  <code>from_files(path)</code> reads the files that are new in a directory.\n  Subclass <code>Source</code> for anything else; a batch can also be a whole\n  table (<code>kind=\"snapshot\"</code>) or rows added and removed\n  (<code>kind=\"changes\"</code>).</li>\n<li>A sink's <code>write</code> gets a <code>SinkChange</code>: the rows added and removed\n  since its last write, or the whole table on the first, with the\n  contract to record. <code>committed()</code> reads that contract back, so each\n  state is written once even across restarts; leave it out and sverify\n  remembers for the life of the process. <code>sink_from(fn)</code> hands the\n  whole table to a function.</li>\n<li>These sources have no metadata, so preconditions on them are checked\n  on the rows, and they keep the table in memory. A restarted job reads\n  them in full again, and numbers its versions above the ones its\n  sinks recorded, so nothing is skipped by mistake. A table format with\n  statistics and a change feed implements the full <code>VersionedSource</code>\n  protocol instead, as Delta and Iceberg do.</li>\n<li>Credentials stay out of your code: <code>Storage</code> holds object store\n  options, or a function that fetches fresh ones, and is shared by\n  every table that needs it.</li>\n</ul>\n<span class=\"paragraph\">You can now stack transforms into layers that pass only their changes\nalong, store the ones others read, and rely on every contract's\nguarantees in every state while only the batch is checked, whether the\ndata comes from a lake, an API or a folder of files. Next up,\n<a href=\"?file=11_engines.py\">Engines and SQL</a> runs the same checked plans on\nPolars and DataFusion, and as SQL for Snowflake and Spark.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
       "code_hash": "123d8416045050a0054b17d93deb4690",
       "outputs": [
         {
