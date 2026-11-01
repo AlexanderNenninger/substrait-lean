@@ -204,6 +204,32 @@ jobs:
           assert rows == [5, 7], rows
           PY
 
+  # Weekly: each tour notebook in the sandbox its own header describes, with
+  # sverify from this checkout, as molab runs the published ones. CI runs them
+  # in the full development environment, so only this sees a header that
+  # misses an extra (#197). About a minute per notebook, so not on every PR.
+  notebooks-sandbox:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-lean
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - working-directory: notebooks
+        run: |
+          out=$(mktemp -d); failed=()
+          for nb in [0-9]*.py; do
+            echo "::group::$nb"
+            uvx marimo export html --sandbox "$nb" -o "$out/${nb%.py}.html" || failed+=("$nb")
+            echo "::endgroup::"
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::${#failed[@]} notebook(s) failed in their own sandbox: ${failed[*]}"
+            exit 1
+          fi
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
     # A release that breaks on a newer Python is not published.

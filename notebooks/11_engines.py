@@ -4,7 +4,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "sqlglot==30.27.0",
-#     "sverify",
+#     "sverify[datafusion,polars]",
 # ]
 #
 # [tool.uv.sources]
