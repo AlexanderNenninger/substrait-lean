@@ -1,0 +1,19 @@
+{
+  "duckdb": "2.0.0",
+  "source": "sverify.duckdb_fuzz (generated queries, no DuckDB tests)",
+  "area": "fuzz/int_overflow",
+  "summary": {"agree": 14054, "disagree": 8, "refused": 0, "skipped": 0},
+  "disagree_sides": {"lean": 8},
+  "skipped_files": {},
+  "checked": 14062,
+  "results": [
+    {"file": "fuzz:int_overflow", "line": 0, "sql": "SELECT DISTINCT (- (d % d)) AS c0 FROM t AS q ORDER BY c0", "tables": {"t": [["NULL", "NULL", "NULL", "NULL", "NULL", "NULL"], ["NULL", "NULL", "NULL", "NULL", "NULL", "NULL"], ["NULL", "NULL", "0.0", "NULL", "NULL", "NULL"]]}, "duckdb": "[[\"nan\"], [\"NULL\"]]", "lean": "[[\"NULL\"]]", "cls": "disagree", "side": "lean", "reason": "verify: division by zero: ($2 % $2); may wrap around: -(($2 % $2))"},
+    {"file": "fuzz:int_overflow", "line": 1, "sql": "SELECT DISTINCT (i + (j / -1)) AS c0 FROM t AS q ORDER BY c0", "tables": {"t": [["NULL", "-9223372036854775808", "NULL", "NULL", "NULL", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in division of -9223372036854775808 / -1", "lean": "[[\"NULL\"]]", "cls": "disagree", "side": "lean", "reason": "verify: overflow: ($1 / -1); may wrap around: ($0 + ($1 / -1))"},
+    {"file": "fuzz:int_overflow", "line": 2, "sql": "SELECT DISTINCT (abs(k) IS NULL) AS c0 FROM u AS q ORDER BY c0", "tables": {"u": [["-9223372036854775808", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow on abs(-9223372036854775808)", "lean": "[[\"False\"]]", "cls": "disagree", "side": "lean", "reason": "verify: overflow: ($0 / -1)"},
+    {"file": "fuzz:int_overflow", "line": 3, "sql": "SELECT DISTINCT (k - 1) AS c0, TRUE AS c1 FROM u AS q ORDER BY c0, c1", "tables": {"u": [["-9223372036854775808", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in subtraction of INT64 (-9223372036854775808 - 1)!", "lean": "[[\"-9223372036854775809\", \"True\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 - 1)"},
+    {"file": "fuzz:int_overflow", "line": 4, "sql": "SELECT DISTINCT (k + (- k)) AS c0, TRUE AS c1 FROM u AS q ORDER BY c0, c1", "tables": {"u": [["-9223372036854775808", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in negation of numeric value!", "lean": "[[\"0\", \"True\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: -($0); may wrap around: ($0 + -($0))"},
+    {"file": "fuzz:int_overflow", "line": 5, "sql": "SELECT DISTINCT b AS c0, (i / i) AS c1, b AS c2 FROM t AS q ORDER BY c0, c1, c2", "tables": {"t": [["NULL", "NULL", "NULL", "NULL", "NULL", "NULL"], ["0", "NULL", "NULL", "NULL", "NULL", "NULL"]]}, "duckdb": "error: Invalid Input Error: Division by zero in expression (i // i). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.", "lean": "[[\"NULL\", \"NULL\", \"NULL\"]]", "cls": "disagree", "side": "lean", "reason": "verify: division by zero: ($0 / $0); overflow: ($0 / $0)"},
+    {"file": "fuzz:int_overflow", "line": 6, "sql": "SELECT DISTINCT TRUE AS c0, TRUE AS c1, (k + k) AS c2 FROM u AS q ORDER BY c0, c1, c2", "tables": {"u": [["9223372036854775807", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in addition of INT64 (9223372036854775807 + 9223372036854775807)!", "lean": "[[\"True\", \"True\", \"18446744073709551614\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 + $0)"},
+    {"file": "fuzz:int_overflow", "line": 7, "sql": "SELECT DISTINCT TRUE AS c0, TRUE AS c1, (- (k * 9223372036854775807)) AS c2 FROM u AS q ORDER BY c0, c1, c2", "tables": {"u": [["2", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!", "lean": "[[\"True\", \"True\", \"-18446744073709551614\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 * 9223372036854775807); may wrap around: -(($0 * 9223372036854775807))"}
+  ]
+}

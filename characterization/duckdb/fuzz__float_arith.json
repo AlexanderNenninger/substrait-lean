@@ -1,0 +1,14 @@
+{
+  "duckdb": "2.0.0",
+  "source": "sverify.duckdb_fuzz (generated queries, no DuckDB tests)",
+  "area": "fuzz/float_arith",
+  "summary": {"agree": 14527, "disagree": 3, "refused": 0, "skipped": 0},
+  "disagree_sides": {"lean": 3},
+  "skipped_files": {},
+  "checked": 14530,
+  "results": [
+    {"file": "fuzz:float_arith", "line": 0, "sql": "SELECT DISTINCT (d / d) AS c0, b AS c1, b AS c2 FROM t AS q", "tables": {"t": [["NULL", "NULL", "0.0", "NULL", "NULL", "NULL"]]}, "duckdb": "error: Invalid Input Error: Division by zero in expression (d // d). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.", "lean": "[[\"nan\", \"NULL\", \"NULL\"]]", "cls": "disagree", "side": "lean"},
+    {"file": "fuzz:float_arith", "line": 1, "sql": "SELECT DISTINCT (k * k) AS c0, TRUE AS c1 FROM u AS q ORDER BY c0, c1", "tables": {"u": [["9007199254740993", "NULL"]]}, "duckdb": "error: Out of Range Error: Overflow in multiplication of INT64 (9007199254740993 * 9007199254740993)!", "lean": "[[\"81129638414606699710187514626049\", \"True\"]]", "cls": "disagree", "side": "lean", "reason": "verify: may wrap around: ($0 * $0)"},
+    {"file": "fuzz:float_arith", "line": 2, "sql": "SELECT DISTINCT b AS c0, b AS c1, (- (d % d)) AS c2 FROM t AS q ORDER BY c0, c1, c2", "tables": {"t": [["NULL", "NULL", "0.0", "NULL", "NULL", "NULL"]]}, "duckdb": "[[\"NULL\", \"NULL\", \"nan\"]]", "lean": "[[\"NULL\", \"NULL\", \"NULL\"]]", "cls": "disagree", "side": "lean", "reason": "verify: division by zero: ($2 % $2); may wrap around: -(($2 % $2))"}
+  ]
+}

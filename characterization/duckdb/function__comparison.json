@@ -1,0 +1,26 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "function/comparison",
+  "summary": {"agree": 0, "disagree": 0, "refused": 15, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::tinyint), (1::tinyint), (2::tinyint), (3::tinyint), (NULL::tinyint)) t(v) WHERE v BETW…", "cls": "refused", "reason": "producer: Substrait(\"Only literal types and aliases are supported in Virtual Tables, got: Cast\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::smallint), (1::smallint), (2::smallint), (3::smallint), (NULL::smallint)) t(v) WHERE v…", "cls": "refused", "reason": "producer: Substrait(\"Only literal types and aliases are supported in Virtual Tables, got: Cast\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::integer), (1::integer), (2::integer), (3::integer), (NULL::integer)) t(v) WHERE v BETW…", "cls": "refused", "reason": "producer: Substrait(\"Only literal types and aliases are supported in Virtual Tables, got: Cast\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::bigint), (1::bigint), (2::bigint), (3::bigint), (NULL::bigint)) t(v) WHERE v BETWEEN 1…", "cls": "refused", "reason": "producer: Substrait(\"Only literal types and aliases are supported in Virtual Tables, got: Cast\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::hugeint), (1::hugeint), (2::hugeint), (3::hugeint), (NULL::hugeint)) t(v) WHERE v BETW…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type Int128\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::utinyint), (1::utinyint), (2::utinyint), (3::utinyint), (NULL::utinyint)) t(v) WHERE v…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UTINYINT\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::usmallint), (1::usmallint), (2::usmallint), (3::usmallint), (NULL::usmallint)) t(v) WH…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type USMALLINT\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::uinteger), (1::uinteger), (2::uinteger), (3::uinteger), (NULL::uinteger)) t(v) WHERE v…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UINT\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::ubigint), (1::ubigint), (2::ubigint), (3::ubigint), (NULL::ubigint)) t(v) WHERE v BETW…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UBIGINT\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::uhugeint), (1::uhugeint), (2::uhugeint), (3::uhugeint), (NULL::uhugeint)) t(v) WHERE v…", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UInt128\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::float), (1::float), (2::float), (3::float), (NULL::float)) t(v) WHERE v BETWEEN 1::flo…", "cls": "refused", "reason": "producer: Substrait(\"Only literal types and aliases are supported in Virtual Tables, got: Cast\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 7, "sql": "SELECT count(*) FROM (VALUES (0::double), (1::double), (2::double), (3::double), (NULL::double)) t(v) WHERE v BETWEEN 1…", "cls": "refused", "reason": "producer: Substrait(\"Only literal types and aliases are supported in Virtual Tables, got: Cast\")"},
+    {"file": "function/comparison/between_physical_types.test", "line": 16, "sql": "SELECT count(*) FROM (VALUES (INTERVAL '1 day'), (INTERVAL '2 days'), (INTERVAL '3 days')) t(v) WHERE v BETWEEN INTERVA…", "cls": "refused", "reason": "producer: VALUES written as an empty virtual table"},
+    {"file": "function/comparison/between_physical_types.test", "line": 23, "sql": "SELECT count(*) FROM (VALUES ('a'), ('b'), ('c')) t(v) WHERE v BETWEEN 'a' AND 'b';", "cls": "refused", "reason": "producer: VALUES written as an empty virtual table"},
+    {"file": "function/comparison/between_physical_types.test", "line": 28, "sql": "SELECT count(*) FROM (VALUES (false), (true), (NULL)) t(v) WHERE v BETWEEN false AND true;", "cls": "refused", "reason": "producer: VALUES written as an empty virtual table"}
+  ]
+}

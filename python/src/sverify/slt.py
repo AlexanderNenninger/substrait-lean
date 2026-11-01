@@ -51,6 +51,7 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 import threading
 import tomllib
 from collections import Counter
@@ -103,6 +104,18 @@ def fetch(version: str | None = None, cache: Path = CACHE) -> Path:
         subprocess.run([*git, *clone, "--branch", f"v{version}", url, str(root)], check=True)
         subprocess.run([*git, "-C", str(root), "sparse-checkout", "set", "test/sql"], check=True)
     return root
+
+
+def source(version: str, cache: Path = CACHE) -> str:
+    """Where the tests come from: the repository, tag and commit."""
+    root = cache / f"v{version}"
+    try:
+        commit = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+    except OSError:
+        commit = ""
+    return f"duckdb/duckdb@v{version}" + (f" ({commit})" if commit else "")
 
 
 def area_of(rel: str) -> str:
@@ -409,6 +422,11 @@ def translate(sql: str, null_order: str = "nulls_last") -> tuple[str, str, list[
     tree = _parse(sql, d["duckdb"])
     if not isinstance(tree, exp.Query):
         raise ValueError(f"not a query: {type(tree).__name__}")
+    if any(
+        j.args.get("method") or "POSITIONAL" in (j.text("kind") or "").upper()
+        for j in tree.find_all(exp.Join)
+    ) or re.search(r"\bPOSITIONAL\s+JOIN\b", sql, re.I):
+        raise ValueError("sqlglot: does not translate POSITIONAL or ASOF JOIN")
     for node in tree.walk():
         # sqlglot writes these with another meaning in DataFusion's SQL:
         # `strftime`'s format in Postgres's syntax, DuckDB's top-n
@@ -786,6 +804,14 @@ class Replay:
         lean_rows: list[list[str]] = []
         try:
             inlined = _typed_inline(json.loads(plan), rows, self.con)
+        except TypeError as e:
+            # A struct, decimal, blob, …: `sverify.testing.literal` has none.
+            res.cls, res.reason = (
+                "refused",
+                f"tables: no Lean literal for a value ({_clip(str(e), 60)})",
+            )
+            return res
+        try:
             values = lean_values(json.dumps(inlined))
             lean_rows = self.fmt.rows(_as_table(values, schema))
             res.lean = _show(lean_rows)
@@ -908,6 +934,24 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
             elif pa.types.is_date(t):
                 col = [None if v is None else EPOCH.date() + dt.timedelta(days=v) for v in col]
                 t = pa.date32()
+            elif pa.types.is_time(t):
+                # Microseconds since midnight.
+                col = [
+                    None if v is None else (dt.datetime.min + dt.timedelta(microseconds=v)).time()
+                    for v in col
+                ]
+                t = pa.time64("us")
+            elif pa.types.is_duration(t):
+                col = [None if v is None else dt.timedelta(microseconds=v) for v in col]
+                t = pa.duration("us")
+            elif pa.types.is_interval(t):
+                # The model's intervals are microseconds.
+                col = [
+                    None
+                    if v is None
+                    else pa.scalar((0, 0, v * 1000), pa.month_day_nano_interval()).as_py()
+                    for v in col
+                ]
             elif pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_string_view(t):
                 t = pa.string()
             arr = pa.array(col, t)
@@ -925,9 +969,17 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     tf = parse(path.read_text(errors="replace"))
     if tf.skip:
         return [], tf.skip
+    with tempfile.TemporaryDirectory(prefix="sverify-slt-") as tmp:
+        return _replay(tf, rel, tmp), None
+
+
+def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
     rp = Replay(rel)
     results: list[Result] = []
     for rec in tf.records:
+        # Files a test writes go to a temporary directory.
+        for key in ("__TEST_DIR__", "{TEST_DIR}", "{TEMP_DIR}"):
+            rec.sql = rec.sql.replace(key, tmp)
         probe = _PROBE.match(rec.sql) is not None
         if rec.skip or rec.connection:
             if probe:
@@ -959,7 +1011,7 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
                     reason=f"harness: {_error(e)}",
                 )
             )
-    return results, None
+    return results
 
 
 def _replay_one(args: tuple[str, str]) -> tuple[str, list[dict], str | None]:
@@ -976,6 +1028,22 @@ def _replay_one(args: tuple[str, str]) -> tuple[str, list[dict], str | None]:
 # --- ledger --------------------------------------------------------------------------
 
 CLASSES = ("agree", "disagree", "refused", "skipped")
+
+
+#: The fields a ledger keeps of a refused or skipped query: what and why.
+_BRIEF = ("file", "line", "sql", "cls", "reason")
+
+
+def _compact(r: dict) -> dict:
+    """A result as the ledger keeps it: all three results of a query that
+    ran, the reason alone of one that did not; long values clipped."""
+    keep = r if r["cls"] in ("agree", "disagree") else {k: r.get(k) for k in _BRIEF}
+    n = 300 if r["cls"] == "disagree" else 120
+    return {
+        k: _clip(v, n) if isinstance(v, str) and k != "file" else v
+        for k, v in keep.items()
+        if v not in (None, "") and not (k == "translated" and r["cls"] == "agree")
+    }
 
 
 def write_ledger(
@@ -995,6 +1063,8 @@ def write_ledger(
     head = {
         **{
             "duckdb": version,
+            "source": source(version),
+            "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
             "area": area,
             "summary": {c: counts.get(c, 0) for c in CLASSES},
             "disagree_sides": dict(sorted(sides.items())),
@@ -1005,12 +1075,11 @@ def write_ledger(
     path = out / f"{area.replace('/', '__')}.json"
     lines = ["{"]
     for k, v in head.items():
+        if v is None:
+            continue
         lines.append(f"  {json.dumps(k)}: {json.dumps(v, sort_keys=True)},")
     lines.append('  "results": [')
-    body = [
-        "    " + json.dumps({k: v for k, v in r.items() if v not in (None, "")}, ensure_ascii=False)
-        for r in results
-    ]
+    body = ["    " + json.dumps(_compact(r), ensure_ascii=False) for r in results]
     lines.append(",\n".join(body))
     lines.append("  ]")
     lines.append("}")

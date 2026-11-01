@@ -1,0 +1,16 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "function",
+  "summary": {"agree": 1, "disagree": 0, "refused": 4, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "function/test_scalar_executor.test", "line": 12, "sql": "SELECT abs(i), upper(s), i + 10 FROM executor_input ORDER BY rowid;", "cls": "refused", "reason": "producer: SchemaError(FieldNotFound { field: Column { relation: None, name: \"rowid\" }, valid_fields: [Column { relation…"},
+    {"file": "function/test_scalar_executor.test", "line": 21, "sql": "SELECT abs(i), upper(s) FROM executor_input WHERE i > 0 ORDER BY i;", "expected": "[\"2\", \"BETA\", \"5\", \"GAMMA\"]", "duckdb": "[[\"2\", \"BETA\"], [\"5\", \"GAMMA\"]]", "lean": "[[\"2\", \"BETA\"], [\"5\", \"GAMMA\"]]", "engine": "[[\"2\", \"BETA\"], [\"5\", \"GAMMA\"]]", "cls": "agree"},
+    {"file": "function/test_scalar_executor.test", "line": 28, "sql": "SELECT replace(s, 'a', 'x') FROM executor_input ORDER BY rowid;", "cls": "refused", "reason": "producer: SchemaError(FieldNotFound { field: Column { relation: None, name: \"rowid\" }, valid_fields: [Column { relation…"},
+    {"file": "function/test_scalar_executor.test", "line": 37, "sql": "SELECT try_strptime(s, '%Y-%m-%d') FROM (VALUES ('2024-01-02'), ('invalid'), (NULL)) input(s);", "cls": "refused", "reason": "producer: Invalid function 'try_strptime'"},
+    {"file": "function/test_scalar_executor.test", "line": 45, "sql": "SELECT make_timestamp(2024, 1, 2, 3, 4, 5);", "cls": "refused", "reason": "producer: Invalid function 'make_timestamp'"}
+  ]
+}

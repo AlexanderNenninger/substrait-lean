@@ -1,0 +1,25 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "limit",
+  "summary": {"agree": 2, "disagree": 0, "refused": 5, "skipped": 7},
+  "disagree_sides": {},
+  "skipped_files": {"limit/streaming_limit_pipeline_flush.test": "include test/sql/tpch/tpch_setup.test_template"},
+  "results": [
+    {"file": "limit/limit_exceeds_child_cardinality.test", "line": 8, "sql": "SELECT i FROM range(10) t(i) ORDER BY i LIMIT 2147483647", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "limit/limit_exceeds_child_cardinality.test", "line": 22, "sql": "SELECT i FROM range(10) t(i) ORDER BY i DESC LIMIT 11", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "limit/limit_exceeds_child_cardinality.test", "line": 36, "sql": "SELECT i FROM range(10) t(i) GROUP BY i ORDER BY i LIMIT 2147483647", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "limit/limit_exceeds_child_cardinality.test", "line": 53, "sql": "SELECT i FROM tbl ORDER BY i LIMIT 9223372036854775807", "expected": "[\"0\", \"1\", \"2\", \"3\", \"4\"]", "duckdb": "[[\"0\"], [\"1\"], [\"2\"], [\"3\"], [\"4\"]]", "lean": "[[\"0\"], [\"1\"], [\"2\"], [\"3\"], [\"4\"]]", "engine": "[[\"0\"], [\"1\"], [\"2\"], [\"3\"], [\"4\"]]", "cls": "agree"},
+    {"file": "limit/limit_exceeds_child_cardinality.test", "line": 62, "sql": "SELECT count(*) FROM (SELECT i FROM tbl ORDER BY i LIMIT 100)", "expected": "[\"5\"]", "duckdb": "[[\"5\"]]", "lean": "[[\"5\"]]", "engine": "[[\"5\"]]", "cls": "agree"},
+    {"file": "limit/streaming_limit_pipeline_flush2.test", "line": 8, "sql": "SELECT count(*), sum(x)          FROM (              SELECT unnest(range(200000)) AS u, x              FROM (          …", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "limit/test_batch_limit_filters.test", "line": 8, "sql": "FROM tbl WHERE s LIKE '%string999999%' LIMIT 5", "cls": "skipped", "reason": "table tbl has 1000000 rows"},
+    {"file": "limit/test_limit0.test", "line": 6, "sql": "SELECT * FROM (SELECT SUM(i) FROM range(100000000000) tbl(i)) LIMIT 0;", "cls": "refused", "reason": "producer: Plan(\"table function 'GENERATE_SERIES' not found\")"},
+    {"file": "limit/test_preserve_insertion_order.test", "line": 11, "sql": "SELECT MIN(i), MAX(i), COUNT(*) FROM integers", "cls": "skipped", "reason": "table integers has 1000000 rows"},
+    {"file": "limit/test_preserve_insertion_order.test", "line": 16, "sql": "SELECT * FROM integers LIMIT 5", "cls": "skipped", "reason": "table integers has 1000000 rows"},
+    {"file": "limit/test_preserve_insertion_order.test", "line": 25, "sql": "SELECT * FROM integers LIMIT 5 OFFSET 500000", "cls": "skipped", "reason": "table integers has 1000000 rows"},
+    {"file": "limit/test_preserve_insertion_order.test", "line": 37, "sql": "SELECT MIN(i), MAX(i), COUNT(*) FROM integers2", "cls": "skipped", "reason": "table integers2 has 1000000 rows"},
+    {"file": "limit/test_preserve_insertion_order.test", "line": 44, "sql": "SELECT * FROM integers2 WHERE i IN (337, 195723, 442578, 994375)", "cls": "skipped", "reason": "table integers2 has 1000000 rows"},
+    {"file": "limit/test_preserve_insertion_order.test", "line": 54, "sql": "SELECT * FROM integers2 WHERE i IN (337, 195723, 442578, 994375) LIMIT 4", "cls": "skipped", "reason": "table integers2 has 1000000 rows"}
+  ]
+}

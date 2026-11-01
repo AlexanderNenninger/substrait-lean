@@ -121,9 +121,8 @@ def _same_rows(a: list[tuple], b: list[tuple], ordered: bool) -> bool:
     try:
         return fuzz.same_rows(a, b, ordered)
     except OverflowError:
-        if not ordered:
-            a, b = sorted(map(repr, a)), sorted(map(repr, b))
-        return list(map(repr, a)) == list(map(repr, b)) if ordered else a == b
+        x, y = list(map(repr, a)), list(map(repr, b))
+        return x == y if ordered else sorted(x) == sorted(y)
 
 
 def kind(o: Outcome) -> str:
@@ -232,7 +231,8 @@ def write(target: str, version: str, found: list[Outcome], checked: int, out: Pa
         for i, o in enumerate(sorted(found, key=lambda o: (len(o.sql), o.sql)))
     ]
     summary = {"agree": checked - len(found), "disagree": len(found), "refused": 0, "skipped": 0}
-    head = {"summary": summary, "checked": checked}
+    source = "sverify.duckdb_fuzz (generated queries, no DuckDB tests)"
+    head = {"source": source, "license": None, "summary": summary, "checked": checked}
     path = slt.write_ledger(f"fuzz/{target}", version, results, {}, out, head)
     return path
 

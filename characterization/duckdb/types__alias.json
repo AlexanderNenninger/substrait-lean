@@ -1,0 +1,33 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "types/alias",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 22},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "types/alias/nested_alias.test", "line": 11, "sql": "SELECT [42]::my_int_list", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_functions.test", "line": 8, "sql": "SELECT upper('hello'::str_alias)", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_map.test", "line": 11, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_map.test", "line": 18, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_struct.test", "line": 14, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_struct.test", "line": 19, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_struct.test", "line": 27, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_struct.test", "line": 37, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_struct.test", "line": 48, "sql": "SELECT * FROM a;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_struct_nested_alias.test", "line": 29, "sql": "SELECT top_nest FROM failing;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 25, "sql": "select * from person", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 36, "sql": "select * from person where current_alias = 'sad'", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 41, "sql": "select * from person where current_alias > 'ok'", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 62, "sql": "select * from pets;", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 69, "sql": "select person.name, pets.name from person inner join pets on  (person.current_alias = pets.current_alias)", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 112, "sql": "select * from aliens", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 121, "sql": "select * from aliens", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 132, "sql": "select * from aliens", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 154, "sql": "select * from person where current_alias = last_year_alias", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 159, "sql": "select * from person where current_alias = 'ok'", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 168, "sql": "select count(*), current_alias from person group by current_alias order by all", "cls": "skipped", "reason": "setting collation or macro"},
+    {"file": "types/alias/test_alias_table.test", "line": 175, "sql": "select name, current_alias from person order by current_alias", "cls": "skipped", "reason": "setting collation or macro"}
+  ]
+}

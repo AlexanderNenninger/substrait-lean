@@ -1,0 +1,28 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "returning",
+  "summary": {"agree": 16, "disagree": 0, "refused": 1, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "returning/no_crash_when_no_returning_columns.test", "line": 14, "sql": "SELECT * FROM v0;", "expected": "[]", "duckdb": "[]", "lean": "[]", "engine": "[]", "cls": "agree"},
+    {"file": "returning/no_crash_when_no_returning_columns.test", "line": 28, "sql": "select * from v0 where c1 = 0;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
+    {"file": "returning/no_crash_when_no_returning_columns.test", "line": 39, "sql": "Select * from v0 order by all;", "cls": "refused", "reason": "producer: SchemaError(FieldNotFound { field: Column { relation: None, name: \"all\" }, valid_fields: [Column { relation: …"},
+    {"file": "returning/returning_delete.test", "line": 255, "sql": "SELECT count(*) FROM table1;", "expected": "[\"4000\"]", "duckdb": "[[\"4000\"]]", "lean": "[[\"4000\"]]", "engine": "[[\"4000\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 579, "sql": "SELECT * FROM merge_gen_target;", "expected": "[\"3\", \"30\", \"60\"]", "duckdb": "[[\"3\", \"30\", \"60\"]]", "lean": "[[\"3\", \"30\", \"60\"]]", "engine": "[[\"3\", \"30\", \"60\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 674, "sql": "SELECT * FROM indexed_returning ORDER BY id;", "expected": "[\"1\", \"a\", \"100\"]", "duckdb": "[[\"1\", \"a\", \"100\"]]", "lean": "[[\"1\", \"a\", \"100\"]]", "engine": "[[\"1\", \"a\", \"100\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 680, "sql": "SELECT * FROM indexed_returning WHERE amount = 100;", "expected": "[\"1\", \"a\", \"100\"]", "duckdb": "[[\"1\", \"a\", \"100\"]]", "lean": "[[\"1\", \"a\", \"100\"]]", "engine": "[[\"1\", \"a\", \"100\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 686, "sql": "SELECT COUNT(*) FROM indexed_returning WHERE amount = 200;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 696, "sql": "SELECT * FROM indexed_returning WHERE amount = 250;", "expected": "[\"2\", \"new_b\", \"250\"]", "duckdb": "[[\"2\", \"new_b\", \"250\"]]", "lean": "[[\"2\", \"new_b\", \"250\"]]", "engine": "[[\"2\", \"new_b\", \"250\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 701, "sql": "SELECT * FROM indexed_returning WHERE amount = 350;", "expected": "[\"3\", \"new_c\", \"350\"]", "duckdb": "[[\"3\", \"new_c\", \"350\"]]", "lean": "[[\"3\", \"new_c\", \"350\"]]", "engine": "[[\"3\", \"new_c\", \"350\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 720, "sql": "SELECT * FROM indexed_returning WHERE amount = 225;", "expected": "[\"2\", \"tx_b\", \"225\"]", "duckdb": "[[\"2\", \"tx_b\", \"225\"]]", "lean": "[[\"2\", \"tx_b\", \"225\"]]", "engine": "[[\"2\", \"tx_b\", \"225\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 729, "sql": "SELECT * FROM indexed_returning WHERE amount = 225;", "expected": "[\"2\", \"tx_b\", \"225\"]", "duckdb": "[[\"2\", \"tx_b\", \"225\"]]", "lean": "[[\"2\", \"tx_b\", \"225\"]]", "engine": "[[\"2\", \"tx_b\", \"225\"]]", "cls": "agree"},
+    {"file": "returning/returning_delete.test", "line": 735, "sql": "SELECT * FROM indexed_returning WHERE id = 2;", "expected": "[\"2\", \"tx_b\", \"225\"]", "duckdb": "[[\"2\", \"tx_b\", \"225\"]]", "lean": "[[\"2\", \"tx_b\", \"225\"]]", "engine": "[[\"2\", \"tx_b\", \"225\"]]", "cls": "agree"},
+    {"file": "returning/returning_large.test", "line": 11, "sql": "SELECT count(*) FROM table1;", "expected": "[\"4000\"]", "duckdb": "[[\"4000\"]]", "lean": "[[\"4000\"]]", "engine": "[[\"4000\"]]", "cls": "agree"},
+    {"file": "returning/returning_update.test", "line": 128, "sql": "SELECT a3, b3, c3 IN (1, 2, 3, 100, 200) FROM table3;", "expected": "[\"1\", \"4\", \"1\", \"2\", \"6\", \"1\", \"8\", \"8\", \"1\"]", "duckdb": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "lean": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "engine": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "cls": "agree"},
+    {"file": "returning/returning_update.test", "line": 299, "sql": "SELECT * FROM table4;", "expected": "[\"4\", \"5\", \"6\", \"7\", \"8\", \"9\", \"1\", \"10\", \"3\"]", "duckdb": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "lean": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "engine": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "cls": "agree"},
+    {"file": "returning/returning_update.test", "line": 306, "sql": "SELECT count(*) FROM table1;", "expected": "[\"4000\"]", "duckdb": "[[\"4000\"]]", "lean": "[[\"4000\"]]", "engine": "[[\"4000\"]]", "cls": "agree"}
+  ]
+}

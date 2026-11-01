@@ -1,0 +1,33 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "types/uuid",
+  "summary": {"agree": 0, "disagree": 0, "refused": 20, "skipped": 2},
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "types/uuid/test_uuid_cast.test", "line": 6, "sql": "select try_cast(try_cast('00112233-4455-6677-8899-aabbccddeeff'::UUID AS BLOB) as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 12, "sql": "SELECT '00112233-4455-6677-8899-aabbccddeeff'::UUID::BLOB;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 18, "sql": "SELECT '\\x00\\x11\\x223DUfw\\x88\\x99\\xAA\\xBB\\xCC\\xDD\\xEE\\xFF'::BLOB::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 24, "sql": "SELECT '00112233-4455-6677-8899-aabbccddeeff'::UUID::BLOB::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 30, "sql": "SELECT try_cast(try_cast('{00112233-4455-6677-8899-aabbccddeeff}'::UUID AS BLOB) as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 36, "sql": "SELECT try_cast(try_cast(NULL::UUID AS BLOB) as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 41, "sql": "SELECT try_cast(NULL::BLOB as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 47, "sql": "SELECT try_cast('\\x00\\x11\\x22\\x33'::BLOB as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 53, "sql": "SELECT try_cast('\\x00\\x11\\x223DUfw\\x88\\x99\\xAA\\xBB\\xCC\\xDD\\xEE\\xFF\\x00'::BLOB as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_cast.test", "line": 59, "sql": "SELECT try_cast(''::BLOB as uuid) as test;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 10, "sql": "SELECT '00000000-0000-0000-0000-000000000000'::UUID::UHUGEINT;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UInt128\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 16, "sql": "SELECT 0::UHUGEINT::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 22, "sql": "SELECT '00112233-4455-6677-8899-aabbccddeeff'::UUID::UHUGEINT::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 28, "sql": "SELECT 123456789::UHUGEINT::UUID::UHUGEINT;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UInt128\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 34, "sql": "SELECT 340282366920938463463374607431768211455::UHUGEINT::UUID::UHUGEINT;", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 40, "sql": "SELECT 'ffffffff-ffff-ffff-ffff-ffffffffffff'::UUID::UHUGEINT;", "cls": "skipped", "reason": "DuckDB's own result differs from the expected one"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 46, "sql": "SELECT NULL::UUID::UHUGEINT;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UInt128\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 51, "sql": "SELECT NULL::UHUGEINT::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 57, "sql": "SELECT try_cast(try_cast('12345678-1234-5678-1234-567812345678'::UUID AS UHUGEINT) as uuid);", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 63, "sql": "SELECT '12345678-9abc-def0-1234-56789abcdef0'::UUID::UHUGEINT::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 69, "sql": "SELECT '00000000-0000-0000-0000-000000000000'::UUID::HUGEINT;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type Int128\")"},
+    {"file": "types/uuid/test_uuid_uhugeint_cast.test", "line": 73, "sql": "SELECT 0::HUGEINT::UUID;", "cls": "refused", "reason": "producer: NotImplemented(\"Unsupported SQL type UUID\")"}
+  ]
+}

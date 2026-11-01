@@ -1,0 +1,12 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "tpch",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {"tpch/dbgen_readonly.test": "require tpch", "tpch/dbgen_reference_values.test": "require tpch", "tpch/tpch_sf0.test": "include test/sql/tpch/tpch_setup.test_template"},
+  "results": [
+
+  ]
+}

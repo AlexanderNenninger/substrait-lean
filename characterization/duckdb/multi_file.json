@@ -1,0 +1,12 @@
+{
+  "duckdb": "2.0.0",
+  "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
+  "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "multi_file",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 0},
+  "disagree_sides": {},
+  "skipped_files": {"multi_file/multi_file_file_row_number.test": "require parquet", "multi_file/multi_file_open_options.test": "require parquet", "multi_file/multi_file_schema.test": "require json", "multi_file/multi_file_schema_filter_casts.test": "require parquet"},
+  "results": [
+
+  ]
+}
