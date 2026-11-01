@@ -1,11 +1,11 @@
-"""The cases of `sverify.coverage`, one module per area of the Ibis API.
+"""The cases of `sverify_dev.coverage`, one module per area of the Ibis API.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API.
 
 Each area module defines `CASES`, the area's cases in README order, and, where
 it has any, the area's entries of `REFUSED`, `TIE_FREE`, `NO_DATAFUSION_SQL`,
-`DATAFUSION_SQL` and `UNORDERED_LISTS` (`sverify.coverage` says what each
+`DATAFUSION_SQL` and `UNORDERED_LISTS` (`sverify_dev.coverage` says what each
 means). This module combines them in `AREAS` order, which is the order of
 the README table.
 
@@ -19,7 +19,7 @@ from __future__ import annotations
 from types import ModuleType
 from typing import Any
 
-from sverify.coverage_cases import (
+from sverify_dev.coverage_cases import (
     aggregation,
     joins,
     lists,
@@ -30,7 +30,7 @@ from sverify.coverage_cases import (
     temporal,
     windows,
 )
-from sverify.coverage_cases._common import Case
+from sverify_dev.coverage_cases._common import Case
 
 AREAS: tuple[ModuleType, ...] = (
     rows,

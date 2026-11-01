@@ -36,7 +36,7 @@ from sverify.engine import (
 )
 from sverify.engines import table_rows, written_plan
 from sverify.errors import PostconditionError, PreconditionError
-from sverify.examples import PIPELINES
+from sverify_dev.examples import PIPELINES
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters

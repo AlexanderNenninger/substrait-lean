@@ -16,7 +16,7 @@ from sverify import duckdb_engine, polars_engine
 from sverify.contracts import violations
 from sverify.engine import connect, plan_json, run_checker
 from sverify.engines import create_table
-from sverify.examples import orders
+from sverify_dev.examples import orders
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
 from sverify.sql.snowflake import SNOWFLAKE

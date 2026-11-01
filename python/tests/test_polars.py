@@ -35,7 +35,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engines import ENGINES, delta_plans
-from sverify.examples import PIPELINES, create_tables
+from sverify_dev.examples import PIPELINES, create_tables
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.testing import canonical, inline_tables, lean_rows, lean_values
 from test_numeric import DOUBLES, INT_QUERIES, MIN, F

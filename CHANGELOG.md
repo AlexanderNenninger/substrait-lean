@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Maintainer tooling leaves the wheel
+
+The coverage harness, the query catalogue, the fuzzers, DuckDB's
+sqllogictest replay and the example pipelines (`sverify.coverage`,
+`sverify.catalogue`, `sverify.fuzz`, `sverify.duckdb_fuzz`, `sverify.slt`,
+`sverify.examples`) were internal, and only the tests and CI used them. They
+now live in `python/tools/sverify_dev` in the repository and are no longer
+installed with sverify: about 4,000 lines fewer in the wheel.
+
 ## 0.3.0 (2026-11-01)
 
 ### Licensed under the MPL-2.0

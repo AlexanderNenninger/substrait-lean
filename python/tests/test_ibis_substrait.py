@@ -21,7 +21,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.coverage import (
+from sverify_dev.coverage import (
     CASES,
     DATAFUSION_SQL,
     MEMTABLES,

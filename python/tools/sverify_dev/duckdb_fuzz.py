@@ -1,12 +1,12 @@
 """Fuzz DuckDB's own SQL against Lean's semantics, for DuckDB's engine
 profile (epic #185).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API.
 
-`sverify.fuzz` checks the engines on the plans Lean writes, guards
+`sverify_dev.fuzz` checks the engines on the plans Lean writes, guards
 included. Characterizing DuckDB needs DuckDB's semantics instead: here each
-random query of `sverify.fuzz` runs on DuckDB as SQL, natively, and its rows
+random query of `sverify_dev.fuzz` runs on DuckDB as SQL, natively, and its rows
 (or its error) are compared with `Rel.eval`'s on the plan DataFusion's
 producer writes for it. The query is DataFusion SQL; two settings make
 DuckDB read it the same way: `integer_division` (`/` on integers truncates)
@@ -14,9 +14,9 @@ and `default_null_order` (NULLs sort last ascending, first descending).
 
 A `Target` aims the fuzzer at one area of the replay's disagreements: the
 integer values the tables hold (boundaries, zero), the integer literals,
-and the expression kinds drawn. `python -m sverify.duckdb_fuzz <target>`
+and the expression kinds drawn. `python -m sverify_dev.duckdb_fuzz <target>`
 runs one target for a budget and writes its findings as a ledger in the
-format of `sverify.slt` (`characterization/duckdb/fuzz__<target>.json`).
+format of `sverify_dev.slt` (`characterization/duckdb/fuzz__<target>.json`).
 
 This module needs Hypothesis, which only the `dev` group installs.
 """
@@ -41,8 +41,8 @@ from hypothesis import HealthCheck, find, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
-from sverify import fuzz, slt
-from sverify.fuzz import BOOL, DOUBLE, INT
+from sverify_dev import fuzz, slt
+from sverify_dev.fuzz import BOOL, DOUBLE, INT
 
 I64 = 2**63
 
@@ -54,7 +54,7 @@ class Target:
     literals: list[str]
     """Integer literals in expressions."""
     kinds: dict[str, list[str]] = field(default_factory=dict)
-    """Expression kinds by type (`sverify.fuzz._KINDS`), replacing the defaults."""
+    """Expression kinds by type (`sverify_dev.fuzz._KINDS`), replacing the defaults."""
 
 
 _BOUNDS = [I64 - 1, -I64, 2**31 - 1, -(2**31), 2**31, 2**32, 3037000500]
@@ -82,7 +82,7 @@ TARGETS = {
 
 @contextlib.contextmanager
 def aimed(target: Target) -> Iterator[Any]:
-    """`sverify.fuzz`'s strategies drawing `target`'s values, for the block:
+    """`sverify_dev.fuzz`'s strategies drawing `target`'s values, for the block:
     yields the strategy of (query, tables) cases."""
     saved = (fuzz.VALUES[INT], fuzz.LITERALS[INT], dict(fuzz._KINDS))
     fuzz.VALUES[INT] = st.sampled_from(target.ints)
@@ -116,7 +116,7 @@ def _text(v: object) -> str:
 
 
 def _same_rows(a: list[tuple], b: list[tuple], ordered: bool) -> bool:
-    """`sverify.fuzz.same_rows`, which cannot sort integers past a double's
+    """`sverify_dev.fuzz.same_rows`, which cannot sort integers past a double's
     range (Lean's unbounded ones): those compare exactly."""
     try:
         return fuzz.same_rows(a, b, ordered)
@@ -136,7 +136,7 @@ def kind(o: Outcome) -> str:
 def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     """Lean against DuckDB on one query and input.
 
-    Raises `sverify.fuzz.Refused` when the query is outside the model or
+    Raises `sverify_dev.fuzz.Refused` when the query is outside the model or
     DuckDB cannot read it."""
     s = fuzz.Session(tables)
     plan = s.plan(query.sql)
@@ -212,7 +212,7 @@ def search(target: str, budget: float, seed: int = 0) -> tuple[list[Outcome], in
 
 
 def write(target: str, version: str, found: list[Outcome], checked: int, out: Path) -> Path:
-    """The findings as a ledger in `sverify.slt`'s format: each finding a
+    """The findings as a ledger in `sverify_dev.slt`'s format: each finding a
     `disagree` result whose `file` is `fuzz:<target>`."""
     results = [
         {
@@ -231,7 +231,7 @@ def write(target: str, version: str, found: list[Outcome], checked: int, out: Pa
         for i, o in enumerate(sorted(found, key=lambda o: (len(o.sql), o.sql)))
     ]
     summary = {"agree": checked - len(found), "disagree": len(found), "refused": 0, "skipped": 0}
-    source = "sverify.duckdb_fuzz (generated queries, no DuckDB tests)"
+    source = "sverify_dev.duckdb_fuzz (generated queries, no DuckDB tests)"
     head = {"source": source, "license": None, "summary": summary, "checked": checked}
     path = slt.write_ledger(f"fuzz/{target}", version, results, {}, out, head)
     return path

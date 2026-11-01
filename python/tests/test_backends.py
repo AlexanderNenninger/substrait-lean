@@ -1,6 +1,6 @@
 """Every Ibis operation the checker verifies runs on every engine.
 
-Each `verified` case of the coverage harness (`sverify.coverage`) runs on
+Each `verified` case of the coverage harness (`sverify_dev.coverage`) runs on
 random tables: on DataFusion as Ibis compiles it to SQL, and on Polars and
 DuckDB as the plan Lean writes back out (`written_plan`) from the Ibis
 producer's plan. The results agree as bags with
@@ -31,7 +31,8 @@ import sqlglot
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from sverify import coverage, polars_engine
+from sverify import polars_engine
+from sverify_dev import coverage
 from sverify.engine import canonical as canonical_table
 from sverify.engine import (
     connect,
@@ -52,7 +53,7 @@ from sverify.testing import canonical
 
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
 
-#: Cases an engine refuses, with the reason (`sverify.coverage` says why).
+#: Cases an engine refuses, with the reason (`sverify_dev.coverage` says why).
 REFUSED, TIE_FREE = coverage.REFUSED, coverage.TIE_FREE
 
 T0 = dt.datetime(2024, 2, 28, 23, 0)
@@ -267,7 +268,7 @@ def test_connections_share_one_duckdb_database():
     psutil = pytest.importorskip("psutil")
     from sverify import connect
     from sverify.engines import table_rows
-    from sverify.examples import create_tables
+    from sverify_dev.examples import create_tables
 
     a, b = connect(), connect()
     create_tables(a, [(1, "ada", 3)])

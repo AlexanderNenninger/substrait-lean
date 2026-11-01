@@ -32,7 +32,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.examples import orders
+from sverify_dev.examples import orders
 from sverify.testing import canonical, inline_tables, lean_values
 
 T = ibis.schema({"a": "int64", "b": "int64", "s": "string"})

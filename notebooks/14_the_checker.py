@@ -71,14 +71,22 @@ def _():
 
     import sverify as sv
     from sverify.engine import checker_path
-    from sverify.engines import substrait_json, written_plan
-    from sverify.examples import create_tables
+    import ibis
+
+    from sverify.engines import create_table, substrait_json, written_plan
 
     con = sv.connect()  # plans run on DuckDB by default
-    create_tables(
+    create_table(
         con,
-        orders_rows=[(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
-        customers_rows=[("ada", "Paris"), ("bob", "Oslo")],
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 5), (3, "ada", None)],
+    )
+    create_table(
+        con,
+        "customers",
+        ibis.schema({"name": "string", "city": "string"}),
+        [("ada", "Paris"), ("bob", "Oslo")],
     )
 
     def substrait_check(plan_json, *flags):
@@ -311,21 +319,15 @@ def _(mo):
     mo.md(r"""
     ## How much of Ibis gets through
 
-    Not every query fits the Lean model yet. `sverify.coverage` compiles a
-    list of Ibis operations and hands each to the checker: ✓ means it is
-    verified (so contracts apply), ✗ that the checker refuses it, – that Ibis
-    or DataFusion fails before there is a plan, and *inc.* that it can also
-    be maintained incrementally. Refusing is the safe default: a plan outside
-    the model is never checked against the wrong semantics.
+    Not every query fits the Lean model yet. The README's
+    [coverage table](https://github.com/AlexanderNenninger/substrait-lean#what-is-supported)
+    compiles a list of Ibis operations and hands each to the checker: ✓ means
+    it is verified (so contracts apply), ✗ that the checker refuses it, – that
+    Ibis or DataFusion fails before there is a plan, and *inc.* that it can
+    also be maintained incrementally. It is regenerated after every change to
+    the checker. Refusing is the safe default: a plan outside the model is
+    never checked against the wrong semantics.
     """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    from sverify import coverage
-
-    mo.md(coverage.table(coverage.results()))
     return
 
 

@@ -1,7 +1,7 @@
 """Which parts of the Ibis API reach the Lean checker.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API.
 
 Each case is an Ibis expression over two unbound tables. It is compiled the way
 `sverify` compiles Ibis expressions (the vendored producer,
@@ -18,7 +18,7 @@ of DuckDB, Snowflake and Spark translate the plan Lean writes back out. `REFUSED
 lists the cases an engine refuses, and why; `tests/test_backends.py` runs the
 rest on random tables and compares the engines.
 
-The cases live in `sverify.coverage_cases`, one module per area (the rows of
+The cases live in `sverify_dev.coverage_cases`, one module per area (the rows of
 the README table), each with that area's entries of these tables, keyed by
 case label:
 
@@ -39,7 +39,7 @@ case label:
 refusals, so a change in coverage is a deliberate edit there. The README
 tables are regenerated with
 
-    uv run python -m sverify.coverage --write-readme
+    uv run python -m sverify_dev.coverage --write-readme
 
 by the `Generated files` workflow on `main` after every merge; feature branches
 leave them alone.
@@ -54,7 +54,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from sverify.coverage_cases import (
+from sverify_dev.coverage_cases import (
     CASES,
     DATAFUSION_SQL,
     NO_DATAFUSION_SQL,
@@ -62,7 +62,7 @@ from sverify.coverage_cases import (
     TIE_FREE,
     UNORDERED_LISTS,
 )
-from sverify.coverage_cases._common import TABLES, Case, L, M, Status, T, U
+from sverify_dev.coverage_cases._common import TABLES, Case, L, M, Status, T, U
 from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 
