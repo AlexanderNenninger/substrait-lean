@@ -1315,6 +1315,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Float.lean` | Doubles as exact integer codes (multiples of 2⁻¹⁰⁷⁴), NaN and −0.0 |
 | `SubstraitLean/Rounding.lean` | Exact `FLOOR`/`CEIL`/`ROUND` and casts to `BIGINT` on double codes; monotonicity |
 | `SubstraitLean/Text.lean` | String functions, `LIKE`; black-box `UPPER`/`LOWER`/regexes; patterns that certainly compile |
+| `SubstraitLean/Numeric.lean` | `sqrt`, `exp`, logarithms and trigonometry of doubles (C's libm) with their domains; 64-bit bitwise operations and shifts |
 | `SubstraitLean/Time.lean` | Exact `date_part` and `date_trunc` on the proleptic Gregorian calendar; monotonicity |
 | `SubstraitLean/Expr.lean` | `Literal`, `FieldReference`, scalar functions, `IfThen`, Kleene 3-valued logic |
 | `SubstraitLean/Window.lean` | Sort orders, `ROW_NUMBER`/`LAG`/`LEAD` semantics over partitions |
@@ -1611,6 +1612,20 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   expressions. `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error unless
   `Text.simpleRegex` accepts it, a conservative subset of Rust's syntax that is
   tested to compile.
+* **Elementary functions follow Substrait, with errors outside their domains.**
+  `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
+  `atan2` are computed with C's libm ([Numeric.lean](SubstraitLean/Numeric.lean)), and
+  contracts treat each result as "some double". Outside a function's domain (`sqrt` of a
+  negative, the logarithm of zero or a negative, `asin` and `acos` outside `[-1, 1]`,
+  `atan2(0, 0)`, `logb` to a base that is not positive or is 1) the result is an error,
+  Substrait's `on_domain_error` = ERROR when a plan omits the option; NaN is in every
+  domain. Bitwise operations are exact in 64-bit two's complement, and a shift count
+  outside 0–63, which Substrait leaves open, is an error too. Polars and the SQL of
+  DuckDB raise where Lean reports a domain error; DataFusion returns NaN, ±∞ or a
+  wrapped shift there, which an error allows. Spark runs `sqrt` and the bitwise
+  operations (its other functions are Java's `StrictMath`); Snowflake runs `&`, `|` and
+  `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
+  `python/tests/test_math.py`.
 * **Timestamps are microseconds (UTC).** `date_part` and `date_trunc` are computed
   exactly, checked against DataFusion by `python/tests/test_time.py`, including at
   the ends of the ranges where DataFusion stops being exact. Dates (`DATE`) are not

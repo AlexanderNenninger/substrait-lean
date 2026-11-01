@@ -170,7 +170,7 @@ def test_engines_agree(con, case, data):
             # NaN and ±inf to cast): both engines raise it.
             failed.add(engine)
     if failed:
-        assert failed | set(refused) == {"polars", "duckdb"}
+        assert failed | (set(refused) & {"polars", "duckdb"}) == {"polars", "duckdb"}
         return
     if not results:
         return

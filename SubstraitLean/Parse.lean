@@ -197,14 +197,16 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .timeOfDay _ => .tod
   | .un (.strftime _) _ => .str
   | .un (.addMonths _ false) _ => .date
+  | .un (.fmath _) _ => .float
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _
+  | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
-  | .bin .levenshtein _ _ => .int
+  | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin _ _ _ => .bool
@@ -653,9 +655,15 @@ Isthmus writes) is checked against the arguments the parser sees; a literal
 argument (or one built only from literals) has no kind of its own (a
 timestamp literal is an integer), so only the signature speaks for it. -/
 
+/-- Functions of doubles only: integer arguments are converted. -/
+def doubleFns : List String := ["atan2", "logb"] ++ FMath.all.map (·.name)
+
 /-- Functions whose arguments are numbers, timestamps or intervals. -/
 def arithmeticFns : List String :=
-  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"]
+  ["add", "subtract", "multiply", "divide", "modulus", "power", "negate", "abs"] ++
+    bitFns ++ doubleFns
+where
+  bitFns := ["bitwise_not", "shift_left", "shift_right"] ++ BitOp.all.map (·.name)
 
 /-- Functions that compare their arguments: these must have one kind. -/
 def comparisonFns : List String :=
@@ -788,7 +796,8 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["divide", "modulus", "abs", "power"].contains base then some none
     else none
   | "rounding" =>
-    if !float then none
+    if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
+    else if !float then none
     -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
     else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
     -- Native doubles round to nearest, ties to even.
@@ -799,7 +808,11 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     if base != "divide" && base != "modulus" then none
     else if float then some (some ["IEEE"]) else some none
   | "on_domain_error" =>
-    if base != "power" then none else if float then some (some ["NAN"]) else some none
+    -- Outside their domains the elementary functions raise (`Numeric.lean`).
+    if doubleFns.contains base then some (some ["ERROR"])
+    else if base != "power" then none else if float then some (some ["NAN"]) else some none
+  | "on_log_zero" =>
+    if ["ln", "log10", "log2", "logb"].contains base then some (some ["ERROR"]) else none
   -- The model's string matching is case-sensitive (`SubstraitLean/Text.lean`).
   | "case_sensitivity" =>
     if ["like", "contains", "starts_with", "ends_with", "strpos"].contains base then
@@ -1021,6 +1034,12 @@ def mkCall : String → List Expr → J Expr
     | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
   -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
   | "date_diff", [d, e] => pure (.bin .dateDiff d e)
+  -- Bitwise operations of integers (`SubstraitLean/Numeric.lean`); `NOT x`
+  -- is `x XOR -1`.
+  | "bitwise_not", [a] => pure (.bin (.bit .xor) a (.lit (.int (-1))))
+  | name, [a, b] => match BitOp.ofName? name with
+    | some op => pure (.bin (.bit op) a b)
+    | none => throw s!"unsupported function {name}/2"
   | name, args => throw s!"unsupported function {name}/{args.length}"
 where
   notDistinct (a b : Expr) : Expr :=
@@ -1095,6 +1114,12 @@ def mkFloatCall : String → List Expr → J Expr
   | "round", [a] => pure (.un .fround a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
+  -- `SubstraitLean/Numeric.lean`.
+  | "atan2", [y, x] => pure (.bin .fatan2 y x)
+  | "logb", [x, b] => pure (.bin .flogb x b)
+  | name, [a] => match FMath.ofName? name with
+    | some f => pure (.un (.fmath f) a)
+    | none => throw s!"unsupported double function {name}/1"
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
 /-- Parse an expression over input columns of kinds `cols`. -/
@@ -1217,9 +1242,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if (outTy.getObjVal? "decimal").toOption.isSome && !wideIntDecimal outTy then
       throw s!"{name}: decimal results are not supported"
     let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-      "ceil", "round"]
+      "ceil", "round"] ++ doubleFns
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
-    let floatCall := floats.contains (baseName name) && (out == .float || hasFloat)
+    let floatCall := floats.contains (baseName name) &&
+      (out == .float || hasFloat || doubleFns.contains (baseName name))
+    if arithmeticFns.bitFns.contains (baseName name) && hasFloat then
+      throw s!"{baseName name} is only supported on integers"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.

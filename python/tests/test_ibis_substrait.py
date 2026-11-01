@@ -42,6 +42,10 @@ KNOWN_GAPS: dict[str, str] = {}
 OPAQUE = {"re_search"}
 #: LIMIT without a total order keeps whichever rows come first.
 UNORDERED = {"limit", "limit with offset", "order_by + limit"}
+#: Functions that raise outside their domains (`Issue.domain`, Lean: NULL),
+#: where DataFusion returns NaN, ±inf or a wrapped shift instead, which an
+#: error allows: compared row by row, Lean's NULL matching anything.
+DOMAIN_ERRORS = {"sqrt", "ln", "log(base)", "trigonometry", "shifts"}
 
 names = st.sampled_from(["ada", "bob", "cy", None])
 amounts = st.one_of(st.none(), st.sampled_from([0.5, -1.5, 2.25, 3.0, 10.0]))
@@ -81,6 +85,9 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
             return None
         if isinstance(v, decimal.Decimal):
             v = int(v) if v == v.to_integral_value() else float(v)
+        if t.is_integer() and isinstance(v, float) and v.is_integer():
+            # DataFusion's `signum` of an integer is a double.
+            v = int(v)
         if t.is_floating():
             x = decode_double(v) if lean and isinstance(v, int) else float(cast(float, v))
             return "nan" if math.isnan(x) else round(x, 4) + 0.0
@@ -119,6 +126,27 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 )
 @given(t=t_rows(), u=u_rows, lr=l_rows)
 def test_plans_mean_what_ibis_means(case, t, u, lr):
+    if case.label in DOMAIN_ERRORS:
+        for row in t:
+            got, expected = lean_and_datafusion(case, [row], u, lr)
+            for g, e in zip(got, expected, strict=True):
+                assert all(a is None or a == b for a, b in zip(g, e, strict=True)), (g, e)
+        return
+    got, expected = lean_and_datafusion(case, t, u, lr)
+    if case.label in UNORDERED_LISTS:
+        # The order inside each list is the engine's: compare them as bags.
+        def bags(rs: list[tuple]) -> list[tuple]:
+            return [tuple(sorted(v, key=repr) if isinstance(v, list) else v for v in r) for r in rs]
+
+        got, expected = bags(got), bags(expected)
+    if case.label in UNORDERED:
+        assert len(got) == len(expected)
+    else:
+        assert canonical(got) == canonical(expected)
+
+
+def lean_and_datafusion(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
+    """Lean's rows of the case's plan, and DataFusion's of Ibis's SQL."""
     expr = case.build()
     con = connect()
     create_table(con, "t", T.schema(), t)
@@ -136,16 +164,7 @@ def test_plans_mean_what_ibis_means(case, t, u, lr):
     expected = normalize(rows, schema, lean=False)
     plan = inline_tables(to_substrait(expr), {"t": t, "u": u, "l": lr})
     got = normalize(lean_values(json.dumps(plan)), schema, lean=True)
-    if case.label in UNORDERED_LISTS:
-        # The order inside each list is the engine's: compare them as bags.
-        def bags(rs: list[tuple]) -> list[tuple]:
-            return [tuple(sorted(v, key=repr) if isinstance(v, list) else v for v in r) for r in rs]
-
-        got, expected = bags(got), bags(expected)
-    if case.label in UNORDERED:
-        assert len(got) == len(expected)
-    else:
-        assert canonical(got) == canonical(expected)
+    return got, expected
 
 
 # --------------------------------------------------------------------------

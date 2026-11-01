@@ -165,6 +165,28 @@ class SparkDialect(Dialect):
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
 
+    def float_fn(self, name: str, x: str) -> str:
+        if name == "sqrt":
+            # IEEE 754 rounds square roots correctly, as libm's `sqrt` does.
+            return f"SQRT({x})"
+        raise Unsupported(
+            f"Spark's {name.upper()} is Java's StrictMath, not the C libm the Lean model uses"
+        )
+
+    def float_atan2(self, y: str, x: str) -> str:
+        raise Unsupported("Spark's ATAN2 is Java's StrictMath, not the C libm the Lean model uses")
+
+    def float_logb(self, x: str, b: str) -> str:
+        raise Unsupported("Spark's LN is Java's StrictMath, not the C libm the Lean model uses")
+
+    def bitwise(self, op: str, a: str, b: str) -> str:
+        # Java's `<<` and `>>` on a long; the count is in 0–63.
+        fn = {"bitwise_shift_left": "shiftleft", "bitwise_shift_right": "shiftright"}.get(op)
+        if fn is not None:
+            return f"{fn}({a}, CAST({b} AS INT))"
+        sym = {"bitwise_and": "&", "bitwise_or": "|", "bitwise_xor": "^"}[op]
+        return f"({a} {sym} {b})"
+
     def float_pow(self, a: str, b: str) -> str:
         raise Unsupported(
             "Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses"
