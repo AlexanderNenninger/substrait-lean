@@ -1163,7 +1163,7 @@ tables of `con`, which are copied into a fresh in-process database for each
 run. Contracts take `engine=` for their runtime checks on data too:
 
 ```python
-view = IncrementalView(con, PIPELINES["inner_join"], "v", engine="duckdb")
+view = IncrementalView(con, query, "v", engine="duckdb")
 
 @sv.transform(ensures=[_.amount < 100], on_unproved="runtime", engine="duckdb")
 def passthrough(orders): ...
