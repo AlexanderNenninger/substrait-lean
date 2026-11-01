@@ -240,13 +240,10 @@ jobs:
         run: |
           VERSION=${VERSION#v}
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # This branch republishes 0.2.0's notebooks with the extras their
+          # headers missed (#197), so it publishes its own notebooks rather
+          # than the tag's.
           src=notebooks
-          if [ "$DRY_RUN" = false ] && [ "$GITHUB_REF" != "refs/tags/v$VERSION" ]; then
-            git fetch -q --depth 1 origin tag "v$VERSION"
-            src="$RUNNER_TEMP/src/notebooks"
-            mkdir -p "$RUNNER_TEMP/src"
-            git archive "v$VERSION" notebooks | tar -x -C "$RUNNER_TEMP/src"
-          fi
           uv run --no-project python python/scripts/publish_notebooks.py \
             "$VERSION" "$src" "$RUNNER_TEMP/published"
 

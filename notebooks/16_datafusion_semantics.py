@@ -6,7 +6,7 @@
 #     "marimo",
 #     "numpy",
 #     "polars",
-#     "sverify",
+#     "sverify[datafusion,polars]",
 # ]
 #
 # [tool.uv.sources]

@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify",
+#     "sverify[datafusion,polars]",
 # ]
 #
 # [tool.uv.sources]

@@ -5,7 +5,7 @@
 #     "ibis-framework[datafusion,duckdb,polars]==12.0.0",
 #     "marimo",
 #     "polars",
-#     "sverify",
+#     "sverify[datafusion,polars]",
 # ]
 #
 # [tool.uv.sources]
