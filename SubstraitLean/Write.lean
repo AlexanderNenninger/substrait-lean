@@ -106,7 +106,7 @@ def UnFn.anchor : UnFn → Nat
 def BinFn.anchor : BinFn → Nat
   -- Core
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
-  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
+  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod | .fmod => 18 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
   | .bit op => match op with
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
@@ -380,7 +380,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     match f with
     -- A sum or difference of canonical doubles is `-0.0` never, NaN only
     -- as `inf - inf`, which IEEE engines may make negative.
-    | .fadd | .fsub | .fmul | .fdiv | .fpow | .fatan2 | .flogb =>
+    | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
       canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
