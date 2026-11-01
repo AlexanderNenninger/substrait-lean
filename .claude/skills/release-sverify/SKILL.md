@@ -28,12 +28,14 @@ sed -n 's/^version = "\(.*\)"/\1/p' python/pyproject.toml     # current version 
 gh pr list --state open                                       # anything meant to be in it?
 gh run list --workflow ci.yml --branch main --limit 1         # main green?
 gh api repos/AlexanderNenninger/substrait-lean/pages --jq .build_type   # "workflow"
+gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deployment-branch-policies \
+  --jq '.branch_policies[]|"\(.type) \(.name)"'                  # must include "tag v*"
 ```
 
 - **Open PRs:** ask which belong in the release. Those must merge first.
 - **`main`'s CI** must be green on the commit that will be tagged.
 - **`CHANGELOG.md`** has an `## <version> (unreleased)` section covering what's merged since the last tag (`git log v<last>..origin/main --merges --oneline`). If the release breaks the public API, it lists the moves.
-- **Pages** must be turned on with "GitHub Actions" as the source. If `build_type` isn't `workflow`, ask the user to turn it on.
+- **Pages** must be turned on with "GitHub Actions" as the source. If `build_type` isn't `workflow`, ask the user to turn it on. Its `github-pages` environment must also allow `v*` tags to deploy: GitHub's default allows only `main`, and the deploy then fails with "Tag … is not allowed to deploy to github-pages due to environment protection rules". If the `tag v*` policy is missing, ask the user before adding it with `gh api -X POST …/environments/github-pages/deployment-branch-policies -f name='v*' -f type=tag`.
 - **Version:** if the user gave none, propose one by [semver](https://semver.org) for 0.x: minor for new features or breaking changes, patch for fixes only.
 
 ## 2. Version-bump PR
