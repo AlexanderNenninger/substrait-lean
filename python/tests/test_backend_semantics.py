@@ -314,7 +314,6 @@ FAITHFUL = [
     "SELECT a / b FROM dm",
     "SELECT a % b FROM dm",
     "SELECT v, v = 0.0, v < 0.0 FROM f0",
-    "SELECT v / 0.0 FROM f",
     "SELECT v, CAST(v AS BIGINT) AS c FROM r",
     "SELECT v, round(v) FROM r",
     "SELECT s, length(s) FROM s",
@@ -345,6 +344,17 @@ def same(a: list[tuple], b: list[tuple]) -> bool:
 def test_translators_agree(con, sql):
     by_polars, by_duckdb = translated(con, sql)
     assert same(by_polars, by_duckdb)
+
+
+def test_translators_raise_on_double_division_by_zero(con):
+    """`on_division_by_zero` omitted is ERROR (#204), where the engines
+    themselves follow IEEE."""
+    plan = written_plan(substrait_json(con, "SELECT v / 0.0 FROM f"))
+    tabs = {n: TABLES[n] for n in read_tables(json.loads(plan))}
+    with pytest.raises(Exception, match="(?i)division by zero|divide by zero"):
+        polars_engine.run(plan, tabs)
+    with pytest.raises(Exception, match="(?i)division by zero"):
+        duckdb_engine.run(plan, tabs)
 
 
 @pytest.mark.parametrize(
