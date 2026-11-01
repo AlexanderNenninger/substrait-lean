@@ -56,10 +56,19 @@ What it's for is making data engineering more joyful: fewer 3 a.m. pages
 over a NULL nobody expected, fewer afternoons spent finding out why two
 engines disagree, and more trust in the tables you hand to the next team.
 
-**Snowflake support is mostly aspirational for now.** sverify writes
-Snowflake SQL and checks it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), but it hasn't been
-run against a real Snowflake account yet ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). DuckDB, Polars, DataFusion
-and Spark are the engines it runs on.
+### Engine tiers
+
+Not every engine is held to the same standard yet ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
+
+| Tier | Engines | What it means today |
+|---|---|---|
+| **1** | DuckDB | Characterized as a diff against the reference model ([`characterization/duckdb/`](characterization/duckdb/FACTS.md)): every reference behaviour is native, shimmed or refused, and the shims are proved. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
+| **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved; Polars and Spark aim for Tier 1. |
+| **3** | Snowflake | Aspirational: sverify writes Snowflake SQL and checks it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), but not yet on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
+
+SQL strings are compiled to Substrait by DataFusion today. That is planned to
+change: SQL will need [Isthmus](https://github.com/substrait-io/substrait-java/releases),
+and DataFusion will be an execution backend only ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
 
 ## What it does for you
 
@@ -598,7 +607,7 @@ assumptions about the warehouse:
   expressions are refused there.
 
 How the engine translations relate to the reference semantics, and where
-that is going, is in the design note [docs/engine-profiles.md](docs/engine-profiles.md).
+that is going, is in [docs/engine-profiles.md](docs/engine-profiles.md).
 
 ### Sharding and other optimizations
 

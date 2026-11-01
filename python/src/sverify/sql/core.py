@@ -1162,11 +1162,6 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
     return "other", None
 
 
-def _int_bits(ty: dict) -> int:
-    """`Parse.intBits`: the width of an integer type."""
-    return next((n for n in (8, 16, 32) if f"i{n}" in ty), 64)
-
-
 def _lean_type_kind(ty: Any) -> LeanKind:
     return _type_kinds(ty)[0]
 

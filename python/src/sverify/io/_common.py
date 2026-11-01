@@ -372,8 +372,3 @@ def _base_tables(view: IncrementalView) -> set[str]:
 def sink_schema(view: IncrementalView, not_null: Iterable[str]) -> pa.Schema:
     keep = set(not_null)
     return pa.schema([f.with_nullable(f.name not in keep) for f in view.schema])
-
-
-def describe_contract(c: Contract) -> str:
-    sources = ", ".join(f"{t}@v{n}" for t, n in c.sources.items())
-    return f"{c.view} (plan {c.plan[:12]}) from {sources}"
