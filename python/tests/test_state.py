@@ -154,7 +154,7 @@ def test_old_states_are_dropped():
     live = {r.name for r in held_by if isinstance(r, Resident)}
     assert len(live) == 4
     assert live <= held
-    del pipe, views
+    del pipe, views, held_by
     gc.collect()
     _duckdb.collect(db)
     gone = {
