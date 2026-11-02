@@ -154,6 +154,12 @@ TIE_FREE = {
     "max, count over frame",
 }
 
+DATAFUSION_SQL = {
+    # DataFusion's NTILE spreads the larger buckets out; SQL's (and the
+    # model's, `ntileOf`) puts them first (upstream/LEDGER.md DF-11).
+    "ntile": "NTILE is not the SQL standard's",
+}
+
 NO_DATAFUSION_SQL = {
     # "frame offsets for RANGE must be …": Ibis writes the bound as a cast.
     "rolling sum (interval)": "refuses Ibis's interval frame",
