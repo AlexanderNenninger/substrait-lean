@@ -15,11 +15,13 @@ import functools
 import json
 import threading
 from collections.abc import Callable, Mapping
+from typing import Literal, overload
 
 import duckdb
 import pyarrow as pa
 
-from sverify._scan import Scan
+from sverify import _duckdb
+from sverify._scan import Native, Resident
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
 
@@ -35,38 +37,73 @@ _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 
 
+@overload
 def run(
-    plan: str | dict, tables: Mapping[str, pa.Table | Scan], *, guards: bool = True
-) -> pa.Table:
-    """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or
-    `Scan`s of Parquet files, which DuckDB reads itself.
+    plan: str | dict,
+    tables: Mapping[str, pa.Table | Native],
+    *,
+    guards: bool = True,
+    keep: Literal[False] = False,
+) -> pa.Table: ...
 
-    One in-process database serves every call (opening one costs ~10 ms); the
-    tables are created for the call and dropped after it. `guards=False`:
-    see `sverify.sql.to_sql`."""
+
+@overload
+def run(
+    plan: str | dict,
+    tables: Mapping[str, pa.Table | Native],
+    *,
+    guards: bool = True,
+    keep: Literal[True],
+) -> Resident: ...
+
+
+def run(
+    plan: str | dict,
+    tables: Mapping[str, pa.Table | Native],
+    *,
+    guards: bool = True,
+    keep: bool = False,
+) -> pa.Table | Resident:
+    """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or
+    tables DuckDB reads where they are (`sverify._scan.Native`: Parquet
+    files, or tables it holds). With `keep`, the result stays in DuckDB, as
+    a `Resident` table.
+
+    The process's database serves every call (`sverify._duckdb`; opening
+    one costs ~10 ms), through a cursor of the engine's own; the tables are
+    created for the call, as temporary tables, and dropped after it.
+    `guards=False`: see `sverify.sql.to_sql`."""
     global _DB
     sql = _sql(plan, guards) if isinstance(plan, str) else to_sql(plan, DUCKDB, guards=guards)
     # `to_sql` numbers a table's rows with `rowid` where the plan needs their order.
     ordered = DUCKDB.row_ordinal() in sql
     with _LOCK:
         if _DB is None:
-            _DB = duckdb.connect()
+            _DB = _duckdb.cursor()
         db = _DB
+        _duckdb.collect(db)
         drops: list[Callable[[], None]] = []
         try:
             for name, table in tables.items():
-                if isinstance(table, Scan):
-                    # A view reads the files where the plan scans the table;
-                    # a table holds them in file order when `rowid` is needed.
+                if isinstance(table, Native):
+                    # A view reads the table where it is; a table holds its
+                    # rows in order when the plan needs `rowid`.
                     drops.append(table.attach(db, name, table=ordered))
                     continue
                 # A real table (not a view on the Arrow data): `rowid` numbers its
                 # rows in insertion order, which `to_sql` uses as the scan order.
                 db.register("__sverify_input", table)
-                db.execute(f"CREATE TABLE {DUCKDB.quote(name)} AS SELECT * FROM __sverify_input")
+                db.execute(
+                    f"CREATE TEMP TABLE {DUCKDB.quote(name)} AS SELECT * FROM __sverify_input"
+                )
                 db.unregister("__sverify_input")
                 drops.append(functools.partial(_drop, db, name))
-            return db.sql(sql).to_arrow_table()
+            if not keep:
+                return db.sql(sql).to_arrow_table()
+            name = Resident.new_name()
+            db.execute(f"CREATE TABLE main.{DUCKDB.quote(name)} AS {sql}")
+            schema = db.sql(f"SELECT * FROM main.{DUCKDB.quote(name)} LIMIT 0").to_arrow_table()
+            return Resident(name, schema.schema)
         finally:
             for drop in drops:
                 drop()

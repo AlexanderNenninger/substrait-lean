@@ -60,7 +60,8 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify._scan import Scan, ScanSnapshot
+from sverify._scan import Native, Scan, ScanSnapshot
+from sverify._state import Merger, State, Store, arrow_of, store_for
 from sverify._weighted import (
     WEIGHT,
     concat,
@@ -68,7 +69,6 @@ from sverify._weighted import (
     deleted_count,
     duplicate_keys,
     expanded,
-    has_negative,
     inserted_count,
     missing,
     negated,
@@ -795,8 +795,11 @@ class IncrementalView:
         self.resumed: str | None = None
         """How the view got its first state from `resume`, or why it could
         not and was computed instead."""
-        self.stored: tuple[str, pa.Table] | None = None
+        self.stored: tuple[str, State] | None = None
         """Where the view's state was restored from, and that state."""
+        self.store: Store = store_for(self.engine)
+        """Where the view keeps its state (`sverify._state`): in DuckDB on
+        DuckDB, else in Arrow."""
         reason = None if resume is None else self._mismatch(resume)
         if resume is not None and reason is None:
             # The schema the engine gives the view, from a run on no rows.
@@ -805,13 +808,13 @@ class IncrementalView:
             result = resume.table.select(schema.names).cast(schema)
             self.resumed = f"resumed from {resume.where}"
         else:
-            result = run_plan(con, self.plan, self.engine)
+            result = run_plan(con, self.plan, self.engine, keep=self.store.keep)
             if resume is not None:
                 self.resumed = f"computed: {reason} (stored at {resume.where})"
-        self.schema = result.schema
-        self.state: pa.Table = consolidated(weighted(result, 1))
+        self._set_schema(result.schema)
+        self.state: State = self._merge(self.store.weighted(result), keep=self.store.keep)
         """The view's rows, each once with its number of copies (a weighted
-        table, `sverify._weighted`)."""
+        table, `sverify._weighted`): an Arrow table, or one DuckDB holds."""
         if resume is not None and reason is None:
             self.stored = (resume.where_key, self.state)
         self._publish()
@@ -871,14 +874,21 @@ class IncrementalView:
             query = query.op().replace(new).to_expr()  # type: ignore[attr-defined]
         self.query = query
         self._plan(query, standalone=False)
-        result = run_plan(self.con, self.plan, self.engine)
-        self.schema = result.schema
-        self.state = consolidated(weighted(result, 1))
+        result = run_plan(self.con, self.plan, self.engine, keep=self.store.keep)
+        self._set_schema(result.schema)
+        self.state = self._merge(self.store.weighted(result), keep=self.store.keep)
         self._publish()
         self.table = self.con.table(self.name)
 
+    def _set_schema(self, schema: pa.Schema) -> None:
+        self.schema = schema
+        weighted_schema = pa.schema([*schema, pa.field(WEIGHT, pa.int64())])
+        self._merge = Merger(self.con, weighted_schema)
+        """Adds up weighted tables of the view's rows by a plan Lean
+        checked."""
+
     def _publish(self) -> None:
-        put_table(self.con, self.name, expanded(self.state))
+        put_table(self.con, self.name, self.store.expanded(self.state))
 
     @property
     def versions(self) -> dict[str, int]:
@@ -888,7 +898,8 @@ class IncrementalView:
 
     def rows(self) -> list[Row]:
         """The view's contents as a bag of rows, in a canonical order."""
-        return sorted(arrow_rows(expanded(self.state)), key=lambda r: repr(row_key(r)))
+        rows = arrow_rows(expanded(arrow_of(self.state)))
+        return sorted(rows, key=lambda r: repr(row_key(r)))
 
     def recompute(self) -> list[Row]:
         """The view computed from scratch, for checking."""
@@ -917,9 +928,12 @@ class IncrementalView:
         finally:
             for t in self.tables:
                 con.drop(t + "$delta")
-        return consolidated(*parts) if parts else weighted(self.schema.empty_table(), 1)
+        total = weighted(self.schema.empty_table(), 1)
+        for part in parts:
+            total = arrow_of(self._merge(total, part))
+        return total
 
-    def _result_on(self, new_tables: Mapping[str, pa.Table | Scan]) -> pa.Table:
+    def _result_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
         con = self.con
         old = {t: con.get(t) for t in self.tables if t in new_tables}
@@ -931,11 +945,11 @@ class IncrementalView:
             for t, table in old.items():
                 put_table(con, t, table)
 
-    def _diff(self, new_tables: Mapping[str, pa.Table | Scan]) -> pa.Table:
+    def _diff(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view's change by recomputing it on the new inputs and diffing,
         as a weighted table."""
         new = self._result_on(new_tables).cast(self.schema)
-        return consolidated(weighted(new, 1), negated(self.state))
+        return arrow_of(self._merge(weighted(new, 1), self.store.negated(self.state)))
 
 
 def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:
@@ -1077,7 +1091,7 @@ class Pipeline:
     def _check_batch(
         self,
         changes: Mapping[str, pa.Table],
-        new_tables: Mapping[str, pa.Table | Scan],
+        new_tables: Mapping[str, pa.Table | Native],
         facts: Mapping[str, Sequence[Fact]],
     ) -> list[Discharged]:
         """Establish the base-table preconditions on a batch alone: row
@@ -1145,7 +1159,7 @@ class Pipeline:
         snapshot_facts: dict[str, list[Fact]] = {}
         recompute: set[str] = set()
         rebuild: dict[str, tuple[pa.Table, SourceRefresh]] = {}
-        whole: dict[str, pa.Table | Scan] = {}
+        whole: dict[str, pa.Table | Native] = {}
         report: list[SourceRefresh] = []
         for t, src in self.sources.items():
             start = self.versions[t]
@@ -1310,7 +1324,7 @@ class Pipeline:
         for v in self._views:
             want = v._result_on(pending.new_tables).cast(v.schema)
             state = pending.states.get(v.name, v.state)
-            if consolidated(weighted(want, 1), negated(state)).num_rows:
+            if arrow_of(v._merge(weighted(want, 1), v.store.negated(state))).num_rows:
                 raise AuditError(
                     f"view {v.name} differs from its recomputation; nothing was applied"
                 )
@@ -1344,7 +1358,7 @@ class Pipeline:
         facts: Mapping[str, Sequence[Fact]] | None = None,
         recompute: set[str] | None = None,
         versions: Mapping[str, int] | None = None,
-        whole: Mapping[str, pa.Table | Scan] | None = None,
+        whole: Mapping[str, pa.Table | Native] | None = None,
     ) -> _Commit:
         """Compute the new state of every table and view after `changes`
         (weighted tables), without replacing anything. Views reading a table
@@ -1354,7 +1368,7 @@ class Pipeline:
         caller checked that the change's deletes exist."""
         self._check_changed(changes)
         # New base tables first: this also checks that every delete exists.
-        new_tables: dict[str, pa.Table | Scan] = {}
+        new_tables: dict[str, pa.Table | Native] = {}
         for t, ch in changes.items():
             given = (whole or {}).get(t)
             if given is None:
@@ -1363,7 +1377,7 @@ class Pipeline:
         found = self._check_batch(changes, new_tables, facts or {})
         deltas: dict[str, pa.Table] = {t: consolidated(ch) for t, ch in changes.items()}
         stale = set(recompute or ())
-        states: dict[str, pa.Table] = {}
+        states: dict[str, State] = {}
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
@@ -1373,11 +1387,11 @@ class Pipeline:
             if rerun:
                 stale.add(v.name)
             delta = v._diff(new_tables) if rerun else v._delta(deltas)
-            merged = consolidated(v.state, delta)
-            if has_negative(merged):
+            merged = v._merge(v.state, delta, keep=v.store.keep)
+            if v.store.has_negative(merged):
                 raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
             deltas[v.name] = delta
-            new_tables[v.name] = expanded(merged)
+            new_tables[v.name] = v.store.expanded(merged)
             states[v.name] = merged
         return _Commit(changes, new_tables, dict(versions or {}), states, found)
 
@@ -1397,9 +1411,9 @@ class _Commit:
     """A pipeline's state after a batch, computed but not yet in place."""
 
     changes: Mapping[str, pa.Table]
-    new_tables: dict[str, pa.Table | Scan]
+    new_tables: dict[str, pa.Table | Native]
     versions: dict[str, int]
-    states: dict[str, pa.Table]
+    states: dict[str, State]
     """The new contents of each view that changed, as weighted tables."""
     found: list[Discharged]
 
@@ -1444,8 +1458,8 @@ def first_line(e: BaseException) -> str:
     return f"{type(e).__name__}: {text[0] if text else ''}"
 
 
-def _as_arrow(table: pa.Table | Scan) -> pa.Table:
-    return table.to_arrow() if isinstance(table, Scan) else table
+def _as_arrow(table: pa.Table | Native) -> pa.Table:
+    return arrow_of(table)
 
 
 def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:

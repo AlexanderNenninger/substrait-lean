@@ -45,6 +45,7 @@ except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
 from sverify._scan import Scan, ScanSnapshot, local_path
+from sverify._state import arrow_of
 from sverify._weighted import WEIGHT, concat, expanded, grouped, rows_of
 from sverify.contracts import Fact
 from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
@@ -638,7 +639,8 @@ class DeltaSink(Sink):
             if missing:
                 dt.alter.add_constraint(missing)
             assert self._written is not None
-            inserted, deleted = self._merge(dt, schema, self._written, view.state, commit)
+            old, new = arrow_of(self._written), arrow_of(view.state)
+            inserted, deleted = self._merge(dt, schema, old, new, commit)
         else:
             # The rows may come from another plan, with other columns: the
             # schema becomes the rows'. Its constraints hold only once the

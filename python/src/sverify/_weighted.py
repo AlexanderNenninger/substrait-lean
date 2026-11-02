@@ -26,7 +26,8 @@ import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from sverify._scan import Scan
+from sverify import _duckdb
+from sverify._scan import Native
 
 WEIGHT = "__weight"
 _ROW = "__sverify_row"
@@ -39,18 +40,18 @@ def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _sql(sql: str, **tables: pa.Table | Scan) -> pa.Table:
-    """Run `sql` over `tables` (Arrow tables, or `Scan`s that DuckDB reads
-    from their files) on the shared in-process DuckDB database."""
+def _sql(sql: str, **tables: pa.Table | Native) -> pa.Table:
+    """Run `sql` over `tables` (Arrow tables, or tables DuckDB reads where
+    they are) on the process's DuckDB database (`sverify._duckdb`)."""
     global _DB
     with _LOCK:
         if _DB is None:
-            _DB = duckdb.connect()
+            _DB = _duckdb.cursor()
         db = _DB
         drops: list[Callable[[], None]] = []
         try:
             for name, table in tables.items():
-                if isinstance(table, Scan):
+                if isinstance(table, Native):
                     drops.append(table.attach(db, name))
                 else:
                     db.register(name, table)
@@ -172,14 +173,14 @@ def deleted_count(z: pa.Table) -> int:
 
 
 def duplicate_keys(
-    table: pa.Table | Scan, cols: Sequence[str], among: pa.Table | None = None
+    table: pa.Table | Native, cols: Sequence[str], among: pa.Table | None = None
 ) -> int:
     """How many copies beyond the first the keys `cols` of `table` have:
     over all keys, or only over the keys of `among` (a table with the
     columns `cols`). Keys are equal as rows are (NULLs equal)."""
     key = ", ".join(map(_q, cols))
     dup = f"SELECT {key}, count(*) AS n FROM t GROUP BY {key} HAVING count(*) > 1"
-    t = table if isinstance(table, Scan) else table.select(cols)
+    t = table if isinstance(table, Native) else table.select(cols)
     if among is None:
         out = _sql(f"SELECT coalesce(sum(n - 1), 0) AS d FROM ({dup})", t=t)
     else:
@@ -195,7 +196,7 @@ def duplicate_keys(
 _ONE = "__sverify_one"
 
 
-def missing(table: pa.Table | Scan, change: pa.Table) -> pa.Table:
+def missing(table: pa.Table | Native, change: pa.Table) -> pa.Table:
     """The rows the weighted table `change` deletes more copies of than
     `table` holds, each with the number of copies it lacks as its weight.
     DuckDB counts the copies, so a `Scan` is read from its files."""

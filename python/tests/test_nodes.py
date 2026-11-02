@@ -263,7 +263,9 @@ def test_the_engine_is_chosen_at_refresh(tmp_path, engine, monkeypatch):
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     node = doubled(paid(orders))
     used = spy_on(
-        monkeypatch, "sverify.incremental.run_plan", lambda con, plan, eng=None: eng or con.engine
+        monkeypatch,
+        "sverify.incremental.run_plan",
+        lambda con, plan, eng=None, **_: eng or con.engine,
     )
     node.refresh(engine=engine)
     write_deltalake(orders.uri, orders_table([(3, "cy", 1)]), mode="append")
