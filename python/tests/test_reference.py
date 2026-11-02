@@ -626,3 +626,33 @@ def test_a_double_sum_of_both_infinities_raises(icon, engine):
     sql = "SELECT sum(y) AS s, avg(x) AS a FROM n"
     got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
     assert got == [(-INF, "NaN")]
+
+
+def test_not_in_subquery_means_what_sql_means():
+    """The checker lifts `NOT IN (subquery)` with SQL's NULL rules, so a NULL
+    in the subquery leaves no rows (DataFusion's own SQL keeps some)."""
+    c = connect()
+    put_table(c, "n", pa.table({"x": pa.array([1, None, 2], pa.int64())}))
+    put_table(c, "s", pa.table({"y": pa.array([1, None], pa.int64())}))
+    plan = substrait_json(c, "SELECT x FROM n WHERE x NOT IN (SELECT y FROM s)")
+
+    def lean(s: list[tuple]) -> list[tuple]:
+        rows = {"n": [(1,), (None,), (2,)], "s": s}
+        return lean_values(json.dumps(inline_tables(json.loads(plan), rows)))
+
+    assert lean([(1,), (None,)]) == []
+    assert lean([(1,)]) == [(2,)]
+    assert lean([]) == [(1,), (None,), (2,)]
+
+
+def test_lean_prints_integers_beyond_64_bits():
+    """`Rel.eval`'s integers are unbounded: `MAX + 1` is printed as itself, not
+    as a double's code (#72)."""
+    c = connect()
+    put_table(c, "mx", pa.table({"a": pa.array([2**63 - 1], pa.int64())}))
+    plan = json.loads(substrait_json(c, "SELECT a + 1 AS s, -a AS n FROM mx WHERE a > 0"))
+    assert lean_values(json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]}))) == [
+        (2**63, -(2**63) + 1)
+    ]
+    plan = json.loads(substrait_json(c, "SELECT -a AS n FROM mx"))
+    assert lean_values(json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))) == [(2**63,)]

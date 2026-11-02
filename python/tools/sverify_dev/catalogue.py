@@ -871,7 +871,7 @@ def stats(
     out += [
         "### Pitfall frequency",
         "",
-        "| pitfall | queries | DataFusion quirks |",
+        "| pitfall | queries | chapter 17 entries |",
         "|---|---|---|",
     ]
     for t, k in tags.most_common():
