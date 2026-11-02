@@ -10,6 +10,8 @@ from typing import Any
 import ibis
 import pyarrow as pa
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 import sverify as sv
 from _pipelines import arrow_table as table
@@ -192,6 +194,19 @@ QUERIES = [
     " ORDER BY CASE WHEN s > 6 THEN customer END, customer",
     # The written plan's division of two double literals (#96, fixed with #335).
     "SELECT 7 / 2 AS h",
+    # Set operations (#344): NULLs equal, multiplicities for ALL, the common
+    # column type, and ORDER BY/LIMIT over the whole operation.
+    "SELECT customer FROM orders UNION ALL SELECT name FROM customers",
+    "SELECT customer FROM orders UNION SELECT name FROM customers ORDER BY customer NULLS FIRST",
+    "SELECT customer FROM orders EXCEPT SELECT name FROM customers",
+    "SELECT customer FROM orders EXCEPT ALL SELECT name FROM customers",
+    "SELECT customer FROM orders INTERSECT SELECT name FROM customers",
+    "SELECT customer FROM orders INTERSECT ALL SELECT name FROM customers",
+    "SELECT qty FROM orders UNION SELECT amount FROM orders ORDER BY qty IS NULL, qty LIMIT 4",
+    "SELECT c FROM (SELECT customer AS c FROM orders INTERSECT SELECT name FROM customers)",
+    "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
+    " SELECT name, count(*) AS n FROM c GROUP BY name",
+    "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
 ]
 
 
@@ -299,7 +314,7 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     ("query", "message"),
     [
         ("SELECT my_udf(id) FROM orders", "unknown function my_udf"),
-        ("SELECT id FROM orders UNION ALL SELECT id FROM orders", "Union is not supported"),
+        ("SELECT id FROM orders UNION BY NAME SELECT id FROM orders", "UNION BY NAME"),
         (
             "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t",
             "RECURSIVE",
@@ -522,3 +537,56 @@ def test_a_string_read_as_a_decimal_rounds_as_duckdb():
     assert result.ok, f"{result.stage}: {result.detail}"
     with pytest.raises(Refused, match="does not fit"):
         lift("SELECT '9.99'::DECIMAL(1,0)", {})
+
+
+# #344: INTERSECT and EXCEPT [ALL] keep multiplicities as DuckDB does, with
+# NULLs equal; `TABLE t` is `SELECT * FROM t`.
+SETS = ibis.schema({"x": "int64", "s": "string"})
+set_rows = st.lists(
+    st.tuples(st.none() | st.integers(0, 2), st.none() | st.sampled_from(["a", "b"])), max_size=7
+)
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=list(HealthCheck))
+@given(a=set_rows, b=set_rows)
+def test_set_operations_keep_duckdbs_multiplicities(a, b):
+    from sverify.engine import connect, create_table, run_plan, written_plan
+    from sverify.testing import duckdb_sql, inline_tables, lean_values
+
+    con = connect()
+    create_table(con, "a", SETS, a)
+    create_table(con, "b", SETS, b)
+    for op in ("UNION", "UNION ALL", "EXCEPT", "EXCEPT ALL", "INTERSECT", "INTERSECT ALL"):
+        sql = f"TABLE a {op} TABLE b"
+        plan = json.dumps(lift(sql, {"a": SETS, "b": SETS}, "duckdb").plan)
+        want = sorted(repr(tuple(r.values())) for r in duckdb_sql(con, sql).to_pylist())
+        inlined = inline_tables(json.loads(plan), {"a": a, "b": b})
+        assert sorted(map(repr, lean_values(json.dumps(inlined)))) == want, op
+        got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+        assert sorted(repr(tuple(r.values())) for r in got) == want, op
+
+
+@pytest.mark.parametrize(
+    ("sql", "expanded"),
+    [
+        ("SELECT 1 EXCEPT ALL TABLE t", "SELECT 1 EXCEPT ALL (SELECT * FROM t)"),
+        ("(TABLE a EXCEPT ALL TABLE b)", "((SELECT * FROM a) EXCEPT ALL (SELECT * FROM b))"),
+        ('TABLE "my t"', '(SELECT * FROM "my t")'),
+        ("SELECT table_name FROM t", "SELECT table_name FROM t"),
+    ],
+)
+def test_table_shorthand(sql, expanded):
+    """SQLGlot does not parse DuckDB's `TABLE t` (upstream/LEDGER.md, SG-6)."""
+    from sverify.sql_lift import expand_table_shorthand
+
+    assert expand_table_shorthand(sql) == expanded
+
+
+def test_all_set_operations_are_determined_by_keys():
+    """INTERSECT ALL and EXCEPT ALL number equal rows with a window: reported
+    as determined when the inputs have keys (the rows are then distinct)."""
+    sql = "SELECT x, s FROM a EXCEPT ALL SELECT x, s FROM b"
+    tables = {"a": SETS, "b": SETS}
+    assert sv.verify("SELECT x, s FROM a EXCEPT SELECT x, s FROM b", tables=tables).deterministic
+    keyed = {"a": [sv.unique("x")], "b": [sv.unique("x")]}
+    assert sv.verify(sql, tables=tables, requires=keyed).deterministic
