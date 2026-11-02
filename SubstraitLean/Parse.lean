@@ -334,6 +334,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
   | .iavg | .bit _ => .int
   | .min | .max | .pick _ => m.arg.kind cols
+  | .concat _ => .str
   | .collect => .list (m.arg.kind cols)
 
 def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
@@ -1880,13 +1881,17 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  -- Only `ARRAY_AGG`, `FIRST` and `LAST` depend on the order of their rows.
+  -- Only `ARRAY_AGG`, `FIRST`, `LAST` and `STRING_AGG` depend on the order of
+  -- their rows.
   let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
-  if !sort.isEmpty && !["array_agg", "first", "last"].contains name then
+  if !sort.isEmpty && !["array_agg", "first", "last", "string_agg"].contains name then
     throw s!"ordered aggregates are not supported: {name}"
   -- Without an order, `FIRST` is any row's value (`arbitrary`).
   if sort.isEmpty && ["first", "last"].contains name then
     throw s!"{name} without ORDER BY is any row's value, which is not supported; give it an order"
+  if sort.isEmpty && name == "string_agg" then
+    throw ("string_agg without ORDER BY joins the values in the engine's order, which is not " ++
+      "supported; give it an order")
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
@@ -1906,11 +1911,19 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | [a, b] =>
       if ["covar_samp", "covar_pop", "corr"].contains name then
         pure (.bin .pair (← double a) (← double b))
+      else if name == "string_agg" then parseExpr fns cols bits a
       else throw s!"{name} takes one argument"
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
   if ["covar_samp", "covar_pop", "corr"].contains name && !(arg matches .bin .pair _ _) then
     throw s!"{name} takes two arguments"
+  -- `STRING_AGG(x, sep)`: a constant separator (#55).
+  let sep ← match name, args with
+    | "string_agg", [_, s] => match ← parseExpr fns cols bits s with
+      | .lit (.str s) => pure s
+      | _ => throw "string_agg needs a constant separator"
+    | "string_agg", _ => throw "string_agg takes a value and a separator"
+    | _, _ => pure ""
   -- A double constant is its code, which `Expr.kind` calls an integer (#205).
   let k := if args.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
@@ -1951,6 +1964,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
     | "array_agg", _ => pure (.collect, arg)
     | "first", _ | "last", _ => pure (.pick (name == "last"), arg)
+    | "string_agg", .str => pure (.concat sep, arg)
+    | "string_agg", _ => throw "string_agg of a value that is not a string is not supported"
     -- 64-bit integers only (#53): a narrower one would need its own width.
     | "bit_and", .int | "bit_or", .int | "bit_xor", .int =>
       if argBits bits (args.headD .null) arg != 64 then

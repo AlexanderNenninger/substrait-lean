@@ -144,6 +144,7 @@ def Measure.evalI (I : Impl) (rows : Relation) (m : Measure) : Value :=
   match m.fn with
   | .collect => AggFn.collect.apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
   | .pick last => (AggFn.pick last).apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
+  | .concat sep => (AggFn.concat sep).apply (m.inputsI I (rows.mergeSort (sortLe m.sort)))
   | f => f.apply (m.inputsI I rows)
 
 def groupKeyI (I : Impl) (gs : List Expr) (row : Row) : Row := gs.map (·.evalI I row)
@@ -210,6 +211,7 @@ theorem aggregateEvalI_eq {I : Impl} {gs : List Expr} {ms : List Measure} {rows 
     all_goals simp only [Measure.evalI, Measure.eval, hf]
     case collect => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     case pick => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
+    case concat => rw [hin m hm _ fun row hr => hsub row (List.mem_mergeSort.mp hr)]
     all_goals rw [hin m hm sub hsub]
   unfold aggregateEvalI aggregateEval
   split

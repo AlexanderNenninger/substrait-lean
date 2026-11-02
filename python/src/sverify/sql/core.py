@@ -670,6 +670,11 @@ class Dialect:
         skipped, in the order `order`; NULL without values."""
         raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
 
+    def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
+        """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
+        in the order `order`, joined by `sep`; NULL without values."""
+        raise Unsupported(f"string_agg is not yet supported on {self.name}; see #271")
+
     def regex_extract(self, s: str, pattern: str, group: int) -> str:
         """`UnFn.regexExtract` (#50): group `group` of the first match of the
         constant `pattern` in `s`, `''` where there is none."""
@@ -1079,13 +1084,16 @@ class Measure:
         "covar_samp",
         "covar_pop",
         "corr",
+        "string_agg",
     ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
     filter: Expr | None = None
     sort: tuple[SortKey, ...] = ()
-    """The order `first` and `last` take their values in (#55)."""
+    """The order `first`, `last` and `string_agg` take their values in (#55)."""
+    sep: str = ""
+    """The separator of `string_agg`."""
 
 
 @dataclass(frozen=True)
@@ -2740,10 +2748,10 @@ class _Parser:
         double; `COUNT(*)` may come with no argument."""
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
-        if _arr(m, "sorts") and name not in ("first", "last"):
+        if _arr(m, "sorts") and name not in ("first", "last", "string_agg"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
-        if name in ("first", "last") and not sort:
+        if name in ("first", "last", "string_agg") and not sort:
             raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
@@ -2752,6 +2760,7 @@ class _Parser:
         f = _field(mj, "filter")
         cond = None if f is None else self.expr(f, cols)
         args = [_req(a, "value") for a in _arr(m, "arguments")]
+        sep = ""
         if len(args) == 1:
             arg = self.expr(args[0], cols)
         elif len(args) == 2 and name in ("covar_samp", "covar_pop", "corr"):
@@ -2759,6 +2768,12 @@ class _Parser:
             x, y = (self.expr(a, cols) for a in args)
             x, y = (Un("itof", e) if lean_expr_kind(e, cols.lean) == "int" else e for e in (x, y))
             arg = Bin("pair", x, y)
+        elif len(args) == 2 and name == "string_agg":
+            # A constant separator (`Parse.parseMeasure`, #55).
+            arg, s = (self.expr(a, cols) for a in args)
+            if not (isinstance(s, Lit) and isinstance(s.value, str)):
+                raise Unsupported("string_agg needs a constant separator")
+            sep = s.value
         elif not args and name == "count":
             arg = Lit(1, "int")
         elif not args:
@@ -2800,6 +2815,7 @@ class _Parser:
             "covar_samp",
             "covar_pop",
             "corr",
+            "string_agg",
         ]
         match name, k:
             case "count", _:
@@ -2828,6 +2844,8 @@ class _Parser:
                 fn = name
             case (("first" | "last" | "covar_samp" | "covar_pop" | "corr"), _):
                 fn = name
+            case "string_agg", "str":
+                fn = name
             case (("variance" | "std_dev"), ("float" | "int")):
                 pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
                 if name == "variance":
@@ -2844,7 +2862,7 @@ class _Parser:
                 raise Unsupported(f"{name} of this type is not supported")
             case _:
                 raise Unsupported(f"unsupported aggregate function: {name}")
-        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort)
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -3522,7 +3540,8 @@ class _Writer:
                 keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                 x = d.case_when(keep, x, d.null(k))
             items.append(f"{x} AS {c}")
-        # `first` and `last` (#55): each measure's sort keys, as `Value.le` sorts.
+        # `first`, `last` and `string_agg` (#55): each measure's sort keys, as
+        # `Value.le` sorts.
         orders: list[list[tuple[str, SortKey, Kind | None]]] = []
         for k, ms in enumerate(measures):
             keys_k = []
@@ -3533,7 +3552,7 @@ class _Writer:
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
         if any(orders) and any(ms.distinct for ms in measures):
-            raise Unsupported("first or last next to a DISTINCT measure is not supported")
+            raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
         needs = needs or any(orders)
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
@@ -3563,11 +3582,14 @@ class _Writer:
         out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
-            if ms.fn in ("first", "last"):
+            if ms.fn in ("first", "last", "string_agg"):
                 # Ties go in Lean's list order: the ordinal breaks them.
                 order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
                          for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
-                sql = d.pick(ms.fn, v, order)
+                if ms.fn == "string_agg":
+                    sql = d.string_agg(v, d.str_lit(ms.sep), order)
+                else:
+                    sql = d.pick(ms.fn, v, order)
             else:
                 sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
             out.append(f"{sql} AS {self.c(len(groups) + k)}")

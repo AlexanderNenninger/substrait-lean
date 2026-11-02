@@ -73,6 +73,7 @@ def AggFn.name : AggFn → String
   | .pick last => if last then "LAST" else "FIRST"
   | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
   | .corr => "CORR"
+  | .concat sep => s!"STRING_AGG_{sep.quote}"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with

@@ -839,7 +839,7 @@
  "pa-string-agg": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "aggregate GroupConcat is not supported",
+  "detail": "group_concat() without order_by joins in the engine's order; give it an order_by",
   "native": "runs"
  },
  "pa-ntile-free-spenders": {

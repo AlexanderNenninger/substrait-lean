@@ -3170,6 +3170,8 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .min | .max => a.nullable
   -- One of the values, in the measure's order (#55).
   | .pick _ => a.nullable
+  -- A string, or NULL without values.
+  | .concat _ => ⟨true, none, false, false, true⟩
   | .collect => AVal.top
 
 /-- `ROW_NUMBER` and the ranks are positive integers, at most `Text.sizeCap`
@@ -3401,6 +3403,8 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
   case collect => exact AVal.mem_top _
+  case concat sep =>
+    cases m.inputs (List.mergeSort grp (sortLe m.sort)) <;> simp [AggFn.apply, AVal.Mem]
   case count =>
     refine ⟨_, rfl, fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩
     simp only [Bound.ge, Option.some.injEq] at hl
