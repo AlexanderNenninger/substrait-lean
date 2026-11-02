@@ -35,7 +35,7 @@ from sverify.sql.snowflake import SNOWFLAKE
 from sverify_dev import examples
 from sverify_dev.examples import PIPELINES, create_tables
 
-pytestmark = [pytest.mark.backend("snowflake"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("snowflake")
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"

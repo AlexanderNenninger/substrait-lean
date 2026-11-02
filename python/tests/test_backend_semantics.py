@@ -24,8 +24,6 @@ import sverify as sv
 from sverify import duckdb_engine, polars_engine
 from sverify.engine import connect, put_table, read_tables, substrait_json, written_plan
 
-pytestmark = pytest.mark.lift_backlog
-
 
 def ints(**cols: list) -> pa.Table:
     return pa.table({k: pa.array(v, pa.int64()) for k, v in cols.items()})
@@ -332,7 +330,9 @@ FAITHFUL = [
 
 
 def translated(con, sql: str) -> tuple[list[tuple], list[tuple]]:
-    plan = written_plan(substrait_json(con, sql))
+    # The translators against each other: any plan will do, and the
+    # reference's semantics reads the most (`%` of doubles, casts to integers).
+    plan = written_plan(substrait_json(con, sql, "reference"))
     tabs = {n: TABLES[n] for n in read_tables(json.loads(plan))}
     return positional(polars_engine.run(plan, tabs)), positional(duckdb_engine.run(plan, tabs))
 
@@ -384,17 +384,22 @@ def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
 
 def test_polars_translator_keeps_duplicate_output_names(con):
     """N4: two output columns with one name are legal SQL and Substrait."""
-    sql = "SELECT a.a, b.a FROM j a JOIN j b ON a.a = b.a"
-    by_polars, by_duckdb = translated(con, sql)
-    assert by_polars == by_duckdb == [(1, 1)]
-    plan = written_plan(substrait_json(con, sql))
+    sql = "SELECT a.a, b.a AS a2 FROM j a JOIN j b ON a.a = b.a"
+    lifted = json.loads(substrait_json(con, sql))
+    lifted["relations"][0]["root"]["names"] = ["a", "a"]  # SQL allows it; sv.sql does not
+    plan = written_plan(json.dumps(lifted))
+    tabs = {"j": TABLES["j"]}
+    by_polars, by_duckdb = polars_engine.run(plan, tabs), duckdb_engine.run(plan, tabs)
+    assert positional(by_polars) == positional(by_duckdb) == [(1, 1)]
     assert polars_engine.run(plan, {"j": TABLES["j"]}).column_names == ["a", "a"]
     with pytest.raises(polars_engine.Unsupported, match="repeat a name"):
         polars_engine.to_lazy(plan, {"j": TABLES["j"]})
 
 
 def proves(sql: str, ensures: str) -> bool:
-    r = sv.verify(sql, ensures=[ensures], tables={"j": {"a": "int64"}})
+    # The reference's casts truncate (#209 R9); DuckDB's round.
+    j = ibis.table({"a": "int64"}, name="j")
+    r = sv.verify(sv.sql(sql, semantics="reference", j=j), ensures=[ensures])
     return r.proved and r.ensures[0].proved
 
 

@@ -14,8 +14,6 @@ import sverify as sv
 from sverify.engines import ENGINES, create_table, table_rows
 from sverify.incremental import IncrementalView
 
-pytestmark = pytest.mark.lift_backlog
-
 ERR = -9999.0
 s1 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s1")
 s2 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s2")
@@ -39,9 +37,9 @@ def test_float_and_timestamp_contracts():
             _.v != ERR,
             ~_.v.isnan(),
             _.t1 > _.t0,
-            "t1 - t0 = INTERVAL 60 SECOND",
+            _.t1 - _.t0 == ibis.interval(seconds=60),
             sv.unique("t0"),
-            "t1 - t0 = INTERVAL 61 SECOND",  # wrong on purpose
+            _.t1 - _.t0 == ibis.interval(seconds=61),  # wrong on purpose
         ],
     )
     assert [c.proved for c in report.ensures] == [True] * 5 + [False]
