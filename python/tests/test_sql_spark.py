@@ -39,7 +39,7 @@ from test_sql_snowflake import (
 )
 from test_time import DAY, MAX, MIN, NS_MAX, NS_MIN, PARTS, UNITS, anywhere
 
-pytestmark = [pytest.mark.backend("spark"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("spark")
 
 
 def spark_sql(plan: dict, tie_free: bool = False) -> str:

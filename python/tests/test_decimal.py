@@ -11,14 +11,16 @@ the plans.
 import json
 from decimal import Decimal as D
 
+import ibis
 import pyarrow as pa
 import pytest
 
 import sverify as sv
 from sverify.engine import connect, put_table, run_checker, substrait_json
+from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
 
-pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("datafusion")
 
 TABLES = {
     "t": pa.table(
@@ -45,6 +47,13 @@ SCHEMAS = {
 }
 
 
+#: The tables in Ibis, for what the SQL lift does not read: `avg` of a
+#: decimal (DuckDB's is a double; the model's a decimal at scale + 4) and
+#: casts that round in DuckDB but truncate in the reference.
+T = ibis.table(SCHEMAS["t"], name="t")
+G = ibis.table(SCHEMAS["g"], name="g")
+
+
 @pytest.fixture(scope="module")
 def con():
     c = connect()
@@ -53,9 +62,11 @@ def con():
     return c
 
 
-def lean(con, sql: str) -> list[tuple]:
+def lean(con, query: str | ibis.Table) -> list[tuple]:
     """`Rel.eval`'s rows, decimals as `Decimal`s printed at their scale."""
-    plan = json.loads(substrait_json(con, sql))
+    plan = json.loads(
+        substrait_json(con, query) if isinstance(query, str) else to_substrait_json(query)
+    )
     rows = lean_values(json.dumps(inline_tables(plan, ROWS)))
     return [tuple(str(v) if isinstance(v, D) else v for v in r) for r in rows]
 
@@ -69,13 +80,13 @@ def lean(con, sql: str) -> list[tuple]:
         ("SELECT a * b AS r FROM t", ["18.525", "-0.125", "43.225", None]),
         ("SELECT a * i AS r FROM t", ["37.05", "0.35", "-24.70", None]),
         ("SELECT -a AS r FROM t", ["-12.35", "0.05", "12.35", None]),
-        ("SELECT abs(a) AS r FROM t", ["12.35", "0.05", "12.35", None]),
+        (T.select(r=T.a.abs()), ["12.35", "0.05", "12.35", None]),
         # Compared at one scale.
         ("SELECT a > b AS r FROM t", [True, False, False, None]),
         ("SELECT a = CAST('12.35' AS DECIMAL(10,2)) AS r FROM t", [True, False, False, None]),
         # A smaller scale rounds half away from zero; an integer truncates.
-        ("SELECT CAST(a AS DECIMAL(10,1)) AS r FROM t", ["12.4", "-0.1", "-12.4", None]),
-        ("SELECT CAST(a AS BIGINT) AS r FROM t", [12, 0, -12, None]),
+        (T.select(r=T.a.cast("decimal(10, 1)")), ["12.4", "-0.1", "-12.4", None]),
+        (T.select(r=T.a.cast("int64")), [12, 0, -12, None]),
         ("SELECT CAST(i AS DECIMAL(10,2)) AS r FROM t", ["3.00", "-7.00", "2.00", "0.00"]),
         ("SELECT CAST(a AS DOUBLE) AS r FROM t", [12.35, -0.05, -12.35, None]),
         # `round(x · 10ˢ)` in doubles: -2.675 · 100 is -267.5 there, 0.145 · 100
@@ -95,19 +106,19 @@ def test_sum_min_max(con):
 
 def test_avg_rounds_half_away_from_zero(con):
     """`DECIMAL(10, 2)` averages are `DECIMAL(14, 6)`: 0.02 / 3 is 0.006667."""
-    sql = "SELECT k, avg(x) AS v, sum(x) AS s, count(x) AS n FROM g GROUP BY k ORDER BY k"
-    assert lean(con, sql) == [
+    by_k = G.group_by("k").aggregate(v=G.x.mean(), s=G.x.sum(), n=G.x.count()).order_by("k")
+    assert lean(con, by_k) == [
         (1, "0.006667", "0.02", 3),
         (2, "-0.050000", "-0.05", 1),
         (3, None, None, 0),
     ]
-    assert lean(con, "SELECT avg(x) AS v FROM g") == [("-0.007500",)]
+    assert lean(con, G.aggregate(v=G.x.mean())) == [("-0.007500",)]
 
 
 def test_avg_over_a_window(con):
     """Over a window too: the frame's `SUM` by its `COUNT`, at scale 6."""
-    sql = "SELECT k, avg(x) OVER (PARTITION BY k) AS v FROM g ORDER BY k"
-    assert lean(con, sql) == [
+    windowed = G.select("k", v=G.x.mean().over(group_by="k")).order_by("k")
+    assert lean(con, windowed) == [
         (1, "0.006667"),
         (1, "0.006667"),
         (1, "0.006667"),
@@ -123,8 +134,8 @@ def test_avg_over_a_window(con):
         # A column holds at most its precision's digits, so these fit.
         ("SELECT a + b AS r FROM t", []),
         ("SELECT CAST(a AS DECIMAL(20,4)) AS r FROM t", []),
-        ("SELECT CAST(a AS BIGINT) AS r FROM t", []),
-        ("SELECT k, avg(x) AS v FROM g GROUP BY k", []),
+        (T.select(r=T.a.cast("int64")), []),
+        (G.group_by("k").aggregate(v=G.x.mean()), []),
         # These may not. DuckDB types a product of two decimals of up to 18
         # digits as DECIMAL(18, s), and raises past 18 digits.
         ("SELECT a * b * a AS r FROM t", ["overflow"]),
@@ -133,7 +144,8 @@ def test_avg_over_a_window(con):
     ],
 )
 def test_verify_reports_overflow_where_it_can_happen(sql, errors):
-    assert [i.kind for i in sv.verify(sql, tables=SCHEMAS).errors] == errors
+    report = sv.verify(sql, tables=SCHEMAS) if isinstance(sql, str) else sv.verify(sql)
+    assert [i.kind for i in report.errors] == errors
 
 
 def test_decimal_sum_does_not_wrap():

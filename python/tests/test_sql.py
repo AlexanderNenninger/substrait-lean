@@ -46,7 +46,7 @@ from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_r
 from sverify_dev import examples
 from sverify_dev.examples import PIPELINES
 
-pytestmark = [pytest.mark.backend("duckdb"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("duckdb")
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -430,7 +430,7 @@ def test_runtime_errors_raise(sql, a, b):
     """Where DataFusion fails at run time, Lean's value is NULL (and
     `Safety.lean` reports the plan); the SQL fails too instead of answering."""
     r = pa.table({"a": pa.array([a], pa.int64()), "b": pa.array([b], pa.int64()), "f": [math.nan]})
-    plan_json = plan_of(sql, {"r": r})
+    plan_json = plan_of(sql, {"r": r}, "reference")
     with pytest.raises(duckdb.Error):
         duckdb_rows(plan_json, {"r": r})
 
@@ -487,7 +487,7 @@ def test_rounding_and_casts_match_datafusion(sql):
             ),
         }
     )
-    df, duck = both(plan_of(sql, {"r": r}), {"r": r})
+    df, duck = both(plan_of(sql, {"r": r}, "reference"), {"r": r})
     assert canonical(duck) == canonical(df)
 
 
@@ -607,11 +607,10 @@ def test_zeros_and_nans_partition_together():
 def test_fetch_takes_lean_rows_after_a_union_and_join():
     a = ints(x=[3, 1, 2])
     b = ints(y=[20, 10])
-    sql = (
-        "SELECT x, y FROM (SELECT x FROM a UNION ALL SELECT x + 10 FROM a) CROSS JOIN b"
-        " LIMIT 4 OFFSET 1"
-    )
-    plan_json = plan_of(sql, {"a": a, "b": b})
+    ta = ibis.table({"x": "int64"}, name="a")
+    tb = ibis.table({"y": "int64"}, name="b")
+    both = ta.select("x").union(ta.select(x=ta.x + 10))
+    plan_json = to_substrait_json(both.cross_join(tb).limit(4, offset=1))
     plan = json.loads(plan_json)
     lean = lean_on(plan, {"a": a, "b": b})
     assert duckdb_rows(plan_json, {"a": a, "b": b}) == lean
@@ -643,16 +642,31 @@ def test_tie_free_windows_need_no_scan_order():
         to_sql(fetch, NoScanOrder("no-scan-order"), tie_free=True)
 
 
+def renamed(plan_json: str, old: str, new: str) -> dict:
+    """A plan with the function `old` called `new`: what another producer
+    (DataFusion's) wrote, which the lift does not."""
+    plan = json.loads(plan_json)
+    for e in plan["extensions"]:
+        if e["extensionFunction"]["name"] == old:
+            e["extensionFunction"]["name"] = new
+    return plan
+
+
 def test_unsupported_constructs_raise():
     r = ints(a=[1], b=[2])
     s = pa.table({"name": ["a"]})
-    for sql, tables, match in [
-        ("SELECT a, STDDEV(b) AS s FROM r GROUP BY a", {"r": r}, "unsupported aggregate"),
-        ("SELECT name FROM s WHERE name < 'b'", {"s": s}, "ordering comparisons of str"),
-        ("SELECT a FROM r WHERE a < 1 IS TRUE", {"r": r}, "unsupported function is_true"),
+    stddev = renamed(plan_of("SELECT a, max(b) AS s FROM r GROUP BY a", {"r": r}), "max", "stddev")
+    is_true = renamed(plan_of("SELECT a FROM r WHERE NOT (a < 1)", {"r": r}), "not", "is_true")
+    for plan, match in [
+        (stddev, "unsupported aggregate"),
+        (
+            json.loads(plan_of("SELECT name FROM s WHERE name < 'b'", {"s": s})),
+            "ordering comparisons of str",
+        ),
+        (is_true, "unsupported function is_true"),
     ]:
         with pytest.raises(Unsupported, match=match):
-            to_sql(json.loads(plan_of(sql, tables)), DUCKDB)
+            to_sql(plan, DUCKDB)
 
 
 # --------------------------------------------------------------------------

@@ -217,7 +217,6 @@ def test_sql_step_with_the_chained_node_unused_or_an_unknown_keyword():
         orders.pipe(sv.sql(JOIN), customers=customers, regions=customers)
 
 
-@pytest.mark.lift_backlog
 def test_sql_step_tables_skip_ctes_and_repeats():
     step = sv.sql(
         "WITH big AS (SELECT * FROM orders WHERE amount > 5) "
