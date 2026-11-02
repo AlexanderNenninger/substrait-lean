@@ -21,7 +21,6 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
-from sverify.engine import to_sql
 from sverify.incremental import IncrementalView, plan_digest
 
 
@@ -179,7 +178,8 @@ def condition_sql(cond: Condition, schema: ibis.Schema) -> str | None:
     if isinstance(cond, str):
         return cond
     t = ibis.table(schema, name="t")
-    select = sg.parse_one(to_sql(t.select(c=resolve(cond, t))), read="postgres")
+    sql = ibis.to_sql(t.select(c=resolve(cond, t)), dialect="duckdb")
+    select = sg.parse_one(sql, read="duckdb")
     expr = select.expressions[0].this  # type: ignore[attr-defined]
     for col in expr.find_all(sg.exp.Column):
         col.set("table", None)

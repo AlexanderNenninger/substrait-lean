@@ -14,10 +14,11 @@ The catalogue is hand-written TOML:
   licence, features, pitfalls and an Ibis expression (or SQL).
 
 `probe` runs a query the way `sverify` runs everything (an Ibis expression
-through `sverify`'s producer, SQL through DataFusion's, then `substrait-check`)
-and runs it on DataFusion over small synthetic tables. When the checker
-accepts the plan, it also runs Lean's written plan on Polars and DuckDB,
-compares their rows with DataFusion's, and writes Snowflake SQL for it.
+through `sverify`'s producer, SQL, which is DuckDB's, through its lift, then
+`substrait-check`) and runs it on DuckDB itself over small synthetic tables
+(Ibis's own DuckDB SQL for an expression). When the checker accepts the plan,
+it also runs Lean's written plan on Polars and DuckDB, compares their rows
+with DuckDB's own, and writes Snowflake SQL for it.
 `catalogue/status.json` holds the results; re-probe every query and rewrite it
 with
 
@@ -47,7 +48,6 @@ import re
 import sys
 import tomllib
 from collections import Counter
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -61,13 +61,11 @@ from ibis import _
 from sverify.engine import (
     Connection,
     canonical,
-    collect,
     connect,
     plan_json,
     put_table,
     run_checker,
     run_plan,
-    to_sql,
     written_plan,
 )
 from sverify.ibis_substrait import Unsupported
@@ -318,7 +316,7 @@ def scope(q: Query, schemas: dict[str, Any], profile: Profile) -> dict[str, Any]
 
 
 def build(q: Query, schemas: dict[str, Any], profile: Profile) -> ir.Table | str:
-    """The query: an Ibis expression, or its DataFusion SQL."""
+    """The query: an Ibis expression, or its SQL (DuckDB's)."""
     if q.sql is not None:
         return q.sql
     assert q.ibis is not None
@@ -377,8 +375,8 @@ def probe_contract(
 
 
 def _value_of(v: object) -> object:
-    """One representation per value: DataFusion types ROW_NUMBER as a decimal,
-    DuckDB gives timestamp differences as month-day-nano intervals."""
+    """One representation per value: an engine may type ROW_NUMBER as a
+    decimal, and DuckDB gives timestamp differences as month-day-nano intervals."""
     if isinstance(v, Decimal) and v == v.to_integral_value():
         return int(v)
     if isinstance(v, pa.MonthDayNano) and v.months == 0:
@@ -415,22 +413,14 @@ def _first_line(e: BaseException | str) -> str:
     return (text.splitlines() or [type(e).__name__])[0][:200]
 
 
-def probe_engines(
-    con: Connection,
-    plan: str,
-    reference: list[tuple] | None,
-    second: Callable[[], list[tuple] | None] = lambda: None,
-) -> dict[str, str]:
-    """Run Lean's written plan on each engine and compare with DataFusion's
-    rows (`reference`, None if DataFusion failed). Where they differ but agree
-    with DuckDB running the query itself (`second`), DataFusion is wrong
-    (its `NOT IN (subquery)` ignores NULLs, say): `runs (DataFusion's SQL
-    differs)`.
+def probe_engines(con: Connection, plan: str, reference: list[tuple] | None) -> dict[str, str]:
+    """Run Lean's written plan on each engine and compare with DuckDB's own
+    rows of the query (`reference`, None if DuckDB failed).
 
-    Polars and DuckDB map to `runs` (they agree with DataFusion as bags on
-    the synthetic tables; with a FETCH or a window, where ties make
-    DataFusion's choice of rows legitimately differ, with each other, row for
-    row where the order matters), `differs`, `refused: …` (the translation
+    Polars and DuckDB map to `runs` (they agree with DuckDB's own rows as bags
+    on the synthetic tables; with a FETCH or a window, where ties make the
+    native choice of rows legitimately differ, with each other, row for row
+    where the order matters), `differs`, `refused: …` (the translation
     refuses the plan) or `error: …`. Snowflake is `sql` or `sql (tie_free)`
     (SQL written and parsed with sqlglot, not run) or `refused: …`."""
     import sqlglot
@@ -472,9 +462,6 @@ def probe_engines(
             )
         else:
             ok = _canonical(got) == _canonical(reference)
-            if not ok and (duck := second()) is not None and _canonical(got) == _canonical(duck):
-                out[engine] = "runs (DataFusion's SQL differs)"
-                continue
         out[engine] = "runs" if ok else "differs"
     try:
         text = plan_sql(json.loads(plan), SNOWFLAKE)
@@ -496,14 +483,13 @@ def probe_profile(
 ) -> dict[str, Any]:
     """The query's status on one profile of its dataset.
 
-    Ibis expressions go through `sverify`'s own producer (`plan_json`), SQL
-    through DataFusion's. `checker` is `verified`, `rejected` (by
-    `substrait-check`, or with `stage: producer` by the producer, which
-    refuses what Lean does not model) or `upstream`, in which case `stage`
-    says where it failed: `ibis` (building the expression), `producer`,
-    `datafusion` (planning the SQL) or `substrait` (DataFusion's Substrait
-    producer). `datafusion` says whether DataFusion runs the query itself
-    (Ibis's own SQL for an expression) on the synthetic tables, verified or
+    Ibis expressions go through `sverify`'s own producer, SQL through its
+    lift (`plan_json`). `checker` is `verified`, `rejected` (by
+    `substrait-check`, or with `stage: producer` by the producer or the lift,
+    which refuse what Lean does not model) or `upstream`, in which case
+    `stage` says where it failed: `ibis` (building the expression) or
+    `producer`. `native` says whether DuckDB runs the query itself (Ibis's
+    own DuckDB SQL for an expression) on the synthetic tables, verified or
     not."""
     for name, table in synthetic(schemas, q.dataset, profile).items():
         put_table(con, name, table)
@@ -511,40 +497,34 @@ def probe_profile(
         query = build(q, schemas, profile)
     except Exception as e:  # noqa: BLE001 - any Ibis failure counts
         return {"checker": "upstream", "stage": "ibis", "detail": _first_line(e)}
-    # DataFusion runs the query itself: Ibis's own SQL for an expression.
+    # DuckDB runs the query itself: Ibis's own DuckDB SQL for an expression.
     try:
-        sql = query if isinstance(query, str) else to_sql(query)
-        out = canonical(collect(con.datafusion.sql(sql)))
+        sql = query if isinstance(query, str) else ibis.to_sql(query, dialect="duckdb")
+        out = canonical(con.ibis.con.sql(sql).to_arrow_table())
         if not isinstance(query, str):
-            # In the expression's types: DataFusion makes `ts.date()` a timestamp.
+            # In the expression's types.
             with contextlib.suppress(pa.ArrowInvalid, pa.ArrowNotImplementedError):
                 out = out.cast(query.schema().to_pyarrow())
         reference: list[tuple] | None = _rows(out)
         ran = "runs"
-    except Exception as e:  # noqa: BLE001 - DataFusion's own failures are findings
+    except Exception as e:  # noqa: BLE001 - DuckDB's own failures are findings
         reference, ran = None, f"error: {_first_line(e)}"
-    if isinstance(query, str):
-        try:
-            con.datafusion.sql(query).logical_plan()
-        except Exception as e:  # noqa: BLE001
-            return {"checker": "upstream", "stage": "datafusion", "detail": _first_line(e)}
     try:
         plan = plan_json(con, query)
     except Unsupported as e:
         return {"checker": "rejected", "stage": "producer", "detail": _first_line(e),
-                "datafusion": ran}  # fmt: skip
+                "native": ran}  # fmt: skip
     except Exception as e:  # noqa: BLE001
-        stage = "substrait" if isinstance(query, str) else "producer"
-        return {"checker": "upstream", "stage": stage, "detail": _first_line(e),
-                "datafusion": ran}  # fmt: skip
+        return {"checker": "upstream", "stage": "producer", "detail": _first_line(e),
+                "native": ran}  # fmt: skip
     code, stdout, stderr = run_checker((), plan)
     out = stdout + stderr
     if code != 0:
         lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
         detail = _first_line((lines or [out])[-1])
-        return {"checker": "rejected", "detail": detail, "datafusion": ran}
+        return {"checker": "rejected", "detail": detail, "native": ran}
     try:
-        engines = probe_engines(con, written_plan(plan), reference, lambda: duckdb_rows(con, query))
+        engines = probe_engines(con, written_plan(plan), reference)
     except ValueError as e:
         # `--write` refuses what no engine runs yet (decimals, #27).
         detail = _first_line(e).split("rejects the plan: ")[-1].strip("[]'\"")
@@ -552,7 +532,7 @@ def probe_profile(
     result: dict[str, Any] = {
         "checker": "verified",
         "incremental": "incremental: yes" in out,
-        "datafusion": ran,
+        "native": ran,
         "engines": engines,
     }
     if q.requires is not None:
@@ -567,16 +547,6 @@ def probe_profile(
             "duckdb": "yes" if ok and result["engines"].get("duckdb") == "runs" else "no"
         }
     return result
-
-
-def duckdb_rows(con: Connection, query: ir.Table | str) -> list[tuple] | None:
-    """The query's rows on DuckDB itself (Ibis's DuckDB SQL for an
-    expression), None if DuckDB fails."""
-    sql = query if isinstance(query, str) else ibis.to_sql(query, dialect="duckdb")
-    try:
-        return _rows(canonical(con.ibis.con.sql(sql).to_arrow_table()))
-    except Exception:  # noqa: BLE001 - DuckDB's own failures
-        return None
 
 
 def has_decimal(schemas: dict[str, Any], dataset: str) -> bool:
@@ -610,9 +580,7 @@ def effective(s: dict[str, Any]) -> dict[str, Any]:
 
 def runs_on(s: dict[str, Any], engine: str) -> bool:
     e = effective(s)
-    status = (
-        e.get("datafusion", "") if engine == "datafusion" else e.get("engines", {}).get(engine, "")
-    )
+    status = e.get("native", "") if engine == "native" else e.get("engines", {}).get(engine, "")
     return status.startswith(("runs", "sql"))
 
 
@@ -757,11 +725,11 @@ def index(queries: list[Query], features: dict[str, Feature], status: dict[str, 
         "do not edit by hand.",
         "",
         "Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a "
-        "plan exists (Ibis or DataFusion), · not expressible in Ibis or DataFusion "
-        "SQL. *(dbl)* means it verifies only with DECIMAL columns read as DOUBLE. "
-        "Engines: F DataFusion runs the query's SQL itself (verified or not); "
+        "plan exists (Ibis, the producer or the lift), · not expressible in Ibis "
+        "or SQL. *(dbl)* means it verifies only with DECIMAL columns read as DOUBLE. "
+        "Engines: N DuckDB runs the query's SQL itself (verified or not); "
         "P Polars, D DuckDB, S Snowflake SQL run Lean's written plan of a "
-        "verified query (agreeing with DataFusion on synthetic data). *Missing* "
+        "verified query (agreeing with DuckDB's own rows on synthetic data). *Missing* "
         "lists the features of an unverified query that Lean lacks or covers "
         "only in part (`features.toml`).",
         "",
@@ -777,7 +745,7 @@ def index(queries: list[Query], features: dict[str, Feature], status: dict[str, 
                 mark += " *(dbl)*"
             engines = "".join(
                 letter
-                for letter, name in (("F", "datafusion"), ("P", "polars"), ("D", "duckdb"),
+                for letter, name in (("N", "native"), ("P", "polars"), ("D", "duckdb"),
                                      ("S", "snowflake"))
                 if runs_on(s, name)
             )  # fmt: skip
@@ -817,7 +785,7 @@ def stats(
     n = len(queries)
     out = ["### Status per suite", "",
            "| suite | queries | verified | as DOUBLE only | rejected | upstream "
-           "| DataFusion runs | Polars | DuckDB | Snowflake SQL |",
+           "| DuckDB runs the SQL | Polars | DuckDB | Snowflake SQL |",
            "|---|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
 
     def row(name: str, qs: list[Query]) -> str:
@@ -827,7 +795,7 @@ def stats(
         rej = sum(effective(s)["checker"] == "rejected" for s in st)
         up = sum(effective(s)["checker"] in ("upstream", "none") for s in st)
         engines = [
-            sum(runs_on(s, e) for s in st) for e in ("datafusion", "polars", "duckdb", "snowflake")
+            sum(runs_on(s, e) for s in st) for e in ("native", "polars", "duckdb", "snowflake")
         ]
         return (
             f"| {name} | {len(qs)} | {ver} | {dbl} | {rej} | {up} | "

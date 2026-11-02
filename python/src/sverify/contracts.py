@@ -94,7 +94,6 @@ from sverify.engine import (
     plan_json,
     run_checker,
     run_plan,
-    to_sql,
     written_plan,
 )
 
@@ -1105,7 +1104,7 @@ class ContractedTransform:
     ) -> Report:
         key = (
             tag,
-            to_sql(body),
+            ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
             tuple(label(c) for c in ensures),

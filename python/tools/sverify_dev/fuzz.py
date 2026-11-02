@@ -314,7 +314,7 @@ class Finding:
 
 
 class Refused(Exception):
-    """The query is outside the model (producer, checker or DataFusion refuse it)."""
+    """The query is outside the model (the lift or the checker refuses it)."""
 
 
 #: An engine translation refusing a plan on purpose: not a finding.
@@ -406,7 +406,7 @@ def lean_plan(plan: str) -> str:
 
 def _types(table: Any) -> list[str]:
     """Column types, with Substrait's one string type and timestamps of any
-    unit (DataFusion's SQL gives a timestamp literal nanoseconds, plans have
+    unit (an engine may give a timestamp literal nanoseconds, plans have
     microseconds); an all-NULL column of Arrow's `null` type matches any."""
 
     def name(t: pa.DataType) -> str:

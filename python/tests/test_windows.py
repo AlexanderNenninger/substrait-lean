@@ -22,7 +22,6 @@ from sverify.engine import (
     run_plan,
     run_substrait_json,
     substrait_json,
-    to_sql,
     written_plan,
 )
 from sverify.errors import NotIncremental
@@ -194,7 +193,7 @@ def test_windows_are_not_incremental():
     con = connect()
     create_table(con, "readings", readings.schema(), [])
     with pytest.raises(NotIncremental):
-        IncrementalView(con, to_sql(with_neighbours(readings)), "v")
+        IncrementalView(con, ibis.to_sql(with_neighbours(readings), dialect="duckdb"), "v")
 
 
 # --------------------------------------------------------------------------
