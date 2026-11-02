@@ -461,8 +461,57 @@ def test_first_and_last_are_determined_by_a_key():
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
             run_plan(con, written, engine)
-    with pytest.raises(Exception, match="any row's value"):
-        to_substrait_json(P.group_by("k").aggregate(f=P.x.first()))
+    # Without an order every row ties: determined only by a key on the group.
+    any_row = P.group_by("k").aggregate(f=P.x.first())
+    assert not sv.verify(any_row, requires={"t": [sv.unique("k", "o")]}).deterministic
+    assert sv.verify(any_row, requires={"t": [sv.unique("k")]}).deterministic
+
+
+# #55: Ibis's distinct(on=) is FIRST/LAST of each other column without an
+# order, each column on its own (DuckDB may take them from different rows).
+D = ibis.table({"name": "string", "a": "int64", "b": "int64"}, name="t")
+
+
+@pytest.mark.parametrize("keep", ["first", "last", None])
+@settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.sampled_from(["x", "y", None]),
+            st.one_of(st.none(), st.integers(0, 3)),
+            st.one_of(st.none(), st.integers(0, 3)),
+        ),
+        max_size=6,
+    )
+)
+def test_distinct_on_runs_as_lean_says(keep, rows):
+    """DuckDB's written plan breaks every tie in Lean's list order."""
+    plan = to_substrait_json(D.distinct(on="name", keep=keep))
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    con = connect()
+    create_table(con, "t", D.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert sorted((tuple(r.values()) for r in got), key=repr) == lean
+
+
+def test_distinct_on_proves_nothing_about_one_row():
+    """Each kept column may come from a different row of its group, so `a <= b`,
+    true on every row, is not proved; nor is anything else unless `name` is a
+    key, which makes each group one row."""
+    expr = D.distinct(on="name")
+    rows_ok = [_.a <= _.b, _.a.notnull(), _.b.notnull()]
+    report = sv.verify(expr, requires={"t": rows_ok}, ensures=[_.a <= _.b])
+    assert not report.deterministic
+    assert not report.proved
+    # LAST of each column skips NULLs on its own: a and b from different rows.
+    con = connect()
+    create_table(con, "t", D.schema(), [("x", 1, 5), ("x", 3, None), ("x", None, 2)])
+    got = run_plan(
+        con, written_plan(to_substrait_json(D.distinct(on="name", keep="last"))), "duckdb"
+    )
+    assert [tuple(r.values()) for r in got.to_pylist()] == [("x", 3, 2)]
+    keyed = sv.verify(expr, requires={"t": [*rows_ok, sv.unique("name")]}, ensures=[_.a <= _.b])
+    assert keyed.deterministic
 
 
 # #54: covariance and correlation of pairs of doubles, each engine's own

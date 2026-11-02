@@ -1884,9 +1884,9 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
   if !sort.isEmpty && !["array_agg", "first", "last"].contains name then
     throw s!"ordered aggregates are not supported: {name}"
-  -- Without an order, `FIRST` is any row's value (`arbitrary`).
-  if sort.isEmpty && ["first", "last"].contains name then
-    throw s!"{name} without ORDER BY is any row's value, which is not supported; give it an order"
+  -- Without an order, `FIRST` is any row's value: the model takes them in list
+  -- order, and `Rel.windowsTotal` reports the result as the engine's choice
+  -- unless the group's columns contain a key (Ibis's `distinct(on=)`, #55).
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false

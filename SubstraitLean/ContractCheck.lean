@@ -216,7 +216,8 @@ def check (input : Json) : Except String Report := do
   let inputKeys : String → List (List Nat) := fun t =>
     natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
   let T := Rel.keyedWindows cat A F inputKeys
-  let tied := "undetermined: rows may tie in a window's ORDER BY, and the engine orders them"
+  let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST or " ++
+    "STRING_AGG, and the engine orders them"
   let mut results : List (String × Bool × String) := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.

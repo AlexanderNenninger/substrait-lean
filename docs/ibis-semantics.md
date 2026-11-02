@@ -42,3 +42,16 @@ row. Ibis-on-DataFusion is closest (it differs on `-0.0 == 0.0` and on
 `max` of NaN). To run a verified expression with exactly this meaning, run
 the plan, not the Ibis expression: `sverify.run_plan(con, plan, engine)` on
 DataFusion, DuckDB or Polars, whose translations raise rather than differ.
+
+## Any row's value
+
+`first()` and `last()` without `order_by`, and so `distinct(on=…)`, which
+Ibis writes as `FIRST` (or `LAST`) of each other column, take any row's
+value (#55). `verify` takes the rows in the input's list order, one of the
+choices an engine may make, and reports the result as not `deterministic`
+unless the grouping (`on`) columns form a key; then nothing is proved about
+it. Each column is chosen on its own: `FIRST` skips NULLs column by column,
+so `distinct(on="name")` may keep `a` from one row and `b` from another, and
+a fact about every input row, such as `a <= b`, need not hold of the result.
+`keep=None` keeps the groups of one row, but the report still calls it
+undetermined. The plan runs on DuckDB for now (#271).

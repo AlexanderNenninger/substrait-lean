@@ -2743,8 +2743,6 @@ class _Parser:
         if _arr(m, "sorts") and name not in ("first", "last"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
-        if name in ("first", "last") and not sort:
-            raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
                        "AGGREGATION_INVOCATION_DISTINCT"):  # fmt: skip
@@ -3532,9 +3530,11 @@ class _Writer:
                     items.append(f"{x} AS {c}")
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
-        if any(orders) and any(ms.distinct for ms in measures):
+        # Without sort keys too: the ordinal is Lean's list order.
+        picks = any(orders) or any(ms.fn in ("first", "last") for ms in measures)
+        if picks and any(ms.distinct for ms in measures):
             raise Unsupported("first or last next to a DISTINCT measure is not supported")
-        needs = needs or any(orders)
+        needs = needs or picks
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
         level = self.select(items, d.subquery(self.rel(i, needs), a))
