@@ -601,6 +601,10 @@ def _check_datafusion_plan(plan: dict) -> None:
                 ints = ("i8", "i16", "i32", "i64")
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported("DataFusion's AVG has no integer result")
+            w = node.get("windowFunction")
+            if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
+                # DataFusion spreads the larger buckets out (upstream/LEDGER.md).
+                raise sql.Unsupported("DataFusion's NTILE does not deal out buckets as SQL does")
             f = node.get("scalarFunction")
             if isinstance(f, dict) and names.get(f.get("functionReference")) == "substring":
                 left = any(
