@@ -24,9 +24,8 @@ Running plans:
 Plans:
 
 * A node's `plan` is the plan Lean checked, in Lean's written form.
-* `substrait_json` compiles SQL with DataFusion's producer, `isthmus_json`
-  with Isthmus (`SQL_PRODUCERS`); `written_plan` is a plan as Lean parsed
-  and wrote it back, the form `run` and `to_sql` take; `delta_plans` are
+* `substrait_json` compiles SQL with DataFusion's producer; `written_plan`
+  is a plan as Lean parsed and wrote it back, the form `run` and `to_sql` take; `delta_plans` are
   the weighted delta plans Lean derives for incremental maintenance.
 
 SQL:
@@ -42,10 +41,8 @@ from typing import TYPE_CHECKING, Any
 
 from sverify.engine import (
     ENGINES,
-    SQL_PRODUCERS,
     Connection,
     create_table,
-    isthmus_json,
     run_substrait_json,
     substrait_json,
     table_rows,
@@ -78,13 +75,11 @@ __all__ = [
     "SNOWFLAKE",
     "SPARK",
     "SPARK_CONF",
-    "SQL_PRODUCERS",
     "Connection",
     "Dialect",
     "Unsupported",
     "create_table",
     "delta_plans",
-    "isthmus_json",
     "run",
     "run_sharded",
     "run_spark",

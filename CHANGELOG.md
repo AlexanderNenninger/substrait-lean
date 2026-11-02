@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Isthmus support removed
+
+sverify no longer compiles SQL strings with Isthmus (substrait-java's
+Calcite-based compiler). Its frontends are Ibis and SQL through sverify's
+own producers (#211, #231). `sverify.engines.isthmus_json`,
+`sverify.engines.SQL_PRODUCERS`, `sv.connect(sql_producer=...)` and the
+`SVERIFY_ISTHMUS` variable are gone. SQL strings need the `datafusion` extra
+until the SQLGlot frontend replaces DataFusion's producer.
+
 ### Maintainer tooling leaves the wheel
 
 The coverage harness, the query catalogue, the fuzzers, DuckDB's

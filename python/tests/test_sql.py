@@ -68,13 +68,8 @@ needs_fixtures = pytest.mark.skipif(
 
 
 def fixture(name: str) -> dict:
-    """A fixture's plan. Isthmus's plans use encodings only Lean reads
-    (`varChar`, nested windows, `is_true`); the engines get what Lean writes
-    of them, so the accepted ones are given in that form."""
-    plan = (FIXTURES / f"{name}.json").read_text()
-    if name.startswith("isthmus_") and name in ACCEPTED:
-        plan = written(plan)
-    return json.loads(plan)
+    """A fixture's plan."""
+    return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
 def golden(name: str) -> str:
@@ -247,12 +242,7 @@ def agree(plan: dict, df: list[tuple] | None, duck: list[tuple], lean: list[tupl
 @needs_fixtures
 def test_fixture_lists_are_complete():
     assert {"filter_project", "virtual_left_join", "union_fetch", "df_window"} <= set(ACCEPTED)
-    assert set(REFUSED) == {
-        "bad_field_ref",
-        "isthmus_char_padding",
-        "isthmus_timestamp_seconds",
-        "option_overflow_saturate",
-    }
+    assert set(REFUSED) == {"bad_field_ref", "option_overflow_saturate"}
 
 
 @pytest.mark.parametrize("name", REFUSED)
