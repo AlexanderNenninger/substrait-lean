@@ -1352,6 +1352,17 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
 
 
+def _has_struct(t: Any) -> bool:
+    """Whether `t` is a struct, or holds one."""
+    if t.is_struct():
+        return True
+    if t.is_array():
+        return _has_struct(t.value_type)
+    if t.is_map():
+        return _has_struct(t.key_type) or _has_struct(t.value_type)
+    return False
+
+
 def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
     """Arguments of a comparison: decimals and integers as they are (the
     model compares them at a common scale), anything else at one type."""
@@ -1418,9 +1429,9 @@ def _temporal(e: E, t: Any) -> E:
 def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _COMPARISONS[type(node)]
     a, b = sub(node.this), sub(node.expression)
-    if name not in ("equal", "not_equal") and any(x.type.is_nested() for x in (a, b)):
-        # DuckDB orders structs and lists field by field, NULLs last; the
-        # model's order of nested values is not that one yet.
+    if name not in ("equal", "not_equal") and any(_has_struct(x.type) for x in (a, b)):
+        # DuckDB orders structs field by field, NULLs last; the model's order
+        # of structs is not that one yet. (Lists it orders as DuckDB does.)
         raise Unsupported(f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet")
     args = _operands(lf, [a, b], name)
     return E(_fn(name, args, dt.boolean), dt.boolean)
