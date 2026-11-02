@@ -171,9 +171,32 @@ def peer (sort : List SortKey) (x y : Row) : Bool := sortLe sort y x && sortLe s
 /-- The double `a / b` of two integers. -/
 def floatRatio (a b : Nat) : Value := .int (FloatCode.lift₂ (· / ·) (FloatCode.ofInt a) (FloatCode.ofInt b))
 
-/-- DataFusion's `NTILE(k)` of the `i`-th of `n` rows: with fewer rows than
-buckets, a bucket for each row. -/
-def ntileOf (i k n : Nat) : Nat := i * min k n / n + 1
+/-- The SQL standard's `NTILE(k)` of the `i`-th (from 0) of `n` rows: `k`
+buckets of `n / k` rows, the first `n % k` of them one row larger; with fewer
+rows than buckets, a bucket for each row. (DataFusion's own formula,
+`i · min(k, n) / n + 1`, spreads the larger buckets out instead.) -/
+def ntileOf (i k n : Nat) : Nat :=
+  let q := n / k
+  let r := n % k
+  if i < r * (q + 1) then i / (q + 1) + 1 else (i - r * (q + 1)) / q + r + 1
+
+theorem one_le_ntileOf (i k n : Nat) : 1 ≤ ntileOf i k n := by
+  simp only [ntileOf]; split <;> exact Nat.le_add_left 1 _
+
+theorem ntileOf_le (i k n : Nat) : ntileOf i k n ≤ i + 1 := by
+  simp only [ntileOf]
+  generalize n / k = q
+  generalize n % k = r
+  split
+  · exact Nat.succ_le_succ (Nat.div_le_self i (q + 1))
+  · rename_i h
+    have h1 := Nat.div_le_self (i - r * (q + 1)) q
+    have h2 : r ≤ r * (q + 1) := Nat.le_mul_of_pos_right _ (Nat.succ_pos q)
+    generalize (i - r * (q + 1)) / q = d at h1
+    omega
+
+#guard (List.range 10).map (ntileOf · 4 10) == [1, 1, 1, 2, 2, 2, 3, 3, 4, 4]
+#guard (List.range 3).map (ntileOf · 5 3) == [1, 2, 3]
 
 /-- A window function of `x`, from its partition's rows before (`pb`) and
 after (`pa`) it in sort order. -/

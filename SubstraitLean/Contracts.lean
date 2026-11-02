@@ -3500,12 +3500,8 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
       have h2 := List.length_filter_le (samePart part x) a
       generalize (List.filter (samePart part x) b).length = i at h1 ⊢
       generalize (List.filter (samePart part x) a).length = j at h2 ⊢
-      have hm : ntileOf i k (i + 1 + j) ≤ i + 1 := by
-        have : i * min k (i + 1 + j) ≤ (i + 1 + j) * i := by
-          rw [Nat.mul_comm (i + 1 + j) i]; exact Nat.mul_le_mul_left i (Nat.min_le_right _ _)
-        have := Nat.div_le_of_le_mul this
-        simp only [ntileOf]; omega
-      have h1' : 1 ≤ ntileOf i k (i + 1 + j) := by simp [ntileOf]
+      have hm := ntileOf_le i k (i + 1 + j)
+      have h1' := one_le_ntileOf i k (i + 1 + j)
       refine ⟨fun l hl => ?_, fun u hu => ?_⟩
       · subst hl; omega
       · cases sz <;> simp at hu
