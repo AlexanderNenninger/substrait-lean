@@ -44,8 +44,6 @@ from sverify.engine import (
 from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 
-pytestmark = pytest.mark.lift_backlog
-
 MIN, MAX = -(2**63), 2**63 - 1
 #: DataFusion's nanosecond range, and the years `chrono` represents.
 NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
@@ -267,16 +265,29 @@ def test_datafusion_fails_only_where_reported(i, values):
 DAY_MIN, DAY_MAX = -96465292, 95026236
 NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
 
-DATE_SQL = (
-    "SELECT d + INTERVAL '1 month' AS a, d - INTERVAL '13 months' AS b, "
-    "d + INTERVAL '3 days' AS c, d + INTERVAL '1 month 2 days' AS e, "
-    "d - INTERVAL '1 month 2 days' AS f, d + INTERVAL '2 years' AS g, "
-    "date_part('year', d) AS y, date_part('month', d) AS m, date_part('day', d) AS dd, "
-    "date_part('dow', d) AS w, date_part('doy', d) AS doy, date_part('week', d) AS wk FROM r"
+#: Date arithmetic and parts, in Ibis: Lean gets the Ibis producer's plan
+#: and DataFusion runs Ibis's SQL. (DuckDB's SQL types `DATE + INTERVAL` as
+#: a TIMESTAMP, which the SQL lift cannot output yet, #240.)
+R_DATES = ibis.table({"d": "date"}, name="r")
+DATE_EXPR = R_DATES.select(
+    a=R_DATES.d + ibis.interval(months=1),
+    b=R_DATES.d - ibis.interval(months=13),
+    c=R_DATES.d + ibis.interval(days=3),
+    e=R_DATES.d + ibis.interval(months=1) + ibis.interval(days=2),
+    f=R_DATES.d - ibis.interval(months=1) - ibis.interval(days=2),
+    g=R_DATES.d + ibis.interval(years=2),
+    y=R_DATES.d.year(),
+    m=R_DATES.d.month(),
+    dd=R_DATES.d.day(),
+    w=R_DATES.d.day_of_week.index(),
+    doy=R_DATES.d.day_of_year(),
+    wk=R_DATES.d.week_of_year(),
 )
-TRUNC_SQL = (
-    "SELECT date_trunc('week', d) AS w, date_trunc('month', d) AS m, "
-    "date_trunc('quarter', d) AS q, date_trunc('year', d) AS y FROM r"
+TRUNC_EXPR = R_DATES.select(
+    w=R_DATES.d.truncate("W"),
+    m=R_DATES.d.truncate("M"),
+    q=R_DATES.d.truncate("Q"),
+    y=R_DATES.d.truncate("Y"),
 )
 
 
@@ -293,16 +304,17 @@ def days_of(out: pa.Table) -> list[tuple]:
     return [tuple(x.values()) for x in pa.table(columns, names=out.column_names).to_pylist()]
 
 
-def date_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
-    """Rows from DataFusion running `sql`, from Lean's semantics of its plan
-    and from Polars and DuckDB running the plan Lean writes."""
+def date_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tuple]]:
+    """Rows from DataFusion running Ibis's SQL for `expr`, from Lean's
+    semantics of its plan and from Polars and DuckDB running the plan Lean
+    writes."""
     con = connect()
     put_table(con, "r", pa.table({"d": pa.array(values, pa.int32()).cast(pa.date32())}))
-    plan = json.loads(substrait_json(con, sql))
+    plan = to_substrait(expr)
     written = written_plan(json.dumps(plan))
     inline_tables(plan, {"r": [(v,) for v in values]})
     return {
-        "datafusion": days_of(duckdb_sql(con, sql)),
+        "datafusion": days_of(run_sql(con, to_sql(expr))),
         "lean": lean_values(json.dumps(plan)),
         "polars": days_of(run_plan(con, written, "polars")),
         "duckdb": days_of(run_plan(con, written, "duckdb")),
@@ -322,7 +334,7 @@ dates = st.one_of(
 def test_date_arithmetic_matches_datafusion(values):
     """Months clamp to the end of a shorter month and come before days, as in
     DataFusion; Polars and DuckDB agree."""
-    runs = date_runs(DATE_SQL, values)
+    runs = date_runs(DATE_EXPR, values)
     expected = canonical(runs.pop("datafusion"))
     for engine, rows in runs.items():
         assert canonical(rows) == expected, engine
@@ -332,31 +344,32 @@ def test_date_arithmetic_matches_datafusion(values):
 @given(values=st.lists(st.one_of(st.none(), st.integers(NS_DAY_MIN + 400, NS_DAY_MAX)), max_size=8))
 def test_date_trunc_of_dates_matches_datafusion(values):
     """Within DataFusion's nanoseconds, where it truncates dates correctly."""
-    runs = date_runs(TRUNC_SQL, values)
+    runs = date_runs(TRUNC_EXPR, values)
     expected = canonical(runs.pop("datafusion"))
     for engine, rows in runs.items():
         assert canonical(rows) == expected, engine
 
 
 @pytest.mark.parametrize(
-    ("sql", "d"),
+    ("x", "d"),
     [
-        ("SELECT d + INTERVAL '1 day' AS x FROM r", DAY_MAX),
-        ("SELECT d - INTERVAL '1 day' AS x FROM r", DAY_MIN),
-        ("SELECT d + INTERVAL '1 month' AS x FROM r", DAY_MAX - 10),
-        ("SELECT d + INTERVAL '1 day' AS x FROM r", DAY_MAX + 5),
-        ("SELECT date_trunc('month', d) AS x FROM r", NS_DAY_MAX + 1),
-        ("SELECT date_trunc('day', d) AS x FROM r", NS_DAY_MIN - 1),
+        (R_DATES.d + ibis.interval(days=1), DAY_MAX),
+        (R_DATES.d - ibis.interval(days=1), DAY_MIN),
+        (R_DATES.d + ibis.interval(months=1), DAY_MAX - 10),
+        (R_DATES.d + ibis.interval(days=1), DAY_MAX + 5),
+        (R_DATES.d.truncate("M"), NS_DAY_MAX + 1),
+        (R_DATES.d.truncate("D"), NS_DAY_MIN - 1),
     ],
 )
-def test_dates_outside_chrono_fail(sql, d):
+def test_dates_outside_chrono_fail(x, d):
     """`rangeIssue`: where DataFusion panics (or truncates in wrapped
     nanoseconds), the checker reports an error and the engines raise."""
     con = connect()
     put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
-    report = sv.verify(sql, tables={"r": ibis.schema({"d": "date"})})
+    expr = R_DATES.select(x=x)
+    report = sv.verify(expr)
     assert "overflow" in [i.kind for i in report.errors]
-    written = written_plan(substrait_json(con, sql))
+    written = written_plan(to_substrait_json(expr))
     with pytest.raises(polars_engine.Overflow):
         run_plan(con, written, "polars")
     with pytest.raises(duckdb.Error, match="sverify"):
@@ -447,14 +460,17 @@ def test_date_differences_are_refused():
 # --------------------------------------------------------------------------
 # Times of day, formatting, timestamps from numbers
 
-TOD_SQL = (
-    "SELECT CAST(ts AS TIME) AS t, to_char(ts, '%Y-%m-%d %H:%M:%S') AS s, "
-    "to_char(ts, '%F %T %j %%') AS f, date_part('hour', CAST(ts AS TIME)) AS h, "
-    "date_part('microsecond', CAST(ts AS TIME)) AS us FROM r"
+#: Times of day and formats, in Ibis (`to_char` is DataFusion's name).
+R_TS = ibis.table({"ts": "timestamp"}, name="r")
+TOD_EXPR = R_TS.select(
+    t=R_TS.ts.time(),
+    s=R_TS.ts.strftime("%Y-%m-%d %H:%M:%S"),
+    f=R_TS.ts.strftime("%F %T %j %%"),
+    h=R_TS.ts.time().hour(),
 )
 
 
-def tod_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
+def tod_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tuple]]:
     """As `date_runs`, over a timestamp column `ts`; times as microseconds."""
 
     def plain(out: pa.Table) -> list[tuple]:
@@ -467,11 +483,11 @@ def tod_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
 
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
-    plan = json.loads(substrait_json(con, sql))
+    plan = to_substrait(expr)
     written = written_plan(json.dumps(plan))
     inline_tables(plan, {"r": [(v,) for v in values]})
     return {
-        "datafusion": plain(duckdb_sql(con, sql)),
+        "datafusion": plain(run_sql(con, to_sql(expr))),
         "lean": lean_values(json.dumps(plan)),
         "polars": plain(run_plan(con, written, "polars")),
         "duckdb": plain(run_plan(con, written, "duckdb")),
@@ -489,30 +505,28 @@ chrono = st.one_of(
 def test_times_of_day_and_formats_match_datafusion(values):
     """`CAST(ts AS TIME)`, `to_char` (chrono's `%Y`: four digits, a sign
     outside 0 to 9999) and clock parts of a time agree with DataFusion."""
-    runs = tod_runs(TOD_SQL, values)
+    runs = tod_runs(TOD_EXPR, values)
     expected = canonical(runs.pop("datafusion"))
     for engine, rows in runs.items():
         assert canonical(rows) == expected, engine
 
 
-@pytest.mark.parametrize(
-    "sql", ["SELECT CAST(ts AS TIME) AS t FROM r", "SELECT to_char(ts, '%Y') AS t FROM r"]
-)
-def test_times_outside_chrono_fail(sql):
+@pytest.mark.parametrize("t", [R_TS.ts.time(), R_TS.ts.strftime("%Y")])
+def test_times_outside_chrono_fail(t):
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array([PART_MIN - 1], pa.timestamp("us"))}))
+    expr = R_TS.select(t=t)
     with pytest.raises(BaseException, match="(?i)convert|naive|datetime"):
-        run_sql(con, sql)
-    report = sv.verify(sql, tables={"r": ibis.schema({"ts": "timestamp"})})
+        run_sql(con, to_sql(expr))
+    report = sv.verify(expr)
     assert "overflow" in [i.kind for i in report.errors]
     with pytest.raises(polars_engine.Overflow):
-        run_plan(con, written_plan(substrait_json(con, sql)), "polars")
+        run_plan(con, written_plan(to_substrait_json(expr)), "polars")
 
 
 def test_unsupported_formats_are_refused():
-    con = connect()
-    put_table(con, "r", pa.table({"ts": pa.array([0], pa.timestamp("us"))}))
-    code, out, err = run_checker((), substrait_json(con, "SELECT to_char(ts, '%A %e') AS s FROM r"))
+    expr = R_TS.select(s=R_TS.ts.strftime("%A %e"))
+    code, out, err = run_checker((), to_substrait_json(expr))
     assert code != 0 and "format" in out + err
 
 

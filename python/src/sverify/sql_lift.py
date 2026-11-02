@@ -41,8 +41,10 @@ LIKE and ILIKE, `||`, `concat`, `replace`, `repeat`, `left`, `upper`,
 `lower`); inner, left, right, full, semi, anti and cross joins; subqueries
 in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
 CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
-`max`, HAVING; DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
-functions (`Anonymous`) included, raises `Unsupported` saying what.
+`max`, HAVING; window functions (ranking, `lag`/`lead`, first/last/nth
+value, aggregates; ROWS and RANGE frames); DISTINCT, ORDER BY, LIMIT and
+OFFSET. Anything else, unknown functions (`Anonymous`) included, raises
+`Unsupported` saying what.
 """
 
 from __future__ import annotations
@@ -73,6 +75,7 @@ from sverify.plan_json import (
     call,
     cast_json,
     chain,
+    column_of,
     compiling,
     distinct_rel,
     emit_rel,
@@ -259,6 +262,16 @@ class E:
         return self.value is not _NO_VALUE
 
 
+class Bound(dict):
+    """The expressions that are columns of the relation an expression is
+    over: each grouping expression and measure of an aggregate (`grouped`:
+    any other column is refused), and each window function."""
+
+    def __init__(self, items: Any = (), grouped: bool = False) -> None:
+        super().__init__(items)
+        self.grouped = grouped
+
+
 @dataclasses.dataclass
 class Column:
     table: str | None
@@ -424,7 +437,7 @@ class _Lift:
 
         group = node.args.get("group")
         aggs = _aggregates([*node.expressions, node.args.get("having"), node.args.get("order")])
-        bound: dict[sge.Expression, E] = {}
+        bound: Bound = Bound()
         if group is not None or aggs:
             rel, scope, bound = self.aggregate(rel, scope, group, aggs)
             if (having := node.args.get("having")) is not None:
@@ -432,6 +445,8 @@ class _Lift:
                 rel = {"filter": {"input": rel, "condition": cond}}
         elif node.args.get("having") is not None:
             raise Unsupported("HAVING without GROUP BY or an aggregate")
+        if wins := _windows([*node.expressions, node.args.get("order")]):
+            rel, scope, bound = self.windows(rel, scope, bound, wins)
 
         outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
         names = [e.alias_or_name for e in node.expressions]
@@ -554,6 +569,174 @@ class _Lift:
             return rel, [Column(alias, c.name, c.type) for c in cols]
         raise Unsupported(f"FROM {_shown(node)} is not supported")
 
+    def windows(
+        self,
+        rel: Json,
+        scope: list[Column],
+        bound: Bound,
+        wins: list[sge.Window],
+    ) -> tuple[Json, list[Column], Bound]:
+        """The window functions `wins` over `rel`, each a column after
+        `scope`'s (and after the expressions their arguments need: the model
+        reads a window function's arguments as columns)."""
+        width = len(scope)
+        pre: list[E] = []
+
+        def column(e: E) -> Json:
+            if column_of(e.json) is not None:
+                return e.json
+            pre.append(e)
+            return field_ref(width + len(pre) - 1)
+
+        funcs = [self.window(w, scope, bound, column) for w in wins]
+        if pre:
+            rel = {"project": {"input": rel, "expressions": [e.json for e in pre]}}
+        rel = {"project": {"input": rel, "expressions": [j for js, _ in funcs for j, _ in js]}}
+        cols = scope + [Column(None, "", e.type) for e in pre]
+        bound = Bound(bound, grouped=bound.grouped)
+        for w, (js, value) in zip(wins, funcs, strict=True):
+            refs = []
+            for _, t in js:
+                refs.append(field_ref(len(cols)))
+                cols.append(Column(None, "", t))
+            bound[w] = value(refs)
+        return rel, cols, bound
+
+    def window(
+        self,
+        w: sge.Window,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E],
+        column: Callable[[E], Json],
+    ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
+        """One window function: the window functions (JSON and type) it is
+        computed from, and its value from their columns."""
+        if w.args.get("alias") is not None or w.args.get("first") is not None:
+            raise Unsupported(f"{_shown(w)}: named windows are not supported yet")
+        f = w.this
+        if isinstance(f, sge.IgnoreNulls | sge.RespectNulls | sge.Filter):
+            raise Unsupported(f"{_shown(w)} is not supported yet")
+
+        def arg(n: sge.Expression) -> E:
+            return self.expr(n, scope, bound)
+
+        args: list[Json] = []
+        if type(f) in _RANKING:
+            name, out = _RANKING[type(f)]
+            if isinstance(f, sge.Ntile):
+                n = arg(f.this)
+                if not (n.constant and isinstance(n.value, int) and n.value > 0):
+                    raise Unsupported("ntile needs a positive integer constant")
+                return self.ntile(w, n.value, scope, bound)
+        elif isinstance(f, sge.Lag | sge.Lead):
+            name = "lag" if isinstance(f, sge.Lag) else "lead"
+            x = arg(f.this)
+            out = x.type
+            offset = f.args.get("offset")
+            k = arg(offset) if offset is not None else E({}, dt.int64, 1)
+            if not (k.constant and isinstance(k.value, int) and k.value >= 0):
+                raise Unsupported(f"{name} needs a non-negative integer constant offset")
+            args = [column(x), literal(k.value, dt.int64)]
+            if (default := f.args.get("default")) is not None:
+                d = arg(default)
+                t = self.common([x, d], name)
+                if not _same(t, x.type):
+                    raise Unsupported(f"{name} with a default of another type is not supported")
+                args.append(self.to(d, t).json)
+        elif isinstance(f, sge.FirstValue | sge.LastValue | sge.NthValue):
+            x = arg(f.this)
+            out = x.type
+            name = (
+                "first_value"
+                if isinstance(f, sge.FirstValue)
+                else "last_value"
+                if isinstance(f, sge.LastValue)
+                else "nth_value"
+            )
+            args = [column(x)]
+            if isinstance(f, sge.NthValue):
+                k = arg(f.args["offset"])
+                if not (k.constant and isinstance(k.value, int) and k.value > 0):
+                    raise Unsupported("nth_value needs a positive integer constant")
+                args.append(literal(k.value, dt.int64))
+        elif type(f) in _AGGREGATES:
+            m, out = self.measure(f, scope, bound)
+            agg = m["measure"]
+            if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
+                raise Unsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
+            name = _AGGREGATES[type(f)]
+            values = [E(a["value"], dt.null) for a in agg["arguments"]]
+            args = [column(v) for v in values]
+        else:
+            raise Unsupported(f"window function {_shown(f)} is not supported yet")
+        fn = self.window_json(w, name, args, scope, bound)
+        return [(fn, out)], lambda refs: E(refs[0], out)
+
+    def window_json(
+        self,
+        w: sge.Window,
+        name: str,
+        args: list[Json],
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E],
+        frame: Json | None = None,
+    ) -> Json:
+        partitions = [self.expr(p, scope, bound).json for p in w.args.get("partition_by") or []]
+        order = w.args.get("order")
+        sorts = []
+        for o in order.expressions if order is not None else []:
+            desc = bool(o.args.get("desc"))
+            nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
+            sorts.append(
+                {
+                    "expr": self.expr(o.this, scope, bound).json,
+                    "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}",
+                }
+            )
+        fn = {
+            "functionReference": anchor(name),
+            "partitions": partitions,
+            "sorts": sorts,
+            "arguments": [{"value": a} for a in args],
+            **(frame or _frame(w, bool(sorts))),
+        }
+        return {"windowFunction": fn}
+
+    def ntile(
+        self, w: sge.Window, k: int, scope: list[Column], bound: Mapping[sge.Expression, E]
+    ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
+        """DuckDB's `NTILE(k)`, the SQL standard's: of `n` rows, the first
+        `n % k` buckets have `n // k + 1` rows, the rest `n // k`. (The
+        model's `ntile` is DataFusion's, ⌊i · min(k, n) / n⌋ + 1.) From the
+        row's number `i` (from 0) and `n`, the partition's count: with
+        `q = n // k` and `r = n % k`, `i // (q + 1) + 1` for `i < r · (q + 1)`,
+        else `(i - r) // q + 1`."""
+        whole = {
+            "lowerBound": {"unbounded": {}},
+            "upperBound": {"unbounded": {}},
+            "boundsType": "BOUNDS_TYPE_ROWS",
+        }
+        rn = self.window_json(w, "row_number", [], scope, bound)
+        count = self.window_json(w, "count", [], scope, bound, whole)
+        count["windowFunction"]["sorts"] = []
+        i64 = dt.int64
+
+        def value(refs: list[Json]) -> E:
+            one, kk = literal(1, i64), literal(k, i64)
+
+            def f(name: str, *a: Json) -> Json:
+                return _fn(name, list(a), i64)
+
+            i, n = f("subtract", refs[0], one), refs[1]
+            q, r = f("divide", n, kk), f("modulus", n, kk)
+            big = f("add", f("divide", i, f("add", q, one)), one)
+            # `greatest`: q is 0 only where every row is in the first branch.
+            small = f("add", f("divide", f("subtract", i, r), f("greatest", q, one)), one)
+            first = _fn("lt", [i, f("multiply", r, f("add", q, one))], dt.boolean)
+            return E(if_then([(first, big)], small), i64)
+
+        return [(rn, i64), (count, i64)], value
+
     def nested(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, list[Column]]:
         """A subquery inside an expression over `scope`."""
         self.outer.append(scope)
@@ -568,7 +751,7 @@ class _Lift:
         scope: list[Column],
         group: sge.Group | None,
         aggs: list[sge.Expression],
-    ) -> tuple[Json, list[Column], dict[sge.Expression, E]]:
+    ) -> tuple[Json, list[Column], Bound]:
         """The aggregate relation, its columns, and the expressions that are
         its columns (each grouping expression and each measure)."""
         keys = list(group.expressions) if group is not None else []
@@ -585,15 +768,21 @@ class _Lift:
             "measures": [m for m, _ in measures],
         }
         types = [g.type for g in groups] + [t for _, t in measures]
-        bound = {
-            k: E(field_ref(i), types[i], midnight=groups[i].midnight) for i, k in enumerate(keys)
-        }
+        bound = Bound(
+            {k: E(field_ref(i), types[i], midnight=groups[i].midnight) for i, k in enumerate(keys)},
+            grouped=True,
+        )
         for j, a in enumerate(aggs):
             bound[a] = E(field_ref(len(keys) + j), types[len(keys) + j])
         cols = [Column(None, f"_{i}", t) for i, t in enumerate(types)]
         return {"aggregate": body}, cols, bound
 
-    def measure(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, Any]:
+    def measure(
+        self,
+        node: sge.Expression,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E] | None = None,
+    ) -> tuple[Json, Any]:
         name = _AGGREGATES[type(node)]
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
@@ -607,7 +796,7 @@ class _Lift:
         else:
             if not isinstance(node, sge.Count) and node.expressions:
                 raise Unsupported(f"{_shown(node)} takes one argument")
-            a = self.expr(arg, scope)
+            a = self.expr(arg, scope, bound)
             if a.midnight:
                 raise Unsupported(
                     f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
@@ -669,7 +858,7 @@ class _Lift:
         bound = bound or {}
         if node in bound:
             return bound[node]
-        if bound and isinstance(node, sge.Column):
+        if getattr(bound, "grouped", False) and isinstance(node, sge.Column):
             raise Unsupported(f"column {_shown(node)} must be in GROUP BY or inside an aggregate")
         if type(node) in _AGGREGATES:
             raise Unsupported(f"aggregate {_shown(node)} is not allowed here")
@@ -1541,6 +1730,77 @@ _RULES: dict[type, Callable[..., E]] = {
 }
 
 
+#: Ranking window functions: the Substrait name and the type (DuckDB's).
+_RANKING: dict[type, tuple[str, Any]] = {
+    sge.RowNumber: ("row_number", dt.int64),
+    sge.Rank: ("rank", dt.int64),
+    sge.DenseRank: ("dense_rank", dt.int64),
+    sge.PercentRank: ("percent_rank", dt.float64),
+    sge.CumeDist: ("cume_dist", dt.float64),
+    sge.Ntile: ("ntile", dt.int64),
+}
+
+
+def _frame(w: sge.Window, ordered: bool) -> Json:
+    """The frame: the one written, else DuckDB's default, from the start of
+    the partition to the current row and its peers with an ORDER BY (RANGE),
+    the whole partition without."""
+    spec = w.args.get("spec")
+    if spec is None:
+        upper = {"currentRow": {}} if ordered else {"unbounded": {}}
+        return {
+            "lowerBound": {"unbounded": {}},
+            "upperBound": upper,
+            "boundsType": "BOUNDS_TYPE_RANGE",
+        }
+    if spec.args.get("exclude"):
+        raise Unsupported("a window frame with EXCLUDE is not supported")
+    kind = (spec.args.get("kind") or "").upper()
+    if kind not in ("ROWS", "RANGE"):
+        raise Unsupported(f"{kind} frames are not supported")
+
+    def bound(value: Any, side: str | None) -> Json:
+        if isinstance(value, str) and value.upper() == "UNBOUNDED":
+            return {"unbounded": {}}
+        if value is None or (isinstance(value, str) and value.upper() == "CURRENT ROW"):
+            return {"currentRow": {}}
+        if not (isinstance(value, sge.Literal) and not value.is_string and value.this.isdigit()):
+            raise Unsupported(f"frame offset {value} is not supported; use an integer constant")
+        n = int(value.this)
+        if n == 0:
+            return {"currentRow": {}}
+        return {(side or "preceding").lower(): {"offset": str(n)}}
+
+    return {
+        "lowerBound": bound(spec.args.get("start"), spec.args.get("start_side")),
+        "upperBound": bound(spec.args.get("end"), spec.args.get("end_side")),
+        "boundsType": f"BOUNDS_TYPE_{kind}",
+    }
+
+
+def _windows(nodes: list[sge.Expression | None]) -> list[sge.Window]:
+    """The window functions in `nodes`, each once, in order; not those of
+    subqueries."""
+    found: list[sge.Window] = []
+    for n in nodes:
+        if n is None:
+            continue
+        for w in n.find_all(sge.Window):
+            nested = any(isinstance(p, sge.Subquery | sge.Select) for p in _parents(w, n))
+            if not nested and w not in found:
+                found.append(w)
+    return found
+
+
+def _parents(node: Any, top: Any) -> list[Any]:
+    out: list[Any] = []
+    p = node.parent
+    while p is not None and p is not top:
+        out.append(p)
+        p = p.parent
+    return out
+
+
 def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
     """The aggregate calls in `nodes`, each once, in order; not those of
     subqueries."""
@@ -1548,7 +1808,12 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
 
     def walk(n: sge.Expression) -> None:
         if isinstance(n, sge.Window):
-            raise Unsupported(f"window functions ({_shown(n)}) are not supported yet")
+            # The window's own function is not an aggregate of the query; an
+            # aggregate in its arguments, partitions or order is.
+            for child in [*n.this.iter_expressions(), *n.iter_expressions()]:
+                if child is not n.this:
+                    walk(child)
+            return
         if isinstance(n, sge.Subquery | sge.Select):
             return
         if type(n) in _AGGREGATES:

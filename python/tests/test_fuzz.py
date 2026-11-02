@@ -15,8 +15,6 @@ from hypothesis import HealthCheck, given, settings
 from sverify_dev import fuzz
 from sverify_dev.fuzz import Finding, Query, Refused, check, check_contract, known, same_rows
 
-pytestmark = pytest.mark.lift_backlog
-
 # The same examples on every run, so that CI is not flaky; `poe fuzz` explores.
 CHEAP = settings(
     max_examples=60,

@@ -263,6 +263,10 @@ class SnowflakeDialect(Dialect):
         # NUMBER(38,0) sums are exact far beyond 64 bits.
         return f"CAST({self.checked(f'SUM({v})', row=False)} AS NUMBER(38,0))"
 
+    def bit_agg(self, fn: str, v: str, over: str) -> str:
+        name = {"bit_and": "BITAND_AGG", "bit_or": "BITOR_AGG", "bit_xor": "BITXOR_AGG"}[fn]
+        return f"{name}({v}){over and ' ' + over}"
+
     def int_avg(self, v: str, over: str) -> str:
         # NUMBER(38,0) sums are exact. Division rounds to a scale, so subtract
         # the remainder (MOD has the dividend's sign) and divide exactly.

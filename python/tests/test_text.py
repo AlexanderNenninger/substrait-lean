@@ -16,7 +16,7 @@
 
 import json
 import subprocess
-from typing import cast
+from typing import Any, cast
 
 import ibis
 import ibis.expr.types as ir
@@ -37,10 +37,9 @@ from sverify.engine import (
     to_sql,
     written_plan,
 )
+from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import Unsupported
-from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
-
-pytestmark = pytest.mark.lift_backlog
+from sverify.testing import canonical, inline_tables, lean_values
 
 R = ibis.schema({"s": "string", "t": "string", "a": "int64"})
 
@@ -54,13 +53,33 @@ QUERIES = [
 
 text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 
+#: The plans of the queries whose text DuckDB's SQL reads otherwise than
+#: DataFusion's: `btrim` is DuckDB's `trim`; LIKE with a column pattern or a
+#: backslash escape, and regular expressions, are written in Ibis, whose
+#: semantics are DataFusion's (and the model's).
+PLANS: dict[str, Any] = {
+    QUERIES[2]: lambda r: r.select(l=r.s.like(r.t), m=r.s.like("a%"), n=r.s.like("_\\%%")),
+    QUERIES[3]: "SELECT trim(s, t) AS b, ltrim(s, t) AS l, rtrim(s, t) AS r, trim(s) AS w FROM r",
+}
+
 
 def datafusion_sql(sql: str) -> str:
     """`sql` as DataFusion computes the reference: its `substring` puts a
     negative start left of the beginning, while the reference counts it from
     the end (`Text.substrWrap`, #209)."""
+    if callable(PLANS.get(sql)):
+        return to_sql(PLANS[sql](ibis.table(R, name="r")))
     wrapped = "CASE WHEN a < 0 THEN a + character_length(s) + 1 ELSE a END"
     return sql.replace("substring(s, a", f"substring(s, {wrapped}")
+
+
+def plan_of(con, sql: str) -> str:
+    """The plan of a query here (DataFusion's SQL): the lift's of its DuckDB
+    SQL, or the Ibis producer's where DuckDB's SQL reads it otherwise (`PLANS`)."""
+    source = PLANS.get(sql, sql)
+    if callable(source):
+        return to_substrait_json(source(con.table("r")))
+    return substrait_json(con, source)
 
 
 @pytest.mark.parametrize("sql", QUERIES)
@@ -72,16 +91,18 @@ def test_string_semantics_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
     expected = [tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
     assert canonical(lean_values(json.dumps(plan))) == canonical(expected)
 
 
 #: Black boxes in Lean: only the engines are compared.
 BLACK_BOXES = [
     "SELECT upper(s) AS u, lower(t) AS l FROM r",
-    "SELECT array_length(regexp_match(s, '^a')) AS x, array_length(regexp_match(s, '(a)(b|%)'))"
-    " AS y, array_length(regexp_match(t, 'é.')) AS z FROM r",
+    "regular expressions",
 ]
+PLANS[BLACK_BOXES[1]] = lambda r: r.select(
+    x=r.s.re_search("^a"), y=r.s.re_search("(a)(b|%)"), z=r.t.re_search("é.")
+)
 
 
 @pytest.mark.parametrize("engine", ["polars", "duckdb"])
@@ -94,7 +115,7 @@ def test_engines_match_datafusion(engine, sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
     expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist())
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(plan_of(con, sql))
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
     if engine == "duckdb" and sql == BLACK_BOXES[0] and non_ascii:
         with pytest.raises(Exception, match="non-ASCII text differs between engines"):
@@ -109,7 +130,7 @@ def test_engines_match_datafusion(engine, sql, rows):
     [
         ("SELECT upper(s) AS u FROM r", "UPPER of non-ASCII text"),
         ("SELECT lower(s) AS u FROM r", "LOWER of non-ASCII text"),
-        ("SELECT array_length(regexp_match(t, 'a')) AS m FROM r", "regular expressions"),
+        ("regular expressions", "regular expressions"),
     ],
 )
 def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
@@ -119,11 +140,11 @@ def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
     con = connect()
     rows = [("Straße", "abc", 1)]
     create_table(con, "r", R, rows)
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
     with pytest.raises(subprocess.CalledProcessError) as e:
         lean_values(json.dumps(plan))
     assert f"rows not evaluated: {message}" in e.value.stderr
-    if "regexp" not in sql:
+    if sql != "regular expressions":
         ascii_rows = inline_tables(json.loads(substrait_json(con, sql)), {"r": [("abc", "x", 1)]})
         assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
 
@@ -136,6 +157,11 @@ counts = st.one_of(st.none(), st.integers(-2, 3))
 ASCII_IN_DUCKDB = (
     "SELECT repeat(s, a) AS r, reverse(s) AS v, ascii(t) AS c, levenshtein(s, t) AS d FROM r"
 )
+# DuckDB reverses grapheme clusters, and the lift reads no `ascii` or
+# `levenshtein`: in Ibis.
+PLANS[ASCII_IN_DUCKDB] = lambda r: r.select(
+    r=r.s.repeat(r.a), v=r.s.reverse(), c=r.t.ascii_str(), d=r.s.levenshtein(r.t)
+)
 REPLACE = (
     "SELECT replace(s, 'a', 'xy') AS p, replace(s, 'é', '') AS e, replace(s, ' ', '') AS t FROM r"
 )
@@ -143,7 +169,7 @@ EMPTY_PATTERN = "SELECT replace(s, '', '-') AS q FROM r"
 
 
 def lean_rows(con, sql: str, rows: list[tuple]) -> list:
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
     return canonical(lean_values(json.dumps(plan)))
 
 
@@ -157,7 +183,7 @@ def test_repeat_reverse_replace_match_datafusion(sql, rows):
     create_table(con, "r", R, rows)
     expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist())
     assert lean_rows(con, sql, rows) == expected
-    plan = written_plan(substrait_json(con, sql))
+    plan = written_plan(plan_of(con, sql))
     assert (
         canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected
     )
@@ -174,6 +200,8 @@ def test_repeat_reverse_replace_match_datafusion(sql, rows):
 
 
 ILIKE = "SELECT s ILIKE t AS i, s ILIKE 'A%b_' AS j, s NOT ILIKE '%\\%' AS k FROM r"
+# A column pattern and a backslash escape: in Ibis.
+PLANS[ILIKE] = lambda r: r.select(i=r.s.ilike(r.t), j=r.s.ilike("A%b_"), k=~r.s.ilike("%\\%"))
 #: Letters whose case folding is not ASCII's: `'ſ' ILIKE 's'`, `'K' ILIKE 'k'`.
 folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 
@@ -185,8 +213,8 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 def test_ilike_matches_datafusion(rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in duckdb_sql(con, ILIKE).to_pylist())
-    plan = written_plan(substrait_json(con, ILIKE))
+    expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(ILIKE)).to_pylist())
+    plan = written_plan(plan_of(con, ILIKE))
     assert (
         canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected
     )
@@ -280,5 +308,5 @@ def test_string_contracts():
 
 
 def test_negative_substring_length_is_rejected():
-    with pytest.raises(ValueError, match="negative substring length"):
+    with pytest.raises(ValueError, match="negative (substring )?length"):
         sv.verify("SELECT substring(name, 1, -1) AS x FROM t", tables={"t": T})
