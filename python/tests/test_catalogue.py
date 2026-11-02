@@ -9,6 +9,7 @@ longer matches; regenerate with `--write` and review the diff.
 """
 
 import json
+import re
 
 import pytest
 
@@ -28,6 +29,14 @@ STATUS = json.loads((cat.ROOT / "status.json").read_text())
 def test_well_formed():
     assert cat.validate(QUERIES, FEATURES, SCHEMAS, PITFALLS) == []
     assert len(QUERIES) >= 60
+
+
+def test_pitfall_quirks_are_entries():
+    """Each pitfall's `quirks` names an entry of the tour's chapter 17."""
+    notebook = (cat.ROOT.parent / "notebooks" / "17_backend_semantics.py").read_text()
+    entries = set(re.findall(r'^ {8}[EB]\(\n {12}"(\w+)",', notebook, re.M))
+    unknown = {q for p in PITFALLS.values() for q in p.get("quirks", [])} - entries
+    assert not unknown
 
 
 def test_annotations_agree_with_probes():

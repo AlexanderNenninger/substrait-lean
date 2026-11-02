@@ -3,7 +3,8 @@
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API.
 
-Used by the tests, by `scripts/capture_fixtures.py` and in the docs. The
+Used by the tests and in the docs (the `df_*.json` golden fixtures were
+captured from them, see `tests/fixtures/README.md`). The
 tables are unbound: `ibis.to_sql` (and so incremental maintenance)
 compiles them without a backend, and any connection with tables of the same
 names and columns can run them.

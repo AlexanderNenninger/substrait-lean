@@ -1475,6 +1475,17 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         for v in vs:
             acc = acc & v if fn == "bit_and" else acc | v if fn == "bit_or" else acc ^ v
         return acc
+    if fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
+        # `AggFn.var` (#54), with Polars' own algorithm; an infinity would make
+        # a deviation NaN (#257).
+        if math.inf in vs or -math.inf in vs:
+            raise DomainError(f"{fn} of an infinity would make a NaN")
+        if fn.endswith("_samp") and len(vs) == 1:
+            return None
+        s = pl.Series(vs, dtype=pl.Float64)
+        ddof = 1 if fn.endswith("_samp") else 0
+        r = s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof)
+        return float(r) + 0.0  # pyrefly: ignore
     if fn in ("fsum", "avg"):
         if not window and math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
@@ -1515,6 +1526,8 @@ class Measure:
             return pl.Int64
         if self.fn == "collect":
             return pl.List(materialize(self.arg.dtype))
+        if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
+            return pl.Float64
         return pl.Float64 if self.fn in ("fsum", "avg") else materialize(self.arg.dtype)
 
     @property
@@ -2088,6 +2101,12 @@ class Translator:
             fn = "sum" if t == pl.Int64 else "fsum"
         elif name == "avg" and t == pl.Float64:
             fn = "avg"
+        elif name in ("variance", "std_dev") and t == pl.Float64:
+            pop = any(
+                o.get("name") == "distribution" and o.get("preference", [None])[0] == "POPULATION"
+                for o in m.get("options", [])
+            )
+            fn = ("var" if name == "variance" else "std") + ("_pop" if pop else "_samp")
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):

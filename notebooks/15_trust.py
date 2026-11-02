@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 14. [The checker](?file=14_the_checker.py) · [Contents](?file=00_start_here.py) · 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) →
+    ← 14. [The checker](?file=14_the_checker.py) · [Contents](?file=00_start_here.py) · 17. [One expression, many engines](?file=17_backend_semantics.py) →
     """)
     return
 
@@ -182,7 +182,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    That's the tour, apart from the two appendices. The README has the full
+    That's the tour, apart from the appendix. The README has the full
     reference: every proved theorem, the modelling choices, and the engine
     notes.
     """)
@@ -192,7 +192,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 14. [The checker](?file=14_the_checker.py) · [Contents](?file=00_start_here.py) · 16. [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) →
+    ← 14. [The checker](?file=14_the_checker.py) · [Contents](?file=00_start_here.py) · 17. [One expression, many engines](?file=17_backend_semantics.py) →
     """)
     return
 

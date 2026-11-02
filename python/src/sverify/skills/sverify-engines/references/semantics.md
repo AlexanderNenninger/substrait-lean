@@ -26,5 +26,5 @@ the model on random tables.
   calendar (ISO weeks), not the session's week start.
 
 DataFusion runs the plan through its own Substrait consumer, so its own
-semantics apply there; the project's notebook on DataFusion's quirks
-(chapter 16 of the tour) lists where they differ from the model.
+semantics apply there; section 8 of the tour's chapter 17 (one expression,
+many engines) lists where they differ from the model.

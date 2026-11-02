@@ -48,6 +48,7 @@ affect sverify's results, but they're worth reporting.
 |---|---|---|---|---|---|
 | DD-1 | unverified | `levenshtein` counts bytes, not code points, on non-ASCII text, and `reverse` works on grapheme clusters. Possibly intended: check the docs before filing. | `levenshtein('é', 'e')` | sverify raises "non-ASCII text differs between engines" for these on DuckDB (#195) | #195 |
 | DD-2 | not a bug (probably) | `error()` with a message built by `concat` shows a NULL argument as an empty string. That's `concat`'s documented NULL handling. | `error(concat('x: ', NULL))` | Guards keep NULL out of the error branch (#255) | #255 |
+| DD-3 | confirmed | `VAR_POP` and `STDDEV_POP` of a single NaN are `0.0`, not NaN; with a second value they are NaN. IEEE and every other engine propagate the NaN. | `select var_pop(x) from (values ('nan'::double)) t(x)` gives `0.0` | The SQL writer returns NaN when an input is NaN (#54) | #54 |
 
 ## Polars, Spark, Ibis
 
