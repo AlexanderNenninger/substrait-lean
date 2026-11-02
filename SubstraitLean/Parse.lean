@@ -332,7 +332,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
     | _ => .int
   | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
   | .iavg | .bit _ => .int
-  | .min | .max => m.arg.kind cols
+  | .min | .max | .pick _ => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
 
 def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
@@ -1852,10 +1852,13 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  -- Only `ARRAY_AGG` depends on the order of its rows.
+  -- Only `ARRAY_AGG`, `FIRST` and `LAST` depend on the order of their rows.
   let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
-  if !sort.isEmpty && name != "array_agg" then
+  if !sort.isEmpty && !["array_agg", "first", "last"].contains name then
     throw s!"ordered aggregates are not supported: {name}"
+  -- Without an order, `FIRST` is any row's value (`arbitrary`).
+  if sort.isEmpty && ["first", "last"].contains name then
+    throw s!"{name} without ORDER BY is any row's value, which is not supported; give it an order"
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
@@ -1919,6 +1922,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- NULLs are skipped (`Measure.inputs`), as with Ibis's
     -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
     | "array_agg", _ => pure (.collect, arg)
+    | "first", _ | "last", _ => pure (.pick (name == "last"), arg)
     -- 64-bit integers only (#53): a narrower one would need its own width.
     | "bit_and", .int | "bit_or", .int | "bit_xor", .int =>
       if argBits bits (args.headD .null) arg != 64 then

@@ -291,10 +291,10 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
-  | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .cov _ | .corr => false
+  | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ | .cov _ | .corr => false
 
-theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f ≠ .collect := by
-  rintro rfl; simp [decomposable] at h
+theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
+  cases f <;> simp_all [decomposable, sorts]
 
 theorem AggFn.apply_nil_of_ne_count {f : AggFn} (hf : f ≠ .count) : f.apply [] = .null := by
   cases f <;> first | rfl | exact (hf rfl).elim

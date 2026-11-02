@@ -665,6 +665,11 @@ class Dialect:
                 "std_pop": "STDDEV_POP"}[fn]  # fmt: skip
         return f"{name}({v})"
 
+    def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
+        """`AggFn.pick` (#55): the first or last value of the column `v`, NULLs
+        skipped, in the order `order`; NULL without values."""
+        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
         raise Unsupported(
@@ -1051,6 +1056,8 @@ class Measure:
         "var_pop",
         "std_samp",
         "std_pop",
+        "first",
+        "last",
         "covar_samp",
         "covar_pop",
         "corr",
@@ -1059,6 +1066,8 @@ class Measure:
     arg: Expr
     distinct: bool = False
     filter: Expr | None = None
+    sort: tuple[SortKey, ...] = ()
+    """The order `first` and `last` take their values in (#55)."""
 
 
 @dataclass(frozen=True)
@@ -2693,8 +2702,11 @@ class _Parser:
         double; `COUNT(*)` may come with no argument."""
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
-        if _arr(m, "sorts"):
+        if _arr(m, "sorts") and name not in ("first", "last"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
+        sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
+        if name in ("first", "last") and not sort:
+            raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
                        "AGGREGATION_INVOCATION_DISTINCT"):  # fmt: skip
@@ -2745,6 +2757,8 @@ class _Parser:
             "var_pop",
             "std_samp",
             "std_pop",
+            "first",
+            "last",
             "covar_samp",
             "covar_pop",
             "corr",
@@ -2774,7 +2788,7 @@ class _Parser:
                 fn = "avg"
             case (("bit_and" | "bit_or" | "bit_xor"), "int"):
                 fn = name
-            case (("covar_samp" | "covar_pop" | "corr"), _):
+            case (("first" | "last" | "covar_samp" | "covar_pop" | "corr"), _):
                 fn = name
             case (("variance" | "std_dev"), ("float" | "int")):
                 pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
@@ -2792,7 +2806,7 @@ class _Parser:
                 raise Unsupported(f"{name} of this type is not supported")
             case _:
                 raise Unsupported(f"unsupported aggregate function: {name}")
-        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond)
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -3451,6 +3465,19 @@ class _Writer:
                 keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                 x = d.case_when(keep, x, d.null(k))
             items.append(f"{x} AS {c}")
+        # `first` and `last` (#55): each measure's sort keys, as `Value.le` sorts.
+        orders: list[list[tuple[str, SortKey, Kind | None]]] = []
+        for k, ms in enumerate(measures):
+            keys_k = []
+            for key in ms.sort:
+                for x, kind in self.sort_exprs(ref(key.col), ks[key.col]):
+                    c = d.quote(f"s{k}_{len(keys_k)}")
+                    items.append(f"{x} AS {c}")
+                    keys_k.append((c, key, kind))
+            orders.append(keys_k)
+        if any(orders) and any(ms.distinct for ms in measures):
+            raise Unsupported("first or last next to a DISTINCT measure is not supported")
+        needs = needs or any(orders)
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
         level = self.select(items, d.subquery(self.rel(i, needs), a))
@@ -3479,7 +3506,13 @@ class _Writer:
         out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
-            sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
+            if ms.fn in ("first", "last"):
+                # Ties go in Lean's list order: the ordinal breaks them.
+                order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
+                         for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
+                sql = d.pick(ms.fn, v, order)
+            else:
+                sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
             out.append(f"{sql} AS {self.c(len(groups) + k)}")
         if ordered:
             out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")

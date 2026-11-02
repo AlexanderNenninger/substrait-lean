@@ -555,6 +555,10 @@ def _check_datafusion_plan(plan: dict) -> None:
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported("DataFusion's AVG has no integer result")
             m = node.get("measure")
+            if isinstance(m, dict) and names.get(m.get("functionReference")) in ("first", "last"):
+                raise sql.Unsupported(
+                    "first and last are not yet supported on DataFusion; see #271"
+                )
             if isinstance(m, dict) and names.get(m.get("functionReference")) in (
                 "covar_samp",
                 "covar_pop",

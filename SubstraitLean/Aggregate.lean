@@ -92,6 +92,11 @@ inductive AggFn where
   NaN), and NULL where the definition has no value: no values, or a sample
   of one. The value it computes is one such double (`varOf`). -/
   | var (sample sqrt : Bool)
+  /-- `FIRST` (`last := false`) and `LAST` of the values in the measure's
+  `sort` order (#55), as `ARRAY_AGG(x ORDER BY …)[1]` and its last element:
+  NULLs skipped, NULL without values. Ties make it depend on the engine, as
+  for `collect`, which `Rel.windowsTotal` reports. -/
+  | pick (last : Bool)
   /-- `COVAR_SAMP`/`COVAR_POP` and `CORR` of pairs of doubles (#54), whose
   argument is `pair x y` (rows with a NULL skipped). Engines compute them
   their own way: the model claims some double, or NULL where the definition
@@ -224,17 +229,24 @@ def AggFn.apply : AggFn → List Value → Value
   | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
   | .collect, vs => .list vs
+  | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
 
 /-- `collect` takes the rows in its sort order (a stable sort, so without
 one in list order: one of the orders an engine may choose). -/
 def Measure.eval (rows : Relation) (m : Measure) : Value :=
   match m.fn with
   | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
+  | .pick last => (AggFn.pick last).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | f => f.apply (m.inputs rows)
 
-theorem Measure.eval_eq {m : Measure} (h : m.fn ≠ .collect) (rows : Relation) :
+/-- Does the aggregate take its rows in the measure's `sort` order? -/
+def AggFn.sorts : AggFn → Bool
+  | .collect | .pick _ => true
+  | _ => false
+
+theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation) :
     m.eval rows = m.fn.apply (m.inputs rows) := by
-  unfold Measure.eval; split <;> simp_all
+  unfold Measure.eval; split <;> simp_all [AggFn.sorts]
 
 /-! ## Groups -/
 
@@ -278,6 +290,16 @@ theorem Measure.mem_inputs {m : Measure} {rows : Relation} {v : Value} (h : v �
   · exact (List.mem_filter.mp hrow).1
 
 /-- `MIN` and `MAX` give one of the values (or NULL). -/
+theorem AggFn.apply_pick (last : Bool) (vs : List Value) :
+    (AggFn.pick last).apply vs = .null ∨ (AggFn.pick last).apply vs ∈ vs := by
+  cases vs with
+  | nil => exact .inl rfl
+  | cons v vs =>
+    refine .inr ?_
+    cases last
+    · simp [apply]
+    · simp only [apply, ite_true]; exact List.getLast_mem _
+
 theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List Value} :
     f.apply vs = .null ∨ f.apply vs ∈ vs := by
   rcases hf with rfl | rfl <;> cases vs <;>
