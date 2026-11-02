@@ -100,6 +100,21 @@ QUERIES = [
     "SELECT id, day - DATE '2024-01-01' AS since, datediff('day', DATE '2024-01-01', day) AS dd"
     " FROM orders",
     "SELECT extract(year FROM day) AS y, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
+    # Strings: DuckDB counts characters (code points) from 1; LIKE has no
+    # escape character; `||` is NULL with a NULL, `concat` leaves NULLs out.
+    "SELECT id, length(customer) AS l, substring(customer, 2, 2) AS a,"
+    " substring(customer, -2, 2) AS b, substring(customer, 0, 2) AS c, substr(customer, 2) AS d"
+    " FROM orders",
+    "SELECT id, trim('  ' || customer || ' ') AS t, ltrim(customer, 'a') AS l,"
+    " rtrim(customer, 'y') AS r FROM orders",
+    "SELECT id, strpos(customer, 'a') AS p, position('d' IN customer) AS q,"
+    " contains(customer, 'd') AS c, starts_with(customer, 'a') AS s, ends_with(customer, 'b') AS e,"
+    " prefix(customer, 'c') AS pf, suffix(customer, 'y') AS sf FROM orders",
+    "SELECT id FROM orders WHERE customer LIKE 'a%' OR customer NOT LIKE '_o_'",
+    "SELECT id, customer ILIKE 'ADA' AS i, customer NOT ILIKE '%B' AS n FROM orders",
+    "SELECT id, customer || '!' AS a, concat(customer, '-', customer) AS b,"
+    " replace(customer, 'a', 'A') AS r, repeat(customer, qty) AS t, left(customer, 2) AS f,"
+    " upper(customer) AS u, lower(customer) AS lo FROM orders",
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
@@ -246,6 +261,11 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ("SELECT day + INTERVAL 1 HOUR AS d FROM orders", "hours or less"),
         ("SELECT extract(epoch FROM placed) FROM orders", "date part EPOCH"),
         ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
+        ("SELECT reverse(customer) FROM orders", "grapheme clusters"),
+        ("SELECT id FROM orders WHERE customer LIKE 'a\\%'", "backslash"),
+        ("SELECT id FROM orders WHERE customer LIKE customer", "not a constant"),
+        ("SELECT substring(customer, 1, -1) FROM orders", "negative length"),
+        ("SELECT customer || 1 FROM orders", "|| of a int32"),
     ],
 )
 def test_refusals_say_what(query, message):
