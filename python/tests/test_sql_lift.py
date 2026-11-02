@@ -201,10 +201,8 @@ def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
         "name",
-        "float_division_by_zero",
         "float_to_int",
         "decimal_to_int",
-        "float_modulus_by_zero",
         "domain_error",
         "log_zero",
     }
@@ -431,4 +429,27 @@ def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
     result = check(
         "SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "reference"
     )
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # NaN by zero and of an infinity, as DuckDB computes them.
+        "SELECT id, price % 0 AS z, price % qty AS m, 7.5 % price AS r FROM orders",
+        "SELECT id, (price / 0) % 2 AS i, (price / 0) / (price / 0) AS n FROM orders",
+        # `log` of 0 is -inf, of a negative NaN.
+        "SELECT id, log(price) AS l, log(qty - 3) AS lq, sign(price) AS s, sign(qty) AS sq"
+        " FROM orders",
+        # `avg` of integers: the exact sum by the count, in doubles.
+        "SELECT customer, avg(amount) AS a, avg(qty) AS q, avg(DISTINCT qty) AS d"
+        " FROM orders GROUP BY customer",
+        "SELECT id, avg(amount) OVER (PARTITION BY customer) AS a FROM orders",
+        "SELECT id, greatest(price, -price, 0.5) AS g, least(amount, id) AS l FROM orders",
+    ],
+)
+def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):
+    # With DuckDB's semantics, these come from Lean's generated lift table
+    # (#268), which states NaN and ±inf exactly instead of refusing them.
+    result = check(query, TABLES)
     assert result.ok, f"{result.stage}: {result.detail}"
