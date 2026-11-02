@@ -674,7 +674,7 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
-163 of 194 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+163 of 194 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
