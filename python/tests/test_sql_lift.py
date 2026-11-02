@@ -33,16 +33,17 @@ ORDERS = pa.schema(
         pa.field("price", pa.float64()),
         pa.field("cost", pa.decimal128(15, 2)),
         pa.field("day", pa.date32()),
+        pa.field("placed", pa.timestamp("us")),
     ]
 )
 CUSTOMERS = pa.schema([pa.field("name", pa.string()), pa.field("region", pa.string())])
 
 ORDER_ROWS = [
-    (1, "ada", 5, 3, 2.5, Decimal("10.50"), dt.date(2024, 1, 1)),
-    (2, "bob", 7, None, 0.0, Decimal("3.25"), dt.date(2024, 1, 2)),
-    (3, "ada", 0, 4, -1.5, None, dt.date(2024, 2, 1)),
-    (4, "cy", 9, 2, None, Decimal("0.01"), None),
-    (5, None, 2, 7, 10.0, Decimal("99.99"), dt.date(2023, 12, 31)),
+    (1, "ada", 5, 3, 2.5, Decimal("10.50"), dt.date(2024, 1, 1), dt.datetime(2024, 1, 1, 9, 30)),
+    (2, "bob", 7, None, 0.0, Decimal("3.25"), dt.date(2024, 1, 2), dt.datetime(2024, 1, 7, 23, 59)),
+    (3, "ada", 0, 4, -1.5, None, dt.date(2024, 2, 1), None),
+    (4, "cy", 9, 2, None, Decimal("0.01"), None, dt.datetime(2023, 12, 31, 0, 0, 1)),
+    (5, None, 2, 7, 10.0, Decimal("99.99"), dt.date(2023, 12, 31), dt.datetime(2024, 3, 31, 12)),
 ]
 CUSTOMER_ROWS = [("ada", "eu"), ("bob", "us"), ("dan", "eu")]
 TABLES = {"orders": table(ORDERS, ORDER_ROWS), "customers": table(CUSTOMERS, CUSTOMER_ROWS)}
@@ -78,6 +79,12 @@ QUERIES = [
     "SELECT qty, count(*) FROM orders GROUP BY 1 ORDER BY 2 DESC, 1",
     "SELECT count(*) AS n, sum(qty) AS s FROM orders WHERE amount > 100",
     "SELECT 1 + 1 AS two, 7 // 2 AS q, 1 // 1 AS one",
+    "SELECT id, date_trunc('day', placed) AS d, date_trunc('week', placed) AS w,"
+    " date_trunc('quarter', placed) AS q, date_trunc('hour', placed) AS h FROM orders",
+    "SELECT id, placed + INTERVAL 1 DAY AS tomorrow, placed - INTERVAL '90' MINUTES AS before,"
+    " INTERVAL 2 MONTHS + placed AS later FROM orders"
+    " WHERE placed >= TIMESTAMP '2024-01-08' - INTERVAL 1 WEEK",
+    "SELECT date_trunc('month', placed) AS m, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
     pytest.param(
         "SELECT 7 / 2 AS h",
@@ -214,6 +221,9 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ),
         ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
         ("SELECT CAST(NULL AS INT[3]) FROM orders", "fixed-size array"),
+        ("SELECT date_trunc('day', day) FROM orders", "DATE"),
+        ("SELECT day + INTERVAL 1 DAY FROM orders", "DATE plus an interval"),
+        ("SELECT placed + INTERVAL '1 hour 30 minutes' FROM orders", "one integer and a unit"),
     ],
 )
 def test_refusals_say_what(query, message):

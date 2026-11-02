@@ -958,8 +958,8 @@ sources, or the stored nodes it reads, as the view's base tables.
 How it works:
 
 1. The query becomes a Substrait plan: an Ibis expression through the vendored
-   Ibis producer (below), a SQL string through DataFusion's Substrait
-   producer (see "SQL producers" below).
+   Ibis producer (below), a SQL string through sverify's own lift (see "SQL
+   producers" below).
 2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
    union-free terms (`Rel.terms`) and applies the weight-column encoding
    (`Rel.weighted`). It prints one Substrait plan per term, after checking each
@@ -1065,8 +1065,13 @@ compared with DuckDB running Ibis's SQL (`coverage.DATAFUSION_SQL`).
 
 #### SQL producers
 
-SQL strings go through DataFusion's Substrait producer. sverify's own SQLGlot
-frontend is to replace it ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231)).
+SQL strings are DuckDB's SQL, and go through sverify's own lift
+(`sverify.sql_lift`): SQLGlot parses the query and resolves its names against
+the input tables, and the lift writes a Substrait plan in which every choice
+DuckDB's SQL leaves implicit is explicit (casts, output types, function
+options, sort directions). It reads a subset of SQL so far and refuses the
+rest ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231),
+[#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)).
 
 The parser also reads encodings other producers write: typed function names
 (`add:date_iday`), CHAR and VARCHAR literals, window functions inside
@@ -1075,7 +1080,7 @@ and timestamps at precision 0. It checks the argument kinds a signature names.
 
 #### Engines
 
-Plans come from the Ibis producer or DataFusion's Substrait producer, and they can run on
+Plans come from the Ibis producer or sverify's SQL lift, and they can run on
 DuckDB (the default, below), [Polars](https://pola.rs) or DataFusion. Pass
 `engine="polars"` to `node.refresh`, `sv.connect` or
 `sverify.engines.run(con, plan, "polars")`. The tables stay in `con` and are handed to

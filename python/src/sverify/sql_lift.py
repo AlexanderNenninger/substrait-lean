@@ -33,7 +33,8 @@ where DuckDB and the reference (#185, #209) differ:
   DuckDB differs.
 
 The subset (#239): SELECT, WHERE, arithmetic, comparisons, AND/OR/NOT,
-IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE, `date_trunc`; inner, left and
+IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE, `date_trunc`, a timestamp
+plus or minus a constant interval; inner, left and
 cross joins
 and subqueries in FROM; GROUP BY with `count`, `sum`, `avg`, `min` and
 `max`, HAVING; DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
@@ -55,6 +56,7 @@ import ibis.expr.datatypes as dt
 import sqlglot as sg
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
+from ibis.common.temporal import IntervalUnit
 from sqlglot.errors import ErrorLevel
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
@@ -71,6 +73,7 @@ from sverify.plan_json import (
     emit_rel,
     field_ref,
     if_then,
+    interval_json,
     literal,
     plan,
     read_rel,
@@ -556,6 +559,7 @@ class _Lift:
             "functionReference": anchor(name),
             "arguments": [{"value": a.json} for a in args],
             "outputType": type_json(out),
+            **({"options": _overflow(self, out)} if name == "sum" else {}),
             "invocation": (
                 "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
             ),
@@ -704,12 +708,20 @@ def _neg(lf: _Lift, node: sge.Neg, sub: Sub, scope: list[Column]) -> E:
     a = sub(inner)
     if not _numeric(a.type):
         raise Unsupported(f"-{a.type} is not supported")
-    return E(_fn("negate", [a.json], a.type), a.type)
+    return E(_fn("negate", [a.json], a.type, _overflow(lf, a.type)), a.type)
+
+
+def _overflow(lf: _Lift, t: Any) -> list[Json]:
+    """`overflow` for exact arithmetic (integers, decimals) at the declared
+    width; doubles have none."""
+    return [] if t.is_float64() else [_option("overflow", lf.profile.overflow)]
 
 
 def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _ARITHMETIC[type(node)]
     a, b = sub(node.this), sub(node.expression)
+    if a.type.is_interval() or b.type.is_interval():
+        return _timestamp_plus(name, a, b)
     if not (_numeric(a.type) or a.type.is_null()) or not (_numeric(b.type) or b.type.is_null()):
         raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
     t = lf.common([a, b], name, sum_digits=name != "multiply")
@@ -729,8 +741,8 @@ def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
                 p = 18
             t = _decimal(p, s1 + s2)
         args = [x if not x.type.is_null() else lf.to(x, t) for x in (a, b)]
-        return E(_fn(name, [x.json for x in args], t), t)
-    return E(_fn(name, [lf.to(a, t).json, lf.to(b, t).json], t), t)
+        return E(_fn(name, [x.json for x in args], t, _overflow(lf, t)), t)
+    return E(_fn(name, [lf.to(a, t).json, lf.to(b, t).json], t, _overflow(lf, t)), t)
 
 
 def _div(lf: _Lift, node: sge.Div, sub: Sub, scope: list[Column]) -> E:
@@ -962,6 +974,53 @@ def _date_trunc(lf: _Lift, node: sge.TimestampTrunc, sub: Sub, scope: list[Colum
     return E(_fn("date_trunc", [literal(name, dt.string), lf.to(a, ts).json], ts), ts)
 
 
+#: An interval unit as (months, microseconds) per unit.
+_INTERVAL_UNITS = {
+    "microsecond": (0, 1),
+    "millisecond": (0, 1_000),
+    "second": (0, 1_000_000),
+    "minute": (0, 60_000_000),
+    "hour": (0, 3_600_000_000),
+    "day": (0, 86_400_000_000),
+    "week": (0, 7 * 86_400_000_000),
+    "month": (1, 0),
+    "quarter": (3, 0),
+    "year": (12, 0),
+}
+
+
+def _interval(lf: _Lift, node: sge.Interval, sub: Sub, scope: list[Column]) -> E:
+    """A constant interval of one unit: `INTERVAL '10' MILLISECONDS`,
+    `INTERVAL 1 DAY`."""
+    unit, value = node.args.get("unit"), node.this
+    name = unit.name.lower().removesuffix("s") if isinstance(unit, sge.Var) else None
+    text = value.this if isinstance(value, sge.Literal) else None
+    if name not in _INTERVAL_UNITS or text is None or not re.fullmatch(r"-?\d+", text.strip()):
+        raise Unsupported(
+            f"{_shown(node)} is not supported yet; an interval is one integer and a unit "
+            f"({', '.join(_INTERVAL_UNITS)})"
+        )
+    n = int(text.strip())
+    months, micros = _INTERVAL_UNITS[name]
+    parts = (n * months, n * micros)
+    return E(interval_json(*parts), dt.Interval(unit=IntervalUnit.MICROSECOND), parts)
+
+
+def _timestamp_plus(name: str, a: E, b: E) -> E:
+    """A timestamp plus or minus a constant interval, a timestamp."""
+    if name == "add" and a.type.is_interval():
+        a, b = b, a
+    if name == "multiply" or not b.type.is_interval() or not b.constant:
+        raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
+    if a.type.is_date():
+        # DuckDB's DATE + INTERVAL is a TIMESTAMP; Lean misreads a cast date (#240).
+        raise Unsupported("a DATE plus an interval is not supported yet")
+    if not a.type.is_timestamp() or a.type.timezone is not None:
+        raise Unsupported(f"{name} of {a.type} and an interval is not supported yet")
+    ts = dt.timestamp(scale=6)
+    return E(_fn(name, [a.json, b.json], ts), ts)
+
+
 _RULES: dict[type, Callable[..., E]] = {
     sge.Column: _column,
     sge.Literal: _literal,
@@ -991,6 +1050,7 @@ _RULES: dict[type, Callable[..., E]] = {
     sge.Coalesce: _coalesce,
     sge.Cast: _cast,
     sge.TimestampTrunc: _date_trunc,
+    sge.Interval: _interval,
 }
 
 

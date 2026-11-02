@@ -152,8 +152,10 @@ def test_date_part_matches_datafusion(values):
 def test_date_trunc_matches_datafusion_where_no_issue(unit, values):
     sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
     # Only where there is no issue: DataFusion fails or wraps elsewhere.
+    # DuckDB reads ±(2⁶³ - 1) as the timestamps ±infinity, which it does not
+    # truncate (#240).
     calendar = unit in ("week", "month", "quarter", "year")
-    lo, hi = (NS_MIN + 400 * DAY, NS_MAX) if calendar else (MIN + DAY, MAX)
+    lo, hi = (NS_MIN + 400 * DAY, NS_MAX) if calendar else (MIN + DAY, MAX - 1)
     values = [v for v in values if v is None or lo <= v <= hi]
     got, expected = lean_and_datafusion(sql, values)
     assert canonical(got) == canonical(expected)

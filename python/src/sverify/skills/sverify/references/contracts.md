@@ -23,8 +23,7 @@ constant", counts across rows.
 
 ## SQL transformations
 
-`sv.verify` takes a SQL string with the input schemas (needs the
-`datafusion` extra):
+`sv.verify` takes a SQL string (DuckDB's SQL) with the input schemas:
 
 ```python
 import ibis
