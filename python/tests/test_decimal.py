@@ -186,3 +186,18 @@ def test_abs_of_a_double_next_to_decimals_is_written(con):
     fs = [r[3] for r in ROWS["t"]]
     assert sorted(g for _, g, _ in got) == sorted(abs(f - 1.0) for f in fs)
     assert sorted(n for _, _, n in got) == sorted(-(f - 1.0) for f in fs)
+
+
+def test_a_not_in_subquery_next_to_decimals_is_written(con):
+    """A plan with decimals is written only if it reads back the same. A NOT IN
+    subquery's CASE used to grow on every reading (#238, TPC-H Q16)."""
+    u = ibis.table({"i": "int64"}, name="u")
+    t = ibis.table(SCHEMAS["t"], name="t")
+    expr = t.filter(~t.i.isin(u.i)).select("i", s=t.a + t.a)
+    plan = to_substrait_json(expr)
+    written = written_plan(plan)
+    assert written_plan(written) == written_plan(written_plan(written))
+    put_table(con, "u", pa.table({"i": pa.array([3], pa.int64())}))
+    got = sorted(r["i"] for r in run_plan(con, written, "duckdb").to_pylist())
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {**ROWS, "u": [(3,)]})))
+    assert got == sorted(r[0] for r in lean) == [-7, 0, 2]
