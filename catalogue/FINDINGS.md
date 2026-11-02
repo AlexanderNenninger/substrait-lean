@@ -271,14 +271,14 @@ semi-structured data.
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 10 | 0 | 2 | 0 | 12 | 10 | 10 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 10 | 0 | 2 | 2 | 13 | 10 | 10 | 9 |
+| modelling | 14 | 10 | 0 | 4 | 0 | 13 | 10 | 10 | 9 |
 | product | 13 | 10 | 0 | 3 | 0 | 12 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
 | tpcds | 8 | 6 | 0 | 2 | 0 | 8 | 0 | 6 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 115 | 0 | 22 | 2 | 134 | 75 | 112 | 67 |
+| **all** | 139 | 115 | 0 | 24 | 0 | 134 | 75 | 112 | 67 |
 
 ### Feature frequency
 
@@ -380,12 +380,13 @@ How many of the 139 queries need each feature (as originally written, so subquer
 |---|---|---|---|---|
 | `stddev_var` | 4 | 3 | no |  |
 | `arg_max` | 3 | 3 | no | first_value aggregates are refused |
-| `rows_frame` | 3 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
 | `min_max` | 2 | 2 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
+| `rows_frame` | 2 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
 | `percentile` | 2 | 1 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
 | `decimal` | 2 | 0 | partial | modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). DuckDB runs decimal plans as the reference computes them (#27); the other engines refuse them. AVG of a decimal over a window is not modelled yet |
 | `grouping_sets` | 2 | 0 | no |  |
 | `corr` | 1 | 1 | no |  |
+| `cte` | 1 | 1 | yes |  |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `hash` | 1 | 1 | no |  |
 | `range_frame` | 1 | 1 | partial | offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). DataFusion's Substrait producer drops RANGE offsets, so such SQL is refused, and DataFusion cannot run Ibis's SQL for an interval frame. Sliding AVG/MIN as for rows_frame |
@@ -394,7 +395,6 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `string_agg` | 1 | 1 | no |  |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
-| `running_agg` | 1 | 0 | yes |  |
 
 ### Why engines refuse verified queries
 
