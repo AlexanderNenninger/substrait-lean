@@ -171,6 +171,24 @@ QUERIES = [
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
+    # Grouping sets: one aggregate per set, UNION ALL'd; GROUPING() is a
+    # constant of each.
+    "SELECT customer, qty, sum(amount) AS s, count(*) AS n FROM orders"
+    " GROUP BY ROLLUP (customer, qty)",
+    "SELECT customer, qty, GROUPING(customer) AS g, GROUPING(customer, qty) AS gg, avg(price) AS p"
+    " FROM orders GROUP BY CUBE (customer, qty)",
+    "SELECT customer, day, count(*) AS n FROM orders"
+    " GROUP BY GROUPING SETS ((customer, day), (customer), ())",
+    "SELECT customer, qty, sum(amount) AS s FROM orders GROUP BY customer, ROLLUP (qty)"
+    " HAVING GROUPING(qty) = 1 OR sum(amount) > 4",
+    "SELECT customer, GROUPING(customer) AS g,"
+    " rank() OVER (PARTITION BY GROUPING(customer) ORDER BY sum(amount)) AS r"
+    " FROM orders GROUP BY ROLLUP (customer) ORDER BY g DESC, customer",
+    "SELECT customer, sum(amount) AS s FROM orders WHERE id > 99 GROUP BY ROLLUP (customer)",
+    # Computed window partitions and ORDER BY expressions over output columns.
+    "SELECT id, rank() OVER (PARTITION BY amount % 2 ORDER BY -amount, id) AS r FROM orders",
+    "SELECT customer, sum(amount) AS s FROM orders GROUP BY customer"
+    " ORDER BY CASE WHEN s > 6 THEN customer END, customer",
     pytest.param(
         "SELECT 7 / 2 AS h",
         marks=pytest.mark.xfail(
@@ -298,6 +316,7 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ),
         ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
         ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
+        ("SELECT GROUPING(id) FROM orders GROUP BY ROLLUP (customer)", "GROUPING of"),
         ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT id FROM elsewhere", "cannot resolve"),

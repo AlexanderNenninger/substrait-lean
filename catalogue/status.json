@@ -1087,27 +1087,23 @@
   }
  },
  "tpcds-q27": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate GROUPING() is not supported yet",
+  "checker": "verified",
+  "incremental": false,
   "native": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate GROUPING() is not supported yet",
-   "native": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "tpcds-q36": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate GROUPING() is not supported yet",
+  "checker": "verified",
+  "incremental": false,
   "native": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate GROUPING() is not supported yet",
-   "native": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
  "tpcds-q42": {
