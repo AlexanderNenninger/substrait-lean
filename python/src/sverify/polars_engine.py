@@ -1444,8 +1444,10 @@ def _int_output(f: dict) -> bool:
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
 
 
-def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
-    """`Measure.eval` on the values a measure aggregates (NULLs dropped)."""
+def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
+    """`Measure.eval` on the values a measure aggregates (NULLs dropped). A
+    double sum of `+∞` and `-∞` raises (#257), except in a window, where the
+    reference still gives NaN."""
     if distinct:
         seen: set = set()
         vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
@@ -1466,6 +1468,8 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
         q = abs(sum(vs)) // len(vs)
         return q if sum(vs) >= 0 else -q
     if fn in ("fsum", "avg"):
+        if not window and math.inf in vs and -math.inf in vs:
+            raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
@@ -1662,7 +1666,7 @@ def python_windows(
                         frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
                         vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
                         if f.fn == "agg":
-                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
+                            v = _aggregate(f.agg, False, [x for x in vals if x is not None], True)
                         elif f.fn == "first_value":
                             v = vals[0] if vals else None
                         elif f.fn == "last_value":

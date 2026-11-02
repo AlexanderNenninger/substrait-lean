@@ -3349,7 +3349,17 @@ class _Writer:
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v})")))
-                return d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
+                total = d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
+                if not d.guards:
+                    return total
+                # `+∞` and `-∞` would sum to NaN, which no operation creates (#257).
+                # NaN sorts above `+∞`, so the largest number leaves NaN out.
+                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), v)})"
+                both = (
+                    f"({d.float_eq(top, d.float_lit(math.inf))} AND "
+                    f"{d.float_eq(f'MIN({v})', d.float_lit(-math.inf))})"
+                )
+                return d.case_when(both, d.raise_("domain error", f"MIN({v})", "float"), total)
         # `Value.le`: strings by code point (no collation), FALSE < TRUE.
         f = "MIN" if m.fn == "min" else "MAX"
         if kind == "bool":

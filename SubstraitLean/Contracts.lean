@@ -583,8 +583,11 @@ def UnFn.abs : UnFn → AVal → AVal
   -- Double negation is code negation too (zero is `0`).
   | .neg, a | .fneg, a => ⟨a.nonInt, a.int.map Bound.neg, false, false, false⟩
   -- Float results: some double (any code), or NULL.
-  | .itof, a | .froundTo _, a =>
-      ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  -- An integer converts to a finite double (`FloatCode.finite`).
+  | .itof, a =>
+      ⟨a.nonInt, a.int.map fun _ => ⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩,
+        false, false, false⟩
+  | .froundTo _, a => ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
   | .ffloor, a => monoAbs FloatCode.floor a
   | .fceil, a => monoAbs FloatCode.ceil a
   | .fround, a => monoAbs FloatCode.round a
@@ -979,7 +982,14 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case ftod s =>
     exact partialAbs_sound (g := fun c => FloatCode.toDecimal? c s) (fun v => by cases v <;> rfl)
       (fun hs => by simp at hs) h
-  case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case itof =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
+    · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
+    · have := FloatCode.finite_bounds (FloatCode.ofFloat (Float.ofInt i))
+      refine ⟨⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩, by simp [UnFn.abs, hb],
+        ?_, ?_⟩ <;> intro x hx <;> simp only [Option.some.injEq] at hx <;> subst hx <;>
+        simp only [FloatCode.ofInt] <;> omega
+    all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fmath f =>
     exact partialAbs_sound (fun v => by cases v <;> rfl)

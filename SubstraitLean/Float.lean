@@ -79,7 +79,39 @@ turn NaN into a code below `-∞`, so the parser writes `negate` as
 `CASE WHEN x = NaN THEN x ELSE -x END`, as SQL engines have one NaN. -/
 def neg (c : Int) : Int := -c
 
-def ofInt (i : Int) : Int := ofFloat (Float.ofInt i)
+/-- A code strictly between `-∞` and `+∞`: other codes become the largest
+finite double of their sign. -/
+def finite (c : Int) : Int :=
+  if posInf ≤ c then ofMag false maxMag else if c ≤ negInf then ofMag true maxMag else c
+
+/-- An integer as a double. IEEE rounds an integer to `±∞` only from
+`2¹⁰²⁴` on, so for every integer the model holds (64 bits at most) `finite`
+changes nothing; it lets the checker know the double is finite, so that no
+`SUM` or `AVG` of converted integers can add `+∞` and `-∞` (#257). -/
+def ofInt (i : Int) : Int := finite (ofFloat (Float.ofInt i))
+
+theorem posInf_eq : posInf = 2 * maxMag + 3 := by
+  simp only [posInf, ofMag, infMag, Nat.add_one_ne_zero, ite_false, Bool.false_eq_true,
+    false_and]
+  omega
+
+theorem negInf_eq : negInf = -(2 * maxMag + 3) := by
+  have : maxMag + 1 ≠ nanMag := by simp [nanMag]
+  simp only [negInf, ofMag, infMag, Nat.add_one_ne_zero, ite_false, true_and, this, ne_eq,
+    not_false_eq_true, ite_true]
+  omega
+
+set_option exponentiation.threshold 2048 in
+theorem maxMag_pos : 0 < maxMag := by
+  unfold maxMag; exact Nat.mul_pos (Nat.sub_pos_of_lt (Nat.one_lt_two_pow (by decide)))
+    (Nat.two_pow_pos _)
+
+theorem finite_bounds (c : Int) : negInf < finite c ∧ finite c < posInf := by
+  have hM := maxMag_pos
+  have hn : maxMag ≠ nanMag := by simp [nanMag]
+  simp only [finite, ofMag, posInf_eq, negInf_eq, Nat.pos_iff_ne_zero.1 hM, ite_false, hn,
+    Bool.false_eq_true, false_and, true_and, ne_eq, not_false_eq_true, ite_true]
+  split <;> (try split) <;> omega
 
 def isNan (c : Int) : Bool := c == nan
 
