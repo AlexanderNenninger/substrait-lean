@@ -1,11 +1,13 @@
 """Integer division, remainder and powers, rounding and casts of doubles, and
 runtime errors.
 
-* Lean's semantics of the new functions agrees with DataFusion.
-* `sverify` compiles Ibis's integer `//` to exact integer floor division.
+* The reference's rounding and casts of doubles agree with Python's.
+* `sverify` compiles Ibis's integer `//` to exact integer floor division, also
+  in the DataFusion SQL it writes (`sverify.engine.to_sql`).
 * The runtime-error check (`Rel.mayIssues_sound`) reports what it should, and
-  whenever DataFusion fails on random data, the check had reported an error:
-  this tests the trusted part, the model of when DataFusion evaluates what.
+  whenever DataFusion or DuckDB running the plan fails on random data, the
+  check had reported an error: this tests the trusted part, the model of when
+  an engine evaluates what.
 """
 
 import json
@@ -21,7 +23,16 @@ from ibis import _
 
 import sverify as sv
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, put_table, run_sql, substrait_json, to_sql
+from sverify.engine import (
+    collect,
+    connect,
+    create_table,
+    put_table,
+    run_plan,
+    substrait_json,
+    to_sql,
+    written_plan,
+)
 from sverify.errors import VerificationError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_values
@@ -46,7 +57,7 @@ small = st.one_of(st.none(), st.integers(-7, 7))
     max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(small, small), max_size=8))
-def test_integer_semantics_match_datafusion(sql, rows):
+def test_integer_semantics_match_duckdb(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
     expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
@@ -70,12 +81,19 @@ F = ibis.schema({"f": "float64"})
         "SELECT f, CAST(f AS BIGINT) AS i FROM r",
     ],
 )
-def test_rounding_semantics_match_datafusion(sql):
+def test_rounding_semantics(sql):
     con = connect()
     rows = [(f,) for f in DOUBLES]
     create_table(con, "r", F, rows)
-    # The reference's casts truncate, as DataFusion's do (DuckDB's round).
-    expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
+    # ROUND is half away from zero, and casts truncate (DuckDB's round); the
+    # model has one zero.
+    half_away = {f: math.copysign(math.floor(abs(f) + 0.5), f) + 0.0 for f in DOUBLES}
+    expected = [
+        (f, math.floor(f) + 0.0, math.ceil(f) + 0.0, half_away[f])
+        if "floor" in sql
+        else (f, int(f))
+        for f in DOUBLES
+    ]
     plan = inline_tables(json.loads(substrait_json(con, sql, "reference")), {"r": rows})
     got = lean_values(json.dumps(plan))
     # Doubles come back printed, or as codes when tiny (±0.0); `CAST(... AS
@@ -107,7 +125,8 @@ def test_integer_floor_division_is_exact(pairs):
     con = connect()
     t = ibis.table(R, name="r")
     create_table(con, "r", R, pairs)
-    got = [r["q"] for r in run_sql(con, to_sql(t.select(q=t.a // t.b))).to_pylist()]
+    out = collect(con.datafusion.sql(to_sql(t.select(q=t.a // t.b))))
+    got = [r["q"] for r in out.to_pylist()]
     assert got == [a // b for a, b in pairs]
 
 
@@ -222,7 +241,7 @@ def test_datafusion_fails_only_where_reported(i, rows):
         ),
     )
     try:
-        run_sql(con, to_sql(expr))
+        run_plan(con, written_plan(to_substrait_json(expr)), "datafusion")
     except Exception as e:  # noqa: BLE001 - any engine failure counts
         assert reported, f"DataFusion failed ({e}) but no error was reported"
 
@@ -235,7 +254,7 @@ def test_datafusion_fails_only_where_reported(i, rows):
 @given(rows=st.lists(st.tuples(values, values), max_size=6))
 def test_duckdb_fails_only_where_reported(i, rows):
     """The generated SQL raises where DataFusion fails, and also where
-    DataFusion would wrap around; both are reported."""
+    DataFusion wraps around; both are reported."""
     expr = PIPELINES[i]
     report = sv.verify(expr)
     reported = report.errors + report.warnings

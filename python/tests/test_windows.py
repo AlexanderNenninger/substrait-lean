@@ -1,9 +1,9 @@
-"""Window functions: Lean's semantics agree with DataFusion and with DuckDB
-(in Lean's row order), contracts see through LAG/LEAD/ROW_NUMBER, and ties in
-the window order are refused. Ranks, NTILE (DataFusion's), frames over rows
-and over the sort key's values, and aggregates over them agree with DataFusion
-too, on tables with ties and NULL keys where the result does not depend on
-the order of ties."""
+"""Window functions: Lean's semantics agree with DuckDB (also in Lean's row
+order), DataFusion runs the plans Lean writes, contracts see through
+LAG/LEAD/ROW_NUMBER, and ties in the window order are refused. Ranks, NTILE
+(DataFusion's), frames over rows and over the sort key's values, and
+aggregates over them agree with DuckDB too, on tables with ties and NULL keys
+where the result does not depend on the order of ties."""
 
 import json
 
@@ -15,10 +15,10 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import (
+    collect,
     connect,
     create_table,
     run_checker,
-    run_sql,
     run_substrait_json,
     substrait_json,
     to_sql,
@@ -28,6 +28,7 @@ from sverify.ibis_substrait import to_substrait
 from sverify.incremental import IncrementalView
 from sverify.testing import (
     canonical,
+    duckdb_ibis,
     duckdb_rows,
     duckdb_sql,
     inline_tables,
@@ -65,7 +66,7 @@ keyed_tables = st.lists(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=keyed_tables)
-def test_lean_semantics_match_datafusion(sql, rows):
+def test_lean_semantics_match_duckdb(sql, rows):
     con = connect()
     create_table(con, "r", SCHEMA, rows)
     expected = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
@@ -231,7 +232,7 @@ any_tables = st.lists(
 )
 
 
-def lean_and_datafusion(sql: str, rows: list[tuple]) -> tuple[list, list]:
+def lean_and_duckdb(sql: str, rows: list[tuple]) -> tuple[list, list]:
     con = connect()
     create_table(con, "r", SCHEMA, rows)
     out = duckdb_sql(con, sql)
@@ -246,16 +247,16 @@ def lean_and_datafusion(sql: str, rows: list[tuple]) -> tuple[list, list]:
 @pytest.mark.parametrize("sql", TIE_FREE_QUERIES)
 @settings(max_examples=30, deadline=None)
 @given(rows=any_tables)
-def test_tie_free_windows_match_datafusion(sql, rows):
-    lean, expected = lean_and_datafusion(sql, rows)
+def test_tie_free_windows_match_duckdb(sql, rows):
+    lean, expected = lean_and_duckdb(sql, rows)
     assert canonical(lean) == canonical(expected)
 
 
 @pytest.mark.parametrize("sql", ORDERED_QUERIES)
 @settings(max_examples=30, deadline=None)
 @given(rows=keyed_tables)
-def test_ordered_windows_match_datafusion(sql, rows):
-    lean, expected = lean_and_datafusion(sql, rows)
+def test_ordered_windows_match_duckdb(sql, rows):
+    lean, expected = lean_and_duckdb(sql, rows)
     assert canonical(lean) == canonical(expected)
 
 
@@ -265,12 +266,13 @@ def test_ntile_is_the_sql_standards():
     model's `ntile` is DataFusion's, ⌊i · min(k, n) / n⌋ + 1 (1 1 2 3 3 4)."""
     sql = "SELECT t, NTILE(4) OVER (ORDER BY t) AS n FROM r"
     rows = [(0, t, 0) for t in range(6)]
-    lean, expected = lean_and_datafusion(sql, rows)
+    lean, expected = lean_and_duckdb(sql, rows)
     assert sorted(lean) == sorted(expected) == [(0, 1), (1, 1), (2, 2), (3, 2), (4, 3), (5, 4)]
-    lean, _ = lean_and_datafusion(sql, rows[:2])
+    lean, _ = lean_and_duckdb(sql, rows[:2])
     assert sorted(lean) == [(0, 1), (1, 2)]
 
 
+@pytest.mark.backend("datafusion")
 def test_sliding_double_aggregates_are_refused():
     """DataFusion averages a sliding frame that has become empty to NaN, sums
     its doubles by retracting rows (rounding differently), and keeps a MIN
@@ -283,13 +285,13 @@ def test_sliding_double_aggregates_are_refused():
     sliding = (
         "SELECT t, AVG(v) OVER (ORDER BY t ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS a FROM f"
     )
-    assert any(r["a"] != r["a"] for r in run_sql(con, sliding).to_pylist())  # NaN
+    assert any(r["a"] != r["a"] for r in collect(con.datafusion.sql(sliding)).to_pylist())  # NaN
     code, out, err = run_checker((), substrait_json(con, sliding))
     assert code != 0 and "sliding frame" in out + err
     running = "SELECT t, AVG(v) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING) AS a FROM f"
     assert run_checker((), substrait_json(con, running))[0] == 0
     stale = "SELECT t, MIN(v) OVER (ORDER BY t ROWS CURRENT ROW) AS m FROM f"
-    assert [r["m"] for r in run_sql(con, stale).to_pylist()] == [0.0, 0.0, 0.0]
+    assert [r["m"] for r in collect(con.datafusion.sql(stale)).to_pylist()] == [0.0, 0.0, 0.0]
     assert run_checker((), substrait_json(con, stale))[0] != 0
 
 
@@ -300,8 +302,7 @@ def test_window_sums_may_wrap():
 
 
 R = ibis.table(SCHEMA, name="r")
-#: RANGE frames with offsets, which only Ibis writes faithfully (DataFusion's
-#: Substrait producer drops them: `engine.substrait_json` refuses those).
+#: RANGE frames with offsets, written by sverify's Ibis producer.
 RANGE_EXPRS = [
     R.select(
         "s",
@@ -316,11 +317,11 @@ RANGE_EXPRS = [
 @pytest.mark.parametrize("i", range(len(RANGE_EXPRS)))
 @settings(max_examples=30, deadline=None)
 @given(rows=any_tables)
-def test_range_frames_match_datafusion(i, rows):
+def test_range_frames_match_duckdb(i, rows):
     expr = RANGE_EXPRS[i]
     con = connect()
     create_table(con, "r", SCHEMA, rows)
-    expected = [tuple(r.values()) for r in run_sql(con, to_sql(expr)).to_pylist()]
+    expected = [tuple(r.values()) for r in duckdb_ibis(con, expr).to_pylist()]
     lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"r": rows})))
     assert canonical(lean) == canonical(expected)
 
@@ -332,5 +333,5 @@ def test_sql_range_offsets_are_the_sort_keys_distance():
         "SELECT t, COUNT(*) OVER (ORDER BY t RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS b FROM r"
     )
     rows = [(0, t, 0) for t in (1, 2, 4, 5, 7)] + [(1, 2, 0)]
-    lean, expected = lean_and_datafusion(sql, rows)
+    lean, expected = lean_and_duckdb(sql, rows)
     assert sorted(lean) == sorted(expected) == [(1, 1), (2, 3), (2, 3), (4, 1), (5, 2), (7, 1)]

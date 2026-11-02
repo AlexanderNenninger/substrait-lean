@@ -220,7 +220,7 @@ def _value(x: str, doubles: bool) -> object:
     raise ValueError(f"cannot read {x!r} (a double?) from Lean's output")
 
 
-def parse_row(text: str, doubles: bool = False) -> tuple:
+def _parse_row(text: str, doubles: bool = False) -> tuple:
     """One row as `Row.render` prints it: `(v, …)`, lists as `[v, …]`."""
     tokens = [m.group(1) for m in _TOKEN.finditer(text.strip()[1:-1])]
     pos = 0
@@ -249,7 +249,7 @@ def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
     for line in output.split("rows (")[1].splitlines()[1:]:
         if not line.startswith("  ("):
             break
-        rows.append(parse_row(line, doubles))
+        rows.append(_parse_row(line, doubles))
     return rows
 
 
@@ -274,6 +274,13 @@ def duckdb_sql(con: Connection, sql: str) -> pa.Table:
         ]
         rel = rel.project(", ".join(cols))
     return canonical_doubles(rel.to_arrow_table())
+
+
+def duckdb_ibis(con: Connection, expr: ibis.Table) -> pa.Table:
+    """DuckDB running Ibis's own DuckDB SQL for `expr` over the connection's
+    tables: the native oracle for an Ibis expression, as `duckdb_sql` is for
+    SQL."""
+    return duckdb_sql(con, ibis.to_sql(expr, dialect="duckdb"))
 
 
 def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:

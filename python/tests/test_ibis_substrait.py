@@ -21,12 +21,11 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, put_table, run_sql, to_sql
+from sverify.engine import connect, create_table, put_table
 from sverify.ibis_substrait import Unsupported, to_substrait
-from sverify.testing import EPOCH, canonical, inline_tables, lean_values
+from sverify.testing import EPOCH, canonical, duckdb_ibis, inline_tables, lean_values
 from sverify_dev.coverage import (
     CASES,
-    DATAFUSION_SQL,
     MEMTABLES,
     NO_DATAFUSION_SQL,
     UNORDERED_LISTS,
@@ -154,11 +153,7 @@ def lean_and_datafusion(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
     create_table(con, "l", L.schema(), lr)
     for name, table in MEMTABLES.items():
         put_table(con, name, table)
-    if case.label in DATAFUSION_SQL:
-        # DataFusion means something else: SQL's meaning, as DuckDB computes it.
-        out = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
-    else:
-        out = run_sql(con, to_sql(expr))
+    out = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
     schema = expr.schema()
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     expected = normalize(rows, schema, lean=False)
@@ -217,7 +212,7 @@ def test_mixed_comparisons_promote_the_integer(t):
     assert left["cast"]["type"] == {"fp64": {"nullability": "NULLABILITY_NULLABLE"}}
     con = connect()
     create_table(con, "t", T.schema(), t)
-    out = run_sql(con, to_sql(expr))
+    out = duckdb_ibis(con, expr)
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     plan = inline_tables(to_substrait(expr), {"t": t})
     got = lean_values(json.dumps(plan))

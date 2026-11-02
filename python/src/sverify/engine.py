@@ -675,11 +675,6 @@ def _rename_tables(node: object, names: dict[str, str]) -> None:
             _rename_tables(v, names)
 
 
-def run_sql(con: Connection, sql: str) -> pa.Table:
-    """Run SQL on DataFusion; doubles in the result as `canonical` makes them."""
-    return canonical(collect(con.datafusion.sql(sql)))
-
-
 def put_table(con: Connection, name: str, table: pa.Table) -> None:
     """Register (or replace) an in-memory table."""
     con.put(name, table)

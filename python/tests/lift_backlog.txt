@@ -26,18 +26,18 @@ tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[millisecon
 # Tests of other features whose SQL waits on the numeric scalars and the
 # aggregates the lift reads next (#240): power, abs, round, nullif, greatest,
 # sin, isnan, IS DISTINCT FROM, DISTINCT and FILTER in aggregates.
-tests/test_aggregate.py::test_aggregates_match_datafusion[SELECT a, COUNT(DISTINCT b), SUM(DISTINCT b) FROM t GROUP BY a]
-tests/test_aggregate.py::test_aggregates_match_datafusion[SELECT a, SUM(b) FILTER (WHERE b > 0), COUNT(*) FILTER (WHERE s = 'x') FROM t GROUP BY a]
-tests/test_aggregate.py::test_engines_match_datafusion[SELECT a, COUNT(DISTINCT b), SUM(DISTINCT b) FROM t GROUP BY a]
-tests/test_aggregate.py::test_engines_match_datafusion[SELECT a, SUM(b) FILTER (WHERE b > 0), COUNT(*) FILTER (WHERE s = 'x') FROM t GROUP BY a]
+tests/test_aggregate.py::test_aggregates_match_duckdb[SELECT a, COUNT(DISTINCT b), SUM(DISTINCT b) FROM t GROUP BY a]
+tests/test_aggregate.py::test_aggregates_match_duckdb[SELECT a, SUM(b) FILTER (WHERE b > 0), COUNT(*) FILTER (WHERE s = 'x') FROM t GROUP BY a]
+tests/test_aggregate.py::test_engines_match_duckdb[SELECT a, COUNT(DISTINCT b), SUM(DISTINCT b) FROM t GROUP BY a]
+tests/test_aggregate.py::test_engines_match_duckdb[SELECT a, SUM(b) FILTER (WHERE b > 0), COUNT(*) FILTER (WHERE s = 'x') FROM t GROUP BY a]
 tests/test_backend_semantics.py::test_translators_agree[SELECT a, a IS DISTINCT FROM NULL, a IS NOT DISTINCT FROM 1 FROM j]
 tests/test_backend_semantics.py::test_translators_agree[SELECT v, round(v) FROM r]
 tests/test_datafusion_quirks.py::test_abs_of_min_fails
 tests/test_datafusion_quirks.py::test_lazy_and_eager_conditionals_that_are_safe
 tests/test_datafusion_quirks.py::test_power_of_null_to_zero
-tests/test_numeric.py::test_integer_semantics_match_datafusion[SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r]
-tests/test_numeric.py::test_integer_semantics_match_datafusion[SELECT power(a, 2) AS p, power(b, 3) AS c FROM r]
-tests/test_numeric.py::test_rounding_semantics_match_datafusion[SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r]
+tests/test_numeric.py::test_integer_semantics_match_duckdb[SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r]
+tests/test_numeric.py::test_integer_semantics_match_duckdb[SELECT power(a, 2) AS p, power(b, 3) AS c FROM r]
+tests/test_numeric.py::test_rounding_semantics[SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r]
 tests/test_partition.py::test_aggregates_run_in_two_phases[SELECT b, MIN(DISTINCT c) AS lo, MAX(DISTINCT a) AS hi FROM r GROUP BY b]
 tests/test_partition.py::test_sharded_equals_whole[SELECT b, MIN(DISTINCT c) AS lo, MAX(DISTINCT a) AS hi FROM r GROUP BY b]
 tests/test_partition.py::test_split_keys[SELECT COUNT(DISTINCT b) AS n, SUM(DISTINCT b) AS s FROM r-two_phase]

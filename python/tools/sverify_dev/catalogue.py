@@ -61,12 +61,12 @@ from ibis import _
 from sverify.engine import (
     Connection,
     canonical,
+    collect,
     connect,
     plan_json,
     put_table,
     run_checker,
     run_plan,
-    run_sql,
     to_sql,
     written_plan,
 )
@@ -507,7 +507,7 @@ def probe_profile(
     # DataFusion runs the query itself: Ibis's own SQL for an expression.
     try:
         sql = query if isinstance(query, str) else to_sql(query)
-        out = run_sql(con, sql)
+        out = canonical(collect(con.datafusion.sql(sql)))
         if not isinstance(query, str):
             # In the expression's types: DataFusion makes `ts.date()` a timestamp.
             with contextlib.suppress(pa.ArrowInvalid, pa.ArrowNotImplementedError):

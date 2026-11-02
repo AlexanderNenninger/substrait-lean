@@ -38,8 +38,6 @@ from sverify.engine import (
     create_table,
     put_table,
     run_plan,
-    run_sql,
-    to_sql,
     written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
@@ -186,16 +184,13 @@ def test_engines_agree(con, case, data):
         assert root is not None
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
-    no_reference = case.label in coverage.NO_DATAFUSION_SQL
+    no_reference = False  # PROBE
     if (root is None or not order_dependent(root)) and not no_reference:
         # As Ibis returns it: DataFusion's SQL result in the expression's
         # types (`POW` of integers is an integer there, a double in Ibis),
         # or DuckDB's where DataFusion means something else.
-        if case.label in coverage.DATAFUSION_SQL:
-            duck_sql = ibis.to_sql(expr, dialect="duckdb")
-            out = canonical_table(con.ibis.con.sql(duck_sql).to_arrow_table())
-        else:
-            out = run_sql(con, to_sql(expr))
+        duck_sql = ibis.to_sql(expr, dialect="duckdb")
+        out = canonical_table(con.ibis.con.sql(duck_sql).to_arrow_table())
         expected = rows(out.cast(expr.schema().to_pyarrow()))
         if case.label in coverage.UNORDERED_LISTS:
             expected = bags(expected)

@@ -51,3 +51,10 @@ _EMPTY_PATTERN = "replace with an empty pattern differs between engines"
 REFUSED: dict[str, dict[str, str]] = {
     "replace ''": {"duckdb": _EMPTY_PATTERN, "snowflake": _EMPTY_PATTERN, "spark": _EMPTY_PATTERN},
 }
+
+NO_DUCKDB_SQL = {
+    "replace ''": "DuckDB's replace with an empty pattern changes nothing",
+    "find from": "Ibis's DuckDB SQL of `find` from a negative start counts otherwise",
+    "levenshtein": "DuckDB's levenshtein counts otherwise on non-ASCII text",
+    "find_in_set": "Ibis's DuckDB SQL gives -1 where the plan gives NULL",
+}

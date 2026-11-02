@@ -28,17 +28,22 @@ from sverify.engine import (
     read_tables,
     run_checker,
     run_plan,
-    run_sql,
     run_substrait_json,
     substrait_json,
-    to_sql,
     written_plan,
 )
 from sverify.engines import ENGINES, delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.sql import Unsupported
-from sverify.testing import canonical, duckdb_sql, inline_tables, lean_rows, lean_values
+from sverify.testing import (
+    canonical,
+    duckdb_ibis,
+    duckdb_sql,
+    inline_tables,
+    lean_rows,
+    lean_values,
+)
 from sverify_dev.examples import PIPELINES, create_tables
 from test_numeric import DOUBLES, INT_QUERIES, MIN, F
 from test_numeric import PIPELINES as NUMERIC_PIPELINES
@@ -639,8 +644,8 @@ def test_guarded_operations_do_not_raise(sql):
 @given(rows=st.lists(st.tuples(numeric_values, numeric_values), max_size=6))
 def test_polars_fails_only_where_reported(i, rows):
     """Polars raises an error only where `Rel.mayIssues` reports one (and
-    `IntegerOverflow` only where it warns of wrapping). When neither engine
-    fails and nothing wraps, they agree."""
+    `IntegerOverflow` only where it warns of wrapping). When neither Polars
+    nor DuckDB running Ibis's own SQL fails and nothing wraps, they agree."""
     expr = NUMERIC_PIPELINES[i]
     report = sv.verify(expr)
     con = connect()
@@ -665,15 +670,15 @@ def test_polars_fails_only_where_reported(i, rows):
         assert report.errors, f"Polars failed ({e}) but no error was reported"
         return
     try:
-        df = rows_of(run_sql(con, to_sql(expr)))
-    except Exception:  # noqa: BLE001 - DataFusion evaluates more rows (`Rel.loose`)
+        duck = rows_of(duckdb_ibis(con, expr))
+    except Exception:  # noqa: BLE001 - DuckDB evaluates more rows (`Rel.loose`)
         return
 
     def numbers(rows: list[tuple]) -> list[tuple]:
-        # Ibis types `qty ** n` as a double; its DataFusion SQL, as an integer.
+        # Ibis types `qty ** n` as a double; an engine may give an integer.
         return [tuple(float(v) if type(v) is int else v for v in r) for r in rows]
 
-    assert same_bag(numbers(df), numbers(polars))
+    assert same_bag(numbers(duck), numbers(polars))
 
 
 @pytest.mark.parametrize("name", ["lag_gap", "before_constant"])

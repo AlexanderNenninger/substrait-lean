@@ -4,9 +4,8 @@ Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API.
 
 Each area module defines `CASES`, the area's cases in README order, and, where
-it has any, the area's entries of `REFUSED`, `TIE_FREE`, `NO_DATAFUSION_SQL`,
-`DATAFUSION_SQL` and `UNORDERED_LISTS` (`sverify_dev.coverage` says what each
-means). This module combines them in `AREAS` order, which is the order of
+it has any, the area's entries of `REFUSED`, `TIE_FREE`, `NO_DUCKDB_SQL` and
+`UNORDERED_LISTS` (`sverify_dev.coverage` says what each means). This module combines them in `AREAS` order, which is the order of
 the README table.
 
 A new case goes at the end of its area's `CASES`; a new area is a new module
@@ -62,8 +61,7 @@ def _merged(name: str) -> dict[str, Any]:
 CASES: list[Case] = [c for area in AREAS for c in area.CASES]
 REFUSED: dict[str, dict[str, str]] = _merged("REFUSED")
 TIE_FREE: set[str] = set(_merged("TIE_FREE"))
-NO_DATAFUSION_SQL: dict[str, str] = _merged("NO_DATAFUSION_SQL")
-DATAFUSION_SQL: dict[str, str] = _merged("DATAFUSION_SQL")
+NO_DUCKDB_SQL: dict[str, str] = _merged("NO_DUCKDB_SQL")
 UNORDERED_LISTS: set[str] = set(_merged("UNORDERED_LISTS"))
 
 if len({c.label for c in CASES}) != len(CASES):
