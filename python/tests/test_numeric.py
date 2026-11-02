@@ -315,6 +315,30 @@ def test_preconditions_that_leave_zero_possible(label, requires, expr):
     assert "division by zero" in [i.kind for i in report.issues], label
 
 
+# #334: `MIN // -1` does not fit the declared width: DuckDB raises at every
+# width, so `verify` reports an overflow and the written plan raises too.
+@pytest.mark.parametrize(
+    ("ty", "dtype", "lo"),
+    [
+        ("TINYINT", "int8", -(2**7)),
+        ("SMALLINT", "int16", -(2**15)),
+        ("INTEGER", "int32", -(2**31)),
+        ("BIGINT", "int64", -(2**63)),
+    ],
+)
+def test_division_overflow_is_reported_at_every_width(ty, dtype, lo):
+    sql = f"SELECT ({lo})::{ty} // (-1)::{ty} AS x"
+    with pytest.raises(duckdb.Error):
+        duckdb.connect().execute(sql).fetchall()
+    assert "overflow" in [i.kind for i in sv.verify(sql).issues]
+    schema = ibis.schema({"a": dtype, "b": dtype})
+    con = connect()
+    create_table(con, "t", schema, [(lo, -1)])
+    plan = written_plan(json.dumps(lift("SELECT a // b AS x FROM t", {"t": schema}, "duckdb").plan))
+    with pytest.raises(Exception, match="(?i)out of range|overflow"):
+        run_plan(con, plan, "duckdb")
+
+
 # #335: `round(x, d)` is DuckDB's for every `d`, to the bit: Lean (as codes),
 # DuckDB's own `round`, and the plan Lean writes on DuckDB and on Polars.
 @settings(max_examples=40, deadline=None, suppress_health_check=list(HealthCheck))

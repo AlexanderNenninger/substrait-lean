@@ -15,8 +15,8 @@ Arrow path writes. The rows never pass through Python:
 * `delta_stats` computes a Delta add action's statistics from a file, as
   delta-rs writes them.
 
-The change itself is the view's merge plan (`SinkChange.native`), so it is
-computed where the states are.
+The change is the sum of the view's changes since the state the sink wrote
+(`IncrementalView.changes_since`), which `SinkChange.native` hands to DuckDB.
 """
 
 from __future__ import annotations

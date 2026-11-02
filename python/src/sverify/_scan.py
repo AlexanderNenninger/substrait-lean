@@ -90,9 +90,10 @@ class Native:
 
 class Resident(Native):
     """A table DuckDB holds between calls, in the main schema of the
-    process's database (`sverify._duckdb`), such as a view's state. It is
-    immutable: an operation on it makes a new one. Its table is dropped once
-    nothing refers to the `Resident`.
+    process's database (`sverify._duckdb`), such as a view's state. An
+    operation on it makes a new one, except that a refresh updates a view's
+    state in place (`sverify._state.DuckDBStore.apply`). Its table is dropped
+    once nothing refers to the `Resident`.
 
     Attributes:
         name: The table's (or view's) name in the main schema.

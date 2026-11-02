@@ -49,9 +49,8 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
-from sverify._scan import Scan, ScanSnapshot, local_path
-from sverify._state import arrow_of
-from sverify._weighted import WEIGHT, concat, expanded, grouped, rows_of
+from sverify._scan import Native, Scan, ScanSnapshot, local_path
+from sverify._weighted import WEIGHT, expanded, rows_of, weights_in
 from sverify.contracts import Fact
 from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
 from sverify.io import _engine
@@ -680,9 +679,7 @@ class DeltaSink(Sink):
         if mode == "merge":
             if missing:
                 dt.alter.add_constraint(missing)
-            assert self._written is not None
-            old, new = arrow_of(self._written), arrow_of(view.state)
-            inserted, deleted = self._merge(dt, schema, old, new, commit)
+            inserted, deleted = self._merge(dt, schema, change.change, view.state, commit)
         else:
             # The rows may come from another plan, with other columns: the
             # schema becomes the rows'. Its constraints hold only once the
@@ -804,13 +801,13 @@ class DeltaSink(Sink):
         self,
         dt: DeltaTable,
         schema: pa.Schema,
-        old: pa.Table,
-        new: pa.Table,
+        change: pa.Table,
+        state: pa.Table | Native,
         commit: CommitProperties,
     ) -> tuple[int, int]:
-        """Replace every row whose multiplicity changed from `old` to `new`
-        (weighted tables), in one commit."""
-        changed = _multiplicities(old, new)
+        """Replace every row whose multiplicity `change` changed (a weighted
+        table) with its copies in the view's `state`, in one commit."""
+        changed = _multiplicities(change, state)
         if not changed.num_rows:
             return 0, 0
         n_old, n_new = changed.column(_OLD), changed.column(_NEW)
@@ -847,16 +844,13 @@ class DeltaSink(Sink):
 _OLD, _NEW = "__sverify_old", "__sverify_new"
 
 
-def _multiplicities(old: pa.Table, new: pa.Table) -> pa.Table:
-    """The rows whose number of copies differs between the weighted tables
-    `old` and `new`, with both numbers (`_OLD`, `_NEW`) and the difference
-    (`WEIGHT`)."""
-
-    def side(z: pa.Table, o: bool) -> pa.Table:
-        w = z.column(WEIGHT)
-        zero = pa.repeat(pa.scalar(0, pa.int64()), z.num_rows)
-        rows = rows_of(z)
-        rows = rows.append_column(_OLD, w if o else zero).append_column(_NEW, zero if o else w)
-        return rows.append_column(WEIGHT, pc.call_function("negate", [w]) if o else w)
-
-    return grouped(concat([side(new, False), side(old, True)]), (_OLD, _NEW, WEIGHT))
+def _multiplicities(change: pa.Table, state: pa.Table | Native) -> pa.Table:
+    """The rows `change` (a weighted table) changes, with their number of
+    copies before (`_OLD`) and after it (`_NEW`, their weight in the view's
+    `state`), and the difference (`WEIGHT`)."""
+    w = change.column(WEIGHT).combine_chunks()
+    new = weights_in(state, change)
+    old = pc.call_function("subtract", [new, w])
+    return (
+        rows_of(change).append_column(_OLD, old).append_column(_NEW, new).append_column(WEIGHT, w)
+    )

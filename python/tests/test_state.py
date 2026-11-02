@@ -120,7 +120,8 @@ def pipeline(engine):
     o = con.table("o")
     big = pipe.view("big", o.filter(o.x >= 1.0).select(o.c, o.x))
     by_c = pipe.view("by_c", big.table.group_by("c").aggregate(n=big.table.c.count()))
-    return pipe, [big, by_c]
+    small = pipe.view("small", o.filter(o.x < 1.0).select(o.id, o.x))
+    return pipe, [big, by_c, small]
 
 
 @pytest.mark.parametrize("engine", installed_engines())
@@ -146,15 +147,107 @@ def held(pipe) -> set[str]:
     return {r.name for r in tables if isinstance(r, Resident)}
 
 
-def test_superseded_states_are_dropped():
+def test_states_change_in_place_and_old_views_are_dropped():
     pipe, _ = pipeline("duckdb")
     db = _duckdb.cursor()
+    views = list(pipe.views.values())
+    # A view with no delta rules is recomputed on the new tables, so the
+    # views it reads are merged in full; every other view changes in place.
+    recomputed = [v for v in views if v.fallback is not None]
+    read_new = {t for v in recomputed for t in v.tables}
+    in_place = [v for v in views if v.name not in read_new]
+    assert in_place, "the pipeline has a view that changes in place"
+
+    def states():
+        return {v.state.name for v in in_place if isinstance(v.state, Resident)}
+
+    before = states()
     first = held(pipe)
-    assert len(first) == 4 and first <= resident_names(db)
+    assert len(before) == len(in_place) and first <= resident_names(db)
     for step in range(5):
         pipe.apply({"o": sv.Changes(inserts=orders(100 + 10 * step))})
     gc.collect()
     _duckdb.collect(db)
     now = resident_names(db)
+    # The same state tables, updated in place; the views of their rows are new.
+    assert states() == before
     assert held(pipe) <= now
-    assert not first & now
+    assert not (first - before) & now
+
+
+def tricky_pipeline(engine):
+    con = sv.connect(engine)
+    schema = pa.schema([("k", pa.int64()), ("x", pa.float64()), ("tags", pa.list_(pa.int64()))])
+    rows = [(1, NAN, [1]), (1, NAN, [1]), (2, -0.0, None), (3, None, []), (3, None, [])]
+    put_table(
+        con,
+        "t",
+        pa.Table.from_pylist([dict(zip(schema.names, r, strict=True)) for r in rows], schema),
+    )
+    pipe = Pipeline(con)
+    t = con.table("t")
+    v = pipe.view("v", t.select(t.x, t.tags))
+    return pipe, v
+
+
+BATCHES = [
+    sv.Changes(inserts=[(4, NAN, [1]), (5, 0.0, None)], deletes=[(1, NAN, [1])]),
+    sv.Changes(deletes=[(3, None, []), (2, -0.0, None)]),
+    sv.Changes(inserts=[(6, None, [])], deletes=[(1, NAN, [1]), (4, NAN, [1])]),
+]
+
+
+def test_in_place_merges_match_recomputation_and_the_arrow_store():
+    duck, v = tricky_pipeline("duckdb")
+    arrow, w = tricky_pipeline("polars")
+    for batch in BATCHES:
+        duck.apply({"t": batch})
+        arrow.apply({"t": batch})
+        assert isinstance(v.state, Resident)
+        assert repr(v.rows()) == repr(v.recompute()) == repr(w.rows())
+    # The state holds each row once, with its weight.
+    rows = [tuple(r[c] for c in ("x", "tags")) for r in v.state.to_arrow().to_pylist()]
+    assert len({repr(r) for r in rows}) == len(rows)
+
+
+def test_a_sink_writes_the_changes_it_missed():
+    """A sink that skips a refresh writes the sum of the view's changes since
+    the state it wrote."""
+    from sverify.io import Sink
+
+    class Recording(Sink):
+        def __init__(self):
+            super().__init__("rec")
+            self.changes = []
+
+        def write(self, change):
+            self.changes.append(None if change.replace else change.change)
+
+    pipe, v = tricky_pipeline("duckdb")
+    sink = Recording()
+    sink._attach(v)
+    pipe.versions["t"] = 0  # a sink records the source versions it wrote
+    sink._commit()
+    pipe.apply({"t": BATCHES[0]})
+    pipe.apply({"t": BATCHES[1]})
+    assert v.serial == 2
+    sink._last = None  # commit again, as a new epoch would
+    sink._commit()
+    first, total = sink.changes
+    assert first is None  # the first write replaces
+    want = consolidated(
+        *[
+            pa.Table.from_pylist(
+                [{"x": r[1], "tags": r[2], WEIGHT: s} for r in rows],
+                schema=total.schema,
+            )
+            for rows, s in [
+                (BATCHES[0].inserts, 1),
+                (BATCHES[0].deletes, -1),
+                (BATCHES[1].inserts, 1),
+                (BATCHES[1].deletes, -1),
+            ]
+            if rows
+        ]
+    )
+    assert same(total, want)

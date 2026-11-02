@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from sverify._scan import Resident
-from sverify._state import State, arrow_of
+from sverify._state import DuckDBStore, arrow_of
 from sverify._weighted import expanded, negated, positive
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
 from sverify.io._common import (
@@ -60,25 +60,24 @@ class SinkChange:
         view: IncrementalView,
         contract: Contract,
         schema: pa.Schema,
-        old: State | None,
+        change: pa.Table | None,
     ):
         self.contract, self.schema = contract, schema
-        self.replace = old is None
-        self._view, self._old, self._new = view, old, view.state
+        self.replace = change is None
+        self._view, self._change = view, change
 
     @cached_property
     def table(self) -> pa.Table:
         """The node's whole state."""
-        return expanded(arrow_of(self._new)).cast(self.schema)
+        return expanded(arrow_of(self._view.state)).cast(self.schema)
 
-    @cached_property
+    @property
     def change(self) -> pa.Table:
         """The weighted change from the state written last to this one
-        (`sverify._weighted`): the copies each row gains or loses. The
-        view's merge plan computes it where the states are."""
-        assert self._old is not None
-        view = self._view
-        return arrow_of(view._merge(self._new, view.store.negated(self._old)))
+        (`sverify._weighted`): the copies each row gains or loses, as the
+        view's changes since then add up."""
+        assert self._change is not None
+        return self._change
 
     @cached_property
     def native(self) -> tuple[Resident, Resident] | None:
@@ -88,29 +87,27 @@ class SinkChange:
         state written last (with `replace`, the whole state), computed by
         the view's merge plan in DuckDB. None otherwise: write the Arrow
         tables."""
-        new = self._new
-        if not isinstance(new, Resident):
-            return None
         view = self._view
-        rows = view.store.expanded(new)
+        state = view.state
+        if not isinstance(state, Resident):
+            return None
+        rows = view.store.expanded(state)
         assert isinstance(rows, Resident)
-        if self._old is None:
-            return rows, new
-        change = view._merge(new, view.store.negated(self._old), keep=True)
-        assert isinstance(change, Resident)
-        return rows, change
+        if self._change is None:
+            return rows, state
+        return rows, DuckDBStore().keep_table(self._change)
 
     @cached_property
     def inserts(self) -> pa.Table:
         """The rows to add (with `replace`, every row)."""
-        if self._old is None:
+        if self._change is None:
             return self.table
         return expanded(positive(self.change)).cast(self.schema)
 
     @cached_property
     def deletes(self) -> pa.Table:
         """The rows to remove, one copy each (with `replace`, none)."""
-        if self._old is None:
+        if self._change is None:
             return self.schema.empty_table()
         return expanded(positive(negated(self.change))).cast(self.schema)
 
@@ -189,8 +186,9 @@ class Sink:
     app_id: str
     location: str
     view: IncrementalView | None = None
-    _written: State | None = None
-    """The state written last, as a weighted table."""
+    _written: int | None = None
+    """The view's serial (`IncrementalView.serial`) at the state written
+    last; None: the sink's contents are replaced on the next write."""
     _last: Contract | None = None
     _kept: _Kept | None = None
 
@@ -240,9 +238,10 @@ class Sink:
     def _attach(self, view: IncrementalView) -> None:
         """Write `view` from now on."""
         self.view = view
+        view._sinks.append(self)
         self._written = None
         if view.stored is not None and view.stored[0] == self.location:
-            self._written = view.stored[1]
+            self._written = view.serial
 
     def _stored(self) -> Stored | None:
         """The state a restarted job resumes from: none by default."""
@@ -273,16 +272,17 @@ class Sink:
             self._written = None
         elif done is not None and done.epoch >= contract.epoch:
             check_same_state(self.location, done, contract)
-            self._written = view.state
+            self._written = view.serial
             self._keep(view, contract, None)
             return SinkWrite("skipped", self._version(), contract)
-        change = SinkChange(view, contract, sink_schema(view, contract.not_null), self._written)
+        since = None if self._written is None else view.changes_since(self._written)
+        change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
         out = self.write(change)
         if out is None:
             mode = "overwrite" if change.replace else "update"
             n_in, n_out = change.inserts.num_rows, change.deletes.num_rows
             out = SinkWrite(mode, self._version(), contract, n_in, n_out)
-        self._written = view.state
+        self._written = view.serial
         self._last = contract
         self._keep(view, contract, change)
         return out

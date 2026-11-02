@@ -1756,7 +1756,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         match exact? with
         | some e => return .un (.fit (if ov == "SILENT" then .silent else .saturate) (.ofBits w)) e
         | none => throw s!"{baseName name}: overflow {ov} is only modelled for integers"
-      if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&
+      -- Division too: `MIN / -1` does not fit the width (#334); a remainder always does.
+      if ["add", "subtract", "multiply", "negate", "divide"].contains (baseName name) && w < 64 &&
           call.kind cols == .int then
         return .un (.wrap w) call
       return call
