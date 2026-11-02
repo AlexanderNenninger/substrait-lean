@@ -10,7 +10,7 @@ import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Partition
 import SubstraitLean.Guards
-import SubstraitLean.Profile
+import SubstraitLean.LoweringDuckDB
 import SubstraitLean.Semantic
 
 /-!
@@ -206,3 +206,5 @@ end Substrait.Examples
 #print axioms Substrait.shimDuckDB_correct
 #print axioms Substrait.Rel.duckdb_sound
 #print axioms Substrait.Rel.duckdb_shim_sound
+#print axioms Substrait.Lowering.lowerRel_sound
+#print axioms Substrait.duckdb_lower_eq_shim
