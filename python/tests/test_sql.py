@@ -181,6 +181,17 @@ def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list
     return df, duckdb_rows(plan_json, tables)
 
 
+def both_or_duckdb(
+    plan_json: str, tables: dict[str, pa.Table]
+) -> tuple[list[tuple] | None, list[tuple]]:
+    """`both`, with no DataFusion rows where DataFusion cannot be made to give
+    the reference result (a `substring` from a negative start, #209)."""
+    try:
+        return both(plan_json, tables)
+    except Unsupported:
+        return None, duckdb_rows(plan_json, tables)
+
+
 def lean_printable(plan: dict) -> bool:
     """Can Lean's output be compared value by value (no doubles in or out)?"""
     tables_ok = all("fp64" not in type_names(s) for s in schemas(plan).values())
@@ -272,7 +283,7 @@ def test_virtual_fixtures_match_the_golden_rows(name):
 def test_fixtures_agree_on_random_tables(name, data):
     plan = fixture(name)
     tables = {t: data.draw(table_for(s)) for t, s in schemas(plan).items()}
-    df, duck = both(json.dumps(plan), tables)
+    df, duck = both_or_duckdb(json.dumps(plan), tables)
     agree(plan, df, duck, lean_on(plan, tables) if lean_printable(plan) else None)
 
 
@@ -326,7 +337,7 @@ def test_delta_plans_agree(name, data):
     for d in deltas:
         plan = json.loads(d)
         needed = {t: tables[t] for t in read_tables(plan)}
-        df, duck = both(d, needed)
+        df, duck = both_or_duckdb(d, needed)
         agree(plan, df, duck, lean_on(plan, needed) if lean_printable(plan) else None)
 
 

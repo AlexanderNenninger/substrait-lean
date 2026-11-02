@@ -273,6 +273,18 @@ def call(name: str, args: Iterable[Json]) -> Json:
     }
 
 
+def substring_left(args: list[Json]) -> Json:
+    """`substring` whose start may be below 1, which then lies left of the
+    first character (`negative_start` = `LEFT_OF_BEGINNING`): the rules below
+    compute such starts. A plan that omits the option counts a negative start
+    from the end instead (`Text.substrWrap`, #209)."""
+    j = call("substring", args)
+    j["scalarFunction"]["options"] = [
+        {"name": "negative_start", "preference": ["LEFT_OF_BEGINNING"]}
+    ]
+    return j
+
+
 def ieee_divide(a: Json, b: Json) -> Json:
     """`a / b` with `on_division_by_zero` = IEEE: `±inf` or NaN by zero rather
     than an error (#204)."""
@@ -753,7 +765,7 @@ def _substring(x: Exprs, op: Any) -> Json:
         call("add", [start, call("character_length", [x(op.arg)])]),
     )
     args = [x(op.arg), start] + ([] if op.length is None else [x(op.length, dt.int64)])
-    return call("substring", args)
+    return substring_left(args)
 
 
 def _string_slice(x: Exprs, op: Any) -> Json:
@@ -796,7 +808,7 @@ def _str_right(x: Exprs, op: Any) -> Json:
     arg, n, one = x(op.arg), x(op.nchars, dt.int64), literal(1, dt.int64)
     last = call("add", [call("subtract", [call("character_length", [arg]), n]), one])
     start = if_then([(call("lt", [n, literal(0, dt.int64)]), call("subtract", [one, n]))], last)
-    return call("substring", [arg, start])
+    return substring_left([arg, start])
 
 
 def _replace(x: Exprs, op: Any) -> Json:
@@ -1148,7 +1160,7 @@ def _string_find(x: Exprs, op: Any) -> Json:
     # Ibis's DataFusion SQL: from `start`, as
     # `COALESCE(NULLIF(strpos(substring(s, start + 1), t) + start, start), 0) - 1`.
     start = x(op.start, dt.int64)
-    rest = call("substring", [arg, call("add", [start, one])])
+    rest = substring_left([arg, call("add", [start, one])])
     pos = call("add", [call("strpos", [rest, sub]), start])
     found = call("coalesce", [call("nullif", [pos, start]), literal(0, dt.int64)])
     return call("subtract", [found, one])

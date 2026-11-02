@@ -677,7 +677,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       ⟨a.nonStr || b.nonStr, if a.str && b.str then some (.ge 0) else none, false, false, false⟩
   | .startsWith, a, b | .endsWith, a, b | .like, a, b | .ilike, a, b =>
       ⟨a.nonStr || b.nonStr, none, a.str && b.str, a.str && b.str, false⟩
-  | .substr _, a, b | .strRepeat, a, b =>
+  | .substr _ _, a, b | .strRepeat, a, b =>
       ⟨a.nonStr || b.nonInt, none, false, false, a.str && b.int.isSome⟩
   | .eq, a, b =>
       let mismatch := a.null || b.null || (a.int.isSome && (b.tt || b.ff || b.str)) ||

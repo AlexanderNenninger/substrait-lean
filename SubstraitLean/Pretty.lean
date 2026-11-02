@@ -38,7 +38,8 @@ def BinFn.render : BinFn → String
   | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^." | .fmod => "%."
   | .concat => "||" | .strpos => "STRPOS" | .startsWith => "STARTS_WITH"
   | .endsWith => "ENDS_WITH" | .like => "LIKE"
-  | .substr n => s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}"
+  | .substr n wrap =>
+    s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}{if wrap then "" else "_LEFT_OF_BEGINNING"}"
   | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
   | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN"
   | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"

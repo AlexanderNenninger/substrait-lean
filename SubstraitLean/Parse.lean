@@ -297,7 +297,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
-  | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
+  | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
@@ -967,6 +967,9 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else none
   -- `UPPER` and `LOWER` map Unicode case (`SubstraitLean/Text.lean`).
   | "char_set" => if base == "upper" || base == "lower" then some (some ["UTF8"]) else none
+  -- `Text.substrWrap` and `Text.substr`; `ERROR` is not modelled.
+  | "negative_start" =>
+    if base == "substring" then some (some ["WRAP_FROM_END", "LEFT_OF_BEGINNING"]) else none
   | _ => none
 
 def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
@@ -1078,14 +1081,17 @@ def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (
     | e => .un .neg e
   return some (.bin .dateAdd x days)
 
-/-- The preference of `on_division_by_zero` that applies: the first one, or
-`ERROR` when the plan omits it (#185). `checkOptions` has checked them. -/
-def divByZeroMode (opts : List Json) : String := Id.run do
+/-- The preference of option `name` that applies: the first one, or `dflt`
+when the plan omits it. `checkOptions` has checked them. -/
+def optionPref (name dflt : String) (opts : List Json) : String := Id.run do
   for o in opts do
-    if (field? o "name") == some (.str "on_division_by_zero") then
+    if (field? o "name") == some (.str name) then
       if let some (Json.str m) := ((field? o "preference").bind (·.getArr? |>.toOption)).bind (·[0]?) then
         return m
-  return "ERROR"
+  return dflt
+
+/-- `on_division_by_zero`; `ERROR` when the plan omits it (#185). -/
+def divByZeroMode : List Json → String := optionPref "on_division_by_zero" "ERROR"
 
 /-- `a / b` (`div`, which raises on a zero divisor) under `on_division_by_zero`
 = `mode`. Other than `ERROR`, the mode is a `CASE` on the divisor:
@@ -1184,10 +1190,10 @@ def mkCall : String → List Expr → J Expr
   -- The third argument is the escape character; `NULL` means a backslash.
   | "like", [a, b] | "like", [a, b, .lit .null] => pure (.bin .like a b)
   | "like", [_, _, _] => throw "LIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
-  | "substring", [s, a] => pure (.bin (.substr none) s a)
+  | "substring", [s, a] => pure (.bin (.substr none true) s a)
   | "substring", [s, a, .lit (.int n)] =>
     if n < 0 then throw "a negative substring length always fails"
-    else pure (.bin (.substr (some n.toNat)) s a)
+    else pure (.bin (.substr (some n.toNat) true) s a)
   | "substring", [_, _, _] => throw "substring lengths must be constants"
   | "btrim", [a] => pure (.bin (.trim true true) a (.lit (.str " ")))
   | "ltrim", [a] => pure (.bin (.trim true false) a (.lit (.str " ")))
@@ -1651,6 +1657,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         | "divide", [a, b] => pure (divByZero mode false (.bin .idiv) a b)
         | "modulus", [a, b] => pure (divByZero mode false (.bin .imod) a b)
         | _, _ => mkCall (baseName name) args
+      -- A negative start wraps from the end unless the plan says otherwise (#209).
+      let call := match call with
+        | .bin (.substr n _) x a =>
+          let opts := (field? f "options").bind (·.getArr? |>.toOption) |>.getD #[]
+          .bin (.substr n (optionPref "negative_start" "WRAP_FROM_END" opts.toList != "LEFT_OF_BEGINNING")) x a
+        | c => c
       -- Arithmetic on integers narrower than 64 bits wraps at their width.
       let w := ((argJs.zip parsed).map fun (j, e) => argBits bits j e).foldl max 8
       if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&

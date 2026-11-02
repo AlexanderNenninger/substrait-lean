@@ -142,8 +142,10 @@ inductive BinFn where
   | fpow
   /-- `s || t`, `strpos(s, t)`, `starts_with`, `ends_with` and `s LIKE p`. -/
   | concat | strpos | startsWith | endsWith | like
-  /-- `substring(s FROM a [FOR n])` for a constant `n`. -/
-  | substr (n : Option Nat)
+  /-- `substring(s FROM a [FOR n])` for a constant `n`; a negative start
+  counts from the end (`wrap`, `Text.substrWrap`) or is left of the
+  beginning (`Text.substr`). -/
+  | substr (n : Option Nat) (wrap : Bool)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
   /-- `repeat(s, n)`: `''` where DataFusion fails (`Text.repeatFits`). -/
@@ -424,7 +426,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .startsWith, .str a, .str b => .bool (Text.startsWith a b)
   | .endsWith, .str a, .str b => .bool (Text.endsWith a b)
   | .like, .str a, .str b => .bool (Text.like a b)
-  | .substr n, .str s, .int a => .str (Text.substr s a n)
+  | .substr n wrap, .str s, .int a => .str (if wrap then Text.substrWrap s a n else Text.substr s a n)
   | .trim l r, .str s, .str set => .str (Text.trim l r s set)
   | .strRepeat, .str s, .int n => .str (if Text.repeatFits s n then Text.repeatStr s n else "")
   | .ilike, .str a, .str b => .bool (Text.ilike a b)

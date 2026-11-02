@@ -53,6 +53,14 @@ QUERIES = [
 text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 
 
+def datafusion_sql(sql: str) -> str:
+    """`sql` as DataFusion computes the reference: its `substring` puts a
+    negative start left of the beginning, while the reference counts it from
+    the end (`Text.substrWrap`, #209)."""
+    wrapped = "CASE WHEN a < 0 THEN a + character_length(s) + 1 ELSE a END"
+    return sql.replace("substring(s, a", f"substring(s, {wrapped}")
+
+
 @pytest.mark.parametrize("sql", QUERIES)
 @settings(
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
@@ -61,7 +69,7 @@ text = st.one_of(st.none(), st.text(alphabet='ab %_\\é,"', max_size=6))
 def test_string_semantics_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
+    expected = [tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
     assert canonical(lean_values(json.dumps(plan))) == canonical(expected)
 
@@ -83,7 +91,7 @@ BLACK_BOXES = [
 def test_engines_match_datafusion(engine, sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in run_sql(con, sql).to_pylist())
+    expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist())
     plan = written_plan(substrait_json(con, sql))
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
     if engine == "duckdb" and sql == BLACK_BOXES[0] and non_ascii:
@@ -145,7 +153,7 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 def test_repeat_reverse_replace_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in run_sql(con, sql).to_pylist())
+    expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist())
     assert lean_rows(con, sql, rows) == expected
     plan = written_plan(substrait_json(con, sql))
     assert (
