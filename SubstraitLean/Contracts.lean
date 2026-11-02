@@ -3162,7 +3162,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  | .fsum | .avg => AVal.double
+  | .fsum | .avg | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
   | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false⟩
   | .iavg | .bit _ => ⟨true, some Bound.top, false, false, false⟩
@@ -3444,6 +3444,16 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have := hin (.int i) (hvs ▸ hi)
           obtain ⟨b', hb', hm⟩ := this
           rw [ha] at hb'; cases hb'; exact hm
+  case cov sample =>
+    simp only [AggFn.apply]
+    cases m.inputs grp with
+    | nil => rfl
+    | cons v vs => simp only [covOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+  case corr =>
+    cases m.inputs grp with
+    | nil => rfl
+    | cons v vs =>
+      simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case fsum | avg | iavg | bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case var sample sqrt =>

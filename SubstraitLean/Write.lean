@@ -83,7 +83,10 @@ def aggregateFns : List (Nat × String) := [
   -- 64-bit integers folded with a bit operation (#53).
   (500, "bit_and"), (501, "bit_or"), (502, "bit_xor"),
   -- The variance and standard deviation of doubles, each engine's own algorithm (#54).
-  (503, "variance"), (504, "std_dev")]
+  (503, "variance"), (504, "std_dev"),
+  -- The covariance and correlation of pairs of doubles (#54); 505 and 506 are
+  -- `first` and `last` (#55).
+  (507, "covar_samp"), (508, "covar_pop"), (509, "corr")]
 
 /-- Window functions: new anchors 600–699. -/
 def windowFns : List (Nat × String) := [
@@ -111,6 +114,8 @@ def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
   | .bit op => match op with | .and => 500 | .or => 501 | _ => 502
   | .var _ sqrt => if sqrt then 504 else 503
+  | .cov sample => if sample then 507 else 508
+  | .corr => 509
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -158,6 +163,7 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
   cases f
   case bit op => cases op <;> decide
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
+  case cov sample => cases sample <;> decide
   all_goals decide
 
 theorem UnFn.anchor_declared (f : UnFn) :
@@ -784,7 +790,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .agg m _ _ => match m.fn with
           | .count | .iavg | .bit _ => .int
           | .sum => sumKind (wkind ks m.arg)
-          | .fsum | .avg | .var _ _ => .float
+          | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
           | .min | .max => wkind ks m.arg
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
@@ -792,7 +798,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
         | .count | .iavg | .bit _ => .int
         | .sum => sumKind (wkind ks m.arg)
-        | .fsum | .avg | .var _ _ => .float
+        | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
         | .min | .max => wkind ks m.arg
         | .collect => .list (wkind ks m.arg)
   | .unnest r c =>
@@ -860,7 +866,11 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
-    ("arguments", Json.arr #[obj [("value", arg)]]),
+    -- A two-argument aggregate's `pair x y` is its two arguments (#54).
+    ("arguments", match m.arg with
+      | .bin .pair x y => Json.arr #[obj [("value", writeExpr cols .float x)],
+          obj [("value", writeExpr cols .float y)]]
+      | _ => Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   -- An integer `AVG` says so by its output type (`AggFn.iavg`).
   let measure := if m.fn matches .iavg then measure.setObjVal! "outputType" i64Type else measure

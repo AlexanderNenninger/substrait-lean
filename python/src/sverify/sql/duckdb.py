@@ -158,6 +158,12 @@ class DuckDBDialect(Dialect):
         start = self.cast("0", "float")
         return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
 
+    def pair(self, a: str, b: str) -> str:
+        return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"
+
+    def covar(self, fn: str, v: str) -> str:
+        return f"{fn.upper()}({v}[1], {v}[2])"
+
     def char_length(self, s: str) -> str:
         return f"length({s})"
 

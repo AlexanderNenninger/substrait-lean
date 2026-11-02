@@ -67,6 +67,8 @@ def AggFn.name : AggFn → String
   | .collect => "ARRAY_AGG"
   | .bit op => s!"BIT_{op.name.toUpper}"
   | .var sample sqrt => s!"{if sqrt then "STDDEV" else "VAR"}_{if sample then "SAMP" else "POP"}"
+  | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
+  | .corr => "CORR"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with

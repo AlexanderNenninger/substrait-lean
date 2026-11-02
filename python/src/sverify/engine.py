@@ -601,6 +601,15 @@ def _check_datafusion_plan(plan: dict) -> None:
                 ints = ("i8", "i16", "i32", "i64")
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported("DataFusion's AVG has no integer result")
+            m = node.get("measure")
+            if isinstance(m, dict) and names.get(m.get("functionReference")) in (
+                "covar_samp",
+                "covar_pop",
+                "corr",
+            ):
+                raise sql.Unsupported(
+                    "covariance and correlation are not yet supported on DataFusion; see #271"
+                )
             w = node.get("windowFunction")
             if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
                 # DataFusion spreads the larger buckets out (upstream/LEDGER.md).

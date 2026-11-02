@@ -69,6 +69,14 @@ CASES: list[Case] = [
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", V, lambda: t.aggregate(s=t.amount.std())),
+    case(
+        "aggregation",
+        "cov, corr",
+        V,
+        lambda: t.group_by("name").aggregate(
+            c=t.amount.cov(t.qty), r=t.amount.corr(t.qty, how="pop")
+        ),
+    ),
     case("aggregation", "collect", V, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
     case(
         "aggregation",
@@ -92,6 +100,8 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
+    # DuckDB only until the generated lowerings (#271).
+    "cov, corr": {"polars": "see #271", "snowflake": "see #271", "spark": "see #271"},
     "count, max, mean": NO_ROW_ORDER,
     "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
@@ -100,3 +110,9 @@ REFUSED: dict[str, dict[str, str]] = {
 }
 
 UNORDERED_LISTS = {"collect"}
+
+NO_DUCKDB_SQL = {
+    # CORR is NULL for fewer than two pairs or a flat side (the SQL standard);
+    # DuckDB's own CORR gives NaN there (#54).
+    "cov, corr": "DuckDB's CORR gives NaN where the reference gives NULL",
+}

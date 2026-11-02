@@ -300,6 +300,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
+  | .bin .pair _ _ => .other
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
   -- than the other one.
@@ -329,7 +330,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .sum => match m.arg.kind cols with
     | .dec p s => .dec (min 38 (p + 10)) s
     | _ => .int
-  | .fsum | .avg | .var _ _ => .float
+  | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
   | .iavg | .bit _ => .int
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
@@ -1175,6 +1176,7 @@ def mkCall : String → List Expr → J Expr
   | "cardinality", [a] => pure (.un .cardinality a)
   -- A shim's guards (#185), which `--write-duckdb` writes.
   | "sverify_raise", [a, .lit (.str msg)] => pure (.un (.raise msg) a)
+  | "sverify_pair", [a, b] => pure (.bin .pair a b)
   | "sverify_is_number", [a] => pure (.un .isNum a)
   | "gt", [a, b] => pure (.bin .lt b a)
   | "lte", [a, b] => pure (.un .not (.bin .lt b a))
@@ -1861,10 +1863,23 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | some i => throw s!"unsupported aggregate invocation: {i.compress}"
   let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols bits c : J Expr)
   let args ← (← arrD m "arguments").mapM fun a => field a "value"
+  -- Doubles, or integers converted to doubles, as a two-argument aggregate's.
+  let double (j : Json) : J Expr := do
+    let e ← parseExpr fns cols bits j
+    match e.kind cols with
+    | .float => pure e
+    | .int => pure (if doubleJ fns j then e else .un .itof e)
+    | k => throw s!"{name} of a value of kind {repr k} is not supported"
   let arg ← match args with
     | [a] => parseExpr fns cols bits a
+    | [a, b] =>
+      if ["covar_samp", "covar_pop", "corr"].contains name then
+        pure (.bin .pair (← double a) (← double b))
+      else throw s!"{name} takes one argument"
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
+  if ["covar_samp", "covar_pop", "corr"].contains name && !(arg matches .bin .pair _ _) then
+    throw s!"{name} takes two arguments"
   -- A double constant is its code, which `Expr.kind` calls an integer (#205).
   let k := if args.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
@@ -1914,6 +1929,10 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "variance", .float | "std_dev", .float | "variance", .int | "std_dev", .int =>
       let sample := optionPref "distribution" "SAMPLE" (← arrD m "options") != "POPULATION"
       pure (.var sample (name == "std_dev"), if k == .int then .un .itof arg else arg)
+    -- Of two doubles (#54); `arg` is their `pair`.
+    | "covar_samp", _ => pure (.cov true, arg)
+    | "covar_pop", _ => pure (.cov false, arg)
+    | "corr", _ => pure (.corr, arg)
     | n, _ => throw s!"unsupported aggregate function: {n}"
   if fn == .collect then
     if distinct then throw "array_agg(DISTINCT …) is not supported"
@@ -2063,7 +2082,8 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- sum of doubles then rounds differently from adding up the frame, an
       -- average of a frame that has become empty is NaN, and a `MIN` of one
       -- with only NULLs left is the last minimum.
-      if m.fn matches .var _ _ then throw s!"{n} over a window is not supported"
+      if m.fn matches .var _ _ || m.fn matches .cov _ || m.fn matches .corr then
+        throw s!"{n} over a window is not supported"
       if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
