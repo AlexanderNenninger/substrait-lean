@@ -1,0 +1,4397 @@
+{
+ "duckdb": "2.0.0",
+ "probes": [
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT + BIGINT",
+   "function": "add",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775806"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE + DOUBLE",
+   "function": "add",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT - BIGINT",
+   "function": "subtract",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775806"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE - DOUBLE",
+   "function": "subtract",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT * BIGINT",
+   "function": "multiply",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok 2"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE * DOUBLE",
+   "function": "multiply",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "-BIGINT",
+   "function": "negate",
+   "option": "overflow",
+   "rows": 11,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT // BIGINT",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "NULL": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT % BIGINT",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808, -1]",
+       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
+       "lean": "ok 0"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE / DOUBLE",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "IEEE": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 14,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok -inf",
+       "lean": "ok None"
+      }
+     ]
+    },
+    "LIMIT": {
+     "differ": 5,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE % DOUBLE",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 29,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 28,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "abs(BIGINT)",
+   "function": "abs",
+   "option": null,
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "power(DOUBLE, DOUBLE)",
+   "function": "power",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[-1.0, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0, 2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0, -2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "floor(DOUBLE)",
+   "function": "floor",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "ceil(DOUBLE)",
+   "function": "ceil",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE)",
+   "function": "round",
+   "option": "rounding",
+   "rows": 12,
+   "matching": [
+    "TIE_AWAY_FROM_ZERO"
+   ],
+   "candidates": {
+    "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "sqrt(DOUBLE)",
+   "function": "sqrt",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 3,
+     "examples": [
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "exp(DOUBLE)",
+   "function": "exp",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "ln(DOUBLE)",
+   "function": "ln",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "log10(DOUBLE)",
+   "function": "log10",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "log2(DOUBLE)",
+   "function": "log2",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "sin(DOUBLE)",
+   "function": "sin",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "cos(DOUBLE)",
+   "function": "cos",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "tan(DOUBLE)",
+   "function": "tan",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "asin(DOUBLE)",
+   "function": "asin",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[7.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "acos(DOUBLE)",
+   "function": "acos",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[7.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "atan(DOUBLE)",
+   "function": "atan",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "atan2(DOUBLE, DOUBLE)",
+   "function": "atan2",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok 0.0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT << BIGINT",
+   "function": "shift_left",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -1"
+      },
+      {
+       "row": "[-1, 1]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[-1, 2]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -4"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT >> BIGINT",
+   "function": "shift_right",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 50,
+     "examples": [
+      {
+       "row": "[0, -1]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -2]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -7]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT + BIGINT",
+   "function": "add",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775806"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE + DOUBLE",
+   "function": "add",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT - BIGINT",
+   "function": "subtract",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775806"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE - DOUBLE",
+   "function": "subtract",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT * BIGINT",
+   "function": "multiply",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok 2"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE * DOUBLE",
+   "function": "multiply",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "-BIGINT",
+   "function": "negate",
+   "option": "overflow",
+   "rows": 11,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT // BIGINT",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "NULL": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 // a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT % BIGINT",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808, -1]",
+       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
+       "lean": "ok 0"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE / DOUBLE",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    },
+    "IEEE": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok -inf"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      }
+     ]
+    },
+    "LIMIT": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 / a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok -inf"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE % DOUBLE",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 18,
+     "examples": [
+      {
+       "row": "[inf, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 29,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "error Invalid Input Error: Division by zero in expression (a0 % a1). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero.",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "abs(BIGINT)",
+   "function": "abs",
+   "option": null,
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "power(DOUBLE, DOUBLE)",
+   "function": "power",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 9,
+     "examples": [
+      {
+       "row": "[0.0, -1.0]",
+       "duckdb": "error Out of Range Error: zero raised to a negative power is undefined",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[0.0, -2.5]",
+       "duckdb": "error Out of Range Error: zero raised to a negative power is undefined",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "duckdb": "error Out of Range Error: zero raised to a negative power is undefined",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[-1.0, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "floor(DOUBLE)",
+   "function": "floor",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "ceil(DOUBLE)",
+   "function": "ceil",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE)",
+   "function": "round",
+   "option": "rounding",
+   "rows": 12,
+   "matching": [
+    "TIE_AWAY_FROM_ZERO"
+   ],
+   "candidates": {
+    "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "sqrt(DOUBLE)",
+   "function": "sqrt",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "exp(DOUBLE)",
+   "function": "exp",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "ln(DOUBLE)",
+   "function": "ln",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "log10(DOUBLE)",
+   "function": "log10",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "log2(DOUBLE)",
+   "function": "log2",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "sin(DOUBLE)",
+   "function": "sin",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "cos(DOUBLE)",
+   "function": "cos",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "tan(DOUBLE)",
+   "function": "tan",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "asin(DOUBLE)",
+   "function": "asin",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "acos(DOUBLE)",
+   "function": "acos",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "atan(DOUBLE)",
+   "function": "atan",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "atan2(DOUBLE, DOUBLE)",
+   "function": "atan2",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok 0.0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT << BIGINT",
+   "function": "shift_left",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -1"
+      },
+      {
+       "row": "[-1, 1]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[-1, 2]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -4"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT >> BIGINT",
+   "function": "shift_right",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 50,
+     "examples": [
+      {
+       "row": "[0, -1]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -2]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -7]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT + BIGINT",
+   "function": "add",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775806"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE + DOUBLE",
+   "function": "add",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT - BIGINT",
+   "function": "subtract",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775806"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE - DOUBLE",
+   "function": "subtract",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT * BIGINT",
+   "function": "multiply",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok 2"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE * DOUBLE",
+   "function": "multiply",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "-BIGINT",
+   "function": "negate",
+   "option": "overflow",
+   "rows": 11,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT // BIGINT",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [
+    "NULL"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT % BIGINT",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808, -1]",
+       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
+       "lean": "ok 0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE / DOUBLE",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "IEEE": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 14,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok inf",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok -inf",
+       "lean": "ok None"
+      }
+     ]
+    },
+    "LIMIT": {
+     "differ": 5,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "DOUBLE % DOUBLE",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 29,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 28,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "ok None"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "abs(BIGINT)",
+   "function": "abs",
+   "option": null,
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "power(DOUBLE, DOUBLE)",
+   "function": "power",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[-1.0, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0, 2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0, -2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "floor(DOUBLE)",
+   "function": "floor",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "ceil(DOUBLE)",
+   "function": "ceil",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE)",
+   "function": "round",
+   "option": "rounding",
+   "rows": 12,
+   "matching": [
+    "TIE_AWAY_FROM_ZERO"
+   ],
+   "candidates": {
+    "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "sqrt(DOUBLE)",
+   "function": "sqrt",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 3,
+     "examples": [
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "exp(DOUBLE)",
+   "function": "exp",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "ln(DOUBLE)",
+   "function": "ln",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "log10(DOUBLE)",
+   "function": "log10",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "log2(DOUBLE)",
+   "function": "log2",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0]",
+       "duckdb": "ok -inf",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "sin(DOUBLE)",
+   "function": "sin",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "cos(DOUBLE)",
+   "function": "cos",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "tan(DOUBLE)",
+   "function": "tan",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "asin(DOUBLE)",
+   "function": "asin",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[7.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "acos(DOUBLE)",
+   "function": "acos",
+   "option": null,
+   "rows": 12,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 6,
+     "examples": [
+      {
+       "row": "[2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[7.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[1e+308]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "atan(DOUBLE)",
+   "function": "atan",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "atan2(DOUBLE, DOUBLE)",
+   "function": "atan2",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok 0.0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT << BIGINT",
+   "function": "shift_left",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -1"
+      },
+      {
+       "row": "[-1, 1]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[-1, 2]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -4"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "BIGINT >> BIGINT",
+   "function": "shift_right",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 50,
+     "examples": [
+      {
+       "row": "[0, -1]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -2]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -7]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT + BIGINT",
+   "function": "add",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok 9223372036854775806"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[1, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-1 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (2 + 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in addition of INT64 (-2 + -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE + DOUBLE",
+   "function": "add",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT - BIGINT",
+   "function": "subtract",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok -9223372036854775806"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 16,
+     "examples": [
+      {
+       "row": "[0, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (0 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (1 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (2 - -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in subtraction of INT64 (-2 - 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE - DOUBLE",
+   "function": "subtract",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 2,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT * BIGINT",
+   "function": "multiply",
+   "option": "overflow",
+   "rows": 121,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok 0"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok 2"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 26,
+     "examples": [
+      {
+       "row": "[-1, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-1 * -9223372036854775808)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * 9223372036854775807)!",
+       "lean": "ok 9223372036854775807"
+      },
+      {
+       "row": "[2, -9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (2 * -9223372036854775808)!",
+       "lean": "ok -9223372036854775808"
+      },
+      {
+       "row": "[-2, 9223372036854775807]",
+       "duckdb": "error Out of Range Error: Overflow in multiplication of INT64 (-2 * 9223372036854775807)!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE * DOUBLE",
+   "function": "multiply",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 4,
+     "examples": [
+      {
+       "row": "[0.0, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, 0.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "-BIGINT",
+   "function": "negate",
+   "option": "overflow",
+   "rows": 11,
+   "matching": [
+    "ERROR"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 0,
+     "examples": []
+    },
+    "SILENT": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok -9223372036854775808"
+      }
+     ]
+    },
+    "SATURATE": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808]",
+       "duckdb": "error Out of Range Error: Overflow in negation of numeric value!",
+       "lean": "ok 9223372036854775807"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT // BIGINT",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [
+    "NULL"
+   ],
+   "candidates": {
+    "ERROR": {
+     "differ": 10,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT % BIGINT",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 11,
+     "examples": [
+      {
+       "row": "[0, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[2, 0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[-9223372036854775808, -1]",
+       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
+       "lean": "ok 0"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE / DOUBLE",
+   "function": "divide",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "IEEE": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok nan"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok -inf"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 5,
+     "examples": [
+      {
+       "row": "[inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-inf, -inf]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    },
+    "LIMIT": {
+     "differ": 15,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "ok -inf"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "DOUBLE % DOUBLE",
+   "function": "modulus",
+   "option": "on_division_by_zero",
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "ERROR": {
+     "differ": 29,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[0.5, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      },
+      {
+       "row": "[-1.0, 0.0]",
+       "duckdb": "ok None",
+       "lean": "error Substrait.Issue.divByZero"
+      }
+     ]
+    },
+    "NULL": {
+     "differ": 19,
+     "examples": [
+      {
+       "row": "[inf, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, -1.0]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[inf, 2.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "abs(BIGINT)",
+   "function": "abs",
+   "option": null,
+   "rows": 11,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "power(DOUBLE, DOUBLE)",
+   "function": "power",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 9,
+     "examples": [
+      {
+       "row": "[0.0, -1.0]",
+       "duckdb": "error Out of Range Error: zero raised to a negative power is undefined",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[0.0, -2.5]",
+       "duckdb": "error Out of Range Error: zero raised to a negative power is undefined",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[0.0, -inf]",
+       "duckdb": "error Out of Range Error: zero raised to a negative power is undefined",
+       "lean": "ok inf"
+      },
+      {
+       "row": "[-1.0, 0.5]",
+       "duckdb": "ok nan",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "floor(DOUBLE)",
+   "function": "floor",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "ceil(DOUBLE)",
+   "function": "ceil",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE)",
+   "function": "round",
+   "option": "rounding",
+   "rows": 12,
+   "matching": [
+    "TIE_AWAY_FROM_ZERO"
+   ],
+   "candidates": {
+    "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "sqrt(DOUBLE)",
+   "function": "sqrt",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "exp(DOUBLE)",
+   "function": "exp",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "ln(DOUBLE)",
+   "function": "ln",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "log10(DOUBLE)",
+   "function": "log10",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "log2(DOUBLE)",
+   "function": "log2",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "sin(DOUBLE)",
+   "function": "sin",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "cos(DOUBLE)",
+   "function": "cos",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "tan(DOUBLE)",
+   "function": "tan",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "asin(DOUBLE)",
+   "function": "asin",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "acos(DOUBLE)",
+   "function": "acos",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "atan(DOUBLE)",
+   "function": "atan",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "atan2(DOUBLE, DOUBLE)",
+   "function": "atan2",
+   "option": null,
+   "rows": 144,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 1,
+     "examples": [
+      {
+       "row": "[0.0, 0.0]",
+       "duckdb": "ok 0.0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT << BIGINT",
+   "function": "shift_left",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 25,
+     "examples": [
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[-1, 0]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -1"
+      },
+      {
+       "row": "[-1, 1]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -2"
+      },
+      {
+       "row": "[-1, 2]",
+       "duckdb": "error Out of Range Error: Cannot left-shift negative number -1",
+       "lean": "ok -4"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "BIGINT >> BIGINT",
+   "function": "shift_right",
+   "option": null,
+   "rows": 121,
+   "matching": [],
+   "candidates": {
+    "(none)": {
+     "differ": 50,
+     "examples": [
+      {
+       "row": "[0, -1]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -2]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, -7]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      },
+      {
+       "row": "[0, 9223372036854775807]",
+       "duckdb": "ok 0",
+       "lean": "error Substrait.Issue.domain"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

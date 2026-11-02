@@ -70,6 +70,7 @@ refused.
 | R12 | `fp32` computed as `fp64` | fixed (#208): `fp32` arithmetic refused until modelled | 5 |
 | R13 | `substring` with a negative start | fixed (#209): `WRAP_FROM_END` | 10 |
 | R14 | `-0.0` and `0.0` | decided: one zero; DuckDB shim | 2 |
+| R15 | functions probed on edge cases, per setting (#242) | the options DuckDB implements; the gaps listed | |
 | F1–F4 | frontends: DuckDB's SQL vs DataFusion's | not plan semantics | |
 | S1–S6 | sverify: written plans, producer, harness | sverify | 57 |
 
@@ -145,9 +146,11 @@ Evidence: `function/operator/test_division_by_zero.test`; fuzz:
   refuses `FLOOR`.
 - **Lean: no finding.** `verify` reports `division by zero` as an error.
   The remainder truncates (`Int.tmod`).
-- **DuckDB: native.** `%` raises on zero and truncates
+- **DuckDB: native, except `MIN % -1`.** `%` raises on zero and truncates
   (`-7 % 2 = -1`, `7 % -2 = 1`), as Lean does, so `division_type` makes no
-  difference between the two. If the reference picks `FLOOR`, DuckDB needs
+  difference between the two. But `MIN % -1` raises `Overflow in division`,
+  where the reference gives 0 (found by the probes, R15), so the SQL writes
+  that case out. If the reference picks `FLOOR`, DuckDB needs
   a shim, `x % y + CASE WHEN x % y <> 0 AND (x % y < 0) <> (y < 0) THEN y ELSE 0 END`.
   With `error_on_division_by_zero` off, the guard of R2.
 
@@ -203,10 +206,14 @@ Evidence: `function/numeric/decimal_mod.test:5,10,16`,
   NULL gives NULL, and a NaN dividend stays NaN. `inf / inf` raises a
   domain error under every mode (#257), as no operation creates a NaN; only
   `IEEE`'s `0 / 0`, which the plan asks for, is NaN.
-- **DuckDB: native,** under `error_on_division_by_zero = true`: `x / 0.0`
-  and `0.0 / 0.0` raise. With the setting off, DuckDB gives IEEE values, so
-  it needs the guard of R2. A plan that asks for `IEEE` needs the setting
-  off, or a shim; `NULL` and `LIMIT` need a `CASE`.
+- **DuckDB: IEEE, under its default settings** (corrected by the probes,
+  R15). `error_on_division_by_zero` is about integers; doubles follow
+  `ieee_floating_point_ops`, on by default, under which `x / 0.0` is `±inf`
+  and `0.0 / 0.0` NaN, whatever `error_on_division_by_zero` says. So the
+  reference default (`ERROR`) needs the guard of R2, and so does `IEEE`
+  where the dividend is infinite (`inf / inf` is NaN in DuckDB, a domain
+  error in the reference). With `ieee_floating_point_ops` off, a zero
+  divisor raises, which is the reference. `NULL` and `LIMIT` need a `CASE`.
 
 Evidence: `function/operator/test_division_by_zero.test:73,98,108,181,186`;
 fuzz: `fuzz__float_arith.json` (`d / d` with `d = 0.0`).
@@ -362,6 +369,40 @@ Evidence: `function/string/test_substring.test:129,207`, `types/string/test_unic
 
 Evidence: `order/…:28` (`SELECT v, 1.0 / v FROM zero_probe`).
 
+## R15. Functions probed on edge cases (#242)
+
+`python -m sverify_dev.probe` runs each function at each signature on edge
+cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN,
+NULL), one row at a time from columns, under every combination of
+`error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates
+the Substrait call on the same rows once per candidate value of its option
+(`substrait-check --outcomes`: the reference's value, or the error it
+raises), and the candidates whose outcomes all match are DuckDB's options.
+[probes.json](probes.json) holds the verdicts and, for each candidate, the
+rows that differ. No input is -0.0: the model has one zero (R14).
+
+| DuckDB | Substrait | Matches | Differs, under the default settings |
+|---|---|---|---|
+| `BIGINT + - *`, `-BIGINT` | `add` … `negate` | `overflow: ERROR` | |
+| `BIGINT // BIGINT` | `divide` | `on_division_by_zero: ERROR`; `NULL` with `error_on_division_by_zero` off | |
+| `BIGINT % BIGINT` | `modulus` | none | `MIN % -1` raises (R3) |
+| `abs`, `floor`, `ceil`, `exp`, `atan` | | the reference | |
+| `round(DOUBLE)` | `round` | `rounding: TIE_AWAY_FROM_ZERO` | |
+| `DOUBLE + - * /` | `add` … `divide` | none | operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (R5) |
+| `DOUBLE % DOUBLE` | `modulus` (`fmod`, R4) | none | NaN for a zero divisor or an infinite dividend |
+| `power`, `sqrt`, `ln`, `log10`, `log2`, `asin`, `acos`, `sin`, `cos`, `tan` | | none | NaN outside the domain, `-inf` for a logarithm of 0 |
+| `atan2(0, 0)` | `atan2` | none | 0, where the reference raises |
+| `BIGINT << BIGINT` | `shift_left` | none | raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`), where the reference drops the bits (and raises on such shifts) |
+| `BIGINT >> BIGINT` | `shift_right` | none | 0 for shifts below 0 or beyond 63 (`-5 >> 64` too), where the reference raises |
+
+With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and
+so do the elementary functions outside their domains (as the reference
+does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf`
+and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged.
+
+These rows are what `Profile.duckdb` is seeded from: today it differs from
+the reference only on division by zero.
+
 ## The DuckDB diff, as a table
 
 How a Substrait call is emitted for DuckDB 2.0.0 so that it gives the
@@ -377,11 +418,11 @@ means DuckDB's own operator, under its default settings.
 | `divide` (`i8`…`i64`) | `on_division_by_zero` | `ERROR` (default) | native; guard if `error_on_division_by_zero` is off |
 | | | `NULL` | shim: `CASE WHEN y = 0 THEN NULL` |
 | | `overflow` (`MIN / -1`) | `ERROR` (default) | native |
-| `modulus` (`i8`…`i64`) | zero divisor | `ERROR` (default) | native; guard if the setting is off |
+| `modulus` (`i8`…`i64`) | zero divisor | `ERROR` (default) | native, but `MIN % -1` raises (R15); guard if the setting is off |
 | | `division_type` | open | `TRUNCATE` native; `FLOOR` shim |
 | `modulus` (`fp64`) | zero divisor (none in Substrait) | `ERROR`, as on integers | guard; native on finite operands, NaN and ±inf written out |
-| `divide` (`fp64`) | `on_division_by_zero` | `ERROR` (default) | native; guard if the setting is off |
-| | | `IEEE` | the setting off, or a shim |
+| `divide` (`fp64`) | `on_division_by_zero` | `ERROR` (default) | guard (native with `ieee_floating_point_ops` off) |
+| | | `IEEE` | native, but `±inf / ±inf` is NaN (R15) |
 | | | `NULL`, `LIMIT` | shim |
 | `sum` (`i64`) | `overflow` | `ERROR` (default) | shim: `CAST(SUM(x) AS BIGINT)` |
 | | | `SILENT`, `SATURATE` | shim on the `HUGEINT` sum |
@@ -398,8 +439,8 @@ default setting, every default row is native, except integer `sum`, whose
 accumulator is wider than the reference's.
 
 DuckDB settings the diff depends on: `error_on_division_by_zero` (default
-true), `integer_division` (frontend only), `default_null_order` (frontend
-only).
+true, integers only), `ieee_floating_point_ops` (default true: doubles),
+`integer_division` (frontend only), `default_null_order` (frontend only).
 
 ## Frontends: DuckDB's SQL and DataFusion's
 
