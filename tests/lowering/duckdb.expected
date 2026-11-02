@@ -212,3 +212,4 @@ error_on_division_by_zero=on	BinFn.dsub	native
 error_on_division_by_zero=on	BinFn.dmul	native
 error_on_division_by_zero=on	BinFn.ddiv	native
 error_on_division_by_zero=on	BinFn.pair	native
+[exit 0]
