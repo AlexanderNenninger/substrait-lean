@@ -291,7 +291,7 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
-  | .fsum | .avg | .iavg | .collect => false
+  | .fsum | .avg | .iavg | .collect | .var _ _ => false
 
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f ≠ .collect := by
   rintro rfl; simp [decomposable] at h
@@ -331,6 +331,7 @@ theorem AggFn.apply_perm {f : AggFn} (hf : f.decomposable = true) {vs ws : List 
   · simp [decomposable] at hf
   · exact apply_minMax_perm (max := false) rfl h
   · exact apply_minMax_perm (max := true) rfl h
+  · simp [decomposable] at hf
   · simp [decomposable] at hf
   · simp [decomposable] at hf
 
@@ -431,6 +432,7 @@ theorem AggFn.combine_apply {f : AggFn} (hf : f.decomposable = true) {L : List (
   · simp [decomposable] at hf
   · exact minMax_combine (max := false) rfl hnn
   · exact minMax_combine (max := true) rfl hnn
+  · simp [decomposable] at hf
   · simp [decomposable] at hf
   · simp [decomposable] at hf
 

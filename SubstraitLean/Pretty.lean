@@ -63,6 +63,7 @@ def Expr.render : Expr → String
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg | .iavg => "AVG" | .min => "MIN" | .max => "MAX"
   | .collect => "ARRAY_AGG"
+  | .var sample sqrt => s!"{if sqrt then "STDDEV" else "VAR"}_{if sample then "SAMP" else "POP"}"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with

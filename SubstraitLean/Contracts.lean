@@ -3081,7 +3081,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  | .fsum | .avg => AVal.double
+  | .fsum | .avg | .var _ _ => AVal.double
   | .iavg => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
   | .collect => AVal.top
@@ -3363,6 +3363,14 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           rw [ha] at hb'; cases hb'; exact hm
   case fsum | avg | iavg =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+  case var sample sqrt =>
+    cases m.inputs grp with
+    | nil => rfl
+    | cons v vs =>
+      simp only [AggFn.apply, varOf]
+      split
+      · rfl
+      · exact ⟨_, rfl, Bound.mem_top _⟩
   case min | max =>
     have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
     rw [hf] at hmm

@@ -83,6 +83,11 @@ inductive AggFn where
   /-- `AVG` of integers with an integer result (Substrait's `avg` of `i64`,
   #209): the exact mean, truncated toward zero. It always fits. -/
   | iavg
+  /-- `VARIANCE` (`sqrt := false`) and `STDDEV` of doubles, of a sample
+  (`n - 1`) or a population (`n`), #54: the mean as `avg` computes it, then
+  the squares of the deviations from it added in list order, all with
+  native doubles. A sample of one value has none. -/
+  | var (sample sqrt : Bool)
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -126,6 +131,23 @@ def floatSum (vs : List Value) : Int :=
     | .int c => FloatCode.lift₂ (· + ·) acc c
     | _ => acc) (FloatCode.ofInt 0)
 
+/-- The squares of the deviations of the doubles among `vs` from `m`, added
+in list order from `+0.0`. -/
+def sqDevSum (m : Int) (vs : List Value) : Int :=
+  vs.foldl (fun acc v => match v with
+    | .int c =>
+      let d := FloatCode.lift₂ (· - ·) c m
+      FloatCode.lift₂ (· + ·) acc (FloatCode.lift₂ (· * ·) d d)
+    | _ => acc) (FloatCode.ofInt 0)
+
+/-- `AggFn.var` of the doubles `vs` (at least one). -/
+def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
+  if sample && vs.length == 1 then .null else
+    let m := FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length)
+    let v := FloatCode.lift₂ (· / ·) (sqDevSum m vs)
+      (FloatCode.ofInt (if sample then vs.length - 1 else vs.length))
+    .int (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v)
+
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
@@ -137,6 +159,7 @@ def AggFn.apply : AggFn → List Value → Value
   | .fsum, vs => .int (floatSum vs)
   | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
   | .iavg, vs => .int ((intSum vs).tdiv vs.length)
+  | .var sample sqrt, vs => varOf sample sqrt vs
   | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
   | .collect, vs => .list vs
