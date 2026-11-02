@@ -1327,6 +1327,28 @@ def _oneof(what: str, j: dict, keys: Sequence[str]) -> tuple[str, Any]:
     raise Unsupported(f"unsupported {what}: {_short(j)}")
 
 
+def _float_lit(e: Expr) -> float | None:
+    """The value of a double constant that is a number (not NaN or `±inf`)."""
+    if isinstance(e, Lit) and isinstance(e.value, float) and math.isfinite(e.value):
+        return e.value
+    return None
+
+
+def _nan_ruled_out(op: str, a: Expr, b: Expr) -> bool:
+    """Does a constant operand rule out `nan_case` (#257)?"""
+    fa, fb = _float_lit(a), _float_lit(b)
+    match op:
+        case "fadd" | "fsub" | "fdiv":
+            return fa is not None or fb is not None
+        case "fmul":
+            return bool(fa) or bool(fb)
+        case "fmod":
+            return fa is not None
+        case "fpow":
+            return (fb is not None and fb.is_integer()) or (fa is not None and fa >= 0)
+    return False
+
+
 def _base_name(name: str) -> str:
     return name.split(":")[0]
 
@@ -3712,7 +3734,8 @@ class _Writer:
                 sql = sql if op in ("fadd", "fsub") else d.canon(sql)
                 if not d.guards:
                     return sql
-                sql = self.domain(sa, self.nan_case(op, sa, sb), sql)
+                if not _nan_ruled_out(op, a, b):
+                    sql = self.domain(sa, self.nan_case(op, sa, sb), sql)
                 if op != "fdiv":
                     return sql
                 # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
