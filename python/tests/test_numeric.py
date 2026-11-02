@@ -32,6 +32,7 @@ from sverify.engine import (
 )
 from sverify.errors import VerificationError
 from sverify.ibis_substrait import to_substrait_json
+from sverify.sql_lift import lift
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_values
 
 R = ibis.schema({"a": "int64", "b": "int64"})
@@ -312,3 +313,27 @@ def test_preconditions_prove_a_divisor_non_zero(label, requires, expr):
 def test_preconditions_that_leave_zero_possible(label, requires, expr):
     report = sv.verify(expr, requires={"d": requires})
     assert "division by zero" in [i.kind for i in report.issues], label
+
+
+# #334: `MIN // -1` does not fit the declared width: DuckDB raises at every
+# width, so `verify` reports an overflow and the written plan raises too.
+@pytest.mark.parametrize(
+    ("ty", "dtype", "lo"),
+    [
+        ("TINYINT", "int8", -(2**7)),
+        ("SMALLINT", "int16", -(2**15)),
+        ("INTEGER", "int32", -(2**31)),
+        ("BIGINT", "int64", -(2**63)),
+    ],
+)
+def test_division_overflow_is_reported_at_every_width(ty, dtype, lo):
+    sql = f"SELECT ({lo})::{ty} // (-1)::{ty} AS x"
+    with pytest.raises(duckdb.Error):
+        duckdb.connect().execute(sql).fetchall()
+    assert "overflow" in [i.kind for i in sv.verify(sql).issues]
+    schema = ibis.schema({"a": dtype, "b": dtype})
+    con = connect()
+    create_table(con, "t", schema, [(lo, -1)])
+    plan = written_plan(json.dumps(lift("SELECT a // b AS x FROM t", {"t": schema}, "duckdb").plan))
+    with pytest.raises(Exception, match="(?i)out of range|overflow"):
+        run_plan(con, plan, "duckdb")
