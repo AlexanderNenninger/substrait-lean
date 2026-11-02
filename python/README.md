@@ -166,9 +166,9 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is planned by DataFusion
-(`pip install 'sverify[datafusion]'`), or by Isthmus without it. Isthmus is
-planned to become the only SQL frontend, with DataFusion an execution
-backend only ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
+(`pip install 'sverify[datafusion]'`). sverify's own SQLGlot frontend is
+planned to replace it, with DataFusion an execution backend only
+([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
 
 ## Workflows
 
@@ -246,11 +246,6 @@ the coverage table, the full guide, and what is proved and what is trusted.
 
 * `SVERIFY_CHECK`: path to a `substrait-check` binary to use instead of the
   bundled one, for example your own `lake build`.
-* `SVERIFY_ISTHMUS`: path to an [Isthmus](https://github.com/substrait-io/substrait-java/releases)
-  binary (otherwise `isthmus` on `PATH`), to compile SQL strings without
-  DataFusion; `sv.connect(sql_producer="isthmus")` picks it, and it is the
-  default when DataFusion is not installed. sverify doesn't ship it (~120 MB);
-  `scripts/fetch_isthmus.sh <dir>` downloads the pinned release.
 * DataFusion is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.
 

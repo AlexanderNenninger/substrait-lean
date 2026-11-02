@@ -173,8 +173,8 @@ test_doubles_are_big()
   break unless `requires` has a key on the partition and order columns
   (`sv.unique("device_id", "ts")`); without it every postcondition is
   undetermined and `report.deterministic` is False.
-* **SQL strings need a SQL producer:** the `datafusion` extra, or an Isthmus
-  binary (`SVERIFY_ISTHMUS`). Ibis expressions need neither.
+* **SQL strings need a SQL producer:** the `datafusion` extra. Ibis
+  expressions don't.
 * **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
 * **Incremental maintenance** covers filters, projections, inner and cross

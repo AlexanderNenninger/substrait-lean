@@ -12,7 +12,7 @@ public name (`sql`) is re-exported by `sverify`.
 
 The query reads each input by its keyword name. It becomes one relation of
 the Ibis expression (`ibis_substrait.SQLModel`), whose plan is the SQL
-producer's plan (DataFusion's, or Isthmus's without DataFusion) with each
+producer's plan (DataFusion's) with each
 input's plan spliced in where the query reads it. So a SQL model composes
 with Ibis transforms on either side, fuses with them, and is checked like
 any other plan; it needs no backend, so it works on the placeholder tables
@@ -63,8 +63,8 @@ def sql(query: str, /, *, as_: str | None = None, **tables: ir.Table) -> ir.Tabl
     tables, as an Ibis table: the body of a transform written in SQL, which
     reads each table by its keyword name.
 
-    Either way, the schema and plan come from DataFusion's SQL producer, or
-    Isthmus's without DataFusion (`pip install 'sverify[datafusion]'`), and
+    Either way, the schema and plan come from DataFusion's SQL producer
+    (`pip install 'sverify[datafusion]'`), and
     every table the query reads must be an input, so the plan is closed and
     checked.
 

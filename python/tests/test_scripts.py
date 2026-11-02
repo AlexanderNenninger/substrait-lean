@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-MANUAL = ["bench_optimizations", "capture_fixtures", "isthmus_catalogue"]
+MANUAL = ["bench_optimizations", "capture_fixtures"]
 
 #: The Wheels workflow runs these tests with only `python/tests` copied out.
 pytestmark = pytest.mark.skipif(not SCRIPTS.is_dir(), reason="the repository is not here")
