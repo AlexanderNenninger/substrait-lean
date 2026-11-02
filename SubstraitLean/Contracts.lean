@@ -596,6 +596,7 @@ def UnFn.abs : UnFn → AVal → AVal
       ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
   | .ftod _, a => partialAbs false a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
+  | .widen, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
   | .length, a | .ascii, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
   -- `NULL` when the pattern does not match.

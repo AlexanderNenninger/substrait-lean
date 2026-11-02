@@ -983,6 +983,9 @@ class Exprs:
         target = c.get("type", {})
         if ("fp64" in target or "fp32" in target) and v.dtype in (pl.Int64, pl.Null):
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
+        if "fp64" in target and v.dtype in (pl.Float64, pl.Float32):
+            # `UnFn.widen`: a FLOAT as a DOUBLE, exactly (#208).
+            return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
         if "i64" in target and v.dtype == pl.Float64:
             return ftoi(v)
         if (bits := next((n for n in (8, 16, 32) if f"i{n}" in target), None)) and v.dtype in (

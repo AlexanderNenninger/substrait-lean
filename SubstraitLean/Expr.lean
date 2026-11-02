@@ -58,6 +58,9 @@ inductive UnFn where
   | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
+  /-- `CAST(x AS DOUBLE)` of a `FLOAT` (fp32): the same value, which a double
+  holds exactly; it marks where a 32-bit double becomes a 64-bit one (#208). -/
+  | widen
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
   | upper | lower | length
   /-- `reverse(s)` and `ascii(s)` (the first code point, `0` for `''`). -/
@@ -253,6 +256,7 @@ def UnFn.apply : UnFn → Value → Value
   | .narrow n, .int i => if fitsBits n i then .int i else .null
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
+  | .widen, v => v
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)
   | .length, .str s => .int s.length

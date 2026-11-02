@@ -268,6 +268,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .ftoi _ | .un (.narrow _) _ => .int
   | .un (.wrap _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _ => .str
+  | .un .widen _ => .float
   | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
@@ -460,6 +461,8 @@ def intBits (ty : Json) : Nat :=
   if (ty.getObjVal? "i8").toOption.isSome then 8
   else if (ty.getObjVal? "i16").toOption.isSome then 16
   else if (ty.getObjVal? "i32").toOption.isSome then 32
+  -- A `FLOAT` is a 32-bit double: arithmetic on it is refused (#208).
+  else if (ty.getObjVal? "fp32").toOption.isSome then 32
   else 64
 
 /-! ## Integer widths
@@ -533,9 +536,13 @@ def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
 
 /-- The width of an argument: a literal's own type, or the expression's. -/
 def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
-  match field? j "literal" with
-  | some l => if (field? l "null").isSome then 8 else intBits l
-  | none => e.bits cols
+  match field? j "literal", field? j "cast" with
+  | some l, _ => if (field? l "null").isSome then 8 else intBits l
+  -- A cast has its target's width (`CAST(x AS DOUBLE)` of a `FLOAT` is 64).
+  | none, some c => match field? c "type" with
+    | some ty => if typeKind ty == .float then intBits ty else e.bits cols
+    | none => e.bits cols
+  | none, none => e.bits cols
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -547,7 +554,8 @@ def castConst (ty : Json) (c : Const) : J Const := do
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
-    return .flt f
+    -- To a `FLOAT`: the nearest single-precision value (#208).
+    return .flt (if (ty.getObjVal? "fp32").toOption.isSome then f.toFloat32.toFloat else f)
   | .int =>
     let some i := c.toInt? | throw "cannot cast this value to an integer"
     let bits := intBits ty
@@ -685,12 +693,16 @@ def parseConstLiteral (j : Json) : J Const := do
     return .str s
   | ("null", _) => return .null
   | ("fp32", n) | ("fp64", n) =>
-    match n with
-    | .num x => return .flt (floatOfScientific x.mantissa x.exponent)
-    | .str s => match (Const.str s).toFloat? with
-      | some f => return .flt f
-      | none => throw s!"cannot parse double {s}"
-    | _ => throw "malformed floating-point literal"
+    -- An `fp32` literal is the single-precision value its digits round to,
+    -- which a double holds exactly (#208).
+    let single := (field? j "fp32").isSome
+    let f ← match n with
+      | .num x => pure (floatOfScientific x.mantissa x.exponent)
+      | .str s => match (Const.str s).toFloat? with
+        | some f => pure f
+        | none => throw s!"cannot parse double {s}"
+      | _ => throw "malformed floating-point literal"
+    return .flt (if single then f.toFloat32.toFloat else f)
   | ("decimal", d) =>
     let some bytes := Base64.decode (← (← field d "value").getStr?)
       | throw "malformed decimal literal"
@@ -1642,6 +1654,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if baseName name == "power" then
       if let [_, Expr.lit (.int 0)] := args then
         return .lit (.int (if floatCall then FloatCode.ofFloat 1.0 else 1))
+    -- Arithmetic on `FLOAT`s rounds to 32 bits, which is not modelled
+    -- (#208); on their conversion to `DOUBLE` it is exact.
+    if floatCall && ((outTy.getObjVal? "fp32").toOption.isSome ||
+        (argJs.zip parsed).any fun (j, e) =>
+          (e.kind cols == .float || doubleJ fns j) && argBits bits j e == 32) then
+      throw s!"{baseName name} of FLOAT (fp32) values is not modelled; cast them to DOUBLE first"
     if floatCall then
       let args := (argJs.zip args).zipIdx.map fun ((j, e), k) =>
         if e.kind cols == .int && !keepInt k && !(e matches .lit _) && !doubleJ fns j then
@@ -1730,10 +1748,17 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let ty ← field c "type"
     if k == .time && ["intervalDayToSecond", "intervalCompound"].any
         fun t => (ty.getObjVal? t).toOption.isSome then return e
+    -- A cast to `FLOAT` rounds to 32 bits (#208): only one from a `FLOAT`,
+    -- which changes nothing.
+    if (ty.getObjVal? "fp32").toOption.isSome then
+      if k == .float && argBits bits input e == 32 then return e
+      throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
     if target == .int && k == .float then return .un .ftoi e
     if target == .str && k == .int then return .un .itos e
+    -- `FLOAT` to `DOUBLE`: exact, but kept, so that the written plan widens too.
+    if target == .float && k == .float && argBits bits input e == 32 then return .un .widen e
     if target == .date && k == .time then return .un .toDate e
     if target == .tod && k == .time then return .un .timeOfDay e
     -- Microseconds since 1970-01-01 (arrow's cast of an integer).
