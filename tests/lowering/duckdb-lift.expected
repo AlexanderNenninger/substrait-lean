@@ -343,7 +343,7 @@
              "directReference": {"structField": {"field": 0}}}}}]}}}}}},
    "semantics": "duckdb",
    "result": "fp64",
-   "construct": "log10(DOUBLE)",
+   "construct": "log(DOUBLE)",
    "args": ["fp64"]},
   {"template":
    {"ifThen":
@@ -1209,7 +1209,7 @@
          "directReference": {"structField": {"field": 0}}}}}]}},
    "semantics": "reference",
    "result": "fp64",
-   "construct": "log10(DOUBLE)",
+   "construct": "log(DOUBLE)",
    "args": ["fp64"]},
   {"template":
    {"scalarFunction":
