@@ -67,7 +67,7 @@ refused.
 | R9 | `cast` of a double or decimal to an integer: rounding | decided: truncate; DuckDB shim | 28 |
 | R10 | `cast` between `date` and `timestamp` literals | fixed (#206) | 60 |
 | R11 | `lt`/`gt`/… on lists | fixed (#207): lexicographic; DuckDB shim | 22 |
-| R12 | `fp32` computed as `fp64` | deviation (width) | 5 |
+| R12 | `fp32` computed as `fp64` | fixed (#208): `fp32` arithmetic refused until modelled | 5 |
 | R13 | `substring` with a negative start | fixed (#209): `WRAP_FROM_END` | 10 |
 | R14 | `-0.0` and `0.0` | decided: one zero; DuckDB shim | 2 |
 | F1–F4 | frontends: DuckDB's SQL vs DataFusion's | not plan semantics | |
@@ -310,8 +310,14 @@ Evidence: `types/list/list_comparison.test:136-186`,
 ## R12. `fp32`
 
 - **Substrait:** `fp32` and `fp64` are distinct types with their own impls.
-- **Lean:** one double kind, so `2e38::FLOAT / 0.1` is `2e39`. A
-  **deviation** of width (principle 3).
+- **Lean:** one double kind, so `2e38::FLOAT / 0.1` was `2e39`. A
+  **deviation** of width (principle 3). **Fixed (#208)** by refusing what
+  is not modelled: arithmetic on `FLOAT` values (`+ - * /`, `sqrt`, …) and
+  casts to `FLOAT` round to 32 bits, so they are refused ("cast them to
+  DOUBLE first"). Reading a `FLOAT`, comparing it, and widening it to
+  `DOUBLE` (`UnFn.widen`) are exact, as is a `FLOAT` literal, which is the
+  single-precision value of its digits. Modelling binary32 arithmetic is
+  left for later.
 - **DuckDB (native):** `FLOAT` is 32 bits: `inf`, and `1e308::FLOAT` fails
   to convert.
 
