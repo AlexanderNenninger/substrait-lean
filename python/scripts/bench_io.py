@@ -4,19 +4,20 @@
         [--dir path] [--timeout seconds]
 
 Per format and size: a table of `rows` orders, written in files of at most
-5·10⁶ rows by a setup process. A fresh process then times, on DuckDB:
+5·10⁶ rows by a setup process. A fresh process per view then times, on DuckDB:
 
 * `read`: the source loaded into a pipeline (`Pipeline.source`);
-* `full`: a view over it computed from scratch (`orders` with an amount,
-  projected: as large as its input);
+* `full`: the view computed from scratch;
 * `sink`: the view written to a new Delta table (`DeltaSink`);
 * `incremental`: a refresh after 1% of the rows were appended and 1% deleted
   (a contiguous range of ids, so one file is rewritten);
 * `merge`: the sink written again, as a MERGE of the change.
 
-Prints each phase's time and the process's peak memory (`ru_maxrss`) after
-it. The tables are left in `--dir` (default: a temporary directory, deleted
-at the end).
+The views are `filter` (orders with an amount, projected: as large as its
+input) and `by_customer` (amounts summed per customer: 10⁴ rows). Prints
+each phase's time and the process's peak memory (`ru_maxrss`) after it.
+The tables are left in `--dir` (default: a temporary directory, deleted at
+the end).
 """
 
 import multiprocessing as mp
@@ -31,6 +32,7 @@ import numpy as np
 import pyarrow as pa
 
 FILE_ROWS = 5_000_000
+VIEWS = ("filter", "by_customer")
 CUSTOMERS = 10_000
 
 
@@ -102,7 +104,7 @@ def peak_mb() -> float:
     return rss / 1024 / (1024 if sys.platform == "darwin" else 1)
 
 
-def measure(fmt: str, root: Path, n: int, out: mp.Queue) -> None:
+def measure(fmt: str, view_kind: str, root: Path, n: int, out: mp.Queue) -> None:
     import sverify as sv
     from sverify.incremental import Pipeline
     from sverify.io import DeltaSink, DeltaSource, IcebergSource
@@ -122,9 +124,12 @@ def measure(fmt: str, root: Path, n: int, out: mp.Queue) -> None:
         src = IcebergSource(catalog(root), "db.orders")
     pipe = Pipeline(sv.connect())
     o = timed("read", lambda: pipe.source("orders", src))
-    query = o.filter(o.amount.notnull()).select(o.id, o.customer, double=o.amount * 2)
+    if view_kind == "filter":
+        query = o.filter(o.amount.notnull()).select(o.id, o.customer, double=o.amount * 2)
+    else:
+        query = o.group_by("customer").aggregate(total=o.amount.sum(), n=o.id.count())
     view = timed("full", lambda: pipe.view("v", query))
-    sink = DeltaSink(str(root / "sink"))
+    sink = DeltaSink(str(root / f"sink-{view_kind}"))
     sink._attach(view)
     timed("sink", sink._commit)
     mutate(fmt, root, n)
@@ -164,27 +169,27 @@ def main(argv: list[str]) -> None:
     try:
         for n in sizes:
             for fmt in formats.split(","):
-                root = top / f"{fmt}-{n}"
-                shutil.rmtree(root, ignore_errors=True)
-                root.mkdir(parents=True)
-                t = time.perf_counter()
-                err = run(ctx, setup, (fmt, root, n), float(timeout))
-                if err is not None:
-                    print(f"{fmt:8} {n:>11} rows: setup {err}", flush=True)
-                    continue
-                print(f"{fmt:8} {n:>11} rows: setup {time.perf_counter() - t:7.1f} s", flush=True)
-                result = run(ctx, measure, (fmt, root, n), float(timeout))
-                if result is None or isinstance(result, str):
-                    print(f"{fmt:8} {n:>11} rows: {result}", flush=True)
-                else:
-                    for name, secs, mb in result:
-                        print(
-                            f"{fmt:8} {n:>11} rows: {name:12} {secs * 1000:9.0f} ms,"
-                            f" peak {mb:7.0f} MB",
-                            flush=True,
-                        )
-                if not base:
+                for view in VIEWS:
+                    # A table per view: `mutate` changes it.
+                    label = f"{fmt:8} {view:11} {n:>11} rows:"
+                    root = top / f"{fmt}-{n}-{view}"
                     shutil.rmtree(root, ignore_errors=True)
+                    root.mkdir(parents=True)
+                    t = time.perf_counter()
+                    err = run(ctx, setup, (fmt, root, n), float(timeout))
+                    if err is not None:
+                        print(f"{label} setup {err}", flush=True)
+                        continue
+                    print(f"{label} setup {time.perf_counter() - t:9.1f} s", flush=True)
+                    result = run(ctx, measure, (fmt, view, root, n), float(timeout))
+                    if result is None or isinstance(result, str):
+                        print(f"{label} {result}", flush=True)
+                    else:
+                        for name, secs, mb in result:
+                            print(f"{label} {name:12} {secs * 1000:9.0f} ms, peak {mb:7.0f} MB")
+                        sys.stdout.flush()
+                    if not base:
+                        shutil.rmtree(root, ignore_errors=True)
     finally:
         if not base:
             shutil.rmtree(top, ignore_errors=True)
