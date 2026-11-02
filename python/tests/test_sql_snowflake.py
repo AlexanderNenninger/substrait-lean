@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal
 from pathlib import Path
 
+import ibis
 import pytest
 import sqlglot
 
@@ -283,7 +284,8 @@ def test_identifiers_are_quoted():
     con = sv.connect()
     create_tables(con)
     sql = to_sql(
-        json.loads(substrait_json(con, sv.engine.to_sql(PIPELINES["inner_join"]))), SNOWFLAKE
+        json.loads(substrait_json(con, ibis.to_sql(PIPELINES["inner_join"], dialect="duckdb"))),
+        SNOWFLAKE,
     )
     assert '"orders"' in sql
     assert re.search(r'(?<!")\borders\b(?!")', sql) is None

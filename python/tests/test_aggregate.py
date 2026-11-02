@@ -5,8 +5,8 @@
   `DISTINCT` and `FILTER (WHERE …)` measures, and `HAVING`.
 * Polars and DuckDB, which run the plan Lean writes, give Lean's rows, with
   doubles added in Lean's list order, so the same bits.
-* Integer `SUM` wraps around in DataFusion's own SQL, so it comes with a
-  warning; the engines running the plan raise instead.
+* Integer `SUM` may overflow, so it comes with a warning; the engines
+  running the plan raise instead.
 * The grouping columns are a key of the result, and contracts see through
   `COUNT`, `MIN`/`MAX` and the sign of a `SUM`.
 """
@@ -210,12 +210,9 @@ def test_min_and_max_of_doubles_are_refused():
         sv.verify(readings.group_by("k").aggregate(m=readings.x.min()))
 
 
-@pytest.mark.backend("datafusion")
-def test_integer_sum_wraps_around_in_datafusion():
-    # 2⁶³ - 1 + 1 wraps to -2⁶³ in DataFusion; Lean's sum is exact, so the
-    # checker warns.
-    rows = [(2**63 - 1, None, None), (1, None, None)]
-    assert datafusion_rows("SELECT SUM(a) FROM t", T, rows) == [(-(2**63),)]
+def test_integer_sum_overflow_is_a_warning():
+    # Lean's sum is exact, so the checker warns of an overflow at run time
+    # (DataFusion's wrap-around is pinned in test_datafusion_quirks.py).
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
     assert [str(i) for i in report.issues] == ["SUM overflow: $2"]
     assert report.proved  # checked while the job runs, not against the proof (#202)

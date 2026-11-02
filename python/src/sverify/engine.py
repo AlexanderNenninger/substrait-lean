@@ -33,7 +33,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import sqlglot as sg
 from google.protobuf import json_format
-from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
 from sverify.ibis_substrait import to_substrait_json
@@ -45,46 +44,6 @@ ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
 `"polars"` and `"datafusion"`. Loop over it to run a plan on each, as the
 tests do. `sverify.engines.run` also takes `"spark"` or a Spark session."""
 
-_literal = DataFusionCompiler.visit_NonNullLiteral
-
-
-def _subsecond_literal(self: Any, op: Any, *, value: Any, dtype: Any) -> Any:
-    """Ibis refuses sub-second interval literals for DataFusion, which has
-    supported them for a long time (`INTERVAL '10 milliseconds'`); sensor
-    data at 100 Hz needs them."""
-    if dtype.is_interval() and dtype.unit.short in ("ms", "us", "ns"):
-        return sg.exp.Interval(
-            this=sg.exp.convert(str(value)), unit=sg.exp.var(dtype.unit.plural.lower())
-        )
-    return _literal(self, op, value=value, dtype=dtype)
-
-
-DataFusionCompiler.visit_NonNullLiteral = _subsecond_literal
-
-_floor_divide = DataFusionCompiler.visit_FloorDivide
-
-
-def _int_floor_divide(self: Any, op: Any, *, left: Any, right: Any) -> Any:
-    """Ibis compiles integer `a // b` as `CAST(FLOOR(CAST(a AS DOUBLE) / b) AS
-    BIGINT)`, which is inexact beyond 2^53 and can't be proved safe (the cast
-    of an unbounded double). Floor division in integers instead:
-    `a / b - 1` when the truncating quotient is inexact and the signs differ."""
-    if not (op.left.dtype.is_integer() and op.right.dtype.is_integer()):
-        return _floor_divide(self, op, left=left, right=right)
-    e = sg.exp
-    zero = e.Literal.number(0)
-    quot = e.Div(this=left.copy(), expression=right.copy(), typed=True)
-    inexact = e.NEQ(this=e.Mod(this=left.copy(), expression=right.copy()), expression=zero)
-    signs = e.NEQ(
-        this=e.paren(e.LT(this=left.copy(), expression=zero)),
-        expression=e.paren(e.LT(this=right.copy(), expression=zero)),
-    )
-    down = e.Sub(this=quot.copy(), expression=e.Literal.number(1))
-    return e.Case(ifs=[e.If(this=e.and_(inexact, signs), true=down)], default=quot)
-
-
-DataFusionCompiler.visit_FloorDivide = _int_floor_divide
-
 
 def _datafusion() -> Any:
     """The `datafusion` module, or an error saying how to install it."""
@@ -94,7 +53,7 @@ def _datafusion() -> Any:
     except ImportError as e:
         raise ImportError(
             "this needs DataFusion: pip install 'sverify[datafusion]' "
-            "(it runs plans with engine='datafusion' and compiles SQL strings)"
+            "(it runs plans with engine='datafusion')"
         ) from e
     return datafusion
 
@@ -270,11 +229,6 @@ def connection_of(table: ir.Table) -> Connection | None:
     return getattr(backend, "_sverify_connection", None)
 
 
-def to_sql(expr: ir.Table) -> str:
-    """Ibis's own DataFusion SQL for an expression (needs no DataFusion)."""
-    return ibis.to_sql(expr, dialect="datafusion")
-
-
 def plan_json(con: Connection, query: ir.Table | str) -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
@@ -306,7 +260,6 @@ def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
         Unsupported: The query is outside what the lift reads (a
             `ValueError`), saying what.
     """
-    import sqlglot as sg
 
     from sverify.sql_lift import lift
 

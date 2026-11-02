@@ -111,6 +111,8 @@ REFUSED: dict[str, dict[str, str]] = {
 
 UNORDERED_LISTS = {"collect"}
 
+APPROXIMATE = {"std", "cov, corr"}
+
 NO_DUCKDB_SQL = {
     # CORR is NULL for fewer than two pairs or a flat side (the SQL standard);
     # DuckDB's own CORR gives NaN there (#54).

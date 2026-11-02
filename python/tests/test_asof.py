@@ -11,7 +11,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, substrait_json, to_sql
+from sverify.engine import connect, create_table, substrait_json
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
 
 INT_SCHEMA = {"device": "int64", "ts": "int64"}
@@ -77,7 +77,9 @@ def test_asof_join_matches_reference(how, left, right):
 def test_lean_semantics_of_asof_match_duckdb(how, left, right):
     con = connect()
     acc, gyr = tables(con, left, right)
-    sql = to_sql(sv.asof_join(acc, gyr, on="ts", by="device", tolerance=3, how=how))
+    sql = ibis.to_sql(
+        sv.asof_join(acc, gyr, on="ts", by="device", tolerance=3, how=how), dialect="duckdb"
+    )
     expected = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"acc": left, "gyr": right})
     lean = lean_rows(json.dumps(plan))

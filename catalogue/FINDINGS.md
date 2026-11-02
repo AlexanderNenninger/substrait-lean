@@ -264,21 +264,21 @@ semi-structured data.
 <!-- stats:start -->
 ### Status per suite
 
-| suite | queries | verified | as DOUBLE only | rejected | upstream | DataFusion runs | Polars | DuckDB | Snowflake SQL |
+| suite | queries | verified | as DOUBLE only | rejected | upstream | DuckDB runs the SQL | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 6 | 0 | 1 | 0 | 7 | 6 | 6 | 6 |
-| finance | 18 | 14 | 0 | 4 | 0 | 17 | 3 | 12 | 3 |
-| h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
+| finance | 18 | 14 | 0 | 4 | 0 | 16 | 3 | 13 | 3 |
+| h2o | 10 | 8 | 0 | 2 | 0 | 9 | 8 | 8 | 6 |
 | iot | 12 | 10 | 0 | 2 | 0 | 12 | 10 | 10 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 10 | 0 | 4 | 0 | 13 | 10 | 10 | 9 |
-| product | 13 | 10 | 0 | 3 | 0 | 12 | 9 | 9 | 9 |
+| modelling | 14 | 10 | 0 | 4 | 0 | 14 | 10 | 10 | 9 |
+| product | 13 | 10 | 0 | 3 | 0 | 13 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 13 | 0 | 2 | 0 | 13 | 13 | 13 | 9 |
+| timeseries | 15 | 13 | 0 | 2 | 0 | 15 | 13 | 13 | 9 |
 | tpcds | 8 | 6 | 0 | 2 | 0 | 8 | 0 | 6 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 117 | 0 | 22 | 0 | 134 | 77 | 114 | 68 |
+| **all** | 139 | 117 | 0 | 22 | 0 | 136 | 77 | 115 | 68 |
 
 ### Feature frequency
 
@@ -410,7 +410,6 @@ Over the 117 queries that verify (some only as DOUBLE):
 | polars: error: divide by zero (1 row(s)) | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 2 |
-| duckdb: differs | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency

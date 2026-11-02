@@ -4,8 +4,8 @@ The expected values follow the reference's rules (decided on #27, from how
 DuckDB, Polars, Spark and DataFusion compute decimals): `+`, `-` and `×` are
 exact; a smaller scale rounds half away from zero; to an integer truncates
 toward zero; `AVG` is a `DECIMAL(p + 4, s + 4)` rounded half away from zero;
-a double becomes `round(x · 10ˢ)` computed in doubles. DataFusion only writes
-the plans.
+a double becomes `round(x · 10ˢ)` computed in doubles. The lift writes the
+plans of the SQL here.
 """
 
 import json
@@ -19,8 +19,6 @@ import sverify as sv
 from sverify.engine import connect, put_table, run_checker, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
-
-pytestmark = pytest.mark.backend("datafusion")
 
 TABLES = {
     "t": pa.table(
@@ -201,3 +199,18 @@ def test_a_not_in_subquery_next_to_decimals_is_written(con):
     got = sorted(r["i"] for r in run_plan(con, written, "duckdb").to_pylist())
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {**ROWS, "u": [(3,)]})))
     assert got == sorted(r[0] for r in lean) == [-7, 0, 2]
+
+
+def test_report_shows_decimals_at_their_scale():
+    """A decimal's bound is shown in its digits, with its type, not as its
+    unscaled integer (#250, TPC-H Q6's `revenue`)."""
+    li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
+    sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
+    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li))
+    assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
+    assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
+    t = ibis.table({"a": "decimal(10,2)"}, name="t")
+    # Ibis types `a + a` at `a`'s precision; the model's exact sum needs one more.
+    assert sv.verify(t.select(b=t.a + t.a)).facts["b"] == (
+        "a decimal(11, 2) in [-199999999.98, 199999999.98] or NULL"
+    )

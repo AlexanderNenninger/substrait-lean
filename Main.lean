@@ -27,6 +27,9 @@ plan for DataFusion to run, compensating for where its semantics differ
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
 natively, or the generated template (`SubstraitLean/LoweringDuckDB.lean`).
 
+`substrait-check --lift-table`: print, as JSON, what each DuckDB SQL function
+lifts to under each semantics, generated and proved (`SubstraitLean/LiftDuckDB.lean`).
+
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
 
@@ -62,17 +65,6 @@ def delta (plan : Plan) : IO UInt32 := do
   for term in terms do
     IO.println (Write.writeDeltaPlan plan term).compress
   return 0
-
-/-- `i · 10⁻ˢ` in decimal digits (`decimalString 2 (-5)` is `-0.05`). -/
-def decimalString (s : Nat) (i : Int) : String :=
-  if s = 0 then toString i else
-    let digits := (toString i.natAbs).toList
-    let digits := List.replicate (s + 1 - digits.length) '0' ++ digits
-    let k := digits.length - s
-    (if i < 0 then "-" else "") ++ String.ofList (digits.take k) ++ "." ++ String.ofList (digits.drop k)
-
-#guard decimalString 2 (-5) == "-0.05" && decimalString 2 1234 == "12.34" && decimalString 0 7 == "7"
-#guard decimalString 3 1000 == "1.000" && decimalString 1 0 == "0.0"
 
 /-- A result value, printed by its column's kind: integers (unbounded in the
 model, so `MAX + 1` is a value) exactly, doubles as doubles. A column of
@@ -209,6 +201,10 @@ partial def serve : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
+  | ["--lift-table"] => do
+    -- What DuckDB SQL lifts to, generated and proved (#268).
+    IO.println Lift.tableJson.pretty
+    return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB, per setting (#241); a golden test.
     for (setting, cov) in [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)] do
@@ -223,5 +219,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage | --lift-table"
     return 1

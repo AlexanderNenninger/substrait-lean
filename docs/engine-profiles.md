@@ -113,6 +113,23 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   considered and not used: it proves equalities rather than finding terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 
+* **The lift is generated too** (#268): the lowering search run backwards.
+  `SubstraitLean/DuckDBSQL.lean` states what DuckDB's SQL functions mean
+  (`DuckFn`, at one signature each) under `semantics="duckdb"` and
+  `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
+  `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
+  DuckDB gives them. It is trusted, like a profile, and tested against the
+  engine (oracle A, #242). `generate_lift` (`SubstraitLean/LiftSearch.lean`)
+  searches Substrait calls (a function, its arguments as they are or cast,
+  every assignment of the options the parser accepts) and calls under one or
+  two guards with constants, reads each with the parser itself, tests it on
+  samples and proves the first that agrees, for every argument of the
+  function's types. `substrait-check --lift-table` prints the table as JSON
+  (golden: `tests/lowering/duckdb-lift.expected`) for `sverify.sql_lift` to
+  read. A DuckDB function without an entry fails the build. The parser is
+  `partial`, so its reading of an entry is computed at build time rather than
+  proved.
+
 For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdb_faithful` shows that DuckDB's profile agrees with the
 reference wherever the reference does not raise, so guard elimination
