@@ -45,10 +45,27 @@ from sverify.ibis_substrait import Unsupported as ProducerRefused
 
 
 @overload
-def sql(query: str, /, *, as_: str | None = None) -> SQLStep: ...
+def sql(
+    query: str,
+    /,
+    *,
+    as_: str | None = None,
+    dialect: str | None = None,
+    semantics: str | None = None,
+) -> SQLStep: ...
 @overload
-def sql(query: str, /, **tables: ir.Table) -> ir.Table: ...
-def sql(query: str, /, *, as_: str | None = None, **tables: ir.Table) -> ir.Table | SQLStep:
+def sql(
+    query: str, /, *, dialect: str | None = None, semantics: str | None = None, **tables: ir.Table
+) -> ir.Table: ...
+def sql(
+    query: str,
+    /,
+    *,
+    as_: str | None = None,
+    dialect: str | None = None,
+    semantics: str | None = None,
+    **tables: ir.Table,
+) -> ir.Table | SQLStep:
     """SQL as a step of `Node.pipe`, or as the body of a transform.
 
     Without tables, `sql(query)` is a step: a transform whose inputs are the
@@ -63,15 +80,28 @@ def sql(query: str, /, *, as_: str | None = None, **tables: ir.Table) -> ir.Tabl
     tables, as an Ibis table: the body of a transform written in SQL, which
     reads each table by its keyword name.
 
-    Either way, the schema and plan come from DataFusion's SQL producer
-    (`pip install 'sverify[datafusion]'`), and
-    every table the query reads must be an input, so the plan is closed and
-    checked.
+    Either way, every table the query reads must be an input, so the plan
+    is closed and checked. Without a `dialect`, the schema and plan come
+    from DataFusion's SQL producer (`pip install 'sverify[datafusion]'`).
+    With `dialect="duckdb"`, the
+    query is DuckDB's SQL, and sverify's own lift (SQLGlot, #239) plans it,
+    with every choice DuckDB's SQL leaves implicit written into the plan:
+    `semantics="duckdb"` (the default) means what DuckDB computes, and
+    `semantics="reference"` means what sverify's reference model computes
+    where the two differ (a double divided by zero raises instead of giving
+    `inf`; a cast of a double to an integer truncates instead of
+    rounding). The lift reads a subset of DuckDB's SQL so far (SELECT,
+    WHERE, joins, GROUP BY with `count`/`sum`/`avg`/`min`/`max`, ORDER BY,
+    LIMIT, CASE, CAST and arithmetic), and refuses the rest, saying what.
 
     Args:
         query: The SQL query.
         as_: For a step: the table the chained node is, checked against the
             one table the keyword inputs of `pipe` leave over. Default None.
+        dialect: The query's SQL dialect: None (DataFusion's, the default)
+            or `"duckdb"`.
+        semantics: With `dialect="duckdb"`: `"duckdb"` (the default) or
+            `"reference"`.
         **tables: For the body of a transform: the Ibis tables the query
             reads, by name.
 
@@ -84,6 +114,8 @@ def sql(query: str, /, *, as_: str | None = None, **tables: ir.Table) -> ir.Tabl
             its inputs); or the query cannot be parsed.
         TypeError: A table is a node or a source (pipe a step instead), or
             `as_` is given with tables or is not a table the query reads.
+        ValueError: `dialect` or `semantics` is not one sverify knows, or
+            `semantics` is given without a dialect.
             In `pipe`: a table of the query has no input, the chained node
             is left unused, a keyword is not a table the query reads, or
             `as_` is not the table left over.
@@ -104,8 +136,9 @@ def sql(query: str, /, *, as_: str | None = None, **tables: ir.Table) -> ir.Tabl
     from sverify.nodes import Node, is_source
     from sverify.sql import Unsupported
 
+    semantics = _semantics(dialect, semantics)
     if not tables:
-        return SQLStep(query, as_)
+        return SQLStep(query, as_, dialect, semantics)
     if as_ is not None:
         raise TypeError(
             "sverify.sql: as_ names the chained node of a step, sql(query, as_=...), "
@@ -121,24 +154,48 @@ def sql(query: str, /, *, as_: str | None = None, **tables: ir.Table) -> ir.Tabl
         if not isinstance(t, ir.Table):
             raise TypeError(f"sverify.sql: {name} is not a table: {t!r}")
     names = tuple(tables)
+    schemas = {n: t.schema() for n, t in tables.items()}
     try:
-        schema = sql_model_schema(query, {n: t.schema() for n, t in tables.items()})
+        if dialect is None:
+            schema = sql_model_schema(query, schemas)
+        else:
+            from sverify.sql_lift import lift
+
+            schema = lift(query, schemas, semantics or dialect).schema
     except ProducerRefused as e:
         raise Unsupported(str(e)) from e
     inputs: Any = tuple(t.op() for t in tables.values())
-    expr = SQLModel(query, inputs, names, schema).to_expr()
+    expr = SQLModel(query, inputs, names, schema, dialect, semantics).to_expr()
     _check(expr)
     return expr
 
 
-def query_tables(query: str) -> list[str]:
+def _semantics(dialect: str | None, semantics: str | None) -> str | None:
+    """`semantics` checked against `dialect`, with its default."""
+    if dialect is None:
+        if semantics is not None:
+            raise ValueError(
+                "sverify.sql: semantics= needs a dialect: sql(query, dialect='duckdb', "
+                f"semantics={semantics!r})"
+            )
+        return None
+    if dialect != "duckdb":
+        raise ValueError(f"sverify.sql: dialect must be 'duckdb' (or None), not {dialect!r}")
+    if semantics not in (None, "duckdb", "reference"):
+        raise ValueError(
+            f"sverify.sql: semantics must be 'duckdb' or 'reference', not {semantics!r}"
+        )
+    return semantics or "duckdb"
+
+
+def query_tables(query: str, dialect: str | None = None) -> list[str]:
     """The tables `query` reads, in the order it first names them: not its
-    CTEs, and each once. Unquoted names are lower-cased, as DataFusion
-    reads them."""
+    CTEs, and each once. Unquoted names are lower-cased, as DataFusion and
+    DuckDB read them."""
     from sverify.sql import Unsupported
 
     try:
-        tree = sg.parse_one(query)
+        tree = sg.parse_one(query, read=dialect)
     except sg.errors.ParseError as e:
         raise Unsupported(f"cannot parse the SQL: {str(e).splitlines()[0]}") from e
     ctes = {c.alias_or_name for c in tree.find_all(sg.exp.CTE)}
@@ -166,11 +223,20 @@ class SQLStep(ContractedTransform):
         query: The SQL query.
         tables: The tables the query reads, in the order it names them.
         as_: The table the chained node is, or None.
+        dialect: The query's dialect (None: DataFusion's), as `sql`'s.
+        semantics: With a dialect, `"duckdb"` or `"reference"`, as `sql`'s.
     """
 
-    def __init__(self, query: str, as_: str | None = None):
+    def __init__(
+        self,
+        query: str,
+        as_: str | None = None,
+        dialect: str | None = None,
+        semantics: str | None = None,
+    ):
         self.query, self.as_ = query, as_
-        self.tables = query_tables(query)
+        self.dialect, self.semantics = dialect, _semantics(dialect, semantics)
+        self.tables = query_tables(query, dialect)
         if not self.tables:
             raise TypeError("sverify.sql: the query reads no table, so a step has no input")
         if as_ is not None and as_ not in self.tables:
@@ -180,7 +246,7 @@ class SQLStep(ContractedTransform):
             )
 
         def body(**inputs: ir.Table) -> ir.Table:
-            return sql(query, **inputs)
+            return sql(query, dialect=dialect, semantics=self.semantics, **inputs)
 
         body.__name__ = body.__qualname__ = "sql"
         try:
@@ -232,10 +298,10 @@ def _check(expr: ir.Table) -> None:
         raise Unsupported(f"Lean refuses the SQL: {lines[-1].removeprefix('error: ')}")
 
 
-def _visit_sql_model(self, op, *, query, inputs, names, schema):  # noqa: ANN001, ANN202
+def _visit_sql_model(self, op, *, query, inputs, names, schema, dialect, semantics):  # noqa: ANN001, ANN202, ARG001
     # The query with each input as a CTE of its name: Ibis's SQL for the
     # expression, which contracts use to tell expressions apart.
-    out: Any = sg.parse_one(query, read=self.dialect)
+    out: Any = sg.parse_one(query, read=dialect or self.dialect)
     for name, rel in zip(names, inputs, strict=True):
         if isinstance(rel, sg.exp.Subquery):
             rel = rel.this

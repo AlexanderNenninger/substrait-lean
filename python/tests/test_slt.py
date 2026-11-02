@@ -224,6 +224,21 @@ def test_replay(replayed):
     assert (last.cls, last.reason) == ("skipped", "setting integer_division")
 
 
+def test_replay_through_the_lift(tmp_path):
+    # `--frontend lift`: DuckDB's SQL as it is, through `sverify.sql_lift`.
+    path = tmp_path / "x.test"
+    path.write_text(TEST_FILE)
+    results, skip = slt.replay_file(path, "area/x.test", "lift")
+    assert skip is None
+    assert _result(results, "SELECT i + 1").cls == "agree"
+    div = _result(results, "SELECT i // 0")
+    assert (div.cls, div.side) == ("disagree", "lean")
+    assert div.reason.startswith("verify: division by zero")
+    assert _result(results, "SELECT list_value").reason.startswith("lift: ")
+    # The lift reads DuckDB's default NULL order only.
+    assert _result(results, "SELECT i FROM t ORDER BY i").reason == "setting default_null_order"
+
+
 def test_ledger(replayed, tmp_path):
     rows = [slt.asdict(r) for r in replayed]
     path = slt.write_ledger("area", "2.0.0", rows, {"area/y.test": "require json"}, tmp_path)

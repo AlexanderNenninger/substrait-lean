@@ -449,6 +449,16 @@ c2 = orders.pipe(
 large = orders.pipe(lambda t: t.filter(_.amount > 20))
 ```
 
+SQL is DataFusion's dialect by default. With `dialect="duckdb"`, sverify reads
+DuckDB's SQL with its own lift (SQLGlot, #239) and writes every choice DuckDB's
+SQL leaves implicit into the plan: `/` divides as doubles, NULLs sort last, an
+integer literal has the narrowest type that holds it. `semantics="duckdb"`
+(the default) means what DuckDB computes; `semantics="reference"` means what
+sverify's reference computes where they differ, so a double divided by zero
+raises instead of giving `inf`. The lift reads a subset so far (SELECT, WHERE,
+joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
+saying what.
+
 A node without delta rules (left join, aggregate, window, `DISTINCT`,
 `LIMIT`) is recomputed and diffed instead, and `status()` says so. Contracted
 nodes keep their guarantees in every state: their preconditions on the
