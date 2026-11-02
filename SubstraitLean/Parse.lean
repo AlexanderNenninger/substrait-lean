@@ -267,7 +267,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ => .int
   | .un (.wrap _) a => a.kind cols
-  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _ => .str
+  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
+  | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
   | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
@@ -837,7 +838,8 @@ def stringFns : List (String × List Nat) :=
    ("str_concat", []), ("concat", []), ("strpos", []), ("starts_with", []), ("ends_with", []),
    ("like", []), ("substring", [1, 2]), ("btrim", []), ("ltrim", []), ("rtrim", []),
    ("reverse", []), ("ascii", []), ("replace", []), ("repeat", [1]), ("ilike", []),
-   ("levenshtein", [])]
+   ("levenshtein", []), ("regexp_extract", [2]), ("regexp_replace", []), ("md5", []),
+   ("sha256", [])]
 
 /-- Functions on booleans. -/
 def booleanFns : List String := ["and", "or", "not", "xor"]
@@ -1152,6 +1154,18 @@ def divByZero (mode : String) (float : Bool) (div : Expr → Expr → Expr) (a b
   .ifThen (.un .not (.bin .eq b (lit 0))) (div a b)
     (.ifThen (.un .isNull b) (.lit .null) (.ifThen (.un .isNull a) (.lit .null) byZero))
 
+/-- `e`, a regular expression function of the constant pattern `p`, if
+`p` is in the supported subset (`Text.simpleRegex`). -/
+def simpleRegex (p : String) (e : Expr) : J Expr :=
+  if Text.simpleRegex p then pure e
+  else throw s!"the regular expression {p.quote} is outside the supported subset"
+
+/-- `regexp_replace(a, p, r)`, if RE2 accepts the replacement `r` for `p`. -/
+def replacement (p r : String) (global : Bool) (a : Expr) : J Expr :=
+  if Text.simpleRegex p && !Text.rewriteOk (Text.regexGroups p) r.toList then
+    throw s!"the replacement {r.quote} of regexp_replace is invalid for {p.quote}"
+  else simpleRegex p (.un (.regexReplace p r global) a)
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -1247,6 +1261,20 @@ def mkCall : String → List Expr → J Expr
   | "ilike", [_, _, _] => throw "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
   | "levenshtein", [a, b] => pure (.bin .levenshtein a b)
   | "regexp_match", _ => throw "regexp_match is only supported as array_length(regexp_match(s, p))"
+  -- A constant pattern in `Text.simpleRegex`, which DuckDB checks when it
+  -- plans the query (#50).
+  | "regexp_extract", [a, .lit (.str p)] => simpleRegex p (.un (.regexExtract p 0) a)
+  | "regexp_extract", [a, .lit (.str p), .lit (.int g)] =>
+    if g < 0 then throw "regexp_extract needs a group number of at least 0"
+    else simpleRegex p (.un (.regexExtract p g.toNat) a)
+  | "regexp_extract", _ => throw "regexp_extract needs a constant pattern and group"
+  | "regexp_replace", [a, .lit (.str p), .lit (.str r)] => replacement p r false a
+  | "regexp_replace", [a, .lit (.str p), .lit (.str r), .lit (.str "g")] => replacement p r true a
+  | "regexp_replace", [_, .lit (.str _), .lit (.str _), .lit (.str fl)] =>
+    throw s!"regexp_replace with the flags '{fl}' is not supported (only 'g')"
+  | "regexp_replace", _ => throw "regexp_replace needs a constant pattern and replacement"
+  | "md5", [a] => pure (.un .md5 a)
+  | "sha256", [a] => pure (.un .sha256 a)
   -- Timestamps (`SubstraitLean/Time.lean`).
   | "date_part", [.lit (.str p), a] | "datepart", [.lit (.str p), a] =>
     match Time.DatePart.ofName? p with

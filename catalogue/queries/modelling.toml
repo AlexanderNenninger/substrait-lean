@@ -115,7 +115,7 @@ ibis = '''
 oi = order_items
 key = (
     oi.order_id.cast("string").fill_null("_null_") + "-" + oi.product_id.cast("string").fill_null("_null_")
-).hash()
+).hexdigest("md5")
 q = oi.mutate(item_key=key)
 '''
 

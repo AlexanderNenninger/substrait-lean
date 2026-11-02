@@ -884,6 +884,8 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
+            if name in ("regexp_extract", "regexp_replace", "md5", "sha256"):
+                raise Unsupported(f"{name} is not yet supported on Polars; see #271")
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name == "round" and len(arg_js) == 2:

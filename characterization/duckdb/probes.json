@@ -1170,6 +1170,367 @@
   {
    "settings": {
     "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '(a*)*', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '\\b(\\w)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, 'x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '.$', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '(b)', 3)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "md5(VARCHAR)",
+   "function": "md5",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "sha256(VARCHAR)",
+   "function": "sha256",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
     "ieee_floating_point_ops": false
    },
    "construct": "BIGINT + BIGINT",
@@ -2194,6 +2555,367 @@
        "lean": "error Substrait.Issue.domain"
       }
      ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '(a*)*', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '\\b(\\w)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, 'x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '.$', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '(b)', 3)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "md5(VARCHAR)",
+   "function": "md5",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "sha256(VARCHAR)",
+   "function": "sha256",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
     }
    }
   },
@@ -3366,6 +4088,367 @@
   {
    "settings": {
     "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '(a*)*', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '\\b(\\w)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, 'x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '.$', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_extract(VARCHAR, '(b)', 3)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "md5(VARCHAR)",
+   "function": "md5",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "sha256(VARCHAR)",
+   "function": "sha256",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
     "ieee_floating_point_ops": false
    },
    "construct": "BIGINT + BIGINT",
@@ -4390,6 +5473,367 @@
        "lean": "error Substrait.Issue.domain"
       }
      ]
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '(a*)*', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '\\b(\\w)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, 'x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '.$', 0)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_extract(VARCHAR, '(b)', 3)",
+   "function": "regexp_extract",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'a+', '<\\0>', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, 'b*', '-', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '(a)|(b)', '[\\2\\1]', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '\\b', '|', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "regexp_replace(VARCHAR, '$', '!', 'g')",
+   "function": "regexp_replace",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "md5(VARCHAR)",
+   "function": "md5",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "sha256(VARCHAR)",
+   "function": "sha256",
+   "option": null,
+   "rows": 9,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
     }
    }
   }

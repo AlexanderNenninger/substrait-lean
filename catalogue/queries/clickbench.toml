@@ -133,6 +133,15 @@ q = (
     .limit(25)
 )
 '''
+requires = '''
+{'hits': []}
+'''
+ensures = '''
+[
+    _.c >= 2,
+    sv.unique('k'),
+]
+'''
 
 [[query]]
 id = "clickbench-q37"

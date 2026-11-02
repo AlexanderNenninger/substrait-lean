@@ -761,11 +761,14 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   computed exactly, checked against DuckDB (and Rust's string functions, as
   DataFusion computes them) by `python/tests/test_text.py`; a
   `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
-  `ILIKE` and regular expressions are black boxes (`opaque`): no proof depends on what
-  they compute, and Lean's evaluator handles only ASCII case and no regular
-  expressions. `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error unless
-  `Text.simpleRegex` accepts it, a conservative subset of Rust's syntax that is
-  tested to compile.
+  `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
+  depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
+  regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
+  where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
+  `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
+  (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
+  `Text.simpleRegex` accepts it, a conservative subset of Rust's and RE2's syntax that is
+  tested to compile in both.
 * Elementary functions follow Substrait, with errors outside their domains.
   `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
   `atan2` are computed with C's libm ([Numeric.lean](../SubstraitLean/Numeric.lean)), and

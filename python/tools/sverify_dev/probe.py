@@ -48,8 +48,16 @@ DOUBLES: list[float | None] = [
 #: The DuckDB settings probed (all combinations): `Profile.duckdb`'s parameters.
 SETTINGS = {"error_on_division_by_zero": (True, False), "ieee_floating_point_ops": (True, False)}
 
+#: ASCII only: on other text, `\\d`, `\\w`, `\\s` and `\\b` are each engine's own,
+#: and Lean does not evaluate them (`Text.classesDiffer`).
+STRINGS: list[str | None] = ["", "a", "ab", "abc", "aaa", "a\nb", "xay", "say hi_2", None]
+
 #: Ibis's and DuckDB's names of the probed types.
-TYPES = {"int64": ("BIGINT", INTS), "float64": ("DOUBLE", DOUBLES)}
+TYPES = {
+    "int64": ("BIGINT", INTS),
+    "float64": ("DOUBLE", DOUBLES),
+    "string": ("VARCHAR", STRINGS),
+}
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,9 @@ class Probe:
     candidates: tuple[str, ...] = ()
     fixed: dict[str, str] = field(default_factory=dict)
     """Options every candidate carries."""
+    constants: tuple[tuple[Any, str], ...] = ()
+    """Constant arguments after the columns, with their Ibis types: in
+    `construct` as the placeholders after the columns'."""
 
 
 def _arith(sym: str, name: str) -> list[Probe]:
@@ -106,6 +117,22 @@ PROBES: list[Probe] = [
     Probe("atan2({0}, {1})", "atan2", ("float64", "float64"), "float64"),
     Probe("{0} << {1}", "shift_left", ("int64", "int64"), "int64"),
     Probe("{0} >> {1}", "shift_right", ("int64", "int64"), "int64"),
+    # Regular expressions with a constant pattern (#50).
+    *(
+        Probe("regexp_extract({0}, {1}, {2})", "regexp_extract", ("string",), "string",
+              constants=((p, "string"), (g, "int64")))
+        for p, g in [("^(a+)(b)?", 2), ("(a|ab)(c|bcd)?", 0), ("(a*)*", 1), ("\\b(\\w)", 1),
+                     ("x(?:a)(y)", 1), (".$", 0), ("(b)", 3)]
+    ),
+    *(
+        Probe(f"regexp_replace({{0}}, {{1}}, {{2}}{flags})", "regexp_replace", ("string",),
+              "string", constants=((p, "string"), (r, "string"), *extra))
+        for p, r in [("a+", "<\\0>"), ("b*", "-"), ("(a)|(b)", "[\\2\\1]"), ("\\b", "|"),
+                     ("$", "!")]
+        for flags, extra in [("", ()), (", {3}", (("g", "string"),))]
+    ),
+    Probe("md5({0})", "md5", ("string",), "string"),
+    Probe("sha256({0})", "sha256", ("string",), "string"),
 ]  # fmt: skip
 
 
@@ -124,7 +151,15 @@ def _sql_literal(v: Any, t: str) -> str:
     name = TYPES[t][0]
     if v is None:
         return f"CAST(NULL AS {name})"
+    if isinstance(v, str):
+        return _sql_constant(v)
     return f"CAST('{v!r}' AS {name})"
+
+
+def _sql_constant(v: Any) -> str:
+    """A constant argument as DuckDB's literal (`regexp_extract` takes its
+    group as an INTEGER literal, not a BIGINT)."""
+    return "'" + v.replace("'", "''") + "'" if isinstance(v, str) else str(v)
 
 
 Outcome = tuple[str, Any]
@@ -137,7 +172,8 @@ def duckdb_outcome(con: Any, p: Probe, row: Sequence[Any]) -> Outcome:
     cols = ", ".join(
         f"{_sql_literal(v, t)} AS a{i}" for i, (v, t) in enumerate(zip(row, p.args, strict=True))
     )
-    sql = p.construct.format(*(f"a{i}" for i in range(len(p.args))))
+    consts = [_sql_constant(v) for v, _ in p.constants]
+    sql = p.construct.format(*(f"a{i}" for i in range(len(p.args))), *consts)
     try:
         ((v,),) = con.execute(f"SELECT {sql} FROM (SELECT {cols})").fetchall()
     except duckdb.Error as e:
@@ -154,7 +190,8 @@ def _plan(p: Probe, rows: Sequence[Sequence[Any]], option: str | None) -> str:
             schema,
             [[pj.literal(v, ibis.dtype(t)) for v, t in zip(r, p.args, strict=True)] for r in rows],
         )
-        e = pj.call(p.function, [pj.field_ref(i) for i in range(len(p.args))])
+        consts = [pj.literal(v, ibis.dtype(t)) for v, t in p.constants]
+        e = pj.call(p.function, [pj.field_ref(i) for i in range(len(p.args))] + consts)
         opts = dict(p.fixed)
         if p.option is not None and option is not None:
             opts[p.option] = option
@@ -208,7 +245,9 @@ def run_probe(con: Any, p: Probe) -> Json:
         tried[cand or "(none)"] = {"differ": len(diff), "examples": diff[:4]}
     matching = [c for c, t in tried.items() if t["differ"] == 0]
     return {
-        "construct": p.construct.format(*(TYPES[t][0] for t in p.args)),
+        "construct": p.construct.format(
+            *(TYPES[t][0] for t in p.args), *(_sql_constant(v) for v, _ in p.constants)
+        ),
         "function": p.function,
         "option": p.option,
         "rows": len(rows),
