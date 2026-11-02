@@ -1,17 +1,12 @@
-### What DuckDB SQL lifts to is generated and proved
+### The SQL lift reads Lean's generated DuckDB lift table
 
-The Lean build now generates, for DuckDB's `/` (of integers and of doubles),
-`%` of doubles, `log`, `sign`, `greatest` and `least` (which skip NULLs) and
-casts between BIGINT and DOUBLE, and the aggregate `avg` of BIGINTs, the Substrait expression each lifts to under
-`semantics="duckdb"` and `"reference"`, and proves it means what DuckDB's
-function means (`SubstraitLean/DuckDBSQL.lean`, `LiftSearch.lean`). With
-DuckDB's semantics, `±∞` and NaN results are stated exactly, as guarded
-constants: `log(0)` is `-∞`, `x % 0.0` is NaN. `substrait-check --lift-table`
-prints the table as JSON, for the SQL lift to read; a function the model
-cannot state is listed as refused, with the reason (DuckDB's `CAST` of a double
-to an integer rounds half to even)
-([#268](https://github.com/AlexanderNenninger/substrait-lean/issues/268)).
+With `semantics="duckdb"`, the SQL lift now writes what Lean's generated lift table says for each construct it covers (#268): `/`, `%` of doubles, `log`, `sign`, `greatest` and `least`, casts between BIGINT and DOUBLE, and `avg` of integers. Lean generates each entry and proves it means what DuckDB computes. `substrait-check --lift-table` exports the table, and the lift reads it from the checker sverify ships with.
 
-DuckDB's `avg` of integers sums them exactly before dividing; with DuckDB's
-semantics it now lifts to `CAST(sum(x) AS DOUBLE) / count(x)`, proved equal,
-where Substrait's `avg` of doubles would round as it sums (values beyond 2⁵³).
+The entries state NaN and ±inf exactly, as DuckDB computes them, instead of refusing them or raising:
+- `%` of doubles is no longer refused: by zero, or of an infinity, it is NaN.
+- `log(0)` is `-inf`, and `log` of a negative is NaN.
+- `inf / inf` is NaN.
+
+A contract that NaN or an infinity would break fails to prove, and one they can't break still proves. `avg` of integers is the exact sum divided by the count, in doubles, as DuckDB computes it.
+
+The other constructs keep their hand-written rules until their entries are generated. The reference semantics is unchanged.
