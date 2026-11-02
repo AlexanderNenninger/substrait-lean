@@ -216,3 +216,40 @@ def missing(table: pa.Table | Native, change: pa.Table) -> pa.Table:
     )
     rows = rows_of(deletes).take(out.column(_ROW))
     return rows.append_column(WEIGHT, out.column(WEIGHT).cast(pa.int64()))
+
+
+def _same_rows(keys: Sequence[str], a: str, b: str) -> str:
+    """SQL: rows `a` and `b` are equal as the model compares them, for
+    tables with canonical doubles (NULLs equal, one NaN, one zero; lists and
+    structs by their elements)."""
+    if not keys:
+        return "TRUE"
+    return " AND ".join(f"{a}.{_q(c)} IS NOT DISTINCT FROM {b}.{_q(c)}" for c in keys)
+
+
+def matching(z: pa.Table | Native, rows: pa.Table) -> pa.Table:
+    """The rows of the weighted table `z` equal to some row of `rows` (a
+    table with `z`'s row columns, and maybe a weight), with their weights."""
+    keys = [c for c in z.schema.names if c != WEIGHT]
+    same = _same_rows(keys, "z", "r")
+    out = _sql(f"SELECT * FROM z WHERE EXISTS (SELECT 1 FROM r WHERE {same})", z=z, r=rows)
+    return out.cast(z.schema)
+
+
+def weights_in(z: pa.Table | Native, rows: pa.Table) -> pa.Array:
+    """The weight in the weighted table `z` of each row of `rows` (a table
+    with `z`'s row columns, and maybe a weight), 0 where `z` lacks it."""
+    if rows.num_rows == 0:
+        return pa.array([], pa.int64())
+    keys = [c for c in z.schema.names if c != WEIGHT]
+    indexed = pa.Table.from_arrays(
+        [*(rows.column(c) for c in keys), _indices(rows.num_rows)], names=[*keys, _ROW]
+    )
+    same = _same_rows(keys, "z", "r")
+    out = _sql(
+        f"SELECT r.{_q(_ROW)}, coalesce(sum(z.{_q(WEIGHT)}), 0) AS w FROM r "
+        f"LEFT JOIN z ON {same} GROUP BY r.{_q(_ROW)} ORDER BY 1",
+        z=z,
+        r=indexed,
+    )
+    return out.column("w").combine_chunks().cast(pa.int64())

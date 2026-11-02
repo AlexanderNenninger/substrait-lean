@@ -179,8 +179,18 @@ one plan Lean checks: the union of two weighted tables, grouped by every
 column, with the weights summed and the groups of weight 0 left out
 (`sverify._state.Merger`). Each engine's lowering groups rows as the model
 compares them, so the merge gives the same state on every engine
-(`python/tests/test_state.py` runs it on each). A sink's change between two
-states is the same plan on the new state and the negated old one.
+(`python/tests/test_state.py` runs it on each).
+
+On DuckDB, a refresh changes a view's state in place, at the cost of the
+change (`DuckDBStore.apply`). It looks up the state rows equal to a row of
+the change (a null-safe equality join on the canonical values), adds the
+change to them with the merge plan, and replaces them, for every view in one
+DuckDB transaction, so a failed commit changes no view. The state still
+holds each row once with its weight. A view whose new contents are read
+before the commit, by a view recomputed on the new tables or by the audit,
+is merged in full. Each view keeps a log of its changes for the sinks that
+have not written them yet, and a sink writes their sum
+(`IncrementalView.changes_since`), so no old state is kept.
 
 A node on DuckDB has DuckDB write its Delta and Iceberg sinks
 (`sverify.io._engine`). DuckDB writes the Parquet files of the state or of
