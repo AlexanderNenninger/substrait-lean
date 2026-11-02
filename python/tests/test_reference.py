@@ -315,7 +315,7 @@ def test_lists_of_lists_are_not_ordered():
 
 
 # R13 (#209): `substring` with a negative start counts from the end unless the
-# plan asks for LEFT_OF_BEGINNING (Isthmus does).
+# plan asks for LEFT_OF_BEGINNING.
 SUBSTRINGS = [(-2, "lo", ""), (-10, "he", ""), (0, "h", "h"), (2, "el", "el"), (-6, "h", "")]
 
 

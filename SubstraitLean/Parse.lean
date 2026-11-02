@@ -714,7 +714,7 @@ def parseConstLiteral (j : Json) : J Const := do
     if p ≤ 6 then return .int (v * 10 ^ (6 - p))
     else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
     else throw "times finer than microseconds are not supported"
-  -- Precision `p` counts units of 10⁻ᵖ s (Isthmus writes `TIMESTAMP '…'` at 0).
+  -- Precision `p` counts units of 10⁻ᵖ s (a `TIMESTAMP '…'` literal may be at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
@@ -787,7 +787,7 @@ The parser dispatches on a function's base name, and the model has one
 integer type for integers, doubles (as codes), timestamps (µs), dates (days)
 and intervals (µs). So the arguments' kinds must be checked: `add:date_iday`
 would otherwise add days and microseconds. A signature suffix (`date_iday`, as
-Isthmus writes) is checked against the arguments the parser sees; a literal
+in the extension's signatures) is checked against the arguments the parser sees; a literal
 argument (or one built only from literals) has no kind of its own (a
 timestamp literal is an integer), so only the signature speaks for it. -/
 
@@ -1265,7 +1265,7 @@ partial def declaredKind (fns : List (Nat × String)) (j : Json) : Kind :=
     | none =>
       if (field? l "boolean").isSome then .bool
       else if (field? l "varChar").isSome then .str
-      -- Read as microseconds whatever their precision (Isthmus: seconds).
+      -- Read as microseconds whatever their precision (0 counts seconds).
       else if (field? l "precisionTimestamp").isSome then .time
       else if (field? l "precisionTime").isSome then .tod
       else typeKind l
@@ -1614,7 +1614,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       | _ => throw s!"{baseName name} is only supported on timestamps and dates"
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
-    -- (Isthmus types `POWER` of integers as a double).
+    -- (a plan may type `POWER` of integers as a double).
     let outTy := (field? f "outputType").getD .null
     let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
       "floor", "ceil", "round"] ++ doubleFns

@@ -326,8 +326,8 @@ Evidence: `overflow/double_float_overflow.test:43`, `cast/double_float_cast.test
   is `WRAP_FROM_END` when the plan omits the option (`Text.substrWrap`:
   `'lo'`; a start that wraps past the beginning, or 0, is left of it, so
   `substring('hello', -10, 7) = 'he'`, as in DuckDB). A plan that sets
-  `LEFT_OF_BEGINNING` gets that (Isthmus sets it, and so does sverify's
-  Ibis producer for the starts it computes); `ERROR` is refused.
+  `LEFT_OF_BEGINNING` gets that (sverify's Ibis producer sets it for the
+  starts it computes); `ERROR` is refused.
 - **DuckDB:** `WRAP_FROM_END` is native, but sverify's SQL normalizes the
   start for every engine (`CASE WHEN a < 0 THEN a + length + 1`, then the
   `LEFT_OF_BEGINNING` normalization it already had). DataFusion's own

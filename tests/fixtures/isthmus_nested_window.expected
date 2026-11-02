@@ -1,2 +1,0 @@
-error: subtract:i64_i64: option overflow = [SILENT] is not supported (the model does [ERROR])
-[exit 1]

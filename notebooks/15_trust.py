@@ -52,7 +52,7 @@ def _(mo):
     mo.mermaid(
         """
         graph LR
-          I["Ibis or SQL"] -->|"Ibis producer, or DataFusion's<br/>or Isthmus for SQL"| J["Substrait JSON"]
+          I["Ibis or SQL"] -->|"Ibis producer, or DataFusion's<br/>for SQL"| J["Substrait JSON"]
           J -->|"parser<br/>TRUSTED · golden tests, round trips"| M["Lean model: Rel"]
           M -->|"PROVED<br/>contracts, keys, runtime errors,<br/>rewrites, update plans"| M2["verdicts,<br/>update plans"]
           M2 -->|"writer, translators, SQL generator<br/>TRUSTED · differential tests"| D["DuckDB · Polars · DataFusion ·<br/>Spark · Snowflake"]

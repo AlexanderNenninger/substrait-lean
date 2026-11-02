@@ -76,8 +76,8 @@ From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
 | **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved. Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: sverify writes the SQL and checks it on an emulator (fakesnow), never on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
-SQL strings are planned to go through Isthmus only, with DataFusion an
-execution backend (#211).
+SQL strings are planned to go through sverify's own SQLGlot frontend (#231),
+with DataFusion an execution backend only (#211).
 
 ## Profiles and shims in Lean (#185, first slice)
 

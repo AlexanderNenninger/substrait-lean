@@ -24,7 +24,7 @@ constant", counts across rows.
 ## SQL transformations
 
 `sv.verify` takes a SQL string with the input schemas (needs the
-`datafusion` extra or Isthmus):
+`datafusion` extra):
 
 ```python
 import ibis

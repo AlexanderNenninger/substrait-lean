@@ -541,8 +541,8 @@ def verify(
     Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DataFusion, DuckDB and
-    Polars. A SQL string means what the SQL producer (DataFusion's or
-    Isthmus) makes of it.
+    Polars. A SQL string means what the SQL producer (DataFusion's) makes of
+    it.
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -575,7 +575,7 @@ def verify(
 
     Examples:
         A SQL query, with its input schema (compiling SQL needs the
-        `datafusion` extra, or Isthmus):
+        `datafusion` extra):
 
         ```python
         import ibis

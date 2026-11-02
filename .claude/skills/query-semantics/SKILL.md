@@ -1,6 +1,6 @@
 ---
 name: query-semantics
-description: Answer how sverify's frontends (DataFusion's SQL producer, the vendored Ibis producer, Isthmus) and backends (DuckDB, Polars, DataFusion, Spark, Snowflake) handle an example SQL query or Ibis expression, compared with the Lean model (Rel.eval). Use when asked "what does engine X do with this query", "does Lean accept/model this", "do the engines agree on …", "is this query portable", or to probe or compare a query across backends.
+description: Answer how sverify's frontends (DataFusion's SQL producer, the vendored Ibis producer) and backends (DuckDB, Polars, DataFusion, Spark, Snowflake) handle an example SQL query or Ibis expression, compared with the Lean model (Rel.eval). Use when asked "what does engine X do with this query", "does Lean accept/model this", "do the engines agree on …", "is this query portable", or to probe or compare a query across backends.
 ---
 
 Answer from the repository's static sources first:
@@ -17,7 +17,7 @@ Both scripts live in `.claude/skills/query-semantics/`. Paths below are relative
 lake build substrait-check
 ```
 
-`--spark` needs a JVM (Java 17 or 21; `java -version`). Isthmus is used only in a checkout that has `sverify.engine.isthmus_json` (PR #92), with `$SVERIFY_ISTHMUS` set.
+`--spark` needs a JVM (Java 17 or 21; `java -version`).
 
 ## Step 1: static lookup (always first)
 
@@ -111,4 +111,3 @@ Rows compare as bags, or in order when an ORDER BY reaches the result. Doubles c
 - `memtable() got an unexpected keyword argument 'name'`, or `Parser Error: syntax error at or near "EXISTS"` from Ibis's DuckDB `create_table`: the pinned Ibis can't create tables from Arrow on DuckDB. The probe uses `ibis.memtable` for native Ibis runs; keep it that way.
 - `'pyarrow.lib.RecordBatchReader' object has no attribute 'columns'`: DuckDB's `.arrow()` returns a reader in this version; use `.fetch_arrow_table()`.
 - `ArrowTypeError: object of type <class 'str'> cannot be converted to int`: a row value doesn't match its column type. Timestamps and dates must be ISO strings in timestamp/date columns.
-- `isthmus  not in this checkout (PR #92)`: expected on branches without the Isthmus producer.
