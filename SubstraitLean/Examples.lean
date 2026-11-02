@@ -11,6 +11,7 @@ import SubstraitLean.TableFormat
 import SubstraitLean.Partition
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
+import SubstraitLean.LiftDuckDB
 import SubstraitLean.Semantic
 
 /-!
@@ -208,3 +209,5 @@ end Substrait.Examples
 #print axioms Substrait.Lowering.lowerRel_sound
 #print axioms Substrait.Lowering.lower_correct
 #print axioms Substrait.Lowering.duckdb_exact
+#print axioms Substrait.liftDuckDB.total
+#print axioms Substrait.liftReference.total

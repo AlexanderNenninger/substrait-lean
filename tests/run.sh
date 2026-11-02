@@ -28,4 +28,14 @@ elif printf '%s\n' "$actual" | diff -u "$expected" - > /dev/null; then
 else
   echo "FAIL $expected"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
 fi
+# The generated lift tables (#268): what DuckDB's SQL lifts to.
+expected=tests/lowering/duckdb-lift.expected
+actual=$("$bin" --lift-table 2>&1; echo "[exit $?]")
+if [ "${1:-}" = "--update" ]; then
+  printf '%s\n' "$actual" > "$expected"
+elif printf '%s\n' "$actual" | diff -u "$expected" - > /dev/null; then
+  echo "ok   $expected"
+else
+  echo "FAIL $expected"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
+fi
 exit $fail

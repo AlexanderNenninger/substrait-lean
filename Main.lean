@@ -27,6 +27,9 @@ plan for DataFusion to run, compensating for where its semantics differ
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
 natively, or the generated template (`SubstraitLean/LoweringDuckDB.lean`).
 
+`substrait-check --lift-table`: print, as JSON, what each DuckDB SQL function
+lifts to under each semantics, generated and proved (`SubstraitLean/LiftDuckDB.lean`).
+
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
 
@@ -198,6 +201,10 @@ partial def serve : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
+  | ["--lift-table"] => do
+    -- What DuckDB SQL lifts to, generated and proved (#268).
+    IO.println Lift.tableJson.pretty
+    return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB, per setting (#241); a golden test.
     for (setting, cov) in [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)] do
@@ -212,5 +219,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage | --lift-table"
     return 1
