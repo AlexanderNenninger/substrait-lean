@@ -756,7 +756,7 @@ class Replay:
             res.reason = "DuckDB frontend error"
             return res
         if self.frontend == "lift":
-            return self.probe_lift(rec, res, outcome)
+            return self.probe_lift(rec, res, outcome, ddb_rows, ddb_err)
         try:
             sql, back, tables, ordered = translate(rec.sql, self.null_order)
         except ValueError as e:
@@ -803,7 +803,14 @@ class Replay:
         issues = functools.partial(_issues, sql, self.con)
         return self.judge(rec, res, plan, schema, rows, ordered, outcome, issues)
 
-    def probe_lift(self, rec: Record, res: Result, outcome: Any) -> Result:
+    def probe_lift(
+        self,
+        rec: Record,
+        res: Result,
+        outcome: Any,
+        ddb_rows: list[list[str]] | None,
+        ddb_err: str | None,
+    ) -> Result:
         """The rest of `probe` with the SQLGlot lift (`sverify.sql_lift`, #239)
         as the frontend: DuckDB's SQL as it is, with DuckDB's semantics."""
         import ibis
@@ -821,6 +828,9 @@ class Replay:
             return res
         tables = sorted({t.name for t in tree.find_all(sg.exp.Table) if t.name})
         ordered = isinstance(tree, sg.exp.Select) and tree.args.get("order") is not None
+        if not outcome(ddb_rows, ddb_err, ordered):
+            res.reason = "DuckDB's own result differs from the expected one"
+            return res
         try:
             rows = self.sync(tables)
         except OverflowError as e:

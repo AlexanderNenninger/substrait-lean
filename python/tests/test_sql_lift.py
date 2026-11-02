@@ -207,6 +207,13 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ("SELECT id FROM orders LIMIT qty", "LIMIT"),
         ("SELECT 170141183460469231731687303715884105727 AS h", "HUGEINT"),
         ("SELEC id FROM orders", "cannot parse"),
+        # DuckDB reads `amount` in HAVING as the column, SQLGlot as the alias.
+        (
+            "SELECT amount + 1 AS amount FROM orders GROUP BY amount HAVING amount = 5",
+            "both an input column and an output alias",
+        ),
+        ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
+        ("SELECT CAST(NULL AS INT[3]) FROM orders", "fixed-size array"),
     ],
 )
 def test_refusals_say_what(query, message):

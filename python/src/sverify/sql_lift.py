@@ -171,6 +171,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
     if (f := tree.find(sge.Anonymous)) is not None:
         raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
+    _check_aliases(tree, schemas)
     catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
     }
@@ -188,6 +189,31 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
     if not isinstance(tree, sge.Select):
         raise Unsupported(f"{type(tree).__name__} is not supported; only SELECT queries are")
     return tree
+
+
+def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
+    """Refuse a name in WHERE, GROUP BY or HAVING that is both an output
+    alias and an input column: DuckDB reads it as the column there, and
+    SQLGlot's `qualify` as the alias (`select a + 1 as a … having a = 42`)."""
+    columns = {_normalized(c) for s in schemas.values() for c in s.names}
+    for sel in tree.find_all(sge.Select):
+        aliases = {
+            _normalized(e.alias)
+            for e in sel.expressions
+            if isinstance(e, sge.Alias)
+            and not (isinstance(e.this, sge.Column) and e.this.name == e.alias)
+        }
+        for clause in ("where", "group", "having"):
+            node = sel.args.get(clause)
+            if node is None:
+                continue
+            for col in node.find_all(sge.Column):
+                name = _normalized(col.name)
+                if not col.table and name in aliases and name in columns:
+                    raise Unsupported(
+                        f"{name} in {clause.upper()} is both an input column and an output "
+                        "alias, which SQLGlot and DuckDB resolve differently; rename the alias"
+                    )
 
 
 # --------------------------------------------------------------------------
@@ -878,6 +904,10 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         t: Any = DuckDBType.to_ibis(node.to).copy(nullable=True)
     except Exception as e:  # noqa: BLE001 - Ibis raises a variety
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported") from e
+    if node.to.this in (sge.DataType.Type.INT128, sge.DataType.Type.UINT128):
+        raise Unsupported(f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported")
+    if t.is_array() and getattr(t, "length", None) is not None:
+        raise Unsupported(f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported")
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp()):
