@@ -223,7 +223,7 @@ The most common, and what sverify does about each:
 | **NULL join keys** | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | **Integer division** | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | **Division by zero** (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| **Integer overflow** | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | reported as a warning; the engines raise instead of wrapping |
+| **Integer overflow** | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is checked while the job runs |
 | **NaN** | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | **`NOT IN` with a NULL** | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
 | **Guards that don't guard** | DataFusion evaluates both branches of some `CASE`s and merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection |
@@ -369,8 +369,10 @@ except VerificationError as e:
 
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
-not compile. Warnings are what an engine gets silently wrong: `+`, `-`, `*`
-and `SUM` leaving 64 bits, where DataFusion wraps around. Guards are
+not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
+wraps around there; the reference raises). An integer `SUM` leaving 64 bits
+is checked while the job runs instead: no proof before running can rule it
+out, since a group may have any number of rows. Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection, but not in the same
 `AND`.
@@ -1339,7 +1341,7 @@ round trips and the differential tests instead.
 | `SubstraitLean/Completeness.lean` | The converse of contracts for the IoT example: no window is lost (`IoT.window_complete`) |
 | `SubstraitLean/Compose.lean` | Composing contracts (Hoare triples), preconditions under updates, views over views (chain rule) |
 | `SubstraitLean/TableFormat.lean` | Change feeds (`Rel.cdf_sound`, views only depend on weights) and file statistics (`stats_table`) |
-| `SubstraitLean/Safety.lean` | Runtime errors and 64-bit wrap-around; `Rel.mayIssues_sound` |
+| `SubstraitLean/Safety.lean` | Runtime errors, overflow included; `Rel.mayIssues_sound` |
 | `SubstraitLean/Partition.lean` | Sharded evaluation of linear plans, two-phase `COUNT`/`SUM`/`MIN`/`MAX`; `Rel.shardSplit_sound` |
 | `SubstraitLean/Semantic.lean` | Rewrites from contract facts and keys (`DISTINCT` on a key, …); `Rel.optimize_sound` |
 | `SubstraitLean/Guards.lean` | Guard elimination: unchecked engine functions are exact where no issue happens; `Rel.guardFree_sound` |
@@ -1470,18 +1472,21 @@ the JSON plumbing.
 
 [Safety.lean](SubstraitLean/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
-`may fail: …` (a `VerificationError` from `@sv.transform`) or, for wrapping,
-`warning: …`.
+`may fail: …` (a `VerificationError` from `@sv.transform`), or, for an
+integer `SUM`, `may fail: SUM overflow: … (checked while the job runs …)`,
+which does not block a proof.
 
 * Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
   `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
   that may not compile, and `date_trunc` to a week, month, quarter or year outside
   ±2⁶³ nanoseconds (DataFusion panics or returns garbage there).
-* Warnings: `+`, `-`, `*` and negation leaving 64 bits, an integer `SUM` (nothing
-  bounds how many rows a group has), and `date_trunc` to a day or
-  less below `-2⁶³` µs. DataFusion wraps around silently, so the result is not the
-  mathematical one.
+* `+`, `-`, `*` and negation leaving their declared width (64 bits, or narrower
+  integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
+  reference raises (#202), while DataFusion wraps around silently, which an error
+  allows.
+* An integer `SUM` leaving 64 bits is checked while the job runs (nothing bounds
+  how many rows a group has): the SQL raises, and it does not make `proved` false.
 * `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
   are understood where DataFusion respects them: in a `CASE` branch (and so
   `NULLIF(b, 0)`), or in a filter below a *projection*. They are not respected in the
@@ -1590,7 +1595,7 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   -0.0 and 0.0 are one group), or exactly one row without
   grouping expressions, even on an empty input. Measures skip NULLs; on no
   values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
-  wraps around, which is a warning), double `SUM`/`AVG` add with native floats
+  wraps around; the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` add with native floats
   (DataFusion promises no order; contracts only say "a double"), and `AVG` of
   integers is the `AVG` of their conversion to double. `MIN`/`MAX` of doubles
   are refused: DataFusion's grouped version turns a group of +∞ into the largest
@@ -1606,10 +1611,10 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
   conditional. The rewrites are trusted code, checked against DataFusion by
   `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
-  DataFusion; here it is reported as wrapping around.)
-* **Integers are unbounded; overflow is an `Issue`.** `Rel.eval` computes exact
-  integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation that may
-  leave 64 bits. Where DataFusion fails instead (division, `POWER`, casts), the
+  DataFusion; here it is reported as an overflow.)
+* **Overflow is an error at the declared width.** `Rel.eval` computes exact
+  integers, and [Safety.lean](SubstraitLean/Safety.lean) reports every operation whose
+  result may not fit its declared width (64 bits, or narrower integers). Where DataFusion fails instead (division, `POWER`, casts), the
   value in the model is `NULL`.
 * **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`,
   `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are

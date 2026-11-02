@@ -85,8 +85,10 @@ def _(mo):
 
     A transformation with a contract: the input has no negative amounts
     (`requires`), so the output has no negative and no NULL `doubled`
-    (`ensures`). Calling the function asks Lean for a proof before the
-    expression is handed back:
+    (`ensures`). The input's amounts are also below a billion, which is
+    what tells Lean that doubling one can't overflow a 64-bit integer.
+    Calling the function asks Lean for a proof before the expression is
+    handed back:
     """)
     return
 
