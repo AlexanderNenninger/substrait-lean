@@ -697,6 +697,8 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       ⟨mismatch, none,
        intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || (a.str && b.str),
        intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || (a.str && b.str), false⟩
+  -- A list, which the abstraction does not look into, or `NULL`.
+  | .pair, _, _ => AVal.top
   | .lt, a, b =>
       -- Two strings may compare either way; FALSE < TRUE.
       let s := a.str && b.str
@@ -1239,6 +1241,7 @@ theorem AVal.mem_ofLt3 {a : AVal} {o : Option Bool} (hn : a.null = true)
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
+  case pair => exact AVal.mem_top _
   case add => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case sub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
@@ -3159,11 +3162,13 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  | .fsum | .avg => AVal.double
+  | .fsum | .avg | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
   | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false⟩
   | .iavg | .bit _ => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
+  -- One of the values, in the measure's order (#55).
+  | .pick _ => a.nullable
   | .collect => AVal.top
 
 /-- `ROW_NUMBER` and the ranks are positive integers, at most `Text.sizeCap`
@@ -3441,6 +3446,16 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have := hin (.int i) (hvs ▸ hi)
           obtain ⟨b', hb', hm⟩ := this
           rw [ha] at hb'; cases hb'; exact hm
+  case cov sample =>
+    simp only [AggFn.apply]
+    cases m.inputs grp with
+    | nil => rfl
+    | cons v vs => simp only [covOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+  case corr =>
+    cases m.inputs grp with
+    | nil => rfl
+    | cons v vs =>
+      simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case fsum | avg | iavg | bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case var sample sqrt =>
@@ -3457,6 +3472,16 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     rcases hmm with h | h
     · rw [h]; rfl
     · exact AVal.mem_nullable (hin _ h)
+  case pick last =>
+    -- The sorted rows are the group's rows.
+    have hin' : ∀ v ∈ m.inputs (grp.mergeSort (sortLe m.sort)), (m.arg.absD env fs).Mem v := by
+      intro v hv
+      obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
+      have hy' := (List.mergeSort_perm grp (sortLe m.sort)).mem_iff.mp hy
+      exact Expr.absD_sound (hall y hy').1 (hall y hy').2 (ks := []) (by simp [KsHold]) m.arg
+    rcases AggFn.apply_pick last (m.inputs (grp.mergeSort (sortLe m.sort))) with h | h
+    · rw [h]; rfl
+    · exact AVal.mem_nullable (hin' _ h)
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)

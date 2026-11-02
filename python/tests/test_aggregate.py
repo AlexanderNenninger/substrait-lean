@@ -400,3 +400,145 @@ def test_variance_of_an_infinity_raises(engine):
     assert "domain error" in [i.kind for i in report.issues]
     bounded = sv.verify(var_expr(), requires={"t": [_.x < 1e300, _.x > -1e300]})
     assert "domain error" not in [i.kind for i in bounded.issues]
+
+
+# #55: FIRST and LAST in a given order, NULLs skipped; ties in list order.
+P = ibis.table({"k": "int64", "x": "string", "o": "int64"}, name="t")
+
+
+def first_last(rows: list, last: bool, desc: bool) -> dict:
+    """Python's reference: per group, the first (or last) non-NULL `x` after a
+    stable sort by `o` (NULLs last, as Ibis orders)."""
+    out: dict = {}
+    for k in {r[0] for r in rows}:
+        grp = [r for r in rows if r[0] == k and r[1] is not None]
+        nulls = [r for r in grp if r[2] is None]
+        vals = sorted((r for r in grp if r[2] is not None), key=lambda r: r[2], reverse=desc)
+        # `sorted` is stable, but reverse=True keeps ties in order too.
+        ordered = vals + nulls
+        out[k] = (ordered[-1] if last else ordered[0])[1] if ordered else None
+    return out
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.sampled_from(["a", "b", "c"])),
+            st.one_of(st.none(), st.integers(0, 3)),
+        ),
+        max_size=8,
+    )
+)
+def test_first_and_last_follow_their_order(rows):
+    expr = P.group_by("k").aggregate(
+        f=P.x.first(order_by=P.o), l=P.x.last(order_by=P.o), d=P.x.first(order_by=ibis.desc(P.o))
+    )
+    plan = to_substrait_json(expr)
+    expected = sorted(
+        (k, first_last(rows, False, False)[k], first_last(rows, True, False)[k],
+         first_last(rows, False, True)[k])
+        for k in {r[0] for r in rows}
+    )  # fmt: skip
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
+    assert lean == expected
+    con = connect()
+    create_table(con, "t", P.schema(), rows)
+    got = sorted(tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist())
+    assert got == expected
+
+
+def test_first_and_last_are_determined_by_a_key():
+    """Ties make the choice the engine's, unless the group and order columns
+    contain a key (`Rel.windowsTotal`); other engines refuse it for now (#271)."""
+    expr = P.group_by("k").aggregate(f=P.x.first(order_by=P.o))
+    assert not sv.verify(expr).deterministic
+    assert sv.verify(expr, requires={"t": [sv.unique("k", "o")]}).deterministic
+    con = connect()
+    create_table(con, "t", P.schema(), [(1, "a", 1)])
+    written = written_plan(to_substrait_json(expr))
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="see #271"):
+            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="any row's value"):
+        to_substrait_json(P.group_by("k").aggregate(f=P.x.first()))
+
+
+# #54: covariance and correlation of pairs of doubles, each engine's own
+# algorithm; CORR is NULL where the SQL standard says (DuckDB gives NaN).
+C = ibis.table({"k": "int64", "x": "float64", "y": "float64"}, name="t")
+
+
+def cov_expr():
+    return C.group_by("k").aggregate(cs=C.x.cov(C.y), cp=C.x.cov(C.y, how="pop"), r=C.x.corr(C.y))
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            # Ordinary values: near the subnormals each engine's algorithm
+            # rounds its own way (DuckDB's CORR then gives NaN).
+            st.one_of(st.none(), st.integers(-1000, 1000).map(lambda i: i / 4)),
+            st.one_of(st.none(), st.integers(-1000, 1000).map(lambda i: i / 8)),
+        ),
+        max_size=8,
+    )
+)
+def test_covariance_agrees_with_duckdb(rows):
+    plan = to_substrait_json(cov_expr())
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    con = connect()
+    create_table(con, "t", C.schema(), rows)
+    got = sorted(
+        (tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()),
+        key=repr,
+    )
+    lean = sorted((tuple(decode_double(v) if isinstance(v, int) and i else v
+                         for i, v in enumerate(r)) for r in lean), key=repr)  # fmt: skip
+    assert len(got) == len(lean)
+    for g, e in zip(got, lean, strict=True):
+        assert all(near(a, b) for a, b in zip(g, e, strict=True)), (g, e)
+
+
+def test_correlation_is_null_where_the_standard_says():
+    """Fewer than two pairs, or a side whose values are all equal: NULL (DuckDB's
+    own CORR gives NaN); other engines refuse it for now (#271)."""
+    con = connect()
+    rows = [
+        (1, 1.0, 2.0),
+        (1, 2.0, 4.0),
+        (2, 1.0, 1.0),
+        (2, 1.0, 2.0),
+        (3, None, 1.0),
+        (4, 1.0, 1.0),
+    ]
+    create_table(con, "t", C.schema(), rows)
+    written = written_plan(to_substrait_json(cov_expr()))
+    got = sorted(tuple(r.values()) for r in run_plan(con, written, "duckdb").to_pylist())
+    assert got == [
+        (1, 1.0, 0.5, 1.0),
+        (2, 0.0, 0.0, None),
+        (3, None, None, None),
+        (4, None, 0.0, None),
+    ]
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="see #271"):
+            run_plan(con, written, engine)
+
+
+def test_covariance_of_an_infinity_raises():
+    """`inf - mean` would be NaN, which no operation creates (#257): `verify`
+    reports a domain error, bounds rule it out, and DuckDB raises."""
+    report = sv.verify(cov_expr())
+    assert "domain error" in [i.kind for i in report.issues]
+    finite = [_.x < 1e300, _.x > -1e300, _.y < 1e300, _.y > -1e300]
+    assert "domain error" not in [
+        i.kind for i in sv.verify(cov_expr(), requires={"t": finite}).issues
+    ]
+    con = connect()
+    create_table(con, "t", C.schema(), [(1, math.inf, 1.0), (1, 2.0, 3.0)])
+    with pytest.raises(Exception, match="(?i)domain"):
+        run_plan(con, written_plan(to_substrait_json(cov_expr())), "duckdb")

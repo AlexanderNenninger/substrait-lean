@@ -56,9 +56,9 @@ count_distinct = { lean = "yes", description = "COUNT(DISTINCT x)" }
 agg_filter = { lean = "yes", description = "conditional aggregate: FILTER (WHERE …) or SUM(CASE …)" }
 agg_arithmetic = { lean = "yes", description = "arithmetic on aggregate results inside one aggregation (SUM(a) / SUM(b), MAX - MIN, 100 * SUM(x))", note = "the Ibis producer computes each reduction as a measure and the arithmetic in a projection over the aggregate (#67)" }
 having = { lean = "yes", description = "HAVING" }
-grouping_sets = { lean = "no", description = "ROLLUP / CUBE / GROUPING SETS" }
+grouping_sets = { lean = "yes", description = "ROLLUP / CUBE / GROUPING SETS", note = "the SQL lift writes a UNION ALL of one aggregate per grouping set" }
 stddev_var = { lean = "partial", description = "STDDEV / VARIANCE", note = "grouped, of doubles or integers, with each engine's own algorithm (#54); not over windows" }
-corr = { lean = "no", description = "CORR / COVAR / REGR_*" }
+corr = { lean = "partial", description = "CORR / COVAR / REGR_*", note = "COVAR_SAMP, COVAR_POP and CORR, grouped, on DuckDB, with its own algorithm (#54); not REGR_*, not over windows" }
 percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL" }
 approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }
 string_agg = { lean = "no", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect" }

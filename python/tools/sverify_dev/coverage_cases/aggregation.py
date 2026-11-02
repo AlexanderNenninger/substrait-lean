@@ -5,6 +5,7 @@ from __future__ import annotations
 from ibis import _
 
 from sverify_dev.coverage_cases._common import (
+    DUCKDB_ONLY,
     NO_LISTS,
     NO_ROW_ORDER,
     Case,
@@ -32,6 +33,14 @@ CASES: list[Case] = [
         ),
     ),
     case("aggregation", "nunique", V, lambda: t.group_by("name").aggregate(n=t.id.nunique())),
+    case(
+        "aggregation",
+        "first, last ordered",
+        V,
+        lambda: t.group_by("name").aggregate(
+            f=t.qty.first(order_by=t.id), l=t.qty.last(order_by=t.id)
+        ),
+    ),
     case(
         "aggregation",
         "approx_nunique",
@@ -69,6 +78,14 @@ CASES: list[Case] = [
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", V, lambda: t.aggregate(s=t.amount.std())),
+    case(
+        "aggregation",
+        "cov, corr",
+        V,
+        lambda: t.group_by("name").aggregate(
+            c=t.amount.cov(t.qty), r=t.amount.corr(t.qty, how="pop")
+        ),
+    ),
     case("aggregation", "collect", V, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
     case(
         "aggregation",
@@ -92,6 +109,8 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
+    "cov, corr": DUCKDB_ONLY,
+    "first, last ordered": DUCKDB_ONLY,
     "count, max, mean": NO_ROW_ORDER,
     "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
@@ -101,4 +120,13 @@ REFUSED: dict[str, dict[str, str]] = {
 
 UNORDERED_LISTS = {"collect"}
 
-APPROXIMATE = {"std"}
+APPROXIMATE = {"std", "cov, corr"}
+
+NO_DUCKDB_SQL = {
+    # CORR is NULL for fewer than two pairs or a flat side (the SQL standard);
+    # DuckDB's own CORR gives NaN there (#54).
+    "cov, corr": "DuckDB's CORR gives NaN where the reference gives NULL",
+    # Rows tied in the order go in Lean's list order in the written plan; in
+    # Ibis's own SQL, in DuckDB's (`Rel.windowsTotal` reports it, #55).
+    "first, last ordered": "ties in ORDER BY are the engine's",
+}

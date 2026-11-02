@@ -92,6 +92,18 @@ inductive AggFn where
   NaN), and NULL where the definition has no value: no values, or a sample
   of one. The value it computes is one such double (`varOf`). -/
   | var (sample sqrt : Bool)
+  /-- `FIRST` (`last := false`) and `LAST` of the values in the measure's
+  `sort` order (#55), as `ARRAY_AGG(x ORDER BY …)[1]` and its last element:
+  NULLs skipped, NULL without values. Ties make it depend on the engine, as
+  for `collect`, which `Rel.windowsTotal` reports. -/
+  | pick (last : Bool)
+  /-- `COVAR_SAMP`/`COVAR_POP` and `CORR` of pairs of doubles (#54), whose
+  argument is `pair x y` (rows with a NULL skipped). Engines compute them
+  their own way: the model claims some double, or NULL where the definition
+  has no value. `CORR` is NULL, as the SQL standard says, for fewer than two
+  pairs or a side whose values are all equal (DuckDB gives NaN there). -/
+  | cov (sample : Bool)
+  | corr
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -162,6 +174,43 @@ def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
       (FloatCode.ofInt (if sample then vs.length - 1 else vs.length))
     .int (max 0 (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v))
 
+/-- The pairs of doubles among `vs` (`BinFn.pair`'s lists). -/
+def pairsOf (vs : List Value) : List (Int × Int) :=
+  vs.filterMap fun | .list [.int a, .int b] => some (a, b) | _ => none
+
+/-- The products of the deviations of the pairs from the means `mx`, `my`,
+added in list order from `+0.0`. -/
+def coDevSum (mx my : Int) (ps : List (Int × Int)) : Int :=
+  ps.foldl (fun acc (a, b) => FloatCode.lift₂ (· + ·) acc
+    (FloatCode.lift₂ (· * ·) (FloatCode.lift₂ (· - ·) a mx) (FloatCode.lift₂ (· - ·) b my)))
+    (FloatCode.ofInt 0)
+
+/-- The mean of the doubles `cs`, as `avg` computes it. -/
+def meanOf (cs : List Int) : Int :=
+  FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)
+
+/-- `COVAR_SAMP` / `COVAR_POP` of the pairs among `vs`. -/
+def covOf (sample : Bool) (vs : List Value) : Value :=
+  let ps := pairsOf vs
+  if ps.isEmpty || (sample && ps.length == 1) then .null else
+    let s := coDevSum (meanOf (ps.map (·.1))) (meanOf (ps.map (·.2))) ps
+    .int (FloatCode.lift₂ (· / ·) s (FloatCode.ofInt (if sample then ps.length - 1 else ps.length)))
+
+/-- `CORR` of the pairs among `vs`: NULL for fewer than two, or for a side
+whose values are all equal; else the co-deviation sum by the square root of
+the product of the two sides' squared-deviation sums. -/
+def corrOf (vs : List Value) : Value :=
+  let ps := pairsOf vs
+  let xs := ps.map (·.1)
+  let ys := ps.map (·.2)
+  if ps.length < 2 || xs.all (· == xs.headD 0) || ys.all (· == ys.headD 0) then .null else
+    let (mx, my) := (meanOf xs, meanOf ys)
+    let sxx := coDevSum mx mx (xs.zip xs)
+    let syy := coDevSum my my (ys.zip ys)
+    let r := FloatCode.lift₂ (· / ·) (coDevSum mx my ps)
+      (FloatCode.ofFloat (FloatCode.toFloat (FloatCode.lift₂ (· * ·) sxx syy)).sqrt)
+    .int r
+
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
@@ -175,20 +224,29 @@ def AggFn.apply : AggFn → List Value → Value
   | .iavg, vs => .int ((intSum vs).tdiv vs.length)
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs
+  | .cov sample, vs => covOf sample vs
+  | .corr, vs => corrOf vs
   | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
   | .collect, vs => .list vs
+  | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
 
 /-- `collect` takes the rows in its sort order (a stable sort, so without
 one in list order: one of the orders an engine may choose). -/
 def Measure.eval (rows : Relation) (m : Measure) : Value :=
   match m.fn with
   | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
+  | .pick last => (AggFn.pick last).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | f => f.apply (m.inputs rows)
 
-theorem Measure.eval_eq {m : Measure} (h : m.fn ≠ .collect) (rows : Relation) :
+/-- Does the aggregate take its rows in the measure's `sort` order? -/
+def AggFn.sorts : AggFn → Bool
+  | .collect | .pick _ => true
+  | _ => false
+
+theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation) :
     m.eval rows = m.fn.apply (m.inputs rows) := by
-  unfold Measure.eval; split <;> simp_all
+  unfold Measure.eval; split <;> simp_all [AggFn.sorts]
 
 /-! ## Groups -/
 
@@ -232,6 +290,16 @@ theorem Measure.mem_inputs {m : Measure} {rows : Relation} {v : Value} (h : v �
   · exact (List.mem_filter.mp hrow).1
 
 /-- `MIN` and `MAX` give one of the values (or NULL). -/
+theorem AggFn.apply_pick (last : Bool) (vs : List Value) :
+    (AggFn.pick last).apply vs = .null ∨ (AggFn.pick last).apply vs ∈ vs := by
+  cases vs with
+  | nil => exact .inl rfl
+  | cons v vs =>
+    refine .inr ?_
+    cases last
+    · simp [apply]
+    · simp only [apply, ite_true]; exact List.getLast_mem _
+
 theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List Value} :
     f.apply vs = .null ∨ f.apply vs ∈ vs := by
   rcases hf with rfl | rfl <;> cases vs <;>

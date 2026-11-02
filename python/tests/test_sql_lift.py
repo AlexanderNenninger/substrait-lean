@@ -171,6 +171,24 @@ QUERIES = [
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
+    # Grouping sets: one aggregate per set, UNION ALL'd; GROUPING() is a
+    # constant of each.
+    "SELECT customer, qty, sum(amount) AS s, count(*) AS n FROM orders"
+    " GROUP BY ROLLUP (customer, qty)",
+    "SELECT customer, qty, GROUPING(customer) AS g, GROUPING(customer, qty) AS gg, avg(price) AS p"
+    " FROM orders GROUP BY CUBE (customer, qty)",
+    "SELECT customer, day, count(*) AS n FROM orders"
+    " GROUP BY GROUPING SETS ((customer, day), (customer), ())",
+    "SELECT customer, qty, sum(amount) AS s FROM orders GROUP BY customer, ROLLUP (qty)"
+    " HAVING GROUPING(qty) = 1 OR sum(amount) > 4",
+    "SELECT customer, GROUPING(customer) AS g,"
+    " rank() OVER (PARTITION BY GROUPING(customer) ORDER BY sum(amount)) AS r"
+    " FROM orders GROUP BY ROLLUP (customer) ORDER BY g DESC, customer",
+    "SELECT customer, sum(amount) AS s FROM orders WHERE id > 99 GROUP BY ROLLUP (customer)",
+    # Computed window partitions and ORDER BY expressions over output columns.
+    "SELECT id, rank() OVER (PARTITION BY amount % 2 ORDER BY -amount, id) AS r FROM orders",
+    "SELECT customer, sum(amount) AS s FROM orders GROUP BY customer"
+    " ORDER BY CASE WHEN s > 6 THEN customer END, customer",
     pytest.param(
         "SELECT 7 / 2 AS h",
         marks=pytest.mark.xfail(
@@ -201,10 +219,8 @@ def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
         "name",
-        "float_division_by_zero",
         "float_to_int",
         "decimal_to_int",
-        "float_modulus_by_zero",
         "domain_error",
         "log_zero",
     }
@@ -300,6 +316,7 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ),
         ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
         ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
+        ("SELECT GROUPING(id) FROM orders GROUP BY ROLLUP (customer)", "GROUPING of"),
         ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT id FROM elsewhere", "cannot resolve"),
@@ -431,4 +448,27 @@ def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
     result = check(
         "SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "reference"
     )
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # NaN by zero and of an infinity, as DuckDB computes them.
+        "SELECT id, price % 0 AS z, price % qty AS m, 7.5 % price AS r FROM orders",
+        "SELECT id, (price / 0) % 2 AS i, (price / 0) / (price / 0) AS n FROM orders",
+        # `log` of 0 is -inf, of a negative NaN.
+        "SELECT id, log(price) AS l, log(qty - 3) AS lq, sign(price) AS s, sign(qty) AS sq"
+        " FROM orders",
+        # `avg` of integers: the exact sum by the count, in doubles.
+        "SELECT customer, avg(amount) AS a, avg(qty) AS q, avg(DISTINCT qty) AS d"
+        " FROM orders GROUP BY customer",
+        "SELECT id, avg(amount) OVER (PARTITION BY customer) AS a FROM orders",
+        "SELECT id, greatest(price, -price, 0.5) AS g, least(amount, id) AS l FROM orders",
+    ],
+)
+def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):
+    # With DuckDB's semantics, these come from Lean's generated lift table
+    # (#268), which states NaN and ±inf exactly instead of refusing them.
+    result = check(query, TABLES)
     assert result.ok, f"{result.stage}: {result.detail}"

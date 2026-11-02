@@ -808,7 +808,7 @@ private theorem Measure.inputs_perm_bag {m : Measure} (hd : m.distinct = false) 
 private theorem Measure.eval_perm_bag {m : Measure} (hf : m.fn = .count ∨ m.fn = .sum)
     (hd : m.distinct = false) {rows rows' : Relation} (h : rows.Perm rows') :
     m.eval rows = m.eval rows' := by
-  have hc : m.fn ≠ .collect := by rcases hf with hf | hf <;> rw [hf] <;> decide
+  have hc : m.fn.sorts = false := by rcases hf with hf | hf <;> rw [hf] <;> rfl
   rw [Measure.eval_eq hc, Measure.eval_eq hc]
   have hp := Measure.inputs_perm_bag hd h
   rcases hf with hf | hf
@@ -892,7 +892,12 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
-  | .aggregate r _ _ | .unnest r _ => r.windowsTotal cat A F K
+  | .unnest r _ => r.windowsTotal cat A F K
+  -- `FIRST`/`LAST` (#55) pick a row by their order: unless the group's and the
+  -- order's columns contain a key, ties make the choice the engine's.
+  | .aggregate r gs ms => r.windowsTotal cat A F K && ms.all fun m =>
+      !(m.fn matches .pick _) || (r.keys cat A F K).any fun k =>
+        k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort fns =>

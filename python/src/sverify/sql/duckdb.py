@@ -33,6 +33,7 @@ BC), which `date_trunc` leaves as it is.
 """
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind
@@ -157,6 +158,16 @@ class DuckDBDialect(Dialect):
         values = f"list({v} ORDER BY {o}) FILTER (WHERE {v} IS NOT NULL)"
         start = self.cast("0", "float")
         return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
+
+    def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
+        values = f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
+        return f"({values})[{1 if fn == 'first' else -1}]"
+
+    def pair(self, a: str, b: str) -> str:
+        return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"
+
+    def covar(self, fn: str, v: str) -> str:
+        return f"{fn.upper()}({v}[1], {v}[2])"
 
     def char_length(self, s: str) -> str:
         return f"length({s})"

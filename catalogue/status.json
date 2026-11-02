@@ -367,10 +367,14 @@
   }
  },
  "h2o-groupby-q9": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Correlation is not supported",
-  "native": "error: <class 'sqlglot.dialects.duckdb.DuckDB'> only implements `pop` correlation coefficient"
+  "checker": "verified",
+  "incremental": false,
+  "native": "error: <class 'sqlglot.dialects.duckdb.DuckDB'> only implements `pop` correlation coefficient",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: corr is not yet supported on Polars; see #271",
+   "snowflake": "refused: covariance and correlation are not yet supported on snowflake; see #271"
+  }
  },
  "h2o-groupby-q10": {
   "checker": "verified",
@@ -1087,27 +1091,23 @@
   }
  },
  "tpcds-q27": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate GROUPING() is not supported yet",
+  "checker": "verified",
+  "incremental": false,
   "native": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate GROUPING() is not supported yet",
-   "native": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "tpcds-q36": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate GROUPING() is not supported yet",
+  "checker": "verified",
+  "incremental": false,
   "native": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate GROUPING() is not supported yet",
-   "native": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
  "tpcds-q42": {

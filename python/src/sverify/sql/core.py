@@ -665,6 +665,22 @@ class Dialect:
                 "std_pop": "STDDEV_POP"}[fn]  # fmt: skip
         return f"{name}({v})"
 
+    def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
+        """`AggFn.pick` (#55): the first or last value of the column `v`, NULLs
+        skipped, in the order `order`; NULL without values."""
+        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+
+    def pair(self, a: str, b: str) -> str:
+        """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
+        raise Unsupported(
+            f"covariance and correlation are not yet supported on {self.name}; see #271"
+        )
+
+    def covar(self, fn: str, v: str) -> str:
+        """`AggFn.cov`/`corr` of the pairs `v` (`pair`'s lists), the engine's own
+        algorithm (#54); NULL cases are the caller's."""
+        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
         ordinal `o`, from +0.0 (rounding depends on the order)."""
@@ -835,7 +851,7 @@ class Bin:
         "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
         "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
-        "fatan2", "flogb", "bit", "list_lt",
+        "fatan2", "flogb", "bit", "list_lt", "pair",
     ]  # fmt: skip
     left: Expr
     right: Expr
@@ -1040,11 +1056,18 @@ class Measure:
         "var_pop",
         "std_samp",
         "std_pop",
+        "first",
+        "last",
+        "covar_samp",
+        "covar_pop",
+        "corr",
     ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
     filter: Expr | None = None
+    sort: tuple[SortKey, ...] = ()
+    """The order `first` and `last` take their values in (#55)."""
 
 
 @dataclass(frozen=True)
@@ -1149,7 +1172,7 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
 BIT_AGGS = ("bit_and", "bit_or", "bit_xor")
 #: `AggFn.var`'s functions: variance and standard deviation, of a sample or a
 #: population (#54).
-VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop")
+VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop", "covar_samp", "covar_pop", "corr")
 
 
 def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
@@ -2679,8 +2702,11 @@ class _Parser:
         double; `COUNT(*)` may come with no argument."""
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
-        if _arr(m, "sorts"):
+        if _arr(m, "sorts") and name not in ("first", "last"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
+        sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
+        if name in ("first", "last") and not sort:
+            raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
                        "AGGREGATION_INVOCATION_DISTINCT"):  # fmt: skip
@@ -2690,6 +2716,11 @@ class _Parser:
         args = [_req(a, "value") for a in _arr(m, "arguments")]
         if len(args) == 1:
             arg = self.expr(args[0], cols)
+        elif len(args) == 2 and name in ("covar_samp", "covar_pop", "corr"):
+            # Two doubles, integers converted (`Parse.parseMeasure`, #54).
+            x, y = (self.expr(a, cols) for a in args)
+            x, y = (Un("itof", e) if lean_expr_kind(e, cols.lean) == "int" else e for e in (x, y))
+            arg = Bin("pair", x, y)
         elif not args and name == "count":
             arg = Lit(1, "int")
         elif not args:
@@ -2726,6 +2757,11 @@ class _Parser:
             "var_pop",
             "std_samp",
             "std_pop",
+            "first",
+            "last",
+            "covar_samp",
+            "covar_pop",
+            "corr",
         ]
         match name, k:
             case "count", _:
@@ -2752,6 +2788,8 @@ class _Parser:
                 fn = "avg"
             case (("bit_and" | "bit_or" | "bit_xor"), "int"):
                 fn = name
+            case (("first" | "last" | "covar_samp" | "covar_pop" | "corr"), _):
+                fn = name
             case (("variance" | "std_dev"), ("float" | "int")):
                 pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
                 if name == "variance":
@@ -2768,7 +2806,7 @@ class _Parser:
                 raise Unsupported(f"{name} of this type is not supported")
             case _:
                 raise Unsupported(f"unsupported aggregate function: {name}")
-        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond)
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -3427,6 +3465,19 @@ class _Writer:
                 keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                 x = d.case_when(keep, x, d.null(k))
             items.append(f"{x} AS {c}")
+        # `first` and `last` (#55): each measure's sort keys, as `Value.le` sorts.
+        orders: list[list[tuple[str, SortKey, Kind | None]]] = []
+        for k, ms in enumerate(measures):
+            keys_k = []
+            for key in ms.sort:
+                for x, kind in self.sort_exprs(ref(key.col), ks[key.col]):
+                    c = d.quote(f"s{k}_{len(keys_k)}")
+                    items.append(f"{x} AS {c}")
+                    keys_k.append((c, key, kind))
+            orders.append(keys_k)
+        if any(orders) and any(ms.distinct for ms in measures):
+            raise Unsupported("first or last next to a DISTINCT measure is not supported")
+        needs = needs or any(orders)
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
         level = self.select(items, d.subquery(self.rel(i, needs), a))
@@ -3455,7 +3506,13 @@ class _Writer:
         out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
-            sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
+            if ms.fn in ("first", "last"):
+                # Ties go in Lean's list order: the ordinal breaks them.
+                order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
+                         for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
+                sql = d.pick(ms.fn, v, order)
+            else:
+                sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
             out.append(f"{sql} AS {self.c(len(groups) + k)}")
         if ordered:
             out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")
@@ -3480,6 +3537,28 @@ class _Writer:
                 return d.int_avg(v, "")
             case "bit_and" | "bit_or" | "bit_xor":
                 return d.bit_agg(m.fn, v, "")
+            case "covar_samp" | "covar_pop" | "corr":
+                x, y = f"{v}[1]", f"{v}[2]"
+                n = f"COUNT({v})"
+                if m.fn == "corr":
+                    # Fewer than two pairs, or a side whose values are all equal:
+                    # NULL, as the SQL standard says (`corrOf`; DuckDB gives NaN).
+                    flat = f"(MIN({x}) = MAX({x}) OR MIN({y}) = MAX({y}))"
+                    none = f"({n} < {d.int_lit(2)} OR {flat})"
+                else:
+                    none = f"{n} <= {d.int_lit(1 if m.fn == 'covar_samp' else 0)}"
+                value = d.case_when(none, d.null("float"), d.canon(d.covar(m.fn, v)))
+                if not d.guards:
+                    return value
+
+                # An infinite side makes a deviation `∞ - ∞`, NaN, which no
+                # operation creates (#257); NaN sorts above `+∞`, so leave it out.
+                def top(z: str) -> str:
+                    return f"MAX({d.case_when(d.is_nan(z), d.null('float'), f'ABS({z})')})"
+
+                inf = d.float_lit(math.inf)
+                bad = f"({d.float_eq(top(x), inf)} OR {d.float_eq(top(y), inf)})"
+                return d.case_when(bad, d.raise_("domain error", f"MIN({x})", "float"), value)
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
@@ -3892,6 +3971,8 @@ class _Writer:
                 return d.int_pow_var(sa, self.int_operand(b, ref, cols, "POWER"))
             case Bin(op="list_lt", left=a, right=b):
                 return d.list_lt(go(a, None), go(b, None))
+            case Bin(op="pair", left=a, right=b):
+                return d.pair(go(a, "float"), go(b, "float"))
             case Bin(op="eq" | "lt" as op, left=a, right=b) if isinstance(
                 kind(a), Dec
             ) or isinstance(kind(b), Dec):
