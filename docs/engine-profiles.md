@@ -87,6 +87,26 @@ DataFusion SQL producer stays the default until the lift covers as much
   is NULL in the reference. **`shimDuckDB_correct`** proves that the shimmed
   expression, under DuckDB's profile, has the reference's outcome: the same
   value, or an error.
+* **The shims are generated** (#241). `generate_lowering`
+  (`SubstraitLean/LoweringSearch.lean`) is a metaprogram that runs at build
+  time. For each construct (each constructor of `UnFn` and `BinFn`, its
+  parameters being the signature and options) it first tries to prove the
+  engine's function equal to the reference's. Where that fails it searches
+  for a guarded template, `CASE WHEN g THEN error() ELSE f(x, y) END` (or a
+  constant in place of `error()`), with `g` built from NULL tests and
+  comparisons with constants. Each candidate is tested on sample arguments
+  under both profiles, and the first that passes is proved for all arguments
+  by a tactic and added as a declaration, so the kernel checks it. A
+  construct with no entry fails the build and shows as `missing` in the
+  coverage report (`substrait-check --lowering-coverage`).
+  `SubstraitLean/Lowering.lean` proves once that lowering with any such table
+  is correct (`Lowering.lower_correct`, and `Lowering.lowerRel_sound` for
+  plans, by `Rel.evalI_mapExprs`). For DuckDB the search finds the
+  hand-written shim exactly: `duckdb_lower_eq_shim` proves the generated
+  lowering equal to `shimDuckDB`, and `shimDuckDB_correct` and
+  `Rel.duckdb_shim_sound` now follow from it. Equality saturation (lean-egg)
+  was considered and not used: it proves equalities rather than finding
+  terms, it is deprecated, and it needs Lean 4.30 and Rust.
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdb_faithful` shows that DuckDB's profile agrees with the
@@ -97,7 +117,7 @@ meets the preconditions, the plan evaluated with DuckDB's functions gives
 (`verified_sql`, #229).
 
 A plan that may raise (an overflow check, a division) is covered too, by
-**partial correctness**. `shimDuckDB_exact` shows that every shimmed
+**partial correctness**. `shimE_exact` shows that every shimmed
 expression, run with DuckDB's functions, gives the reference's value on every
 row where it does not raise, and `Rel.duckdb_shim_sound` lifts this to plans
 (`shimRel`): unless an expression raises on a row it is evaluated on, DuckDB

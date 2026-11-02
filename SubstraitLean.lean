@@ -19,6 +19,9 @@ import SubstraitLean.Safety
 import SubstraitLean.Partition
 import SubstraitLean.Guards
 import SubstraitLean.Profile
+import SubstraitLean.Lowering
+import SubstraitLean.LoweringSearch
+import SubstraitLean.LoweringDuckDB
 import SubstraitLean.Keys
 import SubstraitLean.Semantic
 import SubstraitLean.Compose
