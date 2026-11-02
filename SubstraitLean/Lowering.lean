@@ -158,6 +158,134 @@ theorem Lowering.bin_agree_of_eq {p : Profile} {f : BinFn}
     (p.bin f x y).Agree (Profile.reference.bin f x y) := by
   rw [h]; exact Outcome.agree_refl _
 
+/-! `floor`, which the guard of `power` compares with its argument. -/
+
+theorem Lowering.apply_ffloor_int (c : Int) : UnFn.apply .ffloor (.int c) = .int (FloatCode.floor c) := rfl
+theorem Lowering.apply_ffloor_null : UnFn.apply .ffloor .null = .null := rfl
+theorem Lowering.apply_ffloor_bool (b : Bool) : UnFn.apply .ffloor (.bool b) = .null := rfl
+theorem Lowering.apply_ffloor_str (t : String) : UnFn.apply .ffloor (.str t) = .null := rfl
+theorem Lowering.apply_ffloor_list (vs : List Value) : UnFn.apply .ffloor (.list vs) = .null := rfl
+
+/-! `<<` and `>>` as the templates compute them (`LoweringSearch.schemaBin?`). -/
+
+theorem Lowering.shl_toInt (a : Int) (n : Nat) (h : n < 64) :
+    (BitVec.ofInt 64 a <<< n).toInt = Int.bmod (a * 2 ^ n) (2 ^ 64) := by
+  rw [BitVec.shiftLeft_eq_mul_twoPow, BitVec.toInt_mul]
+  simp only [BitVec.toInt_ofInt, BitVec.toInt_twoPow, Int.bmod_mul_bmod]
+  have h64 : ¬ 64 ≤ n := by omega
+  simp only [h64, ite_false, Int.natCast_pow]
+  split
+  · have hn : n = 63 := by omega
+    subst hn
+    have e : a * -(2:Int) ^ 63 = a * 2 ^ 63 + ((2 ^ 64 : Nat) : Int) * (-a) := by
+      have : ((2 ^ 64 : Nat) : Int) = 2 ^ 63 * 2 := by decide
+      rw [this, Int.mul_neg, Int.mul_assoc, Int.mul_comm 2 (-a), Int.neg_mul, Int.mul_neg,
+        ← Int.mul_assoc, Int.mul_comm (2 ^ 63) a]
+      omega
+    rw [show ((2:Nat):Int) = 2 from rfl, e, Int.add_mul_bmod_self_left]
+  · rfl
+
+theorem Lowering.bmod_fit (x : Int) : Int.bmod x (2 ^ 64) = (x + 2 ^ 63) % 2 ^ 64 - 2 ^ 63 := by
+  rw [Int.bmod_def]
+  simp only [Int.natCast_pow, Int.cast_ofNat_Int]
+  split <;> omega
+
+/-- A left shift wraps `a · 2ᵇ` around at 64 bits. -/
+-- The conditions as the templates' guards compare (`b < 0`, `b < 64`), so
+-- that the proofs' case splits decide them.
+theorem Lowering.shl_apply (a b : Int) : BitOp.apply .shl a b =
+    if b < 0 then none
+    else if b < 64 then some ((a * 2 ^ b.toNat + 2 ^ 63) % 2 ^ 64 - 2 ^ 63) else none := by
+  simp only [BitOp.apply]
+  by_cases h0 : b < 0
+  · have hn : ¬0 ≤ b := by omega
+    simp only [hn, false_and, h0, ite_false, ite_true]
+  · by_cases h1 : b < 64
+    · have hb : 0 ≤ b := by omega
+      simp only [hb, h1, and_self, h0, ite_true, ite_false]
+      rw [Lowering.shl_toInt a b.toNat (by omega), Lowering.bmod_fit]
+    · simp only [h1, and_false, h0, ite_false]
+
+theorem Lowering.shr_apply (a b : Int) : BitOp.apply .shr a b =
+    if b < 0 then none
+    else if b < 64 then some ((BitVec.ofInt 64 a).sshiftRight b.toNat).toInt else none := by
+  simp only [BitOp.apply]
+  by_cases h0 : b < 0
+  · have hn : ¬0 ≤ b := by omega
+    simp only [hn, false_and, h0, ite_false, ite_true]
+  · by_cases h1 : b < 64
+    · have hb : 0 ≤ b := by omega
+      simp only [hb, h1, and_self, h0, ite_true, ite_false]
+    · simp only [h1, and_false, h0, ite_false]
+
+/-- `CASE WHEN #1 = k THEN 2ᵏ …` over `ks`, else NULL: `2ʸ` for a shift `y`, which
+`<<`'s template multiplies by (`LoweringSearch.schemaBin?`). One lemma, by induction,
+rather than a case per shift in every proof. -/
+@[irreducible] def Lowering.pow2Chain (ks : List Nat) : Expr :=
+  ks.foldr (fun (k : Nat) (e : Expr) =>
+    .ifThen (.bin .eq (.field 1) (.lit (.int (k : Int)))) (.lit (.int ((2 : Int) ^ k))) e) (.lit .null)
+
+theorem Lowering.pow2Chain_eval (s : DuckDBSettings) (x y : Value) (ks : List Nat) :
+    (Lowering.pow2Chain ks).evalP (Profile.duckdb s) [x, y] =
+      .ok (match y with
+        | .int b => if 0 ≤ b ∧ b.toNat ∈ ks then .int (2 ^ b.toNat) else .null
+        | _ => .null) := by
+  induction ks with
+  | nil => cases y <;> simp [Lowering.pow2Chain, Expr.evalP]
+  | cons k ks ih =>
+    simp only [Lowering.pow2Chain, List.foldr_cons] at ih ⊢
+    simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
+    rw [ih]
+    cases y with
+    | int b =>
+      simp only [Profile.duckdb, duckBin, Option.getD, Profile.reference, raiseIf, BinFn.issue,
+        BinFn.apply]
+      by_cases h : b = (k : Int)
+      · subst h
+        simp [Value.isTrue, bind, Except.bind]
+      · by_cases h0 : 0 ≤ b
+        · have hk : b.toNat ≠ k := by omega
+          simp [h, h0, hk, Value.isTrue, bind, Except.bind]
+        · simp [h, h0, Value.isTrue, bind, Except.bind]
+    | _ => simp [Profile.duckdb, Profile.reference, raiseIf, BinFn.issue, BinFn.apply, Value.isTrue,
+        bind, Except.bind]
+
+/-- `<<` for DuckDB: a shift outside `0`–`63` raises; otherwise `x · 2ʸ`
+(`Lowering.pow2Chain`) wrapped around at 64 bits in 128-bit arithmetic, as
+`overflow` = `SILENT` does. -/
+def Lowering.shlTemplate : Expr :=
+  let h : Int := 2 ^ 63
+  let m : Int := 2 ^ 64
+  let wrap (x : Expr) : Expr :=
+    .bin .dsub (.bin .imod (.bin .dadd (.bin .imod (.bin .dadd x (.lit (.int h))) (.lit (.int m)))
+      (.lit (.int m))) (.lit (.int m))) (.lit (.int h))
+  .ifThen (.bin .and (.un .isNum (.field 0))
+      (.bin .or (.bin .lt (.field 1) (.lit (.int 0))) (.un .not (.bin .lt (.field 1) (.lit (.int 64))))))
+    (.un (.raise "domain") (.field 1))
+    (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64))))
+
+theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :
+    (Lowering.shlTemplate.evalP (Profile.duckdb s) [x, y]).Agree
+      (Profile.reference.bin (.bit .shl) x y) := by
+  simp only [Lowering.shlTemplate, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+    Lowering.pow2Chain_eval, Outcome.ok_bind]
+  cases x <;> cases y
+  case int.int a b =>
+    by_cases h0 : b < 0
+    · simp [h0, Profile.duckdb, duckBin, duckUn, Profile.reference, raiseIf, BinFn.issue, UnFn.issue,
+        BinFn.apply, UnFn.apply, Lowering.shl_apply, domainIssue, Value.isTrue, and3, or3,
+        Outcome.Agree, Issue.isError, bind, Except.bind]
+    · by_cases h1 : b < 64
+      · have hb : 0 ≤ b := by omega
+        simp [h0, h1, hb, Profile.duckdb, duckBin, duckUn, Profile.reference, raiseIf, BinFn.issue,
+          UnFn.issue, BinFn.apply, UnFn.apply, Lowering.shl_apply, domainIssue, Value.isTrue, and3, or3,
+          Outcome.Agree, Issue.isError, bind, Except.bind, Lowering.tmod_add_tmod]
+      · simp [h0, h1, Profile.duckdb, duckBin, duckUn, Profile.reference, raiseIf, BinFn.issue,
+          UnFn.issue, BinFn.apply, UnFn.apply, Lowering.shl_apply, domainIssue, Value.isTrue, and3, or3,
+          Outcome.Agree, Issue.isError, bind, Except.bind]
+  -- The other kinds: NULL (or ill-typed) in, NULL out, by evaluation.
+  all_goals rfl
+
 /-- A template for the unary function `f` under `p`. -/
 structure UnEntry (p : Profile) (f : UnFn) where
   tmpl : Expr

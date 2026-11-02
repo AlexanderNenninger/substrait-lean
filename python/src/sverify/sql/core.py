@@ -398,6 +398,16 @@ class Dialect:
         outside 64 bits must raise (Lean: NULL)."""
         raise Unsupported(f"{self.name}: CAST(double AS BIGINT) is not implemented")
 
+    def float_to_int_or_null(self, x: str) -> str:
+        """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
+        zero, NULL for NaN, ±inf and values outside 64 bits."""
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
+
+    def narrow_or_null(self, x: str, bits: int) -> str:
+        """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
+        or NULL where it does not fit."""
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
+
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""
         return f"({x} <> {x})"
@@ -866,7 +876,7 @@ class Un:
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
         "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
-        "regex_extract", "regex_replace", "md5", "sha256",
+        "regex_extract", "regex_replace", "md5", "sha256", "ftoi_or_null", "narrow_or_null",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -1281,6 +1291,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "float"
         case Un(
             op="ftoi"
+            | "ftoi_or_null"
+            | "narrow_or_null"
             | "narrow"
             | "fit"
             | "length"
@@ -1352,6 +1364,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return "float"
         case Un(
             op="ftoi"
+            | "ftoi_or_null"
+            | "narrow_or_null"
             | "narrow"
             | "fit"
             | "length"
@@ -2189,12 +2203,16 @@ class _Parser:
                     inp = {"scalarFunction": {**f, "outputType": {"date": {}}}}
                 e = self.expr(inp, cols)
                 k = lean_expr_kind(e, cols.lean)
+                # `TRY_CAST` (#58): NULL where the cast fails.
+                or_null = _field(v, "failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL"
                 # `Parse.wideIntDecimal`; a duration compared with an interval.
                 if k == "int" and _wide_int_decimal(_req(v, "type")):
                     return e
                 # Decimals (#27): rescaled, rounding half away from zero to a
                 # smaller scale; to an integer truncates toward zero.
                 if isinstance(target, Dec):
+                    if or_null:
+                        raise Unsupported("TRY_CAST to DECIMAL is not supported yet")
                     if k in ("int", "float") or isinstance(k, Dec):
                         return DecOp("cast", (e,), target.p, target.s)
                     raise Unsupported(
@@ -2205,7 +2223,13 @@ class _Parser:
                         bits = _int_bits(_req(v, "type"))
                         # A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits fits a `BIGINT`.
                         t = Un("dtrunc", e)
-                        return t if bits == 64 and k.p - k.s <= 18 else Un("narrow", t, digits=bits)
+                        if bits == 64 and k.p - k.s <= 18:
+                            return t
+                        if or_null:
+                            raise Unsupported(
+                                "TRY_CAST of a DECIMAL to an integer is not supported yet"
+                            )
+                        return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
                     raise Unsupported(f"unsupported cast from DECIMAL to {target}")
@@ -2215,7 +2239,7 @@ class _Parser:
                     return Un("itof", e)
                 # Fails on NaN, ±inf and out-of-range values.
                 if target == "int" and k == "float":
-                    return Un("ftoi", e)
+                    return Un("ftoi_or_null" if or_null else "ftoi", e)
                 if target == "str" and k == "int":
                     return Un("itos", e)
                 if target == "date" and k == "time":
@@ -2228,7 +2252,9 @@ class _Parser:
                 # Fails where the value does not fit (`UnFn.narrow`).
                 if target == "int" and k == "int":
                     bits = _int_bits(_req(v, "type"))
-                    return Un("narrow", e, digits=bits) if bits < 64 else e
+                    if bits == 64:
+                        return e
+                    return Un("narrow_or_null" if or_null else "narrow", e, digits=bits)
                 if target == k and target != "other":
                     return e
                 raise Unsupported(f"unsupported cast from {k} to {target}")
@@ -3997,6 +4023,10 @@ class _Writer:
                 return d.canon(d.float_round_to(self.float_operand(a, ref, cols), digits))
             case Un(op="ftoi", arg=a):
                 return d.float_to_int(self.float_operand(a, ref, cols))
+            case Un(op="ftoi_or_null", arg=a):
+                return d.float_to_int_or_null(self.float_operand(a, ref, cols))
+            case Un(op="narrow_or_null", arg=a, digits=bits):
+                return d.narrow_or_null(self.int_operand(a, ref, cols, "TRY_CAST to INT"), bits)
             case Un(op="narrow", arg=a, digits=bits):
                 x = self.int_operand(a, ref, cols, "CAST to INT")
                 lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)

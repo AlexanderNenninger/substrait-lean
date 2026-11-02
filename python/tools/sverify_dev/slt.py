@@ -52,6 +52,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 import tomllib
 from collections import Counter
 from collections.abc import Iterable, Iterator, Sequence
@@ -646,18 +647,21 @@ class Replay:
         import ibis
         import sqlglot as sg
 
-        from sverify.sql_lift import lift
+        from sverify.sql_lift import expand_table_shorthand, lift
 
         if self.null_order != "nulls_last":
             res.reason = "setting default_null_order"
             return res
         try:
-            tree = sg.parse_one(rec.sql, read="duckdb")
+            tree = sg.parse_one(expand_table_shorthand(rec.sql), read="duckdb")
         except sg.errors.ParseError as e:
             res.cls, res.reason = "refused", f"lift: cannot parse ({_clip(str(e), 100)})"
             return res
         tables = sorted({t.name for t in tree.find_all(sg.exp.Table) if t.name})
-        ordered = isinstance(tree, sg.exp.Select) and tree.args.get("order") is not None
+        ordered = (
+            isinstance(tree, sg.exp.Select | sg.exp.SetOperation)
+            and tree.args.get("order") is not None
+        )
         if not outcome(ddb_rows, ddb_err, ordered):
             res.reason = "DuckDB's own result differs from the expected one"
             return res
@@ -876,6 +880,9 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
 #: kills the checker (Lean evaluating a plan that does not finish on a test's
 #: few rows), records the query as skipped with the reason, and goes on.
 CHECK_TIMEOUT = 120
+#: A query slower than this (seconds) is logged as slow (not in the ledger,
+#: whose contents stay the same from run to run): leads on checker performance.
+SLOW = 10
 
 
 @contextlib.contextmanager
@@ -921,8 +928,11 @@ def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
             rp.statement(rec)
             continue
         try:
+            start = time.monotonic()
             with _watchdog(CHECK_TIMEOUT) as fired:
                 res = rp.probe(rec)
+            if (took := time.monotonic() - start) > SLOW:
+                print(f"slow: {rel}:{rec.line} {took:.0f} s {_clip(rec.sql, 150)!r}", flush=True)
             if fired[0]:
                 res.cls, res.side = "skipped", None
                 res.reason = f"harness: the checker took over {CHECK_TIMEOUT} s"
@@ -1024,6 +1034,8 @@ def write_summary(out: Path = LEDGER) -> Path:
     rows = []
     for p in sorted(out.glob("*.json")):
         led = json.loads(p.read_text())
+        if "summary" not in led:
+            continue  # not a ledger (`probes.json`)
         s = led["summary"]
         reasons = Counter(
             (r.get("reason") or "").split(":")[0] for r in led["results"] if r["cls"] == "refused"

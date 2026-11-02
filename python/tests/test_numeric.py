@@ -366,3 +366,55 @@ def test_round_to_digits_is_duckdbs(xs, d):
     for engine in ("duckdb", "polars"):
         got = [r["x"] for r in run_plan(con, plan, engine).to_pylist()]
         assert [("ok", None if v is None else code(v)) for v in got] == want, engine
+
+
+# #58: TRY_CAST gives NULL where CAST raises, and is then no error: a double
+# to BIGINT (truncating, as the reference's CAST does) and an integer to a
+# narrower one.
+TC = ibis.table({"f": "float64", "i": "int64"}, name="t")
+
+
+def try_casts(t):
+    return t.select(a=t.f.try_cast("int64"), b=t.i.try_cast("int8"), c=t.i.try_cast("int32"))
+
+
+def expected_try_cast(f, i) -> tuple:
+    def fits(v, bits):
+        return v is not None and -(2 ** (bits - 1)) <= v < 2 ** (bits - 1)
+
+    a = math.trunc(f) if f is not None and math.isfinite(f) else None
+    return (a if fits(a, 64) else None, i if fits(i, 8) else None, i if fits(i, 32) else None)
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=list(HealthCheck))
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.none() | st.floats(allow_nan=True, allow_infinity=True),
+            st.none() | st.integers(-(2**63), 2**63 - 1) | st.integers(-300, 300),
+        ),
+        max_size=6,
+    )
+)
+def test_try_cast_is_null_where_cast_fails(rows):
+    plan = to_substrait_json(try_casts(TC))
+    want = [expected_try_cast(f, i) for f, i in rows]
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))) == want
+    con = connect()
+    create_table(con, "t", TC.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert [tuple(r.values()) for r in got] == want
+
+
+def test_try_cast_is_no_error_and_cast_is():
+    assert sv.verify(try_casts(TC)).issues == []
+    plain = TC.select(a=TC.f.cast("int64"), b=TC.i.cast("int8"))
+    assert [i.kind for i in sv.verify(plain).issues] == ["cast out of range"] * 2
+    con = connect()
+    create_table(con, "t", TC.schema(), [(1.5, 1)])
+    plan = written_plan(to_substrait_json(try_casts(TC)))
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="see #271"):
+            run_plan(con, plan, engine)
+    with pytest.raises(Exception, match="TRY_CAST to DECIMAL"):
+        written_plan(to_substrait_json(TC.select(d=TC.f.try_cast("decimal(10, 2)"))))

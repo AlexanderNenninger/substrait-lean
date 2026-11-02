@@ -76,10 +76,15 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   and `Expr.evalP_reference` proves that evaluating under it is `eval`,
   raising the first error `issues` reports. So the reference is one profile
   among others.
-* **`Profile.duckdb s`** is the reference except where
-  `characterization/duckdb/FACTS.md` records a difference. So far that is
-  division and modulus by zero (R2–R5), which depend on the setting
-  `error_on_division_by_zero` (on by default since 2.0).
+* **`Profile.duckdb s`** is the reference except where DuckDB 2.0 was probed
+  to differ (`python -m sverify_dev.probe`, `characterization/duckdb/probes.json`,
+  FACTS R15). With `ieee_floating_point_ops` on (the default), operations on
+  doubles that have no value give NaN (`∞ - ∞`, `0 · ∞`, `∞ / ∞`, `sqrt(-1)`),
+  a logarithm of 0 is `-∞`, and a double divided by zero is `±∞`; `atan2(0, 0)`
+  is 0; `MIN % -1` raises; `<<` raises where bits are shifted out and `>>`
+  gives 0 for shifts outside 0–63. Integers divided by zero follow
+  `error_on_division_by_zero` (on by default since 2.0). `duckBin` and
+  `duckUn` hold the differences; the settings are `DuckDBSettings`.
 * **The shims are generated** (#241). A shim rewrites an expression into one
   DuckDB evaluates to the reference's outcome. Its guards are two functions
   of the model: `UnFn.raise` (always an error, `Issue.raised`; DuckDB's
@@ -105,7 +110,18 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   gives. `SILENT`'s wrap-around, `((x + 2^(w-1)) % 2^w + 2^w) % 2^w -
   2^(w-1)` in 128-bit arithmetic, is beyond the search: it is a hand-written
   schema (`LoweringSearch.schema?`), still proved for each width by the
-  kernel and marked as such in the coverage report. `SubstraitLean/Lowering.lean` proves once that
+  kernel and marked as such in the coverage report. So are the guards for
+  DuckDB's IEEE operations (#242), which copy the reference's error
+  conditions atom for atom: `nanCase` for `+ - * / % ^` of doubles (with the
+  zero divisor for `/` and `%`), `FMath.inDomain` for the elementary
+  functions, `0` for `MIN % -1`, and a range check for `>>`. `<<` multiplies
+  by `2ʸ` from `Lowering.pow2Chain`, proved once by induction, and wraps
+  around as `SILENT` does. The proofs generalize the special codes (`±∞`,
+  NaN, `±1`) to variables with their order first, so that nothing evaluates
+  their 600-digit values. `SubstraitLean/LoweringCache.lean`, written by
+  `substrait-check --lowering-cache` and checked in, records each construct's
+  template, so that a build tries it first instead of searching; a stale
+  entry costs time, never correctness. `SubstraitLean/Lowering.lean` proves once that
   lowering with any such table is correct: **`Lowering.lower_correct`** (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for
@@ -137,11 +153,14 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   proved.
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
-`Profile.duckdb_faithful` shows that DuckDB's profile agrees with the
-reference wherever the reference does not raise, so guard elimination
-(`Rel.guardFree_sound`) gives **`Rel.duckdb_sound`**: on every catalog that
-meets the preconditions, the plan evaluated with DuckDB's functions gives
-`Rel.eval`'s rows. The catalogue's benchmark queries are checked this way
+`Profile.duckdbWritten_faithful` shows that DuckDB's profile, with IEEE
+operations on, agrees with the reference wherever the reference does not
+raise, so guard elimination (`Rel.guardFree_sound`) gives
+**`Rel.duckdb_sound`**: on every catalog that meets the preconditions, the
+plan evaluated with DuckDB's functions gives `Rel.eval`'s rows. Two functions
+DuckDB raises on where the reference gives a value, `MIN % -1` and `<<`, are
+the SQL printer's (`Profile.duckdbWritten`): it writes them out even without
+guards. The catalogue's benchmark queries are checked this way
 (`verified_sql`, #229).
 
 A plan that may raise (an overflow check, a division) is covered too, by
@@ -157,7 +176,8 @@ pushed-down filter); that skips evaluations without changing a value, which
 is the engine's own correctness. `verified_sql` in the catalogue rests on
 this theorem; `guard_free` is the stronger fact that nothing raises.
 
-Trusted: that `Profile.duckdb` matches DuckDB (to be checked by the fuzzer),
+Trusted: that `Profile.duckdb` matches DuckDB (probed on edge cases,
+`tests/test_probe.py`),
 and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
 NOT NULL` included). Next: relations, the
 fuzzer check, writing shimmed plans for the SQL printer, and the other rows of
