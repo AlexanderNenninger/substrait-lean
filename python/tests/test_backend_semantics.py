@@ -157,27 +157,17 @@ def test_duckdb_overflow_raises(duck):
         ("SELECT s LIKE 'a\\b' FROM ss", [(False,), (False,)]),
         # concat() skips NULLs; || propagates.
         ("SELECT concat(s, 'x'), s || 'x' FROM s WHERE s IS NULL", [("x", None)]),
-        # The total order on doubles: -0.0 < 0.0, so DISTINCT keeps both.
-        ("SELECT v = 0.0 FROM f0", [(False,), (True,)]),
-        ("SELECT count(*) FROM (SELECT DISTINCT v FROM f0)", [(2,)]),
+        # The total order on doubles is pinned in test_datafusion_quirks.py.
         # NULL is the largest value.
         ("SELECT x FROM n ORDER BY x DESC", [(None,), (2,), (1,)]),
-        # Rust's case mapping and Unicode regex classes.
-        ("SELECT upper(s) FROM ss", [("STRASSE",), ("A\\B",)]),
-        ("SELECT array_length(regexp_match(s, '\\d')) FROM u", [(1,), (1,), (None,)]),
+        # Rust's case mapping and regex classes: in
+        # test_translators_agree_or_refuse_on_opaque_functions.
         # AVG converts to doubles first.
         ("SELECT avg(a) FROM mx", [(0.0,)]),
-        # Constant casts truncate, like column casts.
-        ("SELECT CAST(2.7 AS BIGINT) AS c", [(2,)]),
     ],
 )
 def test_datafusion_native(con, sql, expected):
     assert positional(con.datafusion.sql(sql).to_arrow_table()) == expected
-
-
-def test_datafusion_rejects_spaces_in_an_integer(con):
-    with pytest.raises(Exception, match="Cannot cast string ' 12'"):
-        con.datafusion.sql("SELECT CAST(' 12' AS BIGINT) AS c").to_arrow_table()
 
 
 # --- Ibis: one expression, a backend-dependent meaning -------------------------
@@ -403,8 +393,9 @@ def proves(sql: str, ensures: str) -> bool:
     return r.proved and r.ensures[0].proved
 
 
-def test_constant_casts_truncate_like_datafusion(con):
-    """F9: constant casts fold as DataFusion casts (truncating), not rounded."""
+def test_constant_casts_truncate(con):
+    """F9: under the reference semantics constant casts fold as column casts
+    do (truncating, as DataFusion casts), not rounded."""
     for value, truncated in [("2.7", 2), ("-2.5", -2), ("CAST(2.5 AS DOUBLE)", 2)]:
         sql = f"SELECT CAST({value} AS BIGINT) AS c FROM j"
         assert positional(con.datafusion.sql(sql).to_arrow_table()) == [(truncated,), (truncated,)]

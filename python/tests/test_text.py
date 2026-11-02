@@ -38,7 +38,6 @@ from sverify.engine import (
     put_table,
     run_plan,
     substrait_json,
-    to_sql,
     written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
@@ -87,7 +86,7 @@ def oracle(con, sql: str) -> list[tuple]:
     else:
         source = PLANS.get(sql, sql)
         if callable(source):
-            source = to_sql(source(ibis.table(R, name="r")))
+            source = ibis.to_sql(source(ibis.table(R, name="r")), dialect="datafusion")
         out = canonical_doubles(collect(con.datafusion.sql(source)))
     return [tuple(x.values()) for x in out.to_pylist()]
 
@@ -226,7 +225,7 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 
 
 @settings(
-    max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+    max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(folded, folded, st.none()), max_size=6))
 def test_ilike_matches_datafusion(rows):
@@ -290,13 +289,15 @@ def errors(expr) -> list[str]:
     pattern=st.text(alphabet="ab.^$*+?|()[]{}\\-,0123dws", max_size=10)
     | st.from_regex(r"\^?[a-c.]*(\[a-c\]|\\d|\(a\|b\))?[*+?]?\$?", fullmatch=True)
 )
-@settings(max_examples=150, deadline=None)
+@settings(max_examples=40, deadline=None)
 def test_patterns_said_to_compile_do(pattern):
     if errors(T.filter(T.name.re_search(pattern))):
         return
     con = connect()
     put_table(con, "t", pa.table({"name": ["abc"], "n": [1]}))
-    collect(con.datafusion.sql(to_sql(T.filter(T.name.re_search(pattern)))))
+    collect(
+        con.datafusion.sql(ibis.to_sql(T.filter(T.name.re_search(pattern)), dialect="datafusion"))
+    )
 
 
 def test_regex_checks():

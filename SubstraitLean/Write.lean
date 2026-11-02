@@ -80,7 +80,9 @@ def aggregateFns : List (Nat × String) := [
   -- 64-bit integers folded with a bit operation (#53).
   (500, "bit_and"), (501, "bit_or"), (502, "bit_xor"),
   -- The variance and standard deviation of doubles, each engine's own algorithm (#54).
-  (503, "variance"), (504, "std_dev")]
+  (503, "variance"), (504, "std_dev"),
+  -- The first and last value in the measure's sort order (#55).
+  (505, "first"), (506, "last")]
 
 /-- Window functions: new anchors 600–699. -/
 def windowFns : List (Nat × String) := [
@@ -108,6 +110,7 @@ def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
   | .bit op => match op with | .and => 500 | .or => 501 | _ => 502
   | .var _ sqrt => if sqrt then 504 else 503
+  | .pick last => if last then 506 else 505
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -155,6 +158,7 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
   cases f
   case bit op => cases op <;> decide
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
+  case pick last => cases last <;> decide
   all_goals decide
 
 theorem UnFn.anchor_declared (f : UnFn) :
@@ -782,7 +786,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
           | .count | .iavg | .bit _ => .int
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg | .var _ _ => .float
-          | .min | .max => wkind ks m.arg
+          | .min | .max | .pick _ => wkind ks m.arg
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
@@ -790,7 +794,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .count | .iavg | .bit _ => .int
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg | .var _ _ => .float
-        | .min | .max => wkind ks m.arg
+        | .min | .max | .pick _ => wkind ks m.arg
         | .collect => .list (wkind ks m.arg)
   | .unnest r c =>
       let ks := relKinds schemas cat r

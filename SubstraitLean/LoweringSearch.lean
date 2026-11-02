@@ -266,12 +266,15 @@ or the message log) if it fails, runs out of heartbeats, leaves goals or uses
 `sorry`. -/
 def prove (type : Lean.Expr) (tac : Syntax) : TermElabM (Option Lean.Expr) := withCurrHeartbeats do
   let s ← saveState
+  -- Only an error this proof logs counts, not an earlier one of the command.
+  let had ← MonadLog.hasErrors
   tryCatchRuntimeEx
     (do
       let mv ← mkFreshExprMVar type
       let gs ← Tactic.run mv.mvarId! (Tactic.evalTactic tac)
       let pf ← instantiateMVars mv
-      if gs.isEmpty && !pf.hasMVar && !pf.hasSorry && !(← MonadLog.hasErrors) then return some pf
+      let errs := !had && (← MonadLog.hasErrors)
+      if gs.isEmpty && !pf.hasMVar && !pf.hasSorry && !errs then return some pf
       s.restore; return none)
     fun _ => do s.restore; return none
 
@@ -502,7 +505,9 @@ def elabGenerateLowering : CommandElab := fun stx => do
     for (c, unary) in ctors do
       let t0 ← IO.monoMsNow
       if !excluded.contains c then
-        if ← lowerNative tbl pE ntac unary c then
+        -- Each constructor starts afresh: heartbeats count all of the
+        -- command's work, and every new constructor adds to it.
+        if ← withCurrHeartbeats (lowerNative tbl pE ntac unary c) then
           results := results.push (c, some #[(⟨c, unary, #[]⟩, .ok "native", (← IO.monoMsNow) - t0)])
           if guardFns.contains c then natives := natives.push (tbl ++ c.componentsRev.head!.appendAfter "_native")
           continue
@@ -513,7 +518,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
       let mut done := #[]
       for k in ks do
         let t0 ← IO.monoMsNow
-        let how ← lowerSearch tbl pE p tac (excluded.contains c) k
+        let how ← withCurrHeartbeats (lowerSearch tbl pE p tac (excluded.contains c) k)
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
     return results

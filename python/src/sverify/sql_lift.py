@@ -26,7 +26,12 @@ where DuckDB and the reference (#185, #209) differ:
 * `semantics="duckdb"` (`DUCKDB`): DuckDB's own. A double `/` by zero is
   `±inf` or NaN (`on_division_by_zero: IEEE`), even with
   `error_on_division_by_zero` on. The plan means what DuckDB computes, and the
-  checker proves contracts of that.
+  checker proves contracts of that. Where Lean's generated lift table has
+  an entry (`lift_table`, #268: `/`, `%` of doubles, `log`, `sign`,
+  `greatest`/`least`, casts between BIGINT and DOUBLE, `avg` of integers),
+  the lift writes that entry, which Lean proves means what DuckDB computes,
+  NaN and ±inf included; the other rules are written by hand, pending
+  generation.
 * `semantics="reference"` (`REFERENCE`): sverify's reference. A double `/`
   by zero raises (`ERROR`, decided on #185), and a cast of a double to an
   integer truncates (R9, decided on #209). The written SQL is guarded where
@@ -52,6 +57,7 @@ functions (`Anonymous`) included, raises `Unsupported` saying what.
 from __future__ import annotations
 
 import contextlib
+import copy
 import dataclasses
 import datetime as dt_
 import re
@@ -123,22 +129,20 @@ class Profile:
         null_ordering: Where NULLs sort when a key doesn't say:
             `"nulls_are_last"`, in both directions (F2; SQLGlot's
             `NULL_ORDERING` for DuckDB, checked when parsing).
-        avg_integer: The output type of `avg` of integers: `"fp64"` (DuckDB;
-            #209 R6, the plan's declared type).
+        avg_integer: The output type of `avg` of integers: `"fp64"` (#209
+            R6, the plan's declared type).
         overflow: Integer `+ - *`, negation, `//` and `sum` that leave the
             declared width: `"ERROR"` (DuckDB, and #185's reference default).
         on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
             `error_on_division_by_zero`, its default, and the reference).
         float_division_by_zero: `/` by zero, which divides doubles:
-            `"IEEE"` (DuckDB: `1 / 0` is `inf`) or `"ERROR"` (reference).
+            `"ERROR"` (reference). DuckDB's `/` is the generated lift's.
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
             (DuckDB rounds, `CAST(2.5 AS INT)` is 2) or `"TRUNCATE"`
             (reference, #209 R9).
         decimal_to_int: A cast of a decimal to an integer:
             `"TIE_AWAY_FROM_ZERO"` (DuckDB, `CAST(2.5 AS INT)` is 3) or
             `"TRUNCATE"` (reference, R9).
-        float_modulus_by_zero: `%` of doubles by zero: `"NAN"` (DuckDB) or
-            `"ERROR"` (reference).
         domain_error: Elementary functions and `power` outside their domain
             (`sqrt(-1)`, `power(-8, 1/3)`): `"NAN"` (DuckDB) or `"ERROR"`
             (reference, #257).
@@ -156,22 +160,148 @@ class Profile:
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
     decimal_to_int: str = "TRUNCATE"
-    float_modulus_by_zero: str = "ERROR"
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
 
 
 DUCKDB = Profile(
     "duckdb",
-    float_division_by_zero="IEEE",
     float_to_int="TIE_TO_EVEN",
     decimal_to_int="TIE_AWAY_FROM_ZERO",
-    float_modulus_by_zero="NAN",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
 )
 REFERENCE = Profile("reference")
 PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
+
+
+# --------------------------------------------------------------------------
+# The generated lift (#268)
+#
+# With DuckDB's semantics, the constructs the generated lift table covers are
+# lifted as the table says: Lean generates each entry and proves it means
+# what DuckDB computes (`SubstraitLean/LiftDuckDB.lean`), NaN and ±inf
+# included, and `substrait-check --lift-table` exports it. The rules below
+# that say "pending generation" are still written by hand.
+
+
+@dataclasses.dataclass(frozen=True)
+class LiftTable:
+    """The DuckDB semantics' part of `substrait-check --lift-table`.
+
+    Attributes:
+        functions: The templates' function anchors: the functions' names.
+        scalars: By construct (`"DOUBLE / DOUBLE"`): the entry, with its
+            `args` and `result` types and its `template` or why it is
+            `refused`.
+        aggregates: By construct (`"avg(BIGINT)"`): its `measures` and the
+            `finish` over them.
+    """
+
+    functions: Mapping[int, str]
+    scalars: Mapping[str, Json]
+    aggregates: Mapping[str, Json]
+
+
+_LIFT_TABLE: list[LiftTable] = []
+
+
+def lift_table() -> LiftTable:
+    """The generated lift table, read from the checker once."""
+    if not _LIFT_TABLE:
+        import json
+        import subprocess
+
+        from sverify.engine import checker_path
+
+        out = subprocess.run(
+            [str(checker_path()), "--lift-table"], capture_output=True, text=True, check=True
+        ).stdout
+        raw = json.loads(out)
+        _LIFT_TABLE.append(
+            LiftTable(
+                {f["anchor"]: f["name"].split(":")[0] for f in raw["functions"]},
+                {e["construct"]: e for e in raw["lift"] if e["semantics"] == "duckdb"},
+                {
+                    e["construct"]: e["aggregate"]
+                    for e in raw["aggregates"]
+                    if e["semantics"] == "duckdb" and e["aggregate"] is not None
+                },
+            )
+        )
+    return _LIFT_TABLE[0]
+
+
+#: The table's types.
+_TABLE_TYPES: dict[str, Any] = {
+    "i8": dt.int8,
+    "i64": dt.int64,
+    "fp64": dt.float64,
+    "boolean": dt.boolean,
+}
+
+
+def _instantiate(template: Any, args: Sequence[Json]) -> Any:
+    """A template (or a part of one) with its field references `i` replaced
+    by `args[i]`, and its functions anchored in the plan being built."""
+    if isinstance(template, list):
+        return [_instantiate(t, args) for t in template]
+    if not isinstance(template, dict):
+        return template
+    sel = template.get("selection")
+    if isinstance(sel, dict) and "rootReference" in sel:
+        return copy.deepcopy(args[sel["directReference"]["structField"].get("field", 0)])
+    out: dict[str, Any] = {k: _instantiate(v, args) for k, v in template.items()}
+    if "functionReference" in out:
+        functions: Mapping[int, str] = lift_table().functions
+        out["functionReference"] = anchor(functions[out["functionReference"]])
+    return out
+
+
+def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
+    """`construct` of `args` as the generated table lifts it with DuckDB's
+    semantics (the arguments brought to its types first), or None with the
+    reference's semantics, whose rules are written by hand. Raises
+    `Unsupported` where the table refuses it."""
+    if lf.profile is not DUCKDB:
+        return None
+    entry = lift_table().scalars[construct]
+    if "refused" in entry:
+        raise Unsupported(f"{construct}: {entry['refused']}")
+    ts = [_TABLE_TYPES[a] for a in entry["args"]]
+    js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
+    return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
+
+
+@dataclasses.dataclass(frozen=True)
+class Measures:
+    """An aggregate as measures and the value computed from their columns.
+
+    Attributes:
+        parts: Each measure's function name, argument and output type.
+        finish: The aggregate's value from the measures' columns.
+    """
+
+    parts: list[tuple[str, list[Json], Any]]
+    finish: Callable[[list[Json]], E]
+
+
+def _generated_avg(lf: _Lift, a: E) -> Measures | None:
+    """DuckDB's `avg` of an integer as the generated table lifts it (the
+    exact sum and the count, divided as doubles), or None with the
+    reference's semantics."""
+    if lf.profile is not DUCKDB or not a.type.is_integer():
+        return None
+    table = lift_table()
+    agg = table.aggregates["avg(BIGINT)"]
+    x = lf.to(a, dt.int64).json
+    parts = []
+    for m in agg["measures"]:
+        m = m["measure"]
+        args = [_instantiate(v["value"], [x]) for v in m["arguments"]]
+        out = _TABLE_TYPES[next(iter(m["outputType"]))]
+        parts.append((table.functions[m["functionReference"]], args, out))
+    return Measures(parts, lambda refs: E(_instantiate(agg["finish"], refs), dt.float64))
 
 
 # --------------------------------------------------------------------------
@@ -632,7 +762,6 @@ class _Lift:
             return self.expr(n, scope, bound)
 
         args: list[Json] = []
-        output: Json | None = None
         if type(f) in _RANKING:
             name, out = _RANKING[type(f)]
             if isinstance(f, sge.Ntile):
@@ -672,27 +801,28 @@ class _Lift:
                     raise Unsupported("nth_value needs a positive integer constant")
                 args.append(literal(k.value, dt.int64))
         elif type(f) in _AGGREGATES:
-            m, out = self.measure(f, scope, bound)
-            agg = m["measure"]
-            if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
-                raise Unsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
-            name = _AGGREGATES[type(f)]
-            output = agg["outputType"]
-            values = [E(a["value"], dt.null) for a in agg["arguments"]]
-            args = [column(v) for v in values]
+            # Each measure over the window, with its type (DuckDB's AVG of a
+            # DECIMAL is a DOUBLE).
+            ms, finish = self.measure(f, scope, bound)
+            fns = []
+            for m, t in ms:
+                agg = m["measure"]
+                if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
+                    raise Unsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
+                values = [column(E(a["value"], dt.null)) for a in agg["arguments"]]
+                fn = self.window_json(w, agg["functionReference"], values, scope, bound)
+                fn["windowFunction"]["outputType"] = agg["outputType"]
+                fns.append((fn, t))
+            return fns, finish
         else:
             raise Unsupported(f"window function {_shown(f)} is not supported yet")
         fn = self.window_json(w, name, args, scope, bound)
-        if output is not None:
-            # The aggregate's type, as for a measure: DuckDB's AVG of a
-            # DECIMAL is a DOUBLE.
-            fn["windowFunction"]["outputType"] = output
         return [(fn, out)], lambda refs: E(refs[0], out)
 
     def window_json(
         self,
         w: sge.Window,
-        name: str,
+        name: str | int,
         args: list[Json],
         scope: list[Column],
         bound: Mapping[sge.Expression, E],
@@ -711,7 +841,7 @@ class _Lift:
                 }
             )
         fn = {
-            "functionReference": anchor(name),
+            "functionReference": anchor(name) if isinstance(name, str) else name,
             "partitions": partitions,
             "sorts": sorts,
             "arguments": [{"value": a} for a in args],
@@ -782,15 +912,17 @@ class _Lift:
             "input": rel,
             "groupingExpressions": [g.json for g in groups],
             "groupings": [{"expressionReferences": list(range(len(groups)))}] if groups else [],
-            "measures": [m for m, _ in measures],
+            "measures": [m for ms, _ in measures for m, _ in ms],
         }
-        types = [g.type for g in groups] + [t for _, t in measures]
+        types = [g.type for g in groups] + [t for ms, _ in measures for _, t in ms]
         bound = Bound(
             {k: E(field_ref(i), types[i], midnight=groups[i].midnight) for i, k in enumerate(keys)},
             grouped=True,
         )
-        for j, a in enumerate(aggs):
-            bound[a] = E(field_ref(len(keys) + j), types[len(keys) + j])
+        j = len(keys)
+        for a, (ms, finish) in zip(aggs, measures, strict=True):
+            bound[a] = finish([field_ref(j + i) for i in range(len(ms))])
+            j += len(ms)
         cols = [Column(None, f"_{i}", t) for i, t in enumerate(types)]
         return {"aggregate": body}, cols, bound
 
@@ -799,7 +931,10 @@ class _Lift:
         node: sge.Expression,
         scope: list[Column],
         bound: Mapping[sge.Expression, E] | None = None,
-    ) -> tuple[Json, Any]:
+    ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
+        """An aggregate's measures (JSON and type), and its value from their
+        columns: one measure, or with DuckDB's semantics, those the generated
+        lift computes `avg` of an integer from."""
         where = None
         if isinstance(node, sge.Filter):
             # `agg(…) FILTER (WHERE c)`: the rows where `c` is TRUE.
@@ -847,16 +982,33 @@ class _Lift:
                 # DuckDB's AVG of a DECIMAL is a DOUBLE too: the plan says so,
                 # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
-        agg: Json = {
-            "functionReference": anchor(name),
-            "arguments": [{"value": a.json} for a in args],
-            "outputType": type_json(out),
-            **({"options": _overflow(self, out)} if name == "sum" else {}),
-            "invocation": (
-                "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
-            ),
-        }
-        return {"measure": agg, **({"filter": where} if where is not None else {})}, out
+        invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
+        if name == "avg" and (gen := _generated_avg(self, args[0])):
+            # DISTINCT and FILTER apply to each measure alike.
+            parts = [
+                {
+                    "functionReference": anchor(f),
+                    "arguments": [{"value": j} for j in js],
+                    "outputType": type_json(t),
+                    "invocation": invocation,
+                }
+                for f, js, t in gen.parts
+            ]
+            types, finish = [t for _, _, t in gen.parts], gen.finish
+        else:
+            # Pending generation (#268), but for `avg` of an integer.
+            parts = [
+                {
+                    "functionReference": anchor(name),
+                    "arguments": [{"value": a.json} for a in args],
+                    "outputType": type_json(out),
+                    **({"options": _overflow(self, out)} if name == "sum" else {}),
+                    "invocation": invocation,
+                }
+            ]
+            types, finish = [out], lambda refs: E(refs[0], out)
+        filt = {"filter": where} if where is not None else {}
+        return [({"measure": m, **filt}, t) for m, t in zip(parts, types, strict=True)], finish
 
     # -- expressions -------------------------------------------------------
 
@@ -1066,7 +1218,11 @@ def _div(lf: _Lift, node: sge.Div, sub: Sub, scope: list[Column]) -> E:
             raise Unsupported(f"/ of {a.type} and {b.type} is not supported")
     if node.args.get("typed") or node.args.get("safe"):
         raise Unsupported("typed or safe division is not DuckDB's /")
-    # DuckDB's `/` divides as doubles (F1); by zero it gives ±inf or NaN.
+    # DuckDB's `/` divides as doubles (F1): integers as BIGINTs, decimals as
+    # doubles; by zero it gives ±inf or NaN.
+    ints = all(x.type.is_integer() or x.type.is_null() for x in (a, b))
+    if g := _generated(lf, "BIGINT / BIGINT" if ints else "DOUBLE / DOUBLE", [a, b]):
+        return g
     opt = _option("on_division_by_zero", lf.profile.float_division_by_zero)
     args = [lf.to(a, dt.float64).json, lf.to(b, dt.float64).json]
     return E(_fn("divide", args, dt.float64, [opt]), dt.float64)
@@ -1088,11 +1244,9 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     a, b = sub(node.this), sub(node.expression)
     t = lf.common([a, b], "%")
     if t.is_float64():
-        if lf.profile.float_modulus_by_zero != "ERROR":
-            raise Unsupported(
-                "% of doubles is not supported with DuckDB's semantics: by zero DuckDB "
-                "gives NaN, which the model's modulus cannot state"
-            )
+        # DuckDB's: NaN by zero or of an infinity.
+        if g := _generated(lf, "DOUBLE % DOUBLE", [a, b]):
+            return g
         # sverify's own remainder of doubles, C's `fmod` (#256): Substrait's
         # `modulus` has no double impl.
         opt = _option("on_division_by_zero", "ERROR")
@@ -1289,6 +1443,14 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         return _temporal(a, t)
     if a.constant and a.type.is_string() and t.is_decimal():
         a = _number(a.value.strip())
+    if not a.constant:
+        for src, to, sql in (
+            (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
+            (dt.int64, dt.float64, "BIGINT AS DOUBLE"),
+        ):
+            if _same(a.type, src) and _same(t, to) and (g := _generated(lf, f"CAST({sql})", [a])):
+                return g
+    # Other casts: pending generation (#268).
     if t.is_integer() and (a.type.is_float64() or a.type.is_decimal()):
         rounding = lf.profile.float_to_int if a.type.is_float64() else lf.profile.decimal_to_int
         if rounding != "TRUNCATE":
@@ -1734,7 +1896,10 @@ def _log(lf: _Lift, node: sge.Log, sub: Sub, scope: list[Column]) -> E:
     # DuckDB's `log(x)` is base 10, `log(b, x)` base b; `log2`, `log10`
     # are SQLGlot's `Log` with the base set.
     if node.expression is None:
-        return _elementary_call(lf, "log10", _doubles(lf, [sub(node.this)], "log"))
+        (x,) = _doubles(lf, [sub(node.this)], "log")
+        if g := _generated(lf, "log(DOUBLE)", [E(x, dt.float64)]):
+            return g
+        return _elementary_call(lf, "log10", [x])
     base, x = node.this, node.expression
     if isinstance(base, sge.Literal) and base.this in ("2", "10"):
         return _elementary_call(lf, f"log{base.this}", _doubles(lf, [sub(x)], "log"))
@@ -1789,6 +1954,15 @@ def _extremum(name: str) -> Callable[..., E]:
         t = lf.common(es, name)
         if t.is_null():
             t = dt.int32
+        sql = "BIGINT" if t.is_int64() else "DOUBLE" if t.is_float64() else None
+        if sql is not None and lf.profile is DUCKDB:
+            # Of BIGINTs or DOUBLEs: the generated lift's, pairwise.
+            g = es[0]
+            for e in es[1:]:
+                g = _generated(lf, f"{name}({sql}, {sql})", [lf.to(g, t), lf.to(e, t)])
+                assert g is not None
+            return g
+        # Other types: pending generation (#268).
         return E(_fn(f"{name}_skip_null", [lf.to(e, t).json for e in es], t), t)
 
     return rule
@@ -1807,6 +1981,9 @@ def _sign(lf: _Lift, node: sge.Sign, sub: Sub, scope: list[Column]) -> E:
     a = sub(node.this)
     if not (_numeric(a.type) or a.type.is_null()) or a.type.is_decimal():
         raise Unsupported(f"sign of a {a.type} is not supported yet")
+    sql = "DOUBLE" if a.type.is_float64() else "BIGINT"
+    if g := _generated(lf, f"sign({sql})", [a]):
+        return g
     t = dt.int64 if a.type.is_null() else a.type
     x = lf.to(a, t).json
     i8 = dt.int8

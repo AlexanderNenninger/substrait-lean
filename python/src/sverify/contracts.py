@@ -74,6 +74,7 @@ import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from fractions import Fraction
 from typing import Any, Literal
 
@@ -94,7 +95,6 @@ from sverify.engine import (
     plan_json,
     run_checker,
     run_plan,
-    to_sql,
     written_plan,
 )
 
@@ -411,10 +411,22 @@ def decode_double(code: int) -> float:
 
 
 def render_fact(abstract: dict, dtype: Any) -> str | None:
-    """Describe a column's abstract value for doubles, timestamps, dates and
-    intervals (microseconds); None keeps Lean's own description."""
+    """Describe a column's abstract value for doubles, decimals (their unscaled
+    integers, #250), timestamps, dates and intervals (microseconds); None
+    keeps Lean's own description."""
     rng = abstract.get("int")
-    if dtype.is_floating():
+    if (dec := abstract.get("decimal")) is not None:
+        # The plan's own type, which Lean states: Ibis may type a decimal
+        # product at another scale than the model computes it.
+        scale = dec["scale"]
+        # The wider precision: the plan may declare more digits than the model
+        # needs (DuckDB's SUM is DECIMAL(38, s)), or fewer (Ibis types `a + a`
+        # at `a`'s), and the model computes exactly.
+        same = dtype.is_decimal() and dtype.scale == scale and dtype.precision is not None
+        precision = max(dtype.precision, dec["precision"]) if same else dec["precision"]
+        show = lambda k: f"{Decimal(k).scaleb(-scale):.{scale}f}"  # noqa: E731
+        noun = f"a decimal({precision}, {scale})"
+    elif dtype.is_floating():
         show: Callable[[int], str] = lambda k: repr(decode_double(k))  # noqa: E731
         noun = "a double"
     elif dtype.is_timestamp():
@@ -438,7 +450,7 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
             lo = None if lo is not None and lo <= -(2**60) else lo
             hi = None if hi is not None and hi >= 2**60 else hi
         if lo is None and hi is None:
-            parts.append(f"any {noun.split()[-1]}")
+            parts.append(f"any {noun.split(' ', 1)[1]}")
         elif lo is not None and hi is not None and lo == hi:
             parts.append(f"{noun} = {show(lo)}")
         elif dtype.is_floating():
@@ -1105,7 +1117,7 @@ class ContractedTransform:
     ) -> Report:
         key = (
             tag,
-            to_sql(body),
+            ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
             tuple(label(c) for c in ensures),

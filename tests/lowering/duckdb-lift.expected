@@ -1,0 +1,920 @@
+{"lift":
+ [{"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [{"preference": ["IEEE"], "name": "on_division_by_zero"}],
+     "functionReference": 2,
+     "arguments":
+     [{"value":
+       {"cast":
+        {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "input":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}},
+         "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
+      {"value":
+       {"cast":
+        {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "input":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 1}}}},
+         "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "BIGINT / BIGINT",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 25,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 26,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 20,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 0}}}}},
+                  {"value": {"literal": {"fp64": "inf"}}}]}}},
+              {"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 20,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 0}}}}},
+                  {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 26,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 20,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 1}}}}},
+                  {"value": {"literal": {"fp64": "inf"}}}]}}},
+              {"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 20,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 1}}}}},
+                  {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}}]}}}],
+     "else":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [{"preference": ["IEEE"], "name": "on_division_by_zero"}],
+       "functionReference": 2,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}},
+        {"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 1}}}}}]}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "DOUBLE / DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 25,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 26,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 20,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 0}}}}},
+                  {"value": {"literal": {"fp64": "inf"}}}]}}},
+              {"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 20,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 0}}}}},
+                  {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 23,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 1}}}}}]}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"fp64": "nan"}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 25,
+           "arguments":
+           [{"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 23,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 0}}}}}]}}},
+            {"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 20,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 1}}}}},
+                {"value": {"literal": {"fp64": 0}}}]}}}]}}}],
+       "else":
+       {"scalarFunction":
+        {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 6,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 1}}}}}]}}}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "DOUBLE % DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 21,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value": {"literal": {"fp64": 0}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"fp64": "-inf"}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 20,
+           "arguments":
+           [{"value":
+             {"selection":
+              {"rootReference": {},
+               "directReference": {"structField": {"field": 0}}}}},
+            {"value": {"literal": {"fp64": 0}}}]}}}],
+       "else":
+       {"scalarFunction":
+        {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 17,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}}]}}}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "log(DOUBLE)",
+   "args": ["fp64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"i8": -1}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 21,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value": {"literal": {"i64": 0}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"i8": 1}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 21,
+           "arguments":
+           [{"value": {"literal": {"i64": 0}}},
+            {"value":
+             {"selection":
+              {"rootReference": {},
+               "directReference": {"structField": {"field": 0}}}}}]}}}],
+       "else":
+       {"ifThen":
+        {"ifs":
+         [{"then": {"literal": {"i8": 0}},
+           "if":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 23,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}}]}}}],
+         "else":
+         {"literal":
+          {"null": {"i8": {"nullability": "NULLABILITY_NULLABLE"}}}}}}}}}},
+   "semantics": "duckdb",
+   "result": "i8",
+   "construct": "sign(BIGINT)",
+   "args": ["i64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"i8": -1}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 21,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value": {"literal": {"fp64": 0}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"i8": 0}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 20,
+           "arguments":
+           [{"value":
+             {"selection":
+              {"rootReference": {},
+               "directReference": {"structField": {"field": 0}}}}},
+            {"value": {"literal": {"fp64": 0}}}]}}}],
+       "else":
+       {"ifThen":
+        {"ifs":
+         [{"then": {"literal": {"i8": 0}},
+           "if":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 24,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}}]}}}],
+         "else":
+         {"ifThen":
+          {"ifs":
+           [{"then": {"literal": {"i8": 1}},
+             "if":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 23,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 0}}}}}]}}}],
+           "else":
+           {"literal":
+            {"null": {"i8": {"nullability": "NULLABILITY_NULLABLE"}}}}}}}}}}}},
+   "semantics": "duckdb",
+   "result": "i8",
+   "construct": "sign(DOUBLE)",
+   "args": ["fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 9,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "duckdb",
+   "result": "i64",
+   "construct": "greatest(BIGINT, BIGINT)",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 11,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "duckdb",
+   "result": "i64",
+   "construct": "least(BIGINT, BIGINT)",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 10,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "greatest(DOUBLE, DOUBLE)",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 12,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "least(DOUBLE, DOUBLE)",
+   "args": ["fp64", "fp64"]},
+  {"semantics": "duckdb",
+   "result": "i64",
+   "refused":
+   "DuckDB rounds half to even, which the model's casts (they truncate) cannot state; use semantics='reference', or round() first",
+   "construct": "CAST(DOUBLE AS BIGINT)",
+   "args": ["fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"selection":
+      {"rootReference": {}, "directReference": {"structField": {"field": 0}}}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "CAST(BIGINT AS DOUBLE)",
+   "args": ["i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 2,
+     "arguments":
+     [{"value":
+       {"cast":
+        {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "input":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}},
+         "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
+      {"value":
+       {"cast":
+        {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "input":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 1}}}},
+         "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "BIGINT / BIGINT",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 2,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "DOUBLE / DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 6,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "DOUBLE % DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 17,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "log(DOUBLE)",
+   "args": ["fp64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"i8": -1}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 21,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value": {"literal": {"i64": 0}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"i8": 1}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 21,
+           "arguments":
+           [{"value": {"literal": {"i64": 0}}},
+            {"value":
+             {"selection":
+              {"rootReference": {},
+               "directReference": {"structField": {"field": 0}}}}}]}}}],
+       "else":
+       {"ifThen":
+        {"ifs":
+         [{"then": {"literal": {"i8": 0}},
+           "if":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 23,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}}]}}}],
+         "else":
+         {"literal":
+          {"null": {"i8": {"nullability": "NULLABILITY_NULLABLE"}}}}}}}}}},
+   "semantics": "reference",
+   "result": "i8",
+   "construct": "sign(BIGINT)",
+   "args": ["i64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"i8": -1}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 21,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value": {"literal": {"fp64": 0}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"i8": 0}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 20,
+           "arguments":
+           [{"value":
+             {"selection":
+              {"rootReference": {},
+               "directReference": {"structField": {"field": 0}}}}},
+            {"value": {"literal": {"fp64": 0}}}]}}}],
+       "else":
+       {"ifThen":
+        {"ifs":
+         [{"then": {"literal": {"i8": 0}},
+           "if":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 24,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}}]}}}],
+         "else":
+         {"ifThen":
+          {"ifs":
+           [{"then": {"literal": {"i8": 1}},
+             "if":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 23,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 0}}}}}]}}}],
+           "else":
+           {"literal":
+            {"null": {"i8": {"nullability": "NULLABILITY_NULLABLE"}}}}}}}}}}}},
+   "semantics": "reference",
+   "result": "i8",
+   "construct": "sign(DOUBLE)",
+   "args": ["fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 9,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "i64",
+   "construct": "greatest(BIGINT, BIGINT)",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 11,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "i64",
+   "construct": "least(BIGINT, BIGINT)",
+   "args": ["i64", "i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 10,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "greatest(DOUBLE, DOUBLE)",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 12,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "least(DOUBLE, DOUBLE)",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"selection":
+      {"rootReference": {}, "directReference": {"structField": {"field": 0}}}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "reference",
+   "result": "i64",
+   "construct": "CAST(DOUBLE AS BIGINT)",
+   "args": ["fp64"]},
+  {"template":
+   {"cast":
+    {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"selection":
+      {"rootReference": {}, "directReference": {"structField": {"field": 0}}}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "CAST(BIGINT AS DOUBLE)",
+   "args": ["i64"]}],
+ "functions":
+ [{"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "divide:i64_i64",
+   "anchor": 1},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "divide:fp64_fp64",
+   "anchor": 2},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "modulus:i64_i64",
+   "anchor": 3},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "modulus:fp64_fp64",
+   "anchor": 4},
+  {"urn": "extension:io.sverify:functions",
+   "name": "sverify_fmod:i64_i64",
+   "anchor": 5},
+  {"urn": "extension:io.sverify:functions",
+   "name": "sverify_fmod:fp64_fp64",
+   "anchor": 6},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "power:i64_i64",
+   "anchor": 7},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "power:fp64_fp64",
+   "anchor": 8},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "greatest_skip_null:i64_i64",
+   "anchor": 9},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "greatest_skip_null:fp64_fp64",
+   "anchor": 10},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "least_skip_null:i64_i64",
+   "anchor": 11},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "least_skip_null:fp64_fp64",
+   "anchor": 12},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "greatest:i64_i64",
+   "anchor": 13},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "greatest:fp64_fp64",
+   "anchor": 14},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "least:i64_i64",
+   "anchor": 15},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "least:fp64_fp64",
+   "anchor": 16},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "log10:fp64",
+   "anchor": 17},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "ln:fp64",
+   "anchor": 18},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "log2:fp64",
+   "anchor": 19},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "equal:any_any",
+   "anchor": 20},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "lt:any_any",
+   "anchor": 21},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "is_null:any",
+   "anchor": 22},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "is_not_null:any",
+   "anchor": 23},
+  {"urn": "extension:io.substrait:functions_comparison",
+   "name": "is_nan:fp64",
+   "anchor": 24},
+  {"urn": "extension:io.substrait:functions_boolean",
+   "name": "and:bool",
+   "anchor": 25},
+  {"urn": "extension:io.substrait:functions_boolean",
+   "name": "or:bool",
+   "anchor": 26},
+  {"urn": "extension:io.substrait:functions_boolean",
+   "name": "not:bool",
+   "anchor": 27},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "avg:i64",
+   "anchor": 28},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "avg:fp64",
+   "anchor": 29},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "sum:i64",
+   "anchor": 30},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "sum:fp64",
+   "anchor": 31},
+  {"urn": "extension:io.substrait:functions_aggregate_generic",
+   "name": "count:any",
+   "anchor": 32}],
+ "aggregates":
+ [{"semantics": "duckdb",
+   "result": "fp64",
+   "construct": "avg(BIGINT)",
+   "args": ["i64"],
+   "aggregate":
+   {"measures":
+    [{"measure":
+      {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+       "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "invocation": "AGGREGATION_INVOCATION_ALL",
+       "functionReference": 30,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     {"measure":
+      {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+       "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "invocation": "AGGREGATION_INVOCATION_ALL",
+       "functionReference": 32,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}}],
+    "finish":
+    {"scalarFunction":
+     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+      "options": [],
+      "functionReference": 2,
+      "arguments":
+      [{"value":
+        {"cast":
+         {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+          "input":
+          {"selection":
+           {"rootReference": {},
+            "directReference": {"structField": {"field": 0}}}},
+          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
+       {"value":
+        {"cast":
+         {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+          "input":
+          {"selection":
+           {"rootReference": {},
+            "directReference": {"structField": {"field": 1}}}},
+          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}}}},
+  {"semantics": "reference",
+   "result": "fp64",
+   "construct": "avg(BIGINT)",
+   "args": ["i64"],
+   "aggregate":
+   {"measures":
+    [{"measure":
+      {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+       "outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "invocation": "AGGREGATION_INVOCATION_ALL",
+       "functionReference": 28,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}}],
+    "finish":
+    {"selection":
+     {"rootReference": {},
+      "directReference": {"structField": {"field": 0}}}}}}]}
+[exit 0]

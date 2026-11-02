@@ -41,7 +41,7 @@ q = customer_updates.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop
 * `ibis` is Python that binds `q`; the dataset's tables, `ibis`, `_`, `sv`
   (`sverify`) and `D` (a DATE literal, see below) are in scope. Where Ibis
   cannot express a query (ROLLUP, recursion, time zones, frames ending before
-  the current row) it is DataFusion `sql` instead, with a note why.
+  the current row) it is `sql` (DuckDB's SQL) instead, with a note why.
 * `features` are those of the formulation given; `rewrites` lists features of
   the original query the formulation rewrote away (`"correlated_subquery ->
   join with the average per part"`), so the frequency counts see the original.
@@ -101,14 +101,15 @@ uv run python -m sverify_dev.catalogue --write-tables  # rewrite INDEX.md and FI
 ```
 
 A probe compiles the query as `sverify` compiles everything (an Ibis
-expression through `sverify`'s vendored producer, SQL through DataFusion's,
-then `substrait-check`) and runs it on DataFusion (Ibis's own SQL for an
-expression) over small seeded synthetic tables. When the checker accepts the
-plan it runs Lean's written plan (`substrait-check --write`) on Polars and
-DuckDB and compares their rows with DataFusion's, and writes Snowflake SQL
-(parsed with sqlglot, not run). Where the plan has a FETCH or a window, ties in
-the synthetic data make DataFusion's choice of rows legitimately differ, so
-there Polars and DuckDB are compared with each other only. A query on a
+expression through `sverify`'s vendored producer, SQL through its lift, then
+`substrait-check`) and runs it on DuckDB itself (`native`: Ibis's own DuckDB
+SQL for an expression) over small seeded synthetic tables. When the checker
+accepts the plan it runs Lean's written plan (`substrait-check --write`) on
+Polars and DuckDB and compares their rows with DuckDB's own, and writes
+Snowflake SQL (parsed with sqlglot, not run). Where the plan has a FETCH or a
+window, ties in the synthetic data make the native choice of rows
+legitimately differ, so there Polars and DuckDB are compared with each other
+only. A query on a
 dataset with DECIMAL columns that fails is probed again with DOUBLE in their
 place (`as_double`), to separate DECIMAL from the other gaps.
 
