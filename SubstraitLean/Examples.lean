@@ -203,8 +203,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.guardFree_sound
 #print axioms Substrait.Rel.optimize_sound
 #print axioms Substrait.Expr.evalP_reference
-#print axioms Substrait.shimDuckDB_correct
 #print axioms Substrait.Rel.duckdb_sound
 #print axioms Substrait.Rel.duckdb_shim_sound
 #print axioms Substrait.Lowering.lowerRel_sound
-#print axioms Substrait.duckdb_lower_eq_shim
+#print axioms Substrait.Lowering.lower_correct
+#print axioms Substrait.Lowering.duckdb_exact
