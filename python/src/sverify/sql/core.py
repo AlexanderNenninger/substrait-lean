@@ -4059,7 +4059,7 @@ class _Writer:
             return d.is_inf(x)
         return d.bool_lit(False)
 
-    def nan_case(self, op: str, a: str, b: str) -> str | None:
+    def nan_case(self, op: str, a: str, b: str) -> str:
         """Would IEEE make a new NaN of `a op b` (`nanCase`), which no
         operation creates (#257)? NULL for NULL; NaN arguments stay NaN."""
         d = self.d
@@ -4086,7 +4086,7 @@ class _Writer:
                 f"({d.float_lt(ninf, a)} AND {d.float_lt(a, zero)} AND {d.float_lt(ninf, b)} "
                 f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
             )
-        return None
+        return d.bool_lit(False)
 
     def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:
         """`sql`, raising where the arguments are outside the function's
