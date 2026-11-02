@@ -7,7 +7,7 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
     import sverify as sv
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
     )
     def doubled(orders):
@@ -37,7 +37,7 @@ only what the upstream one guarantees (`Triple.compose` in
         return orders.filter(orders.amount.notnull())
 
     @sv.transform(
-        requires={"t": [_.amount >= 0, _.amount.notnull()]},
+        requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull()],
     )
     def doubled(t):
@@ -1321,7 +1321,7 @@ def transform(
         )
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.id.notnull()]},
+            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
             ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
         )
         def doubled(orders):

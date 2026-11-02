@@ -23,7 +23,7 @@ orders = StaticSource(  # in memory; Delta and Iceberg tables work the same way
 )
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
 )
 def big_orders(orders):
@@ -269,7 +269,7 @@ Ibis expression). Each call proves the postconditions before it returns:
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
 )
 def doubled(orders):
@@ -387,7 +387,7 @@ data:
 def paid(orders):
     return orders.filter(orders.amount.notnull())
 
-@sv.transform(requires={"t": [_.amount >= 0, _.amount.notnull()]},
+@sv.transform(requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
               ensures=[_.doubled >= 0, _.doubled.notnull()])
 def doubled_paid(t):
     return t.select(t.id, t.customer, doubled=t.amount * 2)

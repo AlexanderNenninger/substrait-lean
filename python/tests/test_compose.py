@@ -17,7 +17,7 @@ def paid(orders):
 
 
 @sv.transform(
-    requires={"t": [_.amount >= 0, _.amount.notnull()]},
+    requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull()],
 )
 def doubled(t):

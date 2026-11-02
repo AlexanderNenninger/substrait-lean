@@ -100,7 +100,7 @@ def _():
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0]},
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
         ensures=[_.doubled >= 0, _.doubled.notnull()],
     )
     def doubled(orders):

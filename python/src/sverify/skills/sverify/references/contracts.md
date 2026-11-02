@@ -63,7 +63,10 @@ def paid(orders):
     return orders.filter(orders.amount.notnull())
 
 
-@sv.transform(requires={"t": [_.amount >= 0, _.amount.notnull()]}, ensures=[_.doubled >= 0])
+@sv.transform(
+    requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
+    ensures=[_.doubled >= 0],
+)
 def doubled(t):
     return t.select(t.id, doubled=t.amount * 2)
 

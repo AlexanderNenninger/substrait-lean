@@ -125,7 +125,10 @@ class Node:
         def paid(orders):
             return orders.filter(orders.amount > 10)
 
-        @sv.transform(requires={"t": [_.amount > 10]}, ensures=[_.doubled > 20])
+        @sv.transform(
+            requires={"t": [_.amount > 10, _.amount < 1_000_000_000]},
+            ensures=[_.doubled > 20],
+        )
         def doubled(t):
             return t.select(t.id, doubled=t.amount * 2)
 

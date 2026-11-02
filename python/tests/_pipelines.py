@@ -92,7 +92,7 @@ paid_nonzero = _paid_nonzero()
 
 
 @sv.transform(
-    requires={"t": [_.amount >= 0, _.amount.notnull(), sv.unique("id")]},
+    requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), sv.unique("id")],
 )
 def doubled(t):
