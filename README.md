@@ -56,6 +56,10 @@ What it's for is making data engineering more joyful: fewer 3 a.m. pages
 over a NULL nobody expected, fewer afternoons spent finding out why two
 engines disagree, and more trust in the tables you hand to the next team.
 
+What `Rel.eval` means, row by row (integers, NaN, decimals, casts, NULL,
+text, time, ties) and what is still pending, is in
+[docs/reference-semantics.md](docs/reference-semantics.md).
+
 ### Engine tiers
 
 Not every engine is held to the same standard yet ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):

@@ -33,6 +33,8 @@ and expect the API to keep changing between minor releases. What it's for is
 making data engineering more joyful: fewer 3 a.m. pages, fewer surprises
 between engines, more trust in the tables you hand on.
 
+What the reference means is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
+
 Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
 
 | Tier | Engines | What it means today |
