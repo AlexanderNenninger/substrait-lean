@@ -1350,12 +1350,11 @@ theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Val
   rcases v with _ | (_ | _) | i | s | l <;> rcases w with _ | (_ | _) | j | t | m <;>
     simp only [Value.pick] <;> (try split) <;>
     simp_all only [AVal.Mem, pickAbs, AVal.nonInt, Bool.and_eq_true, Bool.or_eq_true,
-      true_or, or_true, and_self, true_and, and_true, reduceCtorEq, ne_eq, not_false_eq_true,
-      implies_true, forall_const]
+      true_or, or_true, and_self, reduceCtorEq, ne_eq, not_false_eq_true, implies_true]
   -- What is left: an integer result.
   all_goals first
     -- A comparison of an integer with another kind is FALSE.
-    | (exfalso; simp_all [hmix, hmix']; done)
+    | (exfalso; simp_all; done)
     -- Two integers: `both`.
     | (obtain ⟨x, hx, hm⟩ := ha; obtain ⟨y, hy, hm'⟩ := hb
        have h := hboth hm hm'
@@ -1364,7 +1363,7 @@ theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Val
        · simpa [*] using h)
     -- `NULL` and an integer: the integer.
     | (obtain ⟨y, hy, hm⟩ := hb
-       refine joinInt_mem_right (joinInt_mem_left ⟨y, ?_, hm⟩); simp [ha, hy]; done)
+       refine joinInt_mem_right (joinInt_mem_left ⟨y, ?_, hm⟩); simp [hy]; done)
     -- An integer and a `NULL`, or a value of another kind: the integer.
     | (obtain ⟨x, hx, hm⟩ := ha
        refine joinInt_mem_left ⟨x, ?_, hm⟩; simp_all; done)
