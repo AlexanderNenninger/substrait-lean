@@ -95,7 +95,11 @@ theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by
 /-- The function as DuckDB writes it, with its argument types. -/
 def DuckFn.sql : DuckFn → String
   | .divInt => "BIGINT / BIGINT" | .divDouble => "DOUBLE / DOUBLE"
-  | .modDouble => "DOUBLE % DOUBLE" | .elementary f => s!"{f.name}(DOUBLE)"
+  | .modDouble => "DOUBLE % DOUBLE"
+  -- DuckDB's `log(x)` is `log10(x)`; the lift (`sverify.sql_lift`) looks it up
+  -- under DuckDB's name.
+  | .elementary .log10 => "log(DOUBLE)"
+  | .elementary f => s!"{f.name}(DOUBLE)"
   | .power => "power(DOUBLE, DOUBLE)"
   | .signBigint => "sign(BIGINT)" | .signDouble => "sign(DOUBLE)"
   | .greatestBigint => "greatest(BIGINT, BIGINT)" | .leastBigint => "least(BIGINT, BIGINT)"
