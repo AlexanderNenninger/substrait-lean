@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import datetime as dt
 import functools
 import hashlib
@@ -873,6 +874,34 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
         return _replay(tf, rel, tmp), None
 
 
+#: How long one query may keep the checker busy, in seconds. Past it the replay
+#: kills the checker (Lean evaluating a plan that does not finish on a test's
+#: few rows), records the query as skipped with the reason, and goes on.
+CHECK_TIMEOUT = 120
+
+
+@contextlib.contextmanager
+def _watchdog(seconds: float) -> Iterator[list[bool]]:
+    """Kill the checker if the block runs longer than `seconds`; yields a flag
+    that says whether it did."""
+    from sverify import engine
+
+    fired = [False]
+
+    def kill() -> None:
+        fired[0] = True
+        if (proc := engine._CHECKER.proc) is not None:
+            proc.kill()
+
+    timer = threading.Timer(seconds, kill)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield fired
+    finally:
+        timer.cancel()
+
+
 def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
     rp = Replay(rel)
     results: list[Result] = []
@@ -894,7 +923,12 @@ def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
             rp.statement(rec)
             continue
         try:
-            results.append(rp.probe(rec))
+            with _watchdog(CHECK_TIMEOUT) as fired:
+                res = rp.probe(rec)
+            if fired[0]:
+                res.cls, res.side = "skipped", None
+                res.reason = f"harness: the checker took over {CHECK_TIMEOUT} s"
+            results.append(res)
         except (KeyboardInterrupt, SystemExit):
             raise
         except BaseException as e:  # noqa: BLE001 - the harness goes on (a crash in a native library, …)

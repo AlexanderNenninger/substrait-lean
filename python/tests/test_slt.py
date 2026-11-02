@@ -221,3 +221,22 @@ def test_area_of():
     assert slt.area_of("overflow/integer_overflow.test") == "overflow"
     assert slt.area_of("function/numeric/test_mod.test") == "function/numeric"
     assert slt.area_of("types/decimal/x/y.test") == "types/decimal"
+
+
+def test_the_watchdog_kills_a_busy_checker():
+    # A query that keeps the checker busy past the limit loses its checker,
+    # and the next request starts a fresh one.
+    import time
+
+    from sverify import engine
+
+    engine.run_checker(("--lowering-coverage",), "")
+    proc = engine._CHECKER.proc
+    assert proc is not None
+    with slt._watchdog(0.05) as fired:
+        time.sleep(0.5)
+    assert fired[0]
+    assert proc.wait(timeout=5) is not None
+    with slt._watchdog(5) as fired:
+        pass
+    assert not fired[0]
