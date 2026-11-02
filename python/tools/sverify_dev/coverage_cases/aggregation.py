@@ -100,3 +100,5 @@ REFUSED: dict[str, dict[str, str]] = {
 }
 
 UNORDERED_LISTS = {"collect"}
+
+APPROXIMATE = {"std"}

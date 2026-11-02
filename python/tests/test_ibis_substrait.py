@@ -25,6 +25,7 @@ from sverify.engine import connect, create_table, put_table
 from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.testing import EPOCH, canonical, duckdb_ibis, inline_tables, lean_values
 from sverify_dev.coverage import (
+    APPROXIMATE,
     CASES,
     MEMTABLES,
     NO_DUCKDB_SQL,
@@ -138,6 +139,12 @@ def test_plans_mean_what_ibis_means(case, t, u, lr):
             return [tuple(sorted(v, key=repr) if isinstance(v, list) else v for v in r) for r in rs]
 
         got, expected = bags(got), bags(expected)
+    if case.label in APPROXIMATE:
+        # Each engine's own algorithm (#54); Lean prints six decimals.
+        def near(rs: list[tuple]) -> list[tuple]:
+            return [tuple(round(v, 5) if isinstance(v, float) else v for v in r) for r in rs]
+
+        got, expected = near(got), near(expected)
     if case.label in UNORDERED:
         assert len(got) == len(expected)
     else:
