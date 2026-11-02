@@ -174,6 +174,8 @@ def test_engines_agree(con, case, data):
         return
     if case.label in coverage.UNORDERED_LISTS:
         results = {e: bags(r) for e, r in results.items()}
+    if case.label in coverage.APPROXIMATE:
+        results = {e: approximately(r) for e, r in results.items()}
     try:
         root = parse_plan(json.loads(plan)).root
     except Unsupported:
@@ -191,9 +193,17 @@ def test_engines_agree(con, case, data):
         expected = rows(out.cast(expr.schema().to_pyarrow()))
         if case.label in coverage.UNORDERED_LISTS:
             expected = bags(expected)
+        if case.label in coverage.APPROXIMATE:
+            expected = approximately(expected)
         duck = canonical(expected)
         for got in results.values():
             assert canonical(got) == duck
+
+
+def approximately(rows: list[tuple]) -> list[tuple]:
+    """Doubles to nine significant digits: engines compute some aggregates with
+    their own algorithms (`VARIANCE`, `STDDEV`, #54)."""
+    return [tuple(float(f"{v:.9g}") if isinstance(v, float) else v for v in r) for r in rows]
 
 
 def engine_sql(case, engine: str, dialect, read: str) -> str | None:

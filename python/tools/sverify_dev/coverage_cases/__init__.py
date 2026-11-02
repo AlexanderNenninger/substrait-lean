@@ -5,7 +5,7 @@ API.
 
 Each area module defines `CASES`, the area's cases in README order, and, where
 it has any, the area's entries of `REFUSED`, `TIE_FREE`, `NO_DUCKDB_SQL` and
-`UNORDERED_LISTS` (`sverify_dev.coverage` says what each means). This module
+`UNORDERED_LISTS` and `APPROXIMATE` (`sverify_dev.coverage` says what each means). This module
 combines them in `AREAS` order, which is the order of the README table.
 
 A new case goes at the end of its area's `CASES`; a new area is a new module
@@ -63,6 +63,7 @@ REFUSED: dict[str, dict[str, str]] = _merged("REFUSED")
 TIE_FREE: set[str] = set(_merged("TIE_FREE"))
 NO_DUCKDB_SQL: dict[str, str] = _merged("NO_DUCKDB_SQL")
 UNORDERED_LISTS: set[str] = set(_merged("UNORDERED_LISTS"))
+APPROXIMATE: set[str] = set(_merged("APPROXIMATE"))
 
 if len({c.label for c in CASES}) != len(CASES):
     raise ValueError("two coverage cases have the same label")
