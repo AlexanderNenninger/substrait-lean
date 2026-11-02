@@ -116,6 +116,9 @@ def test_refused_operations(con):
     ts = ibis.timestamp("2024-05-05 00:00:00")
     with pytest.raises(Unsupported, match="TimestampDelta"):
         plan_json(con, t.select(r=ts.delta(ibis.timestamp("2024-05-06 00:00:00"), unit="hour")))
+    # Each engine estimates it its own way; it used to be read as `nunique`.
+    with pytest.raises(Unsupported, match="approx_nunique is not supported"):
+        plan_json(con, t.aggregate(r=t.v.approx_nunique()))
 
 
 @pytest.mark.parametrize(

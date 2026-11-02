@@ -1134,6 +1134,13 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
 def measure(x: Exprs, op: Any) -> Json:
     distinct = False
     args: list[Json]
+    if isinstance(op, ops.ApproxCountDistinct):
+        # A subclass of `CountDistinct`, but its value is each engine's own
+        # estimate, so no plan gives the same answer on every engine.
+        raise Unsupported(
+            "approx_nunique is not supported: its value is each engine's own estimate; "
+            "use nunique() for the exact count"
+        )
     if isinstance(op, ops.CountStar):
         name, args = "count", []
     elif isinstance(op, ops.Count | ops.CountDistinct):

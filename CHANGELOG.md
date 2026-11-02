@@ -8,12 +8,12 @@ A plan whose `modulus` states `division_type: TRUNCATE` was refused,
 although the remainder already takes the dividend's sign. It is now
 accepted; `FLOOR` is still refused, as the model does not compute it.
 
-### Refusals say why
+### `approx_nunique` is refused
 
-`random()`, `uuid()`, `now()`, `today()`, `typeof()`, `ibis.param` and
-`try_cast` were refused with "X is not supported". The message now gives
-the reason and what to do instead, for example to pass the time in as a
-column or constant (#58).
+Ibis's `approx_nunique()` was translated as the exact `nunique()`. Each
+engine computes its own estimate, so no plan gives the same answer
+everywhere; it is now refused, with a hint to use `nunique()` for the exact
+count.
 
 ### Isthmus support removed
 
