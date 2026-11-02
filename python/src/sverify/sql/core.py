@@ -379,6 +379,11 @@ class Dialect:
         """TRUE for NaN, NULL for NULL."""
         return f"({x} <> {x})"
 
+    def is_inf(self, x: str) -> str:
+        """TRUE for `±∞`, NULL for NULL."""
+        inf, ninf = self.float_lit(math.inf), self.float_lit(-math.inf)
+        return f"({self.float_eq(x, inf)} OR {self.float_eq(x, ninf)})"
+
     def float_rank(self, x: str) -> str:
         """1 for NaN, 0 for other doubles, NULL for NULL: NaN is above `inf`."""
         return f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN 1 ELSE 0 END)"
@@ -3688,7 +3693,10 @@ class _Writer:
                 sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
                 sql = sql if op in ("fadd", "fsub") else d.canon(sql)
-                if op != "fdiv" or not d.guards:
+                if not d.guards:
+                    return sql
+                sql = self.domain(sa, self.nan_case(op, sa, sb), sql)
+                if op != "fdiv":
                     return sql
                 # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
                 zero = f"({sa} IS NOT NULL AND {sb} = {d.float_lit(0.0)})"
@@ -4035,7 +4043,39 @@ class _Writer:
         if name in ("asin", "acos"):
             below, above = d.float_lt(x, d.float_lit(-1.0)), d.float_lt(d.float_lit(1.0), x)
             return f"({below} OR ({above} AND NOT {d.is_nan(x)}))"
+        if name in ("sin", "cos", "tan"):
+            # `±∞` would give NaN, which no operation creates (#257).
+            return d.is_inf(x)
         return d.bool_lit(False)
+
+    def nan_case(self, op: str, a: str, b: str) -> str | None:
+        """Would IEEE make a new NaN of `a op b` (`nanCase`), which no
+        operation creates (#257)? NULL for NULL; NaN arguments stay NaN."""
+        d = self.d
+        pinf, ninf, zero = d.float_lit(math.inf), d.float_lit(-math.inf), d.float_lit(0.0)
+        if op in ("fadd", "fsub"):
+            other = ninf if op == "fadd" else pinf
+            same = pinf if op == "fadd" else ninf
+            return (
+                f"(({d.float_eq(a, pinf)} AND {d.float_eq(b, other)}) OR "
+                f"({d.float_eq(a, ninf)} AND {d.float_eq(b, same)}))"
+            )
+        if op == "fmul":
+            return (
+                f"(({d.float_eq(a, zero)} AND {d.is_inf(b)}) OR "
+                f"({d.is_inf(a)} AND {d.float_eq(b, zero)}))"
+            )
+        if op == "fdiv":
+            return f"({d.is_inf(a)} AND {d.is_inf(b)})"
+        if op == "fmod":
+            return f"({d.is_inf(a)} AND NOT {d.is_nan(b)})"
+        if op == "fpow":
+            # A negative base to a finite power that is not a whole number.
+            return (
+                f"({d.float_lt(ninf, a)} AND {d.float_lt(a, zero)} AND {d.float_lt(ninf, b)} "
+                f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
+            )
+        return None
 
     def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:
         """`sql`, raising where the arguments are outside the function's

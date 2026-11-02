@@ -982,6 +982,14 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
 
+theorem mem_of_mem_aggGroups {gs : List Expr} {rows grp : Relation} {y : Row}
+    (hg : grp ∈ aggGroups gs rows) (hy : y ∈ grp) : y ∈ rows := by
+  unfold aggGroups at hg
+  split at hg
+  · simp only [List.mem_singleton] at hg; exact hg ▸ hy
+  · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
+    exact (List.mem_filter.1 hy).1
+
 /-- `Rel.loose` keeps every window as it is, so it keeps the size hypothesis. -/
 theorem Rel.Small.loose {cat : Catalog} : ∀ {r : Rel}, r.Small cat → r.loose.Small cat
   | .read _, h | .values _ _, h => h
@@ -1085,8 +1093,9 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | u, .aggregate r gs ms, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
-    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩
-    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h))
+    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩ |
+      ⟨m, hm, hfn, rfl, grp, hgrp, hpos, hneg⟩
+    · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)))
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
         · exact hwf.1
@@ -1095,8 +1104,18 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         cases u
         · exact hsm
         · exact Rel.Small.loose (r := r) hsm
-      exact .inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
-        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩)
-    · exact .inr ⟨m, hm, by simp [hf, hd]⟩
+      exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
+        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
+    · exact .inl (.inr ⟨m, hm, by simp [hf, hd]⟩)
+    · have has : ∀ c, .int c ∈ m.inputs grp →
+          (m.arg.absD (r.aeval cat A F T true) (r.facts cat F T)).has c = true := by
+        intro c hc
+        obtain ⟨_, y, hy, hey⟩ := Measure.mem_inputs hc
+        have hyr := mem_of_mem_aggGroups hgrp hy
+        have := Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
+          (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg
+        rw [hey] at this
+        exact AVal.has_of_mem this
+      exact .inr ⟨m, hm, by simp [hfn, has _ hpos, has _ hneg]⟩
 
 end Substrait

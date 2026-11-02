@@ -473,7 +473,28 @@ def fmath_domain_error(name: str, e: pl.Expr) -> pl.Expr | None:
         return e <= 0.0
     if name in ("asin", "acos"):
         return (e < -1.0) | ((e > 1.0) & ~e.is_nan())
+    if name in ("sin", "cos", "tan"):
+        # `±∞` would give NaN, which no operation creates (#257).
+        return e.is_infinite()
     return None
+
+
+def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """Would IEEE make a new NaN of `x name y` (`nanCase`), which no
+    operation creates (#257)? NaN arguments stay NaN."""
+    inf = float("inf")
+    x, y = x.cast(pl.Float64), y.cast(pl.Float64)
+    if name in ("add", "subtract"):
+        other = -inf if name == "add" else inf
+        return ((x == inf) & (y == other)) | ((x == -inf) & (y == -other))
+    if name == "multiply":
+        return ((x == 0.0) & y.is_infinite()) | (x.is_infinite() & (y == 0.0))
+    if name == "divide":
+        return x.is_infinite() & y.is_infinite()
+    if name == "modulus":
+        return x.is_infinite() & ~y.is_nan()
+    # `power`: a negative base to a finite power that is not a whole number.
+    return (x > -inf) & (x < 0.0) & y.is_finite() & (y.floor() != y)
 
 
 #: `BitOp.name`.
@@ -1226,12 +1247,13 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
+            nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
             if name not in ("divide", "modulus"):
-                return Val(ops[name], pl.Float64, issues(a, b))
+                return Val(ops[name], pl.Float64, (*issues(a, b), nan))
             # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
-            return Val(ops[name], pl.Float64, (*issues(a, b), zero))
+            return Val(ops[name], pl.Float64, (*issues(a, b), zero, nan))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:

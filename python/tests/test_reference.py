@@ -95,7 +95,8 @@ def test_modulus_of_doubles_is_fmod(con, sql, expected):
 @pytest.mark.parametrize(
     ("sql", "errors"),
     [
-        ("SELECT x % 0.0 AS m FROM f", ["division by zero"]),
+        # `x` may be infinite too, and `fmod(±∞, y)` would be NaN (#257).
+        ("SELECT x % 0.0 AS m FROM f", ["division by zero", "domain error"]),
         ("SELECT 1.5 % x AS m FROM f", ["division by zero"]),
         ("SELECT 1.5 % x AS m FROM f WHERE x <> 0.0", []),
     ],
@@ -193,11 +194,16 @@ def nan_safe(rows: list[tuple]) -> list[tuple]:
 def test_double_division_by_zero_may_fail():
     tables = {"f": {"x": "float64", "y": "float64"}}
     report = sv.verify("SELECT x / y AS q FROM f", tables=tables)
-    assert [str(i) for i in report.errors] == ["division by zero: ($0 /. $1)"]
+    # `∞ / ∞` would be NaN, which no operation creates (#257).
+    assert [str(i) for i in report.errors] == [
+        "division by zero: ($0 /. $1)",
+        "domain error: ($0 /. $1)",
+    ]
+    finite = ["x < 1e300", "x > -1e300"]
     for sql, req in [
-        ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", []),
-        ("SELECT x / NULLIF(y, 0) AS q FROM f", []),
-        ("SELECT x / y AS q FROM f", ["y > 0"]),
+        ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", finite),
+        ("SELECT x / NULLIF(y, 0) AS q FROM f", finite),
+        ("SELECT x / y AS q FROM f", [*finite, "y > 0"]),
         ("SELECT x / 2.0 AS q FROM f", []),
     ]:
         assert sv.verify(sql, requires={"f": req}, tables=tables).issues == [], sql
