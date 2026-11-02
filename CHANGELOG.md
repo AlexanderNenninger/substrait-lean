@@ -22,6 +22,15 @@ and cross joins, subqueries in FROM, GROUP BY with `count`, `sum`, `avg`,
 `date_trunc` and arithmetic. Anything else is refused, saying what; the
 rest follows in M2 (#240). Write those queries in Ibis meanwhile.
 
+The lift also reads dates and timestamps (#240): `EXTRACT`, `date_part` and
+`year()` and its kin, `DATE - DATE` and `datediff('day', …)`, `date_trunc`
+of a date, and a date or timestamp plus or minus a constant interval
+(months clamp to the month's last day, as in DuckDB). DuckDB types
+`DATE ± INTERVAL` and `date_trunc` of a date as TIMESTAMPs; they compare
+exactly with dates, but as an output column or next to a timestamp column
+they need a cast of a date column to a timestamp the model lacks yet, and
+are refused.
+
 ### Isthmus support removed
 
 sverify no longer compiles SQL strings with Isthmus (substrait-java's

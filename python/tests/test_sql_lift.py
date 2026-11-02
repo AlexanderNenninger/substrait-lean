@@ -85,6 +85,23 @@ QUERIES = [
     " INTERVAL 2 MONTHS + placed AS later FROM orders"
     " WHERE placed >= TIMESTAMP '2024-01-08' - INTERVAL 1 WEEK",
     "SELECT date_trunc('month', placed) AS m, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
+    # DuckDB's DATE ± INTERVAL and date_trunc of a DATE are TIMESTAMPs at
+    # midnight: held as dates, compared exactly.
+    "SELECT id FROM orders WHERE day <= DATE '2024-03-31' - INTERVAL 90 DAY",
+    "SELECT id FROM orders WHERE day >= DATE '2023-12-31' AND day < DATE '2023-12-31'"
+    " + INTERVAL 1 MONTH",
+    "SELECT id FROM orders WHERE day + INTERVAL 1 MONTH > DATE '2024-02-15'",
+    "SELECT DATE '2024-01-31' + INTERVAL 1 MONTH AS m, DATE '2024-01-01' + INTERVAL 1 HOUR AS h",
+    "SELECT id FROM orders WHERE date_trunc('month', day) = DATE '2024-01-01'",
+    "SELECT id, extract(year FROM day) AS y, extract(quarter FROM day) AS q, month(day) AS m,"
+    " day(day) AS d, dayofweek(day) AS dw, dayofyear(day) AS dy, week(day) AS w FROM orders",
+    "SELECT id, date_part('hour', placed) AS h, minute(placed) AS mi, second(placed) AS s,"
+    " extract(dow FROM placed) AS dw FROM orders",
+    "SELECT id, day - DATE '2024-01-01' AS since, datediff('day', DATE '2024-01-01', day) AS dd"
+    " FROM orders",
+    "SELECT extract(year FROM day) AS y, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
+    "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
+    " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
     pytest.param(
         "SELECT 7 / 2 AS h",
@@ -221,9 +238,14 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ),
         ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
         ("SELECT CAST(NULL AS INT[3]) FROM orders", "fixed-size array"),
-        ("SELECT date_trunc('day', day) FROM orders", "DATE"),
-        ("SELECT day + INTERVAL 1 DAY FROM orders", "DATE plus an interval"),
-        ("SELECT placed + INTERVAL '1 hour 30 minutes' FROM orders", "one integer and a unit"),
+        # A DATE at midnight that DuckDB types a TIMESTAMP needs a cast Lean
+        # lacks where it is one: an output column, next to a timestamp column.
+        ("SELECT date_trunc('day', day) AS d FROM orders", "is a TIMESTAMP in DuckDB"),
+        ("SELECT day + INTERVAL 1 DAY AS d FROM orders", "is a TIMESTAMP in DuckDB"),
+        ("SELECT id FROM orders WHERE day < placed", "DATE column as a TIMESTAMP"),
+        ("SELECT day + INTERVAL 1 HOUR AS d FROM orders", "hours or less"),
+        ("SELECT extract(epoch FROM placed) FROM orders", "date part EPOCH"),
+        ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
     ],
 )
 def test_refusals_say_what(query, message):
