@@ -202,7 +202,8 @@ def test_aggregate_postconditions_are_proved():
         by_customer,
         requires={"orders": [_.amount >= 0]},
         ensures=[
-            _.n >= 0,
+            # Every group has a row (#229).
+            _.n >= 1,
             _.n.notnull(),
             _.total.isnull() | (_.total >= 0),
             _.top.isnull() | (_.top >= 0),
@@ -210,7 +211,7 @@ def test_aggregate_postconditions_are_proved():
         ],
     )
     assert report.proved, str(report)
-    assert report.facts["n"] == "an integer ≥ 0"
+    assert report.facts["n"] == "an integer ≥ 1"
     assert report.facts["top"] == "an integer ≥ 0 or NULL"
 
 

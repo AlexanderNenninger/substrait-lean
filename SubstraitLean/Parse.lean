@@ -1337,6 +1337,10 @@ their type (`COALESCE(a, b)`). -/
 def decimalPassThrough : List String :=
   ["coalesce", "greatest", "least", "nullif", "greatest_skip_null", "least_skip_null"]
 
+/-- Functions of a decimal that do not depend on its scale: the integer path
+computes them on the unscaled value. -/
+def decimalScaleFree : List String := ["is_null", "is_not_null"]
+
 /-- A call with a `DECIMAL` argument (#27), or `none` where the integer path
 computes it. Decimals are their unscaled integers, so the arguments are
 brought to one scale and the arithmetic is exact: `+` and `-` at the larger
@@ -1371,6 +1375,14 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     checkScale s
     let p := declared.getD (min 38 (p₁ + p₂ + 1))
     return some (.un (.decimal p s) (.bin .dmul a b))
+  -- sverify's own: `a / b`, a decimal by an integer, at the declared scale,
+  -- rounded half away from zero; how a decimal `AVG` over a window is written
+  -- (`Write.lean`).
+  | "sverify_decimal_div", [a, b], [(_, s₁), (_, 0)] => match typeKind outTy with
+    | .dec p s =>
+      if s₁ ≤ s then return some (.un (.dkind p s) (.bin .ddiv (upscale (s - s₁) a) b))
+      else throw "sverify_decimal_div to a smaller scale is not supported"
+    | _ => throw "sverify_decimal_div needs a DECIMAL output type"
   | "negate", [a], [(p, s)] | "subtract", [a], [(p, s)] =>
     return some (.un (.decimal p s) (.bin .dsub zero a))
   | "abs", [a], [(p, s)] =>
@@ -1382,6 +1394,7 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"
   | _, _, _ =>
+    if decimalScaleFree.contains name then return none
     if decimalPassThrough.contains name && oneScale then return none
     throw s!"{name} of DECIMAL is not supported yet (#27)"
 
@@ -1892,7 +1905,7 @@ def issueFree : Expr → Bool
 The frame matters to aggregates and `FIRST_VALUE`/`LAST_VALUE`/`NTH_VALUE`
 only; ranks and `ROW_NUMBER`, `LAG`, `LEAD` ignore it. -/
 def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (w : Json) :
-    J (List Nat × List SortKey × WinFn) := do
+    J (List Nat × List SortKey × List WinFn × Option (Nat × Nat)) := do
   let anchor ← natD w "functionReference"
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
@@ -1923,22 +1936,25 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
     | _ => throw s!"{name} needs a positive constant"
   let noArgs (f : WinFn) : J WinFn :=
     if args.isEmpty then pure f else throw s!"{baseName name} takes no arguments"
-  let f ← match baseName name, args with
-    | "row_number", _ => noArgs .rowNumber
-    | "rank", _ => noArgs (.rank sort)
-    | "dense_rank", _ => noArgs (.denseRank sort)
-    | "percent_rank", _ => noArgs (.percentRank sort)
-    | "cume_dist", _ => noArgs (.cumeDist sort)
-    | "ntile", [k] => pure (.ntile (← positive k))
-    | "lag", _ => do let (c, k, d) ← shifted args; pure (.lag c k d)
-    | "lead", _ => do let (c, k, d) ← shifted args; pure (.lead c k d)
+  -- The function, and for a decimal `AVG` the `COUNT` that goes with its `SUM`.
+  let f : WinFn × Option WinFn ← match baseName name, args with
+    | "row_number", _ => pure (← noArgs .rowNumber, none)
+    | "rank", _ => pure (← noArgs (.rank sort), none)
+    | "dense_rank", _ => pure (← noArgs (.denseRank sort), none)
+    | "percent_rank", _ => pure (← noArgs (.percentRank sort), none)
+    | "cume_dist", _ => pure (← noArgs (.cumeDist sort), none)
+    | "ntile", [k] => pure (.ntile (← positive k), none)
+    | "lag", _ => do let (c, k, d) ← shifted args; pure (.lag c k d, none)
+    | "lead", _ => do let (c, k, d) ← shifted args; pure (.lead c k d, none)
     | "first_value", [c] =>
-      pure (.firstValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w))
+      pure (.firstValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w),
+        none)
     | "last_value", [c] =>
-      pure (.lastValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w))
+      pure (.lastValue (← parseColumn fns cols "function arguments" c) sort (← parseFrame cols sort w),
+        none)
     | "nth_value", [c, n] =>
       pure (.nthValue (← parseColumn fns cols "function arguments" c) (← positive n) sort
-        (← parseFrame cols sort w))
+        (← parseFrame cols sort w), none)
     | n, _ =>
       if !["count", "sum", "avg", "min", "max"].contains n then
         throw s!"unsupported window function: {n}"
@@ -1947,8 +1963,12 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
         ("functionReference", (field? w "functionReference").getD .null),
         ("arguments", (field? w "arguments").getD (.arr #[])),
         ("outputType", (field? w "outputType").getD .null)])])
-      if decAvg.isSome then throw "avg of DECIMAL over a window is not supported yet (#27)"
       if m.distinct then throw "DISTINCT window aggregates are not supported"
+      -- A decimal `SUM` (and the `SUM` of a decimal `AVG`) takes its column
+      -- bare: the sum of the unscaled values is the decimal's (#27).
+      let m := match m.fn, m.arg with
+        | .sum, .un (.decimal _ _) x => if issueFree x then { m with arg := x } else m
+        | _, _ => m
       if !issueFree m.arg then throw "window aggregates of expressions are not supported; use a column"
       let fr ← parseFrame cols sort w
       -- DataFusion slides a frame by retracting the rows that leave it: a
@@ -1957,8 +1977,17 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- with only NULLs left is the last minimum.
       if (m.fn == .fsum || m.fn == .avg || m.fn == .min) && fr.lo != .unboundedPreceding then
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
-      pure (.agg m sort fr)
-  return (part, sort, f)
+      -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
+      -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).
+      if decAvg.isSome then
+        pure (.agg m sort fr, some (.agg { m with fn := .count } sort fr))
+      else pure (.agg m sort fr, none)
+  let decAvg : Option (Nat × Nat) := match f.2, f.1 with
+    | some _, .agg m _ _ => match m.arg.kind cols with
+      | .dec p s => some (p, s)
+      | _ => none
+    | _, _ => none
+  return (part, sort, f.1 :: f.2.toList, decAvg)
 
 /-- The nodes under `key` inside an expression, in the order `replaceNodes`
 visits them. A node's own contents are not searched. -/
@@ -1981,6 +2010,17 @@ partial def replaceNodes (key : String) (col : Nat → Json) : Json → StateM N
     return Json.mkObj kvs'
   | j => return j
 
+/-- `e` with column `i` replaced by `x` (a lambda's body reads its parameter,
+not the row). -/
+def _root_.Substrait.Expr.replaceField (i : Nat) (x : Expr) : Expr → Expr
+  | .field j => if j = i then x else .field j
+  | .un f a => .un f (Expr.replaceField i x a)
+  | .bin f a b => .bin f (Expr.replaceField i x a) (Expr.replaceField i x b)
+  | .ifThen c t e => .ifThen (Expr.replaceField i x c) (Expr.replaceField i x t)
+      (Expr.replaceField i x e)
+  | .hof f l b => .hof f (Expr.replaceField i x l) b
+  | e => e
+
 /-- The window functions inside an expression. -/
 def windowsIn : Json → List Json := nodesIn "windowFunction"
 
@@ -2001,19 +2041,21 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
     (es : List Json) : J Rel := do
   let n := cols.length
   let uses ← (es.flatMap windowsIn).mapM (parseWindow fns cols bits)
-  -- Group the uses: (partition, sort, functions), in order of first use.
+  -- Group the uses: (partition, sort, functions), in order of first use. A
+  -- use has one function, or two for a decimal `AVG` (its `SUM`, `COUNT`).
   let groups := uses.foldl (init := ([] : List (List Nat × List SortKey × List WinFn)))
-    fun gs (part, sort, f) =>
+    fun gs (part, sort, f, _) =>
       if gs.any (fun (p', s', _) => p' == part && s' == sort) then
-        gs.map fun (p', s', fs) => if p' == part && s' == sort then (p', s', fs ++ [f]) else (p', s', fs)
-      else gs ++ [(part, sort, [f])]
+        gs.map fun (p', s', fs) => if p' == part && s' == sort then (p', s', fs ++ f) else (p', s', fs)
+      else gs ++ [(part, sort, f)]
   let windowed := groups.foldl (fun r (part, sort, fs) => Rel.window r part sort fs) inp
   let width := (groups.map (·.2.2.length)).sum
-  -- The column of the k-th use: its group's offset plus its position there
-  -- (the uses of a group come in order).
+  -- The column of the k-th use's first function: its group's offset plus
+  -- the functions of the group's earlier uses (they come in order).
   let column (k : Nat) : Nat := Id.run do
-    let some (part, sort, _) := uses[k]? | return 0
-    let before := ((uses.take k).filter fun (p', s', _) => p' == part && s' == sort).length
+    let some (part, sort, _, _) := uses[k]? | return 0
+    let before := (((uses.take k).filter fun (p', s', _, _) => p' == part && s' == sort).map
+      (·.2.2.1.length)).sum
     let mut off := n
     for (p', s', fs) in groups do
       if p' == part && s' == sort then return off + before
@@ -2022,10 +2064,16 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
   let (rewritten, _) := (es.mapM (replaceWindows (fieldJson ∘ column))).run 0
   let wcols := cols ++ (windowed.kinds []).drop n
   let wbits := bits ++ (windowed.bits []).drop n
+  -- A decimal `AVG`'s column stands for its `SUM` divided by its `COUNT`
+  -- (the next column), as `decimalAvgs` computes it.
+  let avgs := uses.zipIdx.filterMap fun ((_, _, _, d), k) => d.map fun (p, s) => (column k, p, s)
+  let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s) =>
+    Expr.replaceField c (.un (.dkind (min 38 (p + 4)) (s + 4))
+      (.bin .ddiv (upscale 4 (.field c)) (.field (c + 1)))) e
   -- Bare window functions are their columns; other expressions are computed
   -- after the windows.
   let parsed ← rewritten.mapM fun e => do
-    match ← parseExpr fns wcols wbits e with
+    match withAvgs (← parseExpr fns wcols wbits e) with
     | .field i => if n ≤ i then pure (Sum.inl i) else pure (Sum.inr (Expr.field i))
     | e => pure (Sum.inr e)
   let scalars := parsed.filterMap fun p => match p with | .inr e => some e | .inl _ => none

@@ -110,6 +110,15 @@ def Frame.rows (fr : Frame) (sort : List SortKey) (pb : List Row) (x : Row) (pa 
       | b => i + (b.offset.getD 0)
     (all.zipIdx.filter fun (_, j) => decide (lo ≤ j) && decide ((j : Int) ≤ hi)).map (·.1)
 
+/-- A frame's rows are rows of the partition. -/
+theorem Frame.mem_rows {fr : Frame} {sort : List SortKey} {pb pa : List Row} {x y : Row}
+    (h : y ∈ fr.rows sort pb x pa) : y ∈ pb ++ x :: pa := by
+  unfold Frame.rows at h
+  split at h
+  · exact (List.mem_filter.mp h).1
+  · obtain ⟨⟨z, j⟩, hz, rfl⟩ := List.mem_map.mp h
+    exact List.fst_mem_of_mem_zipIdx (List.mem_filter.mp hz).1
+
 /-! ## Window functions -/
 
 inductive WinFn where

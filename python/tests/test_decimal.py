@@ -104,11 +104,23 @@ def test_avg_rounds_half_away_from_zero(con):
     assert lean(con, "SELECT avg(x) AS v FROM g") == [("-0.007500",)]
 
 
+def test_avg_over_a_window(con):
+    """Over a window too: the frame's `SUM` by its `COUNT`, at scale 6."""
+    sql = "SELECT k, avg(x) OVER (PARTITION BY k) AS v FROM g ORDER BY k"
+    assert lean(con, sql) == [
+        (1, "0.006667"),
+        (1, "0.006667"),
+        (1, "0.006667"),
+        (2, "-0.050000"),
+        (2, "-0.050000"),
+        (3, None),
+    ]
+
+
 @pytest.mark.parametrize(
     ("sql", "message"),
     [
         ("SELECT a / b AS r FROM t", "divide of DECIMAL is not supported yet"),
-        ("SELECT avg(a) OVER () AS r FROM t", "avg of DECIMAL over a window"),
     ],
 )
 def test_refused(con, sql, message):
@@ -140,6 +152,11 @@ def test_decimal_sum_does_not_wrap():
     assert report.errors == [] and report.warnings == []
 
 
-def test_engines_refuse_until_stage_2(con):
-    code, _, err = run_checker(("--write",), substrait_json(con, "SELECT a + b AS r FROM t"))
+def test_decimal_plans_are_written_but_not_for_datafusion(con):
+    """Stage 2: decimal plans are written back as typed calls and casts for
+    the engines; DataFusion does not compute decimals as the reference does."""
+    plan = substrait_json(con, "SELECT a + b AS r FROM t")
+    code, out, _ = run_checker(("--write",), plan)
+    assert code == 0 and "decimal" in out
+    code, _, err = run_checker(("--write-datafusion",), plan)
     assert code == 1 and "#27" in err

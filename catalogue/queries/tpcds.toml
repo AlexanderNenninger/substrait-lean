@@ -27,6 +27,18 @@ q = (
     .limit(100)
 )
 '''
+requires = '''
+{
+    'date_dim': [sv.unique('d_date_sk')],
+    'store_sales': [_.ss_quantity.between(1, 100), _.ss_list_price.between(1, 300), _.ss_sales_price.between(0, 300), _.ss_coupon_amt.between(0, 30000), _.ss_ext_sales_price.between(0, 30000)],
+    'item': [sv.unique('i_item_sk')],
+}
+'''
+ensures = '''
+[
+    _.sum_agg >= 0,
+]
+'''
 
 [[query]]
 id = "tpcds-q07"
@@ -61,6 +73,20 @@ q = (
     .order_by("i_item_id")
     .limit(100)
 )
+'''
+requires = '''
+{
+    'store_sales': [_.ss_quantity.between(1, 100), _.ss_list_price.between(1, 300), _.ss_sales_price.between(0, 300), _.ss_coupon_amt.between(0, 30000), _.ss_ext_sales_price.between(0, 30000)],
+    'date_dim': [sv.unique('d_date_sk')],
+    'item': [sv.unique('i_item_sk')],
+    'customer_demographics': [sv.unique('cd_demo_sk')],
+    'promotion': [sv.unique('p_promo_sk')],
+}
+'''
+ensures = '''
+[
+    sv.unique('i_item_id'),
+]
 '''
 
 [[query]]
@@ -137,6 +163,19 @@ q = (
     .limit(100)
 )
 '''
+requires = '''
+{
+    'date_dim': [sv.unique('d_date_sk')],
+    'store_sales': [_.ss_quantity.between(1, 100), _.ss_list_price.between(1, 300), _.ss_sales_price.between(0, 300), _.ss_coupon_amt.between(0, 30000), _.ss_ext_sales_price.between(0, 30000)],
+    'item': [sv.unique('i_item_sk')],
+}
+'''
+ensures = '''
+[
+    _.revenue >= 0,
+    sv.unique('d_year', 'i_category'),
+]
+'''
 
 [[query]]
 id = "tpcds-q51"
@@ -172,6 +211,19 @@ q = (
     .order_by(["item_sk", "d_date"])
     .limit(100)
 )
+'''
+requires = '''
+{
+    'web_sales': [_.ws_sales_price.between(0, 300)],
+    'store_sales': [_.ss_sales_price.between(0, 300)],
+    'date_dim': [sv.unique('d_date_sk')],
+}
+'''
+ensures = '''
+[
+    _.web_cumulative > _.store_cumulative,
+    _.store_cumulative >= 0,
+]
 '''
 
 [[query]]
@@ -213,6 +265,20 @@ q = (
     .limit(100)
 )
 '''
+requires = '''
+{
+    'store_sales': [_.ss_sales_price.between(0, 300)],
+    'item': [sv.unique('i_item_sk')],
+    'date_dim': [sv.unique('d_date_sk')],
+    'store': [sv.unique('s_store_sk')],
+}
+'''
+ensures = '''
+[
+    _.sum_sales >= 0,
+    _.avg_monthly_sales.isnull() | (_.avg_monthly_sales >= 0),
+]
+'''
 
 [[query]]
 id = "tpcds-q98"
@@ -235,4 +301,16 @@ rev = j.group_by(["i_item_id", "i_item_desc", "i_category", "i_class", "i_curren
 q = rev.mutate(
     revenueratio=rev.itemrevenue * 100 / rev.itemrevenue.sum().over(ibis.window(group_by="i_class"))
 ).order_by(["i_category", "i_class", "i_item_id", "i_item_desc", "revenueratio"])
+'''
+requires = '''
+{
+    'store_sales': [_.ss_ext_sales_price.between(0, 30000)],
+    'item': [sv.unique('i_item_sk')],
+    'date_dim': [sv.unique('d_date_sk')],
+}
+'''
+ensures = '''
+[
+    _.itemrevenue >= 0,
+]
 '''

@@ -46,6 +46,38 @@ q = customer_updates.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop
   the original query the formulation rewrote away (`"correlated_subquery ->
   join with the average per part"`), so the frequency counts see the original.
 * `pitfalls` are `tag: what it means here`, with tags from `pitfalls.toml`.
+* `requires` and `ensures` are the query's **contract**: Python expressions in
+  `ibis`'s scope for `sv.verify`'s preconditions (a mapping from table name to
+  conditions) and postconditions (a list). Where the benchmark's
+  specification gives ranges, keys and NOT NULL columns, the preconditions
+  state them; otherwise they are plausible choices, written down. A query
+  has both or neither.
+
+A dataset in `schemas.toml` can list `keys` (columns of distinct values in
+the synthetic data, never NULL) and `not_null`, so that the synthetic tables
+meet the contracts' preconditions.
+
+### Verified SQL on DuckDB (#229)
+
+For a query with a contract, the probe records `contract` (whether `verify`
+proves it, whether the plan is `guard_free`, and whether the synthetic tables
+meet the preconditions) and `verified_sql.duckdb`. It is `yes` when every
+postcondition is proved, no window's rows depend on how ties are broken
+(`deterministic`: `Rel.window_deterministic`, `window_orderFree`), the
+synthetic tables meet the preconditions, and DuckDB gives the reference's rows
+on them. (`proved` additionally rules out runtime errors.) Two theorems in
+`SubstraitLean/Profile.lean` then say what DuckDB does on *every* database
+that meets the preconditions:
+
+* `Rel.duckdb_shim_sound`: the plan, shimmed for DuckDB, gives `Rel.eval`'s
+  rows unless one of its expressions raises (partial correctness). So DuckDB
+  returns the rows the contract is proved about, or an error, never other
+  rows.
+* `Rel.duckdb_sound`, for a `guard_free` plan: no expression raises, so it
+  always returns them (except for an integer `SUM` leaving 64 bits, which
+  keeps its runtime check; bounding sums needs row counts, #219).
+
+Trusted: that `Profile.duckdb` is DuckDB's, and the SQL printer.
 
 ## Sources and licences
 

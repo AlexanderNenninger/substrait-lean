@@ -165,6 +165,7 @@ end Substrait.Examples
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak
 #print axioms Substrait.Rel.window_deterministic
+#print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.aggregateEval_key
 #print axioms Substrait.Triple.compose
@@ -203,3 +204,5 @@ end Substrait.Examples
 #print axioms Substrait.Rel.optimize_sound
 #print axioms Substrait.Expr.evalP_reference
 #print axioms Substrait.shimDuckDB_correct
+#print axioms Substrait.Rel.duckdb_sound
+#print axioms Substrait.Rel.duckdb_shim_sound

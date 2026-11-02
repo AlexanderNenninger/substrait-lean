@@ -21,22 +21,22 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
 | fin-running-balance | [Running account balance](https://oneuptime.com/blog/post/2026-01-20-postgresql-window-functions-running-totals/view) | ✗ *(dbl)* | FPD | `decimal` |
-| fin-velocity-check | [Card velocity in the last hour](https://risingwave.com/blog/transaction-velocity-fraud-sql/) | ✗ *(dbl)* | FPD | `decimal` |
-| fin-impossible-travel | [Impossible travel](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection) | ✗ *(dbl)* | FPDS | `decimal` |
-| fin-duplicate-payments | [Duplicate payments](https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7) | ✗ *(dbl)* | FPDS | `decimal` |
-| fin-structuring | [Structuring: repeated deposits just below a threshold](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | FPD | `decimal` |
-| fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✗ *(dbl)* | FPDS | `decimal` |
-| fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✗ *(dbl)* | FPD | `decimal` |
-| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✗ *(dbl)* | F | `decimal` |
-| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✗ *(dbl)* | FPD | `decimal` |
-| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✗ *(dbl)* | FPDS | `decimal` |
-| fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✗ | F | `agg_arithmetic` |
+| fin-velocity-check | [Card velocity in the last hour](https://risingwave.com/blog/transaction-velocity-fraud-sql/) | ✓ | F |  |
+| fin-impossible-travel | [Impossible travel](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-real-time-fraud-detection) | ✓ | FDS |  |
+| fin-duplicate-payments | [Duplicate payments](https://gist.github.com/alkrauss48/1345e4ddc399fe5c9f67a5b249860ea7) | ✓ | FDS |  |
+| fin-structuring | [Structuring: repeated deposits just below a threshold](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | F |  |
+| fin-reconciliation | [Ledger vs bank statement reconciliation](https://www.metabase.com/glossary/full_outer_join) | ✓ | FDS |  |
+| fin-double-entry-check | [Unbalanced journal entries](https://github.com/ByteEntropyDotCom/ledger-core) | ✓ | F |  |
+| fin-ar-aging | [Accounts receivable aging](https://www.metabase.com/metrics/accounts-receivable-aging) | ✓ | F |  |
+| fin-rfm | [RFM segmentation](https://github.com/mustafaa7med/rfm-marketing-sql-analysis) | ✓ | F |  |
+| fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | FDS |  |
+| fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | F |  |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | F | `arg_max` |
 | fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `stddev_var` |
 | fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✗ | F | `min_max` |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | FPD |  |
 | fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | FPD |  |
-| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `stddev_var`, `agg_arithmetic` |
+| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `stddev_var` |
 | fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | ✗ | — | `rows_frame` |
 
 ## h2o
@@ -48,7 +48,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | F | `percentile`, `stddev_var` |
 | h2o-groupby-q7 | [H2O groupby q7: max v1 minus min v2 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPDS |  |
 | h2o-groupby-q8 | [H2O groupby q8: largest two v3 by id6](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPDS |  |
-| h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | F | `corr`, `agg_arithmetic` |
+| h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | F | `corr` |
 | h2o-groupby-q10 | [H2O groupby q10: sum and count by six keys](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPD |  |
 | h2o-join-q1 | [H2O join q1: inner join with a small table on an integer key](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | FPDS |  |
 | h2o-join-q3 | [H2O join q3: left join with a medium table](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | FPDS |  |
@@ -58,7 +58,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✗ | F | `agg_arithmetic` |
+| iot-time-weighted-average | [Time-weighted average temperature](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/time-weighted-averages) | ✓ | FPD |  |
 | iot-silent-devices | [Devices that stopped reporting](https://www.tigerdata.com/docs/build/data-management/hyperfunctions/heartbeat-agg) | ✓ | FPDS |  |
 | iot-condition-duration | [How long a temperature stayed above a threshold](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
 | iot-time-in-state | [Time spent in each machine state](https://questdb.com/docs/cookbook/sql/time-series/session-windows/) | ✓ | FPDS |  |
@@ -68,7 +68,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | iot-latest-reading | [Latest reading per device](https://questdb.com/docs/query/sql/latest-on/) | ✓ | FPDS |  |
 | iot-change-detection | [Keep only state changes](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
 | iot-consecutive-threshold | [Alert on three consecutive high readings](https://learn.microsoft.com/en-us/azure/stream-analytics/stream-analytics-stream-analytics-query-patterns) | ✓ | FPDS |  |
-| iot-daily-energy | [Daily energy consumption from a cumulative meter](https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption) | ✗ | F | `agg_arithmetic` |
+| iot-daily-energy | [Daily energy consumption from a cumulative meter](https://www.tigerdata.com/docs/learn/tutorials/analyze-energy-consumption) | ✗ | F | `min_max` |
 | iot-event-correlation | [Door openings followed by motion](https://nightlies.apache.org/flink/flink-docs-release-2.3/docs/sql/reference/queries/joins/) | ✓ | FPDS |  |
 
 ## job
@@ -149,11 +149,11 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| tpcds-q03 | [TPC-DS Q3: brand revenue for a manufacturer in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
-| tpcds-q07 | [TPC-DS Q7: promotional item averages for a demographic](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
+| tpcds-q03 | [TPC-DS Q3: brand revenue for a manufacturer in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | F |  |
+| tpcds-q07 | [TPC-DS Q7: promotional item averages for a demographic](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | F |  |
 | tpcds-q27 | [TPC-DS Q27: item averages per state with subtotals](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `grouping_sets`, `decimal` |
 | tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `grouping_sets`, `decimal` |
-| tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
+| tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | F |  |
 | tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | F | `decimal`, `min_max` |
 | tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
 | tpcds-q98 | [TPC-DS Q98: item revenue share within its class](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ *(dbl)* | FPD | `decimal` |
@@ -162,28 +162,28 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 
 | id | query | checker | engines | missing |
 |---|---|---|---|---|
-| tpch-q01 | [TPC-H Q1: pricing summary report](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q02 | [TPC-H Q2: minimum cost supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `min_max`, `decimal` |
-| tpch-q03 | [TPC-H Q3: shipping priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q04 | [TPC-H Q4: order priority checking](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q05 | [TPC-H Q5: local supplier volume](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q06 | [TPC-H Q6: forecasting revenue change](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q07 | [TPC-H Q7: volume shipping](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q08 | [TPC-H Q8: national market share](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q09 | [TPC-H Q9: product type profit measure](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q10 | [TPC-H Q10: returned item reporting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q11 | [TPC-H Q11: important stock identification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
-| tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
-| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `min_max` |
-| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ | F | `decimal`, `agg_arithmetic` |
-| tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
-| tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPDS | `decimal` |
-| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✗ *(dbl)* | FPD | `decimal` |
+| tpch-q01 | [TPC-H Q1: pricing summary report](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q02 | [TPC-H Q2: minimum cost supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q03 | [TPC-H Q3: shipping priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q04 | [TPC-H Q4: order priority checking](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | FDS |  |
+| tpch-q05 | [TPC-H Q5: local supplier volume](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q06 | [TPC-H Q6: forecasting revenue change](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q07 | [TPC-H Q7: volume shipping](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q08 | [TPC-H Q8: national market share](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q09 | [TPC-H Q9: product type profit measure](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q10 | [TPC-H Q10: returned item reporting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q11 | [TPC-H Q11: important stock identification](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q12 | [TPC-H Q12: shipping modes and order priority](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | FDS |  |
+| tpch-q13 | [TPC-H Q13: customer distribution](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | FDS |  |
+| tpch-q14 | [TPC-H Q14: promotion effect](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q15 | [TPC-H Q15: top supplier](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q16 | [TPC-H Q16: parts/supplier relationship](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | FDS |  |
+| tpch-q17 | [TPC-H Q17: small-quantity-order revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q18 | [TPC-H Q18: large volume customer](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q19 | [TPC-H Q19: discounted revenue](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q20 | [TPC-H Q20: potential part promotion](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
+| tpch-q21 | [TPC-H Q21: suppliers who kept orders waiting](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | FDS |  |
+| tpch-q22 | [TPC-H Q22: global sales opportunity](https://www.tpc.org/TPC_Documents_Current_Versions/pdf/TPC-H_v3.0.1.pdf) | ✓ | F |  |
 
 ## windows
 

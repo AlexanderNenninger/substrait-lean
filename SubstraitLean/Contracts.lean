@@ -423,6 +423,60 @@ theorem tdiv_between {a b : Int} (hb : 0 < b) : min a 0 ≤ a.tdiv b ∧ a.tdiv 
     rw [Int.neg_tdiv] at h₁ h₂
     omega
 
+/-- `roundDivInt?` for a non-zero divisor: a decimal `AVG`'s quotient (#27). -/
+def roundDiv (a b : Int) : Int := (roundDivInt? a b).getD 0
+
+theorem nat_roundDiv_le (A B : Nat) (hB : 0 < B) : (2 * A + B) / (2 * B) ≤ A := by
+  apply Nat.le_of_lt_succ
+  rw [Nat.div_lt_iff_lt_mul (by omega)]
+  have h1 : A ≤ A * B := Nat.le_mul_of_pos_right A hB
+  have h2 : (A + 1) * (2 * B) = 2 * (A * B) + 2 * B := by
+    rw [Nat.add_mul, Nat.one_mul, Nat.mul_left_comm]
+  rw [Nat.succ_eq_add_one, h2]; omega
+
+/-- The rounded quotient is no larger than the dividend in absolute value. -/
+theorem roundDiv_natAbs_le {a b : Int} (hb : b ≠ 0) : (roundDiv a b).natAbs ≤ a.natAbs := by
+  have hq := nat_roundDiv_le a.natAbs b.natAbs (Int.natAbs_pos.mpr hb)
+  unfold roundDiv roundDivInt?
+  simp only [hb, ↓reduceIte]
+  generalize (2 * a.natAbs + b.natAbs) / (2 * b.natAbs) = q at hq ⊢
+  dsimp only [Option.getD_some]
+  split <;> simp only [Int.natAbs_neg, Int.natAbs_natCast] <;> exact hq
+
+/-- For a positive divisor, the rounded quotient lies between 0 and the
+dividend, as `tdiv_between` says of truncation. -/
+theorem roundDiv_between {a b : Int} (hb : 0 < b) :
+    min a 0 ≤ roundDiv a b ∧ roundDiv a b ≤ max a 0 := by
+  have hq := nat_roundDiv_le a.natAbs b.natAbs (Int.natAbs_pos.mpr (by omega))
+  have hb0 : b ≠ 0 := by omega
+  unfold roundDiv roundDivInt?
+  simp only [hb0, ↓reduceIte]
+  generalize (2 * a.natAbs + b.natAbs) / (2 * b.natAbs) = q at hq ⊢
+  dsimp only [Option.getD_some]
+  have hbn : ¬b < 0 := by omega
+  have hq' : (q : Int) ≤ a.natAbs := Int.ofNat_le.mpr hq
+  split
+  · rename_i hs
+    have ha : 0 ≤ a := by
+      rcases Int.lt_or_le a 0 with h | h
+      · exact absurd (hs ▸ h) hbn
+      · exact h
+    have h1 : (a.natAbs : Int) = a := Int.natAbs_of_nonneg ha
+    omega
+  · rename_i hs
+    have ha : a < 0 := by
+      rcases Int.lt_or_le a 0 with h | h
+      · exact h
+      · exact absurd (propext ⟨fun h' => absurd h' (by omega), fun h' => absurd h' hbn⟩) hs
+    have h1 : (a.natAbs : Int) = -a := Int.ofNat_natAbs_of_nonpos (by omega)
+    omega
+
+/-- Decimal division (`AVG`): between 0 and the dividend for a divisor that is
+not negative (a zero divisor gives NULL), no larger than it in absolute value
+otherwise. -/
+def ddivBound (x y : Bound) : Bound :=
+  if y.lo.any (0 ≤ ·) then x.signHull else x.absHull
+
 /-- The remainder is smaller in absolute value than the divisor, and not
 negative for a non-negative dividend. -/
 def modBound (x y : Bound) : Bound :=
@@ -607,7 +661,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .dadd, a, b => arith Bound.add a b
   | .dsub, a, b => arith Bound.sub a b
   | .dmul, a, b => arith Bound.mul a b
-  | .ddiv, a, b => partialAbs₂ false a b
+  | .ddiv, a, b => divAbs ddivBound a b
   | .dateAdd, a, b => arith Bound.add a b
   | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fmod, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
@@ -1041,6 +1095,26 @@ theorem divBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (
           obtain ⟨u₀, h₀, rfl⟩ := hu'; have := hi.2 u₀ h₀; omega
     · exact Bound.mem_absHull hi (Int.natAbs_tdiv_le_natAbs i j)
 
+theorem ddivBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (hj0 : j ≠ 0) :
+    (ddivBound x y).Mem (roundDiv i j) := by
+  unfold ddivBound
+  split
+  · rename_i hpos
+    obtain ⟨yl, yh⟩ := y
+    cases yl with
+    | none => simp at hpos
+    | some l =>
+      simp only [Option.any_some, decide_eq_true_eq] at hpos
+      have hj1 := hj.1 l rfl
+      obtain ⟨h₁, h₂⟩ := roundDiv_between (a := i) (b := j) (by omega)
+      obtain ⟨xl, xh⟩ := x
+      refine ⟨fun l' hl' => ?_, fun u' hu' => ?_⟩
+      · simp only [Bound.signHull, Option.map_eq_some_iff] at hl'
+        obtain ⟨l₀, h₀, rfl⟩ := hl'; have := hi.1 l₀ h₀; omega
+      · simp only [Bound.signHull, Option.map_eq_some_iff] at hu'
+        obtain ⟨u₀, h₀, rfl⟩ := hu'; have := hi.2 u₀ h₀; omega
+  · exact Bound.mem_absHull hi (roundDiv_natAbs_le hj0)
+
 theorem modBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (hj0 : j ≠ 0) :
     (modBound x y).Mem (i.tmod j) := by
   have hlt : (i.tmod j).natAbs < j.natAbs := by rw [Int.natAbs_tmod]; exact Nat.mod_lt _ (by omega)
@@ -1141,8 +1215,12 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case dsub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dmul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ddiv =>
-    exact partialAbs₂_sound (g := roundDivInt?) (fun v w => by cases v <;> cases w <;> rfl)
-      (fun hs => by simp at hs) ha hb
+    refine divAbs_sound ddivBound_sound (fun v w => ?_) ha hb
+    cases v <;> cases w <;> try rfl
+    rename_i i j
+    by_cases hj : j = 0
+    · simp [BinFn.apply, roundDivInt?, hj]
+    · simp [BinFn.apply, roundDiv, roundDivInt?, hj]
   case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
@@ -1243,6 +1321,70 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
         exact Expr.abs_sound h e
   | .hof f _ _ => HoFn.abs_sound f _ _
 
+/-! ## Constant decimals
+
+A decimal constant is its unscaled integer under `UnFn.decimal`, possibly
+brought to another scale by `Parse.upscale` (`· 10ᵏ`): `0.05` compared with a
+`DECIMAL(15, 4)` column is `DECIMAL_3_2(5) * 100`. The refinements below
+recognize integer literals, so conditions are first written with such
+constants folded (`Expr.normConst`, #27). -/
+
+/-- The integer a constant decimal expression evaluates to. -/
+def Expr.constInt? : Expr → Option Int
+  | .lit (.int k) => some k
+  | .un (.decimal _ _) a => a.constInt?
+  | .bin .dmul a b => a.constInt?.bind fun x => b.constInt?.map (x * ·)
+  | _ => none
+
+theorem Expr.constInt?_eval (row : Row) :
+    ∀ (e : Expr) {k : Int}, e.constInt? = some k → e.eval row = .int k := by
+  intro e
+  induction e with
+  | lit v => intro k h; cases v <;> simp_all [Expr.constInt?, Expr.eval]
+  | field => intro k h; simp [Expr.constInt?] at h
+  | un f a ih =>
+    intro k h
+    cases f
+    case decimal => simp only [Expr.constInt?] at h; simp [Expr.eval, ih h, UnFn.apply]
+    all_goals simp [Expr.constInt?] at h
+  | bin f a b iha ihb =>
+    intro k h
+    cases f
+    case dmul =>
+      cases ha : a.constInt? <;> cases hb : b.constInt? <;> simp [Expr.constInt?, ha, hb] at h
+      subst h
+      simp [Expr.eval, iha ha, ihb hb, BinFn.apply]
+    all_goals simp [Expr.constInt?] at h
+  | ifThen => intro k h; simp [Expr.constInt?] at h
+  | hof => intro k h; simp [Expr.constInt?] at h
+
+/-- `e` with its constant decimals folded to integer literals. -/
+def Expr.normConst : Expr → Expr
+  | .un f a => match (Expr.un f a).constInt? with
+    | some k => .lit (.int k)
+    | none => .un f a.normConst
+  | .bin f a b => match (Expr.bin f a b).constInt? with
+    | some k => .lit (.int k)
+    | none => .bin f a.normConst b.normConst
+  | .ifThen c t e => .ifThen c.normConst t.normConst e.normConst
+  | e => e
+
+theorem Expr.eval_normConst (row : Row) : ∀ e : Expr, e.normConst.eval row = e.eval row := by
+  intro e
+  induction e with
+  | un f a ih =>
+    simp only [Expr.normConst]
+    split
+    · rename_i k hk; rw [Expr.constInt?_eval row _ hk]; rfl
+    · simp [Expr.eval, ih]
+  | bin f a b iha ihb =>
+    simp only [Expr.normConst]
+    split
+    · rename_i k hk; rw [Expr.constInt?_eval row _ hk]; rfl
+    · simp [Expr.eval, iha, ihb]
+  | ifThen c t e ihc iht ihe => simp [Expr.normConst, Expr.eval, ihc, iht, ihe]
+  | lit | field | hof => rfl
+
 /-! ## Refinement by filter conditions -/
 
 /-- A column known to be a non-NULL integer, with its interval transformed. -/
@@ -1276,11 +1418,12 @@ theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (
 def refineCol (env : List AVal) (i : Nat) (f : AVal → AVal) : List AVal :=
   env.set i (f (env.getD i AVal.top))
 
-/-- What a row that makes `e` TRUE satisfies. Recognizes conjunctions,
+/-- What a row that makes `e` TRUE satisfies, for constants that are integer
+literals (`Expr.refine` folds the others first). Recognizes conjunctions,
 disjunctions, comparisons of a column with an integer constant, `IS NULL`
 and `IS NOT NULL`. -/
-def Expr.refine (env : List AVal) : Expr → List AVal
-  | .bin .and p q => q.refine (p.refine env)
+def Expr.refineL (env : List AVal) : Expr → List AVal
+  | .bin .and p q => q.refineL (p.refineL env)
   | .bin .lt (.field i) (.lit (.int k)) => refineCol env i (·.nonNullInt (·.atMost (k - 1)))
   | .bin .lt (.lit (.int k)) (.field i) => refineCol env i (·.nonNullInt (·.atLeast (k + 1)))
   | .un .not (.bin .lt (.field i) (.lit (.int k))) => refineCol env i (·.nonNullInt (·.atLeast k))
@@ -1299,13 +1442,13 @@ def Expr.refine (env : List AVal) : Expr → List AVal
   -- Arithmetic is NULL-propagating: a non-NULL `a - b` has non-NULL operands
   -- (DataFusion inlines computed columns such as `gap = ts - prev_ts`).
   | .un .not (.un .isNull (.bin .add a b)) =>
-      (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+      (Expr.un .not (.un .isNull b)).refineL ((Expr.un .not (.un .isNull a)).refineL env)
   | .un .not (.un .isNull (.bin .sub a b)) =>
-      (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+      (Expr.un .not (.un .isNull b)).refineL ((Expr.un .not (.un .isNull a)).refineL env)
   | .un .not (.un .isNull (.bin .mul a b)) =>
-      (Expr.un .not (.un .isNull b)).refine ((Expr.un .not (.un .isNull a)).refine env)
+      (Expr.un .not (.un .isNull b)).refineL ((Expr.un .not (.un .isNull a)).refineL env)
   -- `p OR q` (e.g. `x IN (1, 2)`): what `p` gives, or what `q` gives.
-  | .bin .or p q => List.zipWith AVal.join (p.refine env) (q.refine env)
+  | .bin .or p q => List.zipWith AVal.join (p.refineL env) (q.refineL env)
   -- `x IS NULL`: only NULL (so `x IS NULL OR x >= 0` keeps the bound).
   | .un .isNull (.field i) => refineCol env i fun a => ⟨a.null, none, false, false, false⟩
   | _ => env
@@ -1344,8 +1487,9 @@ theorem EnvMem.zip_right {e₁ e₂ : List AVal} {row : Row} (h : EnvMem e₂ ro
   simp only [getD_top_eq, List.getElem?_zipWith] at *
   split <;> simp_all [AVal.mem_top, AVal.mem_join_right]
 
-theorem Expr.refine_length (env : List AVal) (e : Expr) : (e.refine env).length = env.length := by
-  fun_induction Expr.refine env e <;> simp_all [refineCol_length]
+theorem Expr.refineL_length (env : List AVal) (e : Expr) :
+    (e.refineL env).length = env.length := by
+  fun_induction Expr.refineL env e <;> simp_all [refineCol_length]
 
 theorem lt_int_right {v : Value} {k : Int} (h : (BinFn.apply .lt v (.int k)).isTrue = true) :
     ∃ x, v = .int x ∧ x < k := by
@@ -1418,9 +1562,9 @@ theorem not_isNull_arith {f : BinFn} (hf : f = .add ∨ f = .sub ∨ f = .mul) {
   rcases hf with rfl | rfl | rfl <;> cases v <;> cases w <;>
     simp_all [BinFn.apply, UnFn.apply, Value.isTrue]
 
-theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
-    (ht : (e.eval row).isTrue = true) : EnvMem (e.refine env) row := by
-  fun_induction Expr.refine env e
+theorem Expr.refineL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = true) : EnvMem (e.refineL env) row := by
+  fun_induction Expr.refineL env e
   case case1 env p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_and3, Bool.and_eq_true] at ht
     exact ihq (ihp h ht.1) ht.2
@@ -1522,6 +1666,17 @@ theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem e
     rw [hn] at this ⊢
     simpa [AVal.Mem] using this
   case case17 => exact h
+
+/-- What a row that makes `e` TRUE satisfies (`refineL`), with constant
+decimals folded first (`Expr.normConst`). -/
+def Expr.refine (env : List AVal) (e : Expr) : List AVal := e.normConst.refineL env
+
+theorem Expr.refine_length (env : List AVal) (e : Expr) : (e.refine env).length = env.length :=
+  Expr.refineL_length env _
+
+theorem Expr.refine_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = true) : EnvMem (e.refine env) row :=
+  Expr.refineL_sound env _ h (by rwa [Expr.eval_normConst])
 
 /-! ## What a condition says about one expression
 
@@ -1627,17 +1782,17 @@ abbrev Assumptions := List (Expr × Cstr)
 def KsHold (ks : Assumptions) (row : Row) : Prop := ∀ p ∈ ks, p.2.Holds (p.1.eval row)
 
 /-- `c`'s constraint when it is TRUE (`pos`) or not, as assumptions. -/
-def Expr.cstrs (pos : Bool) (c : Expr) : Assumptions := (c.cstr pos).toList
+def Expr.cstrs (pos : Bool) (c : Expr) : Assumptions := (c.normConst.cstr pos).toList
 
 theorem KsHold.cons_cstrs {pos : Bool} {c : Expr} {ks : Assumptions} {row : Row}
     (ht : (c.eval row).isTrue = pos) (hks : KsHold ks row) : KsHold (c.cstrs pos ++ ks) row := by
   intro p hp
   simp only [List.mem_append, Expr.cstrs] at hp
   rcases hp with hp | hp
-  · cases hc : c.cstr pos with
+  · cases hc : c.normConst.cstr pos with
     | none => simp [hc] at hp
     | some sk => simp only [hc, Option.toList_some, List.mem_singleton] at hp; subst hp;
-                 exact Expr.cstr_sound hc ht
+                 exact Expr.cstr_sound hc (by rwa [Expr.eval_normConst])
   · exact hks p hp
 
 /-- Narrow the abstract value `a` of `e` by an assumption about `e`, or about
@@ -1679,16 +1834,16 @@ theorem narrowAll_sound {e : Expr} {row : Row} :
 /-- What a row on which `e` is *not* TRUE satisfies (the `ELSE` branch of a
 `CASE`). Recognizes the constraints of `Expr.cstr` on columns, and `OR`
 (neither side is TRUE) and `AND` (one side is not TRUE). -/
-def Expr.refineNeg (env : List AVal) : Expr → List AVal
-  | .bin .or p q => q.refineNeg (p.refineNeg env)
-  | .bin .and p q => List.zipWith AVal.join (p.refineNeg env) (q.refineNeg env)
+def Expr.refineNegL (env : List AVal) : Expr → List AVal
+  | .bin .or p q => q.refineNegL (p.refineNegL env)
+  | .bin .and p q => List.zipWith AVal.join (p.refineNegL env) (q.refineNegL env)
   | e => match e.cstr false with
     | some (.field i, k) => refineCol env i k.apply
     | _ => env
 
-theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
-    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNeg env) row := by
-  fun_induction Expr.refineNeg env e
+theorem Expr.refineNegL_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNegL env) row := by
+  fun_induction Expr.refineNegL env e
   case case1 env p q ihp ihq =>
     simp only [eval, BinFn.apply, isTrue_or3, Bool.or_eq_false_iff] at ht
     exact ihq (ihp h ht.1) ht.2
@@ -1702,6 +1857,14 @@ theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMe
     have hk := Expr.cstr_sound hc ht
     exact Cstr.apply_sound (by simpa [eval] using hk) (h i)
   case case4 => exact h
+
+/-- What a row that makes `e` FALSE or NULL satisfies (`refineNegL`), with
+constant decimals folded first. -/
+def Expr.refineNeg (env : List AVal) (e : Expr) : List AVal := e.normConst.refineNegL env
+
+theorem Expr.refineNeg_sound {row : Row} (env : List AVal) (e : Expr) (h : EnvMem env row)
+    (ht : (e.eval row).isTrue = false) : EnvMem (e.refineNeg env) row :=
+  Expr.refineNegL_sound env _ h (by rwa [Expr.eval_normConst])
 
 /-! ## Relational facts
 
@@ -2847,20 +3010,21 @@ def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD 
 
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
-/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
-value of the same column of another input row, or give the default;
-`PERCENT_RANK` and `CUME_DIST` are doubles. Aggregates over frames and
-`FIRST_VALUE` and friends may be anything. -/
-def WinFn.abs (env : List AVal) : WinFn → AVal
-  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
-  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
-  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
-  | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Sums of integers in `b` keep their sign. -/
 def sumBound (b : Bound) : Bound :=
   ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
    b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
+
+/-- A non-empty sum of integers in `b`: at least `b`'s lower bound where that
+is not negative (the other terms are not negative), at most its upper bound
+where that is not positive. -/
+def sumBoundPos (b : Bound) : Bound :=
+  ⟨b.lo.bind fun l => if 0 ≤ l then some l else none,
+   b.hi.bind fun h => if h ≤ 0 then some h else none⟩
+
+/-- Admits integers and NULL only: no booleans, strings or lists. -/
+def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 
 /-- Some double, or NULL. -/
 def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
@@ -2869,14 +3033,37 @@ def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
 number, a sum of integers keeps their sign, `MIN` and `MAX` are among the
 argument's values, and the other measures are doubles. All but `COUNT` may
 be NULL. -/
-def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) : AVal :=
+def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false) :
+    AVal :=
   let a := m.arg.absD env fs
   match m.fn with
-  | .count => ⟨false, some (Bound.ge 0), false, false, false⟩
-  | .sum => ⟨true, some (match a.int with | some b => sumBound b | none => Bound.top), false, false, false⟩
+  -- A group has a row (`grouped`), so a count of a never-NULL argument
+  -- without a filter is positive: `COUNT(*)` per group is at least 1.
+  | .count =>
+    ⟨false, some (Bound.ge (if grouped && m.filter.isNone && !a.null then 1 else 0)), false, false,
+      false⟩
+  -- A sum is over at least one input (none: NULL), so with integer inputs
+  -- it is at least the smallest one, if that is not negative.
+  | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
+      | some b => if a.intsOnly then sumBoundPos b else sumBound b
+      | none => Bound.top), false, false, false⟩
   | .fsum | .avg => AVal.double
   | .min | .max => a.nullable
   | .collect => AVal.top
+
+/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
+value of the same column of another input row, or give the default;
+`PERCENT_RANK` and `CUME_DIST` are doubles. An aggregate over a frame is
+described like one over a group (`Measure.abs`); `FIRST_VALUE` and friends
+may be anything. -/
+def WinFn.abs (env : List AVal) : WinFn → AVal
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
+  -- An aggregate over a frame, rows of the input: a sum of non-negative
+  -- integers is not negative, `MIN` and `MAX` are among the inputs (#229).
+  | .agg m _ _ => m.abs env []
+  | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
+  | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Abstract evaluation. `A t` describes the columns of table `t`; `F t` holds
 facts about its rows. Computed columns use the facts of their input. -/
@@ -2898,7 +3085,7 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .unnest r c => (r.aeval cat A F T).set c AVal.top
   | .aggregate r gs ms =>
       gs.map (·.absD (r.aeval cat A F T) (r.facts cat F T)) ++
-        ms.map (Measure.abs (r.aeval cat A F T) (r.facts cat F T))
+        ms.map fun m => Measure.abs (r.aeval cat A F T) (r.facts cat F T) m !gs.isEmpty
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} :
@@ -3034,9 +3221,55 @@ theorem sumBound_sound {b : Bound} {vs : List Value} (h : ∀ i, .int i ∈ vs �
       · cases hu; exact intSum_nonpos fun i hi => by have := (h i hi).2 h₀ hb; omega
       · cases hu
 
+theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
+    (h : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i) : (sumBoundPos b).Mem (intSum (v :: vs)) := by
+  obtain ⟨i, rfl, hi⟩ := h v (by simp)
+  have hrest : ∀ j, .int j ∈ vs → b.Mem j := fun j hj => by
+    obtain ⟨j', hj', hm⟩ := h (.int j) (by simp [hj]); cases hj'; exact hm
+  simp only [intSum]
+  constructor
+  · intro l hl
+    cases hb : b.lo with
+    | none => simp [sumBoundPos, hb] at hl
+    | some l₀ =>
+      simp only [sumBoundPos, hb, Option.bind_some] at hl
+      split at hl
+      · simp only [Option.some.injEq] at hl; subst hl
+        have := hi.1 l₀ hb
+        have := intSum_nonneg (vs := vs) fun j hj => by have := (hrest j hj).1 l₀ hb; omega
+        omega
+      · cases hl
+  · intro u hu
+    cases hb : b.hi with
+    | none => simp [sumBoundPos, hb] at hu
+    | some h₀ =>
+      simp only [sumBoundPos, hb, Option.bind_some] at hu
+      split at hu
+      · simp only [Option.some.injEq] at hu; subst hu
+        have := hi.2 h₀ hb
+        have := intSum_nonpos (vs := vs) fun j hj => by have := (hrest j hj).2 h₀ hb; omega
+        omega
+      · cases hu
+
+/-- A measure without a filter, of an argument that is never NULL, over a
+group with a row, has an input. -/
+theorem Measure.inputs_ne_nil {env : List AVal} {fs : List Fact} {grp : Relation}
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) {m : Measure} (hg : grp ≠ [])
+    (hf : m.filter = none) (hnn : (m.arg.absD env fs).null = false) : m.inputs grp ≠ [] := by
+  obtain ⟨y, hy⟩ := List.exists_mem_of_ne_nil grp hg
+  have hv := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) m.arg
+  have : m.arg.eval y ≠ .null := fun h0 => by rw [h0] at hv; simp_all [AVal.Mem]
+  simp only [Measure.inputs, Measure.kept, hf]
+  have hm : m.arg.eval y ∈ (grp.map m.arg.eval).filter (· != .null) :=
+    List.mem_filter.mpr ⟨List.mem_map.mpr ⟨y, hy, rfl⟩, by simpa using this⟩
+  split
+  · exact List.ne_nil_of_mem (mem_dedup.mpr hm)
+  · exact List.ne_nil_of_mem hm
+
 theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
-    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (m : Measure) :
-    (m.abs env fs).Mem (m.eval grp) := by
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (m : Measure) (grouped : Bool := false)
+    (hne : grouped = true → grp ≠ [] := by simp) :
+    (m.abs env fs grouped).Mem (m.eval grp) := by
   have hin : ∀ v ∈ m.inputs grp, (m.arg.absD env fs).Mem v := by
     intro v hv
     obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
@@ -3044,20 +3277,52 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
   case collect => exact AVal.mem_top _
-  case count => exact ⟨_, rfl, by simp [Bound.Mem, Bound.ge]⟩
+  case count =>
+    refine ⟨_, rfl, fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩
+    simp only [Bound.ge, Option.some.injEq] at hl
+    subst hl
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Bool.not_eq_true'] at hc
+      obtain ⟨⟨hg, hf⟩, hnn⟩ := hc
+      have hne' := Measure.inputs_ne_nil hall (hne hg) hf hnn
+      cases h : m.inputs grp with
+      | nil => exact absurd h hne'
+      | cons _ _ => simp only [List.length_cons]; omega
+    · omega
   case sum =>
     cases hvs : m.inputs grp with
-    | nil => rfl
+    | nil =>
+      simp only [AggFn.apply, AVal.Mem]
+      cases hg : grouped <;> cases hfi : m.filter <;> cases hn : (m.arg.absD env fs).null <;>
+        simp
+      exact Measure.inputs_ne_nil hall (hne hg) hfi hn hvs
     | cons v vs =>
       simp only [AggFn.apply]
       refine ⟨_, rfl, ?_⟩
       cases ha : (m.arg.absD env fs).int with
       | none => exact Bound.mem_top _
       | some b =>
-        refine sumBound_sound fun i hi => ?_
-        have := hin (.int i) (hvs ▸ hi)
-        obtain ⟨b', hb', hm⟩ := this
-        rw [ha] at hb'; cases hb'; exact hm
+        simp only
+        split
+        · -- Every input is an integer in `b`.
+          rename_i honly
+          simp only [AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at honly
+          refine sumBoundPos_sound fun w hw => ?_
+          have hm := hin w (hvs ▸ hw)
+          have hnn : w ≠ .null := by
+            have : w ∈ m.inputs grp := hvs ▸ hw
+            simp only [Measure.inputs] at this
+            split at this <;> simp_all [mem_dedup]
+          rcases mem_cases hm with ⟨rfl, _⟩ | ⟨i, b', rfl, hb', hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ |
+              ⟨_, rfl, hs⟩ | ⟨_, rfl, ht, _, _⟩
+          · exact absurd rfl hnn
+          · rw [ha] at hb'; cases hb'; exact ⟨i, rfl, hi⟩
+          all_goals simp_all
+        · refine sumBound_sound fun i hi => ?_
+          have := hin (.int i) (hvs ▸ hi)
+          obtain ⟨b', hb', hm⟩ := this
+          rw [ha] at hb'; cases hb'; exact hm
   case fsum | avg =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case min | max =>
@@ -3068,11 +3333,12 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     · exact AVal.mem_nullable (hin _ h)
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
-    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) :
-    EnvMem (ms.map (Measure.abs env fs)) (ms.map (·.eval grp)) := by
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)
+    (hne : grouped = true → grp ≠ [] := by simp) :
+    EnvMem (ms.map fun m => Measure.abs env fs m grouped) (ms.map (·.eval grp)) := by
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall]
+  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall _ grouped hne]
 
 /-- **Soundness of abstract plan evaluation**: every row a well-formed plan
 produces is described by `Rel.aeval`, provided the tables are. -/
@@ -3092,7 +3358,16 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
       simp only [WinFn.abs, WinFn.value, WinFn.valueIn, floatRatio]
       split <;> exact ⟨_, rfl, Bound.mem_top _⟩
   | .cumeDist _ => ⟨_, rfl, Bound.mem_top _⟩
-  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
+  | .agg m sort fr => by
+      simp only [WinFn.abs, WinFn.value, WinFn.valueIn]
+      refine Measure.abs_sound (fun y hy => ⟨?_, by simp [FactsHold]⟩) m
+      have hy' := Frame.mem_rows hy
+      simp only [List.mem_append, List.mem_cons, List.mem_filter] at hy'
+      rcases hy' with ⟨hb, _⟩ | rfl | ⟨ha, _⟩
+      · exact hall y (.inr (.inl hb))
+      · exact hall y (.inl rfl)
+      · exact hall y (.inr (.inr ha))
+  | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
   | .lag c k d => by
       simp only [WinFn.abs]
       rcases WinFn.value_lag (part := part) (b := b) (a := a) (x := x) (c := c) (k := k)
@@ -3181,15 +3456,15 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       obtain ⟨_, v, _, _, rfl⟩ := mem_unnestRow h
       exact (aeval_sound hcat hA hF hT hwf.1 x hx).set_top c v
   | .aggregate r gs ms, hwf, row, h => by
-      obtain ⟨k, grp, rfl, hgrp, hk⟩ := mem_aggregateEval h
+      obtain ⟨k, grp, rfl, hgrp, hk, hne⟩ := mem_aggregateEval_nonempty h
       have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T) y ∧ FactsHold (r.facts cat F T) y :=
         fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 y (hgrp y hy),
           Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
+      have hm := EnvMem.measures hall ms (!gs.isEmpty) (fun hg => hne (by simpa using hg))
       rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
-      · exact EnvMem.append (by intro j; simp [AVal.mem_top]) (EnvMem.measures hall ms) (by simp)
+      · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
       · exact (EnvMem.mapD (aeval_sound hcat hA hF hT hwf.1 x hx)
-          (Rel.facts_sound hcat hF hT hwf.1 x hx) gs).append (EnvMem.measures hall ms)
-          (by simp)
+          (Rel.facts_sound hcat hF hT hwf.1 x hx) gs).append hm (by simp)
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       rcases h with h | h
