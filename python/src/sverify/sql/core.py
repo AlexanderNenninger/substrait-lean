@@ -1985,7 +1985,9 @@ class _Parser:
                 overflow = _option(v, "overflow", "ERROR")
                 if any(isinstance(lean_expr_kind(e, cols.lean), Dec) for e in parsed):
                     if overflow in ("SILENT", "SATURATE"):
-                        raise Unsupported(f"{name}: overflow {overflow} is only modelled for integers")
+                        raise Unsupported(
+                            f"{name}: overflow {overflow} is only modelled for integers"
+                        )
                     if any(
                         _arg_kind(cols.lean, a, e) == "float"
                         for a, e in zip(arg_js, parsed, strict=True)
@@ -2055,11 +2057,13 @@ class _Parser:
                 # result, wrapped around or clamped at the width. The width is
                 # the call's output type (Lean: its arguments', `argBits`).
                 if overflow in ("SILENT", "SATURATE"):
-                    exact = (
-                        isinstance(out_e, Bin) and out_e.op in ("add", "sub", "mul")
-                    ) or (isinstance(out_e, Un) and out_e.op == "neg")
+                    exact = (isinstance(out_e, Bin) and out_e.op in ("add", "sub", "mul")) or (
+                        isinstance(out_e, Un) and out_e.op == "neg"
+                    )
                     if not exact or lean_expr_kind(out_e, cols.lean) != "int":
-                        raise Unsupported(f"{name}: overflow {overflow} is only modelled for integers")
+                        raise Unsupported(
+                            f"{name}: overflow {overflow} is only modelled for integers"
+                        )
                     bits = _int_bits(out_ty) if isinstance(out_ty, dict) else 64
                     return Un("fit", out_e, digits=bits, param=overflow)
                 if isinstance(out_e, Bin) and out_e.op == "substr":

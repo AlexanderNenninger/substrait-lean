@@ -377,13 +377,10 @@ def test_integer_overflow_may_ask_to_wrap_or_clamp(op, mode, expected):
     lowering's templates; the other engines refuse them for now."""
     con = connect()
     rows = [(I64_MAX, 1), (I64_MIN, -1), (3, 0), (None, 0)]
-    put_table(con, "i", pa.table({"a": pa.array([r[0] for r in rows], pa.int64()),
-                                  "b": pa.array([r[1] for r in rows], pa.int64())}))  # fmt: skip
     if op == "-":
         rows = [(I64_MAX, I64_MAX), (I64_MIN, 1), (3, 0), (None, 0)]
-        con = connect()
-        put_table(con, "i", pa.table({"a": pa.array([r[0] for r in rows], pa.int64()),
-                                      "b": pa.array([r[1] for r in rows], pa.int64())}))  # fmt: skip
+    columns = {k: pa.array([r[j] for r in rows], pa.int64()) for j, k in enumerate("ab")}
+    put_table(con, "i", pa.table(columns))
     plan = json.loads(substrait_json(con, f"SELECT a {op} b AS q FROM i"))
     assert issues(json.dumps(plan)) == ["overflow"]
     for node in _dicts(plan):

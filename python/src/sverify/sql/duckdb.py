@@ -114,7 +114,10 @@ class DuckDBDialect(Dialect):
             v = f"((({exact} + {h}) % {m} + {m}) % {m} - {h})"
         else:
             lo, hi = -h, h - 1
-            v = f"(CASE WHEN {exact} < {lo} THEN {lo} WHEN {hi} < {exact} THEN {hi} ELSE {exact} END)"
+            v = (
+                f"(CASE WHEN {exact} < {lo} THEN {lo} WHEN {hi} < {exact} THEN {hi} "
+                f"ELSE {exact} END)"
+            )
         return f"CAST({v} AS BIGINT)"
 
     def row_ordinal(self) -> str:
