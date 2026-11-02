@@ -34,6 +34,12 @@ CASES: list[Case] = [
     case("aggregation", "nunique", V, lambda: t.group_by("name").aggregate(n=t.id.nunique())),
     case(
         "aggregation",
+        "approx_nunique",
+        R,
+        lambda: t.group_by("name").aggregate(n=t.id.approx_nunique()),
+    ),
+    case(
+        "aggregation",
         "sum(where=)",
         V,
         lambda: t.group_by("name").aggregate(s=t.qty.sum(where=t.flag)),
