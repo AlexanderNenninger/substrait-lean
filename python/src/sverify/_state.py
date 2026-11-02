@@ -203,7 +203,7 @@ class DuckDBStore(Store):
             return super().has_negative(z)
         db = _duckdb.cursor()
         try:
-            row = db.execute(f"SELECT bool_or({_q(WEIGHT)} < 0) FROM {z.ref}").fetchone()
+            row = db.execute(f"SELECT bool_or({_q(WEIGHT)} < 0) FROM {z.ref}").fetchall()[0]
         finally:
             db.close()
         return bool(row and row[0])

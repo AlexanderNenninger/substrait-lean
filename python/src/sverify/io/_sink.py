@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
+from sverify._scan import Resident
 from sverify._state import State, arrow_of
 from sverify._weighted import expanded, negated, positive
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
@@ -78,6 +79,26 @@ class SinkChange:
         assert self._old is not None
         view = self._view
         return arrow_of(view._merge(self._new, view.store.negated(self._old)))
+
+    @cached_property
+    def native(self) -> tuple[Resident, Resident] | None:
+        """The state and the change as tables DuckDB holds, when the view
+        keeps its state in DuckDB (`sverify._state.DuckDBStore`): the new
+        state's rows (a DuckDB view), and the weighted change since the
+        state written last (with `replace`, the whole state), computed by
+        the view's merge plan in DuckDB. None otherwise: write the Arrow
+        tables."""
+        new = self._new
+        if not isinstance(new, Resident):
+            return None
+        view = self._view
+        rows = view.store.expanded(new)
+        assert isinstance(rows, Resident)
+        if self._old is None:
+            return rows, new
+        change = view._merge(new, view.store.negated(self._old), keep=True)
+        assert isinstance(change, Resident)
+        return rows, change
 
     @cached_property
     def inserts(self) -> pa.Table:

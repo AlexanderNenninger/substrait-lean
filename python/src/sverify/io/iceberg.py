@@ -23,6 +23,7 @@ one commit the size of the change.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -35,11 +36,13 @@ import pyarrow.parquet as pq
 
 try:
     from pyiceberg.catalog import Catalog
+    from pyiceberg.conversions import to_bytes
     from pyiceberg.expressions import AlwaysTrue
     from pyiceberg.io.pyarrow import (
         ArrowScan,
         _dataframe_to_data_files,
         _pyarrow_schema_ensure_small_types,
+        parquet_file_to_data_file,
     )
     from pyiceberg.manifest import (
         DataFile,
@@ -72,6 +75,7 @@ from sverify.incremental import (
     row_key,
     snapshot_diff,
 )
+from sverify.io import _engine
 from sverify.io._common import ColumnStats, Contract, SinkWrite, q, stats_facts
 from sverify.io._sink import Sink, SinkChange
 from sverify.steps import Pipeable
@@ -600,9 +604,14 @@ def _position_deletes(t: Table, positions: dict[str, list[int]]) -> list[DataFil
 
 
 def _commit_rows(
-    tx: Transaction, t: Table, rows: pa.Table, deletes: list[DataFile], props: dict[str, str]
+    tx: Transaction,
+    t: Table,
+    rows: pa.Table | list[DataFile],
+    deletes: list[DataFile],
+    props: dict[str, str],
 ) -> None:
-    """One snapshot that deletes by position and appends `rows`."""
+    """One snapshot that deletes by position and appends `rows` (or data
+    files already written)."""
     snapshot = _RowLevel(
         deletes,
         operation=Operation.OVERWRITE if deletes else Operation.APPEND,
@@ -610,9 +619,11 @@ def _commit_rows(
         io=t.io,
         snapshot_properties=props,
     )
-    added: Iterable[DataFile] = (
-        _dataframe_to_data_files(tx.table_metadata, rows, t.io) if rows.num_rows else []
-    )
+    added: Iterable[DataFile]
+    if isinstance(rows, list):
+        added = rows
+    else:
+        added = _dataframe_to_data_files(tx.table_metadata, rows, t.io) if rows.num_rows else []
     for f in added:
         snapshot.append_data_file(f)
     snapshot.commit()
@@ -696,6 +707,65 @@ class IcebergSink(Sink):
         epoch = int(mine[0].summary.get(EPOCH, "-1"))  # type: ignore[union-attr]
         return replace(Contract.from_json(text), epoch=epoch)
 
+    def _write_native(
+        self, t: Table, created: bool, change: SinkChange, props: dict[str, str]
+    ) -> tuple[Literal["created", "append", "row-level"], int, int] | None:
+        """Have DuckDB write the data file of the state (`created`) or of the
+        rows the change inserts, find the positions of the rows it deletes,
+        and commit them as one snapshot with the contract. None where only
+        the Arrow path writes: partitioned tables, nested columns, object
+        stores, or a table that does not hold the rows the change deletes."""
+        assert change.native is not None
+        rows, delta = change.native
+        schema = change.schema
+        fields = t.schema().fields
+        if not t.spec().is_unpartitioned() or any(pa.types.is_nested(f.type) for f in schema):
+            return None
+        ids = {f.name: f.field_id for f in fields}
+
+        def data_file(sql: str) -> list[DataFile]:
+            uri = t.location_provider().new_data_location(f"{uuid.uuid4()}-sverify.parquet")
+            local = local_path(uri)
+            assert local is not None
+            os.makedirs(os.path.dirname(local), exist_ok=True)
+            if not _engine.copy(sql, local, schema, ids):
+                os.remove(local)
+                return []
+            f = parquet_file_to_data_file(t.io, t.metadata, uri)
+            types = {fld.name: fld.field_type for fld in fields}
+            for c, (lo, hi) in _engine.float_bounds(local, schema).items():
+                f.lower_bounds[ids[c]] = to_bytes(types[c], lo)
+                f.upper_bounds[ids[c]] = to_bytes(types[c], hi)
+            return [f]
+
+        if local_path(t.location()) is None:
+            return None
+        if created:
+            with t.transaction() as tx:
+                tx.set_properties({KEY: change.contract.to_json()})
+                _commit_rows(tx, t, data_file(_engine.rows_sql(rows, schema)), [], props)
+            return "created", _engine.rows_count(rows), 0
+        inserted, deleted = _engine.counts(delta)
+        deletes: list[DataFile] = []
+        if deleted:
+            snap = self.source()._native()
+            if snap is None:
+                return None
+            gone = _engine.positions(snap.scan, delta)
+            if gone is None:
+                return None
+            uris = {local_path(p): p for p in _tasks(t, t.current_snapshot())}
+            by_file: dict[str, list[int]] = {}
+            files, at = gone.column("file").to_pylist(), gone.column("pos").to_pylist()
+            for f, pos in zip(files, at, strict=True):
+                by_file.setdefault(uris[f], []).append(pos)
+            deletes = _position_deletes(t, by_file)
+        added = data_file(_engine.inserts_sql(delta, schema)) if inserted else []
+        with t.transaction() as tx:
+            tx.set_properties({KEY: change.contract.to_json()})
+            _commit_rows(tx, t, added, deletes, props)
+        return ("row-level" if deleted else "append"), inserted, deleted
+
     def write(self, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
         deletes and new rows, in one snapshot that records the contract."""
@@ -708,6 +778,12 @@ class IcebergSink(Sink):
             )
         else:
             t = self.catalog.load_table(self.identifier)
+        if change.native is not None and (created or not change.replace):
+            done = self._write_native(t, created, change, props)
+            if done is not None:
+                mode, inserted, deleted = done
+                version = _version(self.catalog.load_table(self.identifier).current_snapshot())
+                return SinkWrite(mode, version, contract, inserted, deleted)
         positions: dict[str, list[int]] | None = None
         if not created and not change.replace and t.spec().is_unpartitioned():
             # The rows that went: as many as the change deletes, so tuples.

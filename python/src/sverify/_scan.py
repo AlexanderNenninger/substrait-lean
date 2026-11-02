@@ -54,6 +54,10 @@ def local_path(uri: str) -> str | None:
     return None
 
 
+FILE, POS = '"__sverify_file"', '"__sverify_pos"'
+"""The columns `Scan.attach(..., positions=True)` adds (quoted)."""
+
+
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -160,18 +164,26 @@ class Scan(Native):
     origin: str = ""
 
     def attach(
-        self, db: duckdb.DuckDBPyConnection, name: str, *, table: bool = False
+        self,
+        db: duckdb.DuckDBPyConnection,
+        name: str,
+        *,
+        table: bool = False,
+        positions: bool = False,
     ) -> Callable[[], None]:
         """Make `name` a temporary view of the rows in `db`, or with `table`
         a temporary table holding them (whose `rowid` numbers the rows in
-        file order). Returns the function that drops it again."""
+        file order). With `positions`, each row also has its file (`FILE`)
+        and its position in the file (`POS`). Returns the function that
+        drops it again."""
         tag = uuid.uuid4().hex
         deleted = f"__sverify_deleted_{tag}"
         if self.deleted is not None:
             db.register(deleted, self.deleted)
         kind = "TABLE" if table else "VIEW"
         try:
-            db.execute(f"CREATE OR REPLACE TEMP {kind} {_q(name)} AS {self._sql(db, deleted)}")
+            sql = self._sql(db, deleted, positions)
+            db.execute(f"CREATE OR REPLACE TEMP {kind} {_q(name)} AS {sql}")
         except BaseException:
             if self.deleted is not None:
                 db.unregister(deleted)
@@ -198,17 +210,19 @@ class Scan(Native):
         finally:
             db.close()
 
-    def _sql(self, db: duckdb.DuckDBPyConnection, deleted: str) -> str:
+    def _sql(self, db: duckdb.DuckDBPyConnection, deleted: str, positions: bool = False) -> str:
         types = _duckdb_types(db, self.schema)
         names = self.schema.names
         if not self.files:
             cols = ", ".join(
                 f"CAST(NULL AS {t}) AS {_q(c)}" for c, t in zip(names, types, strict=True)
             )
+            if positions:
+                cols += f", CAST(NULL AS VARCHAR) AS {FILE}, CAST(NULL AS BIGINT) AS {POS}"
             return f"SELECT {cols} WHERE FALSE"
         files = "[" + ", ".join(map(_lit, self.files)) + "]"
         options = "union_by_name = true"
-        if self.deleted is not None:
+        if self.deleted is not None or positions:
             options += ", filename = true, file_row_number = true"
         source = f"read_parquet({files}, {options})"
         present = {r[0] for r in db.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()}
@@ -216,6 +230,8 @@ class Scan(Native):
             f"{_column(f, t, present)} AS {_q(f.name)}"
             for f, t in zip(self.schema, types, strict=True)
         )
+        if positions:
+            cols += f", s.filename AS {FILE}, s.file_row_number AS {POS}"
         sql = f"SELECT {cols} FROM {source} s"
         if self.deleted is not None:
             sql += (
