@@ -19,6 +19,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
+from _pipelines import integer_powers
 from sverify import polars_engine
 from sverify.engine import (
     connect,
@@ -38,7 +39,6 @@ from sverify.incremental import WEIGHT, IncrementalView
 from sverify.sql import Unsupported
 from sverify.testing import (
     canonical,
-    duckdb_ibis,
     duckdb_sql,
     inline_tables,
     lean_rows,
@@ -347,8 +347,10 @@ def test_polars_view_matches_datafusion_view(name, data):
 
 
 def polars_rows(con, sql: str) -> list[tuple]:
-    # The reference's semantics: Polars against the model.
-    return rows_of(run_plan(con, written_plan(substrait_json(con, sql, "reference")), "polars"))
+    # The reference's semantics, and the model's integer `power`: Polars
+    # against the model.
+    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    return rows_of(run_plan(con, written_plan(json.dumps(plan)), "polars"))
 
 
 def test_null_join_keys_never_match():
@@ -645,7 +647,8 @@ def test_guarded_operations_do_not_raise(sql):
 def test_polars_fails_only_where_reported(i, rows):
     """Polars raises an error only where `Rel.mayIssues` reports one (and
     `IntegerOverflow` only where it warns of wrapping). When neither Polars
-    nor DuckDB running Ibis's own SQL fails and nothing wraps, they agree."""
+    nor DuckDB running the same plan fails and nothing wraps, they agree (Ibis's
+    own DuckDB SQL is no oracle here: its `//` truncates)."""
     expr = NUMERIC_PIPELINES[i]
     report = sv.verify(expr)
     con = connect()
@@ -670,8 +673,8 @@ def test_polars_fails_only_where_reported(i, rows):
         assert report.errors, f"Polars failed ({e}) but no error was reported"
         return
     try:
-        duck = rows_of(duckdb_ibis(con, expr))
-    except Exception:  # noqa: BLE001 - DuckDB evaluates more rows (`Rel.loose`)
+        duck = rows_of(run_plan(con, plan, "duckdb"))
+    except Exception:  # noqa: BLE001 - DuckDB raises on more rows (`Rel.loose`)
         return
 
     def numbers(rows: list[tuple]) -> list[tuple]:
