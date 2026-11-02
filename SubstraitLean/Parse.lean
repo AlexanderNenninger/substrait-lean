@@ -329,7 +329,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .sum => match m.arg.kind cols with
     | .dec p s => .dec (min 38 (p + 10)) s
     | _ => .int
-  | .fsum | .avg => .float
+  | .fsum | .avg | .var _ _ => .float
   | .iavg | .bit _ => .int
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
@@ -954,13 +954,17 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
   -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
   -- `TRUNCATE`. `FLOOR` is not modelled yet (#209 R3).
   | "division_type" => if base == "modulus" then some (some ["TRUNCATE"]) else none
+  -- A variance is of a sample or of a population (#54).
+  | "distribution" =>
+    if base == "variance" || base == "std_dev" then some (some ["SAMPLE", "POPULATION"]) else none
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
     -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
     else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
     -- Native doubles round to nearest, ties to even.
-    else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
+    else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg", "variance",
+        "std_dev"].contains base then
       some (some ["TIE_TO_EVEN"])
     else none
   -- Every value is modelled (`divByZero`). `IEEE` and `LIMIT` are only for
@@ -1880,6 +1884,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
       if argBits bits (args.headD .null) arg != 64 then
         throw s!"{name} of an integer narrower than 64 bits is not supported"
       pure (.bit (if name == "bit_and" then .and else if name == "bit_or" then .or else .xor), arg)
+    -- Of doubles, or of integers converted to doubles, as `avg` (#54); the
+    -- sample's unless the plan asks for the population's.
+    | "variance", .float | "std_dev", .float | "variance", .int | "std_dev", .int =>
+      let sample := optionPref "distribution" "SAMPLE" (← arrD m "options") != "POPULATION"
+      pure (.var sample (name == "std_dev"), if k == .int then .un .itof arg else arg)
     | n, _ => throw s!"unsupported aggregate function: {n}"
   if fn == .collect then
     if distinct then throw "array_agg(DISTINCT …) is not supported"
@@ -2029,6 +2038,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- sum of doubles then rounds differently from adding up the frame, an
       -- average of a frame that has become empty is NaN, and a `MIN` of one
       -- with only NULLs left is the last minimum.
+      if m.fn matches .var _ _ then throw s!"{n} over a window is not supported"
       if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided

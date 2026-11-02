@@ -294,8 +294,6 @@ class SparkDialect(Dialect):
         values = f"transform(array_sort({pairs}), p -> p.v)"
         return f"aggregate({values}, {self.float_lit(0.0)}, (acc, x) -> acc + x)"
 
-    # Strings
-
     def char_length(self, s: str) -> str:
         return f"length({s})"
 

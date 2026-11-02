@@ -390,7 +390,10 @@ def _rows(table: pa.Table) -> list[tuple]:
     return [tuple(_value_of(v) for v in r.values()) for r in table.to_pylist()]
 
 
-def _canonical(rows: list[tuple]) -> list[str]:
+def _normalized(rows: list[tuple]) -> list[str]:
+    """The rows in their order, doubles to six decimals: engines may round
+    differently where the model leaves the algorithm open (`VARIANCE`, #54)."""
+
     def norm(v: object) -> object:
         if isinstance(v, float) and math.isfinite(v) and v == int(v) and abs(v) < 2**53:
             return int(v)
@@ -400,7 +403,11 @@ def _canonical(rows: list[tuple]) -> list[str]:
             return round(float(v), 6)
         return v
 
-    return sorted(repr(tuple(norm(v) for v in r)) for r in rows)
+    return [repr(tuple(norm(v) for v in r)) for r in rows]
+
+
+def _canonical(rows: list[tuple]) -> list[str]:
+    return sorted(_normalized(rows))
 
 
 def _first_line(e: BaseException | str) -> str:
@@ -459,7 +466,7 @@ def probe_engines(
             assert root is not None
             other = results.get("duckdb" if engine == "polars" else "polars")
             ok = other is None or (
-                repr(got) == repr(other)
+                _normalized(got) == _normalized(other)
                 if order_matters(root)
                 else _canonical(got) == _canonical(other)
             )
@@ -667,7 +674,7 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     ),
     (r"UNNEST|GENERATE_SERIES", {"unnest", "generate_series"}),
     (r"aggregate function: (median|approx_median|percentile)|'Quantile'", {"percentile"}),
-    (r"aggregate function: (stddev|var)", {"stddev_var"}),
+    (r"aggregate function: (stddev|var)|window function: (std_dev|variance)", {"stddev_var"}),
     (r"corr takes|aggregate function: (corr|covar)", {"corr"}),
     (r"string_agg|array_agg", {"string_agg"}),
     (r"approx_distinct", {"approx_distinct"}),
