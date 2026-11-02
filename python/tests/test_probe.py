@@ -42,6 +42,12 @@ def test_double_division_is_ieee_but_for_nan():
     assert all("inf" in e["row"] and "nan" in e["duckdb"] for e in ieee["examples"])
 
 
+# The Wheels workflow runs these tests from `python/tests` alone: there the
+# repository's files are not here.
+@pytest.mark.skipif(
+    not (slt.LEDGER / "probes.json").is_file(),
+    reason="characterization/ of the repository is not here",
+)
 def test_probes_json_is_current():
     """`probes.json` is what the harness finds now (rerun
     `python -m sverify_dev.probe --write` after a model or DuckDB change)."""
