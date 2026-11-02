@@ -43,9 +43,9 @@ LIKE and ILIKE, `||`, `concat`, `replace`, `repeat`, `left`, `upper`,
 `lower`); inner, left, right, full, semi, anti and cross joins; subqueries
 in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
 CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
-`max`, DISTINCT and FILTER (WHERE …) in them, HAVING; window functions (ranking, `lag`/`lead`, first/last/nth
-value, aggregates; ROWS and RANGE frames); DISTINCT, ORDER BY, LIMIT and
-OFFSET. Anything else, unknown functions (`Anonymous`) included, raises
+`max`, DISTINCT and FILTER (WHERE …) in them, HAVING; window functions
+(ranking, `lag`/`lead`, first/last/nth value, aggregates; ROWS and RANGE
+frames); DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown functions (`Anonymous`) included, raises
 `Unsupported` saying what.
 """
 
