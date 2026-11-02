@@ -57,7 +57,7 @@ def _(mo):
     **one zero**: IEEE's −0.0 *is* 0.0, so `-0.0 >= 0` holds and −0.0 never
     shows in a result. (DataFusion's own order, `f64::total_cmp`, splits
     both; `sverify` stores DataFusion's tables the model's way, see
-    [chapter 16](?file=16_datafusion_semantics.py).) Here it is, live:
+    [chapter 17](?file=17_backend_semantics.py), section 8.) Here it is, live:
     """)
     return
 
