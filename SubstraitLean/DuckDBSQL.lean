@@ -124,31 +124,6 @@ def DuckFn.refused : Semantics → DuckFn → Option String
       (they truncate) cannot state; use semantics='reference', or round() first"
   | _, _ => none
 
-/-! The special codes' order, which the generated proofs compare with. -/
-
-theorem FloatCode.negInf_lt_zero : FloatCode.negInf < 0 := by
-  have := FloatCode.maxMag_pos
-  simp [FloatCode.negInf, FloatCode.ofMag, FloatCode.infMag, FloatCode.nanMag]
-  omega
-
-theorem FloatCode.zero_lt_posInf : 0 < FloatCode.posInf := by
-  have := FloatCode.maxMag_pos
-  simp [FloatCode.posInf, FloatCode.ofMag, FloatCode.infMag]
-  omega
-
-theorem FloatCode.posInf_lt_nan : FloatCode.posInf < FloatCode.nan := by
-  have := FloatCode.maxMag_pos
-  simp [FloatCode.posInf, FloatCode.nan, FloatCode.ofMag, FloatCode.infMag, FloatCode.nanMag]
-
-set_option exponentiation.threshold 3000 in
-theorem FloatCode.one_lt_posInf : FloatCode.one < FloatCode.posInf := by
-  rw [FloatCode.posInf_eq]; unfold FloatCode.maxMag FloatCode.one; decide
-
-theorem FloatCode.zero_lt_one : (0 : Int) < FloatCode.one := by
-  unfold FloatCode.one
-  have h : (0 : Int) < 2 ^ 1074 := Int.pow_pos (by decide)
-  omega
-
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
   have := FloatCode.ofInt_bounds i; omega
 
@@ -219,38 +194,6 @@ theorem DuckDBSQL.apply_lt_null_r (x : Value) : BinFn.apply .lt x .null = .null 
 theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α) :
     (if p ∨ q then a else b) = if p then a else if q then a else b := by
   by_cases hp : p <;> by_cases hq : q <;> simp [hp, hq]
-
-/-- DuckDB's `/` of doubles, IEEE 754's: by zero `±∞` by the dividend's
-sign, NaN for `0` and NaN (R5, `ieeeDivZero`); `±∞ / ±∞` is NaN. The NaN
-cases are stated, not left to native floats, so that proofs can see them. -/
-def duckDivide (x y : Int) : Int :=
-  if y = 0 then ieeeDivZero x
-  else if isInfCode x && isInfCode y then FloatCode.nan
-  else FloatCode.lift₂ (· / ·) x y
-
-/-- DuckDB's `%` of doubles: NaN by zero (R4) and for an infinite dividend,
-else C's `fmod`. -/
-def duckMod (x y : Int) : Int :=
-  if y = 0 ∨ isInfCode x then FloatCode.nan else FloatCode.fmod x y
-
-/-- A logarithm (`ln`, `log10`, `log2`)? -/
-def FMath.isLog : FMath → Bool
-  | .ln | .log10 | .log2 => true
-  | _ => false
-
-/-- DuckDB's elementary function of a double (DuckDB 2.0): the function in its
-domain (`FMath.apply`); outside it, `-∞` for a logarithm of zero and NaN
-otherwise (`sqrt(-1)`, `asin(2)`, `sin(±∞)`). -/
-def duckElementary (f : FMath) (x : Int) : Int :=
-  match f.apply x with
-  | some r => r
-  | none => if f.isLog ∧ x = 0 then FloatCode.negInf else FloatCode.nan
-
-/-- DuckDB's `power` of doubles: NaN where IEEE 754 gives it (a negative
-finite base to a finite power that is not an integer, `nanCase`), else the
-native power (`0 ^ -1` is `∞`). -/
-def duckPower (x y : Int) : Int :=
-  if nanCase .fpow x y then FloatCode.nan else FloatCode.lift₂ Float.pow x y
 
 /-- `sign` of an integer, or of a double's code (codes are ordered as their
 doubles; NaN's is the largest, and its sign is `0`). -/

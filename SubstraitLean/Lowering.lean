@@ -158,6 +158,42 @@ theorem Lowering.bin_agree_of_eq {p : Profile} {f : BinFn}
     (p.bin f x y).Agree (Profile.reference.bin f x y) := by
   rw [h]; exact Outcome.agree_refl _
 
+/-! `<<` and `>>` as the templates compute them (`LoweringSearch.schemaBin?`). -/
+
+theorem Lowering.shl_toInt (a : Int) (n : Nat) (h : n < 64) :
+    (BitVec.ofInt 64 a <<< n).toInt = Int.bmod (a * 2 ^ n) (2 ^ 64) := by
+  rw [BitVec.shiftLeft_eq_mul_twoPow, BitVec.toInt_mul]
+  simp only [BitVec.toInt_ofInt, BitVec.toInt_twoPow, Int.bmod_mul_bmod]
+  have h64 : ¬ 64 ≤ n := by omega
+  simp only [h64, ite_false, Int.natCast_pow]
+  split
+  · have hn : n = 63 := by omega
+    subst hn
+    have e : a * -(2:Int) ^ 63 = a * 2 ^ 63 + ((2 ^ 64 : Nat) : Int) * (-a) := by
+      have : ((2 ^ 64 : Nat) : Int) = 2 ^ 63 * 2 := by decide
+      rw [this, Int.mul_neg, Int.mul_assoc, Int.mul_comm 2 (-a), Int.neg_mul, Int.mul_neg,
+        ← Int.mul_assoc, Int.mul_comm (2 ^ 63) a]
+      omega
+    rw [show ((2:Nat):Int) = 2 from rfl, e, Int.add_mul_bmod_self_left]
+  · rfl
+
+theorem Lowering.bmod_fit (x : Int) : Int.bmod x (2 ^ 64) = (x + 2 ^ 63) % 2 ^ 64 - 2 ^ 63 := by
+  rw [Int.bmod_def]
+  simp only [Int.natCast_pow, Int.cast_ofNat_Int]
+  split <;> omega
+
+/-- A left shift wraps `a · 2ᵇ` around at 64 bits. -/
+theorem Lowering.shl_apply (a b : Int) : BitOp.apply .shl a b =
+    if 0 ≤ b ∧ b < 64 then some ((a * 2 ^ b.toNat + 2 ^ 63) % 2 ^ 64 - 2 ^ 63) else none := by
+  simp only [BitOp.apply]
+  split
+  · rename_i h
+    rw [Lowering.shl_toInt a b.toNat (by omega), Lowering.bmod_fit]
+  · rfl
+
+theorem Lowering.shr_apply (a b : Int) : BitOp.apply .shr a b =
+    if 0 ≤ b ∧ b < 64 then some ((BitVec.ofInt 64 a).sshiftRight b.toNat).toInt else none := rfl
+
 /-- A template for the unary function `f` under `p`. -/
 structure UnEntry (p : Profile) (f : UnFn) where
   tmpl : Expr
