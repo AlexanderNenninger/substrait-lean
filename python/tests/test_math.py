@@ -72,7 +72,10 @@ def rows() -> list[tuple]:
 EXPRS: dict[str, Any] = {
     "sqrt, exp, ln": lambda: X.select(x.k, a=x.p.sqrt(), b=x.x.exp(), c=x.p.ln()),
     "log(b)": lambda: X.select(x.k, b=x.p.log(3), c=x.p.log(x.p + 2)),
-    "sin, cos, tan, cot": lambda: X.select(x.k, a=x.x.sin(), b=x.x.cos(), c=x.x.tan(), d=x.x.cot()),
+    # Of `±inf` they would be NaN, which no operation creates (#257).
+    "sin, cos, tan, cot": lambda: X.select(
+        x.k, a=x.u.sin(), b=x.u.cos(), c=x.u.tan(), d=(x.u + 2.0).cot()
+    ),
     "asin, acos, atan, atan2": lambda: X.select(
         x.k, a=x.u.asin(), b=x.u.acos(), c=x.x.atan(), d=x.x.atan2(x.p)
     ),

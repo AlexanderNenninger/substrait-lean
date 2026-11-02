@@ -132,7 +132,13 @@ def errors(expr) -> list[str]:
             ["division by zero"],
         ),
         ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), ["division by zero"]),
-        ("double modulus, constant", T.select(x=T.amount % 2.5), []),
+        # `fmod(±inf, 2.5)` would be NaN, which no operation creates (#257).
+        ("double modulus, constant", T.select(x=T.amount % 2.5), ["domain error"]),
+        (
+            "double modulus, finite",
+            T.filter((T.amount > -1e300) & (T.amount < 1e300)).select(x=T.amount % 2.5),
+            [],
+        ),
         ("double modulus, column", T.select(x=T.qty % T.amount), ["division by zero"]),
         ("double modulus, filter", T.filter(T.amount > 0).select(x=T.qty % T.amount), []),
         ("unbounded cast", T.select(x=T.amount.round()), ["cast out of range"]),

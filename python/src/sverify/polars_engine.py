@@ -473,7 +473,28 @@ def fmath_domain_error(name: str, e: pl.Expr) -> pl.Expr | None:
         return e <= 0.0
     if name in ("asin", "acos"):
         return (e < -1.0) | ((e > 1.0) & ~e.is_nan())
+    if name in ("sin", "cos", "tan"):
+        # `±∞` would give NaN, which no operation creates (#257).
+        return e.is_infinite()
     return None
+
+
+def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """Would IEEE make a new NaN of `x name y` (`nanCase`), which no
+    operation creates (#257)? NaN arguments stay NaN."""
+    inf = float("inf")
+    x, y = x.cast(pl.Float64), y.cast(pl.Float64)
+    if name in ("add", "subtract"):
+        other = -inf if name == "add" else inf
+        return ((x == inf) & (y == other)) | ((x == -inf) & (y == -other))
+    if name == "multiply":
+        return ((x == 0.0) & y.is_infinite()) | (x.is_infinite() & (y == 0.0))
+    if name == "divide":
+        return x.is_infinite() & y.is_infinite()
+    if name == "modulus":
+        return x.is_infinite() & ~y.is_nan()
+    # `power`: a negative base to a finite power that is not a whole number.
+    return (x > -inf) & (x < 0.0) & y.is_finite() & (y.floor() != y)
 
 
 #: `BitOp.name`.
@@ -1226,12 +1247,13 @@ class Exprs:
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
                    "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
                    "power": canon(x.pow(y))}  # fmt: skip
+            nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
             if name not in ("divide", "modulus"):
-                return Val(ops[name], pl.Float64, issues(a, b))
+                return Val(ops[name], pl.Float64, (*issues(a, b), nan))
             # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
             # `NULL / 0.0` is NULL.
             zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
-            return Val(ops[name], pl.Float64, (*issues(a, b), zero))
+            return Val(ops[name], pl.Float64, (*issues(a, b), zero, nan))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
             if tb == INTERVAL:
@@ -1422,8 +1444,10 @@ def _int_output(f: dict) -> bool:
     return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
 
 
-def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
-    """`Measure.eval` on the values a measure aggregates (NULLs dropped)."""
+def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
+    """`Measure.eval` on the values a measure aggregates (NULLs dropped). A
+    double sum of `+∞` and `-∞` raises (#257), except in a window, where the
+    reference still gives NaN."""
     if distinct:
         seen: set = set()
         vs = [v for v in vs if not (_dedup_key(v) in seen or seen.add(_dedup_key(v)))]
@@ -1444,6 +1468,8 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
         q = abs(sum(vs)) // len(vs)
         return q if sum(vs) >= 0 else -q
     if fn in ("fsum", "avg"):
+        if not window and math.inf in vs and -math.inf in vs:
+            raise DomainError(f"{fn} of +inf and -inf would make a NaN")
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
@@ -1640,7 +1666,7 @@ def python_windows(
                         frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
                         vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
                         if f.fn == "agg":
-                            v = _aggregate(f.agg, False, [x for x in vals if x is not None])
+                            v = _aggregate(f.agg, False, [x for x in vals if x is not None], True)
                         elif f.fn == "first_value":
                             v = vals[0] if vals else None
                         elif f.fn == "last_value":
