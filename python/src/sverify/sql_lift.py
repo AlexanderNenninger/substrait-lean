@@ -313,7 +313,42 @@ def _sql_type(dtype: Any) -> str:
     return DuckDBType.from_ibis(dtype).sql(DIALECT)
 
 
-def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
+def expand_table_shorthand(query: str) -> str:
+    """`query` with DuckDB's `TABLE t` (`SELECT * FROM t`) written out where a
+    query may stand: at the start, after `(`, or as an operand of `UNION`,
+    `EXCEPT` or `INTERSECT`. SQLGlot does not parse the shorthand
+    (upstream/LEDGER.md, SG-6); DuckDB's tests use it to compare results."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return query
+    starts = {TokenType.L_PAREN, TokenType.UNION, TokenType.EXCEPT, TokenType.INTERSECT,
+              TokenType.ALL, TokenType.DISTINCT}  # fmt: skip
+    names = {TokenType.VAR, TokenType.IDENTIFIER}
+    out, last, i = [], 0, 0
+    while i < len(tokens):
+        tok = tokens[i]
+        prev = tokens[i - 1].token_type if i else None
+        if tok.token_type == TokenType.TABLE and (prev is None or prev in starts):
+            j = i + 1
+            if j < len(tokens) and tokens[j].token_type in names:
+                while (
+                    j + 2 < len(tokens)
+                    and tokens[j + 1].token_type == TokenType.DOT
+                    and tokens[j + 2].token_type in names
+                ):
+                    j += 2
+                name = query[tokens[i + 1].start : tokens[j].end + 1]
+                out += [query[last : tok.start], f"(SELECT * FROM {name})"]
+                last = tokens[j].end + 1
+                i = j
+        i += 1
+    return "".join(out) + query[last:]
+
+
+def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
     """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
     every name resolved (`qualify`) and typed (`annotate_types`) against the
     tables `schemas` (Ibis schemas by table name).
@@ -323,6 +358,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
             a column or table of the inputs.
     """
     _check_numbers(query)
+    query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
@@ -346,7 +382,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         tree = annotate_types(tree, schema=catalog, dialect=DIALECT)
     except sg.errors.OptimizeError as e:
         raise Unsupported(f"cannot resolve the SQL's names: {str(e).splitlines()[0]}") from e
-    if not isinstance(tree, sge.Select):
+    if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(f"{type(tree).__name__} is not supported; only SELECT queries are")
     return tree
 
@@ -553,6 +589,8 @@ class _Lift:
         """A query's relation and its output columns."""
         if isinstance(node, sge.Subquery):
             return self.query(node.this)
+        if isinstance(node, sge.SetOperation):
+            return self.set_op(node)
         if not isinstance(node, sge.Select):
             raise Unsupported(f"{type(node).__name__} is not supported; only SELECT queries are")
         if (with_ := node.args.get("with_")) is not None:
@@ -664,6 +702,84 @@ class _Lift:
         out[node] = E(field_ref(width), elem)
         return rel, [*scope, Column(None, "", elem)], out
 
+    def set_op(self, node: sge.SetOperation) -> tuple[Json, list[Column]]:
+        """`UNION`, `EXCEPT`, `INTERSECT` [`ALL`] (#344): the branches at
+        their common column types, named as the first. `UNION` is the model's
+        union; `INTERSECT` and `EXCEPT` keep the left rows with (without) an
+        equal right row, NULLs equal, by a semi (anti) join. With `ALL`, each
+        side's equal rows are numbered first and the number joins too, so
+        `m` and `n` copies leave `min(m, n)` (`max(m - n, 0)`)."""
+        what = type(node).__name__.upper()
+        if node.args.get("by_name"):
+            raise Unsupported(f"{what} BY NAME is not supported yet")
+        allowed = ("this", "expression", "distinct", "order", "limit", "offset")
+        unknown = [k for k, v in node.args.items() if v and k not in allowed]
+        if unknown:
+            raise Unsupported(f"{what} with {', '.join(sorted(unknown))} is not supported")
+        left, lcols = self.query(node.this)
+        right, rcols = self.query(node.expression)
+        if len(lcols) != len(rcols):
+            raise Unsupported(f"{what} of {len(lcols)} and {len(rcols)} columns")
+        n = len(lcols)
+        types = [
+            self.common([E(field_ref(i), a.type), E(field_ref(i), b.type)], what)
+            for i, (a, b) in enumerate(zip(lcols, rcols, strict=True))
+        ]
+
+        def at_types(rel: Json, cols: list[Column]) -> Json:
+            if all(_same(c.type, t) for c, t in zip(cols, types, strict=True)):
+                return rel
+            exprs = [
+                self.to(E(field_ref(i), c.type), t).json
+                for i, (c, t) in enumerate(zip(cols, types, strict=True))
+            ]
+            return select(rel, n, exprs)
+
+        left, right = at_types(left, lcols), at_types(right, rcols)
+        distinct = node.args.get("distinct") is not False
+        if isinstance(node, sge.Union):
+            op = "SET_OP_UNION_DISTINCT" if distinct else "SET_OP_UNION_ALL"
+            rel: Json = {"set": {"inputs": [left, right], "op": op}}
+        else:
+            width = n if distinct else n + 1
+            if not distinct:
+                left, right = _numbered(left, n), _numbered(right, n)
+            same = [
+                _fn("is_not_distinct_from", [field_ref(i), field_ref(width + i)], dt.boolean)
+                for i in range(width)
+            ]
+            cond = same[0]
+            for c in same[1:]:
+                cond = _fn("and", [cond, c], dt.boolean)
+            how = (
+                "JOIN_TYPE_LEFT_SEMI" if isinstance(node, sge.Intersect) else "JOIN_TYPE_LEFT_ANTI"
+            )
+            rel = {"join": {"left": left, "right": right, "expression": cond, "type": how}}
+            rel = distinct_rel(rel, n) if distinct else emit_rel(rel, list(range(n)))
+        cols = [Column(None, c.name, t) for c, t in zip(lcols, types, strict=True)]
+        names = [c.name for c in cols]
+        # Sort keys that are not output columns are expressions over them,
+        # computed after them and dropped after the sort.
+        extra: list[E] = []
+        if (order := node.args.get("order")) is not None:
+            keys = []
+            for o in order.expressions:
+                i = self.output_index(o.this, names, [sge.column(nm) for nm in names])
+                if i is None:
+                    extra.append(self.expr(o.this, cols, Bound()))
+                    i = n + len(extra) - 1
+                desc = bool(o.args.get("desc"))
+                nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
+                direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
+                keys.append({"expr": field_ref(i), "direction": direction})
+            if extra:
+                rel = {"project": {"input": rel, "expressions": [e.json for e in extra]}}
+            rel = {"sort": {"input": rel, "sorts": keys}}
+        rel = self.fetch(rel, node)
+        if extra:
+            rel = emit_rel(rel, list(range(n)))
+        return rel, cols
+
     def timestamp_of(self, e: E, name: str) -> E:
         """An output column DuckDB types a TIMESTAMP that the plan holds as a
         date at midnight: a constant becomes the timestamp; a column needs a
@@ -687,7 +803,7 @@ class _Lift:
                 return i
         return None
 
-    def fetch(self, rel: Json, node: sge.Select) -> Json:
+    def fetch(self, rel: Json, node: sge.Select | sge.SetOperation) -> Json:
         limit, offset = node.args.get("limit"), node.args.get("offset")
         if limit is None and offset is None:
             return rel
@@ -2195,6 +2311,22 @@ def _isnan(lf: _Lift, node: sge.IsNan, sub: Sub, scope: list[Column]) -> E:
 def _explodes(parts: list[sge.Expression | None]) -> list[sge.Explode]:
     """The `UNNEST`s of the select list (SQLGlot's `Explode`)."""
     return [x for p in parts if p is not None for x in p.find_all(sge.Explode)]
+
+
+def _numbered(rel: Json, n: int) -> Json:
+    """`rel` (of `n` columns) with a column numbering its equal rows 1, 2, …:
+    `ROW_NUMBER() OVER (PARTITION BY` every column`)`. Equal rows are the
+    same, so which gets which number does not matter."""
+    fn = {
+        "functionReference": anchor("row_number"),
+        "partitions": [field_ref(i) for i in range(n)],
+        "sorts": [],
+        "arguments": [],
+        "lowerBound": {"unbounded": {}},
+        "upperBound": {"unbounded": {}},
+        "boundsType": "BOUNDS_TYPE_ROWS",
+    }
+    return {"project": {"input": rel, "expressions": [{"windowFunction": fn}]}}
 
 
 def _distinct_from(negate: bool) -> Callable[..., E]:

@@ -647,18 +647,21 @@ class Replay:
         import ibis
         import sqlglot as sg
 
-        from sverify.sql_lift import lift
+        from sverify.sql_lift import expand_table_shorthand, lift
 
         if self.null_order != "nulls_last":
             res.reason = "setting default_null_order"
             return res
         try:
-            tree = sg.parse_one(rec.sql, read="duckdb")
+            tree = sg.parse_one(expand_table_shorthand(rec.sql), read="duckdb")
         except sg.errors.ParseError as e:
             res.cls, res.reason = "refused", f"lift: cannot parse ({_clip(str(e), 100)})"
             return res
         tables = sorted({t.name for t in tree.find_all(sg.exp.Table) if t.name})
-        ordered = isinstance(tree, sg.exp.Select) and tree.args.get("order") is not None
+        ordered = (
+            isinstance(tree, sg.exp.Select | sg.exp.SetOperation)
+            and tree.args.get("order") is not None
+        )
         if not outcome(ddb_rows, ddb_err, ordered):
             res.reason = "DuckDB's own result differs from the expected one"
             return res
