@@ -62,7 +62,7 @@ import dataclasses
 import datetime as dt_
 import re
 from collections.abc import Callable, Mapping, Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Any
 
 import ibis
@@ -322,6 +322,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         Unsupported: SQLGlot cannot parse the query, or a name in it is not
             a column or table of the inputs.
     """
+    _check_numbers(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
@@ -330,6 +331,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         if f.name.lower() not in _KNOWN:
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
     _check_aliases(tree, schemas)
+    _check_using_stars(tree)
     catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
     }
@@ -442,6 +444,9 @@ _AGGREGATES: dict[type, str] = {
 }
 
 #: Joins with a condition, by SQLGlot's (side, kind).
+#: The arguments of a table or subquery in FROM that the lift reads.
+_SOURCE_ARGS = {"this", "alias", "db", "catalog"}
+
 _JOIN_TYPES = {
     ("", ""): "JOIN_TYPE_INNER",
     ("", "INNER"): "JOIN_TYPE_INNER",
@@ -674,6 +679,10 @@ class _Lift:
             return one, [Column(None, "", dt.int32)]
         rel, scope = self.source(node.args["from_"].this)
         for join in node.args.get("joins") or []:
+            if method := join.args.get("method"):
+                # Not the inner join of its ON: an ASOF join keeps each left
+                # row's latest match, a POSITIONAL join pairs rows by position.
+                raise Unsupported(f"{str(method).upper()} JOIN is not supported yet")
             right, cols = self.source(join.this)
             side, kind = (join.side or "").upper(), (join.kind or "").upper()
             on = join.args.get("on")
@@ -696,6 +705,11 @@ class _Lift:
 
     def source(self, node: sge.Expression) -> tuple[Json, list[Column]]:
         """A relation in FROM or JOIN, and its columns under its alias."""
+        # SQLGlot hangs a table's TABLESAMPLE, PIVOT and FROM-first joins on
+        # the table itself; read none of them as the plain table.
+        extra = sorted(k for k, v in node.args.items() if v and k not in _SOURCE_ARGS)
+        if extra and isinstance(node, sge.Table | sge.Subquery):
+            raise Unsupported(f"FROM {_shown(node)} with {', '.join(extra)} is not supported yet")
         alias = node.alias_or_name
         if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
             rel, cols = self.query(self.ctes[node.name])
@@ -1131,12 +1145,16 @@ class _Lift:
                 if t.is_float64():
                     v = float(v)
                 elif t.is_decimal():
-                    v = Decimal(v)
+                    # Exactly, or not at all: a double's binary value is not
+                    # the decimal DuckDB reads.
+                    v = None if isinstance(v, float) else Decimal(v)
                 elif t.is_integer() and isinstance(v, Decimal):
                     v = None if v != v.to_integral_value() else int(v)
                 elif t.is_timestamp() and type(v) is dt_.date:
                     v = dt_.datetime.combine(v, dt_.time())
-            if v is not None or e.value is None:
+            # A constant becomes a literal of `t` only where it fits; else
+            # the cast is written, which raises where DuckDB's does.
+            if (v is not None and _fits(v, t)) or e.value is None:
                 return E(literal(v, t), t, v)
         if e.type.is_null():
             return E(literal(None, t), t, None)
@@ -1185,6 +1203,20 @@ def _literal(lf: _Lift, node: sge.Literal, sub: Sub, scope: list[Column]) -> E:
     if node.is_string:
         return E(literal(text, dt.string), dt.string, text)
     return _number(text)
+
+
+def _fits(v: Any, t: Any) -> bool:
+    """Whether the value `v` is one of `t`'s: an integer in its bounds, a
+    decimal with at most its digits."""
+    if t.is_integer():
+        return isinstance(v, int) and t.bounds.lower <= v <= t.bounds.upper
+    if t.is_decimal():
+        d = Decimal(v)
+        with localcontext() as ctx:
+            ctx.prec = 100  # past DECIMAL(38)'s digits, so nothing rounds
+            exact = d.quantize(Decimal(1).scaleb(-t.scale)) == d
+            return exact and abs(d) < Decimal(1).scaleb(t.precision - t.scale)
+    return True
 
 
 def _number(text: str, negative: bool = False) -> E:
@@ -1320,6 +1352,17 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
 
 
+def _has_struct(t: Any) -> bool:
+    """Whether `t` is a struct, or holds one."""
+    if t.is_struct():
+        return True
+    if t.is_array():
+        return _has_struct(t.value_type)
+    if t.is_map():
+        return _has_struct(t.key_type) or _has_struct(t.value_type)
+    return False
+
+
 def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
     """Arguments of a comparison: decimals and integers as they are (the
     model compares them at a common scale), anything else at one type."""
@@ -1385,7 +1428,12 @@ def _temporal(e: E, t: Any) -> E:
 
 def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _COMPARISONS[type(node)]
-    args = _operands(lf, [sub(node.this), sub(node.expression)], name)
+    a, b = sub(node.this), sub(node.expression)
+    if name not in ("equal", "not_equal") and any(_has_struct(x.type) for x in (a, b)):
+        # DuckDB orders structs field by field, NULLs last; the model's order
+        # of structs is not that one yet. (Lists it orders as DuckDB does.)
+        raise Unsupported(f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet")
+    args = _operands(lf, [a, b], name)
     return E(_fn(name, args, dt.boolean), dt.boolean)
 
 
@@ -1491,6 +1539,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         t: Any = DuckDBType.to_ibis(node.to).copy(nullable=True)
     except Exception as e:  # noqa: BLE001 - Ibis raises a variety
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported") from e
+    if node.to.this == sge.DataType.Type.NULL:
+        raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported")
     if node.to.this in (sge.DataType.Type.INT128, sge.DataType.Type.UINT128):
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)} (HUGEINT) is not supported")
     if t.is_array() and getattr(t, "length", None) is not None:
@@ -1500,7 +1550,14 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp()):
         return _temporal(a, t)
     if a.constant and a.type.is_string() and t.is_decimal():
-        a = _number(a.value.strip())
+        text = a.value.strip()
+        try:
+            v = Decimal(text)
+        except ArithmeticError as e:
+            raise Unsupported(f"CAST of {text!r} to {t} is not supported") from e
+        if not (v.is_finite() and _fits(v, t)):
+            raise Unsupported(f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit")
+        return E(literal(v, t), t, v)
     if not a.constant:
         for src, to, sql in (
             (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
@@ -2345,6 +2402,38 @@ def _count_star() -> Json:
     }
 
 
+#: Quoted text (strings, quoted names) and comments, which hold no numbers.
+_QUOTED = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|--[^\n]*|/\*.*?\*/", re.S)
+#: A number as written, from its first digit (not inside a name).
+_NUMBER = re.compile(r"(?<![\w$.])\d[\w.]*")
+
+
+def _check_numbers(query: str) -> None:
+    """Refuse a number with an underscore that is not between two digits
+    (`1__2`, `1._5`). DuckDB reads such an underscore as the start of an
+    alias (`1__2` is 1 named `__2`); SQLGlot reads every underscore as a digit
+    separator (12), upstream/LEDGER.md SG-4."""
+    for m in _NUMBER.finditer(_QUOTED.sub(" ", query)):
+        if re.search(r"(?<!\d)_|_(?!\d)", m.group()):
+            raise Unsupported(
+                f"the number {m.group()!r}: an underscore not between two digits is read "
+                "differently by DuckDB and SQLGlot"
+            )
+
+
+def _check_using_stars(tree: Any) -> None:
+    """Refuse `t.*` in a SELECT whose joins have USING: `qualify` leaves the
+    USING columns out of the right table's `t.*`, where DuckDB keeps them."""
+    for node in tree.find_all(sge.Select):
+        if not any(j.args.get("using") for j in node.args.get("joins") or []):
+            continue
+        for e in node.expressions:
+            if isinstance(e, sge.Column) and isinstance(e.this, sge.Star) and e.table:
+                raise Unsupported(
+                    f"{e.table}.* with JOIN … USING is not supported yet; list the columns"
+                )
+
+
 def _count(node: sge.Expression, what: str) -> int:
     if isinstance(node, sge.Literal) and not node.is_string and node.this.isdigit():
         return int(node.this)
@@ -2383,6 +2472,12 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
         raise Unsupported(f"the query has two output columns named {dup}; alias one of them")
+    for c in cols:
+        if c.type.is_interval():
+            # The model holds an interval as microseconds; DuckDB keeps its
+            # months, days and microseconds apart (`INTERVAL 2 DAYS` is not
+            # `48:00:00`), and the written plan returns the microseconds.
+            raise Unsupported(f"the INTERVAL output column {c.name} is not supported yet")
     # Every output column may be NULL, as the plan's computed values are
     # (a LEFT JOIN's right side, an aggregate of no rows, …).
     schema = ibis.schema(
