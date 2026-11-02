@@ -1,0 +1,10 @@
+### What DuckDB SQL lifts to is generated and proved
+
+The Lean build now generates, for DuckDB's `/` (of integers and of doubles),
+`%` of doubles and `log`, the Substrait expression each lifts to under
+`semantics="duckdb"` and `"reference"`, and proves it means what DuckDB's
+function means (`SubstraitLean/DuckDBSQL.lean`, `LiftSearch.lean`). With
+DuckDB's semantics, `±∞` and NaN results are stated exactly, as guarded
+constants: `log(0)` is `-∞`, `x % 0.0` is NaN. `substrait-check --lift-table`
+prints the table as JSON, for the SQL lift to read
+([#268](https://github.com/AlexanderNenninger/substrait-lean/issues/268)).

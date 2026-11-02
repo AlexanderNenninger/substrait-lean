@@ -68,6 +68,10 @@ inductive DuckFn where
   | log
   deriving Repr, DecidableEq, Inhabited
 
+def DuckFn.all : List DuckFn := [.divInt, .divDouble, .modDouble, .log]
+
+theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by cases f <;> decide
+
 /-- The function as DuckDB writes it, with its argument types. -/
 def DuckFn.sql : DuckFn → String
   | .divInt => "BIGINT / BIGINT" | .divDouble => "DOUBLE / DOUBLE"
@@ -116,18 +120,57 @@ theorem DuckDBSQL.ref_fmath_int (f : FMath) (c : Int) :
 
 theorem DuckDBSQL.ref_fmath_null (f : FMath) : Profile.reference.un (.fmath f) .null = .ok .null := rfl
 
+theorem DuckDBSQL.ref_itof_null : Profile.reference.un .itof .null = .ok .null := rfl
+
+theorem FloatCode.ofInt_ne_nan (i : Int) : FloatCode.ofInt i ≠ FloatCode.nan := by
+  have := FloatCode.ofInt_bounds i; have := FloatCode.posInf_lt_nan; omega
+
+theorem DuckDBSQL.ref_fdiv_int (a b : Int) :
+    Profile.reference.bin .fdiv (.int a) (.int b) =
+      if b = 0 then .error .divByZero else if nanCase .fdiv a b then .error .domain
+      else .ok (.int (FloatCode.lift₂ (· / ·) a b)) := by
+  by_cases hb : b = 0 <;> by_cases hn : nanCase .fdiv a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
+
+theorem DuckDBSQL.ref_fmod_int (a b : Int) :
+    Profile.reference.bin .fmod (.int a) (.int b) =
+      if b = 0 then .error .divByZero else if nanCase .fmod a b then .error .domain
+      else .ok (.int (FloatCode.fmod a b)) := by
+  by_cases hb : b = 0 <;> by_cases hn : nanCase .fmod a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hb, hn, Issue.isError]
+
+theorem DuckDBSQL.ref_fdiv_null_l (y : Value) : Profile.reference.bin .fdiv .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fdiv_null_r (x : Value) : Profile.reference.bin .fdiv x .null = .ok .null := by
+  cases x <;> rfl
+theorem DuckDBSQL.ref_fmod_null_l (y : Value) : Profile.reference.bin .fmod .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fmod_null_r (x : Value) : Profile.reference.bin .fmod x .null = .ok .null := by
+  cases x <;> rfl
+
+theorem DuckDBSQL.apply_eq_int (a b : Int) : BinFn.apply .eq (.int a) (.int b) = .bool (decide (a = b)) := rfl
+theorem DuckDBSQL.apply_lt_int (a b : Int) : BinFn.apply .lt (.int a) (.int b) = .bool (decide (a < b)) := rfl
+theorem DuckDBSQL.apply_eq_null_l (y : Value) : BinFn.apply .eq .null y = .null := by cases y <;> rfl
+theorem DuckDBSQL.apply_eq_null_r (x : Value) : BinFn.apply .eq x .null = .null := by cases x <;> rfl
+theorem DuckDBSQL.apply_lt_null_l (y : Value) : BinFn.apply .lt .null y = .null := by cases y <;> rfl
+theorem DuckDBSQL.apply_lt_null_r (x : Value) : BinFn.apply .lt x .null = .null := by cases x <;> rfl
+
 theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α) :
     (if p ∨ q then a else b) = if p then a else if q then a else b := by
   by_cases hp : p <;> by_cases hq : q <;> simp [hp, hq]
 
-/-- A double divided by zero in DuckDB: `±∞` by the dividend's sign, NaN for
-`0` and NaN (R5, `ieeeDivZero`). -/
+/-- DuckDB's `/` of doubles, IEEE 754's: by zero `±∞` by the dividend's
+sign, NaN for `0` and NaN (R5, `ieeeDivZero`); `±∞ / ±∞` is NaN. The NaN
+cases are stated, not left to native floats, so that proofs can see them. -/
 def duckDivide (x y : Int) : Int :=
-  if y = 0 then ieeeDivZero x else FloatCode.lift₂ (· / ·) x y
+  if y = 0 then ieeeDivZero x
+  else if isInfCode x && isInfCode y then FloatCode.nan
+  else FloatCode.lift₂ (· / ·) x y
 
-/-- DuckDB's `%` of doubles: NaN by zero (R4), else C's `fmod`. -/
+/-- DuckDB's `%` of doubles: NaN by zero (R4) and for an infinite dividend,
+else C's `fmod`. -/
 def duckMod (x y : Int) : Int :=
-  if y = 0 then FloatCode.nan else FloatCode.fmod x y
+  if y = 0 ∨ isInfCode x then FloatCode.nan else FloatCode.fmod x y
 
 /-- DuckDB's `log`: `-∞` at zero, NaN below it, else base 10. -/
 def duckLog (x : Int) : Int :=

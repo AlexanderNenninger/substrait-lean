@@ -95,7 +95,7 @@ def nullJ (t : String) : Json := Json.mkObj [("literal", Json.mkObj [("null", ty
 extension URNs. -/
 def functions : List (Nat × String × String) :=
   [(1, "divide:fp64_fp64", "extension:io.substrait:functions_arithmetic"),
-   (2, "modulus:fp64_fp64", "extension:io.substrait:functions_arithmetic"),
+   (2, "modulus:i64_i64", "extension:io.substrait:functions_arithmetic"),
    (3, "sverify_fmod:fp64_fp64", "extension:io.sverify:functions"),
    (4, "log10:fp64", "extension:io.substrait:functions_arithmetic"),
    (5, "ln:fp64", "extension:io.substrait:functions_arithmetic"),
@@ -104,6 +104,7 @@ def functions : List (Nat × String × String) :=
    (20, "equal:any_any", "extension:io.substrait:functions_comparison"),
    (21, "lt:any_any", "extension:io.substrait:functions_comparison"),
    (22, "is_null:any", "extension:io.substrait:functions_comparison"),
+   (25, "is_not_null:any", "extension:io.substrait:functions_comparison"),
    (23, "and:bool", "extension:io.substrait:functions_boolean"),
    (24, "or:bool", "extension:io.substrait:functions_boolean")]
 
@@ -139,8 +140,11 @@ result's type. -/
 def calls (f : DuckFn) : List (String × Json × List (String × String)) :=
   let n := f.args.length
   let out := f.result.substrait
+  -- Substrait's `modulus` has no `fp64` signature: the remainder of doubles is
+  -- sverify's own `sverify_fmod` (#256).
   let names := if n == 1 then ["log10", "ln", "log2"]
-    else ["divide", "modulus", "sverify_fmod", "power"]
+    else if f.result == .double then ["divide", "sverify_fmod", "power"]
+    else ["divide", "modulus", "power"]
   let asIs := (List.range n).map fieldJ
   let cast := (f.args.zip asIs).map fun (t, a) => if t == f.result then a else castJ out a
   let argss := if asIs == cast then [asIs] else [asIs, cast]
@@ -154,7 +158,8 @@ def atoms (f : DuckFn) : List Json :=
     let x := fieldJ i
     let ty := t.substrait
     let zero := if t == .double then litJ ty (Json.num 0) else litJ ty (toJson (0 : Int))
-    let base := [callJ "is_null" [x] [] "boolean", callJ "equal" [x, zero] [] "boolean",
+    let base := [callJ "is_null" [x] [] "boolean", callJ "is_not_null" [x] [] "boolean",
+      callJ "equal" [x, zero] [] "boolean",
       callJ "lt" [x, zero] [] "boolean"]
     if t == .double then
       base ++ [callJ "or" [callJ "equal" [x, litJ ty "inf"] [] "boolean",
@@ -208,6 +213,8 @@ deriving instance Lean.ToExpr for FMath
 deriving instance Lean.ToExpr for BitOp
 deriving instance Lean.ToExpr for Time.DatePart
 deriving instance Lean.ToExpr for Time.TimeUnit
+deriving instance Lean.ToExpr for OverflowMode
+deriving instance Lean.ToExpr for IntWidth
 deriving instance Lean.ToExpr for UnFn
 deriving instance Lean.ToExpr for BinFn
 deriving instance Lean.ToExpr for HoFn
@@ -239,37 +246,45 @@ def parse (f : DuckFn) (j : Json) : Option Substrait.Expr :=
 def agrees (want got : List Outcome) : Bool :=
   (want.zip got).all fun (w, g) => LoweringSearch.Outcome.agreeB g w
 
+/-- The rows (by index) where a predicate holds, as a bit mask. -/
+def mask (bs : List Bool) : Nat :=
+  bs.zipIdx.foldl (fun m (b, i) => if b then m ||| (1 <<< i) else m) 0
+
 /-- The candidates, in order, that agree with the function on the samples:
 calls, then calls under one or two guards. Guards and constants are read
-once; a guarded call's outcomes are combined from theirs. -/
+once, and a guarded call is judged by masks of rows: a guard may only fire
+where its constant is right, and the guards together must cover the rows
+where the call is wrong. -/
 def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × String) := Id.run do
   let rows := sampleRows f.args
   let want := rows.map (DuckFn.eval s f)
-  let out (e : Substrait.Expr) := rows.map fun r => e.evalP Profile.reference r
+  let good (e : Substrait.Expr) : Nat :=
+    mask ((rows.zip want).map fun (r, w) => LoweringSearch.Outcome.agreeB (e.evalP Profile.reference r) w)
+  let all := (1 <<< rows.length) - 1
   let gs := (guards f).filterMap fun j => (parse f j).map fun e =>
-    (j, e, rows.map fun r => match e.evalP Profile.reference r with | .ok v => v.isTrue | .error _ => false)
-  let vs := (values f).filterMap fun j => (parse f j).map fun e => (j, e, out e)
+    (j, e, mask (rows.map fun r => match e.evalP Profile.reference r with
+      | .ok v => v.isTrue | .error _ => false))
+  let vs := (values f).filterMap fun j => (parse f j).map fun e => (j, e, good e)
+  -- A guard and a constant it may give: right wherever the guard fires.
+  let safe := gs.flatMap fun (gj, ge, gm) => vs.filterMap fun (vj, ve, vm) =>
+    if gm &&& (all ^^^ vm) == 0 && gm != 0 then some (gj, ge, gm, vj, ve) else none
   let mut found := #[]
   for (name, j, opts) in calls f do
     let some e := parse f j | continue
-    let o := out e
+    let bad := all ^^^ good e
     let label := s!"{name} {opts}"
-    if agrees want o then found := found.push (j, e, label)
-    -- One guard.
-    for (gj, ge, gt) in gs do
-      for (vj, ve, vo) in vs do
-        let o1 := (gt.zip (vo.zip o)).map fun (b, v, x) => if b then v else x
-        if agrees want o1 then
+    if bad == 0 then found := found.push (j, e, label)
+    else
+      for (gj, ge, gm, vj, ve) in safe do
+        if bad &&& (all ^^^ gm) == 0 then
           found := found.push (ifJ gj vj j, .ifThen ge ve e, label)
-        -- Two guards.
-        else
-          for (gj2, ge2, gt2) in gs do
-            for (vj2, ve2, vo2) in vs do
-              let o2 := (gt.zip (vo.zip ((gt2.zip (vo2.zip o)).map fun (b, v, x) => if b then v else x))).map
-                fun (b, v, x) => if b then v else x
-              if agrees want o2 then
-                found := found.push (ifJ gj vj (ifJ gj2 vj2 j), .ifThen ge ve (.ifThen ge2 ve2 e), label)
-    if found.size ≥ 4 then break
+      for (gj, ge, gm, vj, ve) in safe do
+        for (gj2, ge2, gm2, vj2, ve2) in safe do
+          if gm != gm2 && bad &&& (all ^^^ (gm ||| gm2)) == 0 && bad &&& (all ^^^ gm) != 0 then
+            found := found.push (ifJ gj vj (ifJ gj2 vj2 j), .ifThen ge ve (.ifThen ge2 ve2 e), label)
+            if found.size ≥ 8 then break
+        if found.size ≥ 8 then break
+    if found.size ≥ 8 then break
   return found.toList
 
 /-! ## Proving and emitting -/
@@ -278,8 +293,13 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
 their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckLog, ``Profile.reference,
-    ``raiseIf, ``BinFn.issue, ``BinFn.apply, ``nanIssue, ``nanCase, ``isInfCode, ``ieeeDivZero,
+    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckLog,
+    ``nanCase, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
+    ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
+    ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
+    ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
+    ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt,
+    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan,
     ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_int,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
@@ -288,13 +308,16 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError] ++ extra)
   let intro ← if n == 1 then `(tactic| (intro x hx; cases x <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx))
     else `(tactic| (intro x y hx hy; cases x <;> cases y <;> simp (config := { failIfUnchanged := false }) only [DuckType.Has] at hx hy))
+  let cheap ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
+    ``Outcome.ok_bind, ``DuckFn.eval, ``DuckDBSQL.ref_itof]
   `(tactic| (
     $intro:tactic
+    all_goals try (simp only [$cheap,*]; exact Outcome.agree_refl _)
     all_goals have := FloatCode.negInf_lt_zero
     all_goals have := FloatCode.zero_lt_posInf
     all_goals have := FloatCode.posInf_lt_nan
     all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$ev,*]
-    iterate 6
+    iterate 12
       all_goals try
         lowering_split_decide <;>
           simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, $ev,*]
@@ -312,9 +335,9 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name) (
   let n := f.args.length
   let cands := survivors s f
   let tac ← liftTac n extra
-  for (j, e, label) in cands do
+  let liftCand (j : Json) (e : Substrait.Expr) (label : String) : TermElabM (Option String) := do
     -- The parser reads the whole candidate as its parts combined.
-    unless parse f j == some e do continue
+    unless parse f j == some e do return none
     let tmpl ← exprTerm e
     let argTs ← f.args.mapM fun t => pure (toExpr t)
     let ty ← withLocalDeclD `x (Lean.mkConst ``Value) fun x => withLocalDeclD `y (Lean.mkConst ``Value) fun y => do
@@ -326,7 +349,7 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name) (
       let hs ← (xs.zip argTs.toArray).mapM fun (v, t) => mkAppM ``DuckType.Has #[t, v]
       let body ← hs.foldrM (fun h b => mkArrow h b) body
       mkForallFVars xs body
-    let some pf ← prove ty tac | continue
+    let some pf ← prove ty tac | return none
     let agreeName := tbl ++ short.appendAfter "_agree"
     addDecl <| .thmDecl { name := agreeName, levelParams := [], type := ty, value := pf }
     let hf ← mkEqRefl (← mkAppM ``DuckFn.args #[fE])
@@ -335,8 +358,17 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name) (
     addAndCompile <| .defnDecl {
       name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
       type := ← inferType entry, value := entry }
-    return .ok s!"{label}: {j.compress}"
+    return some s!"{label}: {j.compress}"
+  for (j, e, label) in cands do
+    -- Evaluating and proving count as heartbeats; each candidate starts afresh.
+    let some r ← withCurrHeartbeats (liftCand j e label) | continue
+    return .ok r
   return .error s!"missing: {cands.length} candidates passed the samples, none proved"
+
+/-- The functions a template's `functionReference`s point to, as JSON. -/
+def functionsJson : Json :=
+  Json.arr (functions.map fun (a, n, u) =>
+    Json.mkObj [("anchor", toJson a), ("name", toJson n), ("urn", toJson u)]).toArray
 
 syntax (name := generateLift) "generate_lift " ident " : " term " using " "[" ident,* "]" : command
 
@@ -350,9 +382,13 @@ def elabGenerateLift : CommandElab := fun stx => do
   let extra ← (stx[6].getSepArgs).mapM fun i => liftCoreM (realizeGlobalConstNoOverloadWithInfo i)
   let ctors := (← getConstInfoInduct ``DuckFn).ctors
   let results ← liftTermElabM do
+    -- Equation lemmas once, outside the attempts (a failed one discards them).
+    for d in [``BinFn.apply, ``BinFn.issue, ``UnFn.apply, ``UnFn.issue, ``DuckFn.eval, ``nanCase] do
+      discard <| Meta.getEqnsFor? d
+      discard <| Meta.getUnfoldEqnFor? d (nonRec := true)
     let sE ← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics))
     let s ← evalSemantics sE
-    ctors.mapM fun c => do
+    ctors.mapM fun c => withCurrHeartbeats do
       let f ← evalDuckFn (Lean.mkConst c)
       let t0 ← IO.monoMsNow
       let r ← liftOne tbl s sE extra c f
