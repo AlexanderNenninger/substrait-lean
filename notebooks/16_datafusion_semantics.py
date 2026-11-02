@@ -745,7 +745,7 @@ def _(P, Q, pl, prove, render):
             "64-bit + wraps silently",
             "SELECT a + 1 AS s, -a AS neg FROM mx",
             "handled",
-            "Reported as a `may wrap around` warning (Safety.lean, `Issue.wraps`). Warnings do not make `proved` false.",
+            "Reported as an `overflow` error (Safety.lean, `Issue.wraps`): the reference raises at the declared width (#202), so `proved` is false until a precondition rules it out.",
             std="error (numeric value out of range)",
             duck="same",
             polars=lambda P: P["mx"].select(s=pl.col("a") + 1),

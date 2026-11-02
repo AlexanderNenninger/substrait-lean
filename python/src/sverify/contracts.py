@@ -7,7 +7,7 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
     import sverify as sv
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
     )
     def doubled(orders):
@@ -30,14 +30,14 @@ only what the upstream one guarantees (`Triple.compose` in
 `SubstraitLean/Compose.lean`):
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, sv.unique("id")]},
-        ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
+        ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")],
     )
     def paid(orders):
         return orders.filter(orders.amount.notnull())
 
     @sv.transform(
-        requires={"t": [_.amount >= 0, _.amount.notnull()]},
+        requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull()],
     )
     def doubled(t):
@@ -191,20 +191,38 @@ class CheckedCondition:
     it fails, if the search (`sverify.counterexample`) found one."""
 
 
+#: What a report suggests for an overflow it cannot rule out (#202).
+OVERFLOW_HINT = (
+    "an integer result may not fit its type (64 bits for BIGINT, or a timestamp's "
+    "range), which raises. Bound the columns involved in `requires`, as a fact about "
+    "your data: for example `_.amount < 1_000_000_000`, or, for an ASOF join with a "
+    "tolerance, a lower bound on its time column such as `_.ts >= datetime(2000, 1, 1)`"
+)
+
+#: How a report explains an issue that is checked while the job runs.
+RUNTIME_CHECK = (
+    "checked while the job runs, which raises if it happens; no proof before "
+    "running can rule it out, since a group may have any number of rows"
+)
+
+
 @dataclass(frozen=True)
 class Issue:
     """Something that may go wrong when the transformation runs
     (`Rel.mayIssues_sound` in `SubstraitLean/Safety.lean`)."""
 
     kind: str
-    """"division by zero", "overflow", "cast out of range", "negative exponent",
-    or "may wrap around" (64-bit overflow of `+`, `-`, `*` or an integer
-    `SUM`, which DataFusion does not report)."""
+    """"division by zero", "overflow" (an integer result that does not fit its
+    declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
+    "domain error", or "SUM overflow" (an integer `SUM` leaving 64 bits)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
     error: bool
-    """True if DataFusion fails at run time; wrapping around is a warning."""
+    """True if a proof must rule it out. A "SUM overflow" is not one: the
+    transformation's SQL raises there too, but no contract on rows can rule
+    it out (a group may have any number of rows), so it is checked while the
+    job runs instead (#202)."""
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.expr}"
@@ -232,10 +250,10 @@ class Report:
     """False when rows may tie in a window's ORDER BY: the engine then picks
     an order, and nothing is proved about the result."""
     issues: list[Issue] = field(default_factory=list)
-    """Runtime errors and wrap-arounds Lean could not rule out; when empty,
+    """Runtime errors, and SUM overflows, Lean could not rule out; when empty,
     the transformation provably runs without them."""
     guard_free: bool = False
-    """The only issues are integer `SUM`s that may wrap: on data that meets
+    """The only issues are integer `SUM`s that may overflow: on data that meets
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
@@ -262,8 +280,9 @@ class Report:
 
     @property
     def warnings(self) -> list[Issue]:
-        """The `issues` that do not fail but may give a wrong value, such as a
-        64-bit wrap-around."""
+        """The `issues` checked while the job runs rather than proved absent
+        before it: an integer `SUM` that may leave 64 bits. The job raises if
+        it does; it never gives a wrong value."""
         return [i for i in self.issues if not i.error]
 
     @property
@@ -281,7 +300,9 @@ class Report:
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
         lines += [f"may fail: {i}" for i in self.errors]
-        lines += [f"warning: {i}" for i in self.warnings]
+        if any(i.kind == "overflow" for i in self.errors):
+            lines.append(f"hint: {OVERFLOW_HINT}")
+        lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
         if self.facts:
@@ -300,7 +321,12 @@ class Report:
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
-        rows += [f"| runtime | ⚠️ {str(i).replace('|', '\\|')} |" for i in self.warnings]
+        if any(i.kind == "overflow" for i in self.errors):
+            rows.append(f"| hint | {OVERFLOW_HINT} |")
+        rows += [
+            f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
+            for i in self.warnings
+        ]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         return "\n".join(
@@ -1307,7 +1333,7 @@ def transform(
         )
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.id.notnull()]},
+            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
             ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
         )
         def doubled(orders):

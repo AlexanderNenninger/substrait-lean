@@ -656,7 +656,7 @@ def test_polars_fails_only_where_reported(i, rows):
     try:
         polars = rows_of(run_plan(con, plan, "polars"))
     except polars_engine.IntegerOverflow:
-        assert [w.kind for w in report.warnings] == ["may wrap around"]
+        assert any("overflow" in i.kind for i in report.issues)
         return
     except polars_engine.RuntimeIssue as e:
         assert report.errors, f"Polars failed ({e}) but no error was reported"

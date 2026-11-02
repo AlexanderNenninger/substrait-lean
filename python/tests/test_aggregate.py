@@ -188,8 +188,8 @@ def test_integer_sum_wraps_around_in_datafusion():
     rows = [(2**63 - 1, None, None), (1, None, None)]
     assert datafusion_rows("SELECT SUM(a) FROM t", T, rows) == [(-(2**63),)]
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
-    assert [str(i) for i in report.issues] == ["may wrap around: $2"]
-    assert report.proved  # a warning, not an error
+    assert [str(i) for i in report.issues] == ["SUM overflow: $2"]
+    assert report.proved  # checked while the job runs, not against the proof (#202)
 
 
 by_customer = orders.group_by("customer").aggregate(

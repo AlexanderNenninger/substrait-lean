@@ -72,15 +72,15 @@ def _():
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, sv.unique("id")]},
-        ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
+        ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")],
     )
     def paid(orders):
         """Orders with a known amount."""
         return orders.filter(orders.amount.notnull())
 
     @sv.transform(
-        requires={"t": [_.amount >= 0, _.amount.notnull()]},
+        requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull()],
     )
     def doubled(t):

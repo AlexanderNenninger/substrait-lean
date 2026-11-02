@@ -34,7 +34,7 @@ orders = ibis.table({"id": "int64", "amount": "int64"}, name="orders")
 report = sv.verify(
     "select id, amount * 2 as doubled from orders where amount > 10",
     tables={"orders": orders},
-    requires={"orders": ["amount >= 0", sv.unique("id")]},
+    requires={"orders": ["amount >= 0", "amount < 1000000000", sv.unique("id")]},
     ensures=["doubled >= 22", sv.unique("id")],
 )
 assert report.proved
@@ -56,14 +56,17 @@ from ibis import _
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
-    ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
+    ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")],
 )
 def paid(orders):
     return orders.filter(orders.amount.notnull())
 
 
-@sv.transform(requires={"t": [_.amount >= 0, _.amount.notnull()]}, ensures=[_.doubled >= 0])
+@sv.transform(
+    requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
+    ensures=[_.doubled >= 0],
+)
 def doubled(t):
     return t.select(t.id, doubled=t.amount * 2)
 

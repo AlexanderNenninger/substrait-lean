@@ -189,7 +189,7 @@ SINCE_2000 = T.ts.between(datetime(2000, 1, 1), datetime(2100, 1, 1))
     ("label", "expr", "errs", "warns"),
     [
         ("year", T.select(y=T.ts.year()), [], []),
-        ("hour, unbounded", T.select(h=T.ts.truncate("h")), [], ["may wrap around"]),
+        ("hour, unbounded", T.select(h=T.ts.truncate("h")), ["overflow"], []),
         ("hour, bounded", T.filter(SINCE_2000).select(h=T.ts.truncate("h")), [], []),
         ("month, unbounded", T.select(m=T.ts.truncate("M")), ["overflow"], []),
         ("month, bounded", T.filter(SINCE_2000).select(m=T.ts.truncate("M")), [], []),

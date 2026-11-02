@@ -317,6 +317,7 @@ def test_the_first_refresh_checks_the_preconditions_on_the_sources():
     report = node.refresh()
     assert {p.condition for p in report["doubled"].preconditions} == {
         "(_.amount >= 0)",
+        "(_.amount < 1000000000)",
         "_.id.notnull()",
         "unique(id)",
     }
@@ -361,7 +362,8 @@ def test_batches_are_checked_without_reading_the_tables(monkeypatch):
     checked = spy_on(monkeypatch, "sverify.contracts.violations", lambda t, *a: t.get_name())
     src.apply(sv.Changes(inserts=[(3, "cy", 1)]))
     node.refresh()
-    assert checked == ["orders$inserts"]
+    # One check per precondition on the inserted rows, none on the tables.
+    assert set(checked) == {"orders$inserts"}
 
 
 names = st.sampled_from(["ada", "bob", None])

@@ -28,7 +28,7 @@ producer and checks Lean's evaluation against it.
 | `ibis.row_number()` | 0-based | same | same | same |
 | `order_by(...)` | NULLs last in both directions | same | same | same |
 | window with `order_by`, no frame | the whole partition | same | same | same |
-| 64-bit overflow of `+ - *` | a warning: DataFusion wraps around (#23 makes this per engine) | wraps | error | wraps |
+| 64-bit overflow of `+ - *` | an error at the declared width (#202); DataFusion wraps around, which an error allows | wraps | error | wraps |
 | `v.max()` of doubles | refused (`max of doubles is not supported`) | NaN | NaN | skips NaN |
 | `ts.day_of_week.index()` | Monday = 0 | same | same | same |
 | `s.upper()`, `s.lower()`, `re_search` | Rust's case mapping and `regex` classes; SQL engines raise on non-ASCII text (#70) | same | utf8proc, RE2 | same |

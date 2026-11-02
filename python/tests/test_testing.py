@@ -32,7 +32,7 @@ CUSTOMERS = {"name": "!string", "city": "string"}
 
 @sv.transform(
     requires={"orders": [sv.unique("id"), _.amount >= 0, "amount < 1000"]},
-    ensures=[sv.unique("id"), _.doubled >= 0],
+    ensures=[sv.unique("id"), _.doubled >= 0, _.doubled < 2000],
 )
 def doubled(orders):
     return orders.select(orders.id, orders.customer, doubled=orders.amount * 2)
@@ -89,7 +89,10 @@ def test_a_failing_assertion_reads_well(pytester):
         import sverify as sv
         from sverify.testing import assert_contract
 
-        @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.doubled >= 0])
+        @sv.transform(
+            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
+            ensures=[_.doubled >= 0],
+        )
         def doubled(orders):
             return orders.select(orders.id, doubled=orders.amount * 2)
 
@@ -219,7 +222,7 @@ def test_an_unproved_link_fails():
 def test_a_stored_node_is_data_with_its_guarantees(tmp_path):
     from sverify.io import DeltaSink
 
-    @sv.transform(requires={"t": [_.doubled >= 0]}, ensures=[_.plus >= 1])
+    @sv.transform(requires={"t": [_.doubled >= 0, _.doubled < 2000]}, ensures=[_.plus >= 1])
     def plus_one(t):
         return t.select(t.id, plus=t.doubled + 1)
 
