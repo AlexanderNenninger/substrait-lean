@@ -21,6 +21,7 @@ whether both give the same rows on DuckDB. The tests' own outcome does not
 change; `scripts/compare_sql_producers.py` summarises the file.
 """
 
+import decimal
 import fcntl
 import json
 import os
@@ -53,7 +54,12 @@ def _compare_sql_producers(path: str) -> None:
         try:
             out = engine.run_plan(con, engine.written_plan(plan), "duckdb")
             # Positional: `SELECT *` over a join may repeat column names.
-            rows = canonical(zip(*(c.to_pylist() for c in out.columns), strict=True))
+            # Calcite types `1.5` as a DECIMAL where DataFusion has a DOUBLE:
+            # compare numbers by value (#27).
+            rows = canonical(
+                tuple(float(v) if isinstance(v, decimal.Decimal) else v for v in row)
+                for row in zip(*(c.to_pylist() for c in out.columns), strict=True)
+            )
         except Exception:  # noqa: BLE001 - recorded, not raised
             return "verified", None
         return "verified", rows
