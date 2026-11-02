@@ -51,6 +51,10 @@ SCHEMAS = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in TABLES.items()}
 
 #: Queries of the subset, each through oracles A and C.
 QUERIES = [
+    # A double's negation in a plan with decimals is written back as it reads
+    # (TPC-DS q89's `-(sum_sales - avg_monthly_sales)`).
+    "SELECT customer, s, -(s - avg(s) OVER ()) AS x"
+    " FROM (SELECT customer, sum(cost) AS s FROM orders GROUP BY customer)",
     # DuckDB's AVG of a DECIMAL is a DOUBLE: the exact sum by the count, over
     # a window too, and arithmetic with it is in doubles (TPC-DS q89).
     "SELECT customer, avg(cost) OVER (PARTITION BY customer) AS a FROM orders",

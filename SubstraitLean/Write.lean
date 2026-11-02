@@ -621,6 +621,21 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ | .ilike | .levenshtein =>
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
     | _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+  -- A double's negation and `ABS`, as the parser reads `negate` and `abs` of a
+  -- double (`Parse.mkFloatCall`): written as those calls, so that they read
+  -- back as they were.
+  | .ifThen (.bin .eq a (.lit (.int k))) t (.un .fneg e) =>
+    if k == FloatCode.nan && t == a && e == a then canonical (call 3 [writeExpr cols .float a])
+    else obj [("ifThen", obj [
+      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .eq a (.lit (.int k)))),
+        ("then", writeExpr cols ctx t)]]),
+      ("else", writeExpr cols ctx (.un .fneg e))])]
+  | .ifThen (.bin .lt a (.lit (.int 0))) (.un .fneg t) e =>
+    if t == a && e == a && wkind cols a == .float then call 121 [writeExpr cols .float a]
+    else obj [("ifThen", obj [
+      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .lt a (.lit (.int 0)))),
+        ("then", writeExpr cols ctx (.un .fneg t))]]),
+      ("else", writeExpr cols ctx e)])]
   | .ifThen c t e => obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool c), ("then", writeExpr cols ctx t)]]),
       ("else", writeExpr cols ctx e)])]

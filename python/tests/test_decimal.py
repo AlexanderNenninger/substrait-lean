@@ -16,7 +16,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, put_table, run_checker, substrait_json
+from sverify.engine import connect, put_table, run_checker, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
 
@@ -174,3 +174,15 @@ def test_decimal_plans_are_written_but_not_for_datafusion(con):
     assert code == 0 and "decimal" in out
     code, _, err = run_checker(("--write-datafusion",), plan)
     assert code == 1 and "#27" in err
+
+
+def test_abs_of_a_double_next_to_decimals_is_written(con):
+    """A plan with decimals is written only if it reads back the same; `ABS`
+    and negation of a double are written as `abs` and `negate` (q89)."""
+    t = ibis.table(SCHEMAS["t"], name="t")
+    expr = t.select(s=t.a + t.a, g=(t.f - 1.0).abs(), n=-(t.f - 1.0))
+    written = written_plan(to_substrait_json(expr))
+    got = [tuple(r.values()) for r in run_plan(con, written, "duckdb").to_pylist()]
+    fs = [r[3] for r in ROWS["t"]]
+    assert sorted(g for _, g, _ in got) == sorted(abs(f - 1.0) for f in fs)
+    assert sorted(n for _, _, n in got) == sorted(-(f - 1.0) for f in fs)
