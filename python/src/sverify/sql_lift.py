@@ -92,6 +92,7 @@ from sverify.plan_json import (
     interval_json,
     literal,
     plan,
+    project_rel,
     read_rel,
     select,
     type_json,
@@ -576,10 +577,12 @@ class _Lift:
             rel = {"filter": {"input": rel, "condition": self.condition(where.this, scope)}}
 
         group = node.args.get("group")
-        aggs = _aggregates([*node.expressions, node.args.get("having"), node.args.get("order")])
+        parts = [*node.expressions, node.args.get("having"), node.args.get("order")]
+        aggs = _aggregates(parts)
+        groupings = _groupings(node, parts)
         bound: Bound = Bound()
         if group is not None or aggs:
-            rel, scope, bound = self.aggregate(rel, scope, group, aggs)
+            rel, scope, bound = self.aggregate(rel, scope, group, aggs, groupings)
             if (having := node.args.get("having")) is not None:
                 cond = self.condition(having.this, scope, bound)
                 rel = {"filter": {"input": rel, "condition": cond}}
@@ -597,6 +600,11 @@ class _Lift:
         # dropped after the sort.
         keys: list[Json] = []
         extra_keys: list[E] = []
+        # In an ORDER BY expression, a bare name is the output column of that
+        # name, as in DuckDB (`qualify` leaves it bare).
+        aliased = Bound(bound, grouped=bound.grouped)
+        for n, e in zip(names, outs, strict=True):
+            aliased.setdefault(sge.column(n), e)
         if (order := node.args.get("order")) is not None:
             for o in order.expressions:
                 i = self.output_index(o.this, names, node.expressions)
@@ -606,7 +614,7 @@ class _Lift:
                             f"ORDER BY {_shown(o.this)} of a SELECT DISTINCT must be an "
                             "output column"
                         )
-                    extra_keys.append(self.expr(o.this, scope, bound))
+                    extra_keys.append(self.expr(o.this, scope, aliased))
                     i = len(outs) + len(extra_keys) - 1
                 desc = bool(o.args.get("desc"))
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
@@ -767,7 +775,7 @@ class _Lift:
                 n = arg(f.this)
                 if not (n.constant and isinstance(n.value, int) and n.value > 0):
                     raise Unsupported("ntile needs a positive integer constant")
-                return self.ntile(w, n.value, scope, bound)
+                return self.ntile(w, n.value, scope, bound, column)
         elif isinstance(f, sge.Lag | sge.Lead):
             name = "lag" if isinstance(f, sge.Lag) else "lead"
             x = arg(f.this)
@@ -809,13 +817,13 @@ class _Lift:
                 if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
                     raise Unsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
                 values = [column(E(a["value"], dt.null)) for a in agg["arguments"]]
-                fn = self.window_json(w, agg["functionReference"], values, scope, bound)
+                fn = self.window_json(w, agg["functionReference"], values, scope, bound, column)
                 fn["windowFunction"]["outputType"] = agg["outputType"]
                 fns.append((fn, t))
             return fns, finish
         else:
             raise Unsupported(f"window function {_shown(f)} is not supported yet")
-        fn = self.window_json(w, name, args, scope, bound)
+        fn = self.window_json(w, name, args, scope, bound, column)
         return [(fn, out)], lambda refs: E(refs[0], out)
 
     def window_json(
@@ -825,9 +833,12 @@ class _Lift:
         args: list[Json],
         scope: list[Column],
         bound: Mapping[sge.Expression, E],
+        column: Callable[[E], Json],
         frame: Json | None = None,
     ) -> Json:
-        partitions = [self.expr(p, scope, bound).json for p in w.args.get("partition_by") or []]
+        """A window function; its partitions and sort keys as columns (the
+        model reads them so), computed before it where they are not."""
+        partitions = [column(self.expr(p, scope, bound)) for p in w.args.get("partition_by") or []]
         order = w.args.get("order")
         sorts = []
         for o in order.expressions if order is not None else []:
@@ -835,7 +846,7 @@ class _Lift:
             nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
             sorts.append(
                 {
-                    "expr": self.expr(o.this, scope, bound).json,
+                    "expr": column(self.expr(o.this, scope, bound)),
                     "direction": f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}",
                 }
             )
@@ -849,7 +860,12 @@ class _Lift:
         return {"windowFunction": fn}
 
     def ntile(
-        self, w: sge.Window, k: int, scope: list[Column], bound: Mapping[sge.Expression, E]
+        self,
+        w: sge.Window,
+        k: int,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E],
+        column: Callable[[E], Json],
     ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
         """DuckDB's `NTILE(k)`, the SQL standard's: of `n` rows, the first
         `n % k` buckets have `n // k + 1` rows, the rest `n // k`. (The
@@ -862,8 +878,8 @@ class _Lift:
             "upperBound": {"unbounded": {}},
             "boundsType": "BOUNDS_TYPE_ROWS",
         }
-        rn = self.window_json(w, "row_number", [], scope, bound)
-        count = self.window_json(w, "count", [], scope, bound, whole)
+        rn = self.window_json(w, "row_number", [], scope, bound, column)
+        count = self.window_json(w, "count", [], scope, bound, column, whole)
         count["windowFunction"]["sorts"] = []
         i64 = dt.int64
 
@@ -897,23 +913,28 @@ class _Lift:
         scope: list[Column],
         group: sge.Group | None,
         aggs: list[sge.Expression],
+        groupings: list[sge.Grouping],
     ) -> tuple[Json, list[Column], Bound]:
         """The aggregate relation, its columns, and the expressions that are
-        its columns (each grouping expression and each measure)."""
-        keys = list(group.expressions) if group is not None else []
-        if group is not None and any(
-            group.args.get(k) for k in ("grouping_sets", "cube", "rollup")
-        ):
-            raise Unsupported("GROUPING SETS, CUBE and ROLLUP are not supported yet")
+        its columns (each grouping key, each aggregate and each
+        `GROUPING(…)`)."""
+        keys, sets = _grouping_sets(group)
         groups = [self.expr(k, scope) for k in keys]
         measures = [self.measure(a, scope) for a in aggs]
-        body: Json = {
-            "input": rel,
-            "groupingExpressions": [g.json for g in groups],
-            "groupings": [{"expressionReferences": list(range(len(groups)))}] if groups else [],
-            "measures": [m for ms, _ in measures for m, _ in ms],
-        }
-        types = [g.type for g in groups] + [t for ms, _ in measures for _, t in ms]
+        parts = [p for ms, _ in measures for p in ms]
+        if len(sets) == 1 and not groupings:
+            body: Json = {
+                "input": rel,
+                "groupingExpressions": [g.json for g in groups],
+                "groupings": (
+                    [{"expressionReferences": list(range(len(groups)))}] if groups else []
+                ),
+                "measures": [m for m, _ in parts],
+            }
+            agg: Json = {"aggregate": body}
+        else:
+            agg = self.grouping_sets(rel, keys, groups, sets, parts, groupings)
+        types = [g.type for g in groups] + [t for _, t in parts] + [dt.int64] * len(groupings)
         bound = Bound(
             {k: E(field_ref(i), types[i], midnight=groups[i].midnight) for i, k in enumerate(keys)},
             grouped=True,
@@ -922,8 +943,45 @@ class _Lift:
         for a, (ms, finish) in zip(aggs, measures, strict=True):
             bound[a] = finish([field_ref(j + i) for i in range(len(ms))])
             j += len(ms)
+        for g in groupings:
+            bound[g] = E(field_ref(j), dt.int64)
+            j += 1
         cols = [Column(None, f"_{i}", t) for i, t in enumerate(types)]
-        return {"aggregate": body}, cols, bound
+        return agg, cols, bound
+
+    def grouping_sets(
+        self,
+        rel: Json,
+        keys: list[sge.Expression],
+        groups: list[E],
+        sets: list[list[int]],
+        parts: list[tuple[Json, Any]],
+        groupings: list[sge.Grouping],
+    ) -> Json:
+        """GROUP BY with several grouping sets (or `GROUPING(…)`): one
+        aggregate per set, each with every key (NULL where the set leaves it
+        out), the measures, and the value of each `GROUPING(…)` in that set,
+        all UNION ALL'd, as DuckDB computes them."""
+        branches = []
+        for s in sets:
+            ms = [copy.deepcopy(m) for m, _ in parts]
+            if not s and not ms:
+                # The model's aggregate without keys needs a measure.
+                ms = [_count_star()]
+            body = {
+                "input": copy.deepcopy(rel),
+                "groupingExpressions": [copy.deepcopy(groups[i].json) for i in s],
+                "groupings": [{"expressionReferences": list(range(len(s)))}] if s else [],
+                "measures": ms,
+            }
+            exprs = [
+                field_ref(s.index(i)) if i in s else literal(None, g.type)
+                for i, g in enumerate(groups)
+            ]
+            exprs += [field_ref(len(s) + j) for j in range(len(parts))]
+            exprs += [literal(_grouping_value(g, keys, s), dt.int64) for g in groupings]
+            branches.append(project_rel({"aggregate": body}, len(s) + len(ms), exprs))
+        return {"set": {"inputs": branches, "op": "SET_OP_UNION_ALL"}}
 
     def measure(
         self,
@@ -2197,6 +2255,8 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
             if n not in found:
                 found.append(n)
             return
+        if isinstance(n, sge.Grouping):
+            return  # a column of the grouping sets, not a measure
         if isinstance(n, sge.AggFunc):
             raise Unsupported(f"aggregate {n.sql_name()}() is not supported yet")
         for child in n.iter_expressions():
@@ -2206,6 +2266,82 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
         if n is not None:
             walk(n)
     return found
+
+
+def _groupings(select: sge.Select, nodes: list[sge.Expression | None]) -> list[sge.Grouping]:
+    """The `GROUPING(…)` calls of `select` in `nodes`, each once, in order;
+    not those of subqueries."""
+    found: list[sge.Grouping] = []
+    for n in nodes:
+        for g in n.find_all(sge.Grouping) if n is not None else ():
+            if g.find_ancestor(sge.Select) in (select, None) and g not in found:
+                found.append(g)
+    return found
+
+
+def _grouping_sets(group: sge.Group | None) -> tuple[list[sge.Expression], list[list[int]]]:
+    """GROUP BY's keys, each once, and its grouping sets, as indices into
+    them: one set for a plain GROUP BY; ROLLUP, CUBE and GROUPING SETS give
+    several, and several of those listed give their cross product."""
+    keys: list[sge.Expression] = []
+
+    def index(e: sge.Expression) -> int:
+        for i, k in enumerate(keys):
+            if k == e:
+                return i
+        keys.append(e)
+        return len(keys) - 1
+
+    def element(e: sge.Expression) -> list[int]:
+        # An element of ROLLUP or CUBE: a key, or a tuple of keys.
+        return [index(x) for x in e.expressions] if isinstance(e, sge.Tuple) else [index(e)]
+
+    def sets_of(item: sge.Expression) -> list[list[int]]:
+        if isinstance(item, sge.Rollup):
+            es = [element(e) for e in item.expressions]
+            return [[k for e in es[:n] for k in e] for n in range(len(es), -1, -1)]
+        if isinstance(item, sge.Cube):
+            es = [element(e) for e in item.expressions]
+            n = len(es)
+            return [
+                [k for j, e in enumerate(es) if not mask >> (n - 1 - j) & 1 for k in e]
+                for mask in range(2**n)
+            ]
+        if isinstance(item, sge.GroupingSets):
+            return [s for x in item.expressions for s in sets_of(x)]
+        if isinstance(item, sge.Tuple):
+            return [[index(e) for e in item.expressions]]
+        if isinstance(item, sge.Paren):
+            return [[index(item.this)]]
+        return [[index(item)]]
+
+    sets: list[list[int]] = [[]]
+    for item in group.expressions if group is not None else []:
+        sets = [a + [k for k in b if k not in a] for a in sets for b in sets_of(item)]
+    return keys, sets
+
+
+def _grouping_value(node: sge.Grouping, keys: list[sge.Expression], s: list[int]) -> int:
+    """`GROUPING(a, b, …)` in the grouping set `s`: a bit per argument, the
+    first the highest, set where the set leaves the key out."""
+    value = 0
+    for a in node.expressions:
+        i = next((i for i, k in enumerate(keys) if k == a), None)
+        if i is None:
+            raise Unsupported(f"{_shown(node)}: GROUPING of {_shown(a)}, which is not a key")
+        value = value * 2 + (i not in s)
+    return value
+
+
+def _count_star() -> Json:
+    return {
+        "measure": {
+            "functionReference": anchor("count"),
+            "arguments": [],
+            "outputType": type_json(dt.int64),
+            "invocation": "AGGREGATION_INVOCATION_ALL",
+        }
+    }
 
 
 def _count(node: sge.Expression, what: str) -> int:
