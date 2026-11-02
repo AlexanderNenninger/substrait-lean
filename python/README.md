@@ -166,8 +166,12 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is planned by DataFusion
-(`pip install 'sverify[datafusion]'`), or by Isthmus without it. Isthmus is
-planned to become the only SQL frontend, with DataFusion an execution
+(`pip install 'sverify[datafusion]'`), or by Isthmus without it. With
+`dialect="duckdb"`, sverify plans DuckDB's SQL itself, through SQLGlot, with
+DuckDB's semantics (`semantics="duckdb"`, the default) or sverify's reference
+semantics (`semantics="reference"`), for a subset of SQL so far
+([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239)). That
+lift is planned to become the SQL frontend, with DataFusion an execution
 backend only ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
 
 ## Workflows

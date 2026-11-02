@@ -1,0 +1,1003 @@
+"""DuckDB SQL to Substrait plans, through SQLGlot (#231, M1: #239).
+
+Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
+`sverify.engines` and `sverify.errors`; it may change in any release. Users
+reach it through `sv.sql(query, dialect="duckdb", semantics=...)`.
+
+    plan = lift("SELECT region, sum(amount) AS total FROM orders GROUP BY region",
+                {"orders": ibis.schema({"region": "string", "amount": "float64"})},
+                semantics="duckdb")
+
+SQLGlot parses the query (`read="duckdb"`, strict) and resolves and types its
+names against the inputs' schemas (`qualify`, `annotate_types`). The lift then
+writes one Substrait plan, reading each input as a named table, in which every
+choice DuckDB's SQL leaves implicit is explicit: casts where DuckDB coerces,
+the output type of every function, the options Substrait defines for them
+(`on_division_by_zero`, …), and the direction and NULL order of every sort
+key. SQLGlot is trusted for parsing and name resolution only; the types of
+expressions come from the profile, not from SQLGlot's typing.
+
+How the SQL text reads is DuckDB's in both modes (`characterization/duckdb/
+FACTS.md`, F1–F3): `/` divides as doubles, `//` divides integers, NULLs sort
+last, an integer literal has the narrowest type that holds it, `1.5` is a
+`DECIMAL(2, 1)`. The **semantics** (`Profile`) is what the functions then do
+where DuckDB and the reference (#185, #209) differ:
+
+* `semantics="duckdb"` (`DUCKDB`): DuckDB's own. A double `/` by zero is
+  `±inf` or NaN (`on_division_by_zero: IEEE`), even with
+  `error_on_division_by_zero` on. The plan means what DuckDB computes, and the
+  checker proves contracts of that.
+* `semantics="reference"` (`REFERENCE`): sverify's reference. A double `/`
+  by zero raises (`ERROR`, decided on #185), and a cast of a double to an
+  integer truncates (R9, decided on #209). The written SQL is guarded where
+  DuckDB differs.
+
+The subset (#239): SELECT, WHERE, arithmetic, comparisons, AND/OR/NOT,
+IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE; inner, left and cross joins
+and subqueries in FROM; GROUP BY with `count`, `sum`, `avg`, `min` and
+`max`, HAVING; DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
+functions (`Anonymous`) included, raises `Unsupported` saying what.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import dataclasses
+import datetime as dt_
+import re
+from collections.abc import Callable, Mapping
+from decimal import Decimal
+from typing import Any
+
+import ibis
+import ibis.expr.datatypes as dt
+import sqlglot as sg
+import sqlglot.expressions as sge
+from ibis.backends.sql.datatypes import DuckDBType
+from sqlglot.errors import ErrorLevel
+from sqlglot.optimizer.annotate_types import annotate_types
+from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
+from sqlglot.optimizer.qualify import qualify
+
+from sverify.plan_json import (
+    Json,
+    Unsupported,
+    anchor,
+    call,
+    cast_json,
+    compiling,
+    distinct_rel,
+    emit_rel,
+    field_ref,
+    if_then,
+    literal,
+    plan,
+    read_rel,
+    select,
+    type_json,
+    values_rel,
+)
+
+__all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
+
+DIALECT = "duckdb"
+
+
+# --------------------------------------------------------------------------
+# Profiles
+
+
+@dataclasses.dataclass(frozen=True)
+class Profile:
+    """What DuckDB SQL means, as data the lift reads (#231: "keep it
+    simple"). The Lean side is `Profile.reference` and `Profile.duckdb` in
+    `SubstraitLean/Profile.lean`.
+
+    The first group of fields is how the SQL text reads, which is DuckDB's
+    in both profiles; the second is what the functions do.
+
+    Attributes:
+        name: `"duckdb"` or `"reference"`, as `sv.sql`'s `semantics`.
+        divide: SQL `/` on integers and decimals: `"double"`, both operands
+            cast to `fp64` and divided (DuckDB's `/` without
+            `integer_division`, F1).
+        int_divide: SQL `//`: `"truncate"`, Substrait's integer `divide`
+            (F1).
+        null_ordering: Where NULLs sort when a key doesn't say:
+            `"nulls_are_last"`, in both directions (F2; SQLGlot's
+            `NULL_ORDERING` for DuckDB, checked when parsing).
+        avg_integer: The output type of `avg` of integers: `"fp64"` (DuckDB;
+            #209 R6, the plan's declared type).
+        overflow: Integer `+ - *`, negation, `//` and `sum` that leave the
+            declared width: `"ERROR"` (DuckDB, and #185's reference default).
+        on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
+            `error_on_division_by_zero`, its default, and the reference).
+        float_division_by_zero: `/` by zero, which divides doubles:
+            `"IEEE"` (DuckDB: `1 / 0` is `inf`) or `"ERROR"` (reference).
+        float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
+            (DuckDB rounds, `CAST(2.5 AS INT)` is 2) or `"TRUNCATE"`
+            (reference, #209 R9).
+        decimal_to_int: A cast of a decimal to an integer:
+            `"TIE_AWAY_FROM_ZERO"` (DuckDB, `CAST(2.5 AS INT)` is 3) or
+            `"TRUNCATE"` (reference, R9).
+        float_modulus_by_zero: `%` of doubles by zero: `"NAN"` (DuckDB) or
+            `"ERROR"` (reference).
+    """
+
+    name: str
+    divide: str = "double"
+    int_divide: str = "truncate"
+    null_ordering: str = "nulls_are_last"
+    avg_integer: str = "fp64"
+    overflow: str = "ERROR"
+    on_division_by_zero: str = "ERROR"
+    float_division_by_zero: str = "ERROR"
+    float_to_int: str = "TRUNCATE"
+    decimal_to_int: str = "TRUNCATE"
+    float_modulus_by_zero: str = "ERROR"
+
+
+DUCKDB = Profile(
+    "duckdb",
+    float_division_by_zero="IEEE",
+    float_to_int="TIE_TO_EVEN",
+    decimal_to_int="TIE_AWAY_FROM_ZERO",
+    float_modulus_by_zero="NAN",
+)
+REFERENCE = Profile("reference")
+PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
+
+
+# --------------------------------------------------------------------------
+# Parsing and typing
+
+
+def _sql_type(dtype: dt.DataType) -> str:
+    return DuckDBType.from_ibis(dtype).sql(DIALECT)
+
+
+def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
+    """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
+    every name resolved (`qualify`) and typed (`annotate_types`) against the
+    tables `schemas` (Ibis schemas by table name).
+
+    Raises:
+        Unsupported: SQLGlot cannot parse the query, or a name in it is not
+            a column or table of the inputs.
+    """
+    try:
+        tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
+    except sg.errors.ParseError as e:
+        raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
+    if tree.find(sge.Anonymous) is not None:
+        f = tree.find(sge.Anonymous)
+        raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
+    catalog = {
+        name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
+    }
+    try:
+        tree = qualify(
+            tree,
+            schema=catalog,
+            dialect=DIALECT,
+            validate_qualify_columns=True,
+            quote_identifiers=False,
+        )
+        tree = annotate_types(tree, schema=catalog, dialect=DIALECT)
+    except sg.errors.OptimizeError as e:
+        raise Unsupported(f"cannot resolve the SQL's names: {str(e).splitlines()[0]}") from e
+    if not isinstance(tree, sge.Select):
+        raise Unsupported(f"{type(tree).__name__} is not supported; only SELECT queries are")
+    return tree
+
+
+# --------------------------------------------------------------------------
+# Lifting
+
+
+#: No Python value: the expression is not a constant.
+_NO_VALUE = object()
+
+
+@dataclasses.dataclass
+class E:
+    """A lifted expression: its JSON, its type in the plan, and its value if
+    it is a constant (which coercions write as a literal of the new type)."""
+
+    json: Json
+    type: dt.DataType
+    value: Any = _NO_VALUE
+
+    @property
+    def constant(self) -> bool:
+        return self.value is not _NO_VALUE
+
+
+@dataclasses.dataclass
+class Column:
+    table: str | None
+    name: str
+    type: dt.DataType
+
+
+@dataclasses.dataclass
+class Lifted:
+    """A lifted query: its plan (protobuf JSON) and its output schema."""
+
+    plan: Json
+    schema: ibis.Schema
+
+
+#: Integer widths as DuckDB's decimals: `DECIMAL(p, 0)` holding each.
+_INT_DIGITS = {8: 3, 16: 5, 32: 10, 64: 19}
+
+#: Measures and the Substrait function each lifts to.
+_AGGREGATES: dict[type, str] = {
+    sge.Count: "count",
+    sge.Sum: "sum",
+    sge.Avg: "avg",
+    sge.Min: "min",
+    sge.Max: "max",
+}
+
+_COMPARISONS: dict[type, str] = {
+    sge.EQ: "equal",
+    sge.NEQ: "not_equal",
+    sge.LT: "lt",
+    sge.LTE: "lte",
+    sge.GT: "gt",
+    sge.GTE: "gte",
+}
+
+_ARITHMETIC: dict[type, str] = {sge.Add: "add", sge.Sub: "subtract", sge.Mul: "multiply"}
+
+#: The arguments of a SELECT the lift reads; any other one set is refused.
+_SELECT_ARGS = {
+    "expressions",
+    "from_",
+    "joins",
+    "where",
+    "group",
+    "having",
+    "order",
+    "limit",
+    "offset",
+    "distinct",
+}
+
+#: The clauses of the queries SQLGlot reads that the subset lacks, by name.
+_CLAUSES = {
+    "with_": "CTEs (WITH)",
+    "qualify": "QUALIFY",
+    "windows": "WINDOW",
+    "laterals": "LATERAL",
+    "pivots": "PIVOT",
+    "sample": "SAMPLE",
+}
+
+
+def _option(name: str, value: str) -> Json:
+    return {"name": name, "preference": [value]}
+
+
+def _fn(name: str, args: list[Json], out: dt.DataType, options: list[Json] = ()) -> Json:
+    """A call of `name` with its output type and options written out."""
+    c = call(name, args)
+    c["scalarFunction"]["outputType"] = type_json(out)
+    if options:
+        c["scalarFunction"]["options"] = list(options)
+    return c
+
+
+def _decimal(p: int, s: int) -> dt.Decimal:
+    return dt.Decimal(precision=min(p, 38), scale=s)
+
+
+def _digits(t: dt.DataType) -> tuple[int, int]:
+    """`(precision, scale)` of a decimal or an integer, as DuckDB widens it."""
+    if t.is_decimal():
+        return t.precision, t.scale
+    return _INT_DIGITS[t.nbytes * 8], 0
+
+
+def _numeric(t: dt.DataType) -> bool:
+    return t.is_integer() or t.is_float64() or t.is_decimal()
+
+
+def _same(a: dt.DataType, b: dt.DataType) -> bool:
+    return a.copy(nullable=True) == b.copy(nullable=True)
+
+
+def _shown(node: sge.Expression) -> str:
+    text = node.sql(DIALECT)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+class _Lift:
+    """Lifts one query with one profile, inside one `compiling` block."""
+
+    def __init__(self, profile: Profile, schemas: Mapping[str, Any]):
+        self.profile = profile
+        # The inputs by their normalized names, as `qualify` writes them.
+        self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
+
+    # -- relations ---------------------------------------------------------
+
+    def query(self, node: sge.Expression) -> tuple[Json, list[Column]]:
+        """A query's relation and its output columns."""
+        if isinstance(node, sge.Subquery):
+            return self.query(node.this)
+        if not isinstance(node, sge.Select):
+            raise Unsupported(f"{type(node).__name__} is not supported; only SELECT queries are")
+        for arg, what in _CLAUSES.items():
+            if node.args.get(arg):
+                raise Unsupported(f"{what} is not supported yet")
+        extra = [k for k, v in node.args.items() if v and k not in _SELECT_ARGS]
+        if extra:
+            raise Unsupported(f"SELECT with {', '.join(sorted(extra))} is not supported")
+        distinct = node.args.get("distinct")
+        if distinct is not None and distinct.args.get("on") is not None:
+            raise Unsupported("DISTINCT ON is not supported")
+        rel, scope = self.from_(node)
+        if (where := node.args.get("where")) is not None:
+            rel = {"filter": {"input": rel, "condition": self.condition(where.this, scope)}}
+
+        group = node.args.get("group")
+        aggs = _aggregates([*node.expressions, node.args.get("having"), node.args.get("order")])
+        bound: dict[sge.Expression, E] = {}
+        if group is not None or aggs:
+            rel, scope, bound = self.aggregate(rel, scope, group, aggs)
+            if (having := node.args.get("having")) is not None:
+                cond = self.condition(having.this, scope, bound)
+                rel = {"filter": {"input": rel, "condition": cond}}
+        elif node.args.get("having") is not None:
+            raise Unsupported("HAVING without GROUP BY or an aggregate")
+
+        outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+        names = [e.alias_or_name for e in node.expressions]
+        # Sort keys that are not output columns are computed after them, and
+        # dropped after the sort.
+        keys: list[Json] = []
+        extra_keys: list[E] = []
+        if (order := node.args.get("order")) is not None:
+            for o in order.expressions:
+                i = self.output_index(o.this, names, node.expressions)
+                if i is None:
+                    if distinct is not None:
+                        raise Unsupported(
+                            f"ORDER BY {_shown(o.this)} of a SELECT DISTINCT must be an "
+                            "output column"
+                        )
+                    extra_keys.append(self.expr(o.this, scope, bound))
+                    i = len(outs) + len(extra_keys) - 1
+                desc = bool(o.args.get("desc"))
+                nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
+                direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
+                keys.append({"expr": field_ref(i), "direction": direction})
+        width = len(scope)
+        rel = select(rel, width, [e.json for e in outs + extra_keys])
+        if distinct is not None:
+            rel = distinct_rel(rel, len(outs))
+        if keys:
+            rel = {"sort": {"input": rel, "sorts": keys}}
+        rel = self.fetch(rel, node)
+        if extra_keys:
+            rel = emit_rel(rel, list(range(len(outs))))
+        return rel, [Column(None, n, e.type) for n, e in zip(names, outs, strict=True)]
+
+    def output_index(
+        self, key: sge.Expression, names: list[str], outs: list[sge.Expression]
+    ) -> int | None:
+        """The output column a sort key names (an alias or an ordinal, which
+        `qualify` writes as the alias), or the output expression it repeats."""
+        if isinstance(key, sge.Column) and not key.table and key.name in names:
+            return names.index(key.name)
+        for i, o in enumerate(outs):
+            if o.unalias() == key:
+                return i
+        return None
+
+    def fetch(self, rel: Json, node: sge.Select) -> Json:
+        limit, offset = node.args.get("limit"), node.args.get("offset")
+        if limit is None and offset is None:
+            return rel
+        body: Json = {"input": rel, "offsetExpr": literal(0, dt.int64)}
+        if offset is not None:
+            body["offsetExpr"] = literal(_count(offset.expression, "OFFSET"), dt.int64)
+        if limit is not None:
+            body["countExpr"] = literal(_count(limit.expression, "LIMIT"), dt.int64)
+        return {"fetch": body}
+
+    def from_(self, node: sge.Select) -> tuple[Json, list[Column]]:
+        if node.args.get("from_") is None:
+            # `SELECT 1 + 1` reads one row, of one column no name can refer
+            # to (the SQL printers have no relation of no columns).
+            one = values_rel(ibis.schema({"": "int32"}), [[literal(0, dt.int32)]])
+            return one, [Column(None, "", dt.int32)]
+        rel, scope = self.source(node.args["from_"].this)
+        for join in node.args.get("joins") or []:
+            right, cols = self.source(join.this)
+            side, kind = (join.side or "").upper(), (join.kind or "").upper()
+            on = join.args.get("on")
+            if join.args.get("using"):
+                raise Unsupported("JOIN … USING is not supported")
+            if kind == "CROSS" or (not side and not kind and on is None):
+                rel = {"cross": {"left": rel, "right": right}}
+            elif side in ("", "LEFT") and kind in ("", "INNER", "OUTER") and on is not None:
+                if side == "" and kind == "OUTER":
+                    raise Unsupported("FULL OUTER JOIN is not supported yet")
+                cond = self.condition(on, scope + cols)
+                how = "JOIN_TYPE_LEFT" if side == "LEFT" else "JOIN_TYPE_INNER"
+                rel = {"join": {"left": rel, "right": right, "expression": cond, "type": how}}
+            else:
+                what = " ".join(w for w in (side, kind) if w) or "this"
+                raise Unsupported(f"{what} JOIN is not supported yet")
+            scope = scope + cols
+        return rel, scope
+
+    def source(self, node: sge.Expression) -> tuple[Json, list[Column]]:
+        """A relation in FROM or JOIN, and its columns under its alias."""
+        alias = node.alias_or_name
+        if isinstance(node, sge.Table):
+            if (
+                node.args.get("db")
+                or node.args.get("catalog")
+                or not isinstance(node.this, sge.Identifier)
+            ):
+                raise Unsupported(f"FROM {_shown(node)}: only the inputs' tables can be read")
+            found = self.schemas.get(node.name)
+            if found is None:
+                raise Unsupported(f"the query reads {node.name}, which is not an input")
+            name, schema = found
+            cols = [Column(alias, _normalized(c), t) for c, t in schema.items()]
+            return read_rel(name, schema), cols
+        if isinstance(node, sge.Subquery):
+            rel, cols = self.query(node.this)
+            return rel, [Column(alias, c.name, c.type) for c in cols]
+        raise Unsupported(f"FROM {_shown(node)} is not supported")
+
+    def aggregate(
+        self,
+        rel: Json,
+        scope: list[Column],
+        group: sge.Group | None,
+        aggs: list[sge.Expression],
+    ) -> tuple[Json, list[Column], dict[sge.Expression, E]]:
+        """The aggregate relation, its columns, and the expressions that are
+        its columns (each grouping expression and each measure)."""
+        keys = list(group.expressions) if group is not None else []
+        if group is not None and any(
+            group.args.get(k) for k in ("grouping_sets", "cube", "rollup")
+        ):
+            raise Unsupported("GROUPING SETS, CUBE and ROLLUP are not supported yet")
+        groups = [self.expr(k, scope) for k in keys]
+        measures = [self.measure(a, scope) for a in aggs]
+        body: Json = {
+            "input": rel,
+            "groupingExpressions": [g.json for g in groups],
+            "groupings": [{"expressionReferences": list(range(len(groups)))}] if groups else [],
+            "measures": [m for m, _ in measures],
+        }
+        types = [g.type for g in groups] + [t for _, t in measures]
+        bound = {k: E(field_ref(i), types[i]) for i, k in enumerate(keys)}
+        for j, a in enumerate(aggs):
+            bound[a] = E(field_ref(len(keys) + j), types[len(keys) + j])
+        cols = [Column(None, f"_{i}", t) for i, t in enumerate(types)]
+        return {"aggregate": body}, cols, bound
+
+    def measure(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, dt.DataType]:
+        name = _AGGREGATES[type(node)]
+        arg = node.this
+        distinct = isinstance(arg, sge.Distinct)
+        if distinct:
+            if name != "count" or len(arg.expressions) != 1:
+                raise Unsupported(f"{_shown(node)}: only count(DISTINCT x) is supported")
+            arg = arg.expressions[0]
+        if isinstance(node, sge.Count) and (arg is None or isinstance(arg, sge.Star)):
+            args: list[E] = []
+            out: dt.DataType = dt.int64
+        else:
+            if not isinstance(node, sge.Count) and node.expressions:
+                raise Unsupported(f"{_shown(node)} takes one argument")
+            a = self.expr(arg, scope)
+            args = [a]
+            t = a.type
+            if name == "count":
+                out = dt.int64
+            elif name in ("min", "max"):
+                out = t
+            elif not _numeric(t):
+                raise Unsupported(f"{name} of {t} is not supported")
+            elif name == "sum":
+                # DuckDB sums integers as HUGEINTs; the plan's 64-bit sum
+                # raises where one leaves 64 bits (#202), as the written
+                # SQL's cast back to BIGINT does.
+                out = (
+                    _decimal(38, t.scale)
+                    if t.is_decimal()
+                    else dt.int64
+                    if t.is_integer()
+                    else dt.float64
+                )
+            elif t.is_decimal():
+                raise Unsupported(
+                    "avg of a DECIMAL is not supported yet: DuckDB gives a DOUBLE, which the "
+                    "model has no measure for (#240)"
+                )
+            else:
+                out = dt.float64
+        agg: Json = {
+            "functionReference": anchor(name),
+            "arguments": [{"value": a.json} for a in args],
+            "outputType": type_json(out),
+            "invocation": (
+                "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
+            ),
+        }
+        return {"measure": agg}, out
+
+    # -- expressions -------------------------------------------------------
+
+    def condition(
+        self,
+        node: sge.Expression,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E] | None = None,
+    ) -> Json:
+        e = self.expr(node, scope, bound)
+        if not (e.type.is_boolean() or e.type.is_null()):
+            raise Unsupported(f"{_shown(node)} is a {e.type}, not a condition")
+        return e.json
+
+    def expr(
+        self,
+        node: sge.Expression,
+        scope: list[Column],
+        bound: Mapping[sge.Expression, E] | None = None,
+    ) -> E:
+        bound = bound or {}
+        if node in bound:
+            return bound[node]
+        if bound and isinstance(node, sge.Column):
+            raise Unsupported(f"column {_shown(node)} must be in GROUP BY or inside an aggregate")
+        if type(node) in _AGGREGATES:
+            raise Unsupported(f"aggregate {_shown(node)} is not allowed here")
+        rule = _RULES.get(type(node))
+        if rule is None:
+            raise Unsupported(f"{type(node).__name__} ({_shown(node)}) is not supported yet")
+        return rule(self, node, lambda n: self.expr(n, scope, bound), scope)
+
+    def column(self, node: sge.Column, scope: list[Column]) -> E:
+        table, name = node.table, node.name
+        found = [
+            i for i, c in enumerate(scope) if c.name == name and (not table or c.table == table)
+        ]
+        if len(found) != 1:
+            what = "unknown" if not found else "ambiguous"
+            raise Unsupported(f"{what} column {_shown(node)}")
+        return E(field_ref(found[0]), scope[found[0]].type)
+
+    def to(self, e: E, t: dt.DataType) -> E:
+        """`e` as a `t`: a constant as a literal of `t`, else a cast."""
+        if _same(e.type, t):
+            return e
+        if e.constant:
+            v = e.value
+            if v is not None:
+                if t.is_float64():
+                    v = float(v)
+                elif t.is_decimal():
+                    v = Decimal(v)
+                elif t.is_integer() and isinstance(v, Decimal):
+                    v = None if v != v.to_integral_value() else int(v)
+            if v is not None or e.value is None:
+                return E(literal(v, t), t, v)
+        if e.type.is_null():
+            return E(literal(None, t), t, None)
+        return E(cast_json(e.json, t), t)
+
+    def common(self, es: list[E], what: str, sum_digits: bool = False) -> dt.DataType:
+        """The type DuckDB brings `es` to as one value: the widest integer;
+        a double if one is; else a decimal with the most integer digits and
+        the largest scale (plus a digit for `+` and `-`)."""
+        ts = [e.type for e in es if not e.type.is_null()]
+        if not ts:
+            return dt.null
+        if all(_numeric(t) for t in ts):
+            if any(t.is_float64() for t in ts):
+                return dt.float64
+            if any(t.is_decimal() for t in ts):
+                ds = [_digits(t) for t in ts]
+                s = max(s for _, s in ds)
+                return _decimal(max(p - s0 for p, s0 in ds) + s + int(sum_digits), s)
+            return max(ts, key=lambda t: t.nbytes).copy(nullable=True)
+        first = ts[0]
+        if all(_same(t, first) for t in ts):
+            return first.copy(nullable=True)
+        if all(t.is_temporal() and not t.is_time() for t in ts):
+            return dt.timestamp(scale=6)
+        shown = ", ".join(str(t) for t in ts)
+        raise Unsupported(f"{what} of {shown} is not supported")
+
+
+# -- expression rules -------------------------------------------------------
+
+Sub = Callable[[sge.Expression], E]
+
+
+def _column(lf: _Lift, node: sge.Column, sub: Sub, scope: list[Column]) -> E:
+    return lf.column(node, scope)
+
+
+def _literal(lf: _Lift, node: sge.Literal, sub: Sub, scope: list[Column]) -> E:
+    text = node.this
+    if node.is_string:
+        return E(literal(text, dt.string), dt.string, text)
+    return _number(text)
+
+
+def _number(text: str, negative: bool = False) -> E:
+    """A number as DuckDB types it: the narrowest of `INTEGER` and `BIGINT`,
+    a `DECIMAL(p, s)` with the digits as written, or a `DOUBLE` with an
+    exponent or more than 38 digits."""
+    sign = "-" if negative else ""
+    if re.fullmatch(r"\d+", text):
+        v = int(sign + text)
+        for t in (dt.int32, dt.int64):
+            if t.bounds.lower <= v <= t.bounds.upper:
+                return E(literal(v, t), t, v)
+        raise Unsupported(f"the integer {sign}{text} is a HUGEINT, which is not supported")
+    m = re.fullmatch(r"(\d*)\.(\d*)", text)
+    if m and len(m.group(1)) + len(m.group(2)) <= 38:
+        v = Decimal(sign + text)
+        t = _decimal(max(len(m.group(1)) + len(m.group(2)), 1), len(m.group(2)))
+        return E(literal(v, t), t, v)
+    v = float(sign + text)
+    return E(literal(v, dt.float64), dt.float64, v)
+
+
+def _boolean(lf: _Lift, node: sge.Boolean, sub: Sub, scope: list[Column]) -> E:
+    return E(literal(bool(node.this), dt.boolean), dt.boolean, bool(node.this))
+
+
+def _null(lf: _Lift, node: sge.Null, sub: Sub, scope: list[Column]) -> E:
+    return E(literal(None, dt.int64), dt.null, None)
+
+
+def _paren(lf: _Lift, node: sge.Paren, sub: Sub, scope: list[Column]) -> E:
+    return sub(node.this)
+
+
+def _neg(lf: _Lift, node: sge.Neg, sub: Sub, scope: list[Column]) -> E:
+    inner = node.this
+    if isinstance(inner, sge.Literal) and not inner.is_string:
+        return _number(inner.this, negative=True)
+    a = sub(inner)
+    if not _numeric(a.type):
+        raise Unsupported(f"-{a.type} is not supported")
+    return E(_fn("negate", [a.json], a.type), a.type)
+
+
+def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+    name = _ARITHMETIC[type(node)]
+    a, b = sub(node.this), sub(node.expression)
+    if not (_numeric(a.type) or a.type.is_null()) or not (_numeric(b.type) or b.type.is_null()):
+        raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
+    t = lf.common([a, b], name, sum_digits=name != "multiply")
+    if t.is_null():
+        t = dt.int32
+    if t.is_decimal():
+        # The model computes decimals at their exact scales itself; the
+        # output type is DuckDB's: `+`/`-` at the larger scale with one more
+        # integer digit, `×` at the sum of the precisions and scales, but at
+        # most 18 digits when both fit in 18 (a checked 64-bit product).
+        (p1, s1), (p2, s2) = (
+            _digits(lf.to(x, t).type if x.type.is_null() else x.type) for x in (a, b)
+        )
+        if name == "multiply":
+            p = p1 + p2
+            if p1 <= 18 and p2 <= 18 and p > 18:
+                p = 18
+            t = _decimal(p, s1 + s2)
+        args = [x if not x.type.is_null() else lf.to(x, t) for x in (a, b)]
+        return E(_fn(name, [x.json for x in args], t), t)
+    return E(_fn(name, [lf.to(a, t).json, lf.to(b, t).json], t), t)
+
+
+def _div(lf: _Lift, node: sge.Div, sub: Sub, scope: list[Column]) -> E:
+    a, b = sub(node.this), sub(node.expression)
+    for x in (a, b):
+        if not (_numeric(x.type) or x.type.is_null()):
+            raise Unsupported(f"/ of {a.type} and {b.type} is not supported")
+    if node.args.get("typed") or node.args.get("safe"):
+        raise Unsupported("typed or safe division is not DuckDB's /")
+    # DuckDB's `/` divides as doubles (F1); by zero it gives ±inf or NaN.
+    opt = _option("on_division_by_zero", lf.profile.float_division_by_zero)
+    args = [lf.to(a, dt.float64).json, lf.to(b, dt.float64).json]
+    return E(_fn("divide", args, dt.float64, [opt]), dt.float64)
+
+
+def _int_div(lf: _Lift, node: sge.IntDiv, sub: Sub, scope: list[Column]) -> E:
+    a, b = sub(node.this), sub(node.expression)
+    t = lf.common([a, b], "//")
+    if not t.is_integer():
+        raise Unsupported(f"// of {a.type} and {b.type} is not supported; it divides integers")
+    opts = [
+        _option("overflow", lf.profile.overflow),
+        _option("on_division_by_zero", lf.profile.on_division_by_zero),
+    ]
+    return E(_fn("divide", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
+
+
+def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
+    a, b = sub(node.this), sub(node.expression)
+    t = lf.common([a, b], "%")
+    if t.is_float64():
+        if lf.profile.float_modulus_by_zero != "ERROR":
+            raise Unsupported(
+                "% of doubles is not supported with DuckDB's semantics: by zero DuckDB "
+                "gives NaN, which the model's modulus cannot state"
+            )
+    elif not t.is_integer():
+        raise Unsupported(f"% of {a.type} and {b.type} is not supported yet")
+    # The remainder takes the dividend's sign (`division_type` TRUNCATE, #209
+    # R3), which is what the model does; Lean reads no `division_type` yet.
+    opt = _option("on_division_by_zero", lf.profile.on_division_by_zero)
+    return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, [opt]), t)
+
+
+def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
+    """Arguments of a comparison: decimals and integers as they are (the
+    model compares them at a common scale), anything else at one type."""
+    ts = [e.type for e in es if not e.type.is_null()]
+    if any(t.is_decimal() for t in ts) and all(t.is_decimal() or t.is_integer() for t in ts):
+        t = lf.common(es, what)
+        return [(e if not e.type.is_null() else lf.to(e, t)).json for e in es]
+    es = _temporal_literals(es)
+    t = lf.common(es, what)
+    if t.is_null():
+        t = dt.int32
+    return [lf.to(e, t).json for e in es]
+
+
+def _temporal_literals(es: list[E]) -> list[E]:
+    """String constants next to a date or timestamp read as one, as DuckDB
+    casts them."""
+    temporal = [e.type for e in es if e.type.is_date() or e.type.is_timestamp()]
+    if not temporal:
+        return es
+    return [_temporal(e, temporal[0]) if e.type.is_string() and e.constant else e for e in es]
+
+
+def _temporal(e: E, t: dt.DataType) -> E:
+    text = e.value
+    try:
+        if t.is_date():
+            v: Any = dt_.date.fromisoformat(text)
+            return E(literal(v, dt.date), dt.date, v)
+        v = dt_.datetime.fromisoformat(text)
+    except (TypeError, ValueError) as err:
+        raise Unsupported(f"cannot read {text!r} as a {t}") from err
+    if v.tzinfo is not None:
+        raise Unsupported("timestamps with a time zone are not supported")
+    ts = dt.timestamp(scale=6)
+    return E(literal(v, ts), ts, v)
+
+
+def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+    name = _COMPARISONS[type(node)]
+    args = _operands(lf, [sub(node.this), sub(node.expression)], name)
+    return E(_fn(name, args, dt.boolean), dt.boolean)
+
+
+def _logical(name: str) -> Callable[..., E]:
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        args = [sub(node.this), sub(node.expression)]
+        for a in args:
+            if not (a.type.is_boolean() or a.type.is_null()):
+                raise Unsupported(f"{name.upper()} of a {a.type} is not supported")
+        return E(_fn(name, [lf.to(a, dt.boolean).json for a in args], dt.boolean), dt.boolean)
+
+    return rule
+
+
+def _not(lf: _Lift, node: sge.Not, sub: Sub, scope: list[Column]) -> E:
+    inner = node.this
+    if isinstance(inner, sge.Is) and isinstance(inner.expression, sge.Null):
+        return E(_fn("is_not_null", [sub(inner.this).json], dt.boolean), dt.boolean)
+    a = sub(inner)
+    if not (a.type.is_boolean() or a.type.is_null()):
+        raise Unsupported(f"NOT of a {a.type} is not supported")
+    return E(_fn("not", [lf.to(a, dt.boolean).json], dt.boolean), dt.boolean)
+
+
+def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
+    if not isinstance(node.expression, sge.Null):
+        raise Unsupported(f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL is")
+    return E(_fn("is_null", [sub(node.this).json], dt.boolean), dt.boolean)
+
+
+def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
+    if node.args.get("symmetric"):
+        raise Unsupported("BETWEEN SYMMETRIC is not supported")
+    x, lo, hi = _operands(
+        lf, [sub(node.this), sub(node.args["low"]), sub(node.args["high"])], "BETWEEN"
+    )
+    both = [_fn("gte", [x, lo], dt.boolean), _fn("lte", [x, hi], dt.boolean)]
+    return E(_fn("and", both, dt.boolean), dt.boolean)
+
+
+def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
+    if node.args.get("query") is not None or node.args.get("unnest") is not None:
+        raise Unsupported("IN with a subquery is not supported yet")
+    es = [sub(node.this), *(sub(o) for o in node.expressions)]
+    es = _temporal_literals(es)
+    t = lf.common(es, "IN")
+    if t.is_null():
+        t = dt.int32
+    value, *options = [lf.to(e, t).json for e in es]
+    return E({"singularOrList": {"value": value, "options": options}}, dt.boolean)
+
+
+def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
+    ifs = node.args.get("ifs") or []
+    base = node.this
+    results = [sub(i.args["true"]) for i in ifs]
+    default = node.args.get("default")
+    dflt = sub(default) if default is not None else E(literal(None, dt.int64), dt.null, None)
+    t = lf.common([*results, dflt], "CASE")
+    if t.is_null():
+        t = dt.int32
+    conds = []
+    for i in ifs:
+        if base is not None:
+            conds.append(_fn("equal", _operands(lf, [sub(base), sub(i.this)], "CASE"), dt.boolean))
+        else:
+            c = sub(i.this)
+            if not (c.type.is_boolean() or c.type.is_null()):
+                raise Unsupported(f"CASE WHEN {_shown(i.this)}: a {c.type}, not a condition")
+            conds.append(lf.to(c, dt.boolean).json)
+    pairs = [(c, lf.to(r, t).json) for c, r in zip(conds, results, strict=True)]
+    return E(if_then(pairs, lf.to(dflt, t).json), t)
+
+
+def _coalesce(lf: _Lift, node: sge.Coalesce, sub: Sub, scope: list[Column]) -> E:
+    es = [sub(node.this), *(sub(a) for a in node.expressions)]
+    t = lf.common(es, "COALESCE")
+    if t.is_null():
+        t = dt.int32
+    return E(_fn("coalesce", [lf.to(e, t).json for e in es], t), t)
+
+
+def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
+    if isinstance(node, sge.TryCast) or node.args.get("safe"):
+        raise Unsupported("TRY_CAST is not supported yet")
+    if node.args.get("format"):
+        raise Unsupported("CAST … FORMAT is not supported")
+    try:
+        t = DuckDBType.to_ibis(node.to).copy(nullable=True)
+    except Exception as e:  # noqa: BLE001 - Ibis raises a variety
+        raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported") from e
+    type_json(t)  # refuses the types outside the model
+    a = sub(node.this)
+    if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp()):
+        return _temporal(a, t)
+    if a.constant and a.type.is_string() and t.is_decimal():
+        a = _number(a.value.strip())
+    if t.is_integer() and (a.type.is_float64() or a.type.is_decimal()):
+        rounding = lf.profile.float_to_int if a.type.is_float64() else lf.profile.decimal_to_int
+        if rounding != "TRUNCATE":
+            raise Unsupported(
+                f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
+                "model's casts (they truncate) cannot state yet; use semantics='reference', "
+                "or round() first"
+            )
+    if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
+        raise Unsupported(f"CAST of a {a.type} to {t} rounds, which is not supported yet")
+    # A numeric constant becomes a literal of the type, where that is exact
+    # (not a double or decimal made an integer, nor one that doesn't fit).
+    exact = not (t.is_integer() and not a.type.is_integer())
+    if a.constant and a.value is not None and _numeric(a.type) and _numeric(t) and exact:
+        with contextlib.suppress(Unsupported):
+            return lf.to(a, t)
+    return lf.to(E(a.json, a.type), t)
+
+
+_RULES: dict[type, Callable[..., E]] = {
+    sge.Column: _column,
+    sge.Literal: _literal,
+    sge.Boolean: _boolean,
+    sge.Null: _null,
+    sge.Paren: _paren,
+    sge.Neg: _neg,
+    sge.Add: _arith,
+    sge.Sub: _arith,
+    sge.Mul: _arith,
+    sge.Div: _div,
+    sge.IntDiv: _int_div,
+    sge.Mod: _mod,
+    sge.EQ: _compare,
+    sge.NEQ: _compare,
+    sge.LT: _compare,
+    sge.LTE: _compare,
+    sge.GT: _compare,
+    sge.GTE: _compare,
+    sge.And: _logical("and"),
+    sge.Or: _logical("or"),
+    sge.Not: _not,
+    sge.Is: _is,
+    sge.Between: _between,
+    sge.In: _in,
+    sge.Case: _case,
+    sge.Coalesce: _coalesce,
+    sge.Cast: _cast,
+}
+
+
+def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
+    """The aggregate calls in `nodes`, each once, in order; not those of
+    subqueries."""
+    found: list[sge.Expression] = []
+
+    def walk(n: sge.Expression) -> None:
+        if isinstance(n, sge.Window):
+            raise Unsupported(f"window functions ({_shown(n)}) are not supported yet")
+        if isinstance(n, sge.Subquery | sge.Select):
+            return
+        if type(n) in _AGGREGATES:
+            if any(type(a) in _AGGREGATES for a in n.find_all(*_AGGREGATES) if a is not n):
+                raise Unsupported(f"nested aggregates ({_shown(n)}) are not allowed")
+            if n not in found:
+                found.append(n)
+            return
+        if isinstance(n, sge.AggFunc):
+            raise Unsupported(f"aggregate {n.sql_name()}() is not supported yet")
+        for child in n.iter_expressions():
+            walk(child)
+
+    for n in nodes:
+        if n is not None:
+            walk(n)
+    return found
+
+
+def _count(node: sge.Expression, what: str) -> int:
+    if isinstance(node, sge.Literal) and not node.is_string and node.this.isdigit():
+        return int(node.this)
+    raise Unsupported(f"{what} must be a non-negative integer constant")
+
+
+def _normalized(name: str) -> str:
+    """A table or column name as `qualify` normalizes it: DuckDB's names are
+    case-insensitive."""
+    return normalize_identifiers(sge.to_identifier(name), dialect=DIALECT).name
+
+
+# --------------------------------------------------------------------------
+# Entry point
+
+
+def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> Lifted:
+    """The plan of the DuckDB SQL `query` over input tables of the Ibis
+    schemas `schemas` (by table name), read as named tables, with the
+    `semantics` profile ("duckdb" or "reference").
+
+    Raises:
+        Unsupported: The query is outside the subset, saying what.
+        ValueError: `semantics` is not a profile.
+    """
+    profile = PROFILES.get(semantics)
+    if profile is None:
+        raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")
+    if profile.null_ordering != sg.Dialect.get_or_raise(DIALECT).NULL_ORDERING:
+        raise Unsupported("SQLGlot's DuckDB dialect no longer sorts NULLs as DuckDB does")
+    tree = parse(query, schemas)
+    with compiling() as compiler:
+        rel, cols = _Lift(profile, schemas).query(tree)
+        out = plan(compiler, rel, [c.name for c in cols])
+    names = [c.name for c in cols]
+    if len(set(names)) != len(names):
+        dup = next(n for n in names if names.count(n) > 1)
+        raise Unsupported(f"the query has two output columns named {dup}; alias one of them")
+    schema = ibis.schema({c.name: (dt.int32 if c.type.is_null() else c.type) for c in cols})
+    return Lifted(out, schema)
