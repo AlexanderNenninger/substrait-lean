@@ -2088,6 +2088,8 @@ class Translator:
         an optional `FILTER`."""
         m = j.get("measure", {})
         name = ex.function(m.get("functionReference"))
+        if name in ("first", "last"):
+            raise Unsupported(f"{name} is not yet supported on Polars; see #271")
         if m.get("sorts") and name != "array_agg":
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         invocation = m.get("invocation", "AGGREGATION_INVOCATION_ALL")

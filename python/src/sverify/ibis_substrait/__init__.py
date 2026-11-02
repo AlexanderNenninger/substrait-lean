@@ -1171,6 +1171,8 @@ def measure(x: Exprs, op: Any) -> Json:
         ]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
+    elif isinstance(op, ops.First | ops.Last):
+        return first_last(x, op)
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
@@ -1213,6 +1215,32 @@ def collect(x: Exprs, op: Any) -> Json:
     if op.where is not None:
         keep = call("and", [x(op.where), keep])
     return {"measure": agg, "filter": keep}
+
+
+def first_last(x: Exprs, op: Any) -> Json:
+    """`FIRST(x ORDER BY …)` / `LAST(…)` of the non-NULL values (#55). Without
+    `order_by` it is any row's value, which is refused."""
+    name = "first" if isinstance(op, ops.First) else "last"
+    if op.include_null:
+        raise Unsupported(f"{name}(include_null=True) is not supported")
+    if not op.order_by:
+        raise Unsupported(f"{name}() without order_by is any row's value; give it an order_by")
+    sorts = []
+    for k in op.order_by:
+        key = _sort_key(x, k)
+        if "selection" not in key["expr"]:
+            raise Unsupported(f"{name}(order_by=) must order by columns")
+        sorts.append(key)
+    agg: Json = {
+        "functionReference": _anchor(name),
+        "arguments": [{"value": x(op.arg)}],
+        "sorts": sorts,
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    out: Json = {"measure": agg}
+    if op.where is not None:
+        out["filter"] = x(op.where)
+    return out
 
 
 def rel(op: Any) -> Json:
