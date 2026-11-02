@@ -22,8 +22,6 @@ from sverify.engine import connect, create_table, substrait_json
 from sverify.incremental import IncrementalView
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 
-pytestmark = pytest.mark.lift_backlog
-
 T = ibis.schema({"a": "int64", "b": "int64"})
 U = ibis.schema({"a": "int64", "s": "string"})
 

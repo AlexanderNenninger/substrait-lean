@@ -26,8 +26,6 @@ from sverify.errors import VerificationError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_values
 
-pytestmark = pytest.mark.lift_backlog
-
 R = ibis.schema({"a": "int64", "b": "int64"})
 MIN = -(2**63)
 
@@ -76,8 +74,9 @@ def test_rounding_semantics_match_datafusion(sql):
     con = connect()
     rows = [(f,) for f in DOUBLES]
     create_table(con, "r", F, rows)
-    expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
-    plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
+    # The reference's casts truncate, as DataFusion's do (DuckDB's round).
+    expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
+    plan = inline_tables(json.loads(substrait_json(con, sql, "reference")), {"r": rows})
     got = lean_values(json.dumps(plan))
     # Doubles come back printed, or as codes when tiny (±0.0); `CAST(... AS
     # BIGINT)` as integers.

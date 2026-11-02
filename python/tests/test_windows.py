@@ -26,7 +26,7 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.errors import NotIncremental
-from sverify.ibis_substrait import Unsupported, to_substrait
+from sverify.ibis_substrait import to_substrait
 from sverify.incremental import IncrementalView
 from sverify.testing import (
     canonical,
@@ -36,8 +36,6 @@ from sverify.testing import (
     lean_rows,
     lean_values,
 )
-
-pytestmark = pytest.mark.lift_backlog
 
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})
 
@@ -263,10 +261,10 @@ def test_ordered_windows_match_datafusion(sql, rows):
     assert canonical(lean) == canonical(expected)
 
 
-def test_ntile_is_the_standard():
-    """NTILE deals the rows out as the SQL standard says (`ntileOf`): the first
-    `n % k` buckets hold one row more, so 6 rows in 4 tiles are 1 1 2 2 3 4,
-    as on DuckDB. (DataFusion's own NTILE gives 1 1 2 3 3 4.)"""
+def test_ntile_is_the_sql_standards():
+    """NTILE deals the rows out as the SQL standard says (`ntileOf`), as
+    DuckDB does: the first `n % k` buckets hold one row more, so 6 rows in 4
+    tiles are 1 1 2 2 3 4. (DataFusion's own NTILE gives 1 1 2 3 3 4.)"""
     sql = "SELECT t, NTILE(4) OVER (ORDER BY t) AS n FROM r"
     rows = [(0, t, 0) for t in range(6)]
     lean, expected = lean_and_datafusion(sql, rows)
@@ -352,9 +350,12 @@ def test_range_frames_match_datafusion(i, rows):
     assert canonical(lean) == canonical(expected)
 
 
-def test_sql_range_offsets_are_refused():
-    con = connect()
-    create_table(con, "r", SCHEMA, [])
-    sql = "SELECT COUNT(*) OVER (ORDER BY t RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS b FROM r"
-    with pytest.raises(Unsupported, match="RANGE"):
-        substrait_json(con, sql)
+def test_sql_range_offsets_are_the_sort_keys_distance():
+    """A RANGE frame with an offset holds the rows whose sort key is within
+    it (DataFusion's SQL producer dropped such offsets; the lift writes them)."""
+    sql = (
+        "SELECT t, COUNT(*) OVER (ORDER BY t RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS b FROM r"
+    )
+    rows = [(0, t, 0) for t in (1, 2, 4, 5, 7)] + [(1, 2, 0)]
+    lean, expected = lean_and_datafusion(sql, rows)
+    assert sorted(lean) == sorted(expected) == [(1, 1), (2, 3), (2, 3), (4, 1), (5, 2), (7, 1)]

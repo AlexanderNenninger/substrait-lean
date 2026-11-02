@@ -9,7 +9,7 @@ from hypothesis import given, settings
 from sverify_dev import duckdb_fuzz, fuzz
 from sverify_dev.fuzz import INT
 
-pytestmark = [pytest.mark.backend("duckdb"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("duckdb")
 
 T_ROW = (None, None, None, None, None, None)
 
