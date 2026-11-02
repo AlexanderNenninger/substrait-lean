@@ -454,6 +454,12 @@ tables. A table format plays four roles:
   files that changed are diffed, and the report says so.
   `refresh(audit=True)` also compares the batch with the new snapshot and
   every node with a recompute, before committing anything (`AuditError`).
+  On DuckDB, a local table is never loaded into Python: the pipeline holds
+  the Parquet files of its version, with the rows that deletion vectors or
+  position delete files remove, and DuckDB reads them with `read_parquet`.
+  Partitioned tables, Delta column mapping, renamed Iceberg columns,
+  equality deletes, object stores and the other engines read through Arrow
+  (#173).
 * A source of preconditions. `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
   min/max of integers, doubles (only where the files count no NaN), dates

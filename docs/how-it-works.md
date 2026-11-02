@@ -154,6 +154,21 @@ contracts find a table's data). `con.datafusion` is a DataFusion session with
 the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
+A Delta or Iceberg source on DuckDB is held as a scan (`sverify._scan.Scan`):
+the data files sverify keeps after its own pruning, the rows that deletion
+vectors or position delete files remove (by file and row position), the
+schema and the source's filter. DuckDB reads it as a view over
+`read_parquet`, and the Ibis backend views the same files, so the table never
+passes through Python. Columns are cast to the types DuckDB gives the Arrow
+schema, a column no file has is NULL, and doubles are read as the model has
+them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
+(`upstream/LEDGER.md` DD-4). Looking a scan up in `con.arrow` reads it into
+Arrow, which is how the other engines get it. A refresh holds the table as the
+files of the new version, after DuckDB checks that the batch's deletes are in
+the old files. If those files were vacuumed, the views reading the table are
+recomputed on the new snapshot. `python/tests/test_io_native.py` compares
+both paths at every version and through refreshes.
+
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it runs plans
 with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to

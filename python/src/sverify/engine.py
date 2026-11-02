@@ -23,6 +23,8 @@ import json
 import os
 import subprocess
 import threading
+from collections.abc import Iterator, MutableMapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -35,6 +37,7 @@ import sqlglot as sg
 from google.protobuf import json_format
 from substrait.plan_pb2 import Plan
 
+from sverify._scan import Scan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
 
@@ -98,10 +101,46 @@ def _ibis_backend() -> Any:
     return ibis.duckdb.from_connection(cursor)
 
 
+class _Arrow(MutableMapping[str, pa.Table]):
+    """`Connection.arrow`: the connection's tables as Arrow tables. A table
+    held as a `Scan` is read into Arrow when it is first looked up here, and
+    is held as that Arrow table from then on."""
+
+    def __init__(self, con: Connection):
+        self._con = con
+
+    def __getitem__(self, name: str) -> pa.Table:
+        table = self._con._tables[name]
+        if isinstance(table, Scan):
+            self._con.put(name, table.to_arrow())
+            table = self._con._tables[name]
+        assert isinstance(table, pa.Table)
+        return table
+
+    def __setitem__(self, name: str, table: pa.Table) -> None:
+        self._con.put(name, table)
+
+    def __delitem__(self, name: str) -> None:
+        if name not in self._con._tables:
+            raise KeyError(name)
+        self._con.drop(name)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(list(self._con._tables))
+
+    def __len__(self) -> int:
+        return len(self._con._tables)
+
+    def __contains__(self, name: object) -> bool:
+        return name in self._con._tables
+
+
 class Connection:
     """Named Arrow tables, and the engine that runs plans over them.
 
     * `arrow[name]` is the table as given (`put`), the input of every engine.
+      A table format's source may instead give DuckDB the files to read
+      (`get`, a `Scan`); looking it up in `arrow` reads it into Arrow.
     * `table(name)` is an Ibis table bound to it, through an Ibis DuckDB
       backend that views the Arrow tables (`ibis`). Contracts find a table's
       data and metadata through it, and Ibis's own `execute` works on it.
@@ -130,7 +169,9 @@ class Connection:
         if engine not in ENGINES:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
         self.engine: Engine = engine
-        self.arrow: dict[str, pa.Table] = {}
+        self._tables: dict[str, pa.Table | Scan] = {}
+        self._views: dict[str, Any] = {}
+        self.arrow: MutableMapping[str, pa.Table] = _Arrow(self)
         self.ibis: Any = _ibis_backend()
         # A bound table keeps its backend alive, and the backend its connection.
         self.ibis._sverify_connection = self
@@ -150,14 +191,23 @@ class Connection:
         Raises:
             KeyError: The connection has no table `name`.
         """
-        schema = ibis.Schema.from_pyarrow(self.arrow[name].schema)
+        schema = ibis.Schema.from_pyarrow(self.schema(name))
         return ops.DatabaseTable(name, schema=schema, source=self.ibis).to_expr()
 
     def has(self, name: str) -> bool:
         """Whether the connection has a table `name`."""
-        return name in self.arrow
+        return name in self._tables
 
-    def put(self, name: str, table: pa.Table) -> None:
+    def get(self, name: str) -> pa.Table | Scan:
+        """Table `name` as it is held: an Arrow table, or a `Scan` of files
+        that DuckDB reads itself."""
+        return self._tables[name]
+
+    def schema(self, name: str) -> pa.Schema:
+        """The Arrow schema of table `name`."""
+        return self._tables[name].schema
+
+    def put(self, name: str, table: pa.Table | Scan) -> None:
         """Add or replace table `name`, with doubles as the model has them
         (`canonical`: one zero, one NaN).
 
@@ -167,20 +217,33 @@ class Connection:
 
         Args:
             name: The table's name.
-            table: Its contents.
+            table: Its contents, or a `Scan` of the files that hold them,
+                which the Ibis backend views and DuckDB reads itself.
         """
-        table = canonical(table.cast(plain_schema(table.schema)))
+        if isinstance(table, Scan) and self._datafusion is not None:
+            table = table.to_arrow()  # DataFusion's session holds Arrow tables
         self.drop(name)
-        self.arrow[name] = table
+        if isinstance(table, Scan):
+            scan = replace(table, schema=plain_schema(table.schema))
+            self._tables[name] = scan
+            # A scan whose files were removed is held, but cannot be read.
+            if scan.readable():
+                self._views[name] = scan.attach(self.ibis.con, name)
+            return
+        table = canonical(table.cast(plain_schema(table.schema)))
+        self._tables[name] = table
         self.ibis.con.register(name, table)
         if self._datafusion is not None:
             _register(self._datafusion, name, table)
 
     def drop(self, name: str) -> None:
         """Remove table `name`; nothing happens if there is none."""
-        if self.arrow.pop(name, None) is None:
+        if (table := self._tables.pop(name, None)) is None:
             return
-        self.ibis.con.unregister(name)
+        if (drop := self._views.pop(name, None)) is not None:
+            drop()
+        elif isinstance(table, pa.Table):
+            self.ibis.con.unregister(name)
         if self._datafusion is not None and self._datafusion.table_exist(name):
             self._datafusion.deregister_table(name)
 
@@ -268,8 +331,8 @@ def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
     except sg.errors.ParseError:
         read = set()  # the lift says why
     schemas = {
-        name: ibis.Schema.from_pyarrow(t.schema)
-        for name, t in con.arrow.items()
+        name: ibis.Schema.from_pyarrow(con.schema(name))
+        for name in con.arrow
         if name.lower() in read
     }
     return json.dumps(lift(sql, schemas, semantics).plan)
@@ -668,15 +731,17 @@ def run_plan(con: Connection, plan_json: str, engine: Engine | Any = None) -> pa
         return spark_engine.run(plan, tables, None if engine == "spark" else engine)
     if engine == "datafusion":
         return run_substrait_json(con, datafusion_plan(plan_json))
-    tables = {t: con.arrow[t] for t in read_tables(json.loads(plan_json))}
+    read = read_tables(json.loads(plan_json))
+    if engine == "duckdb":
+        from sverify import duckdb_engine
+
+        # DuckDB reads a table held as a `Scan` from its files.
+        return duckdb_engine.run(plan_json, {t: con.get(t) for t in read})
+    tables = {t: con.arrow[t] for t in read}
     if engine == "polars":
         from sverify import polars_engine
 
         return polars_engine.run(plan_json, tables)
-    if engine == "duckdb":
-        from sverify import duckdb_engine
-
-        return duckdb_engine.run(plan_json, tables)
     raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
 
 
@@ -693,8 +758,8 @@ def _rename_tables(node: object, names: dict[str, str]) -> None:
             _rename_tables(v, names)
 
 
-def put_table(con: Connection, name: str, table: pa.Table) -> None:
-    """Register (or replace) an in-memory table."""
+def put_table(con: Connection, name: str, table: pa.Table | Scan) -> None:
+    """Register (or replace) an in-memory table, or a `Scan` of files."""
     con.put(name, table)
 
 

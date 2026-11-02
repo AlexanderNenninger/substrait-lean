@@ -21,10 +21,12 @@ Feed.
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import PurePosixPath
 from typing import Literal
+from urllib.parse import unquote, urlparse
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -42,6 +44,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
+from sverify._scan import Scan, ScanSnapshot, local_path
 from sverify._weighted import WEIGHT, concat, expanded, grouped, rows_of
 from sverify.contracts import Fact
 from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
@@ -145,6 +148,34 @@ def _basename(uri: str) -> str:
     return PurePosixPath(uri.rstrip("/")).name or uri
 
 
+# Reader features after which a Delta table's files hold its rows by column
+# name: `_native` reads deletion vectors itself.
+_NATIVE_FEATURES = {"deletionVectors", "timestampNtz", "v2Checkpoint", "vacuumProtocolCheck"}
+
+
+def _deleted(dt: DeltaTable, paths: dict[str, str]) -> pa.Table | None:
+    """The rows the deletion vectors delete from the files `paths` (from
+    each add action's path to the file's local path): the file and the
+    row's position in it."""
+    if not _deletion_vectors(dt):
+        return None
+    dvs = pa.table(dt.deletion_vectors())
+    by_suffix = {"/" + unquote(p).lstrip("/"): local for p, local in paths.items()}
+    files, positions = [], []
+    for uri, sel in zip(dvs.column("filepath"), dvs.column("selection_vector"), strict=True):
+        path = unquote(urlparse(uri.as_py()).path)
+        local = next((v for k, v in by_suffix.items() if path.endswith(k)), None)
+        if local is None:
+            continue  # a file the scan does not read
+        # A row beyond the selection vector's end is kept.
+        gone = pc.call_function("indices_nonzero", [pc.call_function("invert", [sel.values])])
+        files.append(pa.repeat(pa.scalar(local), len(gone)))
+        positions.append(gone.cast(pa.int64()))
+    if not files:
+        return pa.table({"file": pa.array([], pa.string()), "pos": pa.array([], pa.int64())})
+    return pa.table({"file": pa.concat_arrays(files), "pos": pa.concat_arrays(positions)})
+
+
 class DeltaSource(Pipeable):
     """A Delta table read by version, as the input of transforms.
 
@@ -223,6 +254,9 @@ class DeltaSource(Pipeable):
         self.name = name or _basename(self.uri)
         self.skipped: list[str] = []
         """The files the last snapshot did not read."""
+        self._kept: dict[tuple[str, str], bool] = {}
+        # Whether `where` may hold in a file, by path and schema: files are
+        # immutable, so their statistics are proved about once.
 
     def _facts(
         self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
@@ -230,13 +264,26 @@ class DeltaSource(Pipeable):
         filtered = [] if self.where is None else [Fact(self.where, FILTER)]
         return _facts(dt, files, source) + filtered
 
+    def _keep(self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]]) -> set[str]:
+        """The files that may hold rows passing `where` (`prune`); records
+        the others in `skipped`."""
+        if self.where is None:
+            return set(files)
+        schema = _arrow_schema(dt)
+        new = {p: s for p, s in files.items() if (p, str(schema)) not in self._kept}
+        if new:
+            kept = prune(new, schema, self.where, hi_slack=TIMESTAMP_SLACK)
+            self._kept.update({(p, str(schema)): p in kept for p in new})
+        keep = {p for p in files if self._kept[(p, str(schema))]}
+        self.skipped = sorted(set(files) - keep)
+        return keep
+
     def _rows(self, dt: DeltaTable) -> tuple[pa.Table, dict[str, dict[str, ColumnStats]]]:
         """The source's rows at `dt`'s version, and the files they come from."""
         files = file_stats(dt)
         if self.where is None:
             return _read(dt), files
-        keep = prune(files, _arrow_schema(dt), self.where, hi_slack=TIMESTAMP_SLACK)
-        self.skipped = sorted(set(files) - keep)
+        keep = self._keep(dt, files)
         if _deletion_vectors(dt):
             table = _read(dt)  # delta-rs reads deletion vectors only whole
         else:
@@ -247,6 +294,41 @@ class DeltaSource(Pipeable):
             ).to_table()
         rows = filter_rows(table.cast(_arrow_schema(dt)), self.where)
         return rows, {p: s for p, s in files.items() if p in keep}
+
+    def _native(self, version: int | None = None) -> ScanSnapshot | None:
+        """The snapshot at `version` as the Parquet files DuckDB reads
+        itself (#173): the files `where` does not rule out, with their
+        deletion vectors, and the same facts as `snapshot`. None where
+        reading the files by column name may not give delta-rs's rows:
+        partition columns (kept in the log, not the files), column mapping,
+        other reader features, and object stores."""
+        root = local_path(self.uri)
+        if root is None:
+            return None
+        dt = self.table(version)
+        meta = dt.metadata()
+        features = set(dt.protocol().reader_features or [])
+        mapping = meta.configuration.get("delta.columnMapping.mode", "none")
+        if meta.partition_columns or mapping != "none" or features - _NATIVE_FEATURES:
+            return None
+        files = file_stats(dt)
+        keep = self._keep(dt, files)
+        paths = {}
+        for p in keep:
+            local = local_path(p) if urlparse(p).scheme else os.path.join(root, unquote(p))
+            if local is None:
+                return None
+            paths[p] = local
+        v = dt.version()
+        scan = Scan(
+            tuple(sorted(paths.values())),
+            _arrow_schema(dt),
+            _deleted(dt, paths),
+            self.where,
+            f"{self.name}@v{v}",
+        )
+        kept = {p: s for p, s in files.items() if p in keep}
+        return ScanSnapshot(v, scan, self._facts(dt, kept, f"file stats @v{v}"))
 
     def table(self, version: int | None = None) -> DeltaTable:
         """The table as delta-rs opens it.
