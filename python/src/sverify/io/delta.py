@@ -21,10 +21,16 @@ Feed.
 
 from __future__ import annotations
 
+import os
+import time
+import uuid
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import PurePosixPath
 from typing import Literal
+from urllib.parse import unquote, urlparse
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -39,12 +45,15 @@ try:
         Transaction,
         write_deltalake,
     )
+    from deltalake.transaction import AddAction, RemoveAction
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
-from sverify._weighted import WEIGHT, concat, expanded, grouped, rows_of
+from sverify._scan import Native, Scan, ScanSnapshot, local_path
+from sverify._weighted import WEIGHT, expanded, rows_of, weights_in
 from sverify.contracts import Fact
 from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
+from sverify.io import _engine
 from sverify.io._common import (
     FILTER,
     ColumnStats,
@@ -145,6 +154,46 @@ def _basename(uri: str) -> str:
     return PurePosixPath(uri.rstrip("/")).name or uri
 
 
+# Reader features after which a Delta table's files hold its rows by column
+# name: `_native` reads deletion vectors itself.
+_NATIVE_FEATURES = {"deletionVectors", "timestampNtz", "v2Checkpoint", "vacuumProtocolCheck"}
+
+
+def _local_files(root: str, paths: Iterable[str]) -> dict[str, str] | None:
+    """Each add action's path, to the file's local path; None if one is
+    not local."""
+    out = {}
+    for p in paths:
+        local = local_path(p) if urlparse(p).scheme else os.path.join(root, unquote(p))
+        if local is None:
+            return None
+        out[p] = local
+    return out
+
+
+def _deleted(dt: DeltaTable, paths: dict[str, str]) -> pa.Table | None:
+    """The rows the deletion vectors delete from the files `paths` (from
+    each add action's path to the file's local path): the file and the
+    row's position in it."""
+    if not _deletion_vectors(dt):
+        return None
+    dvs = pa.table(dt.deletion_vectors())
+    by_suffix = {"/" + unquote(p).lstrip("/"): local for p, local in paths.items()}
+    files, positions = [], []
+    for uri, sel in zip(dvs.column("filepath"), dvs.column("selection_vector"), strict=True):
+        path = unquote(urlparse(uri.as_py()).path)
+        local = next((v for k, v in by_suffix.items() if path.endswith(k)), None)
+        if local is None:
+            continue  # a file the scan does not read
+        # A row beyond the selection vector's end is kept.
+        gone = pc.call_function("indices_nonzero", [pc.call_function("invert", [sel.values])])
+        files.append(pa.repeat(pa.scalar(local), len(gone)))
+        positions.append(gone.cast(pa.int64()))
+    if not files:
+        return pa.table({"file": pa.array([], pa.string()), "pos": pa.array([], pa.int64())})
+    return pa.table({"file": pa.concat_arrays(files), "pos": pa.concat_arrays(positions)})
+
+
 class DeltaSource(Pipeable):
     """A Delta table read by version, as the input of transforms.
 
@@ -223,6 +272,9 @@ class DeltaSource(Pipeable):
         self.name = name or _basename(self.uri)
         self.skipped: list[str] = []
         """The files the last snapshot did not read."""
+        self._kept: dict[tuple[str, str], bool] = {}
+        # Whether `where` may hold in a file, by path and schema: files are
+        # immutable, so their statistics are proved about once.
 
     def _facts(
         self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str
@@ -230,13 +282,26 @@ class DeltaSource(Pipeable):
         filtered = [] if self.where is None else [Fact(self.where, FILTER)]
         return _facts(dt, files, source) + filtered
 
+    def _keep(self, dt: DeltaTable, files: dict[str, dict[str, ColumnStats]]) -> set[str]:
+        """The files that may hold rows passing `where` (`prune`); records
+        the others in `skipped`."""
+        if self.where is None:
+            return set(files)
+        schema = _arrow_schema(dt)
+        new = {p: s for p, s in files.items() if (p, str(schema)) not in self._kept}
+        if new:
+            kept = prune(new, schema, self.where, hi_slack=TIMESTAMP_SLACK)
+            self._kept.update({(p, str(schema)): p in kept for p in new})
+        keep = {p for p in files if self._kept[(p, str(schema))]}
+        self.skipped = sorted(set(files) - keep)
+        return keep
+
     def _rows(self, dt: DeltaTable) -> tuple[pa.Table, dict[str, dict[str, ColumnStats]]]:
         """The source's rows at `dt`'s version, and the files they come from."""
         files = file_stats(dt)
         if self.where is None:
             return _read(dt), files
-        keep = prune(files, _arrow_schema(dt), self.where, hi_slack=TIMESTAMP_SLACK)
-        self.skipped = sorted(set(files) - keep)
+        keep = self._keep(dt, files)
         if _deletion_vectors(dt):
             table = _read(dt)  # delta-rs reads deletion vectors only whole
         else:
@@ -247,6 +312,38 @@ class DeltaSource(Pipeable):
             ).to_table()
         rows = filter_rows(table.cast(_arrow_schema(dt)), self.where)
         return rows, {p: s for p, s in files.items() if p in keep}
+
+    def _native(self, version: int | None = None) -> ScanSnapshot | None:
+        """The snapshot at `version` as the Parquet files DuckDB reads
+        itself (#173): the files `where` does not rule out, with their
+        deletion vectors, and the same facts as `snapshot`. None where
+        reading the files by column name may not give delta-rs's rows:
+        partition columns (kept in the log, not the files), column mapping,
+        other reader features, and object stores."""
+        root = local_path(self.uri)
+        if root is None:
+            return None
+        dt = self.table(version)
+        meta = dt.metadata()
+        features = set(dt.protocol().reader_features or [])
+        mapping = meta.configuration.get("delta.columnMapping.mode", "none")
+        if meta.partition_columns or mapping != "none" or features - _NATIVE_FEATURES:
+            return None
+        files = file_stats(dt)
+        keep = self._keep(dt, files)
+        paths = _local_files(root, keep)
+        if paths is None:
+            return None
+        v = dt.version()
+        scan = Scan(
+            tuple(sorted(paths.values())),
+            _arrow_schema(dt),
+            _deleted(dt, paths),
+            self.where,
+            f"{self.name}@v{v}",
+        )
+        kept = {p: s for p, s in files.items() if p in keep}
+        return ScanSnapshot(v, scan, self._facts(dt, kept, f"file stats @v{v}"))
 
     def table(self, version: int | None = None) -> DeltaTable:
         """The table as delta-rs opens it.
@@ -394,19 +491,40 @@ class DeltaSource(Pipeable):
         )
 
 
+def _add_action(name: str, path: str, schema: pa.Schema) -> AddAction:
+    """The add action of a file DuckDB wrote at `path` (`name` in the
+    table's directory), with its statistics."""
+    return AddAction(
+        name,
+        os.path.getsize(path),
+        {},
+        int(time.time() * 1000),
+        True,
+        _engine.delta_stats(path, schema),
+    )
+
+
 def _is_in(column: pa.ChunkedArray, values: tuple[str, ...]) -> pa.ChunkedArray:
     return pc.call_function("is_in", [column], pc.SetLookupOptions(pa.array(values)))
 
 
 def _same_sql(a: str | None, b: str) -> bool:
-    """The same condition, up to parentheses: Delta stores a constraint as
-    it reads it (`(x IS NULL) OR (x > 0)` as `x IS NULL OR x > 0`)."""
+    """The same condition, up to parentheses and the spelling of numbers:
+    Delta stores a constraint as it reads it (`(x IS NULL) OR (x > 0)` as
+    `x IS NULL OR x > 0`, `x >= 0.0` as `x >= 0`)."""
     if a is None:
         return False
 
+    def unwrap(n: sg.exp.Expression) -> sg.exp.Expression:
+        return n.this if isinstance(n, sg.exp.Paren) else n
+
+    def number(n: sg.exp.Expression) -> sg.exp.Expression:
+        if isinstance(n, sg.exp.Literal) and n.is_number:
+            return sg.exp.Literal.number(str(Decimal(n.this).normalize()))
+        return n
+
     def tree(sql: str) -> sg.exp.Expression:
-        e = sg.parse_one(sql, read="postgres")
-        return e.transform(lambda n: n.this if isinstance(n, sg.exp.Paren) else n)
+        return sg.parse_one(sql, read="postgres").transform(unwrap).transform(number)
 
     return a == b or tree(a) == tree(b)
 
@@ -552,11 +670,16 @@ class DeltaSink(Sink):
         else:
             mode = "overwrite" if change.replace else "merge"
         missing = self._constraints(dt, contract, replace=mode != "merge")
+        root = local_path(self.uri)
+        if mode != "overwrite" and root is not None and change.native is not None:
+            done = self._write_native(dt, root, mode, change, missing, commit)
+            if done is not None:
+                version = DeltaTable(self.uri, storage_options=options).version()
+                return SinkWrite(mode, version, contract, *done, contract.checks)
         if mode == "merge":
             if missing:
                 dt.alter.add_constraint(missing)
-            assert self._written is not None
-            inserted, deleted = self._merge(dt, schema, self._written, view.state, commit)
+            inserted, deleted = self._merge(dt, schema, change.change, view.state, commit)
         else:
             # The rows may come from another plan, with other columns: the
             # schema becomes the rows'. Its constraints hold only once the
@@ -578,6 +701,81 @@ class DeltaSink(Sink):
             inserted, deleted = rows.num_rows, 0
         version = DeltaTable(self.uri, storage_options=options).version()
         return SinkWrite(mode, version, contract, inserted, deleted, contract.checks)
+
+    def _write_native(
+        self,
+        dt: DeltaTable,
+        root: str,
+        mode: Literal["created", "merge"],
+        change: SinkChange,
+        missing: dict[str, str],
+        commit: CommitProperties,
+    ) -> tuple[int, int] | None:
+        """Have DuckDB write the files of the state (`created`) or of the
+        change (`merge`), and commit them in one transaction with the
+        contract and the epoch: the files holding rows the change deletes
+        are rewritten without them, and the rows it inserts are a new file,
+        as delta-rs's MERGE does. The constraints are the node's proved
+        guarantees, so they hold on the rows without delta-rs checking them.
+        Returns the rows written and deleted; None if the table's files do
+        not hold the rows the change deletes (another writer changed it, or
+        a layout `DeltaSource` does not scan): then the Arrow path writes."""
+        assert change.native is not None
+        rows, delta = change.native
+        schema = change.schema
+        actions: list[AddAction | RemoveAction] = []
+
+        def add(sql: str) -> int:
+            name = f"part-{uuid.uuid4()}-sverify.parquet"
+            path = os.path.join(root, name)
+            n = _engine.copy(sql, path, schema)
+            if n:
+                actions.append(_add_action(name, path, schema))
+            else:
+                os.remove(path)
+            return n
+
+        if mode == "created":
+            # An empty table: adding its constraints reads no rows.
+            if missing:
+                dt.alter.add_constraint(missing)
+            inserted, deleted = add(_engine.rows_sql(rows, schema)), 0
+        else:
+            inserted, deleted = _engine.counts(delta)
+            if not inserted and not deleted:
+                return 0, 0
+            gone = None
+            if deleted:
+                snap = DeltaSource(self.uri, storage_options=self.storage_options)._native()
+                if snap is None:
+                    return None
+                gone = _engine.positions(snap.scan, delta)
+                if gone is None:
+                    return None
+            if missing:
+                dt.alter.add_constraint(missing)
+                dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
+            if gone is not None:
+                logged = _local_files(root, file_stats(dt)) or {}
+                by_local = {v: k for k, v in logged.items()}
+                for file in pc.call_function("unique", [gone.column("file")]).to_pylist():
+                    at = gone.filter(pc.call_function("equal", [gone.column("file"), file]))
+                    name = f"part-{uuid.uuid4()}-sverify.parquet"
+                    path = os.path.join(root, name)
+                    if _engine.rewrite(file, at.select(["pos"]), path):
+                        actions.append(_add_action(name, path, schema))
+                    else:
+                        os.remove(path)
+                    now = int(time.time() * 1000)
+                    actions.append(
+                        RemoveAction(by_local[file], True, now, os.path.getsize(file), {})
+                    )
+            if inserted:
+                add(_engine.inserts_sql(delta, schema))
+        dt.create_write_transaction(
+            actions, mode="append", schema=dt.schema(), commit_properties=commit
+        )
+        return inserted, deleted
 
     def _constraints(self, dt: DeltaTable, contract: Contract, *, replace: bool) -> dict[str, str]:
         """The contract's CHECK constraints the table lacks. A constraint of
@@ -603,13 +801,13 @@ class DeltaSink(Sink):
         self,
         dt: DeltaTable,
         schema: pa.Schema,
-        old: pa.Table,
-        new: pa.Table,
+        change: pa.Table,
+        state: pa.Table | Native,
         commit: CommitProperties,
     ) -> tuple[int, int]:
-        """Replace every row whose multiplicity changed from `old` to `new`
-        (weighted tables), in one commit."""
-        changed = _multiplicities(old, new)
+        """Replace every row whose multiplicity `change` changed (a weighted
+        table) with its copies in the view's `state`, in one commit."""
+        changed = _multiplicities(change, state)
         if not changed.num_rows:
             return 0, 0
         n_old, n_new = changed.column(_OLD), changed.column(_NEW)
@@ -646,16 +844,13 @@ class DeltaSink(Sink):
 _OLD, _NEW = "__sverify_old", "__sverify_new"
 
 
-def _multiplicities(old: pa.Table, new: pa.Table) -> pa.Table:
-    """The rows whose number of copies differs between the weighted tables
-    `old` and `new`, with both numbers (`_OLD`, `_NEW`) and the difference
-    (`WEIGHT`)."""
-
-    def side(z: pa.Table, o: bool) -> pa.Table:
-        w = z.column(WEIGHT)
-        zero = pa.repeat(pa.scalar(0, pa.int64()), z.num_rows)
-        rows = rows_of(z)
-        rows = rows.append_column(_OLD, w if o else zero).append_column(_NEW, zero if o else w)
-        return rows.append_column(WEIGHT, pc.call_function("negate", [w]) if o else w)
-
-    return grouped(concat([side(new, False), side(old, True)]), (_OLD, _NEW, WEIGHT))
+def _multiplicities(change: pa.Table, state: pa.Table | Native) -> pa.Table:
+    """The rows `change` (a weighted table) changes, with their number of
+    copies before (`_OLD`) and after it (`_NEW`, their weight in the view's
+    `state`), and the difference (`WEIGHT`)."""
+    w = change.column(WEIGHT).combine_chunks()
+    new = weights_in(state, change)
+    old = pc.call_function("subtract", [new, w])
+    return (
+        rows_of(change).append_column(_OLD, old).append_column(_NEW, new).append_column(WEIGHT, w)
+    )

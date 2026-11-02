@@ -95,7 +95,9 @@ inductive AggFn where
   /-- `FIRST` (`last := false`) and `LAST` of the values in the measure's
   `sort` order (#55), as `ARRAY_AGG(x ORDER BY …)[1]` and its last element:
   NULLs skipped, NULL without values. Ties make it depend on the engine, as
-  for `collect`, which `Rel.windowsTotal` reports. -/
+  for `collect`, which `Rel.windowsTotal` reports; without a sort every row
+  ties (an engine may even pick each measure's value from another row), so
+  contracts see only the values' range (`Measure.abs`). -/
   | pick (last : Bool)
   /-- `COVAR_SAMP`/`COVAR_POP` and `CORR` of pairs of doubles (#54), whose
   argument is `pair x y` (rows with a NULL skipped). Engines compute them
@@ -104,6 +106,10 @@ inductive AggFn where
   pairs or a side whose values are all equal (DuckDB gives NaN there). -/
   | cov (sample : Bool)
   | corr
+  /-- `STRING_AGG(x, sep ORDER BY …)` (Ibis's `group_concat`, #55): the strings
+  in the measure's `sort` order, joined by the constant `sep`; NULLs skipped,
+  NULL without values. Ties make it depend on the engine, as for `pick`. -/
+  | concat (sep : String)
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -230,6 +236,7 @@ def AggFn.apply : AggFn → List Value → Value
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
   | .collect, vs => .list vs
   | .pick last, v :: vs => if last then (v :: vs).getLast (List.cons_ne_nil _ _) else v
+  | .concat sep, vs => .str (sep.intercalate (vs.map fun | .str s => s | _ => ""))
 
 /-- `collect` takes the rows in its sort order (a stable sort, so without
 one in list order: one of the orders an engine may choose). -/
@@ -237,11 +244,12 @@ def Measure.eval (rows : Relation) (m : Measure) : Value :=
   match m.fn with
   | .collect => AggFn.collect.apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | .pick last => (AggFn.pick last).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
+  | .concat sep => (AggFn.concat sep).apply (m.inputs (rows.mergeSort (sortLe m.sort)))
   | f => f.apply (m.inputs rows)
 
 /-- Does the aggregate take its rows in the measure's `sort` order? -/
 def AggFn.sorts : AggFn → Bool
-  | .collect | .pick _ => true
+  | .collect | .pick _ | .concat _ => true
   | _ => false
 
 theorem Measure.eval_eq {m : Measure} (h : m.fn.sorts = false) (rows : Relation) :

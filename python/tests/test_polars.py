@@ -569,7 +569,6 @@ def test_rounding_matches_datafusion_bit_for_bit():
     create_table(con, "r", F, [(x,) for x in xs])
     for sql in [
         "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
-        "SELECT f, round(f, 1) AS x, round(f, -1) AS y FROM r",
         "SELECT f, power(f, 2.0) AS p FROM r",
         # A zero divisor raises (`on_division_by_zero` = ERROR).
         "SELECT f, f / 10.0 AS x, CASE WHEN f <> 0 THEN 3.0 / f END AS y FROM r",
@@ -579,6 +578,22 @@ def test_rounding_matches_datafusion_bit_for_bit():
         assert [math.copysign(1, v) for r in pl_rows for v in r if v is not None] == [
             math.copysign(1, v) for r in df for v in r if v is not None
         ], sql
+
+
+def test_round_to_digits_matches_duckdb_bit_for_bit():
+    """`round(x, d)` is DuckDB's (#335); DataFusion rounds otherwise."""
+    con = connect()
+    xs = [*DOUBLES, -0.0, -0.4, 521924.88982515107, 1e308, math.nan, math.inf, -math.inf, None]
+    create_table(con, "r", F, [(x,) for x in xs])
+    sql = (
+        "SELECT f, round(f, 1) AS x, round(f, -1) AS y, round(f, -5) AS z, round(f, 400) AS w,"
+        " round(f, -400) AS v FROM r"
+    )
+    plan = written_plan(substrait_json(con, sql))
+    duck = rows_of(run_plan(con, plan, "duckdb"))
+    assert repr(rows_of(run_plan(con, plan, "polars"))) == repr(duck)
+    with pytest.raises(Exception, match="#335"):
+        run_plan(con, plan, "datafusion")
 
 
 def test_casts_to_bigint_truncate_and_refuse_nan():

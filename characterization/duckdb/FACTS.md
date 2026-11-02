@@ -388,12 +388,15 @@ rows that differ. No input is -0.0: the model has one zero (R14).
 | `BIGINT % BIGINT` | `modulus` | none | `MIN % -1` raises (R3) |
 | `abs`, `floor`, `ceil`, `exp`, `atan` | | the reference | |
 | `round(DOUBLE)` | `round` | `rounding: TIE_AWAY_FROM_ZERO` | |
+| `round(DOUBLE, d)` for `d` from -1000 to 400 | `round` | the reference (DuckDB's formula since #335: `round(x / 10^-d) · 10^-d` below zero, 0 where that is not finite) | |
 | `DOUBLE + - * /` | `add` … `divide` | none | operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (R5) |
 | `DOUBLE % DOUBLE` | `modulus` (`fmod`, R4) | none | NaN for a zero divisor or an infinite dividend |
 | `power`, `sqrt`, `ln`, `log10`, `log2`, `asin`, `acos`, `sin`, `cos`, `tan` | | none | NaN outside the domain, `-inf` for a logarithm of 0 |
 | `atan2(0, 0)` | `atan2` | none | 0, where the reference raises |
 | `BIGINT << BIGINT` | `shift_left` | none | raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`), where the reference drops the bits (and raises on such shifts) |
 | `BIGINT >> BIGINT` | `shift_right` | none | 0 for shifts below 0 or beyond 63 (`-5 >> 64` too), where the reference raises |
+| `regexp_extract`, `regexp_replace` (with and without `'g'`) of constant patterns, on ASCII text | `regexp_extract`, `regexp_replace` | the reference (RE2's meaning, #50) | |
+| `md5`, `sha256` of VARCHAR | `md5`, `sha256` | the reference | |
 
 With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and
 so do the elementary functions outside their domains (as the reference

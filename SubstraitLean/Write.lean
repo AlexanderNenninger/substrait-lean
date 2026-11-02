@@ -61,7 +61,9 @@ def stringFns : List (Nat × String) := [
   (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
   (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
   (200, "reverse"), (201, "ascii"), (202, "replace"), (203, "repeat"), (204, "ilike"),
-  (205, "levenshtein")]
+  (205, "levenshtein"),
+  -- Regular expressions with a constant pattern, and digests (#50).
+  (206, "regexp_extract"), (207, "regexp_replace"), (208, "md5"), (209, "sha256")]
 
 /-- Dates and times: new anchors 300–399. -/
 def temporalFns : List (Nat × String) := [
@@ -87,7 +89,9 @@ def aggregateFns : List (Nat × String) := [
   -- The first and last value in the measure's sort order (#55).
   (505, "first"), (506, "last"),
   -- The covariance and correlation of pairs of doubles (#54).
-  (507, "covar_samp"), (508, "covar_pop"), (509, "corr")]
+  (507, "covar_samp"), (508, "covar_pop"), (509, "corr"),
+  -- Strings joined in the measure's sort order (#55).
+  (510, "string_agg")]
 
 /-- Window functions: new anchors 600–699. -/
 def windowFns : List (Nat × String) := [
@@ -118,6 +122,7 @@ def AggFn.anchor : AggFn → Nat
   | .pick last => if last then 506 else 505
   | .cov sample => if sample then 507 else 508
   | .corr => 509
+  | .concat _ => 510
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -128,11 +133,13 @@ def UnFn.anchor : UnFn → Nat
     | .cos => 106 | .tan => 107 | .asin => 108 | .acos => 109 | .atan => 110
   -- Strings
   | .upper => 20 | .lower => 21 | .length => 22 | .reverse => 200 | .ascii => 201 | .replace _ _ => 202
+  | .regexExtract _ _ => 206 | .regexReplace _ _ _ => 207 | .md5 => 208 | .sha256 => 209
   -- Dates and times
   | .datePart _ | .dayPart _ => 25 | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
   | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .widen | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
+  | .ftoiOrNull | .narrowOrNull _ => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
   -- Written as the arithmetic inside, with its `overflow` option.
@@ -167,11 +174,15 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
   case pick last => cases last <;> decide
   case cov sample => cases sample <;> decide
+  case concat => simp only [AggFn.anchor]; decide
   all_goals decide
 
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
+  cases f
+  case regexExtract => exact Or.inr (by simp only [UnFn.anchor]; decide)
+  case regexReplace => exact Or.inr (by simp only [UnFn.anchor]; decide)
+  all_goals first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
 
 theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
   cases f
@@ -577,6 +588,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  -- `TRY_CAST` (#58).
+  | .un .ftoiOrNull a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
+      ("failureBehavior", "FAILURE_BEHAVIOR_RETURN_NULL")])]
+  | .un (.narrowOrNull n) a =>
+    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+    obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
+      ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_RETURN_NULL")])]
   -- Arithmetic at `n` bits: its integer literals are written at that width,
   -- which is what makes the engine compute at it, and the result is cast to
   -- it, which raises where it does not fit (#202). The parser reads the cast
@@ -624,6 +642,14 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
   | .un (.raise msg) a => call 118 [writeExpr cols (wkind cols a) a, writeLit .str (.str msg)]
   | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
+  | .un (.regexExtract p g) a =>
+    call 206 [writeExpr cols .str a, writeLit .str (.str p), writeLit .int (.int g)]
+  -- DuckDB's and DataFusion's flags argument: `'g'` replaces every match.
+  | .un (.regexReplace p r g) a =>
+    call 207 ([writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)] ++
+      if g then [writeLit .str (.str "g")] else [])
+  | .un .md5 a => call 208 [writeExpr cols .str a]
+  | .un .sha256 a => call 209 [writeExpr cols .str a]
   -- A reference into the value of `a` (#94).
   | .un (.structField i) a => reference (obj [("structField", obj [("field", toJson i)])])
       (writeExpr cols (wkind cols a) a)
@@ -795,6 +821,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
           | .min | .max | .pick _ => wkind ks m.arg
+          | .concat _ => .str
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
@@ -803,6 +830,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
         | .min | .max | .pick _ => wkind ks m.arg
+        | .concat _ => .str
         | .collect => .list (wkind ks m.arg)
   | .unnest r c =>
       let ks := relKinds schemas cat r
@@ -873,7 +901,10 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
     ("arguments", match m.arg with
       | .bin .pair x y => Json.arr #[obj [("value", writeExpr cols .float x)],
           obj [("value", writeExpr cols .float y)]]
-      | _ => Json.arr #[obj [("value", arg)]]),
+      -- `STRING_AGG`'s separator is its second argument (#55).
+      | _ => match m.fn with
+        | .concat sep => Json.arr #[obj [("value", arg)], obj [("value", writeLit .str (.str sep))]]
+        | _ => Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   -- An integer `AVG` says so by its output type (`AggFn.iavg`).
   let measure := if m.fn matches .iavg then measure.setObjVal! "outputType" i64Type else measure

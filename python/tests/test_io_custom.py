@@ -319,7 +319,8 @@ def test_a_restarted_job_with_another_plan_overwrites_its_sink(tmp_path):
     w = node.refresh().writes[0]
     assert (w.mode, w.inserted) == ("overwrite", 2)
     assert again.changes == [(True, 2, 0)]
-    assert pq.read_table(again.path).to_pylist() == [{"id": 1}, {"id": 2}]
+    # A view's rows come in no particular order.
+    assert sorted(r["id"] for r in pq.read_table(again.path).to_pylist()) == [1, 2]
     assert node.refresh().writes[0].mode == "skipped"
 
 

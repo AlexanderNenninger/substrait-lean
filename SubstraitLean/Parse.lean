@@ -265,9 +265,11 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .neg a => a.kind cols
   | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
   | .un (.froundTo _) _ => .float
-  | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ => .int
+  | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ | .un .ftoiOrNull _
+  | .un (.narrowOrNull _) _ => .int
   | .un (.wrap _) a => a.kind cols
-  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _ => .str
+  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
+  | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
   | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) _ => .time
@@ -333,6 +335,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
   | .iavg | .bit _ => .int
   | .min | .max | .pick _ => m.arg.kind cols
+  | .concat _ => .str
   | .collect => .list (m.arg.kind cols)
 
 def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
@@ -493,7 +496,7 @@ it is an argument). -/
 def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .field i => cols.getD i 64
   | .lit _ => 8
-  | .un (.wrap n) _ | .un (.narrow n) _ => n
+  | .un (.wrap n) _ | .un (.narrow n) _ | .un (.narrowOrNull n) _ => n
   | .un .neg a => a.bits cols
   | .bin .add a b | .bin .sub a b | .bin .mul a b | .bin .idiv a b | .bin .imod a b =>
     max (a.bits cols) (b.bits cols)
@@ -837,7 +840,8 @@ def stringFns : List (String × List Nat) :=
    ("str_concat", []), ("concat", []), ("strpos", []), ("starts_with", []), ("ends_with", []),
    ("like", []), ("substring", [1, 2]), ("btrim", []), ("ltrim", []), ("rtrim", []),
    ("reverse", []), ("ascii", []), ("replace", []), ("repeat", [1]), ("ilike", []),
-   ("levenshtein", [])]
+   ("levenshtein", []), ("regexp_extract", [2]), ("regexp_replace", []), ("md5", []),
+   ("sha256", [])]
 
 /-- Functions on booleans. -/
 def booleanFns : List String := ["and", "or", "not", "xor"]
@@ -1152,6 +1156,18 @@ def divByZero (mode : String) (float : Bool) (div : Expr → Expr → Expr) (a b
   .ifThen (.un .not (.bin .eq b (lit 0))) (div a b)
     (.ifThen (.un .isNull b) (.lit .null) (.ifThen (.un .isNull a) (.lit .null) byZero))
 
+/-- `e`, a regular expression function of the constant pattern `p`, if
+`p` is in the supported subset (`Text.simpleRegex`). -/
+def simpleRegex (p : String) (e : Expr) : J Expr :=
+  if Text.simpleRegex p then pure e
+  else throw s!"the regular expression {p.quote} is outside the supported subset"
+
+/-- `regexp_replace(a, p, r)`, if RE2 accepts the replacement `r` for `p`. -/
+def replacement (p r : String) (global : Bool) (a : Expr) : J Expr :=
+  if Text.simpleRegex p && !Text.rewriteOk (Text.regexGroups p) r.toList then
+    throw s!"the replacement {r.quote} of regexp_replace is invalid for {p.quote}"
+  else simpleRegex p (.un (.regexReplace p r global) a)
+
 /-- Maps Substrait standard-extension functions onto the modelled ones.
 Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
 null-propagation these agree with the direct definitions. -/
@@ -1247,6 +1263,20 @@ def mkCall : String → List Expr → J Expr
   | "ilike", [_, _, _] => throw "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
   | "levenshtein", [a, b] => pure (.bin .levenshtein a b)
   | "regexp_match", _ => throw "regexp_match is only supported as array_length(regexp_match(s, p))"
+  -- A constant pattern in `Text.simpleRegex`, which DuckDB checks when it
+  -- plans the query (#50).
+  | "regexp_extract", [a, .lit (.str p)] => simpleRegex p (.un (.regexExtract p 0) a)
+  | "regexp_extract", [a, .lit (.str p), .lit (.int g)] =>
+    if g < 0 then throw "regexp_extract needs a group number of at least 0"
+    else simpleRegex p (.un (.regexExtract p g.toNat) a)
+  | "regexp_extract", _ => throw "regexp_extract needs a constant pattern and group"
+  | "regexp_replace", [a, .lit (.str p), .lit (.str r)] => replacement p r false a
+  | "regexp_replace", [a, .lit (.str p), .lit (.str r), .lit (.str "g")] => replacement p r true a
+  | "regexp_replace", [_, .lit (.str _), .lit (.str _), .lit (.str fl)] =>
+    throw s!"regexp_replace with the flags '{fl}' is not supported (only 'g')"
+  | "regexp_replace", _ => throw "regexp_replace needs a constant pattern and replacement"
+  | "md5", [a] => pure (.un .md5 a)
+  | "sha256", [a] => pure (.un .sha256 a)
   -- Timestamps (`SubstraitLean/Time.lean`).
   | "date_part", [.lit (.str p), a] | "datepart", [.lit (.str p), a] =>
     match Time.DatePart.ofName? p with
@@ -1727,7 +1757,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         match exact? with
         | some e => return .un (.fit (if ov == "SILENT" then .silent else .saturate) (.ofBits w)) e
         | none => throw s!"{baseName name}: overflow {ov} is only modelled for integers"
-      if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&
+      -- Division too: `MIN / -1` does not fit the width (#334); a remainder always does.
+      if ["add", "subtract", "multiply", "negate", "divide"].contains (baseName name) && w < 64 &&
           call.kind cols == .int then
         return .un (.wrap w) call
       return call
@@ -1761,6 +1792,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         else input
       | none => input
     let e ← parseExpr fns cols bits input
+    -- `TRY_CAST` (#58): NULL where the cast fails, which is then no error.
+    let orNull := (field? c "failureBehavior").any (· == .str "FAILURE_BEHAVIOR_RETURN_NULL")
     if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
@@ -1769,6 +1802,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
     if let .dec p s := target then
+      if orNull then throw "TRY_CAST to DECIMAL is not supported yet"
       let e' ← match k with
         | .dec _ s₀ => pure (if s₀ ≤ s then upscale (s - s₀) e else .un (.dround (s₀ - s)) e)
         | .int => pure (upscale s e)
@@ -1781,6 +1815,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         let bits := intBits (← field c "type")
         -- A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits always fits a `BIGINT`.
         if bits == 64 && p₀ - s₀ ≤ 18 then return .un (.dtrunc s₀) e
+        if orNull then throw "TRY_CAST of a DECIMAL to an integer is not supported yet"
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
@@ -1798,7 +1833,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
-    if target == .int && k == .float then return .un .ftoi e
+    if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
     -- `FLOAT` to `DOUBLE`: exact, but kept, so that the written plan widens too.
     if target == .float && k == .float && argBits bits input e == 32 then return .un .widen e
@@ -1813,7 +1848,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       -- `checkedNarrow`): the cast changes nothing.
       if let .un (.wrap n) _ := e then
         if n ≤ bits then return e
-      return if bits < 64 then .un (.narrow bits) e else e
+      return if bits < 64 then .un (if orNull then .narrowOrNull bits else .narrow bits) e else e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
   | ("singularOrList", l) =>
@@ -1852,13 +1887,17 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
   let name := baseName name
-  -- Only `ARRAY_AGG`, `FIRST` and `LAST` depend on the order of their rows.
+  -- Only `ARRAY_AGG`, `FIRST`, `LAST` and `STRING_AGG` depend on the order of
+  -- their rows.
   let sort ← (← arrD m "sorts").mapM fun k => (parseSortKey fns cols k : J SortKey)
-  if !sort.isEmpty && !["array_agg", "first", "last"].contains name then
+  if !sort.isEmpty && !["array_agg", "first", "last", "string_agg"].contains name then
     throw s!"ordered aggregates are not supported: {name}"
-  -- Without an order, `FIRST` is any row's value (`arbitrary`).
-  if sort.isEmpty && ["first", "last"].contains name then
-    throw s!"{name} without ORDER BY is any row's value, which is not supported; give it an order"
+  -- Without an order, `FIRST` is any row's value: the model takes them in list
+  -- order, and `Rel.windowsTotal` reports the result as the engine's choice
+  -- unless the group's columns contain a key (Ibis's `distinct(on=)`, #55).
+  if sort.isEmpty && name == "string_agg" then
+    throw ("string_agg without ORDER BY joins the values in the engine's order, which is not " ++
+      "supported; give it an order")
   let distinct ← match field? m "invocation" with
     | none | some (.str "AGGREGATION_INVOCATION_ALL")
     | some (.str "AGGREGATION_INVOCATION_UNSPECIFIED") => pure false
@@ -1878,11 +1917,19 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | [a, b] =>
       if ["covar_samp", "covar_pop", "corr"].contains name then
         pure (.bin .pair (← double a) (← double b))
+      else if name == "string_agg" then parseExpr fns cols bits a
       else throw s!"{name} takes one argument"
     | [] => if name == "count" then pure (.lit (.int 1)) else throw s!"{name} needs an argument"
     | _ => throw s!"{name} takes one argument"
   if ["covar_samp", "covar_pop", "corr"].contains name && !(arg matches .bin .pair _ _) then
     throw s!"{name} takes two arguments"
+  -- `STRING_AGG(x, sep)`: a constant separator (#55).
+  let sep ← match name, args with
+    | "string_agg", [_, s] => match ← parseExpr fns cols bits s with
+      | .lit (.str s) => pure s
+      | _ => throw "string_agg needs a constant separator"
+    | "string_agg", _ => throw "string_agg takes a value and a separator"
+    | _, _ => pure ""
   -- A double constant is its code, which `Expr.kind` calls an integer (#205).
   let k := if args.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
@@ -1923,6 +1970,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
     | "array_agg", _ => pure (.collect, arg)
     | "first", _ | "last", _ => pure (.pick (name == "last"), arg)
+    | "string_agg", .str => pure (.concat sep, arg)
+    | "string_agg", _ => throw "string_agg of a value that is not a string is not supported"
     -- 64-bit integers only (#53): a narrower one would need its own width.
     | "bit_and", .int | "bit_or", .int | "bit_xor", .int =>
       if argBits bits (args.headD .null) arg != 64 then

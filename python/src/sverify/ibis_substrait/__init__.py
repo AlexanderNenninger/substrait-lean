@@ -141,6 +141,8 @@ class Exprs:
 
 #: Why some operations are refused (#58).
 _NONDETERMINISTIC = "each run gives another value, so no contract can be proved about it"
+_URL_PARTS = ("Authority", "File", "Fragment", "Host", "Path", "Protocol", "Query", "UserInfo")
+
 _REFUSED: dict[str, str] = {
     "RandomScalar": _NONDETERMINISTIC,
     "RandomUUID": _NONDETERMINISTIC,
@@ -149,8 +151,13 @@ _REFUSED: dict[str, str] = {
     "DateNow": "the date differs between runs; pass the date in as a column or constant",
     "TypeOf": "the type's name is the engine's own",
     "ScalarParameter": "bind the parameter first, for example with a literal",
-    "TryCast": "a cast that gives NULL where it fails is not modelled yet; use cast(), "
-    "which raises there, and guard the values",
+    "Hash": "hash() is the engine's own and changes between versions; use hexdigest('md5') "
+    "or hexdigest('sha256')",
+    # Ibis's URL parts: `host()`, `protocol()`, …
+    **dict.fromkeys(
+        [f"Extract{p}" for p in _URL_PARTS],
+        "URL parts are not modelled; extract them with re_extract",
+    ),
 }
 
 
@@ -477,6 +484,13 @@ def _cast(x: Exprs, op: Any) -> Json:
     return cast_json(x(op.arg), op.to)
 
 
+def _try_cast(x: Exprs, op: Any) -> Json:
+    """`TRY_CAST`: NULL where the cast fails (#58)."""
+    if same_type(op.arg.dtype, op.to):
+        return x(op.arg)
+    return cast_json(x(op.arg), op.to, or_null=True)
+
+
 def _variadic(name: str) -> Callable[[Exprs, Any], Json]:
     return lambda x, op: call(name, [x(a, exact(op)) for a in op.arg])
 
@@ -648,6 +662,29 @@ def _regex_search(x: Exprs, op: Any) -> Json:
         "coalesce", [call("gt", [matches, literal(0, dt.int64)]), literal(False, dt.boolean)]
     )
     return if_then([(call("is_null", [arg]), literal(None, dt.boolean))], found)
+
+
+def _regex_extract(x: Exprs, op: Any) -> Json:
+    if not isinstance(op.pattern, ops.Literal) or not isinstance(op.index, ops.Literal):
+        raise Unsupported("re_extract needs a constant pattern and group")
+    return call("regexp_extract", [x(op.arg), x(op.pattern), x(op.index, dt.int64)])
+
+
+def _regex_replace(x: Exprs, op: Any) -> Json:
+    if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
+        raise Unsupported("re_replace needs a constant pattern and replacement")
+    # Every match, as Ibis's SQL does (DuckDB's flag `'g'`).
+    args = [x(op.arg), x(op.pattern), x(op.replacement), literal("g", dt.string)]
+    return call("regexp_replace", args)
+
+
+def _hex_digest(x: Exprs, op: Any) -> Json:
+    if op.how not in ("md5", "sha256") or not op.arg.dtype.is_string():
+        raise Unsupported(
+            f"hexdigest({op.how!r}) of {op.arg.dtype} is not supported; "
+            "md5 and sha256 of strings are"
+        )
+    return call(op.how, [x(op.arg)])
 
 
 def _date_part(part: str) -> Callable[[Exprs, Any], Json]:
@@ -995,6 +1032,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Floor: _rounding("floor"),
     ops.Round: _rounding("round"),
     ops.Cast: _cast,
+    ops.TryCast: _try_cast,
     ops.Equals: _compare("equal"),
     ops.NotEquals: _compare("not_equal"),
     ops.Less: _compare("lt"),
@@ -1050,6 +1088,9 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Translate: _translate,
     ops.StringConcat: _string_concat,
     ops.RegexSearch: _regex_search,
+    ops.RegexExtract: _regex_extract,
+    ops.RegexReplace: _regex_replace,
+    ops.HexDigest: _hex_digest,
     ops.ExtractYear: _date_part("year"),
     ops.ExtractQuarter: _date_part("quarter"),
     ops.ExtractMonth: _date_part("month"),
@@ -1180,6 +1221,8 @@ def measure(x: Exprs, op: Any) -> Json:
         return collect(x, op)
     elif isinstance(op, ops.First | ops.Last):
         return first_last(x, op)
+    elif isinstance(op, ops.GroupConcat):
+        return group_concat(x, op)
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
@@ -1224,14 +1267,42 @@ def collect(x: Exprs, op: Any) -> Json:
     return {"measure": agg, "filter": keep}
 
 
+def group_concat(x: Exprs, op: Any) -> Json:
+    """`STRING_AGG(x, sep ORDER BY …)` of the non-NULL strings (#55), as Ibis's
+    `LISTAGG`. Without `order_by` the order is the engine's, which is refused."""
+    if not op.order_by:
+        raise Unsupported(
+            "group_concat() without order_by joins in the engine's order; give it an order_by"
+        )
+    if not isinstance(op.sep, ops.Literal):
+        raise Unsupported("group_concat needs a constant separator")
+    if not op.arg.dtype.is_string():
+        raise Unsupported(f"group_concat of {op.arg.dtype} is not supported; cast it to string")
+    sorts = []
+    for k in op.order_by:
+        key = _sort_key(x, k)
+        if "selection" not in key["expr"]:
+            raise Unsupported("group_concat(order_by=) must order by columns")
+        sorts.append(key)
+    agg: Json = {
+        "functionReference": _anchor("string_agg"),
+        "arguments": [{"value": x(op.arg)}, {"value": x(op.sep)}],
+        "sorts": sorts,
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    out: Json = {"measure": agg}
+    if op.where is not None:
+        out["filter"] = x(op.where)
+    return out
+
+
 def first_last(x: Exprs, op: Any) -> Json:
     """`FIRST(x ORDER BY …)` / `LAST(…)` of the non-NULL values (#55). Without
-    `order_by` it is any row's value, which is refused."""
+    `order_by` it is any row's value (Ibis's `distinct(on=)`): verified, but
+    reported as the engine's choice unless the group is a key."""
     name = "first" if isinstance(op, ops.First) else "last"
     if op.include_null:
         raise Unsupported(f"{name}(include_null=True) is not supported")
-    if not op.order_by:
-        raise Unsupported(f"{name}() without order_by is any row's value; give it an order_by")
     sorts = []
     for k in op.order_by:
         key = _sort_key(x, k)

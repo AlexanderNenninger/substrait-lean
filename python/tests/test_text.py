@@ -13,7 +13,8 @@
   `ILIKE`, a black box, agrees on ASCII text, and Polars, with the `regex`
   crate's case folding, agrees on all text.
 * Every pattern `Text.simpleRegex` accepts compiles in DataFusion: this tests
-  the trusted part of the "invalid regular expression" check.
+  the trusted part of the "invalid regular expression" check (DuckDB's, and
+  Lean's evaluator of regular expressions: `test_regex.py`).
 * Contracts see through the black boxes as far as they can.
 """
 
@@ -148,13 +149,12 @@ def test_engines_match_the_oracle(engine, sql, rows):
     [
         ("SELECT upper(s) AS u FROM r", "UPPER of non-ASCII text"),
         ("SELECT lower(s) AS u FROM r", "LOWER of non-ASCII text"),
-        ("regular expressions", "regular expressions"),
     ],
 )
 def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
-    """Lean's evaluator maps ASCII case only and evaluates no regular
-    expressions; `substrait-check` refuses such rows instead of printing
-    placeholders (`''`, NULL) that no engine gives (#70)."""
+    """Lean's evaluator maps ASCII case only; `substrait-check` refuses such
+    rows instead of printing placeholders (`''`, NULL) that no engine gives
+    (#70). Regular expressions: `test_regex.py`."""
     con = connect()
     rows = [("Straße", "abc", 1)]
     create_table(con, "r", R, rows)
@@ -162,9 +162,8 @@ def test_lean_refuses_rows_it_does_not_evaluate(sql, message):
     with pytest.raises(subprocess.CalledProcessError) as e:
         lean_values(json.dumps(plan))
     assert f"rows not evaluated: {message}" in e.value.stderr
-    if sql != "regular expressions":
-        ascii_rows = inline_tables(json.loads(substrait_json(con, sql)), {"r": [("abc", "x", 1)]})
-        assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
+    ascii_rows = inline_tables(json.loads(substrait_json(con, sql)), {"r": [("abc", "x", 1)]})
+    assert lean_values(json.dumps(ascii_rows)) == [("ABC" if "upper" in sql else "abc",)]
 
 
 #: Edge cases of #49: combining marks, which `reverse` moves (DataFusion

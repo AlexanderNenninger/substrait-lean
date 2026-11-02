@@ -43,6 +43,18 @@ CASES: list[Case] = [
     ),
     case(
         "aggregation",
+        "group_concat ordered",
+        V,
+        lambda: t.group_by("qty").aggregate(s=t.name.group_concat(", ", order_by=t.id)),
+    ),
+    case(
+        "aggregation",
+        "group_concat",
+        R,
+        lambda: t.group_by("qty").aggregate(s=t.name.group_concat(", ")),
+    ),
+    case(
+        "aggregation",
         "approx_nunique",
         R,
         lambda: t.group_by("name").aggregate(n=t.id.approx_nunique()),
@@ -76,7 +88,7 @@ CASES: list[Case] = [
     ),
     case("aggregation", "value_counts", V, lambda: t.name.value_counts()),
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
-    case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
+    case("aggregation", "distinct(on=)", V, lambda: t.distinct(on="name", keep="first")),
     case("aggregation", "std", V, lambda: t.aggregate(s=t.amount.std())),
     case(
         "aggregation",
@@ -111,6 +123,8 @@ CASES: list[Case] = [
 REFUSED: dict[str, dict[str, str]] = {
     "cov, corr": DUCKDB_ONLY,
     "first, last ordered": DUCKDB_ONLY,
+    "distinct(on=)": DUCKDB_ONLY,
+    "group_concat ordered": DUCKDB_ONLY,
     "count, max, mean": NO_ROW_ORDER,
     "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
@@ -129,4 +143,7 @@ NO_DUCKDB_SQL = {
     # Rows tied in the order go in Lean's list order in the written plan; in
     # Ibis's own SQL, in DuckDB's (`Rel.windowsTotal` reports it, #55).
     "first, last ordered": "ties in ORDER BY are the engine's",
+    # Without an order, Ibis's own FIRST takes any row's value.
+    "distinct(on=)": "FIRST without ORDER BY is any row's value",
+    "group_concat ordered": "ties in ORDER BY are the engine's",
 }

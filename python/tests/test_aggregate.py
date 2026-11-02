@@ -461,8 +461,57 @@ def test_first_and_last_are_determined_by_a_key():
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
             run_plan(con, written, engine)
-    with pytest.raises(Exception, match="any row's value"):
-        to_substrait_json(P.group_by("k").aggregate(f=P.x.first()))
+    # Without an order every row ties: determined only by a key on the group.
+    any_row = P.group_by("k").aggregate(f=P.x.first())
+    assert not sv.verify(any_row, requires={"t": [sv.unique("k", "o")]}).deterministic
+    assert sv.verify(any_row, requires={"t": [sv.unique("k")]}).deterministic
+
+
+# #55: Ibis's distinct(on=) is FIRST/LAST of each other column without an
+# order, each column on its own (DuckDB may take them from different rows).
+D = ibis.table({"name": "string", "a": "int64", "b": "int64"}, name="t")
+
+
+@pytest.mark.parametrize("keep", ["first", "last", None])
+@settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.sampled_from(["x", "y", None]),
+            st.one_of(st.none(), st.integers(0, 3)),
+            st.one_of(st.none(), st.integers(0, 3)),
+        ),
+        max_size=6,
+    )
+)
+def test_distinct_on_runs_as_lean_says(keep, rows):
+    """DuckDB's written plan breaks every tie in Lean's list order."""
+    plan = to_substrait_json(D.distinct(on="name", keep=keep))
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    con = connect()
+    create_table(con, "t", D.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert sorted((tuple(r.values()) for r in got), key=repr) == lean
+
+
+def test_distinct_on_proves_nothing_about_one_row():
+    """Each kept column may come from a different row of its group, so `a <= b`,
+    true on every row, is not proved; nor is anything else unless `name` is a
+    key, which makes each group one row."""
+    expr = D.distinct(on="name")
+    rows_ok = [_.a <= _.b, _.a.notnull(), _.b.notnull()]
+    report = sv.verify(expr, requires={"t": rows_ok}, ensures=[_.a <= _.b])
+    assert not report.deterministic
+    assert not report.proved
+    # LAST of each column skips NULLs on its own: a and b from different rows.
+    con = connect()
+    create_table(con, "t", D.schema(), [("x", 1, 5), ("x", 3, None), ("x", None, 2)])
+    got = run_plan(
+        con, written_plan(to_substrait_json(D.distinct(on="name", keep="last"))), "duckdb"
+    )
+    assert [tuple(r.values()) for r in got.to_pylist()] == [("x", 3, 2)]
+    keyed = sv.verify(expr, requires={"t": [*rows_ok, sv.unique("name")]}, ensures=[_.a <= _.b])
+    assert keyed.deterministic
 
 
 # #54: covariance and correlation of pairs of doubles, each engine's own
@@ -542,3 +591,59 @@ def test_covariance_of_an_infinity_raises():
     create_table(con, "t", C.schema(), [(1, math.inf, 1.0), (1, 2.0, 3.0)])
     with pytest.raises(Exception, match="(?i)domain"):
         run_plan(con, written_plan(to_substrait_json(cov_expr())), "duckdb")
+
+
+# #55: STRING_AGG (Ibis's group_concat) in a given order, NULLs skipped.
+def joined(rows: list, sep: str, desc: bool) -> dict:
+    """Python's reference: per group, the non-NULL `x` after a stable sort by
+    `o` (NULLs last, as Ibis orders), joined by `sep`; None without values."""
+    out: dict = {}
+    for k in {r[0] for r in rows}:
+        grp = [r for r in rows if r[0] == k and r[1] is not None]
+        nulls = [r for r in grp if r[2] is None]
+        vals = sorted((r for r in grp if r[2] is not None), key=lambda r: r[2], reverse=desc)
+        out[k] = sep.join(r[1] for r in vals + nulls) if grp else None
+    return out
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.sampled_from(["a", "b", "", "é"])),
+            st.one_of(st.none(), st.integers(0, 3)),
+        ),
+        max_size=8,
+    )
+)
+def test_group_concat_follows_its_order(rows):
+    expr = P.group_by("k").aggregate(
+        s=P.x.group_concat(",", order_by=P.o), d=P.x.group_concat("--", order_by=ibis.desc(P.o))
+    )
+    plan = to_substrait_json(expr)
+    up, down = joined(rows, ",", False), joined(rows, "--", True)
+    expected = sorted(((k, up[k], down[k]) for k in up), key=repr)
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    assert lean == expected
+    con = connect()
+    create_table(con, "t", P.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert sorted((tuple(r.values()) for r in got), key=repr) == expected
+
+
+def test_group_concat_is_determined_by_a_key():
+    """Ties make the order the engine's, unless the group and order columns
+    contain a key (`Rel.windowsTotal`); without `order_by` it is refused, and
+    other engines refuse it for now (#271)."""
+    expr = P.group_by("k").aggregate(s=P.x.group_concat(",", order_by=P.o))
+    assert not sv.verify(expr).deterministic
+    assert sv.verify(expr, requires={"t": [sv.unique("k", "o")]}).deterministic
+    con = connect()
+    create_table(con, "t", P.schema(), [(1, "a", 1)])
+    written = written_plan(to_substrait_json(expr))
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="see #271"):
+            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="engine's order"):
+        to_substrait_json(P.group_by("k").aggregate(s=P.x.group_concat(",")))

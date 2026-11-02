@@ -347,9 +347,26 @@ class Dialect:
         return f"ROUND({x})"
 
     def float_round_to(self, x: str, digits: int) -> str:
-        """`ROUND(x, d)` as DataFusion computes it: `round(x · 10ᵈ) / 10ᵈ`."""
-        p = self.float_lit(10.0**digits)
-        return self.float_div(self.float_round(self.float_mul(x, p)), p)
+        """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB's, #335): with
+        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` (`x` where that is not
+        finite), `round(x / m) · m` for `d < 0` (0 where that is not finite);
+        `±∞` and NaN stay."""
+        m = pow10(abs(digits))
+        odd = f"({self.is_nan(x)} OR {self.is_inf(x)})"
+        if math.isinf(m):
+            # `x · ∞` and `x / ∞` leave no finite result: `x`, or 0 (NULL stays).
+            if digits >= 0:
+                return x
+            return self.case_when(f"({x} IS NULL OR {odd})", x, self.float_lit(0.0))
+        ml = self.float_lit(m)
+        if digits >= 0:
+            r = self.float_div(self.float_round(self.float_mul(x, ml)), ml)
+            fallback = x
+        else:
+            r = self.float_mul(self.float_round(self.float_div(x, ml)), ml)
+            fallback = self.float_lit(0.0)
+        bad = f"({self.is_nan(r)} OR {self.is_inf(r)})"
+        return self.case_when(odd, x, self.case_when(bad, fallback, r))
 
     def float_pow(self, a: str, b: str) -> str:
         """C's `pow`: IEEE results, no errors."""
@@ -380,6 +397,16 @@ class Dialect:
         """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
         outside 64 bits must raise (Lean: NULL)."""
         raise Unsupported(f"{self.name}: CAST(double AS BIGINT) is not implemented")
+
+    def float_to_int_or_null(self, x: str) -> str:
+        """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
+        zero, NULL for NaN, ±inf and values outside 64 bits."""
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
+
+    def narrow_or_null(self, x: str, bits: int) -> str:
+        """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
+        or NULL where it does not fit."""
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""
@@ -670,6 +697,25 @@ class Dialect:
         skipped, in the order `order`; NULL without values."""
         raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
 
+    def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
+        """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
+        in the order `order`, joined by `sep`; NULL without values."""
+        raise Unsupported(f"string_agg is not yet supported on {self.name}; see #271")
+
+    def regex_extract(self, s: str, pattern: str, group: int) -> str:
+        """`UnFn.regexExtract` (#50): group `group` of the first match of the
+        constant `pattern` in `s`, `''` where there is none."""
+        raise Unsupported(f"regexp_extract is not yet supported on {self.name}; see #271")
+
+    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
+        """`UnFn.regexReplace` (#50): the first match of the constant `pattern`
+        in `s`, or every match, replaced (`\\1` is a group)."""
+        raise Unsupported(f"regexp_replace is not yet supported on {self.name}; see #271")
+
+    def digest(self, fn: str, s: str) -> str:
+        """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
+        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
         raise Unsupported(
@@ -830,19 +876,23 @@ class Un:
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
         "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
+        "regex_extract", "regex_replace", "md5", "sha256", "ftoi_or_null", "narrow_or_null",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`, the bits of `narrow` and `fit`, the months of
-    `addMonths`."""
+    `addMonths`, the group of `regexExtract`."""
     param: str = ""
-    """The pattern of `regexMatch` and `replace`, the part of `datePart`, the
-    unit of `dateTrunc`; `time` or `date` for `addMonths`; the function of
-    `fmath` (`FMath.name`); `SILENT` or `SATURATE` for `fit`."""
+    """The pattern of `regexMatch`, `regexExtract`, `regexReplace` and
+    `replace`, the part of `datePart`, the unit of `dateTrunc`; `time` or
+    `date` for `addMonths`; the function of `fmath` (`FMath.name`); `SILENT`
+    or `SATURATE` for `fit`."""
     origin: int = 0
     """The origin of `bucket` (whose width is `digits`)."""
     replacement: str = ""
-    """The replacement of `replace`."""
+    """The replacement of `replace` and `regexReplace`."""
+    flags: str = ""
+    """The flags of `regexReplace`: `g` for every match."""
 
 
 @dataclass(frozen=True)
@@ -1061,13 +1111,16 @@ class Measure:
         "covar_samp",
         "covar_pop",
         "corr",
+        "string_agg",
     ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
     filter: Expr | None = None
     sort: tuple[SortKey, ...] = ()
-    """The order `first` and `last` take their values in (#55)."""
+    """The order `first`, `last` and `string_agg` take their values in (#55)."""
+    sep: str = ""
+    """The separator of `string_agg`."""
 
 
 @dataclass(frozen=True)
@@ -1238,6 +1291,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "float"
         case Un(
             op="ftoi"
+            | "ftoi_or_null"
+            | "narrow_or_null"
             | "narrow"
             | "fit"
             | "length"
@@ -1247,7 +1302,17 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             | "ascii"
         ):
             return "int"
-        case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
+        case Un(
+            op="itos"
+            | "upper"
+            | "lower"
+            | "reverse"
+            | "replace"
+            | "regex_extract"
+            | "regex_replace"
+            | "md5"
+            | "sha256"
+        ):
             return "str"
         case Un(op="date_trunc"):
             return "time"
@@ -1299,6 +1364,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return "float"
         case Un(
             op="ftoi"
+            | "ftoi_or_null"
+            | "narrow_or_null"
             | "narrow"
             | "fit"
             | "length"
@@ -1308,7 +1375,17 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             | "ascii"
         ):
             return "int"
-        case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
+        case Un(
+            op="itos"
+            | "upper"
+            | "lower"
+            | "reverse"
+            | "replace"
+            | "regex_extract"
+            | "regex_replace"
+            | "md5"
+            | "sha256"
+        ):
             return "str"
         case Un(op="date_trunc"):
             return "time"
@@ -2031,7 +2108,13 @@ class _Parser:
                     "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
                     "floor", "ceil", "round", *DOUBLE_FNS,
                 )  # fmt: skip
-                has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
+                # A double literal is its code in Lean, which `lean_expr_kind`
+                # calls an integer; its declared kind says double (`doubleJ`).
+                has_float = any(
+                    lean_expr_kind(e, cols.lean) == "float"
+                    or (isinstance(e, Lit) and e.kind == "float")
+                    for e in parsed
+                )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
                     raise Unsupported("sverify_fmod takes doubles")
@@ -2120,12 +2203,16 @@ class _Parser:
                     inp = {"scalarFunction": {**f, "outputType": {"date": {}}}}
                 e = self.expr(inp, cols)
                 k = lean_expr_kind(e, cols.lean)
+                # `TRY_CAST` (#58): NULL where the cast fails.
+                or_null = _field(v, "failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL"
                 # `Parse.wideIntDecimal`; a duration compared with an interval.
                 if k == "int" and _wide_int_decimal(_req(v, "type")):
                     return e
                 # Decimals (#27): rescaled, rounding half away from zero to a
                 # smaller scale; to an integer truncates toward zero.
                 if isinstance(target, Dec):
+                    if or_null:
+                        raise Unsupported("TRY_CAST to DECIMAL is not supported yet")
                     if k in ("int", "float") or isinstance(k, Dec):
                         return DecOp("cast", (e,), target.p, target.s)
                     raise Unsupported(
@@ -2136,7 +2223,13 @@ class _Parser:
                         bits = _int_bits(_req(v, "type"))
                         # A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits fits a `BIGINT`.
                         t = Un("dtrunc", e)
-                        return t if bits == 64 and k.p - k.s <= 18 else Un("narrow", t, digits=bits)
+                        if bits == 64 and k.p - k.s <= 18:
+                            return t
+                        if or_null:
+                            raise Unsupported(
+                                "TRY_CAST of a DECIMAL to an integer is not supported yet"
+                            )
+                        return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
                     raise Unsupported(f"unsupported cast from DECIMAL to {target}")
@@ -2146,7 +2239,7 @@ class _Parser:
                     return Un("itof", e)
                 # Fails on NaN, ±inf and out-of-range values.
                 if target == "int" and k == "float":
-                    return Un("ftoi", e)
+                    return Un("ftoi_or_null" if or_null else "ftoi", e)
                 if target == "str" and k == "int":
                     return Un("itos", e)
                 if target == "date" and k == "time":
@@ -2159,7 +2252,9 @@ class _Parser:
                 # Fails where the value does not fit (`UnFn.narrow`).
                 if target == "int" and k == "int":
                     bits = _int_bits(_req(v, "type"))
-                    return Un("narrow", e, digits=bits) if bits < 64 else e
+                    if bits == 64:
+                        return e
+                    return Un("narrow_or_null" if or_null else "narrow", e, digits=bits)
                 if target == k and target != "other":
                     return e
                 raise Unsupported(f"unsupported cast from {k} to {target}")
@@ -2702,10 +2797,10 @@ class _Parser:
         double; `COUNT(*)` may come with no argument."""
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
-        if _arr(m, "sorts") and name not in ("first", "last"):
+        if _arr(m, "sorts") and name not in ("first", "last", "string_agg"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
-        if name in ("first", "last") and not sort:
+        if name == "string_agg" and not sort:
             raise Unsupported(f"{name} without ORDER BY is not supported")
         inv = _field(m, "invocation")
         if inv not in (None, "AGGREGATION_INVOCATION_ALL", "AGGREGATION_INVOCATION_UNSPECIFIED",
@@ -2714,6 +2809,7 @@ class _Parser:
         f = _field(mj, "filter")
         cond = None if f is None else self.expr(f, cols)
         args = [_req(a, "value") for a in _arr(m, "arguments")]
+        sep = ""
         if len(args) == 1:
             arg = self.expr(args[0], cols)
         elif len(args) == 2 and name in ("covar_samp", "covar_pop", "corr"):
@@ -2721,6 +2817,12 @@ class _Parser:
             x, y = (self.expr(a, cols) for a in args)
             x, y = (Un("itof", e) if lean_expr_kind(e, cols.lean) == "int" else e for e in (x, y))
             arg = Bin("pair", x, y)
+        elif len(args) == 2 and name == "string_agg":
+            # A constant separator (`Parse.parseMeasure`, #55).
+            arg, s = (self.expr(a, cols) for a in args)
+            if not (isinstance(s, Lit) and isinstance(s.value, str)):
+                raise Unsupported("string_agg needs a constant separator")
+            sep = s.value
         elif not args and name == "count":
             arg = Lit(1, "int")
         elif not args:
@@ -2762,6 +2864,7 @@ class _Parser:
             "covar_samp",
             "covar_pop",
             "corr",
+            "string_agg",
         ]
         match name, k:
             case "count", _:
@@ -2790,6 +2893,8 @@ class _Parser:
                 fn = name
             case (("first" | "last" | "covar_samp" | "covar_pop" | "corr"), _):
                 fn = name
+            case "string_agg", "str":
+                fn = name
             case (("variance" | "std_dev"), ("float" | "int")):
                 pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
                 if name == "variance":
@@ -2806,7 +2911,7 @@ class _Parser:
                 raise Unsupported(f"{name} of this type is not supported")
             case _:
                 raise Unsupported(f"unsupported aggregate function: {name}")
-        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort)
+        return Measure(fn, arg, inv == "AGGREGATION_INVOCATION_DISTINCT", cond, sort, sep)
 
     def conjuncts(self, j: Any) -> list[Any]:
         """The conjuncts of a condition, splitting top-level `and` calls."""
@@ -3027,6 +3132,25 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("bit", a, b, param=name)
         case "regexp_match", _:
             raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
+        # A constant pattern (#50); `Text.simpleRegex` is checked in Lean.
+        case "regexp_extract", [a, Lit(value=str(pattern))]:
+            return Un("regex_extract", a, param=pattern)
+        case "regexp_extract", [a, Lit(value=str(pattern)), Lit(value=int(g))] if (
+            not isinstance(g, bool) and g >= 0
+        ):
+            return Un("regex_extract", a, param=pattern, digits=g)
+        case "regexp_extract", _:
+            raise Unsupported("regexp_extract needs a constant pattern and group")
+        case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r))]:
+            return Un("regex_replace", a, param=pattern, replacement=r)
+        case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r)), Lit(value="g")]:
+            return Un("regex_replace", a, param=pattern, replacement=r, flags="g")
+        case "regexp_replace", [_, _, _, *_]:
+            raise Unsupported(
+                "regexp_replace needs a constant pattern and replacement, and no flags but 'g'"
+            )
+        case (("md5" | "sha256"), [a]):
+            return Un(name, a)
         # Timestamps (`SubstraitLean/Time.lean`).
         case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
             if part.lower() not in DATE_PARTS:
@@ -3465,7 +3589,8 @@ class _Writer:
                 keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                 x = d.case_when(keep, x, d.null(k))
             items.append(f"{x} AS {c}")
-        # `first` and `last` (#55): each measure's sort keys, as `Value.le` sorts.
+        # `first`, `last` and `string_agg` (#55): each measure's sort keys, as
+        # `Value.le` sorts.
         orders: list[list[tuple[str, SortKey, Kind | None]]] = []
         for k, ms in enumerate(measures):
             keys_k = []
@@ -3475,9 +3600,11 @@ class _Writer:
                     items.append(f"{x} AS {c}")
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
-        if any(orders) and any(ms.distinct for ms in measures):
-            raise Unsupported("first or last next to a DISTINCT measure is not supported")
-        needs = needs or any(orders)
+        # Without sort keys too: the ordinal is Lean's list order.
+        picks = any(orders) or any(ms.fn in ("first", "last") for ms in measures)
+        if picks and any(ms.distinct for ms in measures):
+            raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
+        needs = needs or picks
         if needs:
             items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
         level = self.select(items, d.subquery(self.rel(i, needs), a))
@@ -3506,11 +3633,14 @@ class _Writer:
         out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
-            if ms.fn in ("first", "last"):
+            if ms.fn in ("first", "last", "string_agg"):
                 # Ties go in Lean's list order: the ordinal breaks them.
                 order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
                          for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
-                sql = d.pick(ms.fn, v, order)
+                if ms.fn == "string_agg":
+                    sql = d.string_agg(v, d.str_lit(ms.sep), order)
+                else:
+                    sql = d.pick(ms.fn, v, order)
             else:
                 sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b))
             out.append(f"{sql} AS {self.c(len(groups) + k)}")
@@ -3893,6 +4023,10 @@ class _Writer:
                 return d.canon(d.float_round_to(self.float_operand(a, ref, cols), digits))
             case Un(op="ftoi", arg=a):
                 return d.float_to_int(self.float_operand(a, ref, cols))
+            case Un(op="ftoi_or_null", arg=a):
+                return d.float_to_int_or_null(self.float_operand(a, ref, cols))
+            case Un(op="narrow_or_null", arg=a, digits=bits):
+                return d.narrow_or_null(self.int_operand(a, ref, cols, "TRY_CAST to INT"), bits)
             case Un(op="narrow", arg=a, digits=bits):
                 x = self.int_operand(a, ref, cols, "CAST to INT")
                 lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)
@@ -4120,6 +4254,20 @@ class _Writer:
             case Un(op="ascii", arg=a):
                 x = self.operand(a, "str", ref, cols, "ascii")
                 return self.ascii_only(x, d.first_code_point(x), "ascii", "int")
+            case Un(op="regex_extract", arg=a, param=pattern, digits=group):
+                x = self.operand(a, "str", ref, cols, "regexp_extract")
+                v = d.regex_extract(x, pattern, group)
+                if unicode_classes(pattern):
+                    return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return v
+            case Un(op="regex_replace", arg=a, param=pattern, replacement=r, flags=flags):
+                x = self.operand(a, "str", ref, cols, "regexp_replace")
+                v = d.regex_replace(x, pattern, r, flags == "g")
+                if unicode_classes(pattern):
+                    return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return v
+            case Un(op="md5" | "sha256" as op, arg=a):
+                return d.digest(op, self.operand(a, "str", ref, cols, op))
             case Un(op="replace", arg=a, param=pattern, replacement=replacement):
                 if not pattern:
                     # Rust puts the replacement around every character; SQL engines
@@ -4421,14 +4569,23 @@ def like_pattern(p: str) -> str:
     return p + "\\" if (len(p) - len(p.rstrip("\\"))) % 2 else p
 
 
+def pow10(k: int) -> float:
+    """C's `pow(10, k)` for `k ≥ 0`, `inf` from 10³⁰⁹ on (Python's `10.0**k`
+    raises there)."""
+    try:
+        return math.pow(10.0, k)
+    except OverflowError:
+        return math.inf
+
+
 def unicode_classes(p: str) -> bool:
-    """Does the pattern use `\\d`, `\\w` or `\\s` (or their negations)? Rust's
-    are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's are
-    ASCII-only, so they agree on ASCII text only."""
+    """Does the pattern use `\\d`, `\\w`, `\\s` or `\\b` (or their negations)?
+    Rust's are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's
+    are ASCII-only, so they agree on ASCII text only (`Text.classesDiffer`)."""
     i = 0
     while i < len(p):
         if p[i] == "\\" and i + 1 < len(p):
-            if p[i + 1] in "dDwWsS":
+            if p[i + 1] in "dDwWsSbB":
                 return True
             i += 2
         else:
@@ -4439,7 +4596,8 @@ def unicode_classes(p: str) -> bool:
 def regex_groups(p: str) -> int:
     """The entries `regexp_match(s, p)` has on a match: its capture groups, or
     the whole match if there are none. Groups are counted as `(` outside
-    classes and escapes, which is exact for patterns without `(?`."""
+    classes and escapes, but `(?:`, which is exact for patterns without
+    other `(?`."""
     groups, k, in_class = 0, 0, False
     while k < len(p):
         c = p[k]
@@ -4456,9 +4614,13 @@ def regex_groups(p: str) -> int:
             if p[k + 1 : k + 2] == "]":
                 k += 1
         elif c == "(":
-            if p[k + 1 : k + 2] == "?":
+            if p[k + 1 : k + 3] == "?:":
+                # Non-capturing.
+                k += 1
+            elif p[k + 1 : k + 2] == "?":
                 raise Unsupported(f"regular expressions with '(?' are not supported: {p!r}")
-            groups += 1
+            else:
+                groups += 1
         k += 1
     return max(groups, 1)
 

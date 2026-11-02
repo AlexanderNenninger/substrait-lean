@@ -23,6 +23,7 @@ one commit the size of the change.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -30,15 +31,18 @@ from dataclasses import replace
 from typing import Any, Literal
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 try:
     from pyiceberg.catalog import Catalog
+    from pyiceberg.conversions import to_bytes
     from pyiceberg.expressions import AlwaysTrue
     from pyiceberg.io.pyarrow import (
         ArrowScan,
         _dataframe_to_data_files,
         _pyarrow_schema_ensure_small_types,
+        parquet_file_to_data_file,
     )
     from pyiceberg.manifest import (
         DataFile,
@@ -50,7 +54,8 @@ try:
         ManifestFile,
         ManifestWriterV2,
     )
-    from pyiceberg.table import FileScanTask, Table, Transaction
+    from pyiceberg.schema import index_name_by_id
+    from pyiceberg.table import FileScanTask, Table, TableProperties, Transaction
     from pyiceberg.table.snapshots import Operation
     from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
     from pyiceberg.table.update.snapshot import _FastAppendFiles
@@ -58,6 +63,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
+from sverify._scan import Scan, ScanSnapshot, local_path
 from sverify._weighted import expanded, negated, positive
 from sverify.contracts import Fact
 from sverify.incremental import (
@@ -69,6 +75,7 @@ from sverify.incremental import (
     row_key,
     snapshot_diff,
 )
+from sverify.io import _engine
 from sverify.io._common import ColumnStats, Contract, SinkWrite, q, stats_facts
 from sverify.io._sink import Sink, SinkChange
 from sverify.steps import Pipeable
@@ -189,6 +196,49 @@ def _scan(t: Table, tasks: Sequence[FileScanTask]) -> pa.Table:
     return ArrowScan(t.metadata, t.io, t.schema(), AlwaysTrue()).to_table(tasks)
 
 
+def _by_name(t: Table) -> bool:
+    """Whether reading the data files by column name reads the columns
+    pyiceberg reads by field id: no field had another name in any of the
+    table's schemas and no name meant another field, no name mapping (for
+    files without field ids), and no partition fields (whose values files
+    added from elsewhere may lack)."""
+    if t.properties.get(TableProperties.DEFAULT_NAME_MAPPING):
+        return False
+    if any(spec.fields for spec in t.specs().values()):
+        return False
+    names: dict[int, str] = {}
+    ids: dict[str, int] = {}
+    for schema in t.metadata.schemas:
+        for fid, name in index_name_by_id(schema).items():
+            if names.setdefault(fid, name) != name or ids.setdefault(name, fid) != fid:
+                return False
+    return True
+
+
+def _deleted_rows(paths: dict[str, set[str]]) -> pa.Table:
+    """The rows position delete files delete: from each delete file's path
+    to the data files it applies to, as `Scan.deleted` (local paths)."""
+    parts = []
+    for delete, data in paths.items():
+        local = local_path(delete)
+        assert local is not None
+        rows = pq.read_table(local, columns=["file_path", "pos"])
+        rows = rows.filter(
+            pc.call_function(
+                "is_in", [rows.column("file_path")], pc.SetLookupOptions(pa.array(sorted(data)))
+            )
+        )
+        files = [local_path(f) for f in rows.column("file_path").to_pylist()]
+        parts.append(
+            pa.table(
+                {"file": pa.array(files, pa.string()), "pos": rows.column("pos").cast(pa.int64())}
+            )
+        )
+    if not parts:
+        return pa.table({"file": pa.array([], pa.string()), "pos": pa.array([], pa.int64())})
+    return pa.concat_tables(parts)
+
+
 def contract_facts(t: Table) -> list[Fact]:
     """The contract the table's properties record, if every snapshot of the
     table was written under it."""
@@ -269,6 +319,34 @@ class IcebergSource(Pipeable):
         v = _version(s)
         files = _live_files(t, s)
         return Snapshot(v, _read(t, s), self._facts(t, files, f"file stats @v{v}"))
+
+    def _native(self, version: int | None = None) -> ScanSnapshot | None:
+        """The snapshot at `version` as the Parquet files DuckDB reads
+        itself (#173), with their position deletes, and the same facts as
+        `snapshot`. None where reading the files by column name may not give
+        pyiceberg's rows (`_by_name`), and for equality deletes, other file
+        formats and object stores."""
+        t = self.table()
+        s = t.current_snapshot() if version is None else _at(t, version)
+        if (version is not None and s is None and version != 0) or not _by_name(t):
+            return None
+        files: list[str] = []
+        deletes: dict[str, set[str]] = {}
+        for task in _tasks(t, s).values():
+            local = local_path(task.file.file_path)
+            if local is None or task.file.file_format != FileFormat.PARQUET:
+                return None
+            files.append(local)
+            for d in task.delete_files:
+                if d.content != DataFileContent.POSITION_DELETES:
+                    return None
+                if d.file_format != FileFormat.PARQUET or local_path(d.file_path) is None:
+                    return None
+                deletes.setdefault(d.file_path, set()).add(task.file.file_path)
+        v = _version(s)
+        deleted = _deleted_rows(deletes) if deletes else None
+        scan = Scan(tuple(sorted(files)), _arrow_schema(t), deleted, None, f"{self.name}@v{v}")
+        return ScanSnapshot(v, scan, self._facts(t, _live_files(t, s), f"file stats @v{v}"))
 
     def contract(self) -> Contract | None:
         """The contract the table property `sverify.contract` records, or
@@ -526,9 +604,14 @@ def _position_deletes(t: Table, positions: dict[str, list[int]]) -> list[DataFil
 
 
 def _commit_rows(
-    tx: Transaction, t: Table, rows: pa.Table, deletes: list[DataFile], props: dict[str, str]
+    tx: Transaction,
+    t: Table,
+    rows: pa.Table | list[DataFile],
+    deletes: list[DataFile],
+    props: dict[str, str],
 ) -> None:
-    """One snapshot that deletes by position and appends `rows`."""
+    """One snapshot that deletes by position and appends `rows` (or data
+    files already written)."""
     snapshot = _RowLevel(
         deletes,
         operation=Operation.OVERWRITE if deletes else Operation.APPEND,
@@ -536,9 +619,11 @@ def _commit_rows(
         io=t.io,
         snapshot_properties=props,
     )
-    added: Iterable[DataFile] = (
-        _dataframe_to_data_files(tx.table_metadata, rows, t.io) if rows.num_rows else []
-    )
+    added: Iterable[DataFile]
+    if isinstance(rows, list):
+        added = rows
+    else:
+        added = _dataframe_to_data_files(tx.table_metadata, rows, t.io) if rows.num_rows else []
     for f in added:
         snapshot.append_data_file(f)
     snapshot.commit()
@@ -622,6 +707,65 @@ class IcebergSink(Sink):
         epoch = int(mine[0].summary.get(EPOCH, "-1"))  # type: ignore[union-attr]
         return replace(Contract.from_json(text), epoch=epoch)
 
+    def _write_native(
+        self, t: Table, created: bool, change: SinkChange, props: dict[str, str]
+    ) -> tuple[Literal["created", "append", "row-level"], int, int] | None:
+        """Have DuckDB write the data file of the state (`created`) or of the
+        rows the change inserts, find the positions of the rows it deletes,
+        and commit them as one snapshot with the contract. None where only
+        the Arrow path writes: partitioned tables, nested columns, object
+        stores, or a table that does not hold the rows the change deletes."""
+        assert change.native is not None
+        rows, delta = change.native
+        schema = change.schema
+        fields = t.schema().fields
+        if not t.spec().is_unpartitioned() or any(pa.types.is_nested(f.type) for f in schema):
+            return None
+        ids = {f.name: f.field_id for f in fields}
+
+        def data_file(sql: str) -> list[DataFile]:
+            uri = t.location_provider().new_data_location(f"{uuid.uuid4()}-sverify.parquet")
+            local = local_path(uri)
+            assert local is not None
+            os.makedirs(os.path.dirname(local), exist_ok=True)
+            if not _engine.copy(sql, local, schema, ids):
+                os.remove(local)
+                return []
+            f = parquet_file_to_data_file(t.io, t.metadata, uri)
+            types = {fld.name: fld.field_type for fld in fields}
+            for c, (lo, hi) in _engine.float_bounds(local, schema).items():
+                f.lower_bounds[ids[c]] = to_bytes(types[c], lo)
+                f.upper_bounds[ids[c]] = to_bytes(types[c], hi)
+            return [f]
+
+        if local_path(t.location()) is None:
+            return None
+        if created:
+            with t.transaction() as tx:
+                tx.set_properties({KEY: change.contract.to_json()})
+                _commit_rows(tx, t, data_file(_engine.rows_sql(rows, schema)), [], props)
+            return "created", _engine.rows_count(rows), 0
+        inserted, deleted = _engine.counts(delta)
+        deletes: list[DataFile] = []
+        if deleted:
+            snap = self.source()._native()
+            if snap is None:
+                return None
+            gone = _engine.positions(snap.scan, delta)
+            if gone is None:
+                return None
+            uris = {local_path(p): p for p in _tasks(t, t.current_snapshot())}
+            by_file: dict[str, list[int]] = {}
+            files, at = gone.column("file").to_pylist(), gone.column("pos").to_pylist()
+            for f, pos in zip(files, at, strict=True):
+                by_file.setdefault(uris[f], []).append(pos)
+            deletes = _position_deletes(t, by_file)
+        added = data_file(_engine.inserts_sql(delta, schema)) if inserted else []
+        with t.transaction() as tx:
+            tx.set_properties({KEY: change.contract.to_json()})
+            _commit_rows(tx, t, added, deletes, props)
+        return ("row-level" if deleted else "append"), inserted, deleted
+
     def write(self, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
         deletes and new rows, in one snapshot that records the contract."""
@@ -634,6 +778,12 @@ class IcebergSink(Sink):
             )
         else:
             t = self.catalog.load_table(self.identifier)
+        if change.native is not None and (created or not change.replace):
+            done = self._write_native(t, created, change, props)
+            if done is not None:
+                mode, inserted, deleted = done
+                version = _version(self.catalog.load_table(self.identifier).current_snapshot())
+                return SinkWrite(mode, version, contract, inserted, deleted)
         positions: dict[str, list[int]] | None = None
         if not created and not change.replace and t.spec().is_unpartitioned():
             # The rows that went: as many as the change deletes, so tuples.

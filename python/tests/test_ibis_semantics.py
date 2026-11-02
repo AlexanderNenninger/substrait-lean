@@ -1,5 +1,5 @@
 """The meaning `verify` gives the Ibis operations whose result depends on the
-Ibis backend (`docs/ibis-semantics.md`, chapter 15 of the notebook tour).
+Ibis backend (`docs/ibis-semantics.md`).
 
 Each expression goes through the vendored producer, as `verify` compiles it,
 and Lean's evaluation (`Rel.eval`) must give the documented rows: the meaning
@@ -150,7 +150,6 @@ def test_refused_operations(con):
         (lambda t: t.select(r=ibis.today()), "pass the date in"),
         (lambda t: t.select(r=t.v.typeof()), "the type's name is the engine's own"),
         (lambda t: t.filter(t.v > ibis.param(ibis.dtype("float64"))), "bind the parameter first"),
-        (lambda t: t.select(r=t.v.try_cast("int64")), "use cast()"),
     ],
 )
 def test_refusals_say_why(con, build, reason):

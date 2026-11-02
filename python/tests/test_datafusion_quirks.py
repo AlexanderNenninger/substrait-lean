@@ -1,4 +1,4 @@
-"""DataFusion as a backend, pinned (section 8 of `notebooks/17_backend_semantics.py`).
+"""DataFusion as a backend, pinned (section 8 of `catalogue/backend_semantics.py`).
 
 DataFusion is an engine here, not a SQL frontend: the plans come from
 sverify's lift of DuckDB's SQL (`sverify.sql_lift`), and DataFusion runs

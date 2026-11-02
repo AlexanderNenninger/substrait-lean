@@ -17,13 +17,17 @@ value round-trips through DuckDB's types.
 
 from __future__ import annotations
 
+import functools
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
+
+from sverify import _duckdb
+from sverify._scan import Native
 
 WEIGHT = "__weight"
 _ROW = "__sverify_row"
@@ -36,20 +40,30 @@ def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _sql(sql: str, **tables: pa.Table) -> pa.Table:
-    """Run `sql` over `tables` on the shared in-process DuckDB database."""
+def _sql(sql: str, **tables: pa.Table | Native) -> pa.Table:
+    """Run `sql` over `tables` (Arrow tables, or tables DuckDB reads where
+    they are) on the process's DuckDB database (`sverify._duckdb`)."""
     global _DB
     with _LOCK:
         if _DB is None:
-            _DB = duckdb.connect()
+            _DB = _duckdb.cursor()
         db = _DB
+        drops: list[Callable[[], None]] = []
         try:
             for name, table in tables.items():
-                db.register(name, table)
+                if isinstance(table, Native):
+                    drops.append(table.attach(db, name))
+                else:
+                    db.register(name, table)
+                    drops.append(functools.partial(_unregister, db, name))
             return db.sql(sql).to_arrow_table()
         finally:
-            for name in tables:
-                db.unregister(name)
+            for drop in drops:
+                drop()
+
+
+def _unregister(db: duckdb.DuckDBPyConnection, name: str) -> None:
+    db.unregister(name)
 
 
 def _call(name: str, *args: object) -> Any:
@@ -158,19 +172,84 @@ def deleted_count(z: pa.Table) -> int:
     return -total(negative(z))
 
 
-def duplicate_keys(table: pa.Table, cols: Sequence[str], among: pa.Table | None = None) -> int:
+def duplicate_keys(
+    table: pa.Table | Native, cols: Sequence[str], among: pa.Table | None = None
+) -> int:
     """How many copies beyond the first the keys `cols` of `table` have:
     over all keys, or only over the keys of `among` (a table with the
     columns `cols`). Keys are equal as rows are (NULLs equal)."""
     key = ", ".join(map(_q, cols))
     dup = f"SELECT {key}, count(*) AS n FROM t GROUP BY {key} HAVING count(*) > 1"
+    t = table if isinstance(table, Native) else table.select(cols)
     if among is None:
-        out = _sql(f"SELECT coalesce(sum(n - 1), 0) AS d FROM ({dup})", t=table.select(cols))
+        out = _sql(f"SELECT coalesce(sum(n - 1), 0) AS d FROM ({dup})", t=t)
     else:
         same = " AND ".join(f"d.{_q(c)} IS NOT DISTINCT FROM a.{_q(c)}" for c in cols)
         out = _sql(
             f"SELECT count(*) AS d FROM ({dup}) d WHERE EXISTS (SELECT 1 FROM a WHERE {same})",
-            t=table.select(cols),
+            t=t,
             a=among.select(cols),
         )
     return out.column("d")[0].as_py()
+
+
+_ONE = "__sverify_one"
+
+
+def missing(table: pa.Table | Native, change: pa.Table) -> pa.Table:
+    """The rows the weighted table `change` deletes more copies of than
+    `table` holds, each with the number of copies it lacks as its weight.
+    DuckDB counts the copies, so a `Scan` is read from its files."""
+    deletes = grouped(negative(change))
+    if deletes.num_rows == 0:
+        return deletes
+    keys = rows_of(deletes).column_names
+    indexed = deletes.append_column(_ROW, _indices(deletes.num_rows))
+    same = " AND ".join(f"t.{_q(c)} IS NOT DISTINCT FROM d.{_q(c)}" for c in keys)
+    w, row, one = _q(WEIGHT), _q(_ROW), _q(_ONE)
+    out = _sql(
+        f"SELECT d.{row} AS {row}, -d.{w} - count(t.{one}) AS {w} FROM d "
+        f"LEFT JOIN (SELECT 1 AS {one}, * FROM t) t ON {same} "
+        f"GROUP BY d.{row}, d.{w} HAVING count(t.{one}) < -d.{w} ORDER BY 1",
+        d=indexed,
+        t=table,
+    )
+    rows = rows_of(deletes).take(out.column(_ROW))
+    return rows.append_column(WEIGHT, out.column(WEIGHT).cast(pa.int64()))
+
+
+def _same_rows(keys: Sequence[str], a: str, b: str) -> str:
+    """SQL: rows `a` and `b` are equal as the model compares them, for
+    tables with canonical doubles (NULLs equal, one NaN, one zero; lists and
+    structs by their elements)."""
+    if not keys:
+        return "TRUE"
+    return " AND ".join(f"{a}.{_q(c)} IS NOT DISTINCT FROM {b}.{_q(c)}" for c in keys)
+
+
+def matching(z: pa.Table | Native, rows: pa.Table) -> pa.Table:
+    """The rows of the weighted table `z` equal to some row of `rows` (a
+    table with `z`'s row columns, and maybe a weight), with their weights."""
+    keys = [c for c in z.schema.names if c != WEIGHT]
+    same = _same_rows(keys, "z", "r")
+    out = _sql(f"SELECT * FROM z WHERE EXISTS (SELECT 1 FROM r WHERE {same})", z=z, r=rows)
+    return out.cast(z.schema)
+
+
+def weights_in(z: pa.Table | Native, rows: pa.Table) -> pa.Array:
+    """The weight in the weighted table `z` of each row of `rows` (a table
+    with `z`'s row columns, and maybe a weight), 0 where `z` lacks it."""
+    if rows.num_rows == 0:
+        return pa.array([], pa.int64())
+    keys = [c for c in z.schema.names if c != WEIGHT]
+    indexed = pa.Table.from_arrays(
+        [*(rows.column(c) for c in keys), _indices(rows.num_rows)], names=[*keys, _ROW]
+    )
+    same = _same_rows(keys, "z", "r")
+    out = _sql(
+        f"SELECT r.{_q(_ROW)}, coalesce(sum(z.{_q(WEIGHT)}), 0) AS w FROM r "
+        f"LEFT JOIN z ON {same} GROUP BY r.{_q(_ROW)} ORDER BY 1",
+        z=z,
+        r=indexed,
+    )
+    return out.column("w").combine_chunks().cast(pa.int64())

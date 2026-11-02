@@ -18,9 +18,13 @@ def Row.render (row : Row) : String :=
 def UnFn.render : UnFn → String
   | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
   | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
-  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE" | .upper => "UPPER" | .lower => "LOWER"
+  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .ftoiOrNull => "TRY_BIGINT"
+  | .narrowOrNull n => s!"TRY_INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .reverse => "REVERSE" | .ascii => "ASCII"
   | .replace p r => s!"REPLACE_{p.quote}_{r.quote}" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
+  | .regexExtract p g => s!"REGEXP_EXTRACT_{p.quote}_{g}"
+  | .regexReplace p r g => s!"REGEXP_REPLACE_{p.quote}_{r.quote}{if g then "_G" else ""}"
+  | .md5 => "MD5" | .sha256 => "SHA256"
   | .datePart p => s!"DATE_PART_{p.name}" | .dateTrunc u => s!"DATE_TRUNC_{u.name}"
   | .toDate => "DATE" | .dayPart p => s!"DAY_PART_{p.name}" | .dayTrunc u => s!"DAY_TRUNC_{u.name}"
   | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
@@ -70,6 +74,7 @@ def AggFn.name : AggFn → String
   | .pick last => if last then "LAST" else "FIRST"
   | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
   | .corr => "CORR"
+  | .concat sep => s!"STRING_AGG_{sep.quote}"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with

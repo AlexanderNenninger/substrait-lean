@@ -1,3 +1,6 @@
+import SubstraitLean.Regex
+import SubstraitLean.Digest
+
 /-!
 # String functions
 
@@ -26,15 +29,18 @@ against DataFusion 51 by `python/tests/test_text.py`:
 `translate` is not modelled: DataFusion translates grapheme clusters, not
 characters (`translate('e\u{301}e', 'e', 'x')` is `'e\u{301}x'`).
 
-`UPPER`, `LOWER`, `ILIKE` and regular expressions are **black boxes**: `opaque`
-functions, so no proof depends on what they compute. Their meaning is Rust's
-(`str::to_uppercase`, the `regex` crate), which DataFusion and Polars use;
-the SQL translations refuse at run time what their engines compute
-differently (#70). `ILIKE` folds case with Unicode's simple case folding (the
-`regex` crate's `(?i)`, so `'É' ILIKE 'é'` but not `'ß' ILIKE 'SS'`). Lean's
-evaluator maps ASCII case only, and evaluates no
-regular expressions: it panics instead, and `substrait-check` then refuses
-to print rows rather than print wrong ones.
+`UPPER`, `LOWER`, `ILIKE`, regular expressions and the digests `md5` and
+`sha256` are **black boxes**: `opaque` functions, so no proof depends on what
+they compute, only on their types (and that they are functions, so equal
+inputs give equal outputs). Their meaning is Rust's (`str::to_uppercase`, the
+`regex` crate), which DataFusion and Polars use; the SQL translations refuse
+at run time what their engines compute differently (#70). `ILIKE` folds case
+with Unicode's simple case folding (the `regex` crate's `(?i)`, so
+`'É' ILIKE 'é'` but not `'ß' ILIKE 'SS'`). Lean's evaluator maps ASCII case
+only, and evaluates regular expressions with RE2's meaning
+(`SubstraitLean/Regex.lean`) where it agrees with Rust's: elsewhere it
+panics, and `substrait-check` then refuses to print rows rather than print
+wrong ones.
 -/
 
 namespace Substrait.Text
@@ -198,24 +204,77 @@ def ilikeAscii (s p : String) : Bool :=
 /-- `s ILIKE p`: `LIKE` with Unicode's simple case folding. -/
 @[implemented_by ilikeAscii] opaque ilike : String → String → Bool
 
-/-- Panics on every call (the message depends on the pattern, so it is not a
-constant the compiler evaluates once). -/
-def regexUnevaluated (_ p : String) : Option Nat :=
-  panic! s!"regular expressions are not evaluated in Lean ({p})"
+/-- Does the pattern use `\\d`, `\\w`, `\\s`, `\\b` or a complement? -/
+def regexClasses : List Char → Bool
+  | '\\' :: c :: r => "dDwWsSbB".contains c || regexClasses r
+  | _ :: r => regexClasses r
+  | [] => false
+
+/-- Would RE2 and Rust's `regex` crate read the classes of `p` differently on
+`s`? Rust's are Unicode classes, and its `\\s` includes `\\v`. -/
+def classesDiffer (s p : String) : Bool :=
+  regexClasses p.toList && s.toList.any fun c => 128 ≤ c.toNat || c == '\x0b'
+
+/-- `f ()`, or a panic where the meaning of `p` on `s` is engine-specific.
+The message depends on the pattern, so it is not a constant the compiler
+evaluates once. -/
+def regexEvaluated {α : Type} [Inhabited α] (s p : String) (f : Unit → α) : α :=
+  if classesDiffer s p then
+    panic! s!"regular expression {p} of non-ASCII text is not evaluated in Lean"
+  else f ()
+
+def regexMatchImpl (s p : String) : Option Nat := regexEvaluated s p fun _ =>
+  let (r, g) := Regex.parse p
+  (Regex.search r g s.toList.toArray 0).map fun _ => max g 1 - 1
+
+def regexExtractImpl (s p : String) (g : Nat) : String := regexEvaluated s p fun _ =>
+  let (r, n) := Regex.parse p
+  let t := s.toList.toArray
+  match Regex.search r n t 0 with
+  | some caps => Regex.slice t (caps[g]?.getD none)
+  | none => ""
+
+def regexReplaceImpl (s p rw : String) (global : Bool) : String := regexEvaluated s p fun _ =>
+  let (r, n) := Regex.parse p
+  let t := s.toList.toArray
+  if global then (Regex.replaceAll r n t rw.toList 0 none "" 0).1
+  else match Regex.search r n t 0 with
+    | none => s
+    | some caps =>
+      let (i, j) := (caps[0]!).getD (0, 0)
+      Regex.slice t (some (0, i)) ++ Regex.rewrite t caps rw.toList ++ Regex.slice t (some (j, t.size))
 
 /-- `regexp_match(s, p)`: `none` if `p` does not match `s`, otherwise `some k`
 where the match has `k + 1` entries (its groups, or the whole match). -/
-@[implemented_by regexUnevaluated] opaque regexMatch : String → String → Option Nat
+@[implemented_by regexMatchImpl] opaque regexMatch : String → String → Option Nat
+
+/-- `regexp_extract(s, p, g)`: group `g` of the first match of `p` in `s`
+(`0`: the whole match), or `''` where nothing matches, the group took no
+part or `p` has fewer groups. -/
+@[implemented_by regexExtractImpl] opaque regexExtract : String → String → Nat → String
+
+/-- `regexp_replace(s, p, r)`: the first match of `p` in `s` (every match, if
+`global`) replaced by `r`, where `\\0` … `\\9` are the match's groups and
+`\\\\` a backslash. -/
+@[implemented_by regexReplaceImpl] opaque regexReplace : String → String → String → Bool → String
+
+/-- `md5(s)`: the MD5 digest of the UTF-8 bytes, as 32 lowercase hex digits. -/
+@[implemented_by Digest.md5] opaque md5 : String → String
+
+/-- `sha256(s)`: the SHA-256 digest of the UTF-8 bytes, as 64 lowercase hex digits. -/
+@[implemented_by Digest.sha256] opaque sha256 : String → String
 
 /-! ## Patterns that certainly compile
 
 DataFusion compiles a pattern with Rust's `regex` crate when it first
-evaluates it, and fails if it is invalid. `simpleRegex` accepts a
-conservative subset of its syntax: literal characters, `.`, `^`, `$`,
-escapes, groups, alternatives, simple classes and the quantifiers `*`, `+`,
-`?` and `{n}`, `{n,}`, `{n,m}` with `n ≤ m ≤ 1000`, in patterns of at most 200
-characters (Rust allows 250 nested groups). That these compile is part of the
-trusted model, tested by `python/tests/test_text.py`. -/
+evaluates it, and fails if it is invalid; DuckDB compiles a constant pattern
+with RE2 when it plans the query. `simpleRegex` accepts a conservative
+subset of both syntaxes: literal characters, `.`, `^`, `$`, escapes, groups
+(also non-capturing, `(?:…)`), alternatives, simple classes and the
+quantifiers `*`, `+`, `?` and `{n}`, `{n,}`, `{n,m}` with `n ≤ m ≤ 1000`, in
+patterns of at most 200 characters (Rust allows 250 nested groups). That
+these compile in both, and that RE2 matches them as `SubstraitLean/Regex.lean`
+does, is part of the trusted model, tested by `python/tests/test_text.py`. -/
 
 def plain (c : Char) : Bool := !"\\.+*?()|[]{}^$".contains c
 def escapable (c : Char) : Bool := "\\.+*?()|[]{}^$-dDwWsSnt".contains c
@@ -283,7 +342,7 @@ def sequence : Nat → List Char → Option (List Char)
       else if escapable c then quantifier r >>= sequence n
       else none
     | '.' :: r => quantifier r >>= sequence n
-    | '(' :: r => do
+    | '(' :: '?' :: ':' :: r | '(' :: r => do
       match ← alternatives n r with
       | ')' :: r => quantifier r >>= sequence n
       | _ => none
@@ -293,6 +352,17 @@ end
 
 def simpleRegex (p : String) : Bool :=
   p.length ≤ 200 && alternatives (3 * p.length + 3) p.toList == some []
+
+/-- The number of capture groups of a pattern `simpleRegex` accepts. -/
+def regexGroups (p : String) : Nat := (Regex.parse p).2
+
+/-- A replacement RE2 accepts for a pattern with `g` groups: `\\0` … `\\g`
+and `\\\\`, and no other backslash. -/
+def rewriteOk (g : Nat) : List Char → Bool
+  | '\\' :: c :: r => (c == '\\' || (c.isDigit && c.toNat - 48 ≤ g)) && rewriteOk g r
+  | ['\\'] => false
+  | _ :: r => rewriteOk g r
+  | [] => true
 
 #guard substr "hello" 0 (some 2) == "h"
 #guard substr "hello" (-1) (some 3) == "h"
@@ -318,5 +388,20 @@ def simpleRegex (p : String) : Bool :=
 #guard simpleRegex "^a" && simpleRegex "(a)(b)" && simpleRegex "\\d{4}-\\d{2}" && simpleRegex "[a-z]+$"
 #guard !simpleRegex "(" && !simpleRegex "a**" && !simpleRegex "[]" && !simpleRegex "(?i)a"
 #guard !simpleRegex "a{3,2}" && !simpleRegex "*a"
+#guard simpleRegex "(?:a)(b)" && !simpleRegex "(?i)a" && !simpleRegex "(?=a)"
+#guard regexGroups "(a)(?:b)(c(d))" == 3 && regexGroups "[(]\\(" == 0
+#guard rewriteOk 1 "[\\1\\0\\\\]".toList && !rewriteOk 1 "\\2".toList && !rewriteOk 1 "a\\".toList
+#guard !rewriteOk 1 "\\n".toList
+#guard regexExtractImpl "abc" "x" 0 == "" && regexExtractImpl "abc" "(b)(c)" 2 == "c"
+#guard regexExtractImpl "abc" "(x)?b" 1 == "" && regexExtractImpl "abc" "(b)" 2 == ""
+#guard regexExtractImpl "aaa" "(a*)*" 1 == "aaa" && regexExtractImpl "ab" "(a|ab)(c|bcd)?" 0 == "a"
+#guard regexExtractImpl "xay" "(?:x)(a)" 1 == "a" && regexExtractImpl "a\nb" "a.b" 0 == ""
+#guard regexReplaceImpl "aaa" "a" "b" false == "baa" && regexReplaceImpl "aaa" "a" "b" true == "bbb"
+#guard regexReplaceImpl "abc" "(b)" "[\\1\\0]" false == "a[bb]c"
+#guard regexReplaceImpl "abc" "" "-" true == "-a-b-c-" && regexReplaceImpl "abc" "b*" "-" true == "-a-c-"
+#guard regexReplaceImpl "abc" "\\b" "|" true == "|abc|"
+#guard regexReplaceImpl "abab" "(a)|(b)" "[\\1\\2]" true == "[a][b][a][b]"
+#guard regexMatchImpl "abc" "(b)(c)" == some 1 && regexMatchImpl "abc" "b" == some 0
+#guard regexMatchImpl "abc" "^b" == none
 
 end Substrait.Text

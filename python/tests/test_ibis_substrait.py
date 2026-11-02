@@ -140,11 +140,20 @@ def test_plans_mean_what_ibis_means(case, t, u, lr):
 
         got, expected = bags(got), bags(expected)
     if case.label in APPROXIMATE:
-        # Each engine's own algorithm (#54); Lean prints six decimals.
-        def near(rs: list[tuple]) -> list[tuple]:
-            return [tuple(round(v, 5) if isinstance(v, float) else v for v in r) for r in rs]
+        # Each engine's own algorithm (#54), and doubles rounded to four
+        # decimals above: a last-bit difference may round either way, so
+        # doubles agree within 1e-4 (rows matched by their other values).
+        def key(r: tuple) -> str:
+            return repr(tuple(round(v) if isinstance(v, float) else v for v in r))
 
-        got, expected = near(got), near(expected)
+        assert len(got) == len(expected)
+        for g, e in zip(sorted(got, key=key), sorted(expected, key=key), strict=True):
+            for a, b in zip(g, e, strict=True):
+                if isinstance(a, float) and isinstance(b, float):
+                    assert math.isclose(a, b, rel_tol=1e-4, abs_tol=1.5e-4), (g, e)
+                else:
+                    assert a == b, (g, e)
+        return
     if case.label in UNORDERED:
         assert len(got) == len(expected)
     else:

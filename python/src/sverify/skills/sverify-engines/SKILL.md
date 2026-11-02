@@ -45,7 +45,8 @@ results = {}
 for engine in ENGINES:  # "duckdb", and with their extras "polars" and "datafusion"
     node = halves(orders)
     node.refresh(engine=engine)
-    results[engine] = node.to_arrow().to_pylist()
+    # A node's rows come in no particular order: compare them as bags.
+    results[engine] = sorted(map(repr, node.to_arrow().to_pylist()))
 print(sorted(results))
 # ['datafusion', 'duckdb', 'polars']
 assert len({repr(r) for r in results.values()}) == 1  # the same rows everywhere

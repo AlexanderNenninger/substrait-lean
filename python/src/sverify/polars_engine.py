@@ -884,6 +884,8 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
+            if name in ("regexp_extract", "regexp_replace", "md5", "sha256"):
+                raise Unsupported(f"{name} is not yet supported on Polars; see #271")
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name == "round" and len(arg_js) == 2:
@@ -1013,6 +1015,8 @@ class Exprs:
         return Val(substr(s, a, n), pl.String, issues(s, a))
 
     def cast(self, c: dict) -> Val:
+        if c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
+            raise Unsupported("TRY_CAST is not yet supported on Polars; see #271")
         v = self(c["input"])
         target = c.get("type", {})
         if ("fp64" in target or "fp32" in target) and v.dtype in (pl.Int64, pl.Null):
@@ -1349,15 +1353,27 @@ class Exprs:
         return Val(pl.when(y.is_not_null()).then(strip(y)), pl.String, found)
 
     def round_to(self, a: Val, digits: dict) -> Val:
-        """`ROUND(x, d)`, as `FloatCode.roundTo`: `round(x · p) / p` with native
-        doubles, `p = 10^d`."""
+        """`ROUND(x, d)`, as `FloatCode.roundTo` (DuckDB's, #335): with
+        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` (`x` where that is not
+        finite), `round(x / m) · m` for `d < 0` (0 where that is not finite);
+        `±∞` and NaN stay."""
         if "literal" not in digits or literal(digits["literal"])[1] != pl.Int64:
             raise Unsupported("ROUND digits must be an integer literal")
         if a.dtype != pl.Float64:
             raise Unsupported(f"round of {a.dtype}")
-        p = math.pow(10.0, float(literal(digits["literal"])[0]))
-        r = fdiv((a.expr * p).round(0, mode="half_away_from_zero"), pl.lit(p, pl.Float64))
-        return Val(canon(r), pl.Float64, a.issues)
+        d = int(literal(digits["literal"])[0])
+        try:
+            m = math.pow(10.0, abs(d))
+        except OverflowError:
+            m = math.inf
+        x, ml = a.expr, pl.lit(m, pl.Float64)
+        half = "half_away_from_zero"
+        if d >= 0:
+            r, fallback = fdiv((x * ml).round(0, mode=half), ml), x
+        else:
+            r, fallback = (fdiv(x, ml)).round(0, mode=half) * ml, pl.lit(0.0, pl.Float64)
+        out = pl.when(~x.is_finite()).then(x).when(~r.is_finite()).then(fallback).otherwise(r)
+        return Val(canon(out), pl.Float64, a.issues)
 
 
 # --- Relations ---------------------------------------------------------------
@@ -2096,7 +2112,7 @@ class Translator:
         an optional `FILTER`."""
         m = j.get("measure", {})
         name = ex.function(m.get("functionReference"))
-        if name in ("first", "last", "covar_samp", "covar_pop", "corr"):
+        if name in ("first", "last", "covar_samp", "covar_pop", "corr", "string_agg"):
             raise Unsupported(f"{name} is not yet supported on Polars; see #271")
         if m.get("sorts") and name != "array_agg":
             raise Unsupported(f"ordered aggregates are not supported: {name}")

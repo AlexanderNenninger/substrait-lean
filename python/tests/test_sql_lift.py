@@ -20,6 +20,7 @@ from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql_lift import DUCKDB, REFERENCE, lift
+from sverify_dev import catalogue
 from sverify_dev.lift import check, score
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -189,14 +190,8 @@ QUERIES = [
     "SELECT id, rank() OVER (PARTITION BY amount % 2 ORDER BY -amount, id) AS r FROM orders",
     "SELECT customer, sum(amount) AS s FROM orders GROUP BY customer"
     " ORDER BY CASE WHEN s > 6 THEN customer END, customer",
-    pytest.param(
-        "SELECT 7 / 2 AS h",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="oracle C: the written plan's IEEE division of two double literals "
-            "reads them as integer codes (#96)",
-        ),
-    ),
+    # The written plan's division of two double literals (#96, fixed with #335).
+    "SELECT 7 / 2 AS h",
 ]
 
 
@@ -316,6 +311,24 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ),
         ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
         ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
+        # Joins that are not the inner join of their ON, and a star SQLGlot
+        # expands otherwise than DuckDB.
+        ("SELECT id FROM orders ASOF JOIN customers ON customer >= name", "ASOF JOIN"),
+        ("SELECT id FROM orders POSITIONAL JOIN customers", "POSITIONAL JOIN"),
+        # What SQLGlot hangs on a table, and literals it reads otherwise.
+        ("FROM orders o1, orders o2 SELECT count(*)", "with joins"),
+        ("SELECT count(*) FROM orders TABLESAMPLE 2 ROWS", "with sample"),
+        ("SELECT * FROM orders PIVOT (sum(amount) FOR customer IN ('ada'))", "with pivots"),
+        ("SELECT 1__2", "underscore not between two digits"),
+        ("SELECT 1._5", "underscore not between two digits"),
+        ("SELECT '1e38'::DECIMAL(38,0)", "does not fit"),
+        ('SELECT 42::TINYINT::"null"', "CAST to"),
+        ("SELECT INTERVAL 2 DAYS AS x", "INTERVAL output column"),
+        (
+            "SELECT orders.*, c.* FROM orders FULL JOIN customers AS c (customer, region)"
+            " USING (customer)",
+            "with JOIN … USING",
+        ),
         ("SELECT GROUPING(id) FROM orders GROUP BY ROLLUP (customer)", "GROUPING of"),
         ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
         ("SELECT nope FROM orders", "cannot resolve"),
@@ -436,6 +449,10 @@ def test_sql_is_duckdbs_by_default():
     assert (op.dialect, op.semantics) == ("duckdb", "duckdb")
 
 
+@pytest.mark.skipif(
+    not (catalogue.ROOT / "schemas.toml").is_file(),
+    reason="catalogue/ of the repository is not here",
+)
 def test_benchmark_queries_through_the_lift():
     # The #229 score (`python -m sverify_dev.lift`), on SSB's four queries.
     results = score(["ssb"])
@@ -471,4 +488,24 @@ def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):
     # With DuckDB's semantics, these come from Lean's generated lift table
     # (#268), which states NaN and ±inf exactly instead of refusing them.
     result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_nested_values_have_no_order_yet():
+    # DuckDB orders structs field by field; the model's order differs.
+    schema = {"t": ibis.schema({"s": "struct<p: int64, q: int64>"})}
+    with pytest.raises(Refused, match="ordering comparisons"):
+        lift("SELECT a.s < b.s AS c FROM t AS a, t AS b", schema)
+
+
+def test_constants_out_of_range_are_cast_not_folded():
+    # `200::TINYINT` raises in DuckDB: the plan casts, it doesn't hold an
+    # INT8 literal of 200.
+    plan = lift("SELECT 200::TINYINT AS x, 100::TINYINT AS y", {}).plan
+    exprs = plan["relations"][0]["root"]["input"]["project"]["expressions"]
+    assert "cast" in exprs[0] and exprs[1] == {"literal": {"i8": 100}}
+
+
+def test_digit_separators_are_read_as_duckdb_reads_them():
+    result = check("SELECT 1_000 AS a, 1_000.5 AS b, 2_5e1 AS c", {})
     assert result.ok, f"{result.stage}: {result.detail}"

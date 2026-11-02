@@ -61,7 +61,7 @@ stddev_var = { lean = "partial", description = "STDDEV / VARIANCE", note = "grou
 corr = { lean = "partial", description = "CORR / COVAR / REGR_*", note = "COVAR_SAMP, COVAR_POP and CORR, grouped, on DuckDB, with its own algorithm (#54); not REGR_*, not over windows" }
 percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL" }
 approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }
-string_agg = { lean = "no", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect" }
+string_agg = { lean = "partial", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect", note = "STRING_AGG with an ORDER BY of columns (DuckDB only so far, #271); without one the order is the engine's, which is refused" }
 arg_max = { lean = "no", description = "ARG_MAX / first or last value of a group, ordered aggregates", note = "first_value aggregates are refused" }
 bool_agg = { lean = "no", description = "BOOL_AND / BOOL_OR / EVERY" }
 
@@ -92,12 +92,12 @@ cast_numeric = { lean = "yes", description = "casts between integer, double and 
 cast_date = { lean = "partial", description = "casts of dates and timestamps", note = "string → date literal yes; date → string no" }
 like = { lean = "yes", description = "LIKE / NOT LIKE / contains / startswith" }
 regex_match = { lean = "yes", description = "regular-expression match" }
-regex_replace = { lean = "no", description = "REGEXP_REPLACE / REGEXP_EXTRACT" }
+regex_replace = { lean = "yes", description = "REGEXP_REPLACE / REGEXP_EXTRACT", note = "constant patterns in the subset `Text.simpleRegex` accepts; DuckDB only so far (#271)" }
 string_basic = { lean = "yes", description = "substr, upper, lower, length, concat, trim, strpos" }
 string_split = { lean = "no", description = "SPLIT_PART / CONCAT_WS / string split" }
 string_compare = { lean = "partial", description = "<, > on strings (also MIN/MAX of strings)", note = "MIN/MAX yes; < and > are NULL in the model, and every engine refuses them" }
 math_funcs = { lean = "yes", description = "round, floor, ceil, abs, power, greatest, least" }
-hash = { lean = "no", description = "MD5 / hashing (surrogate keys)" }
+hash = { lean = "partial", description = "MD5 / hashing (surrogate keys)", note = "md5 and sha256; DuckDB's hash() is refused, as it is the engine's own and changes between versions" }
 date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "with sverify's Ibis producer ibis.date(…) works; through Ibis's DataFusion SQL it compiled to DATE_TRUNC('DAY', …), which the checker refuses. The catalogue writes D(…), a cast, which works both ways" }
 date_part = { lean = "partial", description = "EXTRACT(year / month / dow … FROM x)", note = "timestamps and dates (`UnFn.dayPart`); EPOCH refused (Ibis epoch_seconds() works)" }
 time_bucket = { lean = "partial", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "intervals of days or less from an origin (`Time.bucket`, DATE_BIN; DataFusion bins in nanoseconds, so outside 1677-2262 an error is reported); month buckets and overlapping group_by_dynamic windows (UNNEST, #94) are refused" }

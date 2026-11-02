@@ -291,7 +291,8 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
-  | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ | .cov _ | .corr => false
+  | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ | .cov _ | .corr | .concat _ =>
+    false
 
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]

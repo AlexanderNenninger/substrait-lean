@@ -68,10 +68,21 @@
   }
  },
  "clickbench-q28": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "RegexReplace is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: regexp_replace is not yet supported on Polars; see #271",
+   "snowflake": "refused: regexp_replace is not yet supported on snowflake; see #271"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
+  }
  },
  "clickbench-q37": {
   "checker": "verified",
@@ -663,10 +674,14 @@
   }
  },
  "dbt-surrogate-key": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "Hash is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": true,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: md5 is not yet supported on Polars; see #271",
+   "snowflake": "refused: md5 is not yet supported on snowflake; see #271"
+  }
  },
  "dbt-union-sources": {
   "checker": "verified",
@@ -824,7 +839,7 @@
  "pa-string-agg": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "aggregate GroupConcat is not supported",
+  "detail": "group_concat() without order_by joins in the engine's order; give it an order_by",
   "native": "runs"
  },
  "pa-ntile-free-spenders": {

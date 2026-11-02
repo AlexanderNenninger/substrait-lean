@@ -367,6 +367,13 @@ theorem Bound.fitsDigits_mem {p : Nat} {b : Bound} {i : Int} (h : b.fitsDigits p
   simp only [_root_.Substrait.fitsDigits, Bool.and_eq_true, decide_eq_true_eq]
   omega
 
+/-- `a`, or NULL. -/
+def AVal.nullable (a : AVal) : AVal := { a with null := true }
+
+theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
+  | .null, _ => rfl
+  | .int _, h | .bool true, h | .bool false, h | .str _, h | .list _, h => h
+
 /-- `CAST(x AS INT)`: the integer itself, or NULL where it may not fit. -/
 def narrowAbs (n : Nat) (a : AVal) : AVal :=
   ⟨a.nonInt || a.int.any (!·.fitsBits n), a.int, false, false, false⟩
@@ -593,6 +600,9 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fround, a => monoAbs FloatCode.round a
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
+  -- `ftoi`'s value, or NULL where the cast fails (#58).
+  | .ftoiOrNull, a => (ftoiAbs a).nullable
+  | .narrowOrNull n, a => narrowAbs n a
   | .wrap _, a => a
   | .decimal _ _, a | .dkind _ _, a => a
   | .dround _, a | .dtrunc _, a =>
@@ -604,7 +614,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ftod _, a => partialAbs false a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .widen, a => a
-  | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
+  | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
+  | .regexReplace _ _ _, a | .md5, a | .sha256, a => ⟨a.nonStr, none, false, false, a.str⟩
   -- Below `Text.sizeCap`, by the size hypothesis for strings.
   | .length, a | .ascii, a =>
     ⟨a.nonStr, if a.str then some ⟨some 0, some Text.sizeCap⟩ else none, false, false, false⟩
@@ -980,6 +991,29 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · simp [AVal.Mem, narrowAbs, hb, hfb]
         · exact absurd (Bound.fitsBits_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case ftoiOrNull =>
+    have hf := ftoiAbs_sound h
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨c, b, rfl, hb, hc⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩ |
+      ⟨_, rfl, hs⟩
+    · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nullable]
+    · simp only [UnFn.abs, UnFn.apply] at hf ⊢
+      split at hf
+      · split
+        · exact AVal.mem_nullable hf
+        · simp [AVal.Mem, AVal.nullable]
+      · simp [AVal.Mem, AVal.nullable]
+    all_goals simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nullable]
+  case narrowOrNull n =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
+    · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+    · simp only [UnFn.apply, UnFn.abs]
+      split
+      · exact ⟨b, hb, hi⟩
+      · rename_i hfit
+        cases hfb : b.fitsBits n
+        · simp [AVal.Mem, narrowAbs, hb, hfb]
+        · exact absurd (Bound.fitsBits_mem hfb hi) hfit
+    all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case decimal => simpa [UnFn.abs, UnFn.apply] using h
   case dkind => simpa [UnFn.abs, UnFn.apply] using h
@@ -1043,7 +1077,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ |
       ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
-  case upper | lower | length | reverse | ascii | replace =>
+  case upper | lower | length | reverse | ascii | replace | regexExtract | regexReplace | md5 | sha256 =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.Mem, Text.ascii_nonneg,
         Text.capped_le, Text.capped_nonneg]
@@ -3123,7 +3157,6 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
 /-- Exactly `n` columns: missing ones are unknown. -/
 def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD · AVal.top)
 
-def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
 
 /-- Sums of integers in `b` keep their sign. -/
@@ -3169,6 +3202,8 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .min | .max => a.nullable
   -- One of the values, in the measure's order (#55).
   | .pick _ => a.nullable
+  -- A string, or NULL without values.
+  | .concat _ => ⟨true, none, false, false, true⟩
   | .collect => AVal.top
 
 /-- `ROW_NUMBER` and the ranks are positive integers, at most `Text.sizeCap`
@@ -3276,9 +3311,6 @@ theorem EnvMem.replicate (n : Nat) (row : Row) : EnvMem (List.replicate n AVal.t
   simp only [getD_top_eq, List.getElem?_replicate]
   split <;> simp [AVal.mem_top]
 
-theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
-  | .null, _ => rfl
-  | .int _, h | .bool true, h | .bool false, h | .str _, h | .list _, h => h
 
 /-- A column replaced by any value, its description by `AVal.top`. -/
 theorem EnvMem.set_top {env : List AVal} {row : Row} (h : EnvMem env row) (c : Nat) (v : Value) :
@@ -3400,6 +3432,8 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
   case collect => exact AVal.mem_top _
+  case concat sep =>
+    cases m.inputs (List.mergeSort grp (sortLe m.sort)) <;> simp [AggFn.apply, AVal.Mem]
   case count =>
     refine ⟨_, rfl, fun l hl => ?_, fun u hu => by simp [Bound.ge] at hu⟩
     simp only [Bound.ge, Option.some.injEq] at hl

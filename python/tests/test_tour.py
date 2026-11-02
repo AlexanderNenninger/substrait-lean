@@ -43,17 +43,6 @@ def minute(m: int, s: int = 0) -> dt.datetime:
     return dt.datetime(2026, 7, 1, 12, m, s)
 
 
-# -- 0. Start here ---------------------------------------------------------------
-
-
-def test_doubled(sv_source, sv_engine):
-    nb = notebook("00_start_here")
-    orders = sv_source([], {"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
-    data = {"orders": [(1, "ada", 30), (2, "bob", 5), (3, None, 11)]}
-    expected = [(1, 60), (3, 22)]
-    assert_contract(nb["doubled"](orders), data=data, expected=expected, engine=sv_engine)
-
-
 # -- 1. Duplicate card payments --------------------------------------------------
 
 

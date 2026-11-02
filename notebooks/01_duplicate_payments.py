@@ -15,7 +15,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="1. Duplicate card payments")
+app = marimo.App(width="compact", app_title="1. Duplicate card payments")
 
 
 @app.cell(hide_code=True)
@@ -29,7 +29,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [Contents](?file=00_start_here.py) · 2. [Sensor alerts](?file=02_sensor_alerts.py) →
+    [README](https://github.com/AlexanderNenninger/substrait-lean#the-tour) · 2. [Sensor alerts](?file=02_sensor_alerts.py) →
     """)
     return
 
@@ -41,30 +41,29 @@ def _(mo):
 
     Say you're on the payments team. A customer was charged twice for the
     same coffee, and by the time support hears about it, they've already
-    tweeted. You want to catch these **double charges**, the same card
-    paying the same amount at the same merchant twice within five minutes,
-    and refund them first.
+    tweeted. You want to catch these double charges, the same card paying
+    the same amount at the same merchant twice within five minutes, and
+    refund them first.
 
     The rule comes from the [query catalogue](../catalogue/INDEX.md)
-    (`fin-duplicate-payments`); stream processors write it as an interval
-    join, and here it is a self-join on a Delta Lake table of card
-    transactions. The refund queue trusts what you hand it, so it has to be
-    right: no pair twice, no charge matched with itself, and nothing left
-    over when a charge is reversed.
+    (`fin-duplicate-payments`). Stream processors write it as an interval
+    join; here it is a self-join on a Delta Lake table of card transactions.
+    The refund queue relies on what you hand it: no pair twice, no charge
+    matched with itself, and nothing left over when a charge is reversed.
 
     We'll go through the whole job:
 
     1. read the transactions from a Delta table, with its Change Data Feed;
-    2. write the rule in Ibis and state its **contract**: what it assumes
-       about the input, and what the refund queue may rely on;
-    3. have the contract **proved** before any data runs;
-    4. run the same checked plan on DuckDB, Polars and DataFusion, and write
-       it as Snowflake and Spark SQL;
-    5. **maintain the result from the change feed** when new transactions
-       arrive and old ones are reversed, and see what the usual "process
-       the new rows" job gets wrong;
-    6. write it to a Delta table that carries the contract, so the next job
-       can build on it.
+    2. write the rule in Ibis and state its contract: what it assumes about
+       the input and what the refund queue may rely on;
+    3. have the checker prove the contract before any data runs;
+    4. run the checked plan on DuckDB, Polars and DataFusion, and write it
+       as Snowflake and Spark SQL;
+    5. maintain the result from the change feed when new transactions arrive
+       and old ones are reversed, next to the usual "process the new rows"
+       job;
+    6. write the result to a Delta table that carries the contract, so the
+       next job can build on it.
     """)
     return
 
@@ -74,12 +73,12 @@ def _(mo):
     mo.md(r"""
     ## 1. The source: a Delta table of transactions
 
-    Amounts are integer cents: money as DOUBLE does not compare exactly, and
-    an equality of amounts is the whole rule. The table has the Change Data
+    Amounts are integer cents, because a DOUBLE amount doesn't compare
+    exactly and the rule is an equality of amounts. The table has the Change Data
     Feed on (so later runs can read what changed) and a CHECK constraint
     that amounts are not negative. The data has one real double charge, a
     near miss on card 11 half an hour apart, and card 12, whose two payments
-    arrived without a merchant at all.
+    arrived without a merchant.
     """)
     return
 
@@ -164,21 +163,21 @@ def _(mo):
 
     We'll write the rule in Ibis, state what it assumes and what it
     promises, and have the checker prove it before any data runs. The rule
-    is plain Ibis; the decorator writes down what everyone involved is
-    counting on:
+    is plain Ibis, and the decorator writes down what everyone involved
+    counts on:
 
-    * **`requires`**: what the job assumes about its input. Transaction ids
-      are unique, amounts are not negative, and timestamps are before 2100
-      (so adding five minutes can't overflow).
-    * **`ensures`**: what the refund queue relies on. One row per pair,
-      the first transaction before its duplicate, a merchant on every row, a
-      non-negative amount, and the duplicate no earlier than the first.
+    * `requires` is what the job assumes about its input. Transaction ids
+      are unique, amounts are not negative, and timestamps are before 2100,
+      so that adding five minutes can't overflow.
+    * `ensures` is what the refund queue relies on. There is one row per
+      pair, the first transaction comes before its duplicate, every row has
+      a merchant and a non-negative amount, and the duplicate is no earlier
+      than the first.
 
-    The checks in `ensures` are the ones you would otherwise write as dbt
-    tests (`unique`, `not_null`, `accepted_range`, an expression test) and
-    run on yesterday's data, hoping yesterday contained the bad case. Here
-    they are proved for **every** input that meets `requires`, before the
-    job runs.
+    The checks in `ensures` are the ones you would write as dbt tests
+    (`unique`, `not_null`, `accepted_range`, an expression test) and run on
+    yesterday's data. Here the checker proves them for every input that
+    meets `requires`, before the job runs.
     """)
     return
 
@@ -232,8 +231,8 @@ def _(dt, ibis, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Now we build it. The Delta table is a source, and calling the rule on
-    it builds a node. Building the node proves the contract (a
+    Now we build it. The Delta table is a source, and piping it into the
+    rule builds a node. Building the node proves the contract (a
     `VerificationError` would stop here), and its first refresh loads the
     current snapshot:
     """)
@@ -259,21 +258,20 @@ def _(mo, report):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Every postcondition is ✅ proved, and no runtime error is possible. How
-    each one follows:
+    Every postcondition is proved, and no runtime error is possible. Each
+    one follows from the plan:
 
-    * **`unique(first_txn, duplicate_txn)`**: `txn_id` is a key of the
-      input, so a pair of ids identifies a pair of rows.
-    * **`merchant` is never NULL**, although the column is nullable: rows
-      only join when `a.merchant = b.merchant` is TRUE, and `NULL = NULL` is
-      not. Card 12's payments never match. (pandas' `merge` *does* match
-      NaN with NaN, and a Polars join does with `nulls_equal=True`: a port
-      of this rule to a dataframe library can change its result.)
-    * **`first_ts <= duplicate_ts`** comes from the join condition, which
-      holds on every output row.
+    * `unique(first_txn, duplicate_txn)`: `txn_id` is a key of the input, so
+      a pair of ids identifies a pair of rows.
+    * `merchant` is never NULL, although the column is nullable. Rows join
+      only when `a.merchant = b.merchant` is TRUE, and `NULL = NULL` is not
+      TRUE, so card 12's payments never match. pandas' `merge` matches NaN
+      with NaN, and a Polars join does with `nulls_equal=True`, so porting
+      this rule to a dataframe library can change its result.
+    * `first_ts <= duplicate_ts` comes from the join condition, which holds
+      on every output row.
 
-    Each precondition was established without trusting anyone's word for
-    it, and the first refresh says how:
+    The first refresh reports where each precondition came from:
     """)
     return
 
@@ -287,13 +285,13 @@ def _(dups, first_refresh):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The amount bound comes from the table's **Delta CHECK constraint**, the
-    timestamp bound from the **file statistics** (the maximum `ts` of each
-    file), and the key is checked on the data, since Delta doesn't enforce
-    keys. A later batch only checks the files it added.
+    The amount bound comes from the table's Delta CHECK constraint and the
+    timestamp bound from the file statistics (the maximum `ts` of each
+    file). The key is checked on the data, since Delta doesn't enforce keys.
+    A later batch checks only the files it added.
 
-    The node holds the one double charge in the data, and neither the near
-    miss nor card 12's merchant-less pair:
+    The node holds the one double charge in the data, without the near miss
+    or card 12's merchant-less pair:
     """)
     return
 
@@ -309,10 +307,9 @@ def _(mo):
     mo.md(r"""
     ### Break the rule
 
-    The easiest bug in a self-join is forgetting that a row matches itself,
-    and the customer would find out first: every payment refunded as its own
-    duplicate. Switch off `a.txn_id < b.txn_id` (or loosen it to `<=`) and
-    the contract is re-checked:
+    A common bug in a self-join is a row matching itself, which refunds
+    every payment as its own duplicate. Loosen `a.txn_id < b.txn_id` to `<=`,
+    or drop it, and the checker re-checks the contract:
     """)
     return
 
@@ -372,20 +369,22 @@ def _(ENSURES, REQUIRES, ibis, mo, order, sv):
 def _(mo):
     mo.md(r"""
     With `<=`, every transaction is its own duplicate, and
-    `first_txn < duplicate_txn` is refused: the checker can't prove it,
-    because it is false. With no condition at all, each pair also appears
-    in both orders, and each double charge would be refunded twice. In
-    neither case did anything have to run, and no test data had to contain
-    the bad case.
+    `first_txn < duplicate_txn` is refused because it is false. With no
+    condition at all, each pair also appears in both orders, and each double
+    charge would be refunded twice. The checker catches both without running
+    anything and without test data that contains the bad case.
 
     ## 3. One plan, every engine
 
-    Maybe you develop on DuckDB on a laptop and the job runs somewhere else
-    in production. The node's plan is the one Lean checked. sverify runs it
-    on each engine through its own translation, which keeps Lean's
-    semantics (NULL keys never match, integers don't wrap around, ties
-    break one way) or refuses the plan. So a node refreshed with
-    `engine=` has the same rows everywhere:
+    You might develop on DuckDB on a laptop and run the job elsewhere in
+    production. The node's plan is the one Lean checked. Sverify runs it on
+    each engine through its own translation, which keeps Lean's semantics
+    (NULL keys never match, integers don't wrap around, ties break one way)
+    or refuses the plan. DuckDB is the reference engine (Tier 1); CI tests
+    the others against the Lean model, and their known deviations are
+    documented (see the
+    [engine tiers](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/README.md)).
+    A node refreshed with `engine=` has the same rows on each:
     """)
     return
 
@@ -406,7 +405,7 @@ def _(ENGINES, duplicate_payments, dups, transactions):
 def _(mo):
     mo.md(r"""
     For a warehouse, sverify writes the plan as SQL. The SQL is long because
-    it spells out every choice an engine would otherwise make for you:
+    it spells out every choice an engine would otherwise make:
     """)
     return
 
@@ -440,8 +439,8 @@ def _(mo):
     An hour later, two things have happened to the source table:
 
     * transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a
-      duplicate of transaction **3**, which was loaded in the first run;
-    * transaction 2 was **reversed** and deleted, so the coffee pair is no
+      duplicate of transaction 3, which was loaded in the first run;
+    * transaction 2 was reversed and deleted, so the coffee pair is no
       longer a double charge.
     """)
     return
@@ -463,8 +462,7 @@ def _(mo):
 
     The common way to avoid recomputing the self-join is a watermark: find
     the duplicates among the rows that arrived since the last run, and
-    append them to the output. It runs fast, and it is wrong twice, once
-    for each of the two changes:
+    append them to the output. It is fast and gets both changes wrong:
     """)
     return
 
@@ -480,20 +478,19 @@ def _(find_duplicates, ibis, late):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    It **misses (3, 7)**, because transaction 3 is not among the new rows,
-    and it **keeps (1, 2)**, because an append-only job never sees the
-    reversal, so that customer gets a refund for a charge that no longer
-    exists. Fixing that by hand means joining the new rows with the old
-    ones both ways, and handling deletes and updates: that is the delta rule
-    of a join, `Δ(A ⋈ B) = ΔA ⋈ (B + ΔB) + A ⋈ ΔB`, and it is easy to get
-    subtly wrong.
+    It misses (3, 7), because transaction 3 is not among the new rows. It
+    keeps (1, 2), because an append-only job never sees the reversal, so a
+    customer is refunded for a charge that no longer exists. Fixing this by
+    hand means joining the new rows with the old ones in both directions and
+    handling deletes and updates. That is the delta rule of a join,
+    `Δ(A ⋈ B) = ΔA ⋈ (B + ΔB) + A ⋈ ΔB`, which is easy to get subtly wrong.
 
     ### The node's refresh
 
     `dups.refresh()` reads the Change Data Feed from the version the node
     was computed at, checks the preconditions on the new rows only, and
-    runs the delta plans Lean derived and **proved** to give the same result
-    as a full recompute:
+    runs the delta plans that Lean derived and proved equal to a full
+    recompute:
     """)
     return
 
@@ -527,21 +524,20 @@ def _(display, dups, mo, naive):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The report names the one thing the proof takes on trust: that the
-    change feed really turns the old snapshot into the new one ("Δ trusted
-    as coming from Delta CDF"). Where the feed is gone (CDF off, files
-    vacuumed), the refresh diffs the two snapshots instead, and says so.
-    `dups.refresh(audit=True)` also compares every batch with a recompute
-    before it is applied.
+    The report names the one thing the proof takes on trust: that the change
+    feed turns the old snapshot into the new one ("Δ trusted as coming from
+    Delta CDF"). Where the feed is gone (CDF off, files vacuumed), the
+    refresh diffs the two snapshots and says so. `dups.refresh(audit=True)`
+    also compares every batch with a recompute before applying it.
 
     ## 5. The sink carries the contract
 
     `dups.write(DeltaSink(...))` stores the node in a Delta table, and every
-    refresh writes it **exactly once per state**: the commit is keyed by the
+    refresh writes it exactly once per state: the commit is keyed by the
     source versions, so a retried job can't write a batch twice. The first
-    write creates the table; the proved guarantees become NOT NULL columns
-    and CHECK constraints, and the commit metadata records the plan and the
-    contract. Later writes MERGE only the change.
+    write creates the table, with the proved guarantees as NOT NULL columns
+    and CHECK constraints and the plan and contract in the commit metadata.
+    Later writes MERGE only the change.
     """)
     return
 
@@ -564,10 +560,9 @@ def _(DeltaSource, lake):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Now the refund queue's own job reads that table. Whoever maintains it
-    doesn't have to trust your word, or re-check your data: its
-    preconditions are discharged from the table's schema and constraints,
-    which the contract put there:
+    Now the refund queue's own job reads that table. Its preconditions are
+    discharged from the table's schema and constraints, which the contract
+    put there, so whoever maintains the job needn't re-check the data:
     """)
     return
 
@@ -593,21 +588,19 @@ def _(mo):
     mo.md(r"""
     ## What you got
 
-    You now have a refund queue you can trust. Its assumptions were proved
-    before a single row ran, and a bug that would have broken one was caught
-    at definition time, not by a customer. The preconditions came from
-    Delta's own constraints and file statistics where it has them, and from
-    the data where it doesn't. The same plan gives the same rows on DuckDB,
-    Polars and DataFusion and is written as Snowflake or Spark SQL. It stays
-    right as charges arrive and get reversed, where the watermark job got
-    two rows wrong, and the next job can build on its table without checking
-    again.
+    You now have a refund queue you can rely on. The checker proved its
+    assumptions before a single row ran and would have caught a self-join
+    bug at definition time. The preconditions came from Delta's constraints
+    and file statistics where it has them and from the data where it
+    doesn't. The same plan gives the same rows on DuckDB, Polars and
+    DataFusion, and it stays right as charges arrive and get reversed, where
+    the watermark job got two rows wrong. The next job builds on the stored
+    table without checking again.
 
-    **Next up:** [Sensor alerts from an Iceberg table](?file=02_sensor_alerts.py),
-    where ties and NaN get involved. The features used here are explained
-    in [Contracts](?file=04_contracts.py),
-    [Incremental views](?file=09_incremental_views.py),
-    [Pipelines](?file=10_pipelines.py) and [Engines and SQL](?file=11_engines.py).
+    Next up: [Sensor alerts from an Iceberg table](?file=02_sensor_alerts.py),
+    where ties and NaN get involved. [Contracts](?file=04_contracts.py) and
+    [Pipelines and engines](?file=05_pipelines_and_engines.py) explain the
+    features used here.
     """)
     return
 

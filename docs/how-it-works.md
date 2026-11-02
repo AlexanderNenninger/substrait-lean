@@ -154,6 +154,59 @@ contracts find a table's data). `con.datafusion` is a DataFusion session with
 the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
+A Delta or Iceberg source on DuckDB is held as a scan (`sverify._scan.Scan`):
+the data files sverify keeps after its own pruning, the rows that deletion
+vectors or position delete files remove (by file and row position), the
+schema and the source's filter. DuckDB reads it as a view over
+`read_parquet`, and the Ibis backend views the same files, so the table never
+passes through Python. Columns are cast to the types DuckDB gives the Arrow
+schema, a column no file has is NULL, and doubles are read as the model has
+them, which also keeps DuckDB from trusting Parquet's NaN-free statistics
+(`upstream/LEDGER.md` DD-4). Looking a scan up in `con.arrow` reads it into
+Arrow, which is how the other engines get it. A refresh holds the table as the
+files of the new version, after DuckDB checks that the batch's deletes are in
+the old files. If those files were vacuumed, the views reading the table are
+recomputed on the new snapshot. `python/tests/test_io_native.py` compares
+both paths at every version and through refreshes.
+
+An incremental view's state is a weighted table: its rows, each once, with
+their number of copies (`sverify._weighted`). On DuckDB, DuckDB holds it
+between refreshes (`sverify._state.DuckDBStore`, a `Resident` table in the
+process's one DuckDB database, which the engine and every connection's Ibis
+backend share), and the view's rows are a DuckDB view of it. On the other
+engines it is an Arrow table. Either way, states and changes are added up by
+one plan Lean checks: the union of two weighted tables, grouped by every
+column, with the weights summed and the groups of weight 0 left out
+(`sverify._state.Merger`). Each engine's lowering groups rows as the model
+compares them, so the merge gives the same state on every engine
+(`python/tests/test_state.py` runs it on each).
+
+On DuckDB, a refresh changes a view's state in place, at the cost of the
+change (`DuckDBStore.apply`). It looks up the state rows equal to a row of
+the change (a null-safe equality join on the canonical values), adds the
+change to them with the merge plan, and replaces them, for every view in one
+DuckDB transaction, so a failed commit changes no view. The state still
+holds each row once with its weight. A view whose new contents are read
+before the commit, by a view recomputed on the new tables or by the audit,
+is merged in full. Each view keeps a log of its changes for the sinks that
+have not written them yet, and a sink writes their sum
+(`IncrementalView.changes_since`), so no old state is kept.
+
+A node on DuckDB has DuckDB write its Delta and Iceberg sinks
+(`sverify.io._engine`). DuckDB writes the Parquet files of the state or of
+the change, cast to the sink's schema. It finds where the rows a change
+deletes are by joining the sink's scan, with each row's file and position,
+to the deleted rows by the model's row equality, one position per deleted
+copy. sverify then commits the files: for Delta, add and remove actions in
+one transaction (the files holding deleted rows are rewritten without them)
+with statistics as delta-rs writes them and the transaction `(app_id,
+epoch)`; for Iceberg, a data file with the table's field ids and a position
+delete file, in one snapshot. Readers of the sink's change feed see the
+rewritten files as deleted and added, which nets to the change.
+`python/tests/test_io_engine_sinks.py` writes the same nodes through DuckDB
+and through delta-rs and pyiceberg, and compares the tables after every
+refresh and the statistics both record.
+
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it runs plans
 with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
@@ -761,11 +814,14 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   computed exactly, checked against DuckDB (and Rust's string functions, as
   DataFusion computes them) by `python/tests/test_text.py`; a
   `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
-  `ILIKE` and regular expressions are black boxes (`opaque`): no proof depends on what
-  they compute, and Lean's evaluator handles only ASCII case and no regular
-  expressions. `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error unless
-  `Text.simpleRegex` accepts it, a conservative subset of Rust's syntax that is
-  tested to compile.
+  `ILIKE`, regular expressions, `md5` and `sha256` are black boxes (`opaque`): no proof
+  depends on what they compute. Lean's evaluator handles only ASCII case, and evaluates
+  regular expressions with RE2's leftmost-first matching ([Regex.lean](../SubstraitLean/Regex.lean))
+  where RE2 and Rust agree, checked against DuckDB by `python/tests/test_regex.py`.
+  `translate` is refused: DataFusion translates grapheme clusters. A pattern is an error
+  (for `regexp_match`) or refused (for `regexp_extract` and `regexp_replace`) unless
+  `Text.simpleRegex` accepts it, a conservative subset of Rust's and RE2's syntax that is
+  tested to compile in both.
 * Elementary functions follow Substrait, with errors outside their domains.
   `sqrt`, `exp`, `ln`, `log10`, `log2`, `logb`, the trigonometric functions and
   `atan2` are computed with C's libm ([Numeric.lean](../SubstraitLean/Numeric.lean)), and

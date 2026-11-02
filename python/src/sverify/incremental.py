@@ -60,6 +60,8 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
+from sverify._scan import Native, Resident, Scan, ScanSnapshot
+from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, store_for
 from sverify._weighted import (
     WEIGHT,
     concat,
@@ -67,8 +69,9 @@ from sverify._weighted import (
     deleted_count,
     duplicate_keys,
     expanded,
-    has_negative,
     inserted_count,
+    matching,
+    missing,
     negated,
     negative,
     positive,
@@ -793,23 +796,31 @@ class IncrementalView:
         self.resumed: str | None = None
         """How the view got its first state from `resume`, or why it could
         not and was computed instead."""
-        self.stored: tuple[str, pa.Table] | None = None
+        self.stored: tuple[str, State] | None = None
         """Where the view's state was restored from, and that state."""
+        self.store: Store = store_for(self.engine)
+        self.serial = 0
+        """How many times the view's state has changed: the sinks writing it
+        record the serial they wrote."""
+        self._log: list[tuple[int, pa.Table | None]] = []
+        self._sinks: list = []
+        """Where the view keeps its state (`sverify._state`): in DuckDB on
+        DuckDB, else in Arrow."""
         reason = None if resume is None else self._mismatch(resume)
         if resume is not None and reason is None:
             # The schema the engine gives the view, from a run on no rows.
-            empty = {t: con.arrow[t].schema.empty_table() for t in self.tables}
+            empty = {t: con.schema(t).empty_table() for t in self.tables}
             schema = self._result_on(empty).schema
             result = resume.table.select(schema.names).cast(schema)
             self.resumed = f"resumed from {resume.where}"
         else:
-            result = run_plan(con, self.plan, self.engine)
+            result = run_plan(con, self.plan, self.engine, keep=self.store.keep)
             if resume is not None:
                 self.resumed = f"computed: {reason} (stored at {resume.where})"
-        self.schema = result.schema
-        self.state: pa.Table = consolidated(weighted(result, 1))
+        self._set_schema(result.schema)
+        self.state: State = self._merge(self.store.weighted(result), keep=self.store.keep)
         """The view's rows, each once with its number of copies (a weighted
-        table, `sverify._weighted`)."""
+        table, `sverify._weighted`): an Arrow table, or one DuckDB holds."""
         if resume is not None and reason is None:
             self.stored = (resume.where_key, self.state)
         self._publish()
@@ -869,14 +880,47 @@ class IncrementalView:
             query = query.op().replace(new).to_expr()  # type: ignore[attr-defined]
         self.query = query
         self._plan(query, standalone=False)
-        result = run_plan(self.con, self.plan, self.engine)
-        self.schema = result.schema
-        self.state = consolidated(weighted(result, 1))
+        result = run_plan(self.con, self.plan, self.engine, keep=self.store.keep)
+        self._set_schema(result.schema)
+        self.state = self._merge(self.store.weighted(result), keep=self.store.keep)
+        self._record(None)
         self._publish()
         self.table = self.con.table(self.name)
 
+    def _set_schema(self, schema: pa.Schema) -> None:
+        self.schema = schema
+        weighted_schema = pa.schema([*schema, pa.field(WEIGHT, pa.int64())])
+        self._merge = Merger(self.con, weighted_schema)
+        """Adds up weighted tables of the view's rows by a plan Lean
+        checked."""
+
+    def _record(self, delta: pa.Table | None) -> None:
+        """The state changed by `delta` (None: replaced). The change is kept
+        for the sinks that have not written it yet."""
+        self.serial += 1
+        written = [s._written for s in self._sinks if s._written is not None]
+        if written:
+            self._log.append((self.serial, delta))
+            self._log = [(n, d) for n, d in self._log if n > min(written)]
+        else:
+            self._log = []
+
+    def changes_since(self, serial: int) -> pa.Table | None:
+        """The view's change since its state at `serial`, as a weighted
+        table; None if it is not known (the state was replaced since)."""
+        if serial == self.serial:
+            return weighted(self.schema.empty_table(), 1)
+        parts = [d for n, d in self._log if n > serial]
+        if len(parts) != self.serial - serial or any(d is None for d in parts):
+            return None
+        total = weighted(self.schema.empty_table(), 1)
+        for part in parts:
+            assert part is not None
+            total = arrow_of(self._merge(total, part))
+        return total
+
     def _publish(self) -> None:
-        put_table(self.con, self.name, expanded(self.state))
+        put_table(self.con, self.name, self.store.expanded(self.state))
 
     @property
     def versions(self) -> dict[str, int]:
@@ -886,7 +930,8 @@ class IncrementalView:
 
     def rows(self) -> list[Row]:
         """The view's contents as a bag of rows, in a canonical order."""
-        return sorted(arrow_rows(expanded(self.state)), key=lambda r: repr(row_key(r)))
+        rows = arrow_rows(expanded(arrow_of(self.state)))
+        return sorted(rows, key=lambda r: repr(row_key(r)))
 
     def recompute(self) -> list[Row]:
         """The view computed from scratch, for checking."""
@@ -915,12 +960,15 @@ class IncrementalView:
         finally:
             for t in self.tables:
                 con.drop(t + "$delta")
-        return consolidated(*parts) if parts else weighted(self.schema.empty_table(), 1)
+        total = weighted(self.schema.empty_table(), 1)
+        for part in parts:
+            total = arrow_of(self._merge(total, part))
+        return total
 
-    def _result_on(self, new_tables: Mapping[str, pa.Table]) -> pa.Table:
+    def _result_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
         con = self.con
-        old = {t: con.arrow[t] for t in self.tables if t in new_tables}
+        old = {t: con.get(t) for t in self.tables if t in new_tables}
         try:
             for t in old:
                 put_table(con, t, new_tables[t])
@@ -929,17 +977,17 @@ class IncrementalView:
             for t, table in old.items():
                 put_table(con, t, table)
 
-    def _diff(self, new_tables: Mapping[str, pa.Table]) -> pa.Table:
+    def _diff(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view's change by recomputing it on the new inputs and diffing,
         as a weighted table."""
         new = self._result_on(new_tables).cast(self.schema)
-        return consolidated(weighted(new, 1), negated(self.state))
+        return arrow_of(self._merge(weighted(new, 1), self.store.negated(self.state)))
 
 
 def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:
     """Table `t$delta`: `change` (a weighted table, None: no change) in the
     schema of `t` and the weight."""
-    base = con.arrow[t].schema
+    base = con.schema(t)
     schema = pa.schema([*base, pa.field(WEIGHT, pa.int64())])
     if change is None:
         change = schema.empty_table()
@@ -981,15 +1029,30 @@ class Pipeline:
     def source(self, name: str, source: VersionedSource, *, version: int | None = None) -> ir.Table:
         """Load the snapshot of `source` at `version` (default: the latest)
         as base table `name`, record its version and what its metadata says
-        about it."""
+        about it. On DuckDB, a Delta or Iceberg table is held as the files to
+        read (`Scan`), which DuckDB reads itself."""
         if name in self.sources or name in self.views:
             raise ValueError(f"the pipeline already has a table {name!r}")
-        snap = source.snapshot(version)
-        put_table(self.con, name, snap.table)
-        register_facts(self.con, name, snap.facts)
+        native = self._native(source, version)
+        if native is not None:
+            put_table(self.con, name, native.scan)
+            facts, read = native.facts, native.version
+        else:
+            snap = source.snapshot(version)
+            put_table(self.con, name, snap.table)
+            facts, read = snap.facts, snap.version
+        register_facts(self.con, name, facts)
         self.sources[name] = source
-        self.versions[name] = snap.version
+        self.versions[name] = read
         return self.con.table(name)
+
+    def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
+        """The snapshot of `source` as files DuckDB reads itself, where the
+        plans run on DuckDB and the source can give one; else None."""
+        native = getattr(source, "_native", None)
+        if native is None or (self.engine or self.con.engine) != "duckdb":
+            return None
+        return native(version)
 
     def view(
         self, name: str, query: ir.Table | str, *, resume: Stored | None = None
@@ -1047,7 +1110,7 @@ class Pipeline:
             new = [c for c in conds if label(c) not in known]
             for c in new:
                 if isinstance(c, Unique):
-                    if dup := duplicate_keys(self.con.arrow[t], c.cols):
+                    if dup := duplicate_keys(self.con.get(t), c.cols):
                         raise PreconditionError(f"{dup} row(s) of {t} violate {label(c)}")
                     self.preconditions.append(Discharged(t, label(c), ON_DATA))
             table = self.con.table(t)
@@ -1060,7 +1123,7 @@ class Pipeline:
     def _check_batch(
         self,
         changes: Mapping[str, pa.Table],
-        new_tables: Mapping[str, pa.Table],
+        new_tables: Mapping[str, pa.Table | Native],
         facts: Mapping[str, Sequence[Fact]],
     ) -> list[Discharged]:
         """Establish the base-table preconditions on a batch alone: row
@@ -1099,7 +1162,7 @@ class Pipeline:
         if sourced:
             raise ValueError(f"{sorted(sourced)} change through their source; call refresh()")
         self._check_changed(changes)
-        self._apply({t: change_table(ch, self.con.arrow[t].schema) for t, ch in changes.items()})
+        self._apply({t: change_table(ch, self.con.schema(t)) for t, ch in changes.items()})
 
     def refresh(
         self, *, audit: bool = False, until: Mapping[str, int] | None = None
@@ -1128,6 +1191,7 @@ class Pipeline:
         snapshot_facts: dict[str, list[Fact]] = {}
         recompute: set[str] = set()
         rebuild: dict[str, tuple[pa.Table, SourceRefresh]] = {}
+        whole: dict[str, pa.Table | Native] = {}
         report: list[SourceRefresh] = []
         for t, src in self.sources.items():
             start = self.versions[t]
@@ -1137,17 +1201,18 @@ class Pipeline:
                 if audit and hasattr(src, "_reread"):
                     # A source that reads its table itself may have missed
                     # rows its batches assume away: read it again in full.
-                    _audit_source(t, self.con.arrow[t], src._reread(start), start, start)
+                    current = _as_arrow(self.con.get(t))
+                    _audit_source(t, current, src._reread(start), start, start)
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
-            current = self.con.arrow[t]
-            evolved = SchemaChange.of(current.schema, batch.schema or current.schema)
+            schema = self.con.schema(t)
+            evolved = SchemaChange.of(schema, batch.schema or schema)
             note = ""
             if evolved:
                 try:
                     if not evolved.compatible:
                         raise ValueError("the old schema cannot hold the new data")
-                    batch = _conform_batch(batch, current.schema)
+                    batch = _conform_batch(batch, schema)
                     note = f"; schema: {evolved}, read in the old schema"
                 except (ValueError, pa.ArrowException) as e:
                     snap = batch.snapshot
@@ -1161,24 +1226,49 @@ class Pipeline:
                     snapshot_facts[t] = batch.snapshot_facts
                     report.append(entry)
                     continue
-            if batch.changes is None:
-                assert batch.snapshot is not None
-                ch = snapshot_diff(current, batch.snapshot)
+            current = self.con.get(t)
+            scanned = isinstance(current, Scan)
+            # A table held as files stays so: at `end`, it is the files of `end`.
+            native = self._native(src, batch.end) if scanned and not evolved else None
+            gone = scanned and not current.readable()
+            if batch.changes is None or gone:
+                new = batch.snapshot if batch.changes is None else None
+                if new is None:
+                    new = src.snapshot(batch.end).table
+                    new = _conform(new, schema) if evolved else new
                 recompute.add(t)
                 # The diff's inserts are rows of the new snapshot.
                 facts[t] = batch.snapshot_facts
-                mode, detail = "recomputed", f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
+                mode = "recomputed"
+                if gone:
+                    # The files of the version the pipeline holds were
+                    # removed (vacuumed): the views reading it are recomputed
+                    # on the new snapshot, all of whose rows are inserts.
+                    ch = weighted(new, 1)
+                    whole[t] = new if native is None else native.scan
+                    reason = f"{batch.fallback}; " if batch.fallback else ""
+                    detail = f"{reason}the files of v{start} are gone; Δ = snapshot v{batch.end}"
+                else:
+                    ch = snapshot_diff(_as_arrow(current), new)
+                    if native is not None:
+                        whole[t] = native.scan
+                    detail = f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
             else:
-                ch = consolidated(change_table(batch.changes, current.schema))
+                ch = consolidated(change_table(batch.changes, schema))
                 facts[t] = batch.facts
                 mode, detail = batch.kind, batch.trusted
-            if audit and batch.changes is not None:
-                got = _apply_change(current, ch, t)
+                if native is not None and not audit:
+                    if (lost := missing(current, ch)).num_rows:
+                        (row,) = arrow_rows(rows_of(lost.slice(0, 1)))
+                        raise ValueError(f"cannot delete {row!r} from {t}: no such row")
+                    whole[t] = native.scan
+            if audit and batch.changes is not None and not gone:
+                got = _apply_change(_as_arrow(current), ch, t)
                 # A source that reads its table itself reads it again in full.
                 reread = getattr(src, "_reread", None)
                 want = reread(batch.end) if reread else src.snapshot(batch.end).table
                 if evolved:
-                    want = _conform(want, current.schema)
+                    want = _conform(want, schema)
                 _audit_source(t, got, want, start, batch.end)
             changes[t], versions[t] = ch, batch.end
             snapshot_facts[t] = batch.snapshot_facts
@@ -1200,7 +1290,14 @@ class Pipeline:
                 f"{bad} have contracts proved against the old schema: build the pipeline again"
             )
         incremental = {t: n for t, n in versions.items() if t not in rebuild}
-        pending = self._prepare(changes, facts=facts, recompute=recompute, versions=incremental)
+        pending = self._prepare(
+            changes,
+            facts=facts,
+            recompute=recompute,
+            versions=incremental,
+            whole=whole,
+            audit=audit,
+        )
         if audit:
             self._audit(pending)
         backup = self._backup() if rebuild else None
@@ -1243,14 +1340,22 @@ class Pipeline:
 
     def _backup(self) -> tuple:
         """What a refresh may change: tables, views and versions."""
-        tables = {t: self.con.arrow[t] for t in [*self.sources, *self.views]}
-        views = {v.name: dict(v.__dict__) for v in self._views}
+        tables = {t: self.con.get(t) for t in [*self.sources, *self.views]}
+        views = {}
+        for v in self._views:
+            saved = dict(v.__dict__)
+            saved["_log"] = list(v._log)
+            if isinstance(v.state, Resident):
+                # A refresh updates the state in place: keep a copy.
+                saved["state"] = DuckDBStore().copy(v.state)
+                tables[v.name] = v.store.expanded(saved["state"])
+            views[v.name] = saved
         return tables, views, dict(self.versions)
 
     def _restore(self, backup: tuple) -> None:
         tables, views, versions = backup
         for t, table in tables.items():
-            if self.con.arrow[t] is not table:
+            if self.con.get(t) is not table:
                 put_table(self.con, t, table)
         for v in self._views:
             state = views[v.name]
@@ -1264,7 +1369,7 @@ class Pipeline:
         for v in self._views:
             want = v._result_on(pending.new_tables).cast(v.schema)
             state = pending.states.get(v.name, v.state)
-            if consolidated(weighted(want, 1), negated(state)).num_rows:
+            if arrow_of(v._merge(weighted(want, 1), v.store.negated(state))).num_rows:
                 raise AuditError(
                     f"view {v.name} differs from its recomputation; nothing was applied"
                 )
@@ -1298,18 +1403,40 @@ class Pipeline:
         facts: Mapping[str, Sequence[Fact]] | None = None,
         recompute: set[str] | None = None,
         versions: Mapping[str, int] | None = None,
+        whole: Mapping[str, pa.Table | Native] | None = None,
+        audit: bool = False,
     ) -> _Commit:
         """Compute the new state of every table and view after `changes`
         (weighted tables), without replacing anything. Views reading a table
         in `recompute` (directly or through other views) are recomputed and
-        diffed; `versions` are recorded with the commit."""
+        diffed; `versions` are recorded with the commit. A table in `whole`
+        (its source's snapshot at the new version) becomes that table; the
+        caller checked that the change's deletes exist.
+
+        A view whose state DuckDB holds is updated in place at the commit,
+        at the cost of its change (`DuckDBStore.apply`), unless its new
+        contents are read before then: by a view recomputed on the new
+        tables, or by the `audit`. Then its new state is a full merge."""
         self._check_changed(changes)
         # New base tables first: this also checks that every delete exists.
-        new_tables = {t: _apply_change(self.con.arrow[t], ch, t) for t, ch in changes.items()}
+        new_tables: dict[str, pa.Table | Native] = {}
+        for t, ch in changes.items():
+            given = (whole or {}).get(t)
+            if given is None:
+                given = _apply_change(_as_arrow(self.con.get(t)), ch, t)
+            new_tables[t] = given
         found = self._check_batch(changes, new_tables, facts or {})
         deltas: dict[str, pa.Table] = {t: consolidated(ch) for t, ch in changes.items()}
         stale = set(recompute or ())
-        states: dict[str, pa.Table] = {}
+        states: dict[str, State] = {}
+        in_place: dict[str, pa.Table] = {}
+        # The tables whose new contents a recomputed view reads.
+        rerun = set(stale)
+        read_new: set[str] = set()
+        for v in self._views:
+            if v.fallback is not None or rerun & set(v.tables):
+                rerun.add(v.name)
+                read_new.update(v.tables)
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
@@ -1319,23 +1446,43 @@ class Pipeline:
             if rerun:
                 stale.add(v.name)
             delta = v._diff(new_tables) if rerun else v._delta(deltas)
-            merged = consolidated(v.state, delta)
-            if has_negative(merged):
-                raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
             deltas[v.name] = delta
-            new_tables[v.name] = expanded(merged)
+            if isinstance(v.state, Resident) and not audit and v.name not in read_new:
+                # Only the state rows the change touches, merged with it.
+                merged = v._merge(matching(v.state, delta), delta)
+                if v.store.has_negative(merged):
+                    raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
+                in_place[v.name] = arrow_of(merged)
+                continue
+            merged = v._merge(v.state, delta, keep=v.store.keep)
+            if v.store.has_negative(merged):
+                raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
+            new_tables[v.name] = v.store.expanded(merged)
             states[v.name] = merged
-        return _Commit(changes, new_tables, dict(versions or {}), states, found)
+        changed = {name: deltas[name] for name in [*states, *in_place]}
+        return _Commit(changes, new_tables, dict(versions or {}), states, found, in_place, changed)
 
     def _commit(self, pending: _Commit) -> None:
         """Replace the tables, views and versions with their new state."""
+        views = self.views
+        if pending.in_place:
+            # One transaction: every view's state changes, or none does.
+            updates = []
+            for name, merged in pending.in_place.items():
+                state = views[name].state
+                assert isinstance(state, Resident)
+                updates.append((state, pending.deltas[name], merged))
+            DuckDBStore().apply(updates)
+            for name in pending.in_place:
+                views[name]._publish()
         for t in pending.changes:
             put_table(self.con, t, pending.new_tables[t])
         self.versions.update(pending.versions)
-        views = self.views
         for name, state in pending.states.items():
             views[name].state = state
             put_table(self.con, name, pending.new_tables[name])
+        for name, delta in pending.deltas.items():
+            views[name]._record(delta)
 
 
 @dataclass
@@ -1343,11 +1490,16 @@ class _Commit:
     """A pipeline's state after a batch, computed but not yet in place."""
 
     changes: Mapping[str, pa.Table]
-    new_tables: dict[str, pa.Table]
+    new_tables: dict[str, pa.Table | Native]
     versions: dict[str, int]
-    states: dict[str, pa.Table]
+    states: dict[str, State]
     """The new contents of each view that changed, as weighted tables."""
     found: list[Discharged]
+    in_place: dict[str, pa.Table] = field(default_factory=dict)
+    """Views whose state DuckDB updates in place: the state rows the change
+    touches, merged with it."""
+    deltas: dict[str, pa.Table] = field(default_factory=dict)
+    """Each changed view's change, as a weighted table."""
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:
@@ -1388,6 +1540,10 @@ def _conform_batch(batch: SourceBatch, schema: pa.Schema) -> SourceBatch:
 def first_line(e: BaseException) -> str:
     text = str(e).strip().splitlines()
     return f"{type(e).__name__}: {text[0] if text else ''}"
+
+
+def _as_arrow(table: pa.Table | Native) -> pa.Table:
+    return arrow_of(table)
 
 
 def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:

@@ -82,6 +82,14 @@ class DuckDBDialect(Dialect):
         # The cast raises on NaN, ±inf and values outside 64 bits.
         return f"CAST(trunc({x}) AS BIGINT)"
 
+    def float_to_int_or_null(self, x: str) -> str:
+        # NULL where `float_to_int` raises.
+        return f"TRY_CAST(trunc({x}) AS BIGINT)"
+
+    def narrow_or_null(self, x: str, bits: int) -> str:
+        lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
+        return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
+
     def float_fn(self, name: str, x: str) -> str:
         # C's libm, but `sin`, `cos` and `tan` raise on ±inf, where libm gives NaN.
         sql = super().float_fn(name, x)
@@ -163,6 +171,9 @@ class DuckDBDialect(Dialect):
         values = f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
         return f"({values})[{1 if fn == 'first' else -1}]"
 
+    def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
+        return f"string_agg({v}, {sep} ORDER BY {', '.join(order)})"
+
     def pair(self, a: str, b: str) -> str:
         return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"
 
@@ -213,6 +224,16 @@ class DuckDBDialect(Dialect):
 
     def regex_search(self, s: str, pattern: str) -> str:
         return f"regexp_matches({s}, {self.str_lit(pattern)})"
+
+    def regex_extract(self, s: str, pattern: str, group: int) -> str:
+        return f"regexp_extract({s}, {self.str_lit(pattern)}, {group})"
+
+    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
+        flags = ", 'g'" if every else ""
+        return f"regexp_replace({s}, {self.str_lit(pattern)}, {self.str_lit(replacement)}{flags})"
+
+    def digest(self, fn: str, s: str) -> str:
+        return f"{fn}({s})"
 
     def date_part(self, part: str, ts: str) -> str:
         us = f"epoch_us({ts})"

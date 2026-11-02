@@ -101,6 +101,12 @@ inductive UnFn where
   and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit and
   DataFusion fails (`badCast` in `Safety.lean`). -/
   | narrow (bits : Nat)
+  /-- `TRY_CAST(x AS BIGINT)` of a double (#58): `ftoi`, or `NULL` where that
+  fails (NaN, `±∞`, outside 64 bits), which is then no error. -/
+  | ftoiOrNull
+  /-- `TRY_CAST(x AS INT)` of an integer to `bits` bits (#58): `narrow`, whose
+  `NULL` where the value does not fit is then no error. -/
+  | narrowOrNull (bits : Nat)
   /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
   value itself, like 64-bit arithmetic, which DataFusion wraps around where it
   does not fit (`wraps` in `Safety.lean`). -/
@@ -119,6 +125,14 @@ inductive UnFn where
   /-- `array_length(regexp_match(s, p))` for a constant pattern `p` (a black box):
   `NULL` if `p` does not match. -/
   | regexMatch (p : String)
+  /-- `regexp_extract(s, p, g)` for a constant pattern `p` (a black box): `''`
+  where `p` does not match. -/
+  | regexExtract (p : String) (g : Nat)
+  /-- `regexp_replace(s, p, r)` for a constant pattern `p` and replacement `r`
+  (a black box): the first match, or every match if `global` (the `'g'` flag). -/
+  | regexReplace (p r : String) (global : Bool)
+  /-- `md5(s)` and `sha256(s)`: lowercase hex digests (black boxes). -/
+  | md5 | sha256
   /-- `date_part(p, ts)`: `NULL` outside the years ±262142. -/
   | datePart (p : Time.DatePart)
   /-- `date_trunc(u, ts)`. -/
@@ -311,6 +325,10 @@ def UnFn.apply : UnFn → Value → Value
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
+  | .ftoiOrNull, .int c => match FloatCode.toInt? c with
+    | some i => if fitsBits 64 i then .int i else .null
+    | none => .null
+  | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
   | .widen, v => v
@@ -323,6 +341,10 @@ def UnFn.apply : UnFn → Value → Value
   | .regexMatch p, .str s => match Text.regexMatch s p with
     | some k => .int (k + 1)
     | none => .null
+  | .regexExtract p g, .str s => .str (Text.regexExtract s p g)
+  | .regexReplace p r g, .str s => .str (Text.regexReplace s p r g)
+  | .md5, .str s => .str (Text.md5 s)
+  | .sha256, .str s => .str (Text.sha256 s)
   | .datePart p, .int ts => match Time.datePart p ts with
     | some v => .int v
     | none => .null
