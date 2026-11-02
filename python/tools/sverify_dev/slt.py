@@ -26,6 +26,10 @@ and classifies the query:
 * `skipped`: the test needs something the replay does not have (an
   extension, a setting, a second connection, a loop too long, …).
 
+With `--frontend lift`, sverify's own lift (`sverify.sql_lift`, #239) plans
+DuckDB's SQL as it is, with DuckDB's semantics, in place of the translation
+and DataFusion's producer (the M1 score of #231).
+
 Tests are in DuckDB's dialect and the producer reads DataFusion's, so each
 query is translated with sqlglot first (`translate`): DuckDB's `/` is float
 division, `//` integer division, `x::T` a cast. A `SELECT` without `FROM`
@@ -624,10 +628,11 @@ class Replay:
     """One test file's replay: a DuckDB database holding the test's state,
     and a sverify connection that mirrors the tables a query reads."""
 
-    def __init__(self, rel: str) -> None:
+    def __init__(self, rel: str, frontend: str = "datafusion") -> None:
         from sverify.engine import connect
 
         self.rel = rel
+        self.frontend = frontend
         self.db = duckdb.connect()
         self.fmt = Formatter()
         self.con = connect()
@@ -750,6 +755,8 @@ class Replay:
             # DuckDB's binder or parser, not what the query computes.
             res.reason = "DuckDB frontend error"
             return res
+        if self.frontend == "lift":
+            return self.probe_lift(rec, res, outcome, ddb_rows, ddb_err)
         try:
             sql, back, tables, ordered = translate(rec.sql, self.null_order)
         except ValueError as e:
@@ -781,8 +788,7 @@ class Replay:
             res.cls, res.reason = "refused", f"tables: {_clip(str(e), 200)}"
             return res
 
-        from sverify.engine import run_checker, run_plan, substrait_json, written_plan
-        from sverify.testing import lean_values
+        from sverify.engine import substrait_json
 
         try:
             plan = substrait_json(self.con, sql)
@@ -794,6 +800,88 @@ class Replay:
             # DataFusion 51 writes `VALUES (…)` as an empty virtual table.
             res.cls, res.reason = "refused", "producer: VALUES written as an empty virtual table"
             return res
+        issues = functools.partial(_issues, sql, self.con)
+        return self.judge(rec, res, plan, schema, rows, ordered, outcome, issues)
+
+    def probe_lift(
+        self,
+        rec: Record,
+        res: Result,
+        outcome: Any,
+        ddb_rows: list[list[str]] | None,
+        ddb_err: str | None,
+    ) -> Result:
+        """The rest of `probe` with the SQLGlot lift (`sverify.sql_lift`, #239)
+        as the frontend: DuckDB's SQL as it is, with DuckDB's semantics."""
+        import ibis
+        import sqlglot as sg
+
+        from sverify.sql_lift import lift
+
+        if self.null_order != "nulls_last":
+            res.reason = "setting default_null_order"
+            return res
+        try:
+            tree = sg.parse_one(rec.sql, read="duckdb")
+        except sg.errors.ParseError as e:
+            res.cls, res.reason = "refused", f"lift: cannot parse ({_clip(str(e), 100)})"
+            return res
+        tables = sorted({t.name for t in tree.find_all(sg.exp.Table) if t.name})
+        ordered = isinstance(tree, sg.exp.Select) and tree.args.get("order") is not None
+        if not outcome(ddb_rows, ddb_err, ordered):
+            res.reason = "DuckDB's own result differs from the expected one"
+            return res
+        try:
+            rows = self.sync(tables)
+        except OverflowError as e:
+            res.reason = str(e)
+            return res
+        except Exception as e:  # noqa: BLE001 - a type Arrow or sverify cannot hold
+            res.cls, res.reason = "refused", f"tables: {_clip(str(e), 200)}"
+            return res
+        lower = {n.lower(): n for n in self.con.arrow}
+        schemas = {
+            t: ibis.Schema.from_pyarrow(self.con.arrow[lower[t.lower()]].schema)
+            for t in tables
+            if t.lower() in lower
+        }
+        try:
+            lifted = lift(rec.sql, schemas, "duckdb")
+        except Exception as e:  # noqa: BLE001 - the lift refusing (or failing: recorded)
+            kind = "" if type(e).__name__ == "Unsupported" else f"{type(e).__name__}: "
+            res.cls, res.reason = "refused", f"lift: {kind}{_clip(str(e), 200)}"
+            return res
+        res.translated = "(lifted)"
+        plan = json.dumps(lifted.plan)
+        schema = lifted.schema.to_pyarrow()
+        return self.judge(
+            rec,
+            res,
+            plan,
+            schema,
+            rows,
+            ordered,
+            outcome,
+            functools.partial(_lift_issues, rec.sql, schemas),
+        )
+
+    def judge(
+        self,
+        rec: Record,
+        res: Result,
+        plan: str,
+        schema: pa.Schema,
+        rows: dict[str, list[tuple]],
+        ordered: bool,
+        outcome: Any,
+        issues: Any,
+    ) -> Result:
+        """Check `plan` and compare Lean's and the engine's results with the
+        expected ones."""
+        from sverify.engine import run_checker, run_plan, written_plan
+        from sverify.testing import lean_values
+
+        expect_error = rec.expect == "error"
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
             res.cls, res.reason = "refused", f"checker: {_clip((err or out).strip()[-200:], 200)}"
@@ -826,9 +914,9 @@ class Replay:
                 res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
                 return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
-        if expect_error and not lean_ok and (issues := _issues(sql, self.con)):
+        if expect_error and not lean_ok and (found := issues()):
             # Not an agreement (`Rel.eval` gives rows), but the verifier warns.
-            res.reason = "verify: " + _clip("; ".join(issues), 200)
+            res.reason = "verify: " + _clip("; ".join(found), 200)
 
         # DuckDB on the plan Lean writes.
         from sverify import polars_engine
@@ -868,6 +956,21 @@ def _issues(sql: str, con: Any) -> list[str]:
 
     try:
         report = verify(sql, tables={n: con.table(n).schema() for n in con.arrow})
+    except Exception:  # noqa: BLE001
+        return []
+    return [str(i) for i in report.issues]
+
+
+def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
+    """`_issues` of the lifted plan."""
+    import ibis
+
+    from sverify.contracts import verify
+    from sverify.sql_model import sql as sv_sql
+
+    try:
+        tables = {n: ibis.table(s, name=n) for n, s in schemas.items()}
+        report = verify(sv_sql(sql, dialect="duckdb", **tables))
     except Exception:  # noqa: BLE001
         return []
     return [str(i) for i in report.issues]
@@ -964,17 +1067,19 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
     return pa.table(cols, names=[f"c{i}" for i in range(len(cols))])
 
 
-def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
+def replay_file(
+    path: Path, rel: str, frontend: str = "datafusion"
+) -> tuple[list[Result], str | None]:
     """The results of one test file, and why it was skipped (if it was)."""
     tf = parse(path.read_text(errors="replace"))
     if tf.skip:
         return [], tf.skip
     with tempfile.TemporaryDirectory(prefix="sverify-slt-") as tmp:
-        return _replay(tf, rel, tmp), None
+        return _replay(tf, rel, tmp, frontend), None
 
 
-def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
-    rp = Replay(rel)
+def _replay(tf: TestFile, rel: str, tmp: str, frontend: str = "datafusion") -> list[Result]:
+    rp = Replay(rel, frontend)
     results: list[Result] = []
     for rec in tf.records:
         # Files a test writes go to a temporary directory.
@@ -1014,10 +1119,10 @@ def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
     return results
 
 
-def _replay_one(args: tuple[str, str]) -> tuple[str, list[dict], str | None]:
-    path, rel = args
+def _replay_one(args: tuple[str, str, str]) -> tuple[str, list[dict], str | None]:
+    path, rel, frontend = args
     try:
-        results, skip = replay_file(Path(path), rel)
+        results, skip = replay_file(Path(path), rel, frontend)
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException as e:  # noqa: BLE001
@@ -1140,14 +1245,14 @@ def test_files(root: Path, areas: Sequence[str]) -> dict[str, list[tuple[str, st
 
 
 def replay_files(
-    files: list[tuple[str, str]], jobs: int
+    files: list[tuple[str, str]], jobs: int, frontend: str = "datafusion"
 ) -> Iterator[tuple[str, list[dict], str | None]]:
     """`_replay_one` on each file, in `jobs` processes. The files a dying
     worker takes down (a crash in a native library) are retried one by one,
     and a file that crashes alone is skipped."""
     broken: list[tuple[str, str]] = []
     with concurrent.futures.ProcessPoolExecutor(jobs) as pool:
-        futures = {pool.submit(_replay_one, f): f for f in files}
+        futures = {pool.submit(_replay_one, (*f, frontend)): f for f in files}
         for fut in concurrent.futures.as_completed(futures):
             try:
                 yield fut.result()
@@ -1156,7 +1261,7 @@ def replay_files(
     for f in sorted(broken):
         with concurrent.futures.ProcessPoolExecutor(1) as pool:
             try:
-                yield pool.submit(_replay_one, f).result()
+                yield pool.submit(_replay_one, (*f, frontend)).result()
             except concurrent.futures.process.BrokenProcessPool:
                 yield f[1], [], "harness: the replay process crashed"
 
@@ -1168,6 +1273,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--out", type=Path, default=LEDGER)
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
+    parser.add_argument(
+        "--frontend",
+        choices=("datafusion", "lift"),
+        default="datafusion",
+        help="DataFusion's SQL producer on the translated SQL (default), or the SQLGlot "
+        "lift on DuckDB's SQL (#239); write the lift's ledgers elsewhere with --out",
+    )
     args = parser.parse_args(argv)
     version = args.version or duckdb_version()
     root = fetch(version)
@@ -1177,7 +1289,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             continue
         results: list[dict] = []
         skipped: dict[str, str] = {}
-        for rel, res, skip in replay_files(files, args.jobs):
+        for rel, res, skip in replay_files(files, args.jobs, args.frontend):
             results += res
             if skip:
                 skipped[rel] = skip

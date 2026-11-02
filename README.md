@@ -56,6 +56,10 @@ What it's for is making data engineering more joyful: fewer 3 a.m. pages
 over a NULL nobody expected, fewer afternoons spent finding out why two
 engines disagree, and more trust in the tables you hand to the next team.
 
+What `Rel.eval` means, row by row (integers, NaN, decimals, casts, NULL,
+text, time, ties) and what is still pending, is in
+[docs/reference-semantics.md](docs/reference-semantics.md).
+
 ### Engine tiers
 
 Not every engine is held to the same standard yet ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
@@ -450,6 +454,16 @@ c2 = orders.pipe(
 )                                                    # the chained node is `orders`
 large = orders.pipe(lambda t: t.filter(_.amount > 20))
 ```
+
+SQL is DataFusion's dialect by default. With `dialect="duckdb"`, sverify reads
+DuckDB's SQL with its own lift (SQLGlot, #239) and writes every choice DuckDB's
+SQL leaves implicit into the plan: `/` divides as doubles, NULLs sort last, an
+integer literal has the narrowest type that holds it. `semantics="duckdb"`
+(the default) means what DuckDB computes; `semantics="reference"` means what
+sverify's reference computes where they differ, so a double divided by zero
+raises instead of giving `inf`. The lift reads a subset so far (SELECT, WHERE,
+joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
+saying what.
 
 A node without delta rules (left join, aggregate, window, `DISTINCT`,
 `LIMIT`) is recomputed and diffed instead, and `status()` says so. Contracted

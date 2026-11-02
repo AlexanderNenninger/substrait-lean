@@ -1,0 +1,222 @@
+# Reference semantics
+
+What sverify's plans mean. `Rel.eval` (`SubstraitLean/Rel.lean`) is the
+**reference semantics**: `verify` proves things about it, and every engine's
+behaviour is stated as a difference from it. This page collects the choices
+the project owner decided, mostly in comments on epic
+[#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185), and
+says for each row whether it holds on `main` or which issue or pull request
+brings it there.
+
+Status marks: **✓** holds on `main`; **#n** is the open issue or pull request
+that changes it. Rows describe `main` as of this page, not the open pull
+requests, except where a row names one.
+
+Where this page and the code disagree, the code is what `verify` proves, and
+this page has a bug. Where this page and
+[#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)
+disagree, #185 wins; please say so.
+
+## 1. What it is
+
+An engine runs a plan **correctly** when, on every input, it gives
+`Rel.eval`'s rows or raises an error. It may not give other rows.
+
+The reference is not a model of any engine, DuckDB included. Each engine is
+characterized as a **diff** against it (`characterization/<engine>/`): which
+behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
+which the translation refuses. The shims are proved against the reference in
+Lean (`SubstraitLean/Profile.lean`: `Profile.reference`,
+`Expr.evalP_reference`, `shimDuckDB_correct`, `Rel.duckdb_shim_sound`).
+That each engine matches its profile is tested, not proved. How profiles and
+shims work is in [engine-profiles.md](engine-profiles.md).
+
+## 2. Principles
+
+Decided on #185 ("Principles for the reference model"):
+
+| # | Principle | What it means in practice |
+|---|---|---|
+| 1 | **Substrait's semantics, options included.** | A function means what its extension YAML says. An option set in the plan is part of its meaning. |
+| 2 | **The least surprising choice where Substrait is silent**, with its reason. | An option the plan omits, or behaviour the spec leaves open, gets one choice, written down below with the reason. |
+| 3 | **Can be emulated on every backend.** | Types keep their declared widths (`i8`…`i64`); there are no unbounded integers. Every choice is one DuckDB, Polars, DataFusion, Spark and Snowflake can follow with a shim. |
+| 4 | **Keeps optimizations provable.** | Filter pushdown, reordering, sharding and incremental maintenance stay provable. This is why an error means "may raise" (section 3). |
+
+Engine quirks belong in profiles, never in the reference. Changing the
+reference is a breaking change and is treated as one (#185,
+"The reference model may need to evolve").
+
+## 3. Errors
+
+`Rel.eval` has no error value. It gives a row's value as if nothing went
+wrong, and `verify` reports separately where the plan **may raise**
+(`Rel.mayIssues`, `SubstraitLean/Safety.lean`). On a row where an error issue
+fires, `Rel.eval`'s value is not the answer.
+
+* **An error means "may raise".** The reference may raise wherever the plan
+  hits an error issue. ✓
+* **Rewrites are refinements.** An optimized plan may raise in fewer cases
+  than the original. It never answers differently and never raises where the
+  original didn't. ✓ (#185)
+* **An error that can't be ruled out makes the report unproved.**
+  `Report.proved` is false until a precondition excludes it. ✓ for division
+  by zero, casts out of range, domain errors, decimal precision and the
+  other error issues. Integer `+ - *` and negation overflow are still only a
+  warning on `main` ("may wrap around"): [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202),
+  [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
+* **Exception: integer `SUM` overflow** (decided on #202). It is reported as
+  "SUM overflow" and does not make the report unproved, because no
+  condition on rows can bound how many rows a group has. The written SQL
+  guards the sum and every engine raises if it leaves 64 bits, so the job
+  never answers wrongly, and the report says that the check runs while the
+  job runs. Today (`main`) it is the warning `sumWraps`; the change is
+  [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
+  Row-count bounds in contracts, which could settle it, are a separate issue.
+
+## 4. Integers
+
+| Topic | Reference | Status |
+|---|---|---|
+| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error, not a wrapped value. | Narrow-width arithmetic is checked via `UnFn.wrap`, as a warning. #202 / [#255](https://github.com/AlexanderNenninger/substrait-lean/pull/255) makes it an error. |
+| `overflow` omitted or `ERROR` | `+ - *`, negate, `abs`, `sum`: an error when the result doesn't fit the declared width. | `abs(MIN)` and `MIN / -1` are errors ✓. `+ - *`, negate and `sum`: a warning on `main`, which also accepts only `SILENT` (or omitted) in the parser; #202 / [#255](https://github.com/AlexanderNenninger/substrait-lean/pull/255). |
+| `overflow: SILENT` / `SATURATE` | Wrap-around / clamp, when the plan asks. | **Refused** after #255, until options are profile parameters ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241)). On `main`, `SILENT` is accepted and means wrap-around with a warning, and `SATURATE` is refused. |
+| `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
+| Division or `modulus` by zero | An error when `on_division_by_zero` is omitted or `ERROR`; `NULL` only when the plan asks. | ✓ (`Rel.eval` gives NULL there; `verify` reports the error, so that value is never an answer) |
+| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ The parser refuses any `division_type` option, so FLOOR can't be asked for yet. |
+| `avg` of integers | Follows the plan's declared output type: `fp64` is the mean as a double, `i64` is Substrait's integer `avg`, truncated toward zero (`AggFn.iavg`). Any other output type is refused. | ✓ (#209) |
+| `sum` of integers | Returns `i64`; exact, checked at the end (section 3). | ✓ unbounded in `Rel.eval`; check: #255 |
+
+Decisions: #185 "Decided: what the reference does when a plan omits an
+option"; #202 "Decided (2026-11-01)"; #209 "Decided".
+
+## 5. Floating point
+
+| Topic | Reference | Status |
+|---|---|---|
+| `fp64` | IEEE 754 binary64, computed with Lean's native `Float`. | ✓ |
+| `fp32` | IEEE binary32. | **Not yet.** One double kind: `fp32` is computed as `fp64`. [#208](https://github.com/AlexanderNenninger/substrait-lean/issues/208) |
+| Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
+| NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. | ✓ |
+| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors, and `fmod(±inf, y)`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | Partly. `0.0 / 0.0` and domain errors raise ✓. `inf - inf`, `0 * inf`, `inf / inf` and `fmod(±inf, y)` still give NaN, and the parser accepts `on_domain_error: NAN` for `divide` and `power`. [#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257) (decided on #185, "no newly created NaNs") |
+| Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. | ✓ (#204) |
+| Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ (#215) |
+| `%` on doubles | Substrait has no such function. `main` reads the `modulus` of doubles that DataFusion writes as C's `fmod`: the dividend's sign, a zero divisor is an error, exact. The reference will define it as a sverify extension function, and raise on an infinite dividend. | ✓ as `fmod` (#203); the extension and the `±inf` error are [#256](https://github.com/AlexanderNenninger/substrait-lean/issues/256) |
+| `SUM` / `AVG` | Added in list order with native floats. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds: [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| `MIN` / `MAX` of doubles | — | **Refused** by the parser (DataFusion's grouped min/max of doubles is not IEEE) |
+| Casts to and from decimals | See sections 6 and 7. | ✓ |
+
+## 6. Decimals
+
+A `DECIMAL(p, s)` is its unscaled integer with the scale `s`. Arithmetic is
+exact, and a result of more than `p` digits is an overflow error
+(`UnFn.decimal`, `Safety.lean`). The rules, from `Parse.decimalCall`,
+`Parse.parseMeasure` and `Aggregate.lean` (#27):
+
+| Operation | Result type | Notes | Status |
+|---|---|---|---|
+| `a + b`, `a - b` | `DECIMAL(max(p₁−s₁, p₂−s₂) + max(s₁, s₂) + 1, max(s₁, s₂))`, at most 38 digits | Exact; operands are brought to the larger scale. | ✓ |
+| `a × b` | `DECIMAL(p₁ + p₂ + 1, s₁ + s₂)`, at most 38 digits | Exact. A scale over 38 is refused. | ✓ |
+| negate, `abs`, `MIN`, `MAX` | the argument's type | | ✓ |
+| comparisons | — | At the larger scale. | ✓ |
+| `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact. | ✓ |
+| `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
+| `/` | — | **Refused** (apart from sverify's own `sverify_decimal_div`, a decimal by an integer, which is how a windowed `AVG` is written). | ✓ |
+| declared output type | If the plan declares a precision, it is used. A declared scale that differs from the exact one is refused. | | ✓ |
+| mixed with a double | **Refused**; cast one side. | | ✓ |
+
+If the plan declares a precision smaller than the exact result's, a value that
+needs more digits raises. Rounding, when a cast drops places, is half away from
+zero. Casts are in section 7.
+
+DuckDB computes some of these differently (result types, `×` past 18 digits,
+`AVG` as a `DOUBLE`); its translation compensates, see
+[engine-profiles.md](engine-profiles.md#decimals-27). One reporting problem is
+open: `verify` prints a decimal's bound in unscaled units and calls it "an
+integer" ([#250](https://github.com/AlexanderNenninger/substrait-lean/issues/250)).
+The values are right; the rendering is not.
+
+## 7. Casts
+
+| Cast | Reference | Status |
+|---|---|---|
+| Out of range (`BIGINT` from a wider value, `i8`…`i32` from a larger integer, a double that is NaN, infinite or out of range) | An error: `FAILURE_BEHAVIOR_THROW_EXCEPTION`. | ✓ (`badCast`) |
+| `RETURN_NULL` (`TRY_CAST`) | NULL instead of an error. | **Not honoured**: `Parse.lean` ignores `failureBehavior` and treats every cast as raising. That is conservative: `verify` reports an error that can't happen, never misses one. [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
+| Double or decimal to integer | Truncates toward zero. | ✓ (decided on #209) |
+| Decimal to a smaller scale | Rounds half away from zero. | ✓ |
+| Integer to decimal | Exact; an error if it doesn't fit the precision. | ✓ |
+| Double to decimal | `round(x · 10ˢ)` computed in doubles, half away from zero (`-2.675` gives `-2.68`). NaN and `±∞` raise. | ✓ (#27) |
+| Decimal to double | The nearest double. | ✓ |
+| `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight; `timestamp` to `date` rounds down, before 1970 too. Comparing a date with a timestamp without a cast is refused. | ✓ (#206) |
+
+## 8. NULL
+
+| Topic | Reference | Status |
+|---|---|---|
+| Logic | Three-valued (Kleene): `AND`, `OR`, `NOT`, comparisons. | ✓ |
+| `WHERE`, `ON`, `HAVING`-style conditions | Keep a row only when the condition `IS TRUE` (`Value.isTrue`). | ✓ |
+| Functions | Propagate NULL, unless Substrait says otherwise (`COALESCE`, `IS NULL`, `CASE`, `any_match`…). | ✓ |
+| Equality for grouping | `GROUP BY`, `DISTINCT` and list equality treat NULLs as equal (`[1, NULL] = [1, NULL]` is TRUE). | ✓ |
+| Aggregates | NULLs are skipped. `COUNT` of no rows is 0; every other aggregate of no rows is NULL. Without grouping keys, an empty input still gives one row; with keys, none. | ✓ |
+| Sort keys | Every key states where NULLs go. The parser reads only `SORT_DIRECTION_{ASC,DESC}_NULLS_{FIRST,LAST}` and **refuses** any other direction (unspecified, clustered), so there is no default to choose. The Ibis producer and the SQL writer always write all four parts. | ✓ (`parseSortKey`; the model's `SortKey` has a default of NULLs last only for hand-built values) |
+
+## 9. Text
+
+| Topic | Reference | Status |
+|---|---|---|
+| Characters | Unicode code points (Lean `Char`); `length`, `substring`, `strpos` count them. Strings compare by code point, which is UTF-8 byte order. | ✓ |
+| `substring` with a negative start | `negative_start` omitted means `WRAP_FROM_END`: `substring('hello', -2, 2) = 'lo'`. A plan that sets `LEFT_OF_BEGINNING` gets that. | ✓ (#209, R13) |
+| Matching | Case-sensitive only (`case_sensitivity` = `CASE_SENSITIVE`); `LIKE` has `%`, `_` and a backslash escape. | ✓ |
+| **Black boxes** | `upper`, `lower`, `ilike` and regular expressions are opaque to the proofs: no proof depends on what they compute. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator doesn't compute them; `substrait-check` refuses to print rows rather than print wrong ones. | ✓ (#70) |
+| Not modelled | `translate` (it works on grapheme clusters). | refused |
+
+## 10. Time
+
+| Topic | Reference | Status |
+|---|---|---|
+| `date` | Days since 1970-01-01, proleptic Gregorian. | ✓ |
+| `timestamp` | Microseconds since 1970-01-01 00:00, **no time zone**. Time-zone-aware timestamps (`timestampTz`) are a separate kind the model does not compute with. | ✓ |
+| Intervals | Day-to-second intervals are microseconds; year-to-month intervals are months. Adding months keeps the day of month. | ✓ |
+| Range | **Not yet the reference's own.** The limits that apply are DataFusion's: `date_part` is NULL outside the years −262143 to 262142, and calendar truncations raise outside ±2⁶³ nanoseconds. The reference should decide the range, and the written SQL should not guard DataFusion's. [#251](https://github.com/AlexanderNenninger/substrait-lean/issues/251) | #251 |
+
+## 11. Lists and structs
+
+| Topic | Reference | Status |
+|---|---|---|
+| Representation | A struct is the list of its fields, in order. Equality is structural. | ✓ |
+| Order of lists | Lexicographic, element by element; a proper prefix sorts first. `lt`, `gt`, `lte` and `gte` are three-valued: a NULL element that decides the result makes it NULL (`[1, NULL] < [2]` is TRUE, `[1, NULL] < [1, 3]` is NULL). In `ORDER BY` and `MIN`/`MAX`, NULL elements sort after every other value. | ✓ (#207) |
+| Lambdas | `any_match`, `all_match`, `transform` and `filter` take closed lambdas only. `any_match` is TRUE if some element matches, else NULL if some result is NULL, else FALSE (`[]` gives FALSE). | ✓ (#94) |
+| `UNNEST` | One row per element, none for an empty list or NULL (sverify's own extension). | ✓ |
+
+Design notes: [nested-values.md](nested-values.md).
+
+## 12. Relations
+
+| Topic | Reference | Status |
+|---|---|---|
+| Bags | A relation is a list of rows read as a bag: two relations are equal when they are permutations of each other (`Rel.Equiv`). | ✓ |
+| Operators | `read`, `values`, `filter`, `project`, `emit`, `cross`, inner and left `join`, `semi` and `anti`, `fetch`, `orderBy`, `distinct`, `aggregate` (one grouping set), `window`, `unnest`, `UNION ALL`. | ✓ |
+| Set operations | `UNION ALL` is bag union and `UNION DISTINCT` is `distinct` of it. `INTERSECT` and `EXCEPT` are **refused**. | ✓ for union; the other two are not modelled |
+| Ties | `Rel.eval` sorts stably and takes `fetch` rows in list order. Engines promise neither, so theorems about `fetch`, ties and windows hold for one choice. A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `tie_free=True` is justified by it. | ✓ |
+
+## 13. Trusted assumptions
+
+What a proof does not cover. A theorem about `Rel.eval` holds for the model;
+these links connect it to a real run.
+
+| Assumption | Where | Status |
+|---|---|---|
+| **The size hypothesis** (`Rel.Small`): every string has fewer than 2⁶² characters, and every relation a window reads has fewer than 2⁶² rows. No machine's memory holds more. | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER`, …). | Not on `main`; [PR #254](https://github.com/AlexanderNenninger/substrait-lean/pull/254) states it, and the theorems that need it take `Rel.Small` |
+| **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql/` | On `main`: the Ibis producer, and DataFusion's SQL producer. SQLGlot: #252 |
+| **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
+| **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
+| **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64. | `SubstraitLean/Float.lean` | Stated; a proved link is part of [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+
+## Where things are decided
+
+| What | Where |
+|---|---|
+| Principles and defaults | [#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185): "Principles for the reference model", "Decided: what the reference does when a plan omits an option", "Decided (2026-11-02): no newly created NaNs" |
+| Modulus, casts, `substring`, `-0.0`, lists, `avg` | [#209](https://github.com/AlexanderNenninger/substrait-lean/issues/209), "Decided" |
+| Overflow and `SUM` | [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202), "Decided (2026-11-01)" |
+| Engine tiers | [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211) |
+| DuckDB's findings, judged against this page | [`characterization/duckdb/FACTS.md`](../characterization/duckdb/FACTS.md) |

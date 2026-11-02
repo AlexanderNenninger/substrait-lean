@@ -9,30 +9,10 @@ decided there; where the two differ, #185 wins.
 ## The reference model
 
 `verify` proves things about `Rel.eval`, the **reference semantics**. It is
-not a model of any engine, DuckDB included. It is (#185, "Principles for the
-reference model"):
-
-1. **Substrait's semantics.** Each function means what its extension YAML
-   says, including its options (`overflow`, `on_division_by_zero`,
-   `division_type`, …). An option set in the plan is part of its meaning.
-2. **The least surprising choice where Substrait leaves one open**, written
-   down with its reason.
-3. **Easy to emulate on every backend.** Types have their declared widths
-   (`i8`…`i64` are fixed-width), and every choice is one that DuckDB,
-   Polars, DataFusion, Spark and Snowflake can be made to follow with a shim
-   (a guard, a cast, a `CASE`).
-4. **Good for optimizations.** Filter pushdown, reordering, sharding and
-   incremental maintenance stay provable.
-
-The decided defaults for a plan that omits an option (#185, "Decided: …"):
-
-* **Overflow** (`add`, `subtract`, `multiply`, `negate`, `abs`, …): ERROR,
-  at the declared width. SILENT and SATURATE only when the plan asks.
-* **Division by zero** (`divide`, `modulus`): ERROR. NULL only when the plan
-  asks.
-* **Errors mean "may raise"**, and rewrites are proved as refinements: an
-  optimized plan may raise in fewer cases, but never answers differently and
-  never raises where the original didn't.
+not a model of any engine, DuckDB included. Its principles, the decided
+defaults (overflow and division by zero are errors, errors mean "may raise",
+rewrites are refinements) and every row of its behaviour, with its status on
+`main`, are in [reference-semantics.md](reference-semantics.md).
 
 An engine runs a plan **correctly** when, on every input, it gives
 `Rel.eval`'s rows or fails.
@@ -76,8 +56,11 @@ From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
 | **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved. Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: sverify writes the SQL and checks it on an emulator (fakesnow), never on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
-SQL strings are planned to go through sverify's own SQLGlot frontend (#231),
-with DataFusion an execution backend only (#211).
+SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
+with `sv.sql(query, dialect="duckdb", semantics="duckdb" | "reference")`
+(`sverify.sql_lift`, #239), whose two profiles are Python data for now. The
+DataFusion SQL producer stays the default until the lift covers as much
+(#211), and DataFusion stays an execution backend.
 
 ## Profiles and shims in Lean (#185, first slice)
 

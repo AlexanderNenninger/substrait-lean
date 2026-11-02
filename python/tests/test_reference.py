@@ -415,3 +415,52 @@ def test_integer_avg_with_a_double_result_is_the_mean():
     put_table(con, "w", pa.table({"a": pa.array([1, 2], pa.int64())}))
     plan = substrait_json(con, "SELECT avg(a) AS m FROM w")
     assert lean_values(json.dumps(inline_tables(json.loads(plan), {"w": [(1,), (2,)]}))) == [(1.5,)]
+
+
+# R12 (#208): FLOAT (fp32) is a 32-bit double. Reading, comparing and widening
+# one is exact; arithmetic on it and casts to it round to 32 bits, which is
+# not modelled yet, so they are refused.
+F32_SINGLE = float(pa.scalar(2e38, pa.float32()).as_py())
+
+
+@pytest.fixture(scope="module")
+def f32():
+    c = connect()
+    put_table(c, "s", pa.table({"x": pa.array([1.5, 2e38], pa.float32()), "d": [0.1, 3e38]}))
+    return c
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT x > 0.1 AS b FROM s", [(True,), (True,)]),
+        ("SELECT CAST(x AS DOUBLE) AS y FROM s", [(1.5,), (F32_SINGLE,)]),
+        ("SELECT x * d AS m FROM s", [(1.5 * 0.1,), (F32_SINGLE * 3e38,)]),
+        ("SELECT sum(x) AS t FROM s", [(1.5 + F32_SINGLE,)]),
+        # A FLOAT literal is the single-precision value of its digits.
+        (
+            "SELECT CAST(0.1 AS FLOAT) AS t FROM s LIMIT 1",
+            [(float(pa.scalar(0.1, pa.float32()).as_py()),)],
+        ),
+    ],
+)
+def test_floats_read_compare_and_widen_exactly(f32, sql, expected):
+    written = written_plan(substrait_json(f32, sql))
+    for engine in ("duckdb", "polars", "datafusion"):
+        got = arrow_rows(run_plan(f32, written, engine))
+        assert [
+            tuple(float(v) if isinstance(v, float) else v for v in r) for r in got
+        ] == expected, engine
+
+
+@pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("SELECT x + x AS s FROM s", "add of FLOAT"),
+        ("SELECT sqrt(x) AS r FROM s", "sqrt of FLOAT"),
+        ("SELECT CAST(d AS FLOAT) AS y FROM s", "casts to FLOAT"),
+    ],
+)
+def test_float_arithmetic_is_refused(f32, sql, message):
+    code, out, err = run_checker((), substrait_json(f32, sql))
+    assert code != 0 and message in out + err

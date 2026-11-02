@@ -113,7 +113,7 @@ def UnFn.anchor : UnFn → Nat
   | .datePart _ | .dayPart _ => 25 | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
   | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
-  | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
+  | .itof | .ftoi | .narrow _ | .itos | .widen | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
   -- Decimals are written as casts and typed calls (`writeExpr`).
@@ -542,6 +542,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     (call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)])
   | .un (.wrap n) (.un .neg x) => checkedNarrow n (call 3 [narrowLit n x (writeExpr cols .int x)])
   | .un (.wrap _) a => writeExpr cols ctx a
+  | .un .widen a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .float a)])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>

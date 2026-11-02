@@ -596,6 +596,7 @@ def UnFn.abs : UnFn → AVal → AVal
       ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
   | .ftod _, a => partialAbs false a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
+  | .widen, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
   -- Below `Text.sizeCap`, by the size hypothesis for strings.
   | .length, a | .ascii, a =>
