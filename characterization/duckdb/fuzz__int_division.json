@@ -1,6 +1,6 @@
 {
   "duckdb": "2.0.0",
-  "source": "sverify.duckdb_fuzz (generated queries, no DuckDB tests)",
+  "source": "sverify_dev.duckdb_fuzz (generated queries, no DuckDB tests)",
   "area": "fuzz/int_division",
   "summary": {"agree": 13708, "disagree": 6, "refused": 0, "skipped": 0},
   "disagree_sides": {"lean": 6},

@@ -93,7 +93,21 @@ def _type_json(dtype: Any) -> Json:
         return {"i64": NULLABLE}
     if dtype.is_array():
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
+    if dtype.is_struct():
+        return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
     raise Unsupported(f"type {dtype} is not supported")
+
+
+def struct_names(schema: Any) -> list[str]:
+    """A `NamedStruct`'s names: each column's, followed by its struct
+    fields' names, depth first (Substrait's `NamedStruct`)."""
+
+    def names(name: str, dtype: Any) -> list[str]:
+        if dtype.is_struct():
+            return [name, *(n for f, t in dtype.items() for n in names(f, t))]
+        return [name]
+
+    return [n for name, t in schema.items() for n in names(name, t)]
 
 
 def literal(value: Any, dtype: Any) -> Json:
@@ -135,6 +149,9 @@ def literal(value: Any, dtype: Any) -> Json:
             return {"literal": {"emptyList": {"type": type_json(dtype.value_type)}}}
         values = [literal(v, dtype.value_type)["literal"] for v in value]
         return {"literal": {"list": {"values": values}}}
+    if dtype.is_struct():
+        fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
+        return {"literal": {"struct": {"fields": fields}}}
     raise Unsupported(f"literal of type {dtype} is not supported")
 
 
@@ -233,8 +250,28 @@ def substring_left(args: list[Json]) -> Json:
     return j
 
 
+def ieee_divide(a: Json, b: Json) -> Json:
+    """`a / b` with `on_division_by_zero` = IEEE: `±inf` or NaN by zero rather
+    than an error (#204)."""
+    c = call("divide", [a, b])
+    c["scalarFunction"]["options"] = [{"name": "on_division_by_zero", "preference": ["IEEE"]}]
+    return c
+
+
 def field_ref(i: int) -> Json:
     return {"selection": {"directReference": {"structField": {"field": i}}, "rootReference": {}}}
+
+
+def column_of(e: Json) -> int | None:
+    """The input column `e` reads, if it is a plain column reference (not a
+    reference into a value, #94)."""
+    sel = e.get("selection")
+    if sel is None or "rootReference" not in sel:
+        return None
+    sf = sel.get("directReference", {}).get("structField")
+    if sf is None or "child" in sf:
+        return None
+    return int(sf.get("field", 0))
 
 
 def if_then(ifs: list[tuple[Json, Json]], default: Json) -> Json:
@@ -316,6 +353,86 @@ def _compare(name: str) -> Callable[[Exprs, Any], Json]:
 
 def _unary(name: str) -> Callable[[Exprs, Any], Json]:
     return lambda x, op: call(name, [x(op.arg)])
+
+
+def reference(segment: Json, expr: Json) -> Json:
+    """A reference with `segment` into the value of `expr` (#94)."""
+    return {"selection": {"directReference": segment, "expression": expr}}
+
+
+#: The parameter of the innermost lambda.
+PARAM = {
+    "selection": {"directReference": {"structField": {"field": 0}}, "lambdaParameterReference": {}}
+}
+
+
+class _Body(Exprs):
+    """A lambda's body. The model's lambdas are closed (#94): the body reads
+    its parameter and constants, not the table's columns or an outer lambda's
+    parameter."""
+
+    def __init__(self, param: Any):
+        super().__init__({})
+        self.param = param
+
+    def translate(self, op: Any) -> Json:
+        if isinstance(op, ops.Argument):
+            if op != self.param:
+                raise Unsupported(
+                    "a lambda body that reads an outer lambda's parameter is not supported yet"
+                )
+            return PARAM
+        if isinstance(op, ops.Field):
+            raise Unsupported("a lambda body that reads the table's columns is not supported yet")
+        return super().translate(op)
+
+
+def lambda_json(param_type: Any, body: Json) -> Json:
+    """A lambda of one parameter of type `param_type`."""
+    params = {"types": [type_json(param_type)], "nullability": "NULLABILITY_REQUIRED"}
+    return {"lambda": {"parameters": params, "body": body}}
+
+
+def _higher_order(name: str) -> Callable[[Exprs, Any], Json]:
+    """`array.map(f)` and `array.filter(f)`: `transform` and `filter` with
+    `f` as a lambda (#94)."""
+
+    def rule(x: Exprs, op: Any) -> Json:
+        if op.index is not None:
+            raise Unsupported("lambdas that take the element's index are not supported")
+        body = _Body(op.param)(op.body)
+        return call(name, [x(op.arg), lambda_json(op.arg.dtype.value_type, body)])
+
+    return rule
+
+
+def _array_contains(x: Exprs, op: Any) -> Json:
+    # Ibis's `contains` is true where an element IS NOT DISTINCT FROM the
+    # value, as Polars has it: `any_match` with that predicate (#94). The
+    # lambda is closed, so the value is a constant.
+    if not isinstance(op.other, ops.Literal):
+        raise Unsupported(
+            "contains needs a constant value (a lambda reading a column is not supported yet)"
+        )
+    elem = op.arg.dtype.value_type
+    t = _common(elem, op.other.dtype)
+    param = PARAM if same_type(elem, t) or elem.is_null() else cast_json(PARAM, t)
+    body = call("is_not_distinct_from", [param, literal(op.other.value, t)])
+    return call("any_match", [x(op.arg), lambda_json(elem, body)])
+
+
+def _struct_field(x: Exprs, op: Any) -> Json:
+    # A struct is positional in the model: the field by its ordinal.
+    i = list(op.arg.dtype.names).index(op.field)
+    return reference({"structField": {"field": i}}, x(op.arg))
+
+
+def _array_index(x: Exprs, op: Any) -> Json:
+    # Ibis's `a[i]` is zero-based, negative from the end and NULL out of
+    # range, as Substrait's `ListElement` is; its offset is a constant.
+    if not isinstance(op.index, ops.Literal) or op.index.value is None:
+        raise Unsupported("a list element needs a constant index")
+    return reference({"listElement": {"offset": int(op.index.value)}}, x(op.arg))
 
 
 def _power(x: Exprs, op: Any) -> Json:
@@ -920,6 +1037,12 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.RPad: _pad(left=False),
     ops.Repeat: lambda x, op: call("repeat", [x(op.arg), x(op.times, dt.int64)]),
     ops.Reverse: _unary("reverse"),
+    ops.StructField: _struct_field,
+    ops.ArrayIndex: _array_index,
+    ops.ArrayLength: _unary("cardinality"),
+    ops.ArrayContains: _array_contains,
+    ops.ArrayMap: _higher_order("transform"),
+    ops.ArrayFilter: _higher_order("filter"),
     ops.StrRight: _str_right,
     ops.StringReplace: _replace,
     ops.StringAscii: _unary("ascii"),
@@ -982,9 +1105,10 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Acos: _double_fn("acos"),
     ops.Atan: _double_fn("atan"),
     ops.Atan2: lambda x, op: call("atan2", [x(op.left, dt.float64), x(op.right, dt.float64)]),
-    # DataFusion's `COT(x)` is `1 / tan(x)`; `DEGREES` and `RADIANS` multiply
-    # by Rust's constants (`f64::to_degrees`, `to_radians`).
-    ops.Cot: lambda x, op: call("divide", [_double(1.0), call("tan", [x(op.arg, dt.float64)])]),
+    # DataFusion's `COT(x)` is `1 / tan(x)` in IEEE division, so `cot(0)` is
+    # `inf`; `DEGREES` and `RADIANS` multiply by Rust's constants
+    # (`f64::to_degrees`, `to_radians`).
+    ops.Cot: lambda x, op: ieee_divide(_double(1.0), call("tan", [x(op.arg, dt.float64)])),
     ops.Degrees: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(180 / math.pi)]),
     ops.Radians: lambda x, op: call("multiply", [x(op.arg, dt.float64), _double(math.pi / 180)]),
     ops.E: lambda x, op: _double(math.e),
@@ -1095,10 +1219,11 @@ def emit_rel(input: Json, mapping: list[int]) -> Json:
 def select(input: Json, width: int, exprs: list[Json]) -> Json:
     """`exprs` over the `width` columns of `input`: an emit when all of them
     are columns, a projection otherwise."""
-    if not all("selection" in e for e in exprs):
+    cols = [column_of(e) for e in exprs]
+    if any(c is None for c in cols):
         return project_rel(input, width, exprs)
-    cols = [e["selection"]["directReference"]["structField"]["field"] for e in exprs]
-    return input if cols == list(range(width)) else emit_rel(input, cols)
+    fields = [c for c in cols if c is not None]
+    return input if fields == list(range(width)) else emit_rel(input, fields)
 
 
 def chain(name: str, args: list[Json]) -> Json:
@@ -1118,7 +1243,7 @@ def rel(op: Any) -> Json:
 
 def _read(op: Any) -> Json:
     schema = {
-        "names": list(op.schema.names),
+        "names": struct_names(op.schema),
         "struct": {
             "types": [type_json(t, t.nullable) for t in op.schema.types],
             "nullability": "NULLABILITY_REQUIRED",
@@ -1278,7 +1403,8 @@ def window(x: Exprs, op: Any) -> Json:
         if "filter" in m or m["measure"]["invocation"] != "AGGREGATION_INVOCATION_ALL":
             raise Unsupported("window aggregates with where= or DISTINCT are not supported")
         if not all(
-            "selection" in a["value"] or "cast" in a["value"] for a in m["measure"]["arguments"]
+            column_of(a["value"]) is not None or "cast" in a["value"]
+            for a in m["measure"]["arguments"]
         ):
             raise Unsupported("window aggregates of expressions are not supported; use a column")
         fn = m["measure"]
@@ -1518,7 +1644,7 @@ def _fill_null(op: Any) -> Json:
 
 def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
     base = {
-        "names": list(schema.names),
+        "names": struct_names(schema),
         "struct": {
             "types": [type_json(t) for t in schema.types],
             "nullability": "NULLABILITY_REQUIRED",
@@ -1801,6 +1927,8 @@ def to_substrait(expr: ir.Table) -> Json:
     token = _COMPILER.set(compiler)
     try:
         op: Any = expr.op()
+        # One name per output column: sverify reads them as the columns
+        # (Substrait would add struct fields' names, depth first).
         root = {"input": rel(op), "names": list(op.schema.names)}
         return {"extensions": compiler.extensions(), "relations": [{"root": root}]}
     finally:

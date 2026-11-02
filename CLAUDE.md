@@ -76,16 +76,16 @@ Don't commit regenerated tables on a feature branch. They are rewritten on
 conflicts with other PRs:
 
 - `README.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
-  from `sverify.coverage --write-readme`;
+  from `sverify_dev.coverage --write-readme`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
-  `sverify.catalogue --write-tables`.
+  `sverify_dev.catalogue --write-tables`.
 
 If you ran one of these commands locally, `git checkout` those files again
 before you commit. Edit the sources instead: the `CASES` of
-`python/src/sverify/coverage_cases/<area>.py`, the catalogue's TOML, and
+`python/tools/sverify_dev/coverage_cases/<area>.py`, the catalogue's TOML, and
 `catalogue/status.json`. `status.json` is not just output: it holds the results
 `tests/test_catalogue.py` expects. So a PR that adds a catalogue query or
-changes coverage commits it, after `sverify.catalogue --write`.
+changes coverage commits it, after `sverify_dev.catalogue --write`.
 
 ## Adding functions and coverage cases
 
@@ -98,7 +98,7 @@ Parallel PRs used to conflict in two shared lists; both are now split by area.
   aggregates, 600s windows), and the matching arm in `UnFn`/`BinFn`/`AggFn.anchor`
   under the area's comment. `lake build` rejects duplicate anchors or names,
   out-of-range anchors and anchors that are not declared.
-- **Coverage case** (`python/src/sverify/coverage_cases/<area>.py`): append to
+- **Coverage case** (`python/tools/sverify_dev/coverage_cases/<area>.py`): append to
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.

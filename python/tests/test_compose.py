@@ -8,7 +8,7 @@ import sverify as sv
 from _pipelines import bound_orders, spy_on
 from sverify.contracts import label, provenance
 from sverify.errors import CompositionError, PreconditionError
-from sverify.examples import orders
+from sverify_dev.examples import orders
 
 
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount >= 0, _.amount.notnull()])

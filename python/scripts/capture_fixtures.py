@@ -1,7 +1,7 @@
 """Capture real Substrait plans from DataFusion into tests/fixtures/df_*.json,
 and from Isthmus into tests/fixtures/isthmus_*.json.
 
-The pipelines are the Ibis expressions in `sverify.examples`, compiled to SQL by
+The pipelines are the Ibis expressions in `sverify_dev.examples`, compiled to SQL by
 Ibis and to Substrait by DataFusion, the same route incremental maintenance takes.
 The Isthmus plans are SQL that pins down what the parser reads (and refuses)
 of Calcite's encodings; they are captured only where an Isthmus binary is
@@ -25,7 +25,7 @@ from sverify.engine import (
     substrait_json,
     to_sql,
 )
-from sverify.examples import PIPELINES, UNSUPPORTED, create_tables, customers, orders
+from sverify_dev.examples import PIPELINES, UNSUPPORTED, create_tables, customers, orders
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 

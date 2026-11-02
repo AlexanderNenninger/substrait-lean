@@ -91,12 +91,51 @@ inductive UnFn where
   | bucket (k : Nat) (origin : Int)
   /-- `sqrt`, `ln`, `sin`, … of a double: `NULL` outside its domain. -/
   | fmath (f : FMath)
+  /-- `DECIMAL(p, s)` (#27). A decimal is its unscaled integer (`12.34` at scale
+  2 is `1234`), so this is the value itself: it gives the expression its kind,
+  and a value of more than `p` digits is an overflow (`Safety.lean`). -/
+  | decimal (p s : Nat)
+  /-- `DECIMAL(p, s)` without the check, where the value cannot have more
+  digits: an average has no more than the values it averages (#27). -/
+  | dkind (p s : Nat)
+  /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
+  rounding half away from zero (`roundDiv10`). -/
+  | dround (k : Nat)
+  /-- A decimal to an integer: divided by `10ᵏ`, truncating toward zero. -/
+  | dtrunc (k : Nat)
+  /-- A double to a decimal of scale `s` (`FloatCode.toDecimal?`); `NULL` for
+  NaN and ±∞, where the cast fails (`Safety.lean`). -/
+  | ftod (s : Nat)
+  /-- A decimal of scale `s` to a double, correctly rounded (`FloatCode.ofDecimal`). -/
+  | dtof (s : Nat)
+  /-- Field `i` of a struct (Substrait's `StructField` reference segment). A
+  struct is the list of its fields (`docs/nested-values.md`); a NULL struct
+  has NULL fields. -/
+  | structField (i : Nat)
+  /-- Element `off` of a list (Substrait's `ListElement` reference segment):
+  zero-based, a negative offset counting from the end (`-1` is the last
+  element), `NULL` out of range in either direction, without wrapping
+  (`Value.listElement`, #94). -/
+  | listElement (off : Int)
+  /-- `cardinality(l)`: the number of elements, NULL ones included
+  (`functions_list.yaml`). -/
+  | cardinality
+  /-- A shim's guard (#185): always raises (`Issue.raised` in `Safety.lean`),
+  with the message `msg` and the value of its argument; DuckDB's `error()`.
+  Its value, which nobody sees, is `NULL`. -/
+  | raise (msg : String)
+  /-- `x` is a number (a shim's guard, #185). The SQL printers write `x IS NOT
+  NULL`, since in SQL a non-NULL operand of a numeric function is a number. -/
+  | isNum
   deriving Repr, DecidableEq
 
 inductive BinFn where
   | add | sub | mul | eq | lt | and | or
   /-- Double arithmetic, rounded like IEEE 754. -/
   | fadd | fsub | fmul | fdiv
+  /-- The remainder of doubles, C's `fmod` (`FloatCode.fmod`); by zero, an
+  error (`Safety.lean`). -/
+  | fmod
   /-- Integer division and remainder (truncating) and integer powers. -/
   | idiv | imod | ipow
   /-- `POWER` of doubles. -/
@@ -121,6 +160,26 @@ inductive BinFn where
   | fatan2 | flogb
   /-- `&`, `|`, `^` and the shifts of integers (`BitOp`). -/
   | bit (op : BitOp)
+  /-- Decimal arithmetic on unscaled integers (#27), exact. Engines compute it
+  in 128 bits, so unlike `add`, `sub` and `mul` it does not wrap at 64;
+  `UnFn.decimal` checks the precision. -/
+  | dadd | dsub | dmul
+  /-- `a / b` of decimals, rounded half away from zero (`roundDivInt?`), and
+  `NULL` for `b = 0`: a decimal `AVG`'s sum by its count (#27). -/
+  | ddiv
+  deriving Repr, DecidableEq
+
+/-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
+take a lambda (#94). -/
+inductive HoFn where
+  /-- `any_match`: the predicate's results ORed in Kleene logic. -/
+  | anyMatch
+  /-- `all_match`: the predicate's results ANDed in Kleene logic. -/
+  | allMatch
+  /-- `transform`: the function applied to every element. -/
+  | transform
+  /-- `filter`: the elements the predicate is `TRUE` for. -/
+  | filter
   deriving Repr, DecidableEq
 
 inductive Expr where
@@ -129,11 +188,53 @@ inductive Expr where
   | un (f : UnFn) (a : Expr)
   | bin (f : BinFn) (a b : Expr)
   | ifThen (c t e : Expr)
+  /-- `f(l, x -> body)`: a higher-order function of the list `l`, with a
+  *closed* lambda. Its body reads only the lambda's parameter, as field 0,
+  so it is evaluated on the one-field row `[x]` and analysed as an expression
+  of its own; reading the row's columns or an outer lambda's parameter is
+  left for later (#94). -/
+  | hof (f : HoFn) (l body : Expr)
   deriving Repr, DecidableEq
 
 /-- Does `i` fit in a signed integer of `bits` bits? -/
 def fitsBits (bits : Nat) (i : Int) : Bool :=
   decide (-(2 ^ (bits - 1) : Int) ≤ i) && decide (i < 2 ^ (bits - 1))
+
+/-- Does `i` fit in `p` decimal digits (`|i| < 10ᵖ`)? -/
+def fitsDigits (p : Nat) (i : Int) : Bool :=
+  decide (-(10 ^ p : Int) < i) && decide (i < 10 ^ p)
+
+/-- `i / 10ᵏ`, rounded half away from zero: a decimal brought to a scale `k`
+digits smaller (#27). -/
+def roundDiv10 (k : Nat) (i : Int) : Int :=
+  let q : Int := ((i.natAbs + 10 ^ k / 2) / 10 ^ k : Nat)
+  if i < 0 then -q else q
+
+#guard roundDiv10 1 1235 == 124 && roundDiv10 1 (-5) == -1 && roundDiv10 2 250 == 3
+#guard roundDiv10 2 (-250) == -3 && roundDiv10 1 1234 == 123 && roundDiv10 0 (-7) == -7
+
+/-- `a / b` rounded half away from zero, `none` for `b = 0`: a decimal
+average (#27). -/
+def roundDivInt? (a b : Int) : Option Int :=
+  if b = 0 then none else
+    let q : Int := ((2 * a.natAbs + b.natAbs) / (2 * b.natAbs) : Nat)
+    some (if (a < 0) = (b < 0) then q else -q)
+
+#guard roundDivInt? 20000 3 == some 6667 && roundDivInt? (-20000) 3 == some (-6667)
+#guard roundDivInt? 5 2 == some 3 && roundDivInt? (-5) 2 == some (-3) && roundDivInt? 4 2 == some 2
+#guard roundDivInt? 1 0 == none && roundDivInt? 0 7 == some 0
+
+/-- Element `off` of `vs`: zero-based, from the end for a negative `off`,
+`NULL` out of range (Substrait's `ListElement`). -/
+def Value.listElement (off : Int) (vs : List Value) : Value :=
+  let k := if off < 0 then vs.length + off else off
+  if 0 ≤ k then vs.getD k.toNat .null else .null
+
+#guard Value.listElement 1 [.int 1, .int 2, .int 3] == .int 2
+#guard Value.listElement (-1) [.int 1, .int 2, .int 3] == .int 3
+#guard Value.listElement 3 [.int 1, .int 2, .int 3] == .null
+#guard Value.listElement (-4) [.int 1, .int 2, .int 3] == .null
+#guard Value.listElement 0 [] == .null
 
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
@@ -179,6 +280,19 @@ def UnFn.apply : UnFn → Value → Value
   | .fmath f, .int c => match f.apply c with
     | some r => .int r
     | none => .null
+  | .decimal _ _, v => v
+  | .dkind _ _, v => v
+  | .dround k, .int i => .int (roundDiv10 k i)
+  | .dtrunc k, .int i => .int (i.tdiv (10 ^ k))
+  | .ftod s, .int c => match FloatCode.toDecimal? c s with
+    | some m => .int m
+    | none => .null
+  | .dtof s, .int i => .int (FloatCode.ofDecimal i s)
+  | .structField i, .list vs => vs.getD i .null
+  | .listElement off, .list vs => Value.listElement off vs
+  | .cardinality, .list vs => .int vs.length
+  | .isNum, .int _ => .bool true
+  | .isNum, _ => .bool false
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
@@ -194,6 +308,48 @@ def or3 : Value → Value → Value
   | _, .bool true => .bool true
   | .bool false, .bool false => .bool false
   | _, _ => .null
+
+/-- A higher-order function of a list value, with the lambda `p`: `NULL` for
+anything but a list (`functions_list.yaml`). -/
+def HoFn.apply (f : HoFn) (v : Value) (p : Value → Value) : Value :=
+  match f, v with
+  | .anyMatch, .list vs => vs.foldr (fun x acc => or3 (p x) acc) (.bool false)
+  | .allMatch, .list vs => vs.foldr (fun x acc => and3 (p x) acc) (.bool true)
+  | .transform, .list vs => .list (vs.map p)
+  | .filter, .list vs => .list (vs.filter fun x => (p x).isTrue)
+  | _, _ => .null
+
+/-- The elements of a list value; none of anything else. -/
+def Value.elems : Value → List Value
+  | .list vs => vs
+  | _ => []
+
+/-- A higher-order function only applies its lambda to the list's elements. -/
+theorem HoFn.apply_congr (f : HoFn) (v : Value) {p q : Value → Value}
+    (h : ∀ x ∈ v.elems, p x = q x) : f.apply v p = f.apply v q := by
+  cases v <;> cases f <;> simp only [HoFn.apply]
+  case list.anyMatch vs | list.allMatch vs =>
+    simp only [Value.elems] at h
+    induction vs with
+    | nil => rfl
+    | cons x xs ih =>
+      simp only [List.foldr_cons, h x (by simp),
+        ih fun y hy => h y (List.mem_cons_of_mem x hy)]
+  case list.transform vs =>
+    simp only [Value.elems] at h
+    exact congrArg Value.list (List.map_congr_left h)
+  case list.filter vs =>
+    simp only [Value.elems] at h
+    congr 1
+    exact List.filter_congr fun x hx => by rw [h x hx]
+
+-- `any_match`: `TRUE` if some element matches, else `NULL` if some
+-- predicate is `NULL`, else `FALSE`; `FALSE` for `[]`.
+#guard HoFn.anyMatch.apply (.list [.int 1, .null]) (fun x => if x == .int 1 then .bool true else if x == .null then .null else .bool false) == .bool true
+#guard HoFn.anyMatch.apply (.list [.int 2, .null]) (fun x => if x == .null then .null else .bool false) == .null
+#guard HoFn.anyMatch.apply (.list []) (fun _ => .bool true) == .bool false
+#guard HoFn.allMatch.apply (.list []) (fun _ => .bool false) == .bool true
+#guard HoFn.anyMatch.apply .null (fun _ => .bool true) == .null
 
 mutual
 /-- `x < y` of two values, three-valued (`none` is `NULL`): integers (and
@@ -258,6 +414,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fsub, .int a, .int b => .int (FloatCode.lift₂ (· - ·) a b)
   | .fmul, .int a, .int b => .int (FloatCode.lift₂ (· * ·) a b)
   | .fdiv, .int a, .int b => .int (FloatCode.lift₂ (· / ·) a b)
+  | .fmod, .int a, .int b => .int (FloatCode.fmod a b)
   | .idiv, .int a, .int b => if b = 0 then .null else .int (a.tdiv b)
   | .imod, .int a, .int b => if b = 0 then .null else .int (a.tmod b)
   -- Exponents beyond 64 overflow anyway (unless `|a| ≤ 1`); don't compute them.
@@ -274,6 +431,12 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .strRepeat, .str s, .int n => .str (if Text.repeatFits s n then Text.repeatStr s n else "")
   | .ilike, .str a, .str b => .bool (Text.ilike a b)
   | .levenshtein, .str a, .str b => .int (Text.levenshtein a b)
+  | .dadd, .int a, .int b => .int (a + b)
+  | .dsub, .int a, .int b => .int (a - b)
+  | .dmul, .int a, .int b => .int (a * b)
+  | .ddiv, .int a, .int b => match roundDivInt? a b with
+    | some r => .int r
+    | none => .null
   | .dateAdd, .int d, .int n => .int (d + n)
   | .dateDiff, .int d, .int e => .int (d - e)
   | .fatan2, .int y, .int x => match atan2? y x with
@@ -295,14 +458,17 @@ def Expr.eval (row : Row) : Expr → Value
   | .un f a => f.apply (a.eval row)
   | .bin f a b => f.apply (a.eval row) (b.eval row)
   | .ifThen c t e => if (c.eval row).isTrue then t.eval row else e.eval row
+  | .hof f l b => f.apply (l.eval row) fun x => b.eval [x]
 
-/-- All field references in the expression are `< n`. -/
+/-- All field references in the expression are `< n`. A lambda's body is
+evaluated on its parameter alone, so its references are not the row's. -/
 def Expr.refsLt (n : Nat) : Expr → Prop
   | .lit _ => True
   | .field i => i < n
   | .un _ a => a.refsLt n
   | .bin _ a b => a.refsLt n ∧ b.refsLt n
   | .ifThen c t e => c.refsLt n ∧ t.refsLt n ∧ e.refsLt n
+  | .hof _ l _ => l.refsLt n
 
 theorem isTrue_and3 (a b : Value) :
     (and3 a b).isTrue = (a.isTrue && b.isTrue) := by
@@ -327,5 +493,6 @@ theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
   | un f a ih => simp [eval, ih he]
   | bin f a b iha ihb => simp [eval, iha he.1, ihb he.2]
   | ifThen c t e ihc iht ihe => simp [eval, ihc he.1, iht he.2.1, ihe he.2.2]
+  | hof f l b ihl _ => simp [eval, ihl he]
 
 end Substrait

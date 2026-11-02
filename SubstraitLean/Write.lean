@@ -39,7 +39,10 @@ def coreFns : List (Nat × String) := [
   (100, "sqrt"), (101, "exp"), (102, "ln"), (103, "log10"), (104, "log2"), (105, "sin"),
   (106, "cos"), (107, "tan"), (108, "asin"), (109, "acos"), (110, "atan"), (111, "atan2"),
   (112, "logb"), (113, "bitwise_and"), (114, "bitwise_or"), (115, "bitwise_xor"),
-  (116, "bitwise_shift_left"), (117, "bitwise_shift_right")]
+  (116, "bitwise_shift_left"), (117, "bitwise_shift_right"),
+  -- sverify's own: a shim's guards (#185), which the SQL printers write as
+  -- `error(…)` and `x IS NOT NULL`.
+  (118, "sverify_raise"), (119, "sverify_is_number")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -59,7 +62,9 @@ def nestedFns : List (Nat × String) := [
   -- sverify's own: `lt` of two lists (`Value.listLt3`), which the parser
   -- reads back as `lt`. Engines order lists with NULL elements their own
   -- way, so each needs to know a comparison is of lists (#207).
-  (400, "list_lt")]
+  (400, "list_lt"),
+  (401, "cardinality"), (402, "any_match"), (403, "all_match"), (404, "transform"),
+  (405, "filter")]
 
 /-- Aggregate functions: new anchors 500–599. -/
 def aggregateFns : List (Nat × String) := [
@@ -106,12 +111,20 @@ def UnFn.anchor : UnFn → Nat
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
+  -- Decimals are not written yet (`Rel.decimalOps`).
+  | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
+  -- Lists and structs; field and element access are references, not calls.
+  | .cardinality => 401
+  -- A shim's guards.
+  | .raise _ => 118 | .isNum => 119
+  | .structField _ | .listElement _ => 0
 
 def BinFn.anchor : BinFn → Nat
   -- Core
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
-  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .ipow | .fpow => 19
+  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod | .fmod => 18 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
+  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11
   | .bit op => match op with
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
@@ -181,8 +194,12 @@ def kindType : Parse.Kind → Json
   | .timeTz => obj [("precisionTimestampTz", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
+  | .dec p s => obj [("decimal", obj [("precision", toJson p), ("scale", toJson s),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .tod => obj [("precisionTime", obj [("precision", toJson 6), ("nullability", "NULLABILITY_NULLABLE")])]
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
+  | .struct ks => obj [("struct", obj [("types", Json.arr (ks.attach.map fun ⟨k, _⟩ => kindType k).toArray),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .int | .other => i64Type
 where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
 
@@ -194,11 +211,15 @@ interval (#65). -/
 inductive WKind where
   | int | float | time | date | interval | str | bool | tod | other
   | list (elem : WKind)
+  | struct (fields : List WKind)
+  | dec (p s : Nat)
   deriving BEq
 
 def WKind.ofKind : Parse.Kind → WKind
   | .int => .int | .float => .float | .time => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
+  | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => ofKind k)
+  | .dec p s => .dec p s
   -- Zoned timestamps are only compared with each other (`checkArgKinds`).
   | .timeTz => .other
 
@@ -206,11 +227,14 @@ def WKind.ofKind : Parse.Kind → WKind
 def WKind.toKind : WKind → Parse.Kind
   | .int => .int | .float => .float | .time | .interval => .time | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
+  | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)
+  | .dec p s => .dec p s
 
 /-- An expression without field references. -/
 def isConst : Expr → Bool
   | .lit _ => true
   | .field _ => false
+  | .hof _ l _ => isConst l
   | .un _ a => isConst a
   | .bin _ a b => isConst a && isConst b
   | .ifThen c t e => isConst c && isConst t && isConst e
@@ -291,6 +315,8 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | .list e, .list [] => obj [("emptyList", obj [("type", kindType e.toKind)])]
   | .list e, .list vs =>
     obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
+  | .struct _, .null => obj [("null", kindType k.toKind)]
+  | .struct _, .list vs => obj [("struct", obj [("fields", Json.arr (vs.map writeValue).toArray)])]
   -- A bare double, which no context types (#96).
   | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
@@ -330,6 +356,25 @@ def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
 def isLit : Expr → Bool
   | .lit _ => true
   | _ => false
+
+/-- A field reference with the segment `seg` into the value of `e`. -/
+def reference (seg e : Json) : Json :=
+  obj [("selection", obj [("directReference", seg), ("expression", e)])]
+
+def HoFn.anchor : HoFn → Nat
+  | .anyMatch => 402 | .allMatch => 403 | .transform => 404 | .filter => 405
+
+/-- A closed lambda's body, written over the row `[x]`, with its references
+into the row as references to the lambda's parameter (`Parse.closeBody`
+reads them back). Nested lambdas are written already. -/
+partial def paramRefs : Json → Json
+  | .arr xs => .arr (xs.map paramRefs)
+  | j@(.obj kvs) =>
+    let es := Parse.entries kvs
+    if es.any (·.1 == "lambda") then j
+    else Json.mkObj (es.map fun (k, v) =>
+      if k == "rootReference" then ("lambdaParameterReference", obj []) else (k, paramRefs v))
+  | j => j
 
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
@@ -383,7 +428,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .upper a => call (UnFn.anchor .upper) [writeExpr cols .str a]
   | .un .lower a => call (UnFn.anchor .lower) [writeExpr cols .str a]
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
+  | .un (.raise msg) a => call 118 [writeExpr cols (wkind cols a) a, writeLit .str (.str msg)]
   | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
+  -- A reference into the value of `a` (#94).
+  | .un (.structField i) a => reference (obj [("structField", obj [("field", toJson i)])])
+      (writeExpr cols (wkind cols a) a)
+  | .un (.listElement off) a => reference (obj [("listElement", obj [("offset", toJson off)])])
+      (writeExpr cols (wkind cols a) a)
   | .un f a => call (UnFn.anchor f) [writeExpr cols (wkind cols a) a]
   | .bin f a b =>
     let ka := if isConst a then wkind cols b else wkind cols a
@@ -391,7 +442,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     match f with
     -- A sum or difference of canonical doubles is `-0.0` never, NaN only
     -- as `inf - inf`, which IEEE engines may make negative.
-    | .fadd | .fsub | .fmul | .fdiv | .fpow | .fatan2 | .flogb =>
+    | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 | .flogb =>
       canonical (call (BinFn.anchor f) [writeExpr cols .float a, writeExpr cols .float b])
     | .add | .sub =>
       -- `timestamp ± constant`: the constant is an interval in microseconds.
@@ -417,6 +468,14 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .ifThen c t e => obj [("ifThen", obj [
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool c), ("then", writeExpr cols ctx t)]]),
       ("else", writeExpr cols ctx e)])]
+  | .hof f l b =>
+    let kl := wkind cols l
+    let elem := match kl with | .list k => k | _ => .other
+    let lam := obj [("lambda", obj [
+      ("parameters", obj [("types", Json.arr #[kindType elem.toKind]),
+        ("nullability", "NULLABILITY_REQUIRED")]),
+      ("body", paramRefs (writeExpr [elem] (wkind [elem] b) b))])]
+    call (HoFn.anchor f) [writeExpr cols kl l, lam]
 
 /-- `baseSchema` of each table: the parsed one, or a placeholder of `i64`
 columns for tables the parser never saw. -/
@@ -449,6 +508,52 @@ def projKinds (schemas : Schemas) (ks : List WKind) (es : List Expr) : List WKin
     | some k => if k == .other then wkind ks e else .ofKind k
     | none => wkind ks e
 
+/-- A `SUM`'s kind: an integer, or a decimal with ten more digits (#27). -/
+def sumKind : WKind → WKind
+  | .dec p s => .dec (min 38 (p + 10)) s
+  | _ => .int
+
+/-- Does the expression compute with decimals (#27)? The engines get no plans
+with these until they emulate the reference's decimals. -/
+def _root_.Substrait.Expr.decimalOps : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with
+      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => true
+      | _ => false) ||
+      a.decimalOps
+  | .bin f a b =>
+    (match f with | .dadd | .dsub | .dmul | .ddiv => true | _ => false) || a.decimalOps || b.decimalOps
+  | .ifThen c t e => c.decimalOps || t.decimalOps || e.decimalOps
+  | .hof _ l b => l.decimalOps || b.decimalOps
+
+/-- Does some expression of the plan satisfy `p`? -/
+def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
+  | .read _ | .values _ _ => false
+  | .filter r c => r.anyExpr p || p c
+  | .project r es => r.anyExpr p || es.any p
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.anyExpr p
+  | .cross a b | .unionAll a b => a.anyExpr p || b.anyExpr p
+  | .join a b _ on | .semi a b _ on => a.anyExpr p || b.anyExpr p || p on
+  | .window r _ _ fns =>
+    r.anyExpr p || fns.any (fun | .agg m _ _ => m.exprs.any p | _ => false)
+  | .aggregate r gs ms => r.anyExpr p || gs.any p || ms.any fun m => m.exprs.any p
+
+def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOps
+
+/-- Does the expression reach into a struct or a list, count a list, or take
+a lambda (#94)? DataFusion 51 reads a reference into a value as a reference
+into the row, its `cardinality([])` is NULL, and its consumer has no lambdas,
+so it gets no plans with these. -/
+def _root_.Substrait.Expr.nestedAccess : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a =>
+    (match f with | .structField _ | .listElement _ | .cardinality => true | _ => false) ||
+      a.nestedAccess
+  | .bin _ a b => a.nestedAccess || b.nestedAccess
+  | .ifThen c t e => c.nestedAccess || t.nestedAccess || e.nestedAccess
+  | .hof _ _ _ => true
+
 /-- Column kinds, from the schemas the writer uses. -/
 def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .read t => (Parse.schemaKinds (schemas t (cat t).arity)).map .ofKind
@@ -470,14 +575,16 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           ks.getD c .other
         | .agg m _ _ => match m.fn with
-          | .count | .sum => .int
+          | .count => .int
+          | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg => .float
           | .min | .max => wkind ks m.arg
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
-        | .count | .sum => .int
+        | .count => .int
+        | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg => .float
         | .min | .max => wkind ks m.arg
         | .collect => .list (wkind ks m.arg)
@@ -559,6 +666,8 @@ def readsOnly (p : Nat → Bool) (e : Expr) : Bool :=
     | .bin _ a b => let (x, y) := go a; let (z, w) := go b; (x || z, y && w)
     | .ifThen c t e =>
       let (x, y) := go c; let (z, w) := go t; let (u, v) := go e; (x || z || u, y && w && v)
+    -- A lambda's body reads its parameter, not the row.
+    | .hof _ l _ => go l
   let (reads, all) := go e
   reads && all
 

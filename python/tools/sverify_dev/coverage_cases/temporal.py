@@ -7,7 +7,7 @@ import datetime as dt
 import ibis
 from ibis import _
 
-from sverify.coverage_cases._common import (
+from sverify_dev.coverage_cases._common import (
     DAY0,
     NO_ROW_ORDER,
     Case,

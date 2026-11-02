@@ -26,11 +26,16 @@ def UnFn.render : UnFn → String
   | .addMonths m _ => s!"ADD_MONTHS_{m}" | .timeOfDay => "TIME" | .asTime => "TIMESTAMP"
   | .strftime fmt => s!"STRFTIME_{fmt.quote}" | .bucket k o => s!"BUCKET_{k}_{o}"
   | .fmath f => f.name.toUpper
+  | .decimal p s => s!"DECIMAL_{p}_{s}" | .dkind p s => s!"AS_DECIMAL_{p}_{s}" | .dround k => s!"DROUND_{k}" | .dtrunc k => s!"DTRUNC_{k}"
+  | .ftod s => s!"TO_DECIMAL_{s}" | .dtof s => s!"DECIMAL_TO_DOUBLE_{s}"
+  | .structField i => s!"FIELD_{i}" | .listElement off => s!"ELEMENT_{off}"
+  | .cardinality => "CARDINALITY"
+  | .raise msg => s!"RAISE_{msg.quote}" | .isNum => "IS_NUMBER"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"
   | .and => "AND" | .or => "OR" | .fadd => "+." | .fsub => "-." | .fmul => "*." | .fdiv => "/."
-  | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^."
+  | .idiv => "/" | .imod => "%" | .ipow => "^" | .fpow => "^." | .fmod => "%."
   | .concat => "||" | .strpos => "STRPOS" | .startsWith => "STARTS_WITH"
   | .endsWith => "ENDS_WITH" | .like => "LIKE"
   | .substr n wrap =>
@@ -39,8 +44,13 @@ def BinFn.render : BinFn → String
   | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN"
   | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
   | .fatan2 => "ATAN2" | .flogb => "LOGB"
+  | .dadd => "+" | .dsub => "-" | .dmul => "*" | .ddiv => "/ROUND"
   | .bit op => match op with
     | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
+
+def HoFn.name : HoFn → String
+  | .anyMatch => "ANY_MATCH" | .allMatch => "ALL_MATCH" | .transform => "TRANSFORM"
+  | .filter => "FILTER"
 
 def Expr.render : Expr → String
   | .lit v => v.render
@@ -48,6 +58,7 @@ def Expr.render : Expr → String
   | .un f a => s!"{f.render}({a.render})"
   | .bin f a b => s!"({a.render} {f.render} {b.render})"
   | .ifThen c t e => s!"IF {c.render} THEN {t.render} ELSE {e.render}"
+  | .hof f l b => s!"{f.name}({l.render}, $0 -> {b.render})"
 
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"

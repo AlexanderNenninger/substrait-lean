@@ -353,6 +353,20 @@ theorem Bound.fitsBits_mem {n : Nat} {b : Bound} {i : Int} (h : b.fitsBits n = t
   simp only [_root_.Substrait.fitsBits, Bool.and_eq_true, decide_eq_true_eq]
   omega
 
+/-- Does every integer of the interval fit in `p` decimal digits? -/
+def Bound.fitsDigits (p : Nat) (b : Bound) : Bool :=
+  b.lo.any (-(10 ^ p : Int) < ·) && b.hi.any (· < 10 ^ p)
+
+theorem Bound.fitsDigits_mem {p : Nat} {b : Bound} {i : Int} (h : b.fitsDigits p = true)
+    (hi : b.Mem i) : _root_.Substrait.fitsDigits p i = true := by
+  obtain ⟨bl, bh⟩ := b
+  simp only [Bound.fitsDigits, Bool.and_eq_true, Option.any_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨lo, rfl, hlo⟩, ⟨hi', rfl, hhi⟩⟩ := h
+  have h1 := hi.1 lo rfl
+  have h2 := hi.2 hi' rfl
+  simp only [_root_.Substrait.fitsDigits, Bool.and_eq_true, decide_eq_true_eq]
+  omega
+
 /-- `CAST(x AS INT)`: the integer itself, or NULL where it may not fit. -/
 def narrowAbs (n : Nat) (a : AVal) : AVal :=
   ⟨a.nonInt || a.int.any (!·.fitsBits n), a.int, false, false, false⟩
@@ -523,6 +537,10 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
   | .wrap _, a => a
+  | .decimal _ _, a | .dkind _ _, a => a
+  | .dround _, a | .dtrunc _, a | .dtof _, a =>
+      ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
+  | .ftod _, a => partialAbs false a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
   | .length, a | .ascii, a => ⟨a.nonStr, if a.str then some (.ge 0) else none, false, false, false⟩
@@ -541,6 +559,12 @@ def UnFn.abs : UnFn → AVal → AVal
   | .strftime _, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .bucket k o, a => monoAbs (Time.bucket k o) a
   | .fmath f, a => partialAbs (f.safe a) a
+  -- The abstraction does not look into lists: an element or a field is
+  -- anything.
+  | .structField _, _ | .listElement _, _ => AVal.top
+  | .cardinality, _ => ⟨true, some (.ge 0), false, false, false⟩
+  | .raise _, _ => ⟨true, none, false, false, false⟩
+  | .isNum, _ => ⟨false, none, true, true, false⟩
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -580,8 +604,12 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .add, a, b => arith Bound.add a b
   | .sub, a, b | .dateDiff, a, b => arith Bound.sub a b
   | .mul, a, b => arith Bound.mul a b
+  | .dadd, a, b => arith Bound.add a b
+  | .dsub, a, b => arith Bound.sub a b
+  | .dmul, a, b => arith Bound.mul a b
+  | .ddiv, a, b => partialAbs₂ false a b
   | .dateAdd, a, b => arith Bound.add a b
-  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fpow, a, b =>
+  | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fmod, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
   | .idiv, a, b => divAbs divBound a b
   | .imod, a, b => divAbs modBound a b
@@ -612,6 +640,43 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       | some x, some y => ⟨a.nonInt || b.nonInt, none, canLt x y || t, canGe x y || f, false⟩
       | _, _ => ⟨true, none, t, f, false⟩
 
+/-- A higher-order function's result: a boolean or `NULL` (`any_match`,
+`all_match`), or a list or `NULL`, which the abstraction does not look into. -/
+def HoFn.abs : HoFn → AVal
+  | .anyMatch | .allMatch => ⟨true, none, true, true, false⟩
+  | .transform | .filter => AVal.top
+
+theorem or3_bool_or_null (a b : Value) : or3 a b = .null ∨ ∃ x, or3 a b = .bool x := by
+  unfold or3; split <;> simp
+
+theorem and3_bool_or_null (a b : Value) : and3 a b = .null ∨ ∃ x, and3 a b = .bool x := by
+  unfold and3; split <;> simp
+
+theorem HoFn.abs_sound (f : HoFn) (v : Value) (p : Value → Value) : f.abs.Mem (f.apply v p) := by
+  have key : ∀ r : Value, (r = .null ∨ ∃ x, r = .bool x) →
+      (⟨true, none, true, true, false⟩ : AVal).Mem r := by
+    rintro r (rfl | ⟨x, rfl⟩)
+    · rfl
+    · cases x <;> rfl
+  cases f
+  case transform | filter => exact AVal.mem_top _
+  case anyMatch =>
+    apply key
+    cases v
+    case list vs =>
+      cases vs with
+      | nil => exact .inr ⟨false, rfl⟩
+      | cons x xs => exact or3_bool_or_null _ _
+    all_goals exact .inl rfl
+  case allMatch =>
+    apply key
+    cases v
+    case list vs =>
+      cases vs with
+      | nil => exact .inr ⟨true, rfl⟩
+      | cons x xs => exact and3_bool_or_null _ _
+    all_goals exact .inl rfl
+
 def Expr.abs (env : List AVal) : Expr → AVal
   | .lit v => AVal.ofValue v
   | .field i => env.getD i AVal.top
@@ -621,6 +686,7 @@ def Expr.abs (env : List AVal) : Expr → AVal
       let ac := c.abs env
       (if ac.tt then t.abs env else AVal.bot).join
         (if ac.nonBool || ac.ff then e.abs env else AVal.bot)
+  | .hof f _ _ => f.abs
 
 /-- Shapes of a value, for case analysis in the binary soundness proofs. -/
 theorem mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
@@ -843,6 +909,14 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         · exact absurd (Bound.fitsBits_mem hfb hi) hfit
     all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
+  case decimal => simpa [UnFn.abs, UnFn.apply] using h
+  case dkind => simpa [UnFn.abs, UnFn.apply] using h
+  case dround k => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case dtrunc k => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case dtof s => exact topAbs_sound (fun v => by cases v <;> rfl) h
+  case ftod s =>
+    exact partialAbs_sound (g := fun c => FloatCode.toDecimal? c s) (fun v => by cases v <;> rfl)
+      (fun hs => by simp at hs) h
   case itof => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fmath f =>
@@ -884,6 +958,11 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case upper | lower | length | reverse | ascii | replace =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.ge, Bound.Mem, Text.ascii_nonneg]
+  case structField | listElement => exact AVal.mem_top _
+  case raise => cases v <;> rfl
+  case isNum => cases v <;> rfl
+  case cardinality =>
+    cases v <;> simp [UnFn.abs, UnFn.apply, AVal.Mem, Bound.ge, Bound.Mem]
   case regexMatch p =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp only [UnFn.abs, UnFn.apply, AVal.Mem]
@@ -1058,10 +1137,17 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dateAdd => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case mul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dadd => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dsub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case dmul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case ddiv =>
+    exact partialAbs₂_sound (g := roundDivInt?) (fun v w => by cases v <;> cases w <;> rfl)
+      (fun hs => by simp at hs) ha hb
   case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fdiv => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
+  case fmod => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fpow => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> rfl) ha hb
@@ -1155,6 +1241,7 @@ theorem Expr.abs_sound {env : List AVal} {row : Row} (h : EnvMem env row) :
           · simp [AVal.nonBool, hs]
         rw [ite_eq_left this]
         exact Expr.abs_sound h e
+  | .hof f _ _ => HoFn.abs_sound f _ _
 
 /-! ## Refinement by filter conditions -/
 
@@ -2477,6 +2564,7 @@ def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr
       (if ac.tt then t.absD (c.refine env) fs (c.cstrs true ++ ks) else AVal.bot).join
         (if ac.nonBool || ac.ff then e.absD (c.refineNeg env) fs (c.cstrs false ++ ks)
          else AVal.bot)
+  | .hof f l b => narrowAll ks (.hof f l b) f.abs
 
 theorem Bound.mem_exact_iff {k i : Int} : (Bound.exact k).Mem i ↔ i = k := by
   simp only [Bound.Mem, Bound.exact, Option.some.injEq]
@@ -2750,6 +2838,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
         rw [ite_eq_left this]
         have hf : (c.eval row).isTrue = false := by simpa using hct
         exact Expr.absD_sound (Expr.refineNeg_sound env c h hf) hfs (KsHold.cons_cstrs hf hks) e
+  | .hof f _ _ => narrowAll_sound hks (HoFn.abs_sound f _ _)
 
 /-! ## Abstract plan evaluation -/
 
@@ -3123,6 +3212,7 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .un f a => .un f (a.subst cols)
   | .bin f a b => .bin f (a.subst cols) (b.subst cols)
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
+  | .hof f l b => .hof f (l.subst cols) b
 
 theorem getD_map_eval (cols : List Expr) (row : Row) (i : Nat) :
     (cols.map (·.eval row)).getD i .null = (cols.getD i (.lit .null)).eval row := by
@@ -3138,6 +3228,7 @@ theorem Expr.eval_subst (cols : List Expr) (row : Row) :
   | .ifThen c t e => by
       simp [subst, eval, Expr.eval_subst cols row c, Expr.eval_subst cols row t,
         Expr.eval_subst cols row e]
+  | .hof f l b => by simp [subst, eval, Expr.eval_subst cols row l]
 
 /-- A plan that only computes columns of one table (`Read` under projects and
 emits) as expressions over that table's columns. Preconditions are given as

@@ -163,7 +163,7 @@ def tables_from_args(specs: list[list[str]]) -> dict[str, pa.Table]:
 
 
 def catalogue_query(qid: str) -> tuple[dict[str, pa.Table], str | None, str | None]:
-    from sverify import catalogue as cat
+    from sverify_dev import catalogue as cat
 
     schemas = cat.load_schemas()
     q = next(q for q in cat.load_queries() if q.id == qid)

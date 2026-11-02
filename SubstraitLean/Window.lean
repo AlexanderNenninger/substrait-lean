@@ -145,6 +145,7 @@ def Expr.refsLtB (n : Nat) : Expr → Bool
   | .un _ a => a.refsLtB n
   | .bin _ a b => a.refsLtB n && b.refsLtB n
   | .ifThen c t e => c.refsLtB n && t.refsLtB n && e.refsLtB n
+  | .hof _ l _ => l.refsLtB n
 
 def WinFn.refsLt (n : Nat) : WinFn → Bool
   | .rowNumber | .rank _ | .denseRank _ | .percentRank _ | .cumeDist _ | .ntile _ => true

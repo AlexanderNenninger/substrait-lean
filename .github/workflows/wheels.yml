@@ -86,10 +86,13 @@ jobs:
         run: mkdir wheelhouse && cp dist/*.whl wheelhouse/
 
       # Test the installed wheel, not the source tree: copy the tests out so
-      # `sverify` can only come from the wheel.
+      # `sverify` can only come from the wheel. The tests also need the
+      # maintainer tooling, which the wheel leaves out (`python/tools`).
       - name: Test installed wheel
         run: |
           cp -r python/tests "$RUNNER_TEMP/tests"
+          cp -r python/tools "$RUNNER_TEMP/tools"
+          export PYTHONPATH="$RUNNER_TEMP/tools"
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
           uv run --isolated --no-project \
@@ -187,6 +190,8 @@ jobs:
       - name: Test installed wheel
         run: |
           cp -r python/tests "$RUNNER_TEMP/tests"
+          cp -r python/tools "$RUNNER_TEMP/tools"
+          export PYTHONPATH="$RUNNER_TEMP/tools"
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           cd "$RUNNER_TEMP"
           uv run --isolated --no-project --python ${{ matrix.python }} \

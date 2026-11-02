@@ -62,10 +62,10 @@ are paraphrased only, never quoted.
 
 ```bash
 cd python
-uv run python -m sverify.catalogue                 # validate the TOML
-uv run python -m sverify.catalogue tpch win-dedup-latest   # probe a suite or query
-uv run python -m sverify.catalogue --write         # probe all; rewrite status.json
-uv run python -m sverify.catalogue --write-tables  # rewrite INDEX.md and FINDINGS.md's tables from status.json
+uv run python -m sverify_dev.catalogue                 # validate the TOML
+uv run python -m sverify_dev.catalogue tpch win-dedup-latest   # probe a suite or query
+uv run python -m sverify_dev.catalogue --write         # probe all; rewrite status.json
+uv run python -m sverify_dev.catalogue --write-tables  # rewrite INDEX.md and FINDINGS.md's tables from status.json
 ```
 
 A probe compiles the query as `sverify` compiles everything (an Ibis

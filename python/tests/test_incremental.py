@@ -18,8 +18,8 @@ import sverify as sv
 from _pipelines import connect_with, doubled, paid
 from sverify.engines import ENGINES, create_table, table_rows
 from sverify.errors import NotIncremental
-from sverify.examples import PIPELINES, UNSUPPORTED
 from sverify.incremental import IncrementalView, Pipeline
+from sverify_dev.examples import PIPELINES, UNSUPPORTED
 
 # Plain SQL goes through the same route as Ibis (both reach DataFusion as SQL);
 # one query keeps that entry point covered.

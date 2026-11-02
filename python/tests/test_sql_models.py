@@ -132,9 +132,9 @@ def test_refused_sql_says_what_is_refused():
 
     @sv.transform()
     def money(orders):
-        return sv.sql("SELECT CAST(amount AS DECIMAL(10, 2)) AS d FROM orders", orders=orders)
+        return sv.sql("SELECT CAST(amount AS DECIMAL(10, 2)) / 3 AS d FROM orders", orders=orders)
 
-    with pytest.raises(Unsupported, match="Lean refuses the SQL: unsupported cast"):
+    with pytest.raises(Unsupported, match="Lean refuses the SQL: divide of DECIMAL"):
         money(orders)
 
     @sv.transform()

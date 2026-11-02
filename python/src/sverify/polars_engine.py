@@ -199,7 +199,15 @@ def null_type(t: dict) -> DType:
         return pl.Null
     if "list" in t:
         return pl.List(materialize(null_type(t["list"].get("type", {"i64": {}}))))
+    if "struct" in t:
+        return struct_type([materialize(null_type(f)) for f in t["struct"].get("types", [])])
     raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
+
+
+def struct_type(fields: list[DType]) -> DType:
+    """A struct of these field dtypes. The model's structs are positional:
+    fields are named `f0`, `f1`, … (`conform` renames a column's)."""
+    return pl.Struct([pl.Field(f"f{i}", t) for i, t in enumerate(fields)])
 
 
 def literal(lit: dict) -> tuple[Any, DType]:
@@ -235,6 +243,10 @@ def literal(lit: dict) -> tuple[Any, DType]:
         return _int(v["value"]), pl.Time
     if kind == "emptyList":
         return [], pl.List(materialize(null_type(v.get("type", {"i64": {}}))))
+    if kind == "struct":
+        fields = [literal(e) for e in v.get("fields", [])]
+        dtype = struct_type([materialize(t) for _, t in fields])
+        return {f"f{i}": f for i, (f, _) in enumerate(fields)}, dtype
     if kind == "list":
         elems = [literal(e) for e in v.get("values", [])]
         t: DType = pl.Null
@@ -347,6 +359,21 @@ def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     both = pl.struct(x.alias("x"), y.alias("y"))
     q = both.map_batches(_ieee_divide, return_dtype=pl.Float64, is_elementwise=True)
     return pl.when(x.is_null() | y.is_null()).then(None).otherwise(q)
+
+
+def _fmod(s: pl.Series) -> pl.Series:
+    x = s.struct.field("x").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    y = s.struct.field("y").cast(pl.Float64).to_numpy(allow_copy=True).astype(np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return pl.Series(np.fmod(x, y), dtype=pl.Float64)
+
+
+def fmod(x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """C's `fmod` (`FloatCode.fmod`), the sign of `x`. Polars' `%` floors (the
+    sign of `y`) and makes `x % inf` NaN; numpy's `fmod` is C's."""
+    both = pl.struct(x.alias("x"), y.alias("y"))
+    r = both.map_batches(_fmod, return_dtype=pl.Float64, is_elementwise=True)
+    return pl.when(x.is_null() | y.is_null()).then(None).otherwise(r)
 
 
 def tdiv(a: pl.Expr, b: pl.Expr) -> pl.Expr:
@@ -766,10 +793,13 @@ def narrow_int(v: Val, bits: int) -> Val:
 
 
 class Exprs:
-    """Translates expressions over input columns of the given dtypes."""
+    """Translates expressions over input columns of the given dtypes, or, with
+    `param`, a lambda's body over its parameter of that dtype (#94)."""
 
-    def __init__(self, functions: Mapping[int, str], dtypes: list[DType]):
-        self.functions, self.dtypes = functions, dtypes
+    def __init__(
+        self, functions: Mapping[int, str], dtypes: list[DType], param: DType | None = None
+    ):
+        self.functions, self.dtypes, self.param = functions, dtypes, param
 
     def function(self, ref: Any) -> str:
         anchor = int(ref or 0)
@@ -778,12 +808,16 @@ class Exprs:
         return self.functions[anchor].split(":")[0]
 
     def field(self, j: dict) -> int:
+        if "child" in j["directReference"]["structField"]:
+            raise Unsupported("nested field references are not supported here")
+        return self.field_index(j)
+
+    def field_index(self, j: dict) -> int:
         if "outerReference" in j:
             raise Unsupported("outer references are not supported")
-        sf = j["directReference"]["structField"]
-        if "child" in sf:
-            raise Unsupported("nested field references are not supported")
-        i = int(sf.get("field", 0))
+        if "expression" in j:
+            raise Unsupported("a reference into an expression is not supported here")
+        i = int(j["directReference"]["structField"].get("field", 0))
         if i >= len(self.dtypes):
             raise Unsupported(f"field {i} is out of range ({len(self.dtypes)} columns)")
         return i
@@ -793,8 +827,15 @@ class Exprs:
             v, t = literal(j["literal"])
             return Val(lit_expr(v, t), t)
         if "selection" in j:
-            i = self.field(j["selection"])
-            return Val(pl.col(col(i)), self.dtypes[i])
+            sel = j["selection"]
+            if "expression" in sel:
+                return self.segments(self(sel["expression"]), sel["directReference"])
+            if self.param is not None:
+                return self.parameter(sel)
+            i = self.field_index(sel)
+            column = Val(pl.col(col(i)), self.dtypes[i])
+            child = sel["directReference"]["structField"].get("child")
+            return column if child is None else self.segments(column, child)
         if "cast" in j:
             return self.cast(j["cast"])
         if "ifThen" in j:
@@ -809,6 +850,8 @@ class Exprs:
                 prefs = o.get("preference") or ["ERROR"]
                 if o.get("name") == "on_division_by_zero" and prefs[0] != "ERROR":
                     raise Unsupported(f"on_division_by_zero = {prefs}")
+            if name in ("any_match", "all_match", "transform", "filter"):
+                return self.higher_order(name, arg_js)
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
@@ -1000,8 +1043,87 @@ class Exprs:
             return self.binary(name, *args)
         raise Unsupported(f"unsupported function {name}/{len(args)} on {types}")
 
+    def parameter(self, sel: dict) -> Val:
+        """A reference in a lambda's body: only to its own parameter, which
+        is the list element (`Parse.closeBody`)."""
+        ref = sel.get("lambdaParameterReference")
+        if ref is None or int(ref.get("stepsOut", 0)) != 0:
+            raise Unsupported("a lambda body reads only its own parameter")
+        sf = sel["directReference"]["structField"]
+        if int(sf.get("field", 0)) != 0:
+            raise Unsupported("lambdas have one parameter")
+        assert self.param is not None
+        element = Val(pl.element(), self.param)
+        child = sf.get("child")
+        return element if child is None else self.segments(element, child)
+
+    def higher_order(self, name: str, arg_js: list) -> Val:
+        """`HoFn.apply`: `any_match`, `all_match` (Kleene OR and AND of the
+        predicate over the elements), `transform` and `filter`, with the
+        lambda's body run on each element (`list.eval`)."""
+        if len(arg_js) != 2 or "lambda" not in arg_js[1]:
+            raise Unsupported(f"{name} takes a list and a lambda")
+        lst = self(arg_js[0])
+        if not isinstance(lst.dtype, pl.List):
+            raise Unsupported(f"{name} of a value of type {lst.dtype}")
+        inner: Any = lst.dtype.inner
+        body = Exprs(self.functions, [], param=inner)(arg_js[1]["lambda"]["body"])
+        # The lambda runs on every element (`Expr.issues`): a row fails where
+        # one of its elements does.
+        lifted = tuple(
+            Issue(lst.expr.list.eval(i.flag).list.any().fill_null(False), i.kind, i.message)
+            for i in body.issues
+        )
+        found = (*lst.issues, *lifted)
+        each = lst.expr.list.eval(body.expr)
+        if name == "transform":
+            return Val(each, pl.List(materialize(body.dtype)), found)
+        if name == "filter":
+            kept = lst.expr.list.eval(pl.element().filter(body.expr.fill_null(False)))
+            return Val(kept, lst.dtype, found)
+        # Kleene: one decisive element decides; else a NULL makes it NULL.
+        decisive = name == "any_match"
+        hit = each.list.eval(pl.element().fill_null(not decisive) == decisive).list.any()
+        unknown = each.list.eval(pl.element().is_null()).list.any()
+        out = (
+            pl.when(lst.expr.is_null())
+            .then(None)
+            .when(hit)
+            .then(decisive)
+            .when(unknown)
+            .then(None)
+            .otherwise(not decisive)
+        )
+        return Val(out, pl.Boolean, found)
+
+    def segments(self, base: Val, seg: dict) -> Val:
+        """`base` followed by reference segments (`Parse.segments`): a struct
+        field (`UnFn.structField`), or a list element (`UnFn.listElement`:
+        zero-based, negative from the end, NULL out of range)."""
+        if "structField" in seg:
+            sf = seg["structField"]
+            k = int(sf.get("field", 0))
+            if not isinstance(base.dtype, pl.Struct) or k >= len(base.dtype.fields):
+                raise Unsupported(f"field {k} of a value of type {base.dtype}")
+            f = base.dtype.fields[k]
+            dtype: Any = f.dtype
+            out = Val(base.expr.struct.field(f.name), dtype, base.issues)
+        elif "listElement" in seg:
+            le = seg["listElement"]
+            if not isinstance(base.dtype, pl.List):
+                raise Unsupported(f"an element of a value of type {base.dtype}")
+            off = int(le.get("offset", 0))
+            inner: Any = base.dtype.inner
+            out = Val(base.expr.list.get(off, null_on_oob=True), inner, base.issues)
+        else:
+            raise Unsupported(f"unsupported reference segment {json.dumps(seg)}")
+        child = seg.get("structField", seg.get("listElement", {})).get("child")
+        return self.segments(out, child) if child is not None else out
+
     def unary(self, name: str, a: Val) -> Val:
         e, t = a.expr, a.dtype
+        if name == "cardinality" and isinstance(t, pl.List):
+            return Val(e.list.len().cast(pl.Int64), pl.Int64, a.issues)
         if name == "not" and t in (pl.Boolean, pl.Null):
             return Val(~e, pl.Boolean, a.issues)
         if name == "is_null":
@@ -1089,18 +1211,20 @@ class Exprs:
             else:
                 shifted = _rows(shift_left, pl.Int64, a, Val(n, pl.Int64))
             return self.domain(bad, shifted, pl.Int64, name, a, b)
-        floats = ("add", "subtract", "multiply", "divide", "power")
+        floats = ("add", "subtract", "multiply", "divide", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             x, y = a.expr, b.expr
             # A sum or difference is never -0.0 here; the others can be.
             ops = {"add": x + y, "subtract": x - y, "multiply": canon(x * y),
-                   "divide": canon(fdiv(x, y)), "power": canon(x.pow(y))}  # fmt: skip
-            if name != "divide":
+                   "divide": canon(fdiv(x, y)), "modulus": canon(fmod(x, y)),
+                   "power": canon(x.pow(y))}  # fmt: skip
+            if name not in ("divide", "modulus"):
                 return Val(ops[name], pl.Float64, issues(a, b))
-            # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
-            zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, "divide by zero")
+            # `on_division_by_zero` = ERROR (`BinFn.issue`), for `fdiv` and `fmod`;
+            # `NULL / 0.0` is NULL.
+            zero = issue(x.is_not_null() & y.eq(0.0), DivisionByZero, f"{name} by zero")
             return Val(ops[name], pl.Float64, (*issues(a, b), zero))
         if name == "add" and ta == pl.Date:
             # `BinFn.dateAdd`: days, as an interval or a count.
@@ -1249,6 +1373,8 @@ def type_of(t: dict) -> DType:
         return INTERVAL
     if "list" in t:
         return pl.List(type_of(t["list"].get("type", {})))
+    if "struct" in t:
+        return struct_type([type_of(f) for f in t["struct"].get("types", [])])
     raise Unsupported(f"unsupported column type {json.dumps(t)}")
 
 
@@ -1266,6 +1392,10 @@ def conform(e: pl.Expr, have: DType, want: DType, where: str) -> pl.Expr:
         raise Unsupported(f"{where}: categorical strings are not supported")
     if have == pl.Null:
         return e.cast(want)
+    if isinstance(have, pl.Struct) and isinstance(want, pl.Struct):
+        hs, ws = have.fields, want.fields
+        if len(hs) == len(ws) and all(h.dtype == w.dtype for h, w in zip(hs, ws, strict=True)):
+            return e.struct.rename_fields([w.name for w in ws])
     raise Unsupported(f"{where}: column has type {have}, the plan expects {want}")
 
 

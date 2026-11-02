@@ -16,6 +16,7 @@ def Expr.refsLtb (n : Nat) : Expr → Bool
   | .un _ a => a.refsLtb n
   | .bin _ a b => a.refsLtb n && b.refsLtb n
   | .ifThen c t e => c.refsLtb n && t.refsLtb n && e.refsLtb n
+  | .hof _ l _ => l.refsLtb n
 
 theorem Expr.refsLtb_iff {n : Nat} {e : Expr} : e.refsLtb n = true ↔ e.refsLt n := by
   induction e <;> simp_all [refsLtb, refsLt, and_assoc]

@@ -1,13 +1,13 @@
-"""DuckDB's own SQL against `Rel.eval` (`sverify.duckdb_fuzz`), on fixed
-cases: the fuzzer's search is `sverify.fuzz`'s, tested in `test_fuzz.py`."""
+"""DuckDB's own SQL against `Rel.eval` (`sverify_dev.duckdb_fuzz`), on fixed
+cases: the fuzzer's search is `sverify_dev.fuzz`'s, tested in `test_fuzz.py`."""
 
 import json
 
 import pytest
 from hypothesis import given, settings
 
-from sverify import duckdb_fuzz, fuzz
-from sverify.fuzz import INT
+from sverify_dev import duckdb_fuzz, fuzz
+from sverify_dev.fuzz import INT
 
 pytestmark = pytest.mark.backend("duckdb")
 

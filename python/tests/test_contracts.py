@@ -11,7 +11,7 @@ from _pipelines import bound_orders
 from sverify.contracts import violations
 from sverify.engines import create_table
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
-from sverify.examples import customers, orders
+from sverify_dev.examples import customers, orders
 
 
 @sv.transform(

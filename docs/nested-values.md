@@ -109,6 +109,62 @@ It is a new `Rel` constructor, so every analysis gets a case:
 Ibis's DataFusion compiler has no rule for `TableUnnest`, so the differential
 test compares with DuckDB running Ibis's DuckDB SQL.
 
+## Field and element access (#94)
+
+The rules were decided on #94 from Substrait's spec and the backends (DuckDB,
+Polars, Spark, DataFusion):
+
+* **A struct field** is `UnFn.structField i`, Substrait's `StructField`
+  reference segment. A struct is the list of its fields, so this is element
+  `i` of it. A NULL struct's fields are NULL (DataFusion 51 gives a
+  non-NULL value there, see Engines).
+* **A list element** is `UnFn.listElement off`, Substrait's `ListElement`
+  segment. It is zero-based, a negative offset counts from the end (`-1` is
+  the last element), and it is NULL out of range in either direction, without
+  wrapping (`Value.listElement`). The offset is a constant, so Ibis's `a[i]`
+  needs a literal `i`. SQL's one-based `l[i]` is `i - 1`.
+* **`cardinality(l)`** (`functions_list.yaml`) counts NULL elements; a NULL
+  list gives NULL, and `[]` gives 0.
+* **`contains`** is not a function of its own. Substrait has `any_match(l,
+  x -> p)`, which ORs the predicate's results in Kleene logic. The frontend
+  chooses the predicate: Ibis's `contains` is `x IS NOT DISTINCT FROM v`
+  (NULL matches NULL), and SQL functions keep their engine's meaning (Spark's
+  `array_contains` is `x = v`).
+
+The parser reads a reference into the input row with nested segments
+(`structField` with a `child`), and a reference into an expression's value
+(`"expression": …` with a segment). A struct field outside the struct is an
+invalid plan, so it is refused. The writer writes both as references into the
+value. The abstraction does not look into lists: an element or a field is
+`AVal.top`, and a cardinality is a non-negative integer or NULL.
+
+## Lambdas (#94)
+
+`Expr.hof f l body` is a higher-order function of the list `l`
+(`functions_list.yaml`): `any_match` and `all_match` (the predicate's results
+ORed and ANDed in Kleene logic, `FALSE` and `TRUE` for `[]`), `transform`
+and `filter` (the elements the predicate is `TRUE` for). Each is `NULL` for a
+NULL list (`HoFn.apply`).
+
+**Lambdas are closed.** The body reads only its parameter, as field 0, and
+constants; it is evaluated on the one-field row `[x]`. So `Expr.eval` stays
+structurally recursive, the body is analysed like any expression (over
+`[AVal.top]`, without facts), and the functions that renumber a row's columns
+(`mapFields`, `shift`, `subst`) leave it alone. Reading the row's columns or
+an outer lambda's parameter (Substrait's `steps_out` > 0) is refused for now;
+both need parameter environments in `eval` and its proofs. Ibis's
+`contains(v)` therefore takes a constant `v`.
+
+* **Errors:** the body runs on every element, so its issues on any element
+  are the row's (`Expr.issues`, `Expr.mayIssues_sound`). `verify` reports
+  `x -> x * 2` as possibly wrapping around, and Polars raises where it does.
+* **Contracts:** `any_match` and `all_match` give a boolean or NULL;
+  `transform` and `filter` a list or NULL (`HoFn.abs`).
+* **Plans:** Substrait's `Lambda` with one parameter. Its body's references
+  are `lambdaParameterReference`s; the parser reads them as references into
+  `[x]` (`Parse.closeBody`) and the writer writes them back
+  (`Write.paramRefs`).
+
 ## Engines
 
 Polars runs lists, `collect` (sorting each group's rows when the measure is
@@ -116,17 +172,38 @@ ordered) and `UNNEST` (filtering empty and NULL lists before `explode`). The
 SQL dialects (DuckDB, Snowflake, Spark) refuse them with `Unsupported` for
 now; DuckDB's `ARRAY_AGG … ORDER BY` and `UNNEST` are part of #94.
 
+Polars also runs struct fields, list elements, `cardinality` and the
+higher-order functions (the body on `pl.element()` in `list.eval`; a body's
+errors are checked over every element). The SQL
+dialects refuse struct columns and references into values. DataFusion 51
+gets no plan with them (`Expr.nestedAccess`): its consumer reads a
+reference into an expression's value as a reference into the row, which gives
+a wrong column, its `cardinality([])` is NULL, and it has no lambdas. The SQL
+dialects refuse lambdas too.
+
 ## Types in plans
 
 `Parse.Kind` gains `list (k : Kind)` (Substrait's `List` type), so the writer
-can type list literals, empty lists and NULLs. Structs (`struct (ks : List
-Kind)`) come with #94. List literals are `{"literal": {"list": {"values": […]}}}`,
-an empty list `{"emptyList": {"type": …}}`.
+can type list literals, empty lists and NULLs. `struct (ks : List Kind)` is
+Substrait's `Struct` type, positional (its `DecidableEq` is written by hand,
+as `Value`'s is). List literals are `{"literal": {"list": {"values": […]}}}`,
+an empty list `{"emptyList": {"type": …}}`, a struct literal `{"literal":
+{"struct": {"fields": […]}}}`.
+
+A table's `NamedStruct` names its struct columns' fields too, depth first. The
+plan's root keeps one name per output column, since sverify reads them as
+the columns.
 
 ## Follow-ups (#94)
 
-Struct construction and field access (`StructField` references), `list.get`,
-`list.contains`, `cardinality` (DataFusion: NULL for `[]`, DuckDB: 0, so an
-engine-profile question), slicing, `list.sum`/`min`/`max`/`sort`/`unique`,
-and `transform`/`filter` with lambdas (`Expr` needs `Lambda` and lambda
-parameter references). Maps and JSON stay out of #94.
+Done: struct field access, list elements and `cardinality`; closed lambdas
+with `any_match`, `all_match`, `transform` and `filter` (see above), on
+Polars. Still to do:
+
+* lambdas that read the row's columns or an outer lambda's parameter (so
+  `contains` of a column);
+* struct construction;
+* lists and structs in the SQL dialects (DuckDB first);
+* slicing, and `list.sum`/`min`/`max`/`sort`/`unique`.
+
+Maps and JSON stay out of #94.

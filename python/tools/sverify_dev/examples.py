@@ -1,7 +1,7 @@
 """Example pipelines over a small orders/customers schema, as Ibis expressions.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API.
 
 Used by the tests, by `scripts/capture_fixtures.py` and in the docs. The
 tables are unbound: `ibis.to_sql` (and so incremental maintenance)

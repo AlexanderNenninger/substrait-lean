@@ -1,7 +1,7 @@
 # DuckDB characterization
 
-The replay of DuckDB's sqllogictests through sverify (`python -m sverify.slt`)
-and the fuzz findings against DuckDB (`python -m sverify.duckdb_fuzz`), one
+The replay of DuckDB's sqllogictests through sverify (`python -m sverify_dev.slt`)
+and the fuzz findings against DuckDB (`python -m sverify_dev.duckdb_fuzz`), one
 ledger per area of DuckDB's `test/sql/`, for epic #185. [FACTS.md](FACTS.md)
 draws the facts out of them.
 
@@ -18,7 +18,7 @@ or `both`), `refused` (sverify does not plan the query) or `skipped` (it
 needs an extension, a setting, a second connection, …). Rerun with:
 
 ```bash
-cd python && uv run python -m sverify.slt --jobs 2
+cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
 Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 refused, 12674 skipped (1034 files skipped whole). The fuzzer checked 42306 random queries on homelab and kept 17 distinct disagreements (`fuzz/*`).

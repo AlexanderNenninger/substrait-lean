@@ -140,7 +140,7 @@ def nan_aware(rows: list[tuple]) -> list[tuple]:
         ("SELECT x FROM n WHERE x NOT IN (SELECT y FROM s) ORDER BY x", [(2,), (None,)]),
         # INTERSECT ALL and EXCEPT ALL are a semi and an anti join: every
         # left copy stays or goes (SQL: min(m, n) and max(m - n, 0) copies).
-        # The Ibis producer writes SQL's meaning (`sverify.coverage.DATAFUSION_SQL`).
+        # The Ibis producer writes SQL's meaning (`sverify_dev.coverage.DATAFUSION_SQL`).
         (
             "SELECT * FROM (VALUES (1), (1), (1), (2)) a(x) "
             "INTERSECT ALL SELECT * FROM (VALUES (1), (3)) b(x) ORDER BY x",

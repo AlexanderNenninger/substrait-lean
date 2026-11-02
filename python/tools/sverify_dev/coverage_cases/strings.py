@@ -7,7 +7,7 @@ from typing import cast
 import ibis
 import ibis.expr.types as ir
 
-from sverify.coverage_cases._common import (
+from sverify_dev.coverage_cases._common import (
     Case,
     R,
     V,

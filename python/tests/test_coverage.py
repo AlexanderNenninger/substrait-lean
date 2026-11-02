@@ -1,12 +1,12 @@
 """Every probed Ibis operation reaches the checker, and every verified one
-each engine, exactly as `sverify.coverage` records it, so coverage only
+each engine, exactly as `sverify_dev.coverage` records it, so coverage only
 changes by a deliberate edit there."""
 
 import re
 
 import pytest
 
-from sverify.coverage import CASES, REFUSED, TIE_FREE, Case, check, refusal
+from sverify_dev.coverage import CASES, REFUSED, TIE_FREE, Case, check, refusal
 
 
 @pytest.mark.parametrize("c", CASES, ids=lambda c: f"{c.area}: {c.label}")

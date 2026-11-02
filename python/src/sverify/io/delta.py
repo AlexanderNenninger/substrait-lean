@@ -21,7 +21,6 @@ Feed.
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import PurePosixPath
@@ -43,8 +42,9 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
+from sverify._weighted import WEIGHT, concat, expanded, grouped, rows_of
 from sverify.contracts import Fact
-from sverify.incremental import Row, Snapshot, SourceBatch, Stored, first_line
+from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
 from sverify.io._common import (
     FILTER,
     ColumnStats,
@@ -556,7 +556,7 @@ class DeltaSink(Sink):
             if missing:
                 dt.alter.add_constraint(missing)
             assert self._written is not None
-            inserted, deleted = self._merge(dt, schema, self._written, view.counts, commit)
+            inserted, deleted = self._merge(dt, schema, self._written, view.state, commit)
         else:
             # The rows may come from another plan, with other columns: the
             # schema becomes the rows'. Its constraints hold only once the
@@ -603,23 +603,29 @@ class DeltaSink(Sink):
         self,
         dt: DeltaTable,
         schema: pa.Schema,
-        old: Counter[tuple],
-        new: Counter[tuple],
+        old: pa.Table,
+        new: pa.Table,
         commit: CommitProperties,
     ) -> tuple[int, int]:
-        """Replace every row whose multiplicity changed, in one commit."""
-        changed = [k for k in old.keys() | new.keys() if old[k] != new[k]]
-        assert self.view is not None
-        examples = self.view.examples
-        rows: list[tuple[Row, str]] = [(examples[k], "d") for k in changed if old[k] > 0]
-        rows += [(examples[k], "i") for k in changed for _ in range(new[k])]
-        if not rows:
+        """Replace every row whose multiplicity changed from `old` to `new`
+        (weighted tables), in one commit."""
+        changed = _multiplicities(old, new)
+        if not changed.num_rows:
             return 0, 0
-        names = schema.names
-        source = pa.Table.from_pylist(
-            [{**dict(zip(names, r, strict=True)), OP: op} for r, op in rows],
-            schema=pa.schema([*[f.with_nullable(True) for f in schema], pa.field(OP, pa.string())]),
+        n_old, n_new = changed.column(_OLD), changed.column(_NEW)
+        rows = rows_of(changed.drop_columns([_OLD, _NEW]))
+        gone = rows.filter(pc.call_function("greater", [n_old, 0]))
+        came = expanded(rows.append_column(WEIGHT, n_new))
+        nullable = pa.schema([f.with_nullable(True) for f in schema])
+        source = pa.concat_tables(
+            [
+                t.rename_columns(schema.names)
+                .cast(nullable)
+                .append_column(OP, pa.repeat(pa.scalar(op), t.num_rows))
+                for t, op in ((gone, "d"), (came, "i"))
+            ]
         )
+        names = schema.names
         same = " AND ".join(f"(t.{q(c)} IS NOT DISTINCT FROM s.{q(c)})" for c in names)
         (
             dt.merge(
@@ -633,4 +639,23 @@ class DeltaSink(Sink):
             .when_not_matched_insert_all(predicate=f"s.{q(OP)} = 'i'", except_cols=[OP])
             .execute()
         )
-        return sum(new[k] for k in changed), sum(old[k] for k in changed)
+        total = [pc.call_function("sum", [n]).as_py() for n in (n_new, n_old)]
+        return total[0], total[1]
+
+
+_OLD, _NEW = "__sverify_old", "__sverify_new"
+
+
+def _multiplicities(old: pa.Table, new: pa.Table) -> pa.Table:
+    """The rows whose number of copies differs between the weighted tables
+    `old` and `new`, with both numbers (`_OLD`, `_NEW`) and the difference
+    (`WEIGHT`)."""
+
+    def side(z: pa.Table, o: bool) -> pa.Table:
+        w = z.column(WEIGHT)
+        zero = pa.repeat(pa.scalar(0, pa.int64()), z.num_rows)
+        rows = rows_of(z)
+        rows = rows.append_column(_OLD, w if o else zero).append_column(_NEW, zero if o else w)
+        return rows.append_column(WEIGHT, pc.call_function("negate", [w]) if o else w)
+
+    return grouped(concat([side(new, False), side(old, True)]), (_OLD, _NEW, WEIGHT))

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ibis import _
 
-from sverify.coverage_cases._common import (
+from sverify_dev.coverage_cases._common import (
     NO_LISTS,
     NO_ROW_ORDER,
     Case,

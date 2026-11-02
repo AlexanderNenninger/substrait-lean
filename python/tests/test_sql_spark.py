@@ -148,6 +148,19 @@ def test_floats(spark):
     got = one(*(d.float_div(a, zero) for a in (one_, f"(- {one_})", zero)))
     assert got[:2] == (math.inf, -math.inf) and math.isnan(got[2])
     assert one(d.float_div(d.null("float"), zero)) == (None,)
+    # The remainder is C's `fmod`; by zero sverify's error (#203).
+    m = [d.float_lit(v) for v in (7.5, -7.5, 2.0, -2.0)]
+    got = one(
+        d.float_mod(m[0], m[2]),
+        d.float_mod(m[1], m[2]),
+        d.float_mod(m[0], m[3]),
+        d.float_mod(m[0], inf),
+        d.float_mod(inf, m[2]),
+        d.float_mod(d.null("float"), zero),
+    )
+    assert got[:4] == (1.5, -1.5, 1.5, 7.5) and math.isnan(got[4]) and got[5] is None
+    with pytest.raises(Exception, match="division by zero"):
+        one(d.float_mod(m[0], zero))
     # FLOOR, CEIL and ROUND keep NaN, ±inf and big values; zeros are zero.
     x = [d.float_lit(v) for v in (-0.4, 0.3, 2.5, 1e300)]
     got = one(

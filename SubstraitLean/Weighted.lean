@@ -31,6 +31,8 @@ def Expr.shift (n : Nat) : Expr → Expr
   | .un f a => .un f (a.shift n)
   | .bin f a b => .bin f (a.shift n) (b.shift n)
   | .ifThen c t e => .ifThen (c.shift n) (t.shift n) (e.shift n)
+  -- A lambda's body reads its parameter, not the row.
+  | .hof f l b => .hof f (l.shift n) b
 
 /-- Columns `0..n-1`, then `n+1..n+k`, then `last`: drops the column at `n`
 and moves `last` (the weight) to the end. -/
@@ -114,6 +116,7 @@ theorem Expr.eval_shift {e : Expr} (xa xb rest : Row) (w : Value)
   | un f a ih => simp only [shift, eval, ih he]
   | bin f a b iha ihb => simp only [shift, eval, iha he.1, ihb he.2]
   | ifThen c t e ihc iht ihe => simp only [shift, eval, ihc he.1, iht he.2.1, ihe he.2.2]
+  | hof f l b ihl _ => simp only [shift, eval, ihl he]
 
 /-! ## Arity of Z-set results -/
 

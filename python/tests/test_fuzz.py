@@ -1,7 +1,7 @@
-"""Random queries with Lean as the oracle (`sverify.fuzz`), on a small budget.
+"""Random queries with Lean as the oracle (`sverify_dev.fuzz`), on a small budget.
 
 Every random query and input either falls outside the model or gives no
-finding that an open issue (`sverify.fuzz.KNOWN`) does not explain. The
+finding that an open issue (`sverify_dev.fuzz.KNOWN`) does not explain. The
 findings the generator turned up are pinned below as strict `xfail`s, so a
 fix shows up as an XPASS. The examples are fixed (`derandomize`); `poe fuzz`
 runs a long, random budget and prints the shrunk findings.
@@ -12,8 +12,8 @@ import math
 import pytest
 from hypothesis import HealthCheck, given, settings
 
-from sverify import fuzz
-from sverify.fuzz import Finding, Query, Refused, check, check_contract, known, same_rows
+from sverify_dev import fuzz
+from sverify_dev.fuzz import Finding, Query, Refused, check, check_contract, known, same_rows
 
 # The same examples on every run, so that CI is not flaky; `poe fuzz` explores.
 CHEAP = settings(

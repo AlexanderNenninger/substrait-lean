@@ -117,7 +117,79 @@ inductive Kind where
   | timeTz
   /-- A list of values of the element kind. -/
   | list (elem : Kind)
-  deriving Repr, BEq, DecidableEq, Inhabited
+  /-- A struct of fields of these kinds, in order. Its value is the list of
+  its fields (`docs/nested-values.md`). -/
+  | struct (fields : List Kind)
+  /-- `DECIMAL(p, s)`, as its unscaled integer (#27). -/
+  | dec (p s : Nat)
+  deriving Repr, BEq, Inhabited
+
+mutual
+/-- `DecidableEq` by hand: the deriving handler does not take the list in
+`struct` (as for `Value.decEq`). -/
+def Kind.decEq : (a b : Kind) → Decidable (a = b)
+  | .int, .int => isTrue rfl
+  | .float, .float => isTrue rfl
+  | .time, .time => isTrue rfl
+  | .date, .date => isTrue rfl
+  | .str, .str => isTrue rfl
+  | .bool, .bool => isTrue rfl
+  | .tod, .tod => isTrue rfl
+  | .other, .other => isTrue rfl
+  | .timeTz, .timeTz => isTrue rfl
+  | .list a, .list b => match Kind.decEq a b with
+    | isTrue h => isTrue (h ▸ rfl)
+    | isFalse h => isFalse (by simp [h])
+  | .struct as, .struct bs => match Kind.decEqList as bs with
+    | isTrue h => isTrue (h ▸ rfl)
+    | isFalse h => isFalse (by simp [h])
+  | .dec p s, .dec q t =>
+    if h : p = q ∧ s = t then isTrue (by obtain ⟨rfl, rfl⟩ := h; rfl)
+    else isFalse (by simp only [Kind.dec.injEq]; exact h)
+  | .int, .float | .int, .time | .int, .date | .int, .str | .int, .bool | .int, .tod
+  | .int, .other | .int, .timeTz | .int, .list _ | .int, .struct _ | .int, .dec _ _
+  | .float, .int | .float, .time | .float, .date | .float, .str | .float, .bool | .float, .tod
+  | .float, .other | .float, .timeTz | .float, .list _ | .float, .struct _ | .float, .dec _ _
+  | .time, .int | .time, .float | .time, .date | .time, .str | .time, .bool | .time, .tod
+  | .time, .other | .time, .timeTz | .time, .list _ | .time, .struct _ | .time, .dec _ _
+  | .date, .int | .date, .float | .date, .time | .date, .str | .date, .bool | .date, .tod
+  | .date, .other | .date, .timeTz | .date, .list _ | .date, .struct _ | .date, .dec _ _
+  | .str, .int | .str, .float | .str, .time | .str, .date | .str, .bool | .str, .tod
+  | .str, .other | .str, .timeTz | .str, .list _ | .str, .struct _ | .str, .dec _ _
+  | .bool, .int | .bool, .float | .bool, .time | .bool, .date | .bool, .str | .bool, .tod
+  | .bool, .other | .bool, .timeTz | .bool, .list _ | .bool, .struct _ | .bool, .dec _ _
+  | .tod, .int | .tod, .float | .tod, .time | .tod, .date | .tod, .str | .tod, .bool
+  | .tod, .other | .tod, .timeTz | .tod, .list _ | .tod, .struct _ | .tod, .dec _ _
+  | .other, .int | .other, .float | .other, .time | .other, .date | .other, .str | .other, .bool
+  | .other, .tod | .other, .timeTz | .other, .list _ | .other, .struct _ | .other, .dec _ _
+  | .timeTz, .int | .timeTz, .float | .timeTz, .time | .timeTz, .date | .timeTz, .str
+  | .timeTz, .bool | .timeTz, .tod | .timeTz, .other | .timeTz, .list _ | .timeTz, .struct _
+  | .timeTz, .dec _ _ | .list _, .int | .list _, .float | .list _, .time | .list _, .date
+  | .list _, .str | .list _, .bool | .list _, .tod | .list _, .other | .list _, .timeTz
+  | .list _, .struct _ | .list _, .dec _ _ | .struct _, .int | .struct _, .float
+  | .struct _, .time | .struct _, .date | .struct _, .str | .struct _, .bool | .struct _, .tod
+  | .struct _, .other | .struct _, .timeTz | .struct _, .list _ | .struct _, .dec _ _
+  | .dec _ _, .int | .dec _ _, .float | .dec _ _, .time | .dec _ _, .date | .dec _ _, .str
+  | .dec _ _, .bool | .dec _ _, .tod | .dec _ _, .other | .dec _ _, .timeTz | .dec _ _, .list _
+  | .dec _ _, .struct _ =>
+    isFalse (by simp)
+
+def Kind.decEqList : (as bs : List Kind) → Decidable (as = bs)
+  | [], [] => isTrue rfl
+  | [], _ :: _ | _ :: _, [] => isFalse (by simp)
+  | a :: as, b :: bs => match Kind.decEq a b, Kind.decEqList as bs with
+    | isTrue h, isTrue h' => isTrue (h ▸ h' ▸ rfl)
+    | isFalse h, _ => isFalse (by simp [h])
+    | _, isFalse h' => isFalse (by simp [h'])
+end
+
+instance : DecidableEq Kind := Kind.decEq
+
+/-- Decimals of any type and integers compare as numbers: `decimalCall`
+brings them to one scale. -/
+def Kind.numeric : Kind → Kind
+  | .dec _ _ => .int
+  | k => k
 
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
@@ -137,6 +209,11 @@ partial def typeKind (ty : Json) : Kind :=
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
     .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
+  else if let some t := (ty.getObjVal? "struct").toOption then
+    .struct (((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind)
+  -- A scale of 0 is left out of the JSON.
+  else if let some d := (ty.getObjVal? "decimal").toOption then
+    .dec ((d.getObjValAs? Nat "precision").toOption.getD 38) ((d.getObjValAs? Nat "scale").toOption.getD 0)
   else .other
 
 /-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
@@ -165,6 +242,7 @@ inductive ArgSig where
 def argSig : String → ArgSig
   | "i8" | "i16" | "i32" | "i64" => .kind .int
   | "fp32" | "fp64" => .kind .float
+  | "dec" | "decimal" => .kind (.dec 0 0)
   | "ts" | "pts" => .kind .time
   | "date" => .kind .date
   | "str" | "vchar" | "fchar" => .kind .str
@@ -198,17 +276,29 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.strftime _) _ => .str
   | .un (.addMonths _ false) _ => .date
   | .un (.fmath _) _ => .float
+  | .un (.decimal p s) _ | .un (.dkind p s) _ => .dec p s
+  | .un (.dround _) _ | .un (.dtrunc _) _ | .un (.ftod _) _ => .int
+  | .un (.dtof _) _ => .float
+  | .un (.structField i) a => match a.kind cols with
+    | .struct ks => ks.getD i .other
+    | _ => .other
+  | .un (.listElement _) a => match a.kind cols with
+    | .list k => k
+    | _ => .other
+  | .un .cardinality _ => .int
+  | .un (.raise _) _ => .other
   | .un _ _ => .bool
   | .bin .add a b | .bin .sub a b | .bin .mul a b =>
       match a with
       | .lit _ => b.kind cols
       | _ => a.kind cols
-  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fpow _ _
-  | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
+  | .bin .fadd _ _ | .bin .fsub _ _ | .bin .fmul _ _ | .bin .fdiv _ _ | .bin .fmod _ _
+  | .bin .fpow _ _ | .bin .fatan2 _ _ | .bin .flogb _ _ => .float
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
+  | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
   -- than the other one.
@@ -216,6 +306,10 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
     | .lit _ => litKind v
     | _ => e.kind cols
   | .ifThen _ t _ => t.kind cols
+  | .hof .anyMatch _ _ | .hof .allMatch _ _ => .bool
+  | .hof .filter l _ => l.kind cols
+  -- The body's kind over the element's.
+  | .hof .transform l b => .list (b.kind [match l.kind cols with | .list k => k | _ => .other])
 
 /-- Renumber field references. -/
 def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
@@ -224,10 +318,16 @@ def _root_.Substrait.Expr.mapFields (f : Nat → Nat) : Expr → Expr
   | .un g a => .un g (a.mapFields f)
   | .bin g a b => .bin g (a.mapFields f) (b.mapFields f)
   | .ifThen c t e => .ifThen (c.mapFields f) (t.mapFields f) (e.mapFields f)
+  -- A lambda's body reads its parameter, not the row.
+  | .hof g l b => .hof g (l.mapFields f) b
 
 def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   match m.fn with
-  | .count | .sum => .int
+  | .count => .int
+  -- Ten more digits, as Spark and DataFusion type a decimal `SUM` (#27).
+  | .sum => match m.arg.kind cols with
+    | .dec p s => .dec (min 38 (p + 10)) s
+    | _ => .int
   | .fsum | .avg => .float
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
@@ -282,7 +382,7 @@ inductive Const where
   | flt (f : Float)
   /-- A double as its code (zero `0`, one NaN). -/
   | code (c : Int)
-  | dec (m : Int) (scale : Nat)
+  | dec (m : Int) (precision scale : Nat)
   /-- A `DATE`, in days since 1970-01-01. -/
   | date (d : Int)
   /-- A timestamp, in microseconds since 1970-01-01. Dates and timestamps keep
@@ -302,7 +402,7 @@ def Const.toFloat? : Const → Option Float
   | .int i => some (Float.ofInt i)
   | .flt f => some f
   | .code c => some (FloatCode.toFloat c)
-  | .dec m s => some (floatOfScientific m s)
+  | .dec m _ s => some (floatOfScientific m s)
   | .str s =>
     -- `Json.parse` skips surrounding spaces, so refuse them first.
     if s.trimAscii.toString != s then none else
@@ -335,7 +435,7 @@ def Const.toInt? : Const → Option Int
   | .flt f =>
     if f.isNaN || f < -9223372036854775808.0 || f ≥ 9223372036854775808.0 then none
     else some f.toInt64.toInt
-  | .dec m s =>
+  | .dec m _ s =>
     let q : Int := (m.natAbs / 10 ^ s : Nat)
     some (if m < 0 then -q else q)
   | .str s => parseInt? s
@@ -346,7 +446,7 @@ exact: `0.3 * 10⁶` is just below 300000). -/
 def roundMicros? (f : Float) : Option Int :=
   if f.isNaN || f.isInf then none else some f.round.toInt64.toInt
 
-#guard (Const.dec 27 1).toInt? == some 2 && (Const.dec (-25) 1).toInt? == some (-2)
+#guard (Const.dec 27 2 1).toInt? == some 2 && (Const.dec (-25) 2 1).toInt? == some (-2)
 #guard (Const.flt 2.7).toInt? == some 2 && (Const.flt (-2.7)).toInt? == some (-2)
 #guard (Const.flt 1e30).toInt? == none && (Const.flt (-9223372036854775808.0)).toInt? == some (-2 ^ 63)
 #guard (Const.str "+12").toInt? == some 12 && (Const.str "-012").toInt? == some (-12)
@@ -441,7 +541,7 @@ def castConst (ty : Json) (c : Const) : J Const := do
   if let .null := c then return .null
   if wideIntDecimal ty then
     match c with
-    | .int i | .dec i 0 => return .int i
+    | .int i | .dec i _ 0 => return .int i
     | _ => throw "cannot cast this value to an integer decimal"
   match typeKind ty with
   | .float =>
@@ -481,6 +581,26 @@ def castConst (ty : Json) (c : Const) : J Const := do
       else throw "a time of day outside 00:00 to 24:00"
     | .ts us => return .int (Time.timeOfDay us)
     | _ => throw "cannot cast this value to a time of day"
+  -- To a smaller scale rounds half away from zero (#27).
+  | .dec p s =>
+    let fromDouble (k : Int) : J Int := match FloatCode.toDecimal? k s with
+      | some m => pure m
+      | none => throw "cannot cast NaN or infinity to a decimal"
+    let m ← match c with
+      | .int i => pure (i * 10 ^ s)
+      | .dec m _ s₀ => pure (if s₀ ≤ s then m * 10 ^ (s - s₀) else roundDiv10 (s₀ - s) m)
+      | .flt f => fromDouble (FloatCode.ofFloat f)
+      | .code k => fromDouble k
+      | .str t =>
+        -- `Json.parse` skips surrounding spaces, so refuse them first.
+        if t.trimAscii.toString != t then throw s!"cannot parse decimal '{t}'" else
+        match Json.parse t with
+        | .ok (.num n) => pure (if n.exponent ≤ s then n.mantissa * 10 ^ (s - n.exponent)
+            else roundDiv10 (n.exponent - s) n.mantissa)
+        | _ => throw s!"cannot parse decimal '{t}'"
+      | _ => throw "cannot cast this value to a decimal"
+    if fitsDigits p m then return .dec m p s
+    else throw s!"cast to DECIMAL({p}, {s}) overflows"
   | _ =>
     -- A constant cast to a timestamp coarser than microseconds: only where it
     -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
@@ -573,7 +693,7 @@ def parseConstLiteral (j : Json) : J Const := do
   | ("decimal", d) =>
     let some bytes := Base64.decode (← (← field d "value").getStr?)
       | throw "malformed decimal literal"
-    return .dec (Base64.leSigned bytes) (← natD d "scale")
+    return .dec (Base64.leSigned bytes) (← natD d "precision") (← natD d "scale")
   | ("intervalDayToSecond", d) => return .int (← intervalMicros d)
   | ("date", d) => return .date (← getInt d)
   | ("timestamp", us) => return .ts (← getInt us)
@@ -622,6 +742,7 @@ def foldCall : String → List Const → Option Const
   | "arrow_cast", [c, .str ty] => arrowCast c ty
   -- Negating a double negates its code; zero and NaN stay as they are.
   | "negate", [.int i] => some (.int (-i))
+  | "negate", [.dec m p s] => some (.dec (-m) p s)
   | "negate", [.code c] => some (.code (fneg c))
   | "negate", [c] => c.toFloat? >>= fun f => some (.code (fneg (FloatCode.ofFloat f)))
   | "trunc", [c] => c.toFloat? >>= fun f => some (.flt (if f ≥ 0 then f.floor else f.ceil))
@@ -657,7 +778,7 @@ def constExpr : Const → J Expr
   | .str s => pure (.lit (.str s))
   | .bool b => pure (.lit (.bool b))
   | .null => pure (.lit .null)
-  | .dec _ _ => throw "DECIMAL values are not supported; cast them to DOUBLE"
+  | .dec m p s => pure (.un (.decimal p s) (.lit (.int m)))
 
 /-! ## Argument kinds
 
@@ -704,6 +825,7 @@ def _root_.Substrait.Expr.readsField : Expr → Bool
   | .un _ a => a.readsField
   | .bin _ a b => a.readsField || b.readsField
   | .ifThen c t e => c.readsField || t.readsField || e.readsField
+  | .hof _ l _ => l.readsField
 
 def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
   let base := baseName name
@@ -725,7 +847,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
-      if rest.any (· != k) then throw s!"{name}: compares values of different types"
+      if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
   -- `Rel.eval` gives `NULL` for a string or boolean function of anything
   -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
   let want (k : Nat) : Option Kind :=
@@ -733,6 +855,9 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     else match stringFns.lookup base with
       | some ints => some (if ints.contains k then .int else .str)
       | none => none
+  if base == "cardinality" then
+    if let [some k] := ks then
+      if !(k matches .list _ | .other) then throw s!"{name}: argument of kind {repr k}, not a list"
   for (k, i) in ks.zipIdx do
     if let (some w, some k) := (want i, k) then
       if k != .other && k != w then
@@ -744,7 +869,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
   for (s, k) in sigs.zip ks do
     match s, k with
     | .kind want, some k =>
-      if k != .other && k != want then
+      if k != .other && k.numeric != want.numeric then
         throw s!"{name}: argument of kind {repr k} where the signature says {repr want}"
     | .interval, some k =>
       if k != .other && k != .int && k != .time then
@@ -782,6 +907,7 @@ def evaluates (x : Expr) : Expr → Bool
   | e@(.un _ a) => e == x || evaluates x a
   | e@(.bin _ a b) => e == x || evaluates x a || evaluates x b
   | e@(.ifThen c _ _) => e == x || evaluates x c
+  | e@(.hof _ l _) => e == x || evaluates x l
 
 /-- The condition `c`, also evaluating each of `xs` on every row. Expressions
 it evaluates already are left out, so the parser reads its own written plans
@@ -819,10 +945,12 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
       some (some ["TIE_TO_EVEN"])
     else none
-  -- Every value is modelled (`divByZero`); integers have no `IEEE` or `LIMIT`.
+  -- Every value is modelled (`divByZero`). `IEEE` and `LIMIT` are only for
+  -- dividing doubles: integers have neither, and the remainder of doubles is
+  -- C's `fmod` (#203), whose IEEE value by zero is not `±∞`.
   | "on_division_by_zero" =>
     if base != "divide" && base != "modulus" then none
-    else if float then some (some ["ERROR", "IEEE", "NULL", "LIMIT"])
+    else if float && base == "divide" then some (some ["ERROR", "IEEE", "NULL", "LIMIT"])
     else some (some ["ERROR", "NULL"])
   | "on_domain_error" =>
     -- Outside their domains the elementary functions raise (`Numeric.lean`).
@@ -1009,6 +1137,10 @@ def mkCall : String → List Expr → J Expr
   | "equal", [a, b] => pure (.bin .eq a b)
   | "not_equal", [a, b] => pure (.un .not (.bin .eq a b))
   | "lt", [a, b] | "list_lt", [a, b] => pure (.bin .lt a b)
+  | "cardinality", [a] => pure (.un .cardinality a)
+  -- A shim's guards (#185), which `--write-duckdb` writes.
+  | "sverify_raise", [a, .lit (.str msg)] => pure (.un (.raise msg) a)
+  | "sverify_is_number", [a] => pure (.un .isNum a)
   | "gt", [a, b] => pure (.bin .lt b a)
   | "lte", [a, b] => pure (.un .not (.bin .lt b a))
   | "gte", [a, b] => pure (.un .not (.bin .lt a b))
@@ -1164,6 +1296,10 @@ def mkFloatCall : String → List Expr → J Expr
   | "subtract", [a, b] => pure (.bin .fsub a b)
   | "multiply", [a, b] => pure (.bin .fmul a b)
   | "divide", [a, b] => pure (.bin .fdiv a b)
+  -- Substrait has no `modulus` of doubles, but DataFusion writes one; it is
+  -- C's `fmod`, as DuckDB, DataFusion and Spark compute `%`, and raises on a
+  -- zero divisor, as on integers (#203).
+  | "modulus", [a, b] => pure (.bin .fmod a b)
   -- Code negation would make NaN the smallest code; SQL's one NaN stays NaN.
   | "subtract", [a] | "negate", [a] =>
     pure (.ifThen (.bin .eq a (.lit (.int FloatCode.nan))) a (.un .fneg a))
@@ -1183,6 +1319,129 @@ def mkFloatCall : String → List Expr → J Expr
     | none => throw s!"unsupported double function {name}/1"
   | name, args => throw s!"unsupported double function {name}/{args.length}"
 
+/-- `x · 10ᵏ`: a decimal brought to a scale `k` digits larger (#27). -/
+def upscale (k : Nat) (x : Expr) : Expr :=
+  if k = 0 then x else .bin .dmul x (.lit (.int (10 ^ k)))
+
+/-- The decimal type an argument is computed at: its own, a 64-bit integer's
+`DECIMAL(19, 0)` (which holds every `BIGINT`), and the narrowest for `NULL`. -/
+def decType? (cols : List Kind) : Expr → Option (Nat × Nat)
+  | .lit .null => some (1, 0)
+  | e => match e.kind cols with
+    | .dec p s => some (p, s)
+    | .int => some (19, 0)
+    | _ => none
+
+/-- Functions the integer path computes on decimals of one scale, keeping
+their type (`COALESCE(a, b)`). -/
+def decimalPassThrough : List String :=
+  ["coalesce", "greatest", "least", "nullif", "greatest_skip_null", "least_skip_null"]
+
+/-- A call with a `DECIMAL` argument (#27), or `none` where the integer path
+computes it. Decimals are their unscaled integers, so the arguments are
+brought to one scale and the arithmetic is exact: `+` and `-` at the larger
+scale, `×` at the sum of the scales, as the backends compute them. The result
+has the plan's declared precision, else `max(p₁ - s₁, p₂ - s₂) + s + 1` (`+`,
+`-`) or `p₁ + p₂ + 1` (`×`), at most 38; `UnFn.decimal` reports a value of
+more digits as an overflow. -/
+def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List Expr) :
+    J (Option Expr) := do
+  let some tys := args.mapM (decType? cols)
+    | throw s!"{name} of a DECIMAL and a non-number is not supported"
+  let declared : Option Nat := match typeKind outTy with
+    | .dec p _ => some p
+    | _ => none
+  -- A plan that declares a smaller scale rounds, which is not modelled.
+  let checkScale (s : Nat) : J Unit := do
+    if let .dec _ s' := typeKind outTy then
+      if s' != s then
+        throw s!"{name}: a DECIMAL result of scale {s'} where the exact one has {s} is not supported"
+  let zero : Expr := .lit (.int 0)
+  let oneScale := (tys.map (·.2)).eraseDups.length ≤ 1
+  match name, args, tys with
+  | "add", [a, b], [(p₁, s₁), (p₂, s₂)] | "subtract", [a, b], [(p₁, s₁), (p₂, s₂)] =>
+    let s := max s₁ s₂
+    checkScale s
+    let p := declared.getD (min 38 (max (p₁ - s₁) (p₂ - s₂) + s + 1))
+    let f : BinFn := if name == "add" then .dadd else .dsub
+    return some (.un (.decimal p s) (.bin f (upscale (s - s₁) a) (upscale (s - s₂) b)))
+  | "multiply", [a, b], [(p₁, s₁), (p₂, s₂)] =>
+    let s := s₁ + s₂
+    if 38 < s then throw "a DECIMAL product with more than 38 decimal places is not supported"
+    checkScale s
+    let p := declared.getD (min 38 (p₁ + p₂ + 1))
+    return some (.un (.decimal p s) (.bin .dmul a b))
+  | "negate", [a], [(p, s)] | "subtract", [a], [(p, s)] =>
+    return some (.un (.decimal p s) (.bin .dsub zero a))
+  | "abs", [a], [(p, s)] =>
+    return some (.un (.decimal p s) (.ifThen (.bin .lt a zero) (.bin .dsub zero a) a))
+  | _, [a, b], [(_, s₁), (_, s₂)] =>
+    if comparisonFns.contains name then
+      let s := max s₁ s₂
+      return some (← mkCall name [upscale (s - s₁) a, upscale (s - s₂) b])
+    if decimalPassThrough.contains name && oneScale then return none
+    throw s!"{name} of DECIMAL is not supported yet (#27)"
+  | _, _, _ =>
+    if decimalPassThrough.contains name && oneScale then return none
+    throw s!"{name} of DECIMAL is not supported yet (#27)"
+
+/-- `base` followed by the reference segments `seg` (`structField`,
+`listElement`, each with an optional `child`). A struct field must exist:
+Substrait calls a reference outside the struct an invalid plan. -/
+partial def segments (cols : List Kind) (base : Expr) (seg : Json) :
+    J Expr := do
+  let (e, child) ← match field? seg "structField", field? seg "listElement" with
+    | some sf, _ =>
+      let i ← natD sf "field"
+      if let .struct ks := base.kind cols then
+        if ks.length ≤ i then throw s!"field {i} of a struct of {ks.length} fields"
+      else if base.kind cols != .other then
+        throw s!"a struct field of a value of kind {repr (base.kind cols)}"
+      pure (Expr.un (.structField i) base, field? sf "child")
+    | none, some le =>
+      let off : Int := (le.getObjValAs? Int "offset").toOption.getD 0
+      if !(base.kind cols matches .list _ | .other) then
+        throw s!"a list element of a value of kind {repr (base.kind cols)}"
+      pure (Expr.un (.listElement off) base, field? le "child")
+    | none, none => throw "only struct field and list element references are supported"
+  match child with
+  | some c => segments cols e c
+  | none => return e
+
+/-- The higher-order functions on lists (`functions_list.yaml`). -/
+def hofFn? : String → Option HoFn
+  | "any_match" => some .anyMatch
+  | "all_match" => some .allMatch
+  | "transform" => some .transform
+  | "filter" => some .filter
+  | _ => none
+
+/-- A JSON object's entries. -/
+def entries (kvs : Std.TreeMap.Raw String Json compare) : List (String × Json) :=
+  kvs.foldl (fun acc k v => acc ++ [(k, v)]) []
+
+/-- A lambda's body as an expression over the one-field row `[x]`: its
+parameter references (`lambdaParameterReference`, `stepsOut` 0) become
+references into the row. The model's lambdas are closed (#94), so a body
+that reads the row's columns or an outer lambda's parameter is refused.
+Nested lambdas are left alone: they are closed when they are parsed. -/
+partial def closeBody (j : Json) : J Json := do
+  match j with
+  | .arr xs => return .arr (← xs.mapM closeBody)
+  | .obj kvs =>
+    let es := entries kvs
+    if es.any (·.1 == "lambda") then return j
+    if es.any fun (k, _) => k == "rootReference" || k == "outerReference" then
+      throw "a lambda body that reads the row's columns is not supported yet (#94)"
+    let es ← es.mapM fun (k, v) => do
+      if k == "lambdaParameterReference" then
+        if (v.getObjValAs? Nat "stepsOut").toOption.getD 0 != 0 then
+          throw "a lambda body that reads an outer lambda's parameter is not supported yet (#94)"
+        return ("rootReference", Json.mkObj [])
+      return (k, ← closeBody v)
+    return Json.mkObj es
+  | _ => return j
+
 /-- Parse an expression over input columns of kinds `cols`. -/
 partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
     J Expr := do
@@ -1193,6 +1452,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
       return .lit (.list vs)
     if (field? l "emptyList").isSome then return .lit (.list [])
+    -- A struct is the list of its fields.
+    if let some sj := field? l "struct" then
+      let vs ← (← arrD sj "fields").mapM fun e => do
+        return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
+      return .lit (.list vs)
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"
@@ -1200,15 +1464,37 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
   | ("selection", s) =>
     if (field? s "outerReference").isSome then
       throw "outer references are not supported"
-    let sf ← field (← field s "directReference") "structField"
-    if (field? sf "child").isSome then
-      throw "nested field references are not supported"
-    return .field (← natD sf "field")
+    let seg ← field s "directReference"
+    -- A reference into the input row, or into an expression's value; each
+    -- segment then goes one level into a struct or a list (#94).
+    match field? s "expression" with
+    | some ej =>
+      let base ← parseExpr fns cols bits ej
+      segments cols base seg
+    | none =>
+      let sf ← field seg "structField"
+      let base := Expr.field (← natD sf "field")
+      match field? sf "child" with
+      | some c => segments cols base c
+      | none => return base
   | ("scalarFunction", f) =>
     let anchor ← natD f "functionReference"
     let some name := fns.lookup anchor
       | throw s!"function reference {anchor} is not declared in extensions"
     let argJs ← (← arrD f "arguments").mapM fun a => field a "value"
+    -- `f(l, x -> body)`, with a closed lambda (#94).
+    if let some hf := hofFn? (baseName name) then
+      let [lj, fj] := argJs | throw s!"{name} takes a list and a lambda"
+      let some lam := field? fj "lambda" | throw s!"{name}: its second argument must be a lambda"
+      let ps ← arrD (← field lam "parameters") "types"
+      if ps.length != 1 then throw s!"{name}: a lambda of {ps.length} parameters"
+      let l ← parseExpr fns cols bits lj
+      let elem ← match l.kind cols with
+        | .list k => pure k
+        | .other => pure .other
+        | k => throw s!"{name} of a value of kind {repr k}"
+      let body ← parseExpr fns [elem] [] (← closeBody (← field lam "body"))
+      return .hof hf l body
     -- `array_length(regexp_match(s, p))`: NULL if `p` does not match.
     if baseName name == "array_length" then
       if let [j] := argJs then
@@ -1313,21 +1599,21 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- arguments of a double function are converted, as DataFusion does
     -- (Isthmus types `POWER` of integers as a double).
     let outTy := (field? f "outputType").getD .null
-    -- Decimals other than integers (`wideIntDecimal`) are not modelled:
-    -- DataFusion's decimal division has a scale, for one.
-    if (outTy.getObjVal? "decimal").toOption.isSome && !wideIntDecimal outTy then
-      throw s!"{name}: decimal results are not supported"
-    let floats := ["add", "subtract", "multiply", "divide", "negate", "abs", "power", "floor",
-      "ceil", "round"] ++ doubleFns
+    let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
+      "floor", "ceil", "round"] ++ doubleFns
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) &&
       (out == .float || hasFloat || doubleFns.contains (baseName name))
     if arithmeticFns.bitFns.contains (baseName name) && hasFloat then
       throw s!"{baseName name} is only supported on integers"
-    -- Substrait's `modulus` has no `fp32`/`fp64` impl (#203); the integer one
-    -- would read the doubles' codes.
-    if baseName name == "modulus" && (out == .float || hasFloat) then
-      throw "modulus of doubles is not a Substrait function"
+    -- Decimals (#27) are their unscaled integers: `decimalCall` brings the
+    -- arguments to one scale.
+    if parsed.any (·.kind cols matches .dec _ _) then
+      if hasFloat then
+        throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
+      if let some e ← decimalCall cols (baseName name) outTy parsed then return e
+    else if (out matches .dec _ _) && !wideIntDecimal outTy then
+      throw s!"{name}: a DECIMAL result of non-decimal arguments is not supported"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.
@@ -1350,6 +1636,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let mode := divByZeroMode (← arrD f "options")
       match baseName name, args with
       | "divide", [a, b] => return divByZero mode true (.bin .fdiv) a b
+      | "modulus", [a, b] => return divByZero mode true (.bin .fmod) a b
       | _, _ => mkFloatCall (baseName name) args
     else
       let mode := divByZeroMode (← arrD f "options")
@@ -1403,6 +1690,25 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let target := typeKind (← field c "type")
     let k := e.kind cols
     if k == .int && wideIntDecimal (← field c "type") then return e
+    -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
+    -- checking the precision. To a smaller scale rounds half away from zero;
+    -- to an integer truncates toward zero.
+    if let .dec p s := target then
+      let e' ← match k with
+        | .dec _ s₀ => pure (if s₀ ≤ s then upscale (s - s₀) e else .un (.dround (s₀ - s)) e)
+        | .int => pure (upscale s e)
+        | .float => pure (.un (.ftod s) e)
+        | _ => throw s!"unsupported cast from {repr k} to DECIMAL({p}, {s})"
+      return .un (.decimal p s) e'
+    if let .dec p₀ s₀ := k then
+      match target with
+      | .int =>
+        let bits := intBits (← field c "type")
+        -- A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits always fits a `BIGINT`.
+        if bits == 64 && p₀ - s₀ ≤ 18 then return .un (.dtrunc s₀) e
+        return .un (.narrow bits) (.un (.dtrunc s₀) e)
+      | .float => return .un (.dtof s₀) e
+      | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
     -- DataFusion casts a duration (`ts - ts`) compared with an interval to an
     -- interval, which it orders as (months, days, nanoseconds); comparisons
     -- with intervals of days or months are refused (`calendarInterval`), so
@@ -1454,7 +1760,7 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J 
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
 def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
-    J Measure := do
+    J (Measure × Option (Nat × Nat)) := do
   let m ← field mj "measure"
   let anchor ← natD m "functionReference"
   let some name := fns.lookup anchor
@@ -1478,18 +1784,29 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   -- A double constant is its code, which `Expr.kind` calls an integer (#205).
   let k := if args.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
+  -- `AVG` of a `DECIMAL(p, s)` (#27) is its `SUM` here, divided by a `COUNT`
+  -- in `decimalAvgs`.
+  let decAvg : Option (Nat × Nat) := match name, k with
+    | "avg", .dec p s => some (p, s)
+    | _, _ => none
+  if let some (_, s) := decAvg then
+    if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
   -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
   -- (`avg:i64` with an `i64` result), which it is not.
-  if name == "avg" then
+  if name == "avg" && decAvg.isNone then
     if let some ty := field? m "outputType" then
       if typeKind ty != .float then throw "avg with a non-double result is not supported"
-  let minMax (k : Kind) := k == .int || k == .str || k == .bool || k == .time || k == .date
+  let minMax (k : Kind) :=
+    k == .int || k == .str || k == .bool || k == .time || k == .date || k matches .dec _ _
   let (fn, arg) ← match name, k with
     | "count", _ => pure (AggFn.count, arg)
     | "sum", .int => pure (.sum, arg)
     | "sum", .float => pure (.fsum, arg)
+    -- Marked as a decimal, which does not wrap at 64 bits (`Safety.lean`).
+    | "sum", .dec p s => pure (.sum, .un (.decimal p s) arg)
     | "avg", .int => pure (.avg, .un .itof arg)
     | "avg", .float => pure (.avg, arg)
+    | "avg", .dec p s => pure (.sum, .un (.decimal p s) arg)
     -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
     -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
     -- to other values.
@@ -1509,7 +1826,28 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
       | none => false
     if !skipsNull then
       throw "array_agg keeps NULLs; only array_agg(x) FILTER (WHERE x IS NOT NULL) is supported"
-  return { fn, arg, distinct, filter, sort }
+  return ({ fn, arg, distinct, filter, sort }, decAvg)
+
+/-- An aggregate whose decimal `AVG`s (#27) are computed from their `SUM`
+(the measure `parseMeasure` gives for them) and a `COUNT` of the same values:
+a `DECIMAL(p + 4, s + 4)`, the quotient rounded half away from zero, as Spark
+computes it. The counts are appended, divided in a projection, and the emit
+puts every column back in its place. -/
+def decimalAvgs (inp : Rel) (gs : List Expr) (ms : List (Measure × Option (Nat × Nat))) : Rel :=
+  let avgs := ms.zipIdx.filterMap fun ((m, d), i) => d.map fun ps => (i, m, ps)
+  if avgs.isEmpty then .aggregate inp gs (ms.map (·.1)) else
+  let g := gs.length
+  let n := ms.length
+  let counts := avgs.map fun (_, m, _) => { m with fn := AggFn.count }
+  let quotients := avgs.zipIdx.map fun ((i, _, p, s), j) =>
+    Expr.un (.dkind (min 38 (p + 4)) (s + 4))
+      (.bin .ddiv (upscale 4 (.field (g + i))) (.field (g + n + j)))
+  let total := g + n + avgs.length
+  let column (i : Nat) : Nat := match avgs.findIdx? (·.1 == i) with
+    | some j => total + j
+    | none => g + i
+  .emit (.project (.aggregate inp gs (ms.map (·.1) ++ counts)) quotients)
+    (List.range g ++ (List.range n).map column)
 
 /-! ## Window functions -/
 
@@ -1605,10 +1943,11 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       if !["count", "sum", "avg", "min", "max"].contains n then
         throw s!"unsupported window function: {n}"
       -- The window's own sort keys order the frame, not the aggregate.
-      let m ← parseMeasure fns cols bits (Json.mkObj [("measure", Json.mkObj [
+      let (m, decAvg) ← parseMeasure fns cols bits (Json.mkObj [("measure", Json.mkObj [
         ("functionReference", (field? w "functionReference").getD .null),
         ("arguments", (field? w "arguments").getD (.arr #[])),
         ("outputType", (field? w "outputType").getD .null)])])
+      if decAvg.isSome then throw "avg of DECIMAL over a window is not supported yet (#27)"
       if m.distinct then throw "DISTINCT window aggregates are not supported"
       if !issueFree m.arg then throw "window aggregates of expressions are not supported; use a column"
       let fr ← parseFrame cols sort w
@@ -2008,7 +2347,8 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
           else pure (.distinct (.emit inp keys))
         | none => pure (.aggregate inp gs [])
       | some gs, ms =>
-        pure (.aggregate inp gs (← ms.mapM fun m => (parseMeasure fns cols bits m : J Measure)))
+        let parsed ← ms.mapM fun m => (parseMeasure fns cols bits m : J (Measure × Option (Nat × Nat)))
+        pure (decimalAvgs inp gs parsed)
     | "extensionSingle" =>
       -- `UNNEST`, our own extension (`docs/nested-values.md`).
       let d ← field r "detail"

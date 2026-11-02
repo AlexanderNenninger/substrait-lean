@@ -2,7 +2,7 @@
 #
 # `lean` is what `sverify` covers today on the way into Lean (its Ibis
 # producer for Ibis expressions, DataFusion's for SQL) and in the Lean model
-# and `substrait-check`, found by probing (`sverify.coverage` and the
+# and `substrait-check`, found by probing (`sverify_dev.coverage` and the
 # catalogue's own probes), not by reading:
 #   yes      it reaches the checker, which parses it and `Rel.eval` gives it SQL's meaning;
 #   partial  some forms only (the note says which);

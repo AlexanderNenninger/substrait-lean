@@ -18,6 +18,7 @@ import SubstraitLean.Contracts
 import SubstraitLean.Safety
 import SubstraitLean.Partition
 import SubstraitLean.Guards
+import SubstraitLean.Profile
 import SubstraitLean.Keys
 import SubstraitLean.Semantic
 import SubstraitLean.Compose
