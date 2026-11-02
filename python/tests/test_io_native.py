@@ -264,6 +264,22 @@ def test_delta_without_a_feed_stays_native(tmp_path):
     assert v.rows() == [(2, 2.0), (3, 3.0)]
 
 
+def test_vacuumed_files_recompute_the_views(tmp_path):
+    """The files of the version the pipeline holds were vacuumed: the views
+    are recomputed on the new snapshot, which is held as files again."""
+    path = tmp_path / "t"
+    write_deltalake(path, pa.table({"id": [1, 2]}), configuration=CDF)
+    pipe = Pipeline(sv.connect())
+    t = pipe.source("t", DeltaSource(str(path)))
+    v = pipe.view("v", t.filter(t.id > 1))
+    write_deltalake(path, pa.table({"id": [3, 4]}), mode="overwrite")
+    DeltaTable(str(path)).vacuum(retention_hours=0, enforce_retention_duration=False, dry_run=False)
+    [s] = pipe.refresh(audit=True).sources
+    assert s.mode == "recomputed" and "the files of v0 are gone" in s.detail
+    assert isinstance(pipe.con.get("t"), Scan)
+    assert v.rows() == [(3,), (4,)]
+
+
 def test_delta_deletes_are_checked_against_the_files(tmp_path, monkeypatch):
     path = tmp_path / "t"
     write_deltalake(path, pa.table({"id": [1, 2]}), configuration=CDF)
@@ -375,3 +391,14 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
     assert pipe.view("v", t.filter(t.x > 100.0)).rows()[0][0] == 2
     # Ibis on the connection reads the same view of the files.
     assert t.filter(t.x > 100.0).count().execute() == 1
+
+
+def test_a_datafusion_session_gets_arrow(tmp_path):
+    pytest.importorskip("datafusion")
+    write_deltalake(tmp_path / "t", pa.table({"id": [1, 2]}))
+    con = sv.connect()
+    pipe = Pipeline(con)
+    pipe.source("t", DeltaSource(str(tmp_path / "t")))
+    assert isinstance(con.get("t"), Scan)
+    assert con.datafusion.table("t").count() == 2
+    assert isinstance(con.get("t"), pa.Table)

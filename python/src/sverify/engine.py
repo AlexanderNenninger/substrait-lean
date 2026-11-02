@@ -220,6 +220,8 @@ class Connection:
             table: Its contents, or a `Scan` of the files that hold them,
                 which the Ibis backend views and DuckDB reads itself.
         """
+        if isinstance(table, Scan) and self._datafusion is not None:
+            table = table.to_arrow()  # DataFusion's session holds Arrow tables
         self.drop(name)
         if isinstance(table, Scan):
             scan = replace(table, schema=plain_schema(table.schema))
@@ -227,8 +229,6 @@ class Connection:
             # A scan whose files were removed is held, but cannot be read.
             if scan.readable():
                 self._views[name] = scan.attach(self.ibis.con, name)
-            if self._datafusion is not None:
-                _register(self._datafusion, name, self.arrow[name])
             return
         table = canonical(table.cast(plain_schema(table.schema)))
         self._tables[name] = table

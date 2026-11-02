@@ -1184,7 +1184,7 @@ class Pipeline:
             scanned = isinstance(current, Scan)
             # A table held as files stays so: at `end`, it is the files of `end`.
             native = self._native(src, batch.end) if scanned and not evolved else None
-            gone = isinstance(current, Scan) and not current.readable()
+            gone = scanned and not current.readable()
             if batch.changes is None or gone:
                 new = batch.snapshot if batch.changes is None else None
                 if new is None:
@@ -1216,7 +1216,7 @@ class Pipeline:
                         (row,) = arrow_rows(rows_of(lost.slice(0, 1)))
                         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
                     whole[t] = native.scan
-            if audit and batch.changes is not None:
+            if audit and batch.changes is not None and not gone:
                 got = _apply_change(_as_arrow(current), ch, t)
                 # A source that reads its table itself reads it again in full.
                 reread = getattr(src, "_reread", None)
