@@ -652,17 +652,29 @@ def _divide(x: Exprs, op: Any) -> Json:
 
 def _floor_divide(x: Exprs, op: Any) -> Json:
     if op.left.dtype.is_integer() and op.right.dtype.is_integer():
-        # Floor division in integers, as `sverify.engine` compiles `//`:
-        # one less than the truncating quotient when that is inexact and
-        # the signs differ.
+        # Floor division in integers, as `sverify.engine` compiles `//`. With
+        # the signs apart, it is `(a + 1) / b - 1` for `a < 0 < b`, and
+        # `(a - 1) / b - 1` for `b < 0 < a`: no step can overflow, which the
+        # range analysis sees from the branch's condition (#202). Otherwise
+        # the truncating quotient is the floor.
         t = op.dtype
         a, b = x(op.left, t), x(op.right, t)
-        zero = literal(0, t)
-        quot = call("divide", [a, b])
-        inexact = call("not_equal", [call("modulus", [a, b]), zero])
-        signs = call("not_equal", [call("lt", [a, zero]), call("lt", [b, zero])])
-        down = call("subtract", [quot, literal(1, t)])
-        return if_then([(call("and", [inexact, signs]), down)], quot)
+        zero, one = literal(0, t), literal(1, t)
+
+        def lt(u: Json, v: Json) -> Json:
+            return call("lt", [u, v])
+
+        def floor_apart(shift: str) -> Json:
+            q = call("divide", [call(shift, [a, one]), b])
+            return call("subtract", [q, one])
+
+        return if_then(
+            [
+                (call("and", [lt(a, zero), lt(zero, b)]), floor_apart("add")),
+                (call("and", [lt(zero, a), lt(b, zero)]), floor_apart("subtract")),
+            ],
+            call("divide", [a, b]),
+        )
     q = call("divide", [x(op.left, dt.float64), x(op.right, dt.float64)])
     return cast_json(call("floor", [q]), op.dtype)
 

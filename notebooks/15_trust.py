@@ -81,6 +81,10 @@ def _(mo):
       and the rewrites the parser does on the way in (`IN` lists, `COALESCE`,
       `RIGHT JOIN`, …), guarded by golden tests and round trips;
     * the column descriptions taken from table **schemas**;
+    * the **size hypothesis**: every string has fewer than 2⁶² characters
+      and every relation a window reads fewer than 2⁶² rows, which no
+      machine's memory exceeds. It is what bounds `strpos`, `ROW_NUMBER` and
+      the like, so that `ROW_NUMBER() - 1` is proved not to overflow;
     * **when** DataFusion evaluates an expression (lazy `CASE`, eager `AND`,
       merged filters), which the runtime-error analysis relies on;
     * the `sverify` **glue**: change tables, consolidation, merging;
