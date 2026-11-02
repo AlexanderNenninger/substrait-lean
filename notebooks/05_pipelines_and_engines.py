@@ -14,7 +14,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium", app_title="5. Pipelines and engines")
+app = marimo.App(width="compact", app_title="5. Pipelines and engines")
 
 
 @app.cell(hide_code=True)
