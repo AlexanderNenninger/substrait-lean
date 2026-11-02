@@ -826,7 +826,9 @@ class Exprs:
         anchor = int(ref or 0)
         if anchor not in self.functions:
             raise Unsupported(f"function reference {anchor} is not declared in extensions")
-        return self.functions[anchor].split(":")[0]
+        name = self.functions[anchor].split(":")[0]
+        # sverify's own remainder of doubles (#256) is `modulus` on doubles.
+        return "modulus" if name == "sverify_fmod" else name
 
     def field(self, j: dict) -> int:
         if "child" in j["directReference"]["structField"]:

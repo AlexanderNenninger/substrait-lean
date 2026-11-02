@@ -313,6 +313,14 @@ def _arith(name: str) -> Callable[[Exprs, Any], Json]:
     return rule
 
 
+def _modulus(x: Exprs, op: Any) -> Json:
+    """`%`; of doubles, sverify's own `sverify_fmod` (C's `fmod`, #256), as
+    Substrait's `modulus` has no double impl."""
+    if exact(op).is_floating():
+        return call("sverify_fmod", [x(op.left, exact(op)), x(op.right, exact(op))])
+    return _arith("modulus")(x, op)
+
+
 def _compare(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         if _decimal_args(op.left, op.right):
@@ -977,7 +985,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Add: _arith("add"),
     ops.Subtract: _arith("subtract"),
     ops.Multiply: _arith("multiply"),
-    ops.Modulus: _arith("modulus"),
+    ops.Modulus: _modulus,
     ops.Power: _power,
     ops.Divide: _divide,
     ops.FloorDivide: _floor_divide,
