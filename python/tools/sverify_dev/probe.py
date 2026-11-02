@@ -109,6 +109,12 @@ PROBES: list[Probe] = [
     Probe("ceil({0})", "ceil", ("float64",), "float64"),
     Probe("round({0})", "round", ("float64",), "float64",
           "rounding", ("TIE_AWAY_FROM_ZERO",)),
+    # To `d` digits (#335), down to beyond the doubles' range and up past it.
+    *(
+        Probe("round({0}, {1})", "round", ("float64",), "float64",
+              constants=((d, "int64"),))
+        for d in (-1000, -309, -308, -20, -1, 1, 2, 16, 308, 309, 400)
+    ),
     *(
         Probe(f"{f}({{0}})", f, ("float64",), "float64")
         for f in ("sqrt", "exp", "ln", "log10", "log2", "sin", "cos", "tan",

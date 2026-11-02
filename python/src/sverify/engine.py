@@ -630,6 +630,11 @@ def _check_datafusion_plan(plan: dict) -> None:
             fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
             if fname in ("regexp_extract", "regexp_replace", "md5", "sha256"):
                 raise sql.Unsupported(f"{fname} is not yet supported on DataFusion; see #271")
+            if isinstance(f, dict) and fname == "round" and len(f.get("arguments", [])) == 2:
+                # DataFusion's `round(x · 10ᵈ) / 10ᵈ` is not DuckDB's (#335).
+                raise sql.Unsupported(
+                    "round(x, d) is DuckDB's (#335) and not yet supported on DataFusion; see #271"
+                )
             if isinstance(f, dict) and fname == "substring":
                 left = any(
                     o.get("name") == "negative_start"

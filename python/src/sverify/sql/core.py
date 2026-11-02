@@ -347,9 +347,26 @@ class Dialect:
         return f"ROUND({x})"
 
     def float_round_to(self, x: str, digits: int) -> str:
-        """`ROUND(x, d)` as DataFusion computes it: `round(x · 10ᵈ) / 10ᵈ`."""
-        p = self.float_lit(10.0**digits)
-        return self.float_div(self.float_round(self.float_mul(x, p)), p)
+        """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB's, #335): with
+        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` (`x` where that is not
+        finite), `round(x / m) · m` for `d < 0` (0 where that is not finite);
+        `±∞` and NaN stay."""
+        m = pow10(abs(digits))
+        odd = f"({self.is_nan(x)} OR {self.is_inf(x)})"
+        if math.isinf(m):
+            # `x · ∞` and `x / ∞` leave no finite result: `x`, or 0 (NULL stays).
+            if digits >= 0:
+                return x
+            return self.case_when(f"({x} IS NULL OR {odd})", x, self.float_lit(0.0))
+        ml = self.float_lit(m)
+        if digits >= 0:
+            r = self.float_div(self.float_round(self.float_mul(x, ml)), ml)
+            fallback = x
+        else:
+            r = self.float_mul(self.float_round(self.float_div(x, ml)), ml)
+            fallback = self.float_lit(0.0)
+        bad = f"({self.is_nan(r)} OR {self.is_inf(r)})"
+        return self.case_when(odd, x, self.case_when(bad, fallback, r))
 
     def float_pow(self, a: str, b: str) -> str:
         """C's `pow`: IEEE results, no errors."""
@@ -2077,7 +2094,13 @@ class _Parser:
                     "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
                     "floor", "ceil", "round", *DOUBLE_FNS,
                 )  # fmt: skip
-                has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
+                # A double literal is its code in Lean, which `lean_expr_kind`
+                # calls an integer; its declared kind says double (`doubleJ`).
+                has_float = any(
+                    lean_expr_kind(e, cols.lean) == "float"
+                    or (isinstance(e, Lit) and e.kind == "float")
+                    for e in parsed
+                )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
                     raise Unsupported("sverify_fmod takes doubles")
@@ -4514,6 +4537,15 @@ def like_pattern(p: str) -> str:
     the next character, and a trailing one stands for itself (where SQL
     engines reject it), so it is escaped."""
     return p + "\\" if (len(p) - len(p.rstrip("\\"))) % 2 else p
+
+
+def pow10(k: int) -> float:
+    """C's `pow(10, k)` for `k ≥ 0`, `inf` from 10³⁰⁹ on (Python's `10.0**k`
+    raises there)."""
+    try:
+        return math.pow(10.0, k)
+    except OverflowError:
+        return math.inf
 
 
 def unicode_classes(p: str) -> bool:

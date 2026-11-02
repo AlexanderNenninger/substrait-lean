@@ -388,6 +388,7 @@ rows that differ. No input is -0.0: the model has one zero (R14).
 | `BIGINT % BIGINT` | `modulus` | none | `MIN % -1` raises (R3) |
 | `abs`, `floor`, `ceil`, `exp`, `atan` | | the reference | |
 | `round(DOUBLE)` | `round` | `rounding: TIE_AWAY_FROM_ZERO` | |
+| `round(DOUBLE, d)` for `d` from -1000 to 400 | `round` | the reference (DuckDB's formula since #335: `round(x / 10^-d) · 10^-d` below zero, 0 where that is not finite) | |
 | `DOUBLE + - * /` | `add` … `divide` | none | operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (R5) |
 | `DOUBLE % DOUBLE` | `modulus` (`fmod`, R4) | none | NaN for a zero divisor or an infinite dividend |
 | `power`, `sqrt`, `ln`, `log10`, `log2`, `asin`, `acos`, `sin`, `cos`, `tan` | | none | NaN outside the domain, `-inf` for a logarithm of 0 |
