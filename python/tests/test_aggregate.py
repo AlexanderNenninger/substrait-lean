@@ -464,3 +464,18 @@ def test_correlation_is_null_where_the_standard_says():
     for engine in ("polars", "datafusion"):
         with pytest.raises(Exception, match="see #271"):
             run_plan(con, written, engine)
+
+
+def test_covariance_of_an_infinity_raises():
+    """`inf - mean` would be NaN, which no operation creates (#257): `verify`
+    reports a domain error, bounds rule it out, and DuckDB raises."""
+    report = sv.verify(cov_expr())
+    assert "domain error" in [i.kind for i in report.issues]
+    finite = [_.x < 1e300, _.x > -1e300, _.y < 1e300, _.y > -1e300]
+    assert "domain error" not in [
+        i.kind for i in sv.verify(cov_expr(), requires={"t": finite}).issues
+    ]
+    con = connect()
+    create_table(con, "t", C.schema(), [(1, math.inf, 1.0), (1, 2.0, 3.0)])
+    with pytest.raises(Exception, match="(?i)domain"):
+        run_plan(con, written_plan(to_substrait_json(cov_expr())), "duckdb")

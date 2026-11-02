@@ -3514,7 +3514,18 @@ class _Writer:
                     none = f"({n} < {d.int_lit(2)} OR {flat})"
                 else:
                     none = f"{n} <= {d.int_lit(1 if m.fn == 'covar_samp' else 0)}"
-                return d.case_when(none, d.null("float"), d.canon(d.covar(m.fn, v)))
+                value = d.case_when(none, d.null("float"), d.canon(d.covar(m.fn, v)))
+                if not d.guards:
+                    return value
+
+                # An infinite side makes a deviation `∞ - ∞`, NaN, which no
+                # operation creates (#257); NaN sorts above `+∞`, so leave it out.
+                def top(z: str) -> str:
+                    return f"MAX({d.case_when(d.is_nan(z), d.null('float'), f'ABS({z})')})"
+
+                inf = d.float_lit(math.inf)
+                bad = f"({d.float_eq(top(x), inf)} OR {d.float_eq(top(y), inf)})"
+                return d.case_when(bad, d.raise_("domain error", f"MIN({x})", "float"), value)
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
