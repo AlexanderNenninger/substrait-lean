@@ -288,12 +288,13 @@ def test_an_unproved_ensures_names_the_condition():
 
 
 def test_the_semantics_changes_what_the_contract_can_prove():
-    # DuckDB's `/` by zero is inf, so `ratio` is never an error there; the
-    # reference raises on a zero divisor, which `verify` reports.
+    # DuckDB's `/` by zero is inf, so a zero divisor is never an error there;
+    # the reference raises on one, which `verify` reports. Both raise on
+    # `inf / inf`, which would be NaN (#257).
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
     duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
     ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="reference", t=t)
-    assert not sv.verify(duck).issues
+    assert [i.kind for i in sv.verify(duck).issues] == ["domain error"]
     assert any("zero" in str(i) for i in sv.verify(ref).issues)
 
 

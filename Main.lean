@@ -23,6 +23,10 @@ why it cannot be split.
 plan for DataFusion to run, compensating for where its semantics differ
 (`Write.writeRel`); it does not parse back to the same `Rel`.
 
+`substrait-check --lowering-coverage`: print, as JSON, how each construct is
+lowered to DuckDB under each setting of `error_on_division_by_zero` (natively,
+or the generated template; `SubstraitLean/LoweringDuckDB.lean`).
+
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
 
@@ -201,6 +205,13 @@ partial def serve : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
+  | ["--lowering-coverage"] => do
+    -- How each construct is lowered to DuckDB, per setting (#241).
+    let rows := [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)].flatMap fun (s, cov) =>
+      cov.map fun (c, how, ms) => Lean.Json.mkObj [("error_on_division_by_zero", s),
+        ("construct", c), ("lowering", how), ("ms", ms)]
+    IO.println (Lean.Json.arr rows.toArray).compress
+    return 0
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--contract", "--write", "--write-datafusion", "--shard"].contains flag then
@@ -209,5 +220,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage"
     return 1

@@ -87,7 +87,7 @@ theorem UnFn.issue_ne_sumWraps (f : UnFn) (v : Value) : f.issue v ≠ some .sumW
   split <;> (try split) <;> (try split) <;> simp
 
 theorem BinFn.issue_ne_sumWraps (f : BinFn) (v w : Value) : f.issue v w ≠ some .sumWraps := by
-  unfold BinFn.issue wrapIf rangeIssue domainIssue
+  unfold BinFn.issue wrapIf rangeIssue domainIssue nanIssue
   split <;> (try split) <;> (try split) <;> (try split) <;> simp
 
 /-- Row-level issues are never `SUM`s. -/

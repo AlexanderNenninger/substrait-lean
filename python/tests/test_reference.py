@@ -95,7 +95,8 @@ def test_modulus_of_doubles_is_fmod(con, sql, expected):
 @pytest.mark.parametrize(
     ("sql", "errors"),
     [
-        ("SELECT x % 0.0 AS m FROM f", ["division by zero"]),
+        # `x` may be infinite too, and `fmod(±∞, y)` would be NaN (#257).
+        ("SELECT x % 0.0 AS m FROM f", ["division by zero", "domain error"]),
         ("SELECT 1.5 % x AS m FROM f", ["division by zero"]),
         ("SELECT 1.5 % x AS m FROM f WHERE x <> 0.0", []),
     ],
@@ -194,18 +195,24 @@ def nan_safe(rows: list[tuple]) -> list[tuple]:
 
 def test_double_division_by_zero_may_fail():
     # The reference's `/` raises on a zero divisor; DuckDB's gives ±inf or
-    # NaN (`on_division_by_zero` IEEE), which raises nothing.
+    # NaN (`on_division_by_zero` IEEE), which raises nothing. `∞ / ∞` would
+    # be NaN, which no operation creates (#257).
     f = ibis.table({"x": "float64", "y": "float64"}, name="f")
 
     def ref(sql: str) -> ibis.Table:
         return sv.sql(sql, semantics="reference", f=f)
 
     report = sv.verify(ref("SELECT x / y AS q FROM f"))
-    assert [str(i) for i in report.errors] == ["division by zero: ($0 /. $1)"]
-    assert sv.verify("SELECT x / y AS q FROM f", tables={"f": f}).errors == []
+    assert [str(i) for i in report.errors] == [
+        "division by zero: ($0 /. $1)",
+        "domain error: ($0 /. $1)",
+    ]
+    duckdb = sv.verify("SELECT x / y AS q FROM f", tables={"f": f})
+    assert "division by zero" not in [i.kind for i in duckdb.errors]
+    finite = ["x < 1e300", "x > -1e300"]
     for sql, req in [
-        ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", []),
-        ("SELECT x / y AS q FROM f", ["y > 0"]),
+        ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", finite),
+        ("SELECT x / y AS q FROM f", [*finite, "y > 0"]),
         ("SELECT x / 2.0 AS q FROM f", []),
     ]:
         assert sv.verify(ref(sql), requires={"f": req}).issues == [], sql
@@ -225,7 +232,8 @@ def test_double_division_options(dcon, mode, by_zero):
     rows = {"d": DIV_ROWS}
     expected = nan_safe([(v,) for v in [*by_zero, None, 2.0]])
     assert nan_safe(lean_values(json.dumps(inline_tables(json.loads(plan), rows)))) == expected
-    assert issues(plan) == []
+    # Only `∞ / ∞`, which would be NaN (#257): the dividend is not bounded.
+    assert issues(plan) == ["domain error"]
     written = written_plan(plan)
     for engine in ("duckdb", "polars"):
         assert nan_safe(arrow_rows(run_plan(dcon, written, engine))) == expected, engine
@@ -233,7 +241,7 @@ def test_double_division_options(dcon, mode, by_zero):
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_double_division_by_zero_raises(dcon, engine):
-    assert issues(divide_plan(dcon, None)) == ["division by zero"]
+    assert issues(divide_plan(dcon, None)) == ["division by zero", "domain error"]
     with pytest.raises(Exception, match="(?i)division by zero|divide by zero"):
         run_plan(dcon, written_plan(divide_plan(dcon, None)), engine)
 
@@ -472,3 +480,81 @@ def test_floats_read_compare_and_widen_exactly(f32, sql, expected):
 def test_float_arithmetic_is_refused(f32, sql, message):
     code, out, err = run_checker((), substrait_json(f32, sql))
     assert code != 0 and message in out + err
+
+
+# R14 (#257): no operation creates a NaN. Where IEEE would make one from
+# numbers (`inf - inf`, `0 * inf`, `inf / inf`, `fmod(inf, y)`, a negative
+# base to a fractional power, `sin(inf)`, a double `SUM` of `inf` and
+# `-inf`), the reference raises a domain error; a NaN in the input stays NaN.
+FINITE = ["x < 1e300", "x > -1e300", "y < 1e300", "y > -1e300"]
+
+
+@pytest.mark.parametrize(
+    ("sql", "requires", "errors"),
+    [
+        ("SELECT x + y AS v FROM f", [], ["domain error"]),
+        ("SELECT x + y AS v FROM f", FINITE, []),
+        ("SELECT x - y AS v FROM f", [], ["domain error"]),
+        ("SELECT x * y AS v FROM f", [], ["domain error"]),
+        ("SELECT x * y AS v FROM f", FINITE, []),
+        # Infinity plus a number is infinity, never NaN.
+        ("SELECT x + 1.5 AS v FROM f", [], []),
+        ("SELECT power(x, 0.5) AS v FROM f", [], ["domain error"]),
+        ("SELECT power(x, 0.5) AS v FROM f", ["x >= 0"], []),
+        ("SELECT power(x, 2.0) AS v FROM f", [], []),
+        ("SELECT sin(x) AS v FROM f", [], ["domain error"]),
+        ("SELECT sin(x) AS v FROM f", FINITE, []),
+        ("SELECT sum(x) AS v FROM f", [], ["domain error"]),
+        ("SELECT sum(x) AS v FROM f", ["x >= 0"], []),
+        # An integer converts to a finite double.
+        ("SELECT avg(CAST(i AS DOUBLE)) AS v FROM f", [], []),
+    ],
+)
+def test_nan_creation_is_a_domain_error(sql, requires, errors):
+    tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
+    report = sv.verify(sql, requires={"f": requires}, tables=tables)
+    assert [i.kind for i in report.issues] == errors
+
+
+INF_ROWS = [(INF, -INF, 0.0), (1.5, 2.0, 3.0), (NAN, 1.0, 1.0)]
+
+
+@pytest.fixture(scope="module")
+def icon():
+    c = connect()
+    put_table(c, "n", pa.table({k: [r[j] for r in INF_ROWS] for j, k in enumerate("xyz")}))
+    return c
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT x + y AS v FROM n",
+        "SELECT x - x AS v FROM n",
+        "SELECT x * z AS v FROM n",
+        "SELECT x / y AS v FROM n WHERE y <> 0.0",
+        "SELECT sin(x) AS v FROM n",
+        "SELECT power(z - 5.0, 0.5) AS v FROM n",
+    ],
+)
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_engines_raise_where_ieee_would_make_a_nan(icon, sql, engine):
+    with pytest.raises(Exception, match="(?i)domain|NaN"):
+        run_plan(icon, written_plan(substrait_json(icon, sql)), engine)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_nan_in_the_input_stays_nan(icon, engine):
+    sql = "SELECT x + y AS v FROM n WHERE z > 0.5"
+    got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
+    assert got == [(3.5,), ("NaN",)]
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_double_sum_of_both_infinities_raises(icon, engine):
+    sql = "SELECT sum(v) AS s FROM (SELECT x AS v FROM n UNION ALL SELECT y AS v FROM n)"
+    with pytest.raises(Exception, match="(?i)domain|NaN"):
+        run_plan(icon, written_plan(substrait_json(icon, sql)), engine)
+    sql = "SELECT sum(y) AS s, avg(x) AS a FROM n"
+    got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
+    assert got == [(-INF, "NaN")]

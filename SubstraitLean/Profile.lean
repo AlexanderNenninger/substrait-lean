@@ -16,8 +16,11 @@ characterization (`characterization/duckdb/FACTS.md` for DuckDB). A **shim**
 rewrites a plan into one the engine evaluates to the reference's outcome,
 adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
 or refuses it. A shimmed plan is an ordinary plan, so it is written and run
-like any other. `shim_correct` proves it: the shimmed expression under the
-engine's profile has the reference's outcome, the same value or an error.
+like any other. Shims are generated: `SubstraitLean/LoweringSearch.lean`
+searches, for each function, for a template the engine evaluates to the
+reference's outcome, and proves it (#241). `SubstraitLean/Lowering.lean` proves
+lowering with such a table correct, and `SubstraitLean/LoweringDuckDB.lean`
+holds DuckDB's tables, with `shimDuckDB_correct` and `Rel.duckdb_shim_sound`.
 
 Trusted, and tested rather than proved: that the profile matches the engine
 (the fuzzer, #185), and that the SQL printer prints the plan faithfully,
@@ -232,10 +235,11 @@ def Profile.duckdb (s : DuckDBSettings) : Profile where
       if f.divides && !s.errorOnDivZero then .ok (duckDivZero f x) else Profile.reference.bin f v w
     | _, _ => Profile.reference.bin f v w
 
-/-- **DuckDB's shim:** with `error_on_division_by_zero` off, a division or
-modulus raises on a zero divisor, `CASE WHEN x IS NOT NULL AND y = 0 THEN
-error() ELSE x / y END` (a NULL dividend gives NULL, as in the reference).
-Everything else is written as it is. -/
+/-- **DuckDB's shim,** written by hand: with `error_on_division_by_zero` off,
+a division or modulus raises on a zero divisor, `CASE WHEN x IS NOT NULL AND y
+= 0 THEN error() ELSE x / y END` (a NULL dividend gives NULL, as in the
+reference). Everything else is written as it is. The generated lowering is this
+shim (`duckdb_lower_eq_shim` in `SubstraitLean/LoweringDuckDB.lean`). -/
 def shimDuckDB (s : DuckDBSettings) : Expr → Option Expr
   | .lit v => some (.lit v)
   | .field i => some (.field i)
@@ -250,7 +254,7 @@ def shimDuckDB (s : DuckDBSettings) : Expr → Option Expr
   | .ifThen c t e => do some (.ifThen (← shimDuckDB s c) (← shimDuckDB s t) (← shimDuckDB s e))
   | .hof f l b => do some (.hof f (← shimDuckDB s l) (← shimDuckDB s b))
 
-/-! ## The shim is correct -/
+/-! ## Agreeing outcomes -/
 
 theorem Outcome.agree_bind {o o' : Outcome} {g h : Value → Outcome} (ho : Outcome.Agree o o')
     (hg : ∀ v, Outcome.Agree (g v) (h v)) : Outcome.Agree (o >>= g) (o' >>= h) :=
@@ -282,119 +286,6 @@ theorem HoFn.applyP_agree (f : HoFn) (v : Value) {p q : Value → Outcome}
   cases hp : v.elems.findSome? (fun x => (p x).err?) <;>
     cases hq : v.elems.findSome? (fun x => (q x).err?) <;> simp_all [Outcome.Agree]
   exact HoFn.apply_congr f v fun x _ => Outcome.agree_val (h x)
-
-/-- A division or modulus of a number by zero raises in the reference. -/
-theorem reference_divZero {f : BinFn} (hf : f.divides = true) (a : Int) :
-    Profile.reference.bin f (.int a) (.int 0) = .error .divByZero := by
-  cases f <;> simp_all [BinFn.divides, Profile.reference, raiseIf, BinFn.issue, Issue.isError]
-
-/-- The guard's condition is true only for a number divided by zero. -/
-theorem guard_true {p : Bool} {y : Value}
-    (h : (and3 (.bool p) (BinFn.apply .eq y (.int 0))).isTrue = true) : p = true ∧ y = .int 0 := by
-  cases p <;> simp [and3, Value.isTrue] at h
-  cases y <;> simp_all [BinFn.apply]
-  rename_i i
-  by_cases hi : i = 0
-  · exact hi
-  · have hb : (i == 0) = false := by simpa using hi
-    rw [hb] at h; exact absurd h (by decide)
-
-/-- `=` and `AND` never raise on DuckDB. -/
-theorem duckdb_eq (s : DuckDBSettings) (y z : Value) :
-    (Profile.duckdb s).bin .eq y z = .ok (BinFn.apply .eq y z) := by
-  simp only [Profile.duckdb]
-  split <;> simp [BinFn.divides, Profile.reference, raiseIf, BinFn.issue]
-
-theorem duckdb_isNum (s : DuckDBSettings) (x : Value) :
-    (Profile.duckdb s).un .isNum x = .ok (.bool x.isNum) := by
-  simp [Profile.duckdb, Profile.reference, raiseIf, UnFn.issue, UnFn.apply_isNum]
-
-theorem duckdb_raise (s : DuckDBSettings) (m : String) (x : Value) :
-    (Profile.duckdb s).un (.raise m) x = .error .raised := by
-  simp [Profile.duckdb, Profile.reference, raiseIf, UnFn.issue, Issue.isError]
-
-theorem duckdb_and (s : DuckDBSettings) (u v : Value) :
-    (Profile.duckdb s).bin .and u v = .ok (BinFn.apply .and u v) := by
-  simp only [Profile.duckdb]
-  split <;> simp [BinFn.divides, Profile.reference, raiseIf, BinFn.issue]
-
-/-- With the guard's condition false, DuckDB's division is the reference's. -/
-theorem duckdb_bin_of_not_zero (s : DuckDBSettings) (f : BinFn) {x y : Value}
-    (h : ¬(x.isNum = true ∧ y = .int 0)) : (Profile.duckdb s).bin f x y = Profile.reference.bin f x y := by
-  simp only [Profile.duckdb]
-  split
-  · rename_i a; simp [Value.isNum] at h
-  · rfl
-
-/-- **DuckDB's shim is correct:** the shimmed expression, run under DuckDB's
-profile with settings `s`, has the reference's outcome: the same value, or an
-error. -/
-theorem shimDuckDB_correct (s : DuckDBSettings) :
-    ∀ (e t : Expr), shimDuckDB s e = some t → ∀ row : Row,
-      Outcome.Agree (t.evalP (Profile.duckdb s) row) (e.evalP Profile.reference row)
-  | .lit _, t, h, _ => by simp only [shimDuckDB, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
-  | .field _, t, h, _ => by simp only [shimDuckDB, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
-  | .un f a, t, h, row => by
-    simp only [shimDuckDB, Option.map_eq_some_iff] at h
-    obtain ⟨a', ha, rfl⟩ := h
-    exact Outcome.agree_bind (shimDuckDB_correct s a a' ha row) fun v => Outcome.agree_refl _
-  | .bin f a b, t, h, row => by
-    simp only [shimDuckDB, bind, Option.bind_eq_some_iff] at h
-    obtain ⟨a', ha, b', hb, h⟩ := h
-    have iha := shimDuckDB_correct s a a' ha row
-    have ihb := shimDuckDB_correct s b b' hb row
-    split at h
-    · rename_i hd
-      simp only [Bool.and_eq_true, Bool.not_eq_true'] at hd
-      simp only [Option.some.injEq] at h; subst h
-      simp only [Expr.evalP, Expr.evalP]
-      cases hx : a'.evalP (Profile.duckdb s) row <;> cases hx' : a.evalP Profile.reference row <;>
-        rw [hx, hx'] at iha <;> simp only [Outcome.Agree] at iha
-      · -- `a` raises in both.
-        simp only [bind, Except.bind]; trivial
-      · subst iha
-        cases hy : b'.evalP (Profile.duckdb s) row <;> cases hy' : b.evalP Profile.reference row <;>
-          rw [hy, hy'] at ihb <;> simp only [Outcome.Agree] at ihb
-        · -- `b` raises in both.
-          simp only [bind, Except.bind]; trivial
-        · subst ihb
-          rename_i x y
-          simp only [bind, Except.bind, duckdb_eq, duckdb_and, duckdb_isNum, duckdb_raise]
-          split
-          · -- The guard raises: a number divided by zero, which raises in the reference.
-            rename_i hc
-            obtain ⟨hn, rfl⟩ := guard_true (by simpa [BinFn.apply] using hc)
-            cases x <;> simp [Value.isNum] at hn
-            rw [reference_divZero hd.1]; trivial
-          · rename_i hc
-            have : ¬(x.isNum = true ∧ y = .int 0) := by
-              rintro ⟨hn, rfl⟩
-              cases x <;> simp_all [Value.isNum, BinFn.apply, and3, Value.isTrue]
-            rw [duckdb_bin_of_not_zero s f this]; exact Outcome.agree_refl _
-    · simp only [Option.some.injEq] at h; subst h
-      simp only [Expr.evalP, Expr.evalP]
-      refine Outcome.agree_bind iha fun x => Outcome.agree_bind ihb fun y => ?_
-      rename_i hd
-      have : (Profile.duckdb s).bin f x y = Profile.reference.bin f x y := by
-        simp only [Profile.duckdb]
-        split
-        · simp_all
-        · rfl
-      rw [this]; exact Outcome.agree_refl _
-  | .ifThen c t' e, t, h, row => by
-    simp only [shimDuckDB, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-    obtain ⟨c', hc, t'', ht, e', he, rfl⟩ := h
-    simp only [Expr.evalP, Expr.evalP]
-    refine Outcome.agree_bind (shimDuckDB_correct s c c' hc row) fun v => ?_
-    split
-    · exact shimDuckDB_correct s t' t'' ht row
-    · exact shimDuckDB_correct s e e' he row
-  | .hof f l b, t, h, row => by
-    simp only [shimDuckDB, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-    obtain ⟨l', hl, b', hb, rfl⟩ := h
-    simp only [Expr.evalP, Expr.evalP]
-    exact Outcome.agree_bind (shimDuckDB_correct s l l' hl row) fun v =>
-      HoFn.applyP_agree f v fun x => shimDuckDB_correct s b b' hb [x]
 
 /-! ## Plans that cannot raise
 
@@ -452,13 +343,13 @@ holds for it is **partial correctness**: DuckDB returns `Rel.eval`'s rows, or
 raises.
 
 * `Expr.Exact p t e`: `t`, run with `p`'s functions, computes `e`'s value on
-  every row where it does not raise. `shimDuckDB_exact` proves it for every
-  expression and its shim.
+  every row where it does not raise. `Lowering.lower_exact` proves it for every
+  expression and its lowering (`SubstraitLean/Lowering.lean`).
 * `Rel.Raises p cat t`: some expression of `t` raises on a row `Rel.evalI`
   evaluates it on.
 * `Rel.evalI_mapExprs`: a plan whose expressions are each `Exact` computes
-  `Rel.eval`'s rows unless it raises. `Rel.duckdb_shim_sound` applies it to the
-  shimmed plan on DuckDB.
+  `Rel.eval`'s rows unless it raises. `Lowering.lowerRel_sound` applies it to
+  a lowered plan, and `Rel.duckdb_shim_sound` to the shimmed plan on DuckDB.
 
 No guard elimination is involved, so this needs neither a contract nor
 `looseSub`. An engine may evaluate an expression on fewer rows than
@@ -531,46 +422,6 @@ def Expr.Exact (p : Profile) (t e : Expr) : Prop :=
 
 theorem Expr.reference_exact (e : Expr) : Expr.Exact Profile.reference e e :=
   fun _ _ h => (evalI_of_evalP h).trans (evalP_reference_ok h)
-
-/-- **Every shimmed expression is exact on DuckDB.** -/
-theorem shimDuckDB_exact (s : DuckDBSettings) {e t : Expr} (hs : shimDuckDB s e = some t) :
-    Expr.Exact (Profile.duckdb s) t e := by
-  intro row v h
-  have hag := shimDuckDB_correct s e t hs row
-  rw [h] at hag
-  cases hr : e.evalP Profile.reference row with
-  | error k => rw [hr] at hag; simp [Outcome.Agree] at hag
-  | ok w =>
-    rw [hr] at hag; simp only [Outcome.Agree] at hag; subst hag
-    exact (Expr.evalI_of_evalP h).trans (Expr.evalP_reference_ok hr)
-
-theorem shimDuckDB_isSome (s : DuckDBSettings) : ∀ e : Expr, (shimDuckDB s e).isSome
-  | .lit _ | .field _ => rfl
-  | .un f a => by
-    obtain ⟨a', ha⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s a)
-    simp [shimDuckDB, ha]
-  | .bin f a b => by
-    obtain ⟨a', ha⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s a)
-    obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s b)
-    simp only [shimDuckDB, ha, hb, bind, Option.bind_some]
-    split <;> rfl
-  | .ifThen c t e => by
-    obtain ⟨c', hc⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s c)
-    obtain ⟨t', ht⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s t)
-    obtain ⟨e', he⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s e)
-    simp [shimDuckDB, hc, ht, he]
-  | .hof f l b => by
-    obtain ⟨l', hl⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s l)
-    obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s b)
-    simp [shimDuckDB, hl, hb]
-
-/-- The shim of an expression (it always has one). -/
-def shimE (s : DuckDBSettings) (e : Expr) : Expr := (shimDuckDB s e).getD e
-
-theorem shimE_exact (s : DuckDBSettings) (e : Expr) : Expr.Exact (Profile.duckdb s) (shimE s e) e := by
-  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (shimDuckDB_isSome s e)
-  simp only [shimE, ht, Option.getD_some]
-  exact shimDuckDB_exact s ht
 
 /-! ### Relations -/
 
@@ -781,18 +632,5 @@ theorem Rel.evalI_mapExprs {p : Profile} {f : Expr → Expr} (hx : ∀ e, Expr.E
       · exact (hx _).eq (hin _ (List.mem_cons_self ..))
       · exact (hx e).eq (hin _ (List.mem_cons_of_mem _ (List.mem_append_left _ (List.mem_map_of_mem he))))
       · rw [hf]; rfl
-
-/-- DuckDB's shim of a plan: every expression shimmed (`shimDuckDB`). -/
-def shimRel (s : DuckDBSettings) (r : Rel) : Rel := r.mapExprs (shimE s)
-
-/-- **The shimmed plan runs correctly on DuckDB, or raises.** Unless one of
-its expressions raises on a row DuckDB evaluates it on, DuckDB's functions
-give `Rel.eval`'s rows, on every catalog and under any settings: no contract
-and no guard elimination needed. Trusted, as for `Rel.duckdb_sound`: that
-`Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
-theorem Rel.duckdb_shim_sound (s : DuckDBSettings) {cat : Catalog} {r : Rel}
-    (h : ¬(shimRel s r).Raises (Profile.duckdb s) cat) :
-    (shimRel s r).evalI (Profile.duckdb s).impl cat = r.eval cat :=
-  Rel.evalI_mapExprs (shimE_exact s) (fun _ => rfl) h
 
 end Substrait

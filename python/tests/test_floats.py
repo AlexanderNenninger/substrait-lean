@@ -61,7 +61,9 @@ def test_nan_is_largest_like_datafusion():
     assert not report.proved
 
 
-values = st.sampled_from([0.0, -0.0, 0.5, 1.5, ERR, math.nan, math.inf, -math.inf, 1e300, None])
+# No `-inf`: `v1 * 2.0 + v2` of `inf` and `-inf` would be NaN, which raises
+# (#257).
+values = st.sampled_from([0.0, -0.0, 0.5, 1.5, ERR, math.nan, math.inf, 1e300, None])
 minutes = st.integers(0, 4)
 
 
@@ -148,21 +150,24 @@ def test_signed_zeros_are_one_row(engine):
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_computed_zeros_and_nans_are_canonical(engine):
-    """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `inf - inf` is the one NaN,
+    """`-x` of 0.0 is 0.0, so `-x >= 0` keeps it; `NaN * -1.0` is the one NaN,
     sorted last, though x86 computes a negative NaN (on DataFusion, which
     orders by `total_cmp`, Lean's written plans make both canonical)."""
     con = sv.connect()
-    sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf])}))
+    sv.engine.put_table(con, "f", pa.table({"x": pa.array([0.0, 1.0, math.inf, math.nan])}))
 
     def run(sql: str) -> list[tuple]:
         plan = sv.engine.written_plan(sv.engine.substrait_json(con, sql))
         return [tuple(r.values()) for r in sv.engine.run_plan(con, plan, engine).to_pylist()]
 
     got = run("SELECT -x AS y FROM f WHERE -x >= 0")
-    assert repr(got) == repr([(0.0,)])
+    # NaN sorts above every number, so `-NaN >= 0` keeps it.
+    assert repr(got) == repr([(0.0,), (math.nan,)])
     sql = "SELECT x, ROW_NUMBER() OVER (ORDER BY d ASC NULLS LAST, x) AS n "
-    got = run(sql + "FROM (SELECT x, x - x AS d FROM f)")
-    assert sorted(got) == [(0.0, 1), (1.0, 2), (math.inf, 3)]
+    got = run(sql + "FROM (SELECT x, x * -1.0 AS d FROM f)")
+    assert repr(sorted(got, key=lambda r: r[1])) == repr(
+        [(math.inf, 1), (1.0, 2), (0.0, 3), (math.nan, 4)]
+    )
 
 
 def test_negating_a_non_positive_double_gives_a_non_negative_one():

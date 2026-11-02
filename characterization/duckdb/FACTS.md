@@ -174,6 +174,8 @@ Evidence: `function/operator/test_division_by_zero.test:28,39,64`,
 - **DuckDB (native):** `fmod` (`7.5 % 2 = 1.5`, `% 0.0` is NaN, or an error
   with `error_on_division_by_zero`). sverify raises on a zero divisor and
   writes out the NaN and infinite cases, so only finite operands reach `%`.
+  **Changed (#257):** an infinite dividend with a non-NaN divisor now raises a
+  domain error instead of giving NaN, since no operation creates a NaN.
   Polars' `%` floors (the sign of the divisor); numpy's `fmod` covers it.
 
 Evidence: `function/numeric/decimal_mod.test:5,10,16`,
@@ -194,7 +196,9 @@ Evidence: `function/numeric/decimal_mod.test:5,10,16`,
   writes `IEEE`, `LIMIT` and `NULL` as a `CASE` on the divisor
   (`Parse.divByZero`): IEEE gives `±inf` by the dividend's sign and NaN for
   `0 / 0`, LIMIT gives `±inf` for `0 / 0` too (the one zero is positive),
-  NULL gives NULL, and a NaN dividend stays NaN.
+  NULL gives NULL, and a NaN dividend stays NaN. `inf / inf` raises a
+  domain error under every mode (#257), as no operation creates a NaN; only
+  `IEEE`'s `0 / 0`, which the plan asks for, is NaN.
 - **DuckDB: native,** under `error_on_division_by_zero = true`: `x / 0.0`
   and `0.0 / 0.0` raise. With the setting off, DuckDB gives IEEE values, so
   it needs the guard of R2. A plan that asks for `IEEE` needs the setting

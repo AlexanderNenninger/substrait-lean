@@ -64,11 +64,14 @@ def FMath.lo? : FMath → Option Int
   | .sqrt => some 0
   | .ln | .log10 | .log2 => some 1
   | .asin | .acos => some FloatCode.negOne
+  -- `±∞` would give NaN, which no operation creates (#257).
+  | .sin | .cos | .tan => some (FloatCode.negInf + 1)
   | _ => none
 
 /-- The largest code other than NaN in the function's domain. -/
 def FMath.hi? : FMath → Option Int
   | .asin | .acos => some FloatCode.one
+  | .sin | .cos | .tan => some (FloatCode.posInf - 1)
   | _ => none
 
 /-- Is the double with code `c` in the function's domain? NaN always is. -/
