@@ -27,11 +27,9 @@ every possible input, or says why it can't. Then:
 
 We aim to make sverify an assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
-hand on. It is young, independent and purely observational: it reports what
-it can and can't prove and describes each engine as observed at pinned
-versions, without certifying or ranking it, and isn't affiliated with any
-engine's project or vendor. Sverify is a second pair of eyes on your pipelines. Production shouldn't depend on it yet, and the API will
-change between minor releases.
+hand on.
+
+Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
 The reference's meaning is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
 

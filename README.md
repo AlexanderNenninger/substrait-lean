@@ -11,10 +11,9 @@ sverify's PyPI page.
 We aim to make sverify an assistant that makes data engineering more joyful:
 fewer 3 a.m. pages over an unexpected NULL, fewer afternoons spent finding out
 why two engines disagree, and more trust in the tables you hand to the next
-team. It is young, independent and purely observational: it reports what it
-can and can't prove, and describes each engine as observed at pinned versions.
-Sverify is a second pair of eyes on your pipelines. Production shouldn't
-depend on it yet, and the API will change between minor releases.
+team.
+
+Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
 ## How the parts fit
 
