@@ -132,8 +132,26 @@ class Exprs:
             return field_ref(self.windows[op])
         rule = _RULES.get(type(op))
         if rule is None:
-            raise Unsupported(f"{type(op).__name__} is not supported")
+            reason = _REFUSED.get(type(op).__name__)
+            raise Unsupported(
+                f"{type(op).__name__} is not supported" + (f": {reason}" if reason else "")
+            )
         return rule(self, op)
+
+
+#: Why some operations are refused (#58).
+_NONDETERMINISTIC = "each run gives another value, so no contract can be proved about it"
+_REFUSED: dict[str, str] = {
+    "RandomScalar": _NONDETERMINISTIC,
+    "RandomUUID": _NONDETERMINISTIC,
+    "RowID": "the row id is the engine's own, so it differs between engines",
+    "TimestampNow": "the time differs between runs; pass the time in as a column or constant",
+    "DateNow": "the date differs between runs; pass the date in as a column or constant",
+    "TypeOf": "the type's name is the engine's own",
+    "ScalarParameter": "bind the parameter first, for example with a literal",
+    "TryCast": "a cast that gives NULL where it fails is not modelled yet; use cast(), "
+    "which raises there, and guard the values",
+}
 
 
 def _common(*types: Any) -> Any:
@@ -1135,6 +1153,14 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.Min | ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
         name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.All | ops.Any):
+        # `all()` / `any()` are BOOL_AND / BOOL_OR too (#53): FALSE < TRUE,
+        # NULLs skipped, and NULL for a group without a non-NULL value.
+        name, args = ("min" if isinstance(op, ops.All) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.BitAnd | ops.BitOr | ops.BitXor):
+        # 64-bit integers (#53); a narrower column is widened first.
+        name = {ops.BitAnd: "bit_and", ops.BitOr: "bit_or", ops.BitXor: "bit_xor"}[type(op)]
+        args = [x(op.arg, dt.int64)]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
     else:

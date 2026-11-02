@@ -83,6 +83,9 @@ inductive AggFn where
   /-- `AVG` of integers with an integer result (Substrait's `avg` of `i64`,
   #209): the exact mean, truncated toward zero. It always fits. -/
   | iavg
+  /-- `BIT_AND`, `BIT_OR`, `BIT_XOR` of 64-bit integers (#53): the operation
+  folded over the values (the parser gives only these three). -/
+  | bit (op : BitOp)
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -126,6 +129,13 @@ def floatSum (vs : List Value) : Int :=
     | .int c => FloatCode.lift₂ (· + ·) acc c
     | _ => acc) (FloatCode.ofInt 0)
 
+/-- `op` folded over the integers among `vs`, from `op`'s identity (`-1`,
+all bits set, for `and`; `0` for `or` and `xor`). -/
+def bitFold (op : BitOp) (vs : List Value) : Int :=
+  vs.foldl (fun acc v => match v with
+    | .int b => (op.apply acc b).getD acc
+    | _ => acc) (if op == .and then -1 else 0)
+
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
@@ -137,6 +147,7 @@ def AggFn.apply : AggFn → List Value → Value
   | .fsum, vs => .int (floatSum vs)
   | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
   | .iavg, vs => .int ((intSum vs).tdiv vs.length)
+  | .bit op, vs => .int (bitFold op vs)
   | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
   | .collect, vs => .list vs

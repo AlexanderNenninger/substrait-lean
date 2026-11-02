@@ -75,6 +75,27 @@ MEANINGS = [
         [(False,), (False,), (None,)],
     ),
     ("nunique skips NULL", lambda t: t.aggregate(r=t.x.nunique()), [(1,)]),
+    (
+        "any and all are BOOL_OR and BOOL_AND",
+        lambda t: t.aggregate(p=(t.a > 6).any(), q=(t.a > 0).all(), n=t.x.isnull().any()),
+        [(True, False, True)],
+    ),
+    (
+        "any and all of no rows are NULL",
+        lambda t: t.aggregate(p=(t.a > 0).any(where=t.a > 100), q=(t.a > 0).all(where=t.a < 0)),
+        [(None, False)],
+    ),
+    (
+        "bit aggregates of 64-bit integers, NULLs skipped",
+        lambda t: t.aggregate(
+            p=t.a.bit_and(),
+            q=t.a.bit_or(),
+            r=t.a.bit_xor(),
+            s=t.x.bit_xor(),
+            e=t.a.bit_and(where=t.a > 100),
+        ),
+        [(1, -1, -5, 0, None)],
+    ),
     ("round half away from zero", lambda t: t.select(r=t.v.round()), [(3,), (-3,), (0,)]),
     ("cast to int64 truncates", lambda t: t.select(r=t.v.cast("int64")), [(2,), (-2,), (0,)]),
     ("one zero", lambda t: t.select(r=t.v == 0.0), [(False,), (False,), (True,)]),
@@ -119,6 +140,23 @@ def test_refused_operations(con):
     # Each engine estimates it its own way; it used to be read as `nunique`.
     with pytest.raises(Unsupported, match="approx_nunique is not supported"):
         plan_json(con, t.aggregate(r=t.v.approx_nunique()))
+
+
+@pytest.mark.parametrize(
+    ("build", "reason"),
+    [
+        (lambda t: t.select(r=ibis.random()), "each run gives another value"),
+        (lambda t: t.select(r=ibis.now()), "pass the time in"),
+        (lambda t: t.select(r=ibis.today()), "pass the date in"),
+        (lambda t: t.select(r=t.v.typeof()), "the type's name is the engine's own"),
+        (lambda t: t.filter(t.v > ibis.param(ibis.dtype("float64"))), "bind the parameter first"),
+        (lambda t: t.select(r=t.v.try_cast("int64")), "use cast()"),
+    ],
+)
+def test_refusals_say_why(con, build, reason):
+    """#58: each refused operation says why, and what to do instead."""
+    with pytest.raises(Unsupported, match=reason):
+        plan_json(con, build(con.table("t")))
 
 
 def test_day_of_week_index_starts_on_monday(con):

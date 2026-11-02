@@ -1973,6 +1973,19 @@ def Fact.mentions (i : Nat) : Fact → Bool
   | .diff a b _ => a == i || b == i
   | .ne a _ => a == i
 
+/-- Facts that hold where `x IS NULL` (`q`), from the facts `fs` of the
+other side of an `OR`: those about `x` (facts only constrain non-NULL values). -/
+def orNullFacts (fs : List Fact) : Expr → List Fact
+  | .un .isNull (.field i) => fs.filter (·.mentions i)
+  | _ => []
+
+/-- `t < a OR b < t` with `a ≤ b`: `t` is not in `[a, b]`, so not `0` when
+`0` is in it, and not `a`. -/
+def orGapFacts : Expr → Expr → List Fact
+  | .bin .lt t (.lit (.int a)), .bin .lt (.lit (.int b)) t' =>
+    if t == t' && a ≤ b then (if a ≤ 0 && 0 ≤ b then neFact t 0 else []) ++ neFact t a else []
+  | _, _ => []
+
 def Expr.factsOf : Expr → List Fact
   | .bin .and p q => p.factsOf ++ q.factsOf
   | .un .not (.bin .eq t (.lit (.int k))) => neFact t k
@@ -1987,6 +2000,13 @@ def Expr.factsOf : Expr → List Fact
   -- `~x.isnan()` this way.)
   | .un .not (.bin .and (.un .not (.un .isNull (.field i))) q) =>
       (Expr.un .not q).factsOf.filter (·.mentions i)
+  -- `p OR q`: the facts of both, those of one about `x` if the other is
+  -- `x IS NULL`, and the value a gap `t < a OR b < t` leaves out.
+  | .bin .or p q =>
+      let fp := p.factsOf
+      let fq := q.factsOf
+      fp.filter (fq.contains ·) ++ orNullFacts fp q ++ orNullFacts fq p ++
+        orGapFacts p q ++ orGapFacts q p
   | _ => []
 termination_by e => sizeOf e
 
@@ -2059,6 +2079,50 @@ theorem Fact.holds_of_null {f : Fact} {row : Row} {i : Nat} (hm : f.mentions i =
     simp only [Fact.mentions, beq_iff_eq] at hm
     subst hm; intro h; rw [hn] at h; cases h
 
+theorem orNullFacts_sound {fs : List Fact} {p q : Expr} {row : Row}
+    (hp : (p.eval row).isTrue = true → FactsHold fs row)
+    (hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true) {f : Fact}
+    (hf : f ∈ orNullFacts fs q) : f.Holds row := by
+  unfold orNullFacts at hf
+  split at hf
+  · rename_i i
+    simp only [List.mem_filter] at hf
+    rcases hpq with hp' | hq
+    · exact hp hp' f hf.1
+    · have hn : row.getD i .null = .null := by
+        simp only [Expr.eval, List.getD_eq_getElem?_getD] at hq ⊢
+        generalize row[i]?.getD Value.null = v at hq ⊢
+        cases v <;> simp_all [UnFn.apply, Value.isTrue]
+      exact Fact.holds_of_null hf.2 hn
+  · simp at hf
+
+theorem orGapFacts_sound {p q : Expr} {row : Row}
+    (hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true) {f : Fact}
+    (hf : f ∈ orGapFacts p q) : f.Holds row := by
+  unfold orGapFacts at hf
+  split at hf
+  · rename_i t a b t'
+    split at hf
+    · rename_i hc
+      simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hc
+      obtain ⟨rfl, hab⟩ := hc
+      -- `t`'s value is below `a` or above `b`.
+      have hout : ∀ u, t.eval row = .int u → u < a ∨ b < u := by
+        intro u hu
+        rcases hpq with h | h <;>
+          simp only [Expr.eval, hu, BinFn.apply, Value.isTrue] at h <;>
+          split at h <;> simp_all <;> omega
+      simp only [List.mem_append] at hf
+      rcases hf with hf | hf
+      · split at hf
+        · rename_i h0
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at h0
+          exact neFact_sound (fun hv => by have := hout 0 hv; omega) f hf
+        · simp at hf
+      · exact neFact_sound (fun hv => by have := hout a hv; omega) f hf
+    · simp at hf
+  · simp at hf
+
 theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
     FactsHold e.factsOf row := by
   fun_induction Expr.factsOf e
@@ -2107,7 +2171,20 @@ theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = tr
     · have hq := not_and3_notnull_true (w := q.eval row) hn
         (by simpa [eval, BinFn.apply, List.getD_eq_getElem?_getD] using ht)
       exact ih (by simpa [eval] using hq) f hf.1
-  case case9 => intro f hf; simp at hf
+  case case9 p q fp fq ihp ihq =>
+    have hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true := by
+      simpa [eval, BinFn.apply, isTrue_or3] using ht
+    intro f hf
+    simp only [List.mem_append, List.mem_filter] at hf
+    rcases hf with (((⟨hfp, hfq⟩ | hf) | hf) | hf) | hf
+    · rcases hpq with hp | hq
+      · exact ihp hp f hfp
+      · exact ihq hq f (List.contains_iff_mem.mp hfq)
+    · exact orNullFacts_sound ihp hpq hf
+    · exact orNullFacts_sound ihq hpq.symm hf
+    · exact orGapFacts_sound hpq hf
+    · exact orGapFacts_sound hpq.symm hf
+  case case10 => intro f hf; simp at hf
 
 /-! ### Facts through a plan -/
 
@@ -3082,7 +3159,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
   | .fsum | .avg => AVal.double
-  | .iavg => ⟨true, some Bound.top, false, false, false⟩
+  | .iavg | .bit _ => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
   | .collect => AVal.top
 
@@ -3361,7 +3438,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have := hin (.int i) (hvs ▸ hi)
           obtain ⟨b', hb', hm⟩ := this
           rw [ha] at hb'; cases hb'; exact hm
-  case fsum | avg | iavg =>
+  case fsum | avg | iavg | bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case min | max =>
     have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
