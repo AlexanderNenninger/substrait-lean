@@ -70,6 +70,11 @@ Not every engine is held to the same standard yet ([#211](https://github.com/Ale
 | **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved; Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: sverify writes Snowflake SQL and checks it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), but not yet on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
+Work on the Tier 2 and 3 backends is paused until the generated lowerings land
+([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)); the
+tests check them as they are and use DuckDB as their oracle.
+
 SQL strings are DuckDB's SQL, compiled to Substrait by sverify's own SQLGlot
 lift ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239)),
 with DuckDB's meaning (`semantics="duckdb"`, the default) or the reference's
