@@ -394,6 +394,8 @@ rows that differ. No input is -0.0: the model has one zero (R14).
 | `atan2(0, 0)` | `atan2` | none | 0, where the reference raises |
 | `BIGINT << BIGINT` | `shift_left` | none | raises on a negative operand, on bits shifted out, and on shifts below 0 or beyond 63 (but `0 << y` is 0 for any `y`), where the reference drops the bits (and raises on such shifts) |
 | `BIGINT >> BIGINT` | `shift_right` | none | 0 for shifts below 0 or beyond 63 (`-5 >> 64` too), where the reference raises |
+| `regexp_extract`, `regexp_replace` (with and without `'g'`) of constant patterns, on ASCII text | `regexp_extract`, `regexp_replace` | the reference (RE2's meaning, #50) | |
+| `md5`, `sha256` of VARCHAR | `md5`, `sha256` | the reference | |
 
 With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and
 so do the elementary functions outside their domains (as the reference

@@ -214,6 +214,16 @@ class DuckDBDialect(Dialect):
     def regex_search(self, s: str, pattern: str) -> str:
         return f"regexp_matches({s}, {self.str_lit(pattern)})"
 
+    def regex_extract(self, s: str, pattern: str, group: int) -> str:
+        return f"regexp_extract({s}, {self.str_lit(pattern)}, {group})"
+
+    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
+        flags = ", 'g'" if every else ""
+        return f"regexp_replace({s}, {self.str_lit(pattern)}, {self.str_lit(replacement)}{flags})"
+
+    def digest(self, fn: str, s: str) -> str:
+        return f"{fn}({s})"
+
     def date_part(self, part: str, ts: str) -> str:
         us = f"epoch_us({ts})"
         inside = f"{us} BETWEEN {self.int_lit(PART_MIN)} AND {self.int_lit(PART_MAX)}"
