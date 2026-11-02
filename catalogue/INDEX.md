@@ -12,7 +12,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | clickbench-q09 | [ClickBench Q9: regions by distinct users](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | NPDS |  |
 | clickbench-q13 | [ClickBench Q13: most frequent search phrases](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | NPDS |  |
 | clickbench-q21 | [ClickBench Q21: search phrases leading to Google URLs](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | NPDS |  |
-| clickbench-q28 | [ClickBench Q28: referring domains by average URL length](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✗ | N | `regex_replace` |
+| clickbench-q28 | [ClickBench Q28: referring domains by average URL length](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | ND |  |
 | clickbench-q37 | [ClickBench Q37: most visited URLs of a site in a month](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | NPDS |  |
 | clickbench-q42 | [ClickBench Q42: page views per minute, paginated](https://github.com/ClickHouse/ClickBench/blob/main/datafusion/queries.sql) | ✓ | NPDS |  |
 
@@ -89,7 +89,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | dbt-unpivot-union | [Unpivot quarterly columns (UNION ALL)](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/unpivot.sql) | ✓ | NPDS |  |
 | dbt-scd2-from-updates | [Build a type-2 history from updates](https://docs.getdbt.com/docs/build/snapshots) | ✓ | NPDS |  |
 | dbt-scd2-point-in-time | [Point-in-time join to a type-2 dimension](https://docs.getdbt.com/docs/build/snapshots) | ✓ | NPDS |  |
-| dbt-surrogate-key | [Surrogate key from several columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/generate_surrogate_key.sql) | ✗ | N | `hash` |
+| dbt-surrogate-key | [Surrogate key from several columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/generate_surrogate_key.sql) | ✓ | ND |  |
 | dbt-union-sources | [Union of sources with aligned columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/union.sql) | ✓ | NPDS |  |
 | dbt-mrr-movements | [MRR movements per customer and month](https://github.com/dbt-labs/mrr-playbook) | ✓ | NPDS |  |
 | dbt-org-hierarchy | [Reporting chain depth (recursive hierarchy)](https://www.postgresql.org/docs/current/queries-with.html) | ✗ | N | `recursive_cte` |
