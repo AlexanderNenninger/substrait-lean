@@ -62,7 +62,7 @@ import dataclasses
 import datetime as dt_
 import re
 from collections.abc import Callable, Mapping, Sequence
-from decimal import Decimal, localcontext
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Any
 
 import ibis
@@ -1555,6 +1555,11 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             v = Decimal(text)
         except ArithmeticError as e:
             raise Unsupported(f"CAST of {text!r} to {t} is not supported") from e
+        if v.is_finite():
+            # DuckDB rounds the digits past the scale half away from zero.
+            with localcontext() as ctx:
+                ctx.prec = 100
+                v = v.quantize(Decimal(1).scaleb(-t.scale), rounding=ROUND_HALF_UP)
         if not (v.is_finite() and _fits(v, t)):
             raise Unsupported(f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit")
         return E(literal(v, t), t, v)
