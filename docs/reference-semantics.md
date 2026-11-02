@@ -82,7 +82,7 @@ fires, `Rel.eval`'s value is not the answer.
 | `overflow: SILENT` / `SATURATE` | Wrap-around / clamp, when the plan asks. | **Refused** after #255, until options are profile parameters ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241)). On `main`, `SILENT` is accepted and means wrap-around with a warning, and `SATURATE` is refused. |
 | `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
 | Division or `modulus` by zero | An error when `on_division_by_zero` is omitted or `ERROR`; `NULL` only when the plan asks. | ✓ (`Rel.eval` gives NULL there; `verify` reports the error, so that value is never an answer) |
-| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ The parser refuses any `division_type` option, so FLOOR can't be asked for yet. |
+| `modulus` | `division_type` TRUNCATE: the remainder takes the dividend's sign (`Int.tmod`). | ✓ A plan may state `division_type: TRUNCATE`; the parser refuses `FLOOR`, which is not modelled yet. |
 | `avg` of integers | Follows the plan's declared output type: `fp64` is the mean as a double, `i64` is Substrait's integer `avg`, truncated toward zero (`AggFn.iavg`). Any other output type is refused. | ✓ (#209) |
 | `sum` of integers | Returns `i64`; exact, checked at the end (section 3). | ✓ unbounded in `Rel.eval`; check: #255 |
 

@@ -261,6 +261,29 @@ def test_integer_division_by_zero_may_ask_for_null(op):
         assert arrow_rows(run_plan(con, written_plan(plan_json), engine)) == expected, engine
 
 
+@pytest.mark.parametrize(
+    ("division_type", "accepted"), [(None, True), ("TRUNCATE", True), ("FLOOR", False)]
+)
+def test_modulus_takes_an_explicit_truncate(division_type, accepted):
+    """`modulus`'s remainder takes the dividend's sign, `division_type` =
+    TRUNCATE, which a plan may also state; FLOOR is not modelled (#209 R3)."""
+    con = connect()
+    put_table(con, "i", pa.table({"a": pa.array([-7, 7], pa.int64())}))
+    plan = json.loads(substrait_json(con, "SELECT a % 2 AS m FROM i"))
+    if division_type:
+        for node in _dicts(plan):
+            if "scalarFunction" in node:
+                node["scalarFunction"]["options"] = [
+                    {"name": "division_type", "preference": [division_type]}
+                ]
+    code, out, err = run_checker((), json.dumps(plan))
+    if not accepted:
+        assert code != 0 and "division_type" in out + err
+        return
+    assert code == 0, err or out
+    assert lean_values(json.dumps(inline_tables(plan, {"i": [(-7,), (7,)]}))) == [(-1,), (1,)]
+
+
 def _dicts(node):
     if isinstance(node, dict):
         yield node

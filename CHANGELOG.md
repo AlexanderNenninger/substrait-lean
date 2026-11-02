@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### `division_type: TRUNCATE` is accepted
+
+A plan whose `modulus` states `division_type: TRUNCATE` was refused,
+although the remainder already takes the dividend's sign. It is now
+accepted; `FLOOR` is still refused, as the model does not compute it.
+
 ### Isthmus support removed
 
 sverify no longer compiles SQL strings with Isthmus (substrait-java's
