@@ -58,8 +58,8 @@ def _(mo):
 
     ## A real plan
 
-    Let's start with some tables, registered in DataFusion, which compiles
-    the SQL here:
+    Let's start with some tables, and a query in DuckDB's SQL, which
+    sverify's lift turns into a Substrait plan:
     """)
     return
 
@@ -144,9 +144,7 @@ def _(con, mo, sql, substrait_check, substrait_json):
         )
     except Exception as _e:
         plan = None
-        _out_cell = mo.callout(
-            mo.md(f"DataFusion could not plan this query: `{_e}`"), kind="danger"
-        )
+        _out_cell = mo.callout(mo.md(f"The lift could not plan this query: `{_e}`"), kind="danger")
     _out_cell
     return (plan,)
 
@@ -249,7 +247,7 @@ def _(mo):
     plan through `Rel.eval`. This is how the test suite compares the engines
     against the Lean semantics, the definition of correct.
 
-    Here is your query from above, run by Lean and by DataFusion on the same
+    Here is your query from above, run by Lean and by DuckDB on the same
     rows:
     """)
     return
@@ -257,9 +255,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(con, display, json, mo, plan, sql):
-    from sverify.engine import run_sql
     from sverify.engines import table_rows
-    from sverify.testing import canonical, inline_tables, lean_rows
+    from sverify.testing import canonical, duckdb_sql, inline_tables, lean_rows
 
     if plan is None:
         _out = mo.md("*Fix the SQL above first.*")
@@ -268,15 +265,15 @@ def _(con, display, json, mo, plan, sql):
         _data = {t: table_rows(con, t) for t in ("orders", "customers")}
         try:
             _lean = lean_rows(json.dumps(inline_tables(json.loads(plan), _data)))
-            _df = [tuple(r.values()) for r in run_sql(con, sql.value).to_pylist()]
+            _duck = [tuple(r.values()) for r in duckdb_sql(con, sql.value).to_pylist()]
             _out = mo.vstack(
                 [
                     display.side_by_side(
                         display.table(_lean, _cols, title="Lean's Rel.eval"),
-                        display.table(_df, _cols, title="DataFusion"),
+                        display.table(_duck, _cols, title="DuckDB"),
                     ),
                     display.verdict(
-                        canonical(_lean) == canonical(_df),
+                        canonical(_lean) == canonical(_duck),
                         "Same rows ✓ (as bags: order aside)",
                         "Different rows ✗: that would be a bug in the parser or the engine",
                     ),
@@ -296,7 +293,7 @@ def _(mo):
     `--write` prints the plan as Lean understood it, as Substrait JSON
     produced from the `Rel` (`sverify.engines.written_plan` in Python). That is the plan
     the other engines run (chapter 11), so whatever runs is exactly what was
-    checked, not DataFusion's original JSON. Here are the first few hundred
+    checked, not the lift's original JSON. Here are the first few hundred
     characters for your query:
     """)
     return
@@ -322,7 +319,7 @@ def _(mo):
     [coverage table](https://github.com/AlexanderNenninger/substrait-lean#what-is-supported)
     compiles a list of Ibis operations and hands each to the checker: ✓ means
     it is verified (so contracts apply), ✗ that the checker refuses it, – that
-    Ibis or DataFusion fails before there is a plan, and *inc.* that it can
+    Ibis fails before there is a plan, and *inc.* that it can
     also be maintained incrementally. It is regenerated after every change to
     the checker. Refusing is the safe default: a plan outside the model is
     never checked against the wrong semantics.

@@ -43,13 +43,17 @@ Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substr
 | **2** | Polars, Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), not on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
+Work on the Tier 2 and 3 backends is paused until the generated lowerings land
+([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+
 ```bash
 pip install sverify                # or: uv add sverify
 pip install 'sverify[all]'         # with every engine and table format
 ```
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`datafusion` (also compiles SQL strings), `polars`, `spark` (needs Java 17 or
+`datafusion` (an engine to run plans on), `polars`, `spark` (needs Java 17 or
 21), `delta`, `iceberg`, or `all`. Wheels bundle the checker as a small
 native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
 3.12 and later; elsewhere pip builds from the sdist, which needs

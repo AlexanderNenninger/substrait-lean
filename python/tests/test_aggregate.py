@@ -1,12 +1,12 @@
 """Aggregation: `GROUP BY` with `COUNT`, `SUM`, `MIN`, `MAX`, `AVG`.
 
-* Lean's semantics (`aggregateEval`) agrees with DataFusion on random tables,
+* Lean's semantics (`aggregateEval`) agrees with DuckDB on random tables,
   including NULLs, empty tables (a global aggregate still gives one row),
   `DISTINCT` and `FILTER (WHERE …)` measures, and `HAVING`.
 * Polars and DuckDB, which run the plan Lean writes, give Lean's rows, with
   doubles added in Lean's list order, so the same bits.
-* Integer `SUM` wraps around in DataFusion, so it comes with a warning; the
-  engines raise instead.
+* Integer `SUM` wraps around in DataFusion's own SQL, so it comes with a
+  warning; the engines running the plan raise instead.
 * The grouping columns are a key of the result, and contracts see through
   `COUNT`, `MIN`/`MAX` and the sign of a `SUM`.
 """
@@ -25,10 +25,10 @@ import sverify as sv
 from sverify import polars_engine
 from sverify.contracts import decode_double
 from sverify.engine import (
+    collect,
     connect,
     create_table,
     run_plan,
-    run_sql,
     substrait_json,
     written_plan,
 )
@@ -74,7 +74,7 @@ def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
     """DataFusion running `sql`, as an engine."""
     con = connect()
     create_table(con, "t", schema, rows)
-    out = run_sql(con, sql)
+    out = collect(con.datafusion.sql(sql))
     return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
 
 
@@ -91,7 +91,7 @@ def run(sql: str, schema: ibis.Schema, rows: list) -> tuple[list[tuple], list[tu
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(t=t_rows)
-def test_aggregates_match_datafusion(sql, t):
+def test_aggregates_match_duckdb(sql, t):
     got, expected = run(sql, T, t)
     assert canonical(got) == canonical(expected)
 
@@ -111,7 +111,7 @@ def engine_rows(sql: str, schema: ibis.Schema, rows: list, *engines: str) -> dic
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(t=t_rows)
-def test_engines_match_datafusion(sql, t):
+def test_engines_match_duckdb(sql, t):
     out = engine_rows(sql, T, t)
     assert canonical(out["polars"]) == canonical(out["duckdb"])
     assert canonical(out["polars"]) == canonical(duckdb_rows_of(sql, T, t))
@@ -150,7 +150,7 @@ FLOATS = [
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(t=f_rows)
-def test_double_aggregates_match_datafusion(sql, t):
+def test_double_aggregates_match_duckdb(sql, t):
     got, expected = run(sql, F, t)
     # Lean prints tiny doubles (±0.0) as their codes.
     floats = {i for row in expected for i, v in enumerate(row) if isinstance(v, float)}
@@ -200,6 +200,7 @@ def both_infinities(sql: str, rows: list) -> bool:
     return any(math.inf in g and -math.inf in g for g in groups.values())
 
 
+@pytest.mark.backend("datafusion")
 def test_min_and_max_of_doubles_are_refused():
     # DataFusion's grouped MIN of a group of +∞ is the largest finite double.
     expected = datafusion_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)])
@@ -209,6 +210,7 @@ def test_min_and_max_of_doubles_are_refused():
         sv.verify(readings.group_by("k").aggregate(m=readings.x.min()))
 
 
+@pytest.mark.backend("datafusion")
 def test_integer_sum_wraps_around_in_datafusion():
     # 2⁶³ - 1 + 1 wraps to -2⁶³ in DataFusion; Lean's sum is exact, so the
     # checker warns.

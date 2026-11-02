@@ -63,7 +63,7 @@ def both(sql: str, t: list, u: list) -> tuple[list, list]:
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(t=t_rows, u=u_rows)
-def test_bags_match_datafusion(sql, t, u):
+def test_bags_match_duckdb(sql, t, u):
     got, expected = both(sql, t, u)
     assert canonical(got) == canonical(expected)
 

@@ -61,8 +61,8 @@ REFUSED: dict[str, dict[str, str]] = {
     "trigonometry": LIBM,
     "shifts": {"snowflake": "not 64-bit"},
 }
-NO_DATAFUSION_SQL: dict[str, str] = {
-    # Ibis writes `LOG(x)` and `LOG(2, x)`, which DataFusion computes as
-    # `ln x / ln b`, not as libm's `log10` and `log2` (the last bit may differ).
-    "log10, log2": "Ibis's LOG(x) and LOG(2, x) are not libm's log10 and log2",
+
+NO_DUCKDB_SQL = {
+    "sign": "DuckDB's sign of NaN is 0, the plan's NaN",
+    "shifts": "DuckDB raises on a left shift of a negative number",
 }

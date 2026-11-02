@@ -70,9 +70,16 @@ Not every engine is held to the same standard yet ([#211](https://github.com/Ale
 | **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved; Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: sverify writes Snowflake SQL and checks it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), but not yet on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
-SQL strings are compiled to Substrait by DataFusion today. That is planned to
-change: SQL will go through sverify's own SQLGlot frontend ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231)),
-and DataFusion will be an execution backend only ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
+Work on the Tier 2 and 3 backends is paused until the generated lowerings land
+([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)); the
+tests check them as they are and use DuckDB as their oracle.
+
+SQL strings are DuckDB's SQL, compiled to Substrait by sverify's own SQLGlot
+lift ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239)),
+with DuckDB's meaning (`semantics="duckdb"`, the default) or the reference's
+(`semantics="reference"`). DataFusion is an optional execution backend only
+([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
 
 ## What it does for you
 
@@ -454,9 +461,8 @@ c2 = orders.pipe(
 large = orders.pipe(lambda t: t.filter(_.amount > 20))
 ```
 
-SQL is DataFusion's dialect by default. With `dialect="duckdb"`, sverify reads
-DuckDB's SQL with its own lift (SQLGlot, #239) and writes every choice DuckDB's
-SQL leaves implicit into the plan: `/` divides as doubles, NULLs sort last, an
+SQL is DuckDB's dialect. sverify reads it with its own lift (SQLGlot, #239)
+and writes every choice DuckDB's SQL leaves implicit into the plan: `/` divides as doubles, NULLs sort last, an
 integer literal has the narrowest type that holds it. `semantics="duckdb"`
 (the default) means what DuckDB computes; `semantics="reference"` means what
 sverify's reference computes where they differ, so a double divided by zero
@@ -885,8 +891,8 @@ Columns are referred to by position (`$0` is the first column), which is how
 Substrait works.
 
 `substrait-check plan.json` reads a Substrait plan in protobuf-JSON form, as
-produced by `sverify`'s Ibis producer or DataFusion's Substrait producer
-(Substrait 0.77). It then:
+produced by `sverify`'s Ibis producer or its SQL lift, or by another
+Substrait producer such as DataFusion's (Substrait 0.77). It then:
 
 1. translates it into the formal `Rel` model, or rejects anything outside the fragment (exit 1);
 2. decides `Rel.WF` with `checkWF`, which is proven equivalent (`checkWF_iff`), and
@@ -988,8 +994,7 @@ the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
 **DataFusion is optional** (`pip install 'sverify[datafusion]'`): it runs plans
-with `engine="datafusion"` and compiles SQL strings, and nothing else needs
-it
+with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
 51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
 registered there as record batches, not datasets: DataFusion pushes filters
@@ -1018,7 +1023,7 @@ engine is made to agree:
   inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
   `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
   in the same plan, follows DataFusion's order; and so does SQL run on
-  DataFusion directly (`run_sql`, a query on `con.datafusion`).
+  DataFusion directly (a query on `con.datafusion`).
 
 #### The Ibis producer
 
@@ -1026,29 +1031,28 @@ Ibis expressions become Substrait directly, without SQL:
 `sverify/ibis_substrait` is [ibis-substrait](https://github.com/ibis-project/ibis-substrait)
 (Apache 2.0, last released for Ibis 9), vendored and ported to Ibis 12. It
 writes the functions and encodings the Lean parser reads, and each operation
-means what Ibis's own DataFusion SQL compiler makes of it, with Ibis's type
-promotions written as explicit casts. That makes plans typed: `qty > amount`
-compares as doubles, where DataFusion's producer (from its unanalysed plan)
-left an integer next to a double's code (#16). Upstream's mistakes are fixed
+means what [`docs/ibis-semantics.md`](docs/ibis-semantics.md) says, with Ibis's
+type promotions written as explicit casts. That makes plans typed: `qty >
+amount` compares as doubles, where DataFusion's producer (from its unanalysed
+plan) once left an integer next to a double's code (#16). Upstream's mistakes are fixed
 (integer `/` divided integers, `where=` filters were dropped, sorts were always
 `NULLS FIRST`, promotions could cast a double down to an integer, timestamp
 literals were read in local time), and anything outside the model raises
 `Unsupported`. `python/tests/test_ibis_substrait.py` checks every verified
-coverage case against DataFusion running Ibis's SQL on random tables.
+coverage case against DuckDB running Ibis's own SQL on random tables, except
+where DuckDB's SQL computes something else (`coverage.NO_DUCKDB_SQL`).
 
 A few operations have no node of their own. Memtables and `ibis.literal(…).as_table()`
 become virtual tables, table-level `fill_null` a `COALESCE` per column (as Ibis
 rewrites it), and a sort by an expression projects the key, sorts and drops it.
-SQL strings (`t.alias("v").sql(…)`) are compiled by DataFusion's Substrait
-producer and spliced in, with reads of the alias replaced by its plan.
+SQL strings (`t.alias("v").sql(…)`) are compiled by sverify's SQL lift and
+spliced in, with reads of the alias replaced by its plan.
 `INTERSECT ALL` and `EXCEPT ALL` number the copies of each row
 (`ROW_NUMBER() OVER (PARTITION BY` every column`)`) and semi- or anti-join on the
 rows and their numbers, which keeps min(m, n) or max(m − n, 0) copies: SQL's
-meaning, as DuckDB computes it. DataFusion 51 plans them as a plain semi and
-anti join, keeping or dropping every copy (`test_datafusion_quirks.py`), so
-those two cases are compared with DuckDB running Ibis's SQL instead
-(`coverage.DATAFUSION_SQL`). Ibis writes a `LIMIT` that is not an integer as a
-subquery over the table, which DataFusion cannot run, so it is refused.
+meaning, as DuckDB computes it (DataFusion 51's own SQL plans them as a plain
+semi and anti join, keeping or dropping every copy). Ibis writes a `LIMIT`
+that is not an integer as a subquery over the table, which is refused.
 
 Subqueries: a correlated `[NOT] EXISTS` in a filter becomes a semi (anti) join
 on the subquery's condition, as DataFusion decorrelates it; other correlated
@@ -1059,12 +1063,11 @@ because DataFusion fails when one returns several rows, the checker accepts it
 only where `Rel.keys` proves at most one row (an aggregate without groups,
 `LIMIT 1`); `x IN (subquery)` outside a filter's conjuncts is a left join with
 the subquery's distinct values plus a count of its `NULL`s, which gives SQL's
-three-valued answer; `EXISTS` compares a `COUNT(*)` with 0. DataFusion 51
-cannot run `IN` or `EXISTS` subqueries in a projection, and its
-`NOT IN (subquery)` ignores the subquery's `NULL`s, so those cases are
-compared with DuckDB running Ibis's SQL (`coverage.DATAFUSION_SQL`).
+three-valued answer; `EXISTS` compares a `COUNT(*)` with 0. (DataFusion 51's
+own SQL cannot run `IN` or `EXISTS` subqueries in a projection, and its
+`NOT IN (subquery)` ignores the subquery's `NULL`s.)
 
-#### SQL producers
+#### The SQL lift
 
 SQL strings are DuckDB's SQL, and go through sverify's own lift
 (`sverify.sql_lift`): SQLGlot parses the query and resolves its names against
@@ -1150,8 +1153,8 @@ keys, three-valued filters, NULL and NaN order in windows, overflow, and each ru
 incremental-view tests run on both engines.
 
 `python/tests/test_backends.py` runs every Ibis operation the coverage
-harness verifies on random tables, on DataFusion, Polars and DuckDB, and
-generates its Snowflake SQL and runs its Spark SQL on a local Spark session; `test_text.py` and `test_time.py` run their edge
+harness verifies on random tables, on Polars and DuckDB against DuckDB running
+Ibis's own SQL, and generates its Snowflake SQL and runs its Spark SQL on a local Spark session; `test_text.py` and `test_time.py` run their edge
 cases on all three engines.
 
 Known gaps: the writer gives virtual tables placeholder `i64` column types and
@@ -1520,8 +1523,8 @@ which does not block a proof.
 
 Trusted: *when* DataFusion evaluates an expression (`Rel.HasIssue`: `CASE` is lazy,
 `AND`/`OR` are not, filter and join conditions may run before the filters below
-them). `python/tests/test_numeric.py` runs DataFusion on random data and checks it
-only fails where an error was reported. `BIGINT` and timestamp columns are taken to
+them). `python/tests/test_numeric.py` runs the plans on DataFusion and DuckDB on
+random data and checks they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
 hold 64-bit values (from the schema); arithmetic on 32-bit columns is checked
 against 64-bit limits, so its overflow is not caught.
 
@@ -1622,7 +1625,7 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   `FULL OUTER JOIN` becomes the left join plus the anti join of the right side,
   padded with NULLs; `x IN (subquery)` in a filter becomes a semi join on `=`;
   `UNION` is `DISTINCT` of `UNION ALL`; `IS NOT DISTINCT FROM` becomes a
-  conditional. The rewrites are trusted code, checked against DataFusion by
+  conditional. The rewrites are trusted code, checked against DuckDB by
   `python/tests/test_rewrites.py` and `python/tests/test_relations.py`. (`ABS` of the smallest `BIGINT` fails in
   DataFusion; here it is reported as an overflow.)
 * **Overflow is an error at the declared width.** `Rel.eval` computes exact
@@ -1631,7 +1634,8 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   value in the model is `NULL`.
 * **Strings are Unicode scalar values.** `substring`, `strpos`, `LIKE`, `btrim`, `||`,
   `character_length`, `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` are
-  computed exactly, checked against DataFusion by `python/tests/test_text.py`; a
+  computed exactly, checked against DuckDB (and Rust's string functions, as
+  DataFusion computes them) by `python/tests/test_text.py`; a
   `repeat` of more than 2³¹ - 1 bytes is an error, as in DataFusion. `UPPER`, `LOWER`,
   `ILIKE` and regular expressions are black boxes (`opaque`): no proof depends on what
   they compute, and Lean's evaluator handles only ASCII case and no regular
@@ -1653,7 +1657,7 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   `^` only (its shifts are not 64-bit, and its libm is not documented). Checked by
   `python/tests/test_math.py`.
 * **Timestamps are microseconds (UTC).** `date_part` and `date_trunc` are computed
-  exactly, checked against DataFusion by `python/tests/test_time.py`, including at
+  exactly, checked against DuckDB and DataFusion by `python/tests/test_time.py`, including at
   the ends of the ranges where DataFusion stops being exact. Dates (`DATE`) are not
   supported by them yet.
 * **Integer `//` from Ibis is exact.** Ibis compiles it through doubles

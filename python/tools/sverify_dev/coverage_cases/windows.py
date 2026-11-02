@@ -153,8 +153,3 @@ TIE_FREE = {
     "last, nth",
     "max, count over frame",
 }
-
-NO_DATAFUSION_SQL = {
-    # "frame offsets for RANGE must be …": Ibis writes the bound as a cast.
-    "rolling sum (interval)": "refuses Ibis's interval frame",
-}

@@ -3,7 +3,7 @@ Lean model's own result. The fallback of the `query-semantics` skill, for when
 the repository's static sources don't settle a question.
 
 Frontends (query -> Substrait):
-  datafusion   DataFusion's SQL producer (SQL strings)
+  lift         sverify's SQLGlot lift of DuckDB's SQL (SQL strings)
   ibis         sverify's vendored Ibis producer (`--ibis`)
 Each plan goes through `substrait-check`: verified (with Lean's `Rel` and
 `Rel.eval` rows on the given tables) or the parser's refusal.
@@ -178,9 +178,9 @@ def frontends(con: eng.Connection, sql: str | None, expr: Any) -> dict[str, tupl
     out: dict[str, tuple[str, str]] = {}
     if sql is not None:
         try:
-            out["datafusion"] = (eng.substrait_json(con, sql), "plan")
+            out["lift"] = (eng.substrait_json(con, sql), "plan")
         except Exception as e:  # noqa: BLE001
-            out["datafusion"] = ("", f"no plan: {short(e)}")
+            out["lift"] = ("", f"no plan: {short(e)}")
     if expr is not None:
         from sverify.ibis_substrait import to_substrait_json
 

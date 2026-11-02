@@ -21,7 +21,7 @@ that happened to be there.
 
 ```bash
 pip install sverify                       # core: DuckDB, contracts, views
-pip install 'sverify[datafusion]'         # also SQL strings, and DataFusion as an engine
+pip install 'sverify[datafusion]'         # DataFusion as an engine (SQL needs no extra)
 pip install 'sverify[all]'                # every engine and table format
 ```
 

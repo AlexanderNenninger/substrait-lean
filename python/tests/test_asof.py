@@ -74,7 +74,7 @@ def test_asof_join_matches_reference(how, left, right):
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(left=keyed(st.integers(0, 9)), right=keyed(st.integers(0, 9)))
-def test_lean_semantics_of_asof_match_datafusion(how, left, right):
+def test_lean_semantics_of_asof_match_duckdb(how, left, right):
     con = connect()
     acc, gyr = tables(con, left, right)
     sql = to_sql(sv.asof_join(acc, gyr, on="ts", by="device", tolerance=3, how=how))

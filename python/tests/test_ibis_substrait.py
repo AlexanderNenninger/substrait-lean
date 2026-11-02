@@ -2,9 +2,9 @@
 
 * Every Ibis operation the coverage table verifies compiles to a plan the
   checker accepts and writes back unchanged.
-* Lean's semantics of that plan agrees with DataFusion running Ibis's own
-  SQL for the same expression, on random tables: the producer means what
-  Ibis means.
+* Lean's semantics of that plan agrees with DuckDB running Ibis's own SQL
+  for the same expression, on random tables: the producer means what Ibis
+  means.
 * Upstream ibis-substrait's mistakes stay fixed.
 """
 
@@ -21,14 +21,13 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, put_table, run_sql, to_sql
+from sverify.engine import connect, create_table, put_table
 from sverify.ibis_substrait import Unsupported, to_substrait
-from sverify.testing import EPOCH, canonical, inline_tables, lean_values
+from sverify.testing import EPOCH, canonical, duckdb_ibis, inline_tables, lean_values
 from sverify_dev.coverage import (
     CASES,
-    DATAFUSION_SQL,
     MEMTABLES,
-    NO_DATAFUSION_SQL,
+    NO_DUCKDB_SQL,
     UNORDERED_LISTS,
     L,
     T,
@@ -36,16 +35,16 @@ from sverify_dev.coverage import (
 )
 
 VERIFIED = [c for c in CASES if c.expected == "verified"]
-#: Known gaps between Lean and DataFusion, fixed elsewhere.
+#: Known gaps between Lean and DuckDB, fixed elsewhere.
 KNOWN_GAPS: dict[str, str] = {}
 #: Regular expressions are black boxes in Lean's semantics: not evaluated.
 OPAQUE = {"re_search"}
 #: LIMIT without a total order keeps whichever rows come first.
 UNORDERED = {"limit", "limit with offset", "order_by + limit"}
 #: Functions that raise outside their domains (`Issue.domain`, Lean: NULL),
-#: where DataFusion returns NaN, ±inf or a wrapped shift instead, which an
+#: where DuckDB returns NaN, ±inf or a wrapped shift instead, which an
 #: error allows: compared row by row, Lean's NULL matching anything.
-DOMAIN_ERRORS = {"sqrt", "ln", "log(base)", "trigonometry", "shifts"}
+DOMAIN_ERRORS = {"sqrt", "ln", "log10, log2", "log(base)", "trigonometry", "shifts"}
 
 names = st.sampled_from(["ada", "bob", "cy", None])
 amounts = st.one_of(st.none(), st.sampled_from([0.5, -1.5, 2.25, 3.0, 10.0]))
@@ -77,7 +76,7 @@ l_rows = st.lists(st.tuples(small, st.one_of(st.none(), st.lists(small, max_size
 def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]:
     """Values as Python values of the expression's Ibis types, doubles rounded
     (Lean prints six decimals). Lean writes small doubles, timestamps and
-    dates as integer codes; DataFusion may return other types than Ibis
+    dates as integer codes; an engine may return other types than Ibis
     declares (an integer `POW`, a timestamp for `ts.date()`, decimals)."""
 
     def value(v: object, t: idt.DataType) -> object:
@@ -86,7 +85,7 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
         if isinstance(v, decimal.Decimal):
             v = int(v) if v == v.to_integral_value() else float(v)
         if t.is_integer() and isinstance(v, float) and v.is_integer():
-            # DataFusion's `signum` of an integer is a double.
+            # An engine's `signum` of an integer may be a double.
             v = int(v)
         if t.is_floating():
             x = decode_double(v) if lean and isinstance(v, int) else float(cast(float, v))
@@ -117,7 +116,7 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
         if c.label in KNOWN_GAPS
         else c
         for c in VERIFIED
-        if c.label not in OPAQUE and c.label not in NO_DATAFUSION_SQL
+        if c.label not in OPAQUE and c.label not in NO_DUCKDB_SQL
     ],
     ids=lambda c: c.label,
 )
@@ -128,11 +127,11 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 def test_plans_mean_what_ibis_means(case, t, u, lr):
     if case.label in DOMAIN_ERRORS:
         for row in t:
-            got, expected = lean_and_datafusion(case, [row], u, lr)
+            got, expected = lean_and_duckdb(case, [row], u, lr)
             for g, e in zip(got, expected, strict=True):
                 assert all(a is None or a == b for a, b in zip(g, e, strict=True)), (g, e)
         return
-    got, expected = lean_and_datafusion(case, t, u, lr)
+    got, expected = lean_and_duckdb(case, t, u, lr)
     if case.label in UNORDERED_LISTS:
         # The order inside each list is the engine's: compare them as bags.
         def bags(rs: list[tuple]) -> list[tuple]:
@@ -145,8 +144,8 @@ def test_plans_mean_what_ibis_means(case, t, u, lr):
         assert canonical(got) == canonical(expected)
 
 
-def lean_and_datafusion(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
-    """Lean's rows of the case's plan, and DataFusion's of Ibis's SQL."""
+def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
+    """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL."""
     expr = case.build()
     con = connect()
     create_table(con, "t", T.schema(), t)
@@ -154,11 +153,7 @@ def lean_and_datafusion(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
     create_table(con, "l", L.schema(), lr)
     for name, table in MEMTABLES.items():
         put_table(con, name, table)
-    if case.label in DATAFUSION_SQL:
-        # DataFusion means something else: SQL's meaning, as DuckDB computes it.
-        out = con.ibis.con.sql(ibis.to_sql(expr, dialect="duckdb")).to_arrow_table()
-    else:
-        out = run_sql(con, to_sql(expr))
+    out = duckdb_ibis(con, expr)
     schema = expr.schema()
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     expected = normalize(rows, schema, lean=False)
@@ -210,14 +205,14 @@ def test_sort_keys_keep_their_null_placement():
 @given(t=t_rows())
 def test_mixed_comparisons_promote_the_integer(t):
     """`qty > amount` compares as doubles (the DataFusion-produced plan of
-    Ibis's SQL compared an integer with a double's code: #16)."""
+    Ibis's SQL once compared an integer with a double's code: #16)."""
     expr = T.filter(T.qty > T.amount).select("id", "qty", "amount")
     cond = root(expr)["project"]["input"]["filter"]["condition"]
     left = cond["scalarFunction"]["arguments"][0]["value"]
     assert left["cast"]["type"] == {"fp64": {"nullability": "NULLABILITY_NULLABLE"}}
     con = connect()
     create_table(con, "t", T.schema(), t)
-    out = run_sql(con, to_sql(expr))
+    out = duckdb_ibis(con, expr)
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     plan = inline_tables(to_substrait(expr), {"t": t})
     got = lean_values(json.dumps(plan))

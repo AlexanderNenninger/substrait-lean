@@ -26,12 +26,10 @@ case label:
   of the reason (`coverage_cases._common` explains the shared ones);
 * `TIE_FREE`: of those, the cases Snowflake and Spark run when the caller
   promises no ties;
-* `NO_DATAFUSION_SQL`: verified cases whose Ibis SQL DataFusion does not run,
-  or runs wrongly; the tests check them against the other engines, Lean and
-  Python instead;
-* `DATAFUSION_SQL`: verified cases where DataFusion running Ibis's own SQL
-  means something else than the plan (and SQL), or fails; the tests compare
-  them with DuckDB running Ibis's DuckDB SQL instead;
+* `NO_DUCKDB_SQL`: verified cases whose Ibis SQL DuckDB does not run, or
+  computes otherwise than the plan; the tests compare every other verified
+  case with DuckDB running Ibis's own DuckDB SQL, and these with the other
+  engines, Lean and Python instead;
 * `UNORDERED_LISTS`: lists built from rows in an order the plan does not fix,
   compared as bags.
 
@@ -58,8 +56,7 @@ from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
     CASES,
-    DATAFUSION_SQL,
-    NO_DATAFUSION_SQL,
+    NO_DUCKDB_SQL,
     REFUSED,
     TIE_FREE,
     UNORDERED_LISTS,
@@ -68,10 +65,9 @@ from sverify_dev.coverage_cases._common import TABLES, Case, L, M, Status, T, U
 
 __all__ = [
     "CASES",
-    "DATAFUSION_SQL",
     "ENGINES",
     "MEMTABLES",
-    "NO_DATAFUSION_SQL",
+    "NO_DUCKDB_SQL",
     "REFUSED",
     "TABLES",
     "TIE_FREE",
@@ -159,7 +155,7 @@ def table(rs: list[Result]) -> str:
     n = sum(r.status == "verified" for r in rs)
     lines = [
         f"{n} of {len(rs)} probed Ibis operations reach the checker "
-        "(✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; "
+        "(✓ verified, ✗ rejected by the checker, – fails in Ibis; "
         "*inc.* marks incremental maintenance).",
         "",
         "| Area | Operations |",

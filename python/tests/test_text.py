@@ -1,12 +1,15 @@
 """String functions, and the regular expressions that certainly compile.
 
 * Lean's semantics of `substring`, `strpos`, `starts_with`, `ends_with`,
-  `LIKE`, `btrim`/`ltrim`/`rtrim`, `||` and `character_length` agrees with
-  DataFusion (`SubstraitLean/Text.lean`), and so do Polars and DuckDB, which
-  run the plan Lean writes (also `UPPER`, `LOWER` and regular expressions,
-  black boxes in Lean, where DuckDB raises on non-ASCII text instead, #70).
+  `btrim`/`ltrim`/`rtrim`, `||` and `character_length` agrees with DuckDB
+  (`SubstraitLean/Text.lean`), and of `LIKE` with a backslash escape with
+  DataFusion; so do Polars and DuckDB, which run the plan Lean writes (also
+  `UPPER`, `LOWER` and regular expressions, black boxes in Lean pinned to
+  Rust's strings as DataFusion computes them, where DuckDB raises on
+  non-ASCII text instead, #70).
 * So do `repeat`, `reverse`, `replace`, `ascii` and `levenshtein` (#49), on
-  DataFusion's edge cases: negative counts, empty patterns, combining marks.
+  DataFusion's (Rust's) edge cases: negative counts, empty patterns,
+  combining marks.
   `ILIKE`, a black box, agrees on ASCII text, and Polars, with the `regex`
   crate's case folding, agrees on all text.
 * Every pattern `Text.simpleRegex` accepts compiles in DataFusion: this tests
@@ -27,19 +30,20 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify.engine import canonical as canonical_doubles
 from sverify.engine import (
+    collect,
     connect,
     create_table,
     put_table,
     run_plan,
-    run_sql,
     substrait_json,
     to_sql,
     written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import Unsupported
-from sverify.testing import canonical, inline_tables, lean_values
+from sverify.testing import canonical, duckdb_ibis, duckdb_sql, inline_tables, lean_values
 
 R = ibis.schema({"s": "string", "t": "string", "a": "int64"})
 
@@ -63,19 +67,34 @@ PLANS: dict[str, Any] = {
 }
 
 
-def datafusion_sql(sql: str) -> str:
-    """`sql` as DataFusion computes the reference: its `substring` puts a
-    negative start left of the beginning, while the reference counts it from
-    the end (`Text.substrWrap`, #209)."""
-    if callable(PLANS.get(sql)):
-        return to_sql(PLANS[sql](ibis.table(R, name="r")))
-    wrapped = "CASE WHEN a < 0 THEN a + character_length(s) + 1 ELSE a END"
-    return sql.replace("substring(s, a", f"substring(s, {wrapped}")
+#: The queries DuckDB is the oracle for. Not LIKE with a backslash escape
+#: (written in Ibis): DuckDB's LIKE has no escape character unless one is
+#: named, and with one it raises on a column pattern that ends in it.
+DUCKDB_ORACLE = [q for q in QUERIES if q != QUERIES[2]]
+
+
+def oracle(con, sql: str) -> list[tuple]:
+    """The rows `sql` should give: DuckDB's for the queries the lift reads as
+    DuckDB's SQL (`DUCKDB_ORACLE`, or Ibis's DuckDB SQL for those written in
+    Ibis); DataFusion's for the rest, whose meaning sverify pins to Rust's
+    strings (`str`, the `regex` crate), which DataFusion and Polars use."""
+    if sql in DUCKDB_ORACLE:
+        source = PLANS.get(sql, sql)
+        if callable(source):
+            out = duckdb_ibis(con, source(ibis.table(R, name="r")))
+        else:
+            out = duckdb_sql(con, source)
+    else:
+        source = PLANS.get(sql, sql)
+        if callable(source):
+            source = to_sql(source(ibis.table(R, name="r")))
+        out = canonical_doubles(collect(con.datafusion.sql(source)))
+    return [tuple(x.values()) for x in out.to_pylist()]
 
 
 def plan_of(con, sql: str) -> str:
-    """The plan of a query here (DataFusion's SQL): the lift's of its DuckDB
-    SQL, or the Ibis producer's where DuckDB's SQL reads it otherwise (`PLANS`)."""
+    """The plan of a query here: the lift's of its DuckDB SQL, or the Ibis
+    producer's where DuckDB's SQL reads it otherwise (`PLANS`)."""
     source = PLANS.get(sql, sql)
     if callable(source):
         return to_substrait_json(source(con.table("r")))
@@ -87,10 +106,10 @@ def plan_of(con, sql: str) -> str:
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
-def test_string_semantics_match_datafusion(sql, rows):
+def test_string_semantics_match_the_oracle(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = [tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist()]
+    expected = oracle(con, sql)
     plan = inline_tables(json.loads(plan_of(con, sql)), {"r": rows})
     assert canonical(lean_values(json.dumps(plan))) == canonical(expected)
 
@@ -111,10 +130,10 @@ PLANS[BLACK_BOXES[1]] = lambda r: r.select(
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(text, text, st.one_of(st.none(), st.integers(-3, 8))), max_size=6))
-def test_engines_match_datafusion(engine, sql, rows):
+def test_engines_match_the_oracle(engine, sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist())
+    expected = canonical(oracle(con, sql))
     plan = written_plan(plan_of(con, sql))
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
     if engine == "duckdb" and sql == BLACK_BOXES[0] and non_ascii:
@@ -181,7 +200,7 @@ def lean_rows(con, sql: str, rows: list[tuple]) -> list:
 def test_repeat_reverse_replace_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(sql)).to_pylist())
+    expected = canonical(oracle(con, sql))
     assert lean_rows(con, sql, rows) == expected
     plan = written_plan(plan_of(con, sql))
     assert (
@@ -213,7 +232,7 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 def test_ilike_matches_datafusion(rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in run_sql(con, datafusion_sql(ILIKE)).to_pylist())
+    expected = canonical(oracle(con, ILIKE))
     plan = written_plan(plan_of(con, ILIKE))
     assert (
         canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected
@@ -238,7 +257,7 @@ def test_repeat_beyond_two_gigabytes_fails_everywhere():
     create_table(con, "r", R, rows)
     sql = "SELECT repeat(s, a) AS r FROM r"
     with pytest.raises(Exception, match="string size overflow on repeat"):
-        run_sql(con, sql)
+        collect(con.datafusion.sql(sql))
     plan = written_plan(substrait_json(con, sql))
     with pytest.raises(Exception, match="repeat beyond 2\\^31 - 1 bytes"):
         run_plan(con, plan, "duckdb")
@@ -277,7 +296,7 @@ def test_patterns_said_to_compile_do(pattern):
         return
     con = connect()
     put_table(con, "t", pa.table({"name": ["abc"], "n": [1]}))
-    run_sql(con, to_sql(T.filter(T.name.re_search(pattern))))
+    collect(con.datafusion.sql(to_sql(T.filter(T.name.re_search(pattern)))))
 
 
 def test_regex_checks():

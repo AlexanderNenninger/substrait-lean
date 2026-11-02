@@ -22,10 +22,11 @@ import pytest
 
 import sverify as sv
 from sverify.engine import (
+    canonical,
+    collect,
     connect,
     put_table,
     run_plan,
-    run_sql,
     run_substrait_json,
     substrait_json,
 )
@@ -280,12 +281,12 @@ def test_integer_sum_fails_instead_of_wrapping(con):
 def test_union_batches_differ_in_nullability(con, sql, expected):
     """A `UNION ALL` gives record batches whose schemas differ in nullability
     (and, for a recursive CTE, in column names), which DataFusion's own
-    `to_arrow_table()` fails to concatenate; `run_sql` (`engine.collect`)
-    reconciles them, here and for plans (`run_substrait_json`)."""
+    `to_arrow_table()` fails to concatenate; `engine.collect` reconciles
+    them, here and for plans (`run_substrait_json`)."""
     with pytest.raises(Exception, match="Schema at index 1 was different"):
         con.datafusion.sql(sql).to_arrow_table()
     expected = sorted([(v,) for v in expected], key=str)
-    assert sorted(arrow_rows(run_sql(con, sql)), key=str) == expected
+    assert sorted(arrow_rows(canonical(collect(con.datafusion.sql(sql)))), key=str) == expected
     if "RECURSIVE" not in sql:  # the lift has no recursive queries
         plan = substrait_json(con, sql)
         assert sorted(arrow_rows(run_substrait_json(con, plan)), key=str) == expected

@@ -89,11 +89,3 @@ REFUSED: dict[str, dict[str, str]] = {
     },
     "scalar subquery, one row": NO_ROW_ORDER,
 }
-
-DATAFUSION_SQL = {
-    "intersect all": "DataFusion 51 plans INTERSECT ALL as a semi join: every left copy stays",
-    "difference all": "DataFusion 51 plans EXCEPT ALL as an anti join: every left copy goes",
-    "isin subquery in select": "DataFusion 51 cannot run IN (subquery) outside a filter",
-    "exists, uncorrelated": "DataFusion 51 cannot run EXISTS (subquery) outside a filter",
-    "notin subquery": "DataFusion 51's NOT IN (subquery) ignores NULLs in the subquery",
-}

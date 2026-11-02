@@ -70,8 +70,8 @@ def _():
 
     import ibis
     import sverify as sv
-    from sverify.engine import run_sql
     from sverify.engines import create_table, table_rows
+    from sverify.testing import duckdb_ibis, duckdb_sql
 
     con = sv.connect()
     create_table(
@@ -80,13 +80,13 @@ def _():
         ibis.schema({"v": "float64"}),
         [(1.5,), (math.nan,), (-1.0,), (0.0,), (-0.0,), (math.inf,), (-9999.0,), (None,)],
     )
-    return con, create_table, dt, ibis, json, run_sql, sv, table_rows
+    return con, create_table, dt, duckdb_ibis, duckdb_sql, ibis, json, sv, table_rows
 
 
 @app.cell(hide_code=True)
-def _(con, display, run_sql):
+def _(con, display, duckdb_sql):
     display.arrow(
-        run_sql(
+        duckdb_sql(
             con,
             "select v, v > 0 as positive, v = 'NaN'::double as equals_nan,"
             " v < 'Infinity'::double as below_inf from m order by v",
@@ -243,16 +243,15 @@ def _(mo):
 
     Strings are sequences of Unicode characters in the model.
     `substring`, `strpos`, `character_length`, `trim`, `||` and `LIKE` are
-    computed exactly, and the test suite checks them against DataFusion on
-    random strings. Here is Lean's `Rel.eval` next to DataFusion on some
-    awkward words:
+    computed exactly, and the test suite checks them against DuckDB on
+    random strings. Here is Lean's `Rel.eval` next to DuckDB, running Ibis's
+    own SQL, on some awkward words:
     """)
     return
 
 
 @app.cell
-def _(con, create_table, display, ibis, json, run_sql, table_rows):
-    from sverify.engine import to_sql
+def _(con, create_table, display, duckdb_ibis, ibis, json, table_rows):
     from sverify.ibis_substrait import to_substrait_json
     from sverify.testing import inline_tables, lean_rows
 
@@ -273,7 +272,7 @@ def _(con, create_table, display, ibis, json, run_sql, table_rows):
     _lean = lean_rows(json.dumps(inline_tables(_plan, {"w": table_rows(con, "w")})))
     display.side_by_side(
         display.table(_lean, _cols, title="Lean"),
-        display.arrow(run_sql(con, to_sql(_words)), title="DataFusion"),
+        display.arrow(duckdb_ibis(con, _words), title="DuckDB"),
     )
     return
 

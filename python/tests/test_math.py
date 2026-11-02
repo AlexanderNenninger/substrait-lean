@@ -4,14 +4,16 @@
 Lean computes `SQRT`, `LN`, `SIN`, … with native floats (C's `libm`) and the
 bitwise operations in 64-bit two's complement. Inside each function's domain,
 on edge values (±0, ±inf, NaN, subnormals, huge values, the extreme integers),
-Lean agrees with DataFusion running Ibis's own SQL (to the six decimals Lean
-prints), and Polars and DuckDB, running the plan Lean writes back, agree with
-DataFusion bit for bit.
+Lean agrees with DuckDB running Ibis's own SQL (to the six decimals Lean
+prints), except where DuckDB's own semantics differ (`NATIVE_DIFFERS`), and
+Polars and DuckDB, running the plan Lean writes back, agree with it bit for
+bit.
 
 Outside a domain (`sqrt` of a negative, `ln 0`, `asin 2`, `atan2(0, 0)`, a
 shift by 64) the reference raises (Substrait's `on_domain_error` = ERROR):
-the checker reports a domain error, and Polars and DuckDB raise. DataFusion
-returns NaN, -inf or a wrapped shift there instead, which an error allows.
+the checker reports a domain error, and Polars and DuckDB raise. DataFusion,
+running the plan, returns NaN, -inf or a wrapped shift there instead, which an
+error allows.
 """
 
 import json
@@ -25,9 +27,9 @@ import pytest
 import sverify as sv
 from sverify import polars_engine
 from sverify.contracts import decode_double
-from sverify.engine import connect, create_table, run_plan, run_sql, to_sql, written_plan
+from sverify.engine import connect, create_table, run_plan, written_plan
 from sverify.ibis_substrait import to_substrait, to_substrait_json
-from sverify.testing import inline_tables, lean_values
+from sverify.testing import duckdb_ibis, inline_tables, lean_values
 
 X = ibis.table(
     {
@@ -90,10 +92,18 @@ EXPRS: dict[str, Any] = {
 }
 
 
+#: Where DuckDB's own SQL differs from the reference, so Lean's rows are what
+#: the translators must give.
+NATIVE_DIFFERS = {
+    "sign, isinf": "DuckDB's sign of NaN is 0, the reference's NaN",
+    "shifts": "DuckDB raises on a shift that leaves 64 bits, the reference wraps",
+}
+
+
 def normalize(v: object, t: Any, lean: bool) -> object:
     """Lean writes doubles as codes or decimals; NaN as a string so it equals
-    itself. Ibis types `SIGN` of an integer as an integer, DataFusion
-    returns a double."""
+    itself. Ibis types `SIGN` of an integer as an integer, an engine may
+    return a double."""
     if v is None:
         return None
     if t.is_floating():
@@ -105,7 +115,7 @@ def normalize(v: object, t: Any, lean: bool) -> object:
 
 
 def table_rows(expr: Any, rs: list[tuple], lean: bool) -> list[tuple]:
-    """In the order of the key `k`: DataFusion may return rows in any order."""
+    """In the order of the key `k`: an engine may return rows in any order."""
     types = list(expr.schema().types)
     out = [tuple(normalize(v, t, lean) for v, t in zip(r, types, strict=True)) for r in rs]
     return sorted(out, key=lambda r: cast(int, r[0]))
@@ -126,12 +136,15 @@ def con():
 
 
 @pytest.mark.parametrize("label", EXPRS)
-def test_lean_agrees_with_datafusion_and_engines(con, label):
+def test_lean_agrees_with_duckdb_and_engines(con, label):
     expr = EXPRS[label]()
-    out = run_sql(con, to_sql(expr))
-    expected = table_rows(expr, [tuple(r.values()) for r in out.to_pylist()], lean=False)
     lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"x": rows()})))
     got = table_rows(expr, lean, lean=True)
+    if label in NATIVE_DIFFERS:
+        expected = got
+    else:
+        out = duckdb_ibis(con, expr)
+        expected = table_rows(expr, [tuple(r.values()) for r in out.to_pylist()], lean=False)
     assert len(got) == len(expected)
     for g, e in zip(got, expected, strict=True):
         assert all(close(a, b) for a, b in zip(g, e, strict=True)), (g, e)
@@ -183,7 +196,8 @@ OUTSIDE = [
 @pytest.mark.parametrize(("label", "build", "row"), OUTSIDE, ids=[o[0] for o in OUTSIDE])
 def test_domain_errors_raise(label, build, row):
     """The checker reports the domain error, the engines raise on the row,
-    and DataFusion (whose IEEE result or wrapped shift an error allows) runs."""
+    and DataFusion (whose IEEE result or wrapped shift an error allows) runs
+    the plan."""
     expr = build()
     assert [i.kind for i in sv.verify(expr).errors] == ["domain error"], label
     con = connect()
@@ -194,7 +208,7 @@ def test_domain_errors_raise(label, build, row):
         run_plan(con, written, "polars")
     with pytest.raises(duckdb.Error, match="sverify: domain error"):
         run_plan(con, written, "duckdb")
-    run_sql(con, to_sql(expr))
+    run_plan(con, written, "datafusion")
 
 
 @pytest.mark.parametrize(

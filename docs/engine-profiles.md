@@ -56,6 +56,9 @@ From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
 | **2** | Polars, Spark, DataFusion | Run checked plans and are differentially tested against `Rel.eval` in CI, with known deviations documented. Not yet characterized or proved. Polars and Spark aim for Tier 1. |
 | **3** | Snowflake | Aspirational: sverify writes the SQL and checks it on an emulator (fakesnow), never on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
+Work on the Tier 2 and 3 backends is paused until the generated lowerings
+land (#241, then #271).
+
 SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`,
 #239), whose two profiles are Python data for now. DataFusion's SQL planner

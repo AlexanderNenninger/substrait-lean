@@ -158,20 +158,7 @@ REFUSED: dict[str, dict[str, str]] = {
 
 TIE_FREE = {"rolling sum by time"}
 
-NO_DATAFUSION_SQL = {
-    # `CAST(n || ' day' AS INTERVAL)` fails on a NULL count.
-    "date - column days": "fails on NULL",
-    # Python UDFs of Ibis's DataFusion backend.
-    "epoch_seconds": "Ibis UDF",
-    "millisecond, microsecond": "Ibis UDF",
-    # No compilation rule.
-    "iso_year": "no rule",
-    "date delta": "no rule",
-    # A duration is compared with `INTERVAL '3 DAYS'` as (months, days, ns).
-    "date - date": "compares durations with days wrongly",
-    # "frame offsets for RANGE must be …": Ibis writes the bound as a cast.
-    "rolling sum by time": "refuses Ibis's interval frame",
-    # No compilation rule.
-    "bucket": "no rule",
-    "group_by_dynamic (no overlap)": "no rule",
+NO_DUCKDB_SQL = {
+    "epoch_seconds": "DuckDB's epoch keeps the fraction of a second",
+    "date - date": "Ibis's DuckDB SQL compares a day count with an interval",
 }

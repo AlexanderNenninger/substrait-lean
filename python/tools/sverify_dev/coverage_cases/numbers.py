@@ -27,3 +27,7 @@ CASES: list[Case] = [
     case("numbers", "cast int → string", V, lambda: t.select(x=t.qty.cast("string"))),
     case("numbers", "cast double → int", V, lambda: t.select(x=t.amount.cast("int64"))),
 ]
+
+NO_DUCKDB_SQL = {
+    "cast double → int": "DuckDB's cast of a double to an integer rounds, the plan's truncates",
+}

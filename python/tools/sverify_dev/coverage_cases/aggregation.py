@@ -99,8 +99,4 @@ REFUSED: dict[str, dict[str, str]] = {
     "unnest": NO_LISTS,
 }
 
-DATAFUSION_SQL = {
-    "unnest": "Ibis cannot compile TableUnnest for DataFusion",
-}
-
 UNORDERED_LISTS = {"collect"}

@@ -30,7 +30,3 @@ REFUSED: dict[str, dict[str, str]] = {
     "unnest column": NO_LISTS,
     "list literal": NO_LISTS,
 }
-
-DATAFUSION_SQL = {
-    "unnest column": "Ibis cannot compile TableUnnest for DataFusion",
-}
