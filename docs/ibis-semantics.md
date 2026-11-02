@@ -55,3 +55,13 @@ so `distinct(on="name")` may keep `a` from one row and `b` from another, and
 a fact about every input row, such as `a <= b`, need not hold of the result.
 `keep=None` keeps the groups of one row, but the report still calls it
 undetermined. The plan runs on DuckDB for now (#271).
+
+## Parameters
+
+An `ibis.param` has no value until the expression runs, so `verify` takes
+one, as Ibis's `execute(params=...)` does: `sv.verify(expr, params={p: 5})`
+replaces each parameter with a literal of its type before compiling (#58).
+The report is then about the expression with those values, and says so
+(`Report.params`): a proof for `p = 5` says nothing about `p = 0`. A
+parameter left unbound is refused. Proving a contract for every value of a
+parameter, as an unknown value of its type, is planned (#354).

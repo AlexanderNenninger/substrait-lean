@@ -150,7 +150,9 @@ _REFUSED: dict[str, str] = {
     "TimestampNow": "the time differs between runs; pass the time in as a column or constant",
     "DateNow": "the date differs between runs; pass the date in as a column or constant",
     "TypeOf": "the type's name is the engine's own",
-    "ScalarParameter": "bind the parameter first, for example with a literal",
+    "ScalarParameter": "bind it: pass params={param: value} to verify, which proves the "
+    "transform for that value (an unbound parameter as any value of its type is planned: "
+    "#354)",
     "Hash": "hash() is the engine's own and changes between versions; use hexdigest('md5') "
     "or hexdigest('sha256')",
     # Ibis's URL parts: `host()`, `protocol()`, …
