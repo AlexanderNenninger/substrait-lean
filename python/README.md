@@ -1,47 +1,45 @@
 # sverify
 
-**Prove a data pipeline's contracts before it runs, get the same result on
+Sverify proves a data pipeline's contracts before it runs, gets the same result on
 [DuckDB](https://duckdb.org), [Polars](https://pola.rs),
 [DataFusion](https://datafusion.apache.org) and
-[Spark](https://spark.apache.org), and keep it up to date from Delta Lake and
-Iceberg change feeds.**
+[Spark](https://spark.apache.org), and keeps it up to date from Delta Lake and
+Iceberg change feeds.
 
-You write a transformation in [Ibis](https://ibis-project.org) or SQL and say
-what it assumes about its inputs (`requires`) and what it guarantees about
-its output (`ensures`). A checker written in [Lean](https://lean-lang.org)
-proves the guarantees for every possible input, or says why it can't. Then:
+In sverify you write a data transformation as usual, in
+[Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
+inputs (`requires`) and what it guarantees about its output (`ensures`). A
+checker written in [Lean](https://lean-lang.org) proves the guarantees for
+every possible input, or says why it can't. Then:
 
-* **Contracts are proved, not tested.** `not_null`, `unique`, ranges and
+* Contracts are proved before the job runs. `not_null`, `unique`, ranges and
   relations between columns hold on every input that meets the
   preconditions, and division by zero, overflow and bad casts are ruled out
   before the job runs. Preconditions are checked on the data, or proved from
   Delta and Iceberg metadata.
-* **One plan gives the same answer on every engine.** The checked plan runs
-  on DuckDB, Polars or DataFusion, or is written as Spark SQL,
-  with NULLs, integer division, NaN, ties and overflow spelled out, or it is
-  refused where an engine can't match.
-* **Results are kept up to date from the changes,** by delta plans proved
+* One plan gives the same answer on every engine. The checked plan runs
+  on DuckDB, Polars or DataFusion, or is written as Spark SQL, with NULLs,
+  integer division, NaN, ties and overflow spelled out. Where an engine can't
+  match, sverify refuses the plan.
+* Results are kept up to date from the changes, by delta plans proved
   equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-sverify is a young, independent project, and for now it is purely
-observational: it tells you what it can and can't prove, and describes how
-each engine behaves as observed at pinned versions, without certifying or
-ranking them. It isn't affiliated with any engine's project or vendor. Use it
-as a careful second pair of eyes rather than a gate production depends on,
-and expect the API to keep changing between minor releases. What it's for is
-making data engineering more joyful: fewer 3 a.m. pages, fewer surprises
-between engines, more trust in the tables you hand on.
+We aim to make sverify an assistant that makes data engineering more joyful: fewer
+3 a.m. pages, fewer surprises between engines, more trust in the tables you
+hand on.
 
-What the reference means is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
+Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
+
+The reference's meaning is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
 
 Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
 
 | Tier | Engines | What it means today |
 |---|---|---|
-| **1** | DuckDB | Characterized as a diff against the reference model, with proved shims. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
-| **2** | Polars, Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. Polars and Spark aim for Tier 1. |
-| **3** | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), not on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
+| 1 | DuckDB | Characterized as a diff against the reference model, with proved shims. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
+| 2 | Polars, Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. Polars and Spark aim for Tier 1. |
+| 3 | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), with no real account yet ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
 Work on the Tier 2 and 3 backends is paused until the generated lowerings land
 ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
@@ -53,14 +51,13 @@ pip install 'sverify[all]'         # with every engine and table format
 ```
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`datafusion` (an engine to run plans on), `polars`, `spark` (needs Java 17 or
-21), `delta`, `iceberg`, or `all`. Wheels bundle the checker as a small
-native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
-3.12 and later; elsewhere pip builds from the sdist, which needs
-[elan](https://github.com/leanprover/elan).
+`datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`, or
+`all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
+aarch64) and macOS (arm64, x86_64), Python 3.12 and later; elsewhere pip
+builds from the sdist, which needs [elan](https://github.com/leanprover/elan).
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
-documents every public function and class, for the released version. For
+documents every public function and class of the released version. For
 coding agents, the site also publishes
 [skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for
 writing contracts, pipelines and engine code with sverify
@@ -118,8 +115,8 @@ except VerificationError as e:
 
 ## Testing with pytest
 
-`sverify.testing` has assertions for your test suite, and installing sverify
-registers a pytest plugin with two fixtures: `sv_source` makes an in-memory
+`sverify.testing` has assertions for your test suite, and sverify registers a
+pytest plugin with two fixtures: `sv_source` makes an in-memory
 source from rows, and a test that takes `sv_engine` runs once per installed
 engine.
 
@@ -139,16 +136,16 @@ def test_big_orders():
 test_big_orders()
 ```
 
-A failure lists the rows: those of the test data that break a precondition,
-or the expected rows that are missing and the ones that were not expected.
+A failure lists the offending rows: those that break a precondition, or the
+expected rows that are missing or unexpected.
 `sverify.testing.cases(node)` is a Hypothesis strategy of inputs that meet
 the preconditions, for property tests of the code around a node
 (`pip install 'sverify[testing]'`).
 
 ## SQL models
 
-A transform's body can be SQL, over its inputs by name. It is proved,
-composed and refreshed like any other:
+A transform's body can be SQL over its inputs by name. Sverify proves,
+composes and refreshes it like any other:
 
 ```python
 @sv.transform(
@@ -180,8 +177,7 @@ SQL so far ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/2
 ## Workflows
 
 Three complete jobs from a catalogue of 139 real analytical queries, each
-from source tables to a sink, with what goes wrong without the checker. Open
-them in the browser:
+from source tables to a sink, with what goes wrong without the checker:
 
 * [Duplicate card payments](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/01_duplicate_payments.py):
   a self-join over a Delta table, refreshed from its Change Data Feed, where
@@ -245,13 +241,15 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.
 
-**Not supported yet:** DECIMAL columns (keep money as integer cents),
-framed window aggregates, `RANK` and `NTILE`. The repository's README has
-the coverage table, the full guide, and what is proved and what is trusted.
+Not supported yet: DECIMAL columns (keep money as integer cents),
+framed window aggregates, `RANK` and `NTILE`. The repository has
+[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md),
+the Ibis coverage table in its README, and
+[what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 
 ## Configuration
 
-* `SVERIFY_CHECK`: path to a `substrait-check` binary to use instead of the
+* `SVERIFY_CHECK`: path to a `substrait-check` binary that replaces the
   bundled one, for example your own `lake build`.
 * DataFusion is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.
@@ -265,11 +263,11 @@ uv sync                          # builds substrait-check with lake (needs elan)
 uv run poe qa                    # proofs, lint, typecheck, golden, Python tests, notebooks
 ```
 
-See the [repository](https://github.com/AlexanderNenninger/substrait-lean) for setup details.
+The [repository](https://github.com/AlexanderNenninger/substrait-lean) has setup details.
 
 ## License
 
-sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/LICENSE) (MPL-2.0).
+Sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/LICENSE) (MPL-2.0).
 You can use it in any product, open or proprietary, and your own code stays
 yours. If you distribute a modified version of sverify's own files, those
 files stay under the MPL and you share their source. The license applies file

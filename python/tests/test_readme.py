@@ -1,6 +1,6 @@
-"""The Python examples of the READMEs run.
+"""The Python examples of the READMEs and of docs/guide.md and docs/how-it-works.md run.
 
-Each README's ```python blocks are run in order, in one namespace and in a
+Each file's ```python blocks are run in order, in one namespace and in a
 fresh working directory, so an example may build on the ones before it. A
 block that fails, or a printed line that its `# ...` comment does not
 show, fails the test; "..." in a comment elides part of the line.
@@ -15,7 +15,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-READMES = [ROOT / "README.md", ROOT / "python" / "README.md"]
+READMES = [
+    ROOT / "README.md",
+    ROOT / "python" / "README.md",
+    ROOT / "docs" / "guide.md",
+    ROOT / "docs" / "how-it-works.md",
+]
 
 
 def python_blocks(text: str) -> list[str]:
