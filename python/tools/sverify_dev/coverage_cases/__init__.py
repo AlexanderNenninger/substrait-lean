@@ -21,6 +21,7 @@ from typing import Any
 
 from sverify_dev.coverage_cases import (
     aggregation,
+    generic,
     joins,
     lists,
     nulls,
@@ -44,6 +45,7 @@ AREAS: tuple[ModuleType, ...] = (
     nulls,
     strings,
     temporal,
+    generic,
 )
 
 
