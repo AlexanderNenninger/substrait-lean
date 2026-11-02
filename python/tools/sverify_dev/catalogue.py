@@ -695,7 +695,7 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"aggregate (Median|Quantile)", {"percentile"}),
     (r"aggregate (StandardDev|Variance)", {"stddev_var"}),
     (r"aggregate (Correlation|Covariance)", {"corr"}),
-    (r"aggregate GroupConcat", {"string_agg"}),
+    (r"aggregate GroupConcat|group_concat", {"string_agg"}),
     (r"^(Ln|Exp|Log|Log10|Log2|Sqrt) is not", {"math_transcendental"}),
     (r"ExtractEpochSeconds", {"epoch", "interval_to_number"}),
     (r"ScalarSubquery", {"scalar_subquery", "correlated_subquery"}),
@@ -846,7 +846,7 @@ def stats(
     out += [
         "### Pitfall frequency",
         "",
-        "| pitfall | queries | chapter 17 entries |",
+        "| pitfall | queries | backend_semantics.py entries |",
         "|---|---|---|",
     ]
     for t, k in tags.most_common():

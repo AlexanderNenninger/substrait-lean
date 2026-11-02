@@ -163,6 +163,9 @@ class DuckDBDialect(Dialect):
         values = f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
         return f"({values})[{1 if fn == 'first' else -1}]"
 
+    def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
+        return f"string_agg({v}, {sep} ORDER BY {', '.join(order)})"
+
     def pair(self, a: str, b: str) -> str:
         return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"
 

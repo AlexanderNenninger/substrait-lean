@@ -27,7 +27,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 3. [An orders mart](?file=03_orders_mart.py) · [Contents](?file=00_start_here.py) · 5. [Keys and relations](?file=05_keys_and_relations.py) →
+    ← 3. [An orders mart](?file=03_orders_mart.py) · 5. [Pipelines and engines](?file=05_pipelines_and_engines.py) →
     """)
     return
 
@@ -38,18 +38,21 @@ def _(mo):
     # 4. Contracts
 
     Say a colleague's transformation feeds the billing job you own. Its
-    docstring promises the new column is never negative and never NULL, and
-    customers are invoiced on that promise. You'd rather it were proved than
-    promised.
+    docstring promises that the new column is never negative and never NULL,
+    and customers are invoiced on that promise. You would like it proved.
 
-    In verified programming you state what a function **requires** of its
-    inputs (preconditions) and what it **ensures** about its output
-    (postconditions), and the machine proves the second follows from the
-    first. `sverify` brings that to data transformations: a function from
-    Ibis tables to an Ibis table, with a decorator that states the contract.
-    We'll write one.
+    In verified programming a function states what it requires of its inputs
+    (preconditions) and what it ensures about its output (postconditions),
+    and a machine proves the second follows from the first. Sverify does this
+    for a data transformation: a function from Ibis tables to an Ibis table,
+    with a decorator that states the contract. This chapter covers the
+    contract itself, keys and relations between columns, runtime errors,
+    windows and composing contracts. The proofs are described in
+    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 
     ## A first contract
+
+    We'll write one.
     """)
     return
 
@@ -62,9 +65,14 @@ def _():
     import sverify as sv
     from ibis import _
     from sverify.engines import create_table, table_rows
-    from sverify.errors import PostconditionError, PreconditionError, VerificationError
+    from sverify.errors import (
+        CompositionError,
+        PostconditionError,
+        PreconditionError,
+        VerificationError,
+    )
 
-    # An unbound table: just a name and a schema, no data.
+    # An unbound table has a name and a schema and no data.
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
@@ -77,6 +85,7 @@ def _():
     doubled(orders)  # proves the postconditions, or raises VerificationError
     doubled.last_report
     return (
+        CompositionError,
         PostconditionError,
         PreconditionError,
         VerificationError,
@@ -93,120 +102,51 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    * `requires` maps each **parameter** of the function to conditions on
-      that input. `ensures` lists conditions on the output.
-    * Conditions are Ibis expressions over the table's columns (`_.amount >= 0`,
-      using Ibis's `_` placeholder, or a function of the table) or SQL
-      snippets (`"id IS NOT NULL"`).
+    * `requires` maps each parameter of the function to conditions on that
+      input. `ensures` lists conditions on the output.
+    * Conditions are Ibis expressions over the table's columns
+      (`_.amount >= 0`, using Ibis's `_` placeholder) or SQL snippets
+      (`"id IS NOT NULL"`).
     * Calling `doubled(orders)` builds the Ibis expression as usual. Before
-      returning it, `sverify` sends the plan and the conditions to the Lean
-      checker (`substrait-check --contract`), which tries to **prove** every
+      returning it, sverify sends the plan and the conditions to the Lean
+      checker (`substrait-check --contract`), which tries to prove every
       postcondition. The verdicts are in `.last_report`.
-    * The first table of the report has the verdicts. The second is
-      everything Lean established about each output column, whether you
-      asked or not: a free, proved data dictionary.
-    * `amount < 1_000_000_000` is there for `amount * 2`: without an upper
-      bound, doubling the largest 64-bit integer overflows, and the reference
-      raises, so the report would say the transformation may fail. Your
-      amounts are below a billion; saying so lets Lean prove they double
-      safely. Chapter 6 is about these runtime errors.
+    * The first table of the report holds the verdicts. The second holds
+      everything Lean established about each output column, asked for or not.
+    * `amount < 1_000_000_000` is there for `amount * 2`. Without an upper
+      bound, doubling the largest 64-bit integer overflows, the reference
+      raises, and the report says the transformation may fail. Saying that
+      amounts stay below a billion lets Lean prove they double safely.
 
     `sv.verify(expr, requires=..., ensures=...)` does the same for an
-    expression without a decorator; it returns the report instead of raising.
+    expression without a decorator and returns the report.
 
-    ## How does Lean know `doubled ≥ 22`?
+    ## How Lean knows `doubled ≥ 22`
 
-    Lean never sees a single order. It runs the plan on *descriptions* of
-    values instead of values: for each column, whether it can be NULL and
-    which values it can hold. This is called *abstract interpretation*.
-    Each operator updates the descriptions:
+    Lean runs the plan on descriptions of values: for each column, whether it
+    can be NULL and which values it can hold. This is abstract interpretation,
+    and each operator updates the descriptions.
 
-    * the preconditions say `amount >= 0` and `amount < 1_000_000_000` are
-      TRUE on every input row, so `amount` is a non-NULL integer in
-      `[0, 999999999]` (`NULL >= 0` is NULL, not TRUE);
-    * the filter `amount > 10` keeps only rows where that is TRUE, so `amount`
-      is a non-NULL integer ≥ 11 afterwards (NULL > 10 is not TRUE);
-    * `amount * 2` is then an integer in `[22, 1999999998]`, which fits in
-      64 bits, and never NULL.
+    * The preconditions make `amount >= 0` and `amount < 1_000_000_000` TRUE
+      on every input row, so `amount` is a non-NULL integer in
+      `[0, 999999999]`. (`NULL >= 0` is NULL, which is not TRUE.)
+    * The filter `amount > 10` keeps the rows where that is TRUE, so `amount`
+      is a non-NULL integer ≥ 11 afterwards.
+    * `amount * 2` is then an integer in `[22, 1999999998]`, which fits in 64
+      bits and is never NULL.
 
-    A postcondition is proved when its description says it can only be TRUE.
-    Change the transformation and the conditions below, and we'll watch
-    what Lean can establish:
+    A postcondition is proved when its description allows only TRUE.
     """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    threshold = mo.ui.slider(
-        -10, 50, value=10, label="filter: keep orders with amount >", show_value=True
-    )
-    factor = mo.ui.slider(-3, 5, value=2, label="new column: doubled = amount ×", show_value=True)
-    pre_nonneg = mo.ui.checkbox(value=True, label="requires amount ≥ 0")
-    pre_upper = mo.ui.checkbox(value=False, label="requires amount ≤ 100")
-    post = mo.ui.text(value="doubled >= 20", label="ensures (SQL)", full_width=True)
-    mo.vstack([threshold, factor, mo.hstack([pre_nonneg, pre_upper], justify="start"), post])
-    return factor, post, pre_nonneg, pre_upper, threshold
-
-
-@app.cell(hide_code=True)
-def _(display, factor, mo, orders, post, pre_nonneg, pre_upper, sv, threshold):
-    from ibis import _
-
-    _o = orders
-    _pre = [
-        c for c, on in [(_.amount >= 0, pre_nonneg.value), (_.amount <= 100, pre_upper.value)] if on
-    ]
-    _filtered = _o.filter(_o.amount > threshold.value)
-    _result = _filtered.select(_o.id, doubled=_o.amount * factor.value)
-    _req = {"orders": _pre}
-
-    def _facts(expr, col):
-        return sv.verify(expr, requires=_req).facts[col]
-
-    _stages = [
-        ["orders (input)", _facts(_o.select("amount"), "amount"), ""],
-        [
-            f"after filter amount > {threshold.value}",
-            _facts(_filtered.select("amount"), "amount"),
-            "",
-        ],
-        [f"doubled = amount × {factor.value}", "", _facts(_result, "doubled")],
-    ]
-    try:
-        _check = sv.verify(_result, requires=_req, ensures=[post.value]).ensures[0]
-        _verdict = mo.callout(
-            mo.md(
-                f"`{post.value}` is **proved** ✓"
-                if _check.proved
-                else f"`{post.value}` is **not proved**: Lean can only show it is {_check.value}."
-            ),
-            kind="success" if _check.proved else "warn",
-        )
-    except Exception as _e:
-        _verdict = mo.callout(mo.md(f"Could not check `{post.value}`: {_e}"), kind="danger")
-    mo.vstack(
-        [
-            display.table(_stages, ["step", "what Lean knows about amount", "… about doubled"]),
-            _verdict,
-        ]
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     mo.md(r"""
-    Things to try: untick *amount ≥ 0* and pick a negative factor; set the
-    threshold below 0; untick it again, ask for `doubled IS NOT NULL` and
-    think about why it holds even though `amount` can now be NULL in the
-    input; tick *amount ≤ 100* and ask for `doubled <= 200`.
-
     ## When a proof fails
 
-    A promise that doesn't follow is better caught here than by billing. It
-    is refused, with what Lean *could* establish. Here the precondition
-    allows `amount = 0`, so `total` can be 1:
+    A promise that does not follow is refused, together with what Lean could
+    establish. Here the precondition allows `amount = 0`, so `total` can be 1:
     """)
     return
 
@@ -230,89 +170,742 @@ def _(VerificationError, mo, orders, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    "It is TRUE or FALSE" is Lean's honest answer: for some allowed inputs
-    `total > 5` holds, for others it doesn't. Lean never guesses. A refusal
-    can also mean the truth is out of reach of the analysis (the end of this
-    chapter lists what it tracks), so a ❌ is "not proved", not "false".
+    "It is TRUE or FALSE" is Lean's answer when `total > 5` holds for some
+    allowed inputs and fails for others. A refusal can also mean the truth is
+    out of reach of the analysis (the list at the end of this section says
+    what it tracks), so a refusal means "not proved".
 
     ## Contracts on real data
 
-    So far the table had no data: the proof is about *every* possible
-    `orders`. Real tables come from upstream systems you don't control, and
-    binding the function to them adds two things:
+    So far the table had no data, and the proof covered every possible
+    `orders`. Real tables come from upstream systems, and binding the
+    function to one adds two things.
 
-    1. **Preconditions are checked on the data** at call time, because they
-       are assumptions about the outside world, and the outside world lies.
-       A violation raises `PreconditionError`.
-    2. **Unproved postconditions** can be checked on the output instead of
-       refusing the call, with `on_unproved`:
+    1. Preconditions are checked on the data at call time, because they are
+       assumptions about the outside world. A violation raises
+       `PreconditionError`.
+    2. An unproved postcondition can be checked on the output instead of
+       refusing the call, with `on_unproved`.
 
-    | `on_unproved=` | what happens when a postcondition isn't proved |
+    | `on_unproved=` | what happens when a postcondition is not proved |
     |:---|:---|
-    | `"error"` (default) | raise `VerificationError`; nothing runs |
-    | `"runtime"` | run the pipeline and check that condition on the actual output; raise `PostconditionError` on a violation |
-    | `"warn"` | issue a warning and carry on |
+    | `"error"` (default) | `VerificationError`; nothing runs |
+    | `"runtime"` | the pipeline runs and the condition is checked on the output; a violation raises `PostconditionError` |
+    | `"warn"` | a warning, and the pipeline runs |
 
-    Some data, with a sneaky NULL:
+    Take a table with a NULL in it and the condition `amount < 100`, which
+    nothing bounds, so it is not proved. With `"runtime"` the pipeline runs
+    and the condition is checked on the output.
     """)
     return
 
 
 @app.cell
 def _(create_table, display, ibis, sv, table_rows):
-    con = sv.connect()  # plans run on DuckDB by default
+    con = sv.connect()  # plans run on DuckDB
     _schema = ibis.schema({"id": "int64", "customer": "string", "amount": "int64"})
     create_table(con, "orders", _schema, [(1, "ada", 30), (2, "bob", 5), (3, "cy", None)])
     display.table(table_rows(con, "orders"), ["id", "customer", "amount"], title="orders")
     return (con,)
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mode = mo.ui.radio(
-        ["error", "runtime", "warn"], value="runtime", label="on_unproved", inline=True
-    )
-    with_pre = mo.ui.switch(value=False, label="requires amount ≥ 0")
-    mo.hstack([mode, with_pre], justify="start", gap=2)
-    return mode, with_pre
-
-
 @app.cell
-def _(
-    PostconditionError,
-    PreconditionError,
-    VerificationError,
-    con,
-    display,
-    mo,
-    mode,
-    sv,
-    warnings,
-    with_pre,
-):
+def _(PostconditionError, con, mo, sv):
     from ibis import _
 
-    @sv.transform(
-        requires={"orders": [_.amount >= 0]} if with_pre.value else {},
-        ensures=[_.amount < 100],
-        on_unproved=mode.value,
-    )
+    @sv.transform(ensures=[_.amount < 100], on_unproved="runtime")
     def passthrough(orders):
         return orders.select("id", "amount")
 
-    with warnings.catch_warnings(record=True) as _caught:
-        warnings.simplefilter("always")
-        try:
-            _rows = passthrough(con.table("orders")).to_pyarrow()
-            _out = display.arrow(_rows, title="the result")
-            if _caught:
-                _out = mo.vstack(
-                    [mo.callout(mo.md(f"**Warning:** {_caught[0].message}"), kind="warn"), _out]
-                )
-        except (PreconditionError, PostconditionError, VerificationError) as _e:
-            _out = mo.callout(
-                mo.md(f"**{type(_e).__name__}**: {str(_e).splitlines()[0]}"), kind="danger"
-            )
+    try:
+        passthrough(con.table("orders")).to_pyarrow()
+    except PostconditionError as _e:
+        _err = _e
+    mo.callout(mo.md(f"PostconditionError: {str(_err).splitlines()[0]}"), kind="danger")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The check fails for cy's row: `NULL < 100` is not TRUE, so the NULL counts
+    as a violation. A contract condition must be TRUE. A precondition
+    `amount >= 0` would fail first, for the same NULL, and
+    `check_requires=False` on `sv.transform` trusts the inputs, so that the
+    proofs rest on that trust.
+
+    A column declared non-nullable (`"!int64"` in Ibis) is never NULL, and
+    Lean knows it, so `amount IS NOT NULL` needs no precondition.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### What backs a proof
+
+    Theorem `contract_sound` in `SubstraitLean/Contracts.lean` says: if every
+    input row matches its schema and satisfies the preconditions, and the
+    abstract interpretation says every postcondition is certainly TRUE, then
+    every postcondition is TRUE on every output row. Sverify checks the
+    hypotheses about the data when the data is there.
+
+    ### What Lean tracks
+
+    Per column: whether it can be NULL, integer and double ranges, timestamps,
+    which booleans it can be, and whether it can be a string. Filters such as
+    `amount > 10`, `x = 3`, `x IN (1, 2, 3)` and `x IS NOT NULL` refine those
+    facts. Arithmetic, comparisons, `AND`/`OR`/`NOT` with SQL's NULL
+    semantics, `CASE`, `COALESCE`, joins and `UNION ALL` carry them through.
+    Keys and relations between columns come next. Not tracked yet: relations
+    that need more than a column plus a constant (`a < 2 * b`), string
+    contents, DECIMAL columns and counts across rows. For those,
+    `on_unproved="runtime"` checks the condition on the data.
+
+    ## Keys
+
+    Say you add each customer's city to the orders so finance can sum revenue
+    by city. If a customer appears twice in `customers`, their orders are
+    counted twice, and the totals stop matching the ledger.
+
+    `sv.unique("id")` says the listed columns identify a row. In `requires`
+    it is an assumption about an input, checked on the data when the input is
+    bound. In `ensures` it is proved: keys survive filters and projections,
+    and joins whose condition pins down at most one partner on the other
+    side. We'll join orders with customers, with and without a key on the
+    customer names.
+    """)
+    return
+
+
+@app.cell
+def _(ibis):
+    customers = ibis.table({"name": "string", "city": "string"}, name="customers")
+
+    def with_city(orders, customers):
+        return orders.join(customers, orders.customer == customers.name).select(
+            orders.id, orders.customer, customers.city
+        )
+
+    return customers, with_city
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    names_unique = mo.ui.switch(value=False, label="requires customers: unique(name)")
+    names_unique
+    return (names_unique,)
+
+
+@app.cell
+def _(customers, names_unique, orders, sv, with_city):
+    _requires = {"orders": [sv.unique("id")]}
+    if names_unique.value:
+        _requires["customers"] = [sv.unique("name")]
+    sv.verify(with_city(orders, customers), requires=_requires, ensures=[sv.unique("id")])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Without the key on `name`, Lean refuses. Say Bob moved and was entered
+    twice, once per city: his one order then appears twice and finance's
+    totals are off by his 5. With the key in `requires`, a contracted
+    function stops at the precondition check before finance sees a number.
+    """)
+    return
+
+
+@app.cell
+def _(PreconditionError, create_table, ibis, mo, sv, with_city):
+    con_keys = sv.connect()
+    create_table(
+        con_keys,
+        "orders",
+        ibis.schema({"id": "int64", "customer": "string", "amount": "int64"}),
+        [(1, "ada", 30), (2, "bob", 5)],
+    )
+    create_table(
+        con_keys,
+        "customers",
+        ibis.schema({"name": "string", "city": "string"}),
+        [("ada", "Paris"), ("bob", "Oslo"), ("bob", "Rome")],
+    )
+    contracted = sv.transform(
+        requires={"orders": [sv.unique("id")], "customers": [sv.unique("name")]},
+        ensures=[sv.unique("id")],
+    )(with_city)
+    try:
+        contracted(con_keys.table("orders"), con_keys.table("customers"))
+    except PreconditionError as _e:
+        _err = _e
+    mo.callout(mo.md(f"PreconditionError: {_err}"), kind="danger")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Keys come from other places too, all proved in `SubstraitLean/Keys.lean`
+    (`Rel.keys_sound`).
+
+    * `DISTINCT` rows are a key: all their columns together.
+    * Semi and anti joins keep the left side's keys.
+    * A filter `x = 3` drops `x` from a key: `unique(id, customer)` and
+      `customer = 'ada'` give `unique(id)`.
+    * `ROW_NUMBER()` with the partition columns is a key (see Windows below).
+    * `sv.references("cust", "customers", "id")` in `requires` says every
+      non-NULL `cust` occurs in `customers.id`. It is an assumption, checked
+      on the data, and nothing proves it in `ensures`.
+    """)
+    return
+
+
+@app.cell
+def _(orders, sv):
+    sv.verify(
+        orders.filter(orders.customer == "ada").select("id", "amount"),
+        requires={"orders": [sv.unique("id", "customer")]},
+        ensures=[sv.unique("id")],
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Relations between columns
+
+    Filter and join conditions such as `a.t = b.t + 1`, `start < end` or
+    `value != -9999` become facts about each row. The facts survive
+    projections, joins and unions, and postconditions such as `t1 - t0 == 1`
+    or `t1 > t0` follow from them.
+
+    Say you prepare training data for a forecasting model. Readings arrive
+    once a minute and `-9999` marks a sensor error. Whoever trains the model
+    assumes each pair is exactly one minute apart and that no `-9999` slipped
+    through. We'll prove both for a pipeline that joins the clean readings
+    with themselves, one minute apart.
+    """)
+    return
+
+
+@app.cell
+def _(ibis):
+    sensor_minutes = ibis.table(
+        {"sensor": "string", "minute": "int64", "value": "int64"}, name="readings"
+    )
+
+    def consecutive(readings, one_sensor=True):
+        clean = readings.filter(readings.value != -9999)
+        if one_sensor:
+            clean = clean.filter(clean.sensor == "a")
+        w0, w1 = clean.view(), clean.view()
+        return w0.join(w1, w1.minute == w0.minute + 1).select(
+            t0=w0.minute, t1=w1.minute, v0=w0.value, v1=w1.value
+        )
+
+    return consecutive, sensor_minutes
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    req_notnull = mo.ui.switch(value=True, label="requires minute IS NOT NULL")
+    req_key = mo.ui.switch(value=True, label="requires unique(sensor, minute)")
+    one_sensor = mo.ui.switch(value=True, label="pipeline keeps only sensor 'a'")
+    mo.vstack([req_notnull, req_key, one_sensor])
+    return one_sensor, req_key, req_notnull
+
+
+@app.cell
+def _(consecutive, one_sensor, req_key, req_notnull, sensor_minutes, sv):
+    from ibis import _
+
+    _requires = [
+        c
+        for c, on in [
+            (_.minute.notnull(), req_notnull.value),
+            (sv.unique("sensor", "minute"), req_key.value),
+        ]
+        if on
+    ]
+    sv.verify(
+        consecutive(sensor_minutes, one_sensor.value),
+        requires={"readings": _requires},
+        ensures=[_.t1 - _.t0 == 1, _.t1 > _.t0, _.v0 != -9999, _.v1 != -9999, sv.unique("t0")],
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    What each switch does:
+
+    * `minute IS NOT NULL`: without it, `t1 - t0 == 1` is "TRUE or NULL". The
+      join condition `w1.minute = w0.minute + 1` is TRUE only for non-NULL
+      values, but Lean derives that for plain column comparisons and not
+      through the `+ 1`. When Lean sees no reason, it says so.
+    * `unique(sensor, minute)`: one reading per sensor and minute. Within
+      sensor `a` that makes `minute` a key, and the join finds at most one
+      `t1` per `t0`, so `unique(t0)` holds.
+    * Only sensor `a`: with several sensors the join also pairs readings of
+      different sensors, because `sensor` is not in the join condition, and
+      `t0` repeats. The relations still hold, since they are about each row.
+
+    The facts are `Expr.factsOf_sound` and `Rel.facts_sound` in
+    `SubstraitLean/Contracts.lean`: a fact `x − y ∈ [lo, hi]` or `x ≠ k`
+    taken from a condition holds on every row that passes it, and every
+    operator above keeps it.
+
+    ## Runtime errors
+
+    Say you are on call this week. At 3 a.m. a pipeline that was correct
+    crashes on a row nobody expected, and it pages you. A pipeline that
+    quietly writes a wrong number is worse, because nobody gets paged.
+
+    Some operations can fail, and the reference fails on a few more than
+    DataFusion does.
+
+    * Integer `/` or `%` by zero, and `-9223372036854775808 / -1`, which
+      does not fit in 64 bits.
+    * `CAST(x AS BIGINT)` of NaN, ±∞ or a huge double, also after `ROUND`.
+    * Integer `POWER` with a negative exponent or a huge result.
+    * A regular expression that does not compile.
+    * Truncating a timestamp near the ends of its range to a month or year:
+      DataFusion panics or returns garbage.
+    * `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`). The
+      reference raises and DataFusion wraps around (`2⁶² + 2⁶²` gives
+      `-2⁶³`), which an error allows.
+    * An integer `SUM` leaving 64 bits is checked while the job runs. A group
+      may have any number of rows, so no proof before running rules it out.
+
+    Lean's model computes with exact integers, and `SubstraitLean/Safety.lean`
+    lists, for every operation of a plan, which of these can happen. Theorem
+    `Rel.mayIssues_sound` proves the list complete: if the report lists no
+    error, no input can trigger one. `@sv.transform` refuses a transformation
+    that may fail, even with no postconditions.
+
+    ### Guards
+
+    The usual fix is a guard that keeps the divisor away from zero. Whether a
+    guard works depends on when the engine evaluates each part. The variants
+    below cover a zero divisor, `MIN` divided by `-1` and doubles a `BIGINT`
+    cannot hold. Pick one, and we'll read Lean's report.
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    runtime_table = ibis.table({"qty": "int64", "n": "int64", "amount": "float64"}, name="t")
+    _t = runtime_table
+    VARIANTS = {
+        "qty // n (no guard)": _t.select(x=_t.qty // _t.n),
+        "filter n != 0, then select qty // n": _t.filter(_t.n != 0).select(x=_t.qty // _t.n),
+        "filter n > 0, then select qty // n": _t.filter(_t.n > 0).select(x=_t.qty // _t.n),
+        "select qty % nullif(n, 0)": _t.select(x=_t.qty % _t.n.nullif(0)),
+        "select CASE WHEN n != 0 THEN qty % n ELSE 0 END": _t.select(
+            x=ibis.cases((_t.n != 0, _t.qty % _t.n), else_=0)
+        ),
+        "filter (n != 0) AND (qty % n > 1)": _t.filter((_t.n != 0) & ((_t.qty % _t.n) > 1)),
+        "filter n != 0, then filter qty % n > 1": _t.filter(_t.n != 0).filter((_t.qty % _t.n) > 1),
+        "select round(amount) (a cast to BIGINT)": _t.select(x=_t.amount.round()),
+        "filter 0 <= amount <= 100, then round(amount)": _t.filter(
+            (_t.amount >= 0) & (_t.amount <= 100)
+        ).select(x=_t.amount.round()),
+        "select qty + 1": _t.select(x=_t.qty + 1),
+    }
+    return (VARIANTS,)
+
+
+@app.cell(hide_code=True)
+def _(VARIANTS, mo):
+    variant = mo.ui.dropdown(list(VARIANTS), value="qty // n (no guard)", label="pipeline")
+    variant
+    return (variant,)
+
+
+@app.cell(hide_code=True)
+def _(VARIANTS, mo, sv, variant):
+    _report = sv.verify(VARIANTS[variant.value])
+    _summary = (
+        mo.callout(mo.md("Lean proves this cannot fail, on any data."), kind="success")
+        if not _report.errors
+        else mo.callout(mo.md("Lean cannot rule out a runtime error."), kind="warn")
+    )
+    mo.vstack([_summary, mo.md(_report._repr_markdown_())])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    What the variants show:
+
+    * `nullif(n, 0)` and `CASE` are guards. The engines evaluate a `CASE`
+      branch only when its condition holds, `NULLIF` is a `CASE` underneath,
+      and Lean evaluates each branch knowing its condition.
+    * A filter below a projection guards too, because the projection only
+      sees rows that passed. `n != 0` leaves `MIN / -1` open, and `n > 0`
+      closes it.
+    * The same `AND` is no guard: DataFusion may evaluate both sides, so
+      `qty % n` runs on the `n = 0` row.
+    * An earlier filter is no guard either. DataFusion's optimizer merges the
+      two filters into one `AND`. Lean models that (`Rel.loose`) and reports
+      the error.
+    * `round(amount)` becomes a cast to `BIGINT`, which fails on `1e30` and
+      NaN. Bounding `amount` first makes it safe, because `ROUND` is exact
+      and monotone in the model (`FloatCode.round_mono`).
+    * `qty + 1` may fail on `MAX`, where the result does not fit in 64 bits
+      and the reference raises. A precondition such as `qty < 1000` rules it
+      out.
+
+    A contracted transformation has to be proved free of runtime errors, and
+    correctness on the inputs that happen to arrive does not count. A `SUM`
+    that may overflow does not block the proof, since it is checked while the
+    job runs.
+    """)
+    return
+
+
+@app.cell
+def _(VerificationError, ibis, mo, sv):
+    @sv.transform()
+    def ratio(t):
+        return t.select(x=t.qty // t.n)
+
+    @sv.transform()
+    def safe_ratio(t):
+        positive = t.filter(t.n > 0)
+        return positive.select(x=positive.qty // positive.n)
+
+    _t = ibis.table({"qty": "int64", "n": "int64"}, name="t")
+    try:
+        ratio(_t)
+    except VerificationError as _e:
+        _err = str(_e).splitlines()[0]
+    safe_ratio(_t)
+    mo.vstack(
+        [
+            mo.callout(mo.md(f"`ratio`: VerificationError: {_err}"), kind="danger"),
+            mo.callout(mo.md("`safe_ratio`: proved free of runtime errors ✓"), kind="success"),
+        ]
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    `Report.errors` lists the issues a proof has to rule out, and
+    `Report.warnings` the ones checked while the job runs. `Report.proved` is
+    true when every postcondition is proved and there are no errors.
+
+    The timing of evaluation is trusted: when DataFusion evaluates an
+    expression (lazy `CASE`, eager `AND`/`OR`, merged filters). The test
+    suite runs plans on random data, extreme values included, and checks that
+    they fail only where Lean reported an error.
+
+    ## Windows and ASOF joins
+
+    Say the maintenance team asks how long each sensor went quiet between
+    readings, because a long silence marks a unit to replace before it fails.
+    Each reading needs the one before it. SQL looks at neighbouring rows with
+    window functions:
+
+    ```sql
+    LAG(ts) OVER (PARTITION BY sensor ORDER BY ts)
+    ```
+
+    This reads: for each row, the `ts` of the previous row of the same
+    sensor, in `ts` order, and NULL for the first one. The model supports
+    `LAG`, `LEAD` and `ROW_NUMBER` with any sort direction, NULLs first or
+    last, offsets and defaults (`SubstraitLean/Window.lean`).
+    """)
+    return
+
+
+@app.cell
+def _(create_table, ibis, sv):
+    import datetime as dt
+
+    def at(m, s=0):
+        return dt.datetime(2024, 5, 1, 7, m, s)
+
+    con_w = sv.connect()
+    create_table(
+        con_w,
+        "readings",
+        ibis.schema({"sensor": "string", "ts": "timestamp", "v": "float64"}),
+        [
+            ("a", at(0), 1.0),
+            ("a", at(5), 1.5),
+            ("a", at(7), 1.2),
+            ("b", at(1), 9.0),
+            ("b", at(4), 8.5),
+        ],
+    )
+
+    def with_neighbours(readings):
+        w = ibis.window(group_by=readings.sensor, order_by=readings.ts)
+        return readings.select(
+            "sensor",
+            "ts",
+            "v",
+            prev_ts=readings.ts.lag().over(w),
+            next_v=readings.v.lead().over(w),
+            rn=ibis.row_number().over(w),
+        )
+
+    return con_w, dt, with_neighbours
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Ibis numbers rows from 0. Lean knows that `LAG(ts)` comes from an earlier
+    row of the same partition, so `prev_ts <= ts`, that a lagged partition
+    column equals the row's own, and that `ROW_NUMBER()` is never negative.
+    The first row's NULL is guarded with `isnull() | …` in the contract below.
+
+    ### Ties
+
+    Sensors sometimes report twice in the same instant. If two readings of a
+    sensor share a `ts`, SQL does not say which is previous. The engine
+    picks, and may pick differently on the next run, so a proof about one
+    choice says nothing about the other. Unless `requires` gives a key on the
+    partition and order columns, Lean reports every postcondition as
+    undetermined and `report.deterministic` is `False`. With the key,
+    earlier means strictly earlier: `prev_ts < ts`.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    keyed = mo.ui.switch(value=True, label="requires unique(sensor, ts)")
+    keyed
+    return (keyed,)
+
+
+@app.cell
+def _(ibis, keyed, mo, sv, with_neighbours):
+    from ibis import _
+
+    ts_readings = ibis.table(
+        {"sensor": "string", "ts": "timestamp", "v": "float64"}, name="readings"
+    )
+    _requires = [_.sensor.notnull(), _.ts.notnull()] + (
+        [sv.unique("sensor", "ts")] if keyed.value else []
+    )
+    _report = sv.verify(
+        with_neighbours(ts_readings),
+        requires={"readings": _requires},
+        ensures=[_.prev_ts.isnull() | (_.prev_ts < _.ts), _.rn >= 0],
+    )
+    mo.vstack([mo.md(f"`report.deterministic` is {_report.deterministic}"), _report])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Theorem `window_tiebreak` (`SubstraitLean/Keys.lean`) makes the keyed
+    case trustworthy: when a window's partition and sort columns contain a
+    key of its input, every way of sorting the input by the window's keys
+    gives the same rows. The proof therefore describes what the engine
+    computes, however it breaks ties.
+
+    ### ASOF joins
+
+    An accelerometer samples at 100 Hz and a gyroscope at 130 Hz, so their
+    timestamps rarely line up. To train a model on both, each accelerometer
+    sample needs the latest gyroscope sample at or before it, and only if
+    that one is recent enough. This is an ASOF join. DataFusion has none, and
+    Ibis's `asof_join` compiles to DuckDB syntax, so `sv.asof_join` builds it
+    from parts Lean understands: a range join, then `ROW_NUMBER` to keep the
+    latest match.
+
+    A gyroscope reading from the future would leak information the model
+    cannot have in production. The contract states what an ASOF join
+    promises: one output row per accelerometer sample, no gyroscope sample
+    from the future, and none older than the tolerance.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    tolerance_ms = mo.ui.slider(1, 20, value=10, label="tolerance (ms)", show_value=True)
+    how = mo.ui.radio(["left", "inner"], value="left", label="how", inline=True)
+    gyr_keyed = mo.ui.switch(value=True, label="requires gyr: unique(device, ts)")
+    mo.hstack([tolerance_ms, how, gyr_keyed], justify="start", gap=2)
+    return gyr_keyed, how, tolerance_ms
+
+
+@app.cell
+def _(con_w, create_table, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
+    from ibis import _
+
+    _t0 = dt.datetime(2024, 5, 1, 7, 0)
+    _acc = [(1, _t0 + dt.timedelta(microseconds=10_000 * i), float(i)) for i in range(100)]
+    _gyr = [
+        (1, _t0 + dt.timedelta(microseconds=round(1e6 * i / 130)), float(i)) for i in range(130)
+    ]
+    create_table(
+        con_w, "acc", ibis.schema({"device": "int64", "ts": "timestamp", "a": "float64"}), _acc
+    )
+    create_table(
+        con_w, "gyr", ibis.schema({"device": "int64", "ts": "timestamp", "g": "float64"}), _gyr
+    )
+
+    tol = ibis.interval(milliseconds=tolerance_ms.value)
+
+    @sv.transform(
+        requires={
+            "acc": [sv.unique("device", "ts"), _.device.notnull(), _.ts.notnull()],
+            "gyr": [sv.unique("device", "ts")] if gyr_keyed.value else [],
+        },
+        ensures=[
+            sv.unique("device", "ts"),  # one row per accelerometer sample
+            _.ts_right.isnull() | (_.ts_right <= _.ts),  # never from the future
+            # never too old (a condition can be SQL, too)
+            f"ts_right IS NULL OR ts_right >= ts - INTERVAL '{tolerance_ms.value} milliseconds'",
+        ],
+        on_unproved="warn",
+    )
+    def aligned(acc, gyr):
+        return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=tol, how=how.value)
+
+    aligned(con_w.table("acc"), con_w.table("gyr")).order_by("ts").to_pyarrow()
+    aligned.last_report
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Two things to try.
+
+    * Lower the tolerance below 8 ms. The gyroscope samples every 7.7 ms, so
+      some accelerometer samples find no partner. With `how="left"` they stay
+      with NULLs, with `"inner"` they disappear, and the proofs hold either
+      way.
+    * Drop the key on `gyr`. Two gyroscope readings at the same instant tie
+      for "latest", the result is undetermined, and every postcondition is
+      refused (a warning here, because of `on_unproved="warn"`).
+
+    One row per sample comes from the key analysis: `ROW_NUMBER()` over a
+    partition is a key together with the partition columns, and the filter
+    `rank = 0` drops the rank from that key. Framed window aggregates
+    (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums are not
+    supported yet.
+
+    ## Composing contracts
+
+    Say the billing team owns a step that cleans up `orders`, and you own the
+    step after it, which doubles the amounts for a promotion. You have never
+    read their code and you should not have to. If a negative amount slips
+    past them, your step doubles it and your name is on the incident.
+
+    What you rely on is their contract. When the input of a contracted
+    function is the result of another contracted function, sverify proves the
+    downstream preconditions from the upstream contract, so the intermediate
+    data is never checked. It also proves the downstream postconditions from
+    what the upstream step guarantees, whatever its code happens to do.
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
+        ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")],
+    )
+    def paid(orders):
+        """Orders with a known amount."""
+        return orders.filter(orders.amount.notnull())
+
+    @sv.transform(
+        requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
+        ensures=[_.doubled >= 0, _.doubled.notnull()],
+    )
+    def doubled_paid(t):
+        return t.select(t.id, t.customer, doubled=t.amount * 2)
+
+    _orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+    doubled_paid(paid(_orders))
+    doubled_paid.last_report
+    return doubled_paid, paid
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The `requires paid: …` rows show what `doubled_paid` was allowed to
+    assume: the guarantees of `paid`. Each link is a Hoare triple, the
+    notation of program verification: `{P} f {Q}` means that if `P` holds
+    before `f`, then `Q` holds after. The rule
+
+    > `{P} g {Q}` and `{Q} f {S}` give `{P} f ∘ g {S}`
+
+    is theorem `Triple.compose` in `SubstraitLean/Compose.lean`.
+
+    ### When the link breaks
+
+    We'll swap the upstream step for one that promises less. Pick what feeds
+    `doubled_paid`.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    upstream = mo.ui.radio(
+        {
+            "paid (guarantees amount ≥ 0 and not NULL)": "paid",
+            "not_null (guarantees only that amount is not NULL)": "not_null",
+            "a plain Ibis filter: amount > 0": "plain",
+            "a plain Ibis filter: amount IS NOT NULL": "plain_notnull",
+        },
+        value="not_null (guarantees only that amount is not NULL)",
+        label="upstream step",
+    )
+    upstream
+    return (upstream,)
+
+
+@app.cell
+def _(CompositionError, VerificationError, doubled_paid, ibis, mo, paid, sv, upstream):
+    from ibis import _
+
+    _orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
+
+    @sv.transform(ensures=[_.amount.notnull()])
+    def not_null(orders):
+        return orders.filter(orders.amount.notnull())
+
+    _inputs = {
+        "paid": lambda: paid(_orders),
+        "not_null": lambda: not_null(_orders),
+        "plain": lambda: _orders.filter(_orders.amount > 0),
+        "plain_notnull": lambda: _orders.filter(_orders.amount.notnull()),
+    }
+    try:
+        doubled_paid(_inputs[upstream.value]())
+        _out = mo.vstack(
+            [mo.callout(mo.md("Every link holds ✓"), kind="success"), doubled_paid.last_report]
+        )
+    except CompositionError as _e:
+        _out = mo.callout(mo.md(f"CompositionError: {str(_e).splitlines()[0]}"), kind="danger")
+    except VerificationError as _e:
+        _out = mo.callout(mo.md(f"VerificationError: {str(_e).splitlines()[0]}"), kind="danger")
     _out
     return
 
@@ -320,78 +913,23 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    With the default settings, `amount < 100` can't be proved (nothing bounds
-    `amount`), so `"runtime"` checks it on the output. It fails for one row,
-    and it's `cy`'s: **NULL < 100 is not TRUE**, so the NULL row counts as a
-    violation. A contract condition must be TRUE, not merely "not FALSE".
+    * `not_null` guarantees too little: `doubled_paid` needs `amount ≥ 0` and
+      nothing upstream promises it. The error names both sides of the broken
+      link. Only the contract counts, even though `not_null`'s code would
+      happen to keep negative amounts.
+    * A plain Ibis step carries no contract, and what follows from its
+      operations is still proved: `amount > 0` implies both preconditions of
+      `doubled_paid`. With only `amount IS NOT NULL`, the missing
+      `amount ≥ 0` is treated like a precondition on a base table: checked on
+      the data if there is data, assumed otherwise.
+    * A precondition can follow from more than the upstream `ensures`. It is
+      then proved as an extra postcondition of the upstream function, from
+      that function's own preconditions. Keys (`sv.unique`) propagate the same
+      way.
 
-    Switch on *requires amount ≥ 0*: now the precondition check fails first,
-    for the same NULL. Pass `check_requires=False` to `sv.transform` to trust
-    the inputs instead (the proofs then rest on that trust).
-
-    ### Schemas count too
-
-    A column declared non-nullable (`"!int64"` in Ibis) is never NULL, and
-    Lean knows it, so `amount IS NOT NULL` needs no precondition:
-    """)
-    return
-
-
-@app.cell
-def _(ibis, sv):
-    strict = ibis.table({"id": "!int64", "amount": "!int64"}, name="strict")
-    sv.verify(strict.select("id", "amount"), ensures=["amount IS NOT NULL"])
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## The theorem behind the ✅
-
-    When a reviewer asks why they should believe a ✅, this is the answer.
-    Every ✅ in this tour is an instance of `contract_sound` in
-    `SubstraitLean/Contracts.lean`:
-
-    ```lean
-    theorem contract_sound (hcat : cat.WF)
-        (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)               -- rows match the schema
-        (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue)  -- preconditions hold
-        (hQ : Q.WF cat)
-        (hproved : (Q.aeval cat fun t => tableEnv (S t) (pre t)).all AVal.certainlyTrue) :
-        ∀ row ∈ Q.eval cat, ∀ v ∈ row, v = .bool true                   -- postconditions hold
-    ```
-
-    Read: *if every input row matches its schema and satisfies the
-    preconditions, and the abstract interpretation (`aeval`) says every
-    postcondition is certainly TRUE, then every postcondition is TRUE on
-    every output row.* `hproved` is what the checker computes for your plan;
-    the rest are assumptions about the data, which `sverify` checks when the
-    data is there.
-
-    ## What Lean tracks
-
-    Per column: whether it can be NULL, an integer or double range, which
-    booleans it can be, timestamps, and whether it can be a string. Filters
-    such as `amount > 10`, `x = 3`, `x IN (1, 2, 3)` and `x IS NOT NULL`
-    refine those facts; arithmetic, comparisons, `AND`/`OR`/`NOT` with SQL's
-    NULL semantics, `CASE`, `COALESCE`, joins and `UNION ALL` propagate them.
-    The next chapters add **keys** and **relations between columns** (5),
-    runtime errors (6) and window functions (7); doubles, time and text
-    have a chapter of their own (12).
-
-    Not tracked yet: relations that need more than "column plus constant"
-    (`a < 2 * b`), string contents, DECIMAL columns, and counts across rows.
-    Postconditions like those are refused rather than guessed; use
-    `on_unproved="runtime"` to check them on the data instead.
-
-    You can now put a contract on a transformation, read what Lean proved
-    about every column, and choose what happens when a promise can't be
-    proved. The billing job gets a column whose promises were proved
-    before any data ran, and the assumptions about upstream data are
-    checked when the data arrives. **Next up:**
-    [Keys and relations](?file=05_keys_and_relations.py), where the facts
-    are about pairs of rows and pairs of columns.
+    On bound tables only the base tables are checked: `paid`'s preconditions
+    on `orders`. The intermediate result is never inspected, because
+    `doubled_paid`'s preconditions were proved.
     """)
     return
 
@@ -399,7 +937,26 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 3. [An orders mart](?file=03_orders_mart.py) · [Contents](?file=00_start_here.py) · 5. [Keys and relations](?file=05_keys_and_relations.py) →
+    You can now put a contract on a transformation and read what Lean proved
+    about every column. You can prove keys and relations between columns,
+    rule out the runtime errors that page people at night, pin down windows
+    and ASOF joins, and chain steps from different teams with every link
+    proved. The billing job gets a column whose promises were proved before
+    any data ran, and the assumptions about upstream data are checked when
+    the data arrives.
+
+    Orders keep arriving, though. Next up is
+    [Pipelines and engines](?file=05_pipelines_and_engines.py), where a
+    contracted result is kept up to date from its changes, stored in Delta
+    and Iceberg, and run on other engines.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ← 3. [An orders mart](?file=03_orders_mart.py) · 5. [Pipelines and engines](?file=05_pipelines_and_engines.py) →
     """)
     return
 

@@ -89,7 +89,9 @@ def aggregateFns : List (Nat × String) := [
   -- The first and last value in the measure's sort order (#55).
   (505, "first"), (506, "last"),
   -- The covariance and correlation of pairs of doubles (#54).
-  (507, "covar_samp"), (508, "covar_pop"), (509, "corr")]
+  (507, "covar_samp"), (508, "covar_pop"), (509, "corr"),
+  -- Strings joined in the measure's sort order (#55).
+  (510, "string_agg")]
 
 /-- Window functions: new anchors 600–699. -/
 def windowFns : List (Nat × String) := [
@@ -120,6 +122,7 @@ def AggFn.anchor : AggFn → Nat
   | .pick last => if last then 506 else 505
   | .cov sample => if sample then 507 else 508
   | .corr => 509
+  | .concat _ => 510
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -170,6 +173,7 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
   case pick last => cases last <;> decide
   case cov sample => cases sample <;> decide
+  case concat => simp only [AggFn.anchor]; decide
   all_goals decide
 
 theorem UnFn.anchor_declared (f : UnFn) :
@@ -809,6 +813,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
           | .min | .max | .pick _ => wkind ks m.arg
+          | .concat _ => .str
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
@@ -817,6 +822,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
         | .min | .max | .pick _ => wkind ks m.arg
+        | .concat _ => .str
         | .collect => .list (wkind ks m.arg)
   | .unnest r c =>
       let ks := relKinds schemas cat r
@@ -887,7 +893,10 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
     ("arguments", match m.arg with
       | .bin .pair x y => Json.arr #[obj [("value", writeExpr cols .float x)],
           obj [("value", writeExpr cols .float y)]]
-      | _ => Json.arr #[obj [("value", arg)]]),
+      -- `STRING_AGG`'s separator is its second argument (#55).
+      | _ => match m.fn with
+        | .concat sep => Json.arr #[obj [("value", arg)], obj [("value", writeLit .str (.str sep))]]
+        | _ => Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   -- An integer `AVG` says so by its output type (`AggFn.iavg`).
   let measure := if m.fn matches .iavg then measure.setObjVal! "outputType" i64Type else measure

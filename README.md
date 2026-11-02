@@ -110,7 +110,7 @@ writer, which are trusted code.
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
 | `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
-| `notebooks/` | The tour: three workflows, nine feature chapters, three on how it works and an appendix (marimo) |
+| `notebooks/` | The tour: three workflows and two guides (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
@@ -124,30 +124,30 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
-165 of 196 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
+169 of 203 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample · ✓ order_by expression *inc.* · ✗ limit expression · ✗ limit count() · ✓ fill_null table *inc.* · ✓ fill_null all *inc.* · ✓ memtable *inc.* · ✓ constant table *inc.* · ✓ alias *inc.* · ✓ sql view *inc.* · ✓ sql query *inc.* |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ isin subquery in select · ✓ notin subquery · ✓ scalar subquery in select · ✓ scalar subquery, one row · ✗ scalar subquery, many rows · ✓ exists · ✓ not exists · ✓ exists, uncorrelated · ✗ correlated scalar subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference · ✓ intersect all · ✓ difference all |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ arithmetic over aggregates · ✓ nunique · ✓ first, last ordered · ✗ approx_nunique · ✓ any, all · ✓ bit_and, bit_or, bit_xor · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✓ std · ✓ cov, corr · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✓ scalar subquery · ✓ unnest |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ arithmetic over aggregates · ✓ nunique · ✓ first, last ordered · ✓ group_concat ordered · ✗ group_concat · ✗ approx_nunique · ✓ any, all · ✓ bit_and, bit_or, bit_xor · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✓ std · ✓ cov, corr · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✓ scalar subquery · ✓ unnest |
 | lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* |
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✗ min over a sliding frame · ✗ window sum of an expression |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
 | math | ✓ sign *inc.* · ✓ sqrt *inc.* · ✓ exp *inc.* · ✓ ln *inc.* · ✓ log10, log2 *inc.* · ✓ log(base) *inc.* · ✓ trigonometry *inc.* · ✓ degrees, radians *inc.* · ✓ pi, e *inc.* · ✓ isinf *inc.* · ✓ bitwise *inc.* · ✓ shifts *inc.* · ✓ logical xor *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
-| strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate |
+| strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate · ✓ re_extract *inc.* · ✓ re_replace *inc.* · ✓ hexdigest *inc.* · ✗ hash · ✗ host |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✗ date from columns · ✗ string to timestamp · ✗ time + interval · ✗ time truncate · ✗ strftime other directives · – between_time |
 | generic | ✗ try_cast · ✗ param · ✗ typeof · ✗ random · ✗ uuid · ✗ now · ✗ today |
 
-Every engine runs the plans of the 165 verified operations, except:
+Every engine runs the plans of the 169 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| Polars | 162 | non-equi join · first, last ordered · cov, corr |
-| DuckDB | 158 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
-| Snowflake | 126 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · cov, corr · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · rolling sum by time (with `tie_free=True` it runs) |
-| Spark | 125 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · cov, corr · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
+| Polars | 162 | non-equi join · first, last ordered · group_concat ordered · cov, corr · re_extract · re_replace · hexdigest |
+| DuckDB | 162 | non-equi join · collect · collect ordered · unnest · unnest column · list literal · replace '' |
+| Snowflake | 126 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · group_concat ordered · cov, corr · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `tie_free=True` it runs) |
+| Spark | 125 | order_by (with `tie_free=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `tie_free=True` it runs) · non-equi join · scalar subquery, one row · count, max, mean · first, last ordered · group_concat ordered · cov, corr · collect · collect ordered · scalar subquery · unnest · unnest column · list literal · row_number (with `tie_free=True` it runs) · lag (with `tie_free=True` it runs) · rank (with `tie_free=True` it runs) · dense_rank (with `tie_free=True` it runs) · cumsum (with `tie_free=True` it runs) · sum over group · ntile (with `tie_free=True` it runs) · first (with `tie_free=True` it runs) · percent_rank, cume_dist (with `tie_free=True` it runs) · running mean · rolling sum (interval) (with `tie_free=True` it runs) · rolling sum (range) (with `tie_free=True` it runs) · last, nth (with `tie_free=True` it runs) · max, count over frame (with `tie_free=True` it runs) · exp · ln · log10, log2 · log(base) · trigonometry · replace '' · re_extract · re_replace · hexdigest · rolling sum by time (with `tie_free=True` it runs) · time of day · time parts · compare times |
 <!-- coverage:end -->
 
 The engines refuse what they can't do as Lean does: `<` on strings is
@@ -224,9 +224,9 @@ tasks need `lake` on your PATH.
 
 ### The tour
 
-The notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
-[`00_start_here.py`](notebooks/00_start_here.py). Open the whole folder, so the
-links between chapters work:
+The five notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
+[`01_duplicate_payments.py`](notebooks/01_duplicate_payments.py). Open the whole folder, so the
+links between notebooks work:
 
 ```bash
 uvx marimo edit --sandbox notebooks              # from the project root
@@ -240,28 +240,20 @@ from `python/` as declared in the notebook's header; the first start takes a
 minute. Build the checker first (`lake build`). The project's own
 environment works too: `uv run --project python marimo edit notebooks`.
 
-| | Chapter | What it covers |
+| | Notebook | What it covers |
 |---:|:---|:---|
-| 0 | [Start here](notebooks/00_start_here.py) | what the library does for you, and how to use the tour |
 | 1 | [Duplicate card payments](notebooks/01_duplicate_payments.py) | workflow: Delta source and sink, a self-join's contract, refresh from the Change Data Feed |
 | 2 | [Sensor alerts](notebooks/02_sensor_alerts.py) | workflow: Iceberg source and sink, `LAG` and ties, NaN, Snowflake and Spark |
 | 3 | [An orders mart](notebooks/03_orders_mart.py) | workflow: a point-in-time join to a type-2 dimension, dbt tests as a contract, SQL |
-| 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, what Lean tracks, `on_unproved` |
-| 5 | [Keys and relations](notebooks/05_keys_and_relations.py) | `sv.unique`, facts between columns, joins |
-| 6 | [Runtime errors](notebooks/06_runtime_errors.py) | division by zero, overflow, casts; proving they can't happen |
-| 7 | [Windows and ASOF joins](notebooks/07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
-| 8 | [Composing contracts](notebooks/08_composition.py) | proving one step's preconditions from the previous step |
-| 9 | [Incremental views](notebooks/09_incremental_views.py) | nodes kept up to date from changes, what is recomputed, Z-sets and delta rules |
-| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state, your own source and sink |
-| 11 | [Engines and SQL](notebooks/11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
-| 12 | [Doubles, time and text](notebooks/12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
-| 13 | [Plans, meaning and proofs](notebooks/13_plans_and_proofs.py) | under the hood: Substrait plans, Lean's interpreter, theorems, NULL |
-| 14 | [The checker](notebooks/14_the_checker.py) | under the hood: `substrait-check`, Lean as a reference engine, Ibis coverage |
-| 15 | [What is proved, what is trusted](notebooks/15_trust.py) | under the hood: the trusted boundary, a glossary and a map of the code |
-| 17 | [One expression, many engines](notebooks/17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question, and DataFusion as a backend |
+| 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, keys and relations, runtime errors, windows and ASOF joins, composing contracts |
+| 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, DataFusion, Spark and Snowflake SQL, doubles, time and text |
 
-`poe notebooks` (part of `poe qa`) checks every chapter with `marimo check` and
-runs it headless. The chapters' tables come from `sverify.display`, which needs
+[catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a sixth marimo app outside the tour: one
+expression asked of every engine. Under-the-hood detail is in
+[docs/how-it-works.md](docs/how-it-works.md).
+
+`poe notebooks` (part of `poe qa`) checks every notebook with `marimo check` and
+runs it headless. The notebooks' tables come from `sverify.display`, which needs
 marimo.
 
 ### Wheels
