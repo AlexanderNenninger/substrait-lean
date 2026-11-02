@@ -129,6 +129,19 @@ QUERIES = [
     "SELECT * FROM orders ANTI JOIN customers ON customers.name = orders.customer",
     "SELECT o.id, c.name FROM orders o RIGHT JOIN customers c ON c.name = o.customer",
     "SELECT o.id, c.name FROM orders o FULL JOIN customers c ON c.name = o.customer",
+    # Window functions; ties only where the function is the same on them.
+    "SELECT id, row_number() OVER (PARTITION BY customer ORDER BY id) AS rn,"
+    " rank() OVER (ORDER BY customer) AS r, dense_rank() OVER (ORDER BY customer) AS d"
+    " FROM orders",
+    "SELECT id, lag(amount) OVER (ORDER BY id) AS p, lead(amount, 2, -1) OVER (ORDER BY id DESC)"
+    " AS n, first_value(amount) OVER (PARTITION BY customer ORDER BY id) AS f FROM orders",
+    "SELECT id, sum(amount) OVER (PARTITION BY customer) AS s, avg(price) OVER () AS a,"
+    " sum(amount) OVER (ORDER BY id) AS run,"
+    " max(amount) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS m FROM orders",
+    "SELECT id, ntile(2) OVER (ORDER BY id) AS nt, percent_rank() OVER (ORDER BY id) AS pr,"
+    " cume_dist() OVER (ORDER BY id) AS cd, lag(amount * 2) OVER (ORDER BY id) AS l2 FROM orders",
+    "SELECT customer, sum(amount) AS s, rank() OVER (ORDER BY sum(amount) DESC) AS r,"
+    " avg(sum(amount)) OVER () AS a FROM orders GROUP BY customer",
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
@@ -257,7 +270,9 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
             " WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer)",
             "correlated",
         ),
-        ("SELECT sum(id) OVER () FROM orders", "window functions"),
+        ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
+        ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
+        ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT id FROM elsewhere", "cannot resolve"),
         ("SELECT id, customer FROM orders GROUP BY id", "GROUP BY"),
