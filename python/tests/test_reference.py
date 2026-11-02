@@ -9,6 +9,7 @@ reference.
 
 import json
 
+import ibis
 import pyarrow as pa
 import pytest
 
@@ -22,7 +23,9 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
+from sverify.sql_lift import lift
 from sverify.testing import inline_tables, lean_values
 
 pytestmark = pytest.mark.backend("datafusion")
@@ -105,6 +108,47 @@ def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
     """As on integers; `verify` proves it absent where the plan rules a zero
     divisor out (DataFusion gives NaN)."""
     assert [i.kind for i in sv.verify(sql, tables={"f": {"x": "float64"}}).errors] == errors
+
+
+# #256: the remainder of doubles is sverify's own `sverify_fmod`, as
+# Substrait's `modulus` has no double impl. Lean reads both and writes it;
+# DataFusion runs it as its own `%`.
+def declared(plan: str) -> set[str]:
+    return {e["extensionFunction"]["name"] for e in json.loads(plan)["extensions"]}
+
+
+def test_the_written_remainder_of_doubles_is_sverify_fmod(con):
+    sql = "SELECT x % 2.0 AS m FROM f WHERE x < 1e300"
+    written = written_plan(substrait_json(con, sql))
+    assert "sverify_fmod" in declared(written)
+    assert lean_values(json.dumps(inline_tables(json.loads(written), ROWS))) == [(1.5,), (0.0,)]
+    for engine in ("duckdb", "polars", "datafusion"):
+        assert arrow_rows(run_plan(con, written, engine)) == [(1.5,), (0.0,)], engine
+
+
+def test_the_frontends_write_sverify_fmod():
+    t = ibis.table({"x": "float64", "i": "int64"}, name="t")
+    assert "sverify_fmod" in declared(to_substrait_json(t.select(m=t.x % 2.5)))
+    assert "sverify_fmod" not in declared(to_substrait_json(t.select(m=t.i % 2)))
+    lifted = lift("SELECT x % 2.5 AS m FROM t", {"t": t.schema()}, "reference")
+    assert "sverify_fmod" in declared(json.dumps(lifted.plan))
+
+
+def test_sverify_fmod_takes_doubles(con):
+    plan = json.loads(written_plan(substrait_json(con, "SELECT x % 2.0 AS m FROM f")))
+    for e in plan["extensions"]:
+        if e["extensionFunction"]["name"] == "sverify_fmod":
+            fmod = e["extensionFunction"]["functionAnchor"]
+    project = plan["relations"][0]["root"]["input"]["project"]
+    call = project["expressions"][0]
+    while "scalarFunction" in call and call["scalarFunction"]["functionReference"] != fmod:
+        call = call["scalarFunction"]["arguments"][0]["value"]
+    call["scalarFunction"]["arguments"] = [
+        {"value": {"literal": {"i64": "7"}}},
+        {"value": {"literal": {"i64": "2"}}},
+    ]
+    code, out, err = run_checker((), json.dumps(plan))
+    assert code != 0 and "sverify_fmod takes doubles" in out + err
 
 
 # R7 (#205): an aggregate of a double constant adds doubles, not their codes.
