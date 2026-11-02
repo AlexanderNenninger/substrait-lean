@@ -371,7 +371,7 @@
    "guard_free": false
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "h2o-groupby-q9": {
@@ -1302,7 +1302,7 @@
    ]
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q09": {
@@ -1356,7 +1356,7 @@
    ]
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q12": {
@@ -1390,7 +1390,7 @@
    "guard_free": false
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q14": {
@@ -1411,7 +1411,7 @@
    ]
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q15": {
@@ -1445,7 +1445,7 @@
    "guard_free": false
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q17": {
@@ -1465,7 +1465,7 @@
    ]
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q18": {
@@ -1519,7 +1519,7 @@
    ]
   },
   "verified_sql": {
-   "duckdb": "no"
+   "duckdb": "yes"
   }
  },
  "tpch-q21": {

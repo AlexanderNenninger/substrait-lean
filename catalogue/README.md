@@ -61,12 +61,22 @@ meet the contracts' preconditions.
 
 For a query with a contract, the probe records `contract` (whether `verify`
 proves it, whether the plan is `guard_free`, and whether the synthetic tables
-meet the preconditions) and `verified_sql.duckdb`. It is `yes` when all three
-hold and DuckDB gives the reference's rows. Then `Rel.duckdb_sound`
-(`SubstraitLean/Profile.lean`) proves that on every database meeting the
-preconditions, DuckDB's profile gives `Rel.eval`'s rows. Trusted: that the
-profile is DuckDB's, the SQL printer, and the runtime check of an integer
-`SUM` (which `guard_free` allows: bounding sums needs row counts, #219).
+meet the preconditions) and `verified_sql.duckdb`. It is `yes` when every
+postcondition is proved, the synthetic tables meet the preconditions, and
+DuckDB gives the reference's rows on them. (`proved` additionally rules out
+runtime errors.) Two theorems in
+`SubstraitLean/Profile.lean` then say what DuckDB does on *every* database
+that meets the preconditions:
+
+* `Rel.duckdb_shim_sound`: the plan, shimmed for DuckDB, gives `Rel.eval`'s
+  rows unless one of its expressions raises (partial correctness). So DuckDB
+  returns the rows the contract is proved about, or an error, never other
+  rows.
+* `Rel.duckdb_sound`, for a `guard_free` plan: no expression raises, so it
+  always returns them (except for an integer `SUM` leaving 64 bits, which
+  keeps its runtime check; bounding sums needs row counts, #219).
+
+Trusted: that `Profile.duckdb` is DuckDB's, and the SQL printer.
 
 ## Sources and licences
 

@@ -547,9 +547,11 @@ def probe_profile(
     }
     if q.requires is not None:
         c = result["contract"] = probe_contract(con, q, schemas, profile, query)
-        # Verified SQL (#229): the contract is proved, nothing may raise, the
-        # data meets the preconditions, and DuckDB gives the rows.
-        ok = c["proved"] and c["guard_free"] and "data" not in c
+        # Verified SQL (#229): every postcondition is proved, the data meets
+        # the preconditions, and DuckDB gives the rows. DuckDB then returns
+        # rows the postconditions hold of, or raises (`Rel.duckdb_shim_sound`);
+        # `proved` (no runtime error either) is stronger.
+        ok = "unproved" not in c and "data" not in c
         result["verified_sql"] = {
             "duckdb": "yes" if ok and result["engines"].get("duckdb") == "runs" else "no"
         }
