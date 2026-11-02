@@ -687,7 +687,7 @@
  "dbt-org-hierarchy": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "CTEs (WITH) is not supported yet",
+  "detail": "WITH RECURSIVE is not supported",
   "datafusion": "runs"
  },
  "dbt-generate-date-spine": {
@@ -1045,7 +1045,7 @@
  "ts-pack-intervals": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "CTEs (WITH) is not supported yet",
+  "detail": "window functions (MAX(bookings.end_ts) OVER (PARTITION BY bookings.resource...) are not supported yet",
   "datafusion": "runs"
  },
  "tpcds-q03": {

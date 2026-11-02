@@ -424,7 +424,8 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | _, _, _, _, _, _ => []
 
 /-- Is `x`'s value never the integer 0? From its interval, an assumption
-`x ≠ 0`, a fact `$j ≠ -c` for `x = $j + c`, or both branches of a `CASE`. -/
+`x ≠ 0`, a fact `$j ≠ -c` for `x = $j + c`, both branches of a `CASE`, or both
+factors of a product. -/
 def Expr.nonZero (env : List AVal) (fs : List Fact) (ks : Assumptions) (x : Expr) : Bool :=
   (x.absD env fs ks).int.all (!·.has0) ||
   ks.any (fun sk => sk.1 == x && match sk.2 with | .ne 0 => true | _ => false) ||
@@ -434,6 +435,8 @@ def Expr.nonZero (env : List AVal) (fs : List Fact) (ks : Assumptions) (x : Expr
     let ac := c.absD env fs ks
     (!ac.tt || t.nonZero (c.refine env) fs (c.cstrs true ++ ks)) &&
       (!(ac.nonBool || ac.ff) || e.nonZero (c.refineNeg env) fs (c.cstrs false ++ ks))
+  -- A product of non-zero integers (exact in the model; overflow is an error).
+  | .bin .mul a b => a.nonZero env fs ks && b.nonZero env fs ks
   | _ => false
 
 def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
@@ -510,6 +513,14 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
           · simp_all [AVal.nonBool]
         · exact Expr.nonZero_sound (Expr.refineNeg_sound env c h hf) hfs
             (KsHold.cons_cstrs hf hks) e he j hj
+    · rename_i a b
+      simp only [Bool.and_eq_true] at hc
+      simp only [eval] at hj
+      cases ha : a.eval row <;> cases hb : b.eval row <;> simp [ha, hb, BinFn.apply] at hj
+      rename_i x y
+      subst hj
+      exact Int.mul_ne_zero (Expr.nonZero_sound h hfs hks a hc.1 x ha)
+        (Expr.nonZero_sound h hfs hks b hc.2 y hb)
     · simp at hc
 
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}

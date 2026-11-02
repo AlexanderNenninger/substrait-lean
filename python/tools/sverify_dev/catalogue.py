@@ -653,6 +653,18 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"grouping sets|aggregate GROUPING\(\)|GROUPING SETS, CUBE and ROLLUP", {"grouping_sets"}),
     # The SQL lift's refusals (`sverify.sql_lift`, #240).
     (r"CTEs \(WITH\)", {"cte", "recursive_cte"}),
+    (r"WITH RECURSIVE", {"recursive_cte"}),
+    (
+        r"window functions \(",
+        {
+            "running_agg",
+            "window_partition_agg",
+            "rows_frame",
+            "range_frame",
+            "row_number",
+            "lag_lead",
+        },
+    ),
     (r"UNNEST|GENERATE_SERIES", {"unnest", "generate_series"}),
     (r"aggregate function: (median|approx_median|percentile)|'Quantile'", {"percentile"}),
     (r"aggregate function: (stddev|var)|window function: (std_dev|variance)", {"stddev_var"}),

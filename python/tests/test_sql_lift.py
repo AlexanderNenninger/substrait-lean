@@ -85,6 +85,52 @@ QUERIES = [
     " INTERVAL 2 MONTHS + placed AS later FROM orders"
     " WHERE placed >= TIMESTAMP '2024-01-08' - INTERVAL 1 WEEK",
     "SELECT date_trunc('month', placed) AS m, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
+    # DuckDB's DATE ± INTERVAL and date_trunc of a DATE are TIMESTAMPs at
+    # midnight: held as dates, compared exactly.
+    "SELECT id FROM orders WHERE day <= DATE '2024-03-31' - INTERVAL 90 DAY",
+    "SELECT id FROM orders WHERE day >= DATE '2023-12-31' AND day < DATE '2023-12-31'"
+    " + INTERVAL 1 MONTH",
+    "SELECT id FROM orders WHERE day + INTERVAL 1 MONTH > DATE '2024-02-15'",
+    "SELECT DATE '2024-01-31' + INTERVAL 1 MONTH AS m, DATE '2024-01-01' + INTERVAL 1 HOUR AS h",
+    "SELECT id FROM orders WHERE date_trunc('month', day) = DATE '2024-01-01'",
+    "SELECT id, extract(year FROM day) AS y, extract(quarter FROM day) AS q, month(day) AS m,"
+    " day(day) AS d, dayofweek(day) AS dw, dayofyear(day) AS dy, week(day) AS w FROM orders",
+    "SELECT id, date_part('hour', placed) AS h, minute(placed) AS mi, second(placed) AS s,"
+    " extract(dow FROM placed) AS dw FROM orders",
+    "SELECT id, day - DATE '2024-01-01' AS since, datediff('day', DATE '2024-01-01', day) AS dd"
+    " FROM orders",
+    "SELECT extract(year FROM day) AS y, count(*) AS n FROM orders GROUP BY 1 ORDER BY 1",
+    # Strings: DuckDB counts characters (code points) from 1; LIKE has no
+    # escape character; `||` is NULL with a NULL, `concat` leaves NULLs out.
+    "SELECT id, length(customer) AS l, substring(customer, 2, 2) AS a,"
+    " substring(customer, -2, 2) AS b, substring(customer, 0, 2) AS c, substr(customer, 2) AS d"
+    " FROM orders",
+    "SELECT id, trim('  ' || customer || ' ') AS t, ltrim(customer, 'a') AS l,"
+    " rtrim(customer, 'y') AS r FROM orders",
+    "SELECT id, strpos(customer, 'a') AS p, position('d' IN customer) AS q,"
+    " contains(customer, 'd') AS c, starts_with(customer, 'a') AS s, ends_with(customer, 'b') AS e,"
+    " prefix(customer, 'c') AS pf, suffix(customer, 'y') AS sf FROM orders",
+    "SELECT id FROM orders WHERE customer LIKE 'a%' OR customer NOT LIKE '_o_'",
+    "SELECT id, customer ILIKE 'ADA' AS i, customer NOT ILIKE '%B' AS n FROM orders",
+    "SELECT id, customer || '!' AS a, concat(customer, '-', customer) AS b,"
+    " replace(customer, 'a', 'A') AS r, repeat(customer, qty) AS t, left(customer, 2) AS f,"
+    " upper(customer) AS u, lower(customer) AS lo FROM orders",
+    # CTEs, inlined; uncorrelated subqueries, with SQL's NULLs for IN; semi,
+    # anti, right and full joins.
+    "WITH big AS (SELECT id, amount * 2 AS a2 FROM orders WHERE amount > 2), eu(n) AS"
+    " (SELECT name FROM customers WHERE region = 'eu') SELECT big.id, big.a2 FROM big"
+    " JOIN orders o ON o.id = big.id JOIN eu ON eu.n = o.customer",
+    "SELECT id FROM orders WHERE customer IN (SELECT name FROM customers WHERE region = 'eu')",
+    "SELECT id, customer NOT IN (SELECT name FROM customers) AS stranger FROM orders",
+    "SELECT id FROM orders WHERE amount > (SELECT avg(amount) FROM orders)",
+    "SELECT id, (SELECT count(*) FROM customers) AS n FROM orders"
+    " WHERE EXISTS (SELECT 1 FROM customers WHERE region = 'us')",
+    "SELECT * FROM orders SEMI JOIN customers ON customers.name = orders.customer",
+    "SELECT * FROM orders ANTI JOIN customers ON customers.name = orders.customer",
+    "SELECT o.id, c.name FROM orders o RIGHT JOIN customers c ON c.name = o.customer",
+    "SELECT o.id, c.name FROM orders o FULL JOIN customers c ON c.name = o.customer",
+    "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
+    " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
     pytest.param(
         "SELECT 7 / 2 AS h",
@@ -202,14 +248,21 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     [
         ("SELECT my_udf(id) FROM orders", "unknown function my_udf"),
         ("SELECT id FROM orders UNION ALL SELECT id FROM orders", "Union is not supported"),
-        ("WITH t AS (SELECT id FROM orders) SELECT id FROM t", "CTEs"),
+        (
+            "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t",
+            "RECURSIVE",
+        ),
+        (
+            "SELECT id FROM orders o"
+            " WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer)",
+            "correlated",
+        ),
         ("SELECT sum(id) OVER () FROM orders", "window functions"),
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT id FROM elsewhere", "cannot resolve"),
         ("SELECT id, customer FROM orders GROUP BY id", "GROUP BY"),
         ("SELECT avg(cost) FROM orders", "avg of a DECIMAL"),
         ("SELECT * FROM orders o JOIN orders p ON o.id = p.id", "two output columns named id"),
-        ("SELECT id FROM orders o FULL JOIN customers c ON o.customer = c.name", "FULL"),
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT id FROM orders LIMIT qty", "LIMIT"),
         ("SELECT 170141183460469231731687303715884105727 AS h", "HUGEINT"),
@@ -221,9 +274,19 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ),
         ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
         ("SELECT CAST(NULL AS INT[3]) FROM orders", "fixed-size array"),
-        ("SELECT date_trunc('day', day) FROM orders", "DATE"),
-        ("SELECT day + INTERVAL 1 DAY FROM orders", "DATE plus an interval"),
-        ("SELECT placed + INTERVAL '1 hour 30 minutes' FROM orders", "one integer and a unit"),
+        # A DATE at midnight that DuckDB types a TIMESTAMP needs a cast Lean
+        # lacks where it is one: an output column, next to a timestamp column.
+        ("SELECT date_trunc('day', day) AS d FROM orders", "is a TIMESTAMP in DuckDB"),
+        ("SELECT day + INTERVAL 1 DAY AS d FROM orders", "is a TIMESTAMP in DuckDB"),
+        ("SELECT id FROM orders WHERE day < placed", "DATE column as a TIMESTAMP"),
+        ("SELECT day + INTERVAL 1 HOUR AS d FROM orders", "hours or less"),
+        ("SELECT extract(epoch FROM placed) FROM orders", "date part EPOCH"),
+        ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
+        ("SELECT reverse(customer) FROM orders", "grapheme clusters"),
+        ("SELECT id FROM orders WHERE customer LIKE 'a\\%'", "backslash"),
+        ("SELECT id FROM orders WHERE customer LIKE customer", "not a constant"),
+        ("SELECT substring(customer, 1, -1) FROM orders", "negative length"),
+        ("SELECT customer || 1 FROM orders", "|| of a int32"),
     ],
 )
 def test_refusals_say_what(query, message):

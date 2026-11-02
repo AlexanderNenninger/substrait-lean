@@ -254,3 +254,41 @@ def test_duckdb_fails_only_where_reported(i, rows):
         duckdb_rows(plan, {"t": table})
     except duckdb.Error as e:
         assert reported, f"DuckDB failed ({e}) but nothing was reported"
+
+
+D = ibis.table({"a": "int64", "b": "int64", "c": "int64"}, name="d")
+#: `b` and `c` small enough that `b * c` fits in 64 bits.
+SMALL = [_.b < 1_000_000, _.b > -1_000_000, _.c < 1_000_000, _.c > -1_000_000]
+
+
+@pytest.mark.parametrize(
+    ("label", "requires", "expr"),
+    [
+        ("an OR of both signs", [(_.b < 0) | (_.b > 0)], D.select(r=D.a % D.b)),
+        ("both signs, reversed", [(_.b > 0) | (_.b < 0)], D.select(r=D.a % D.b)),
+        ("non-zero or NULL", [(_.b != 0) | _.b.isnull()], D.select(r=D.a % D.b)),
+        ("NULL or non-zero", [_.b.isnull() | (_.b != 0)], D.select(r=D.a % D.b)),
+        (
+            "a product of non-zero factors",
+            [_.b != 0, _.c != 0, *SMALL],
+            D.select(r=D.a % (D.b * D.c)),
+        ),
+    ],
+)
+def test_preconditions_prove_a_divisor_non_zero(label, requires, expr):
+    report = sv.verify(expr, requires={"d": requires})
+    assert "division by zero" not in [i.kind for i in report.issues], label
+
+
+@pytest.mark.parametrize(
+    ("label", "requires", "expr"),
+    [
+        # The gap leaves out 0 only when it covers it.
+        ("an OR above zero", [(_.b < 1) | (_.b > 1)], D.select(r=D.a % D.b)),
+        ("one factor may be zero", [_.b != 0, *SMALL], D.select(r=D.a % (D.b * D.c))),
+        ("either may be zero", [(_.b != 0) | (_.c != 0)], D.select(r=D.a % D.b)),
+    ],
+)
+def test_preconditions_that_leave_zero_possible(label, requires, expr):
+    report = sv.verify(expr, requires={"d": requires})
+    assert "division by zero" in [i.kind for i in report.issues], label
