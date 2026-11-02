@@ -31,7 +31,9 @@ case label:
   case with DuckDB running Ibis's own DuckDB SQL, and these with the other
   engines, Lean and Python instead;
 * `UNORDERED_LISTS`: lists built from rows in an order the plan does not fix,
-  compared as bags.
+  compared as bags;
+* `APPROXIMATE`: doubles each engine computes with its own algorithm
+  (`VARIANCE`, `STDDEV`, #54), compared to nine significant digits.
 
 `tests/test_coverage.py` pins every case to its `expected` status and its
 refusals, so a change in coverage is a deliberate edit there. The README
@@ -55,6 +57,7 @@ from typing import Any
 from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
+    APPROXIMATE,
     CASES,
     NO_DUCKDB_SQL,
     REFUSED,
@@ -72,6 +75,7 @@ __all__ = [
     "TABLES",
     "TIE_FREE",
     "UNORDERED_LISTS",
+    "APPROXIMATE",
     "Case",
     "L",
     "Result",
