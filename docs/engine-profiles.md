@@ -99,7 +99,13 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   golden test `tests/lowering/duckdb.expected`). With the setting off, the
   search finds `CASE WHEN x IS NOT NULL AND y = 0 THEN error() ELSE x / y
   END` for division and modulus (`NULL / 0` is NULL in the reference), the
-  shim first written by hand. `SubstraitLean/Lowering.lean` proves once that
+  shim first written by hand. `overflow` = `SATURATE` (`UnFn.fit`, which
+  DuckDB has no function for) gets a `CASE` clamping to the width's bounds,
+  which the search finds among `CASE` chains over constants the reference
+  gives. `SILENT`'s wrap-around, `((x + 2^(w-1)) % 2^w + 2^w) % 2^w -
+  2^(w-1)` in 128-bit arithmetic, is beyond the search: it is a hand-written
+  schema (`LoweringSearch.schema?`), still proved for each width by the
+  kernel and marked as such in the coverage report. `SubstraitLean/Lowering.lean` proves once that
   lowering with any such table is correct: **`Lowering.lower_correct`** (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for

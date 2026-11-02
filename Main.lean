@@ -120,6 +120,10 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
   -- Decimals (#27) are written back as Substrait's own calls and casts where
   -- that parses back to the same plan; DataFusion does not compute them as
   -- the reference does.
+  -- `overflow` = `SILENT` or `SATURATE` (#241): only DuckDB's SQL has it so far.
+  if df && plan.root.anyExpr Expr.fits then
+    IO.eprintln "error: overflow = SILENT or SATURATE is not supported on DataFusion (#241)"
+    return 1
   if plan.root.decimalOps then
     if df then
       IO.eprintln "error: DataFusion does not compute decimals as the reference does (#27)"

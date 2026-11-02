@@ -873,6 +873,9 @@ class Exprs:
                 prefs = o.get("preference") or ["ERROR"]
                 if o.get("name") == "on_division_by_zero" and prefs[0] != "ERROR":
                     raise Unsupported(f"on_division_by_zero = {prefs}")
+                # Wrap-around and clamping run on DuckDB only so far (#241).
+                if o.get("name") == "overflow" and prefs[0] != "ERROR":
+                    raise Unsupported(f"overflow = {prefs}")
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name == "round" and len(arg_js) == 2:

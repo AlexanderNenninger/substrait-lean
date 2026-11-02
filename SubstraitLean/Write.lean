@@ -125,6 +125,8 @@ def UnFn.anchor : UnFn → Nat
   | .itof | .ftoi | .narrow _ | .itos | .widen | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
+  -- Written as the arithmetic inside, with its `overflow` option.
+  | .fit _ _ => 0
   -- Decimals are written as casts and typed calls (`writeExpr`).
   | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
   -- Lists and structs; field and element access are references, not calls.
@@ -390,6 +392,10 @@ def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
     obj [("literal", obj [(if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32", toJson i)])]
   | _ => j
 
+/-- An argument of arithmetic at width `w`: a literal at that width. -/
+def fitArg (w : IntWidth) (x : Expr) (j : Json) : Json :=
+  if w.bits < 64 then narrowLit w.bits x j else j
+
 def isLit : Expr → Bool
   | .lit _ => true
   | _ => false
@@ -554,6 +560,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     (call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)])
   | .un (.wrap n) (.un .neg x) => checkedNarrow n (call 3 [narrowLit n x (writeExpr cols .int x)])
   | .un (.wrap _) a => writeExpr cols ctx a
+  -- `overflow` = `SILENT` or `SATURATE` (#241): the arithmetic at the width,
+  -- with the option; the parser reads it back as the same `fit`.
+  | .un (.fit m w) (.bin .dsub (.lit (.int 0)) x) =>
+    callOpt 3 [fitArg w x (writeExpr cols .int x)] "overflow" m.name
+  | .un (.fit m w) (.bin f x y) =>
+    callOpt (BinFn.anchor f) [fitArg w x (writeExpr cols .int x), fitArg w y (writeExpr cols .int y)]
+      "overflow" m.name
   | .un .widen a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .float a)])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
@@ -711,6 +724,15 @@ def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
   | .aggregate r gs ms => r.anyExpr p || gs.any p || ms.any fun m => m.exprs.any p
 
 def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOps
+
+/-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
+`SATURATE`, `UnFn.fit`, #241)? -/
+def _root_.Substrait.Expr.fits : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un f a => (f matches .fit _ _) || a.fits
+  | .bin _ a b => a.fits || b.fits
+  | .ifThen c t e => c.fits || t.fits || e.fits
+  | .hof _ l b => l.fits || b.fits
 
 /-- Does the expression reach into a struct or a list, count a list, or take
 a lambda (#94)? DataFusion 51 reads a reference into a value as a reference
