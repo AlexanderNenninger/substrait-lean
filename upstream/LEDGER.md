@@ -41,6 +41,7 @@ affect sverify's results, but they're worth reporting.
 | DF-8 | unverified | The Substrait producer encodes grouping sets against the spec: the extra column is a bitmask where the spec says the grouping set's index, and the grouping expressions are laid out differently. | TPC-DS q27/q36 (#229) | Grouping sets come through the SQLGlot lift instead (M2) | pi3, #229 |
 | DF-9 | confirmed | The Substrait producer registers no proper extension URNs (placeholder references). | any plan with a function | Not needed anymore | #231 findings |
 | DF-10 | unverified | The Substrait consumer doesn't know Substrait's `shift_left`/`shift_right`. | a plan calling them, run through `from_substrait_plan` | DataFusion refuses those plans | #215 |
+| DF-11 | confirmed | `NTILE(k)` computes `⌊i · min(k, n) / n⌋ + 1`, which spreads the larger buckets out; the SQL standard (and DuckDB, Spark, Snowflake, PostgreSQL) puts the `n % k` larger buckets first. | `select ntile(4) over (order by i) from (values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) t(i)` gives `1 1 1 2 2 3 3 3 4 4`; the standard gives `1 1 1 2 2 2 3 3 4 4` (DataFusion 51.0.0) | Lean's `ntileOf` is the standard's; `datafusion_plan` refuses NTILE | M2 (ntile) |
 
 ## DuckDB 2.0
 

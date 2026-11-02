@@ -3481,12 +3481,9 @@ class _Writer:
             elif f.fn in ("rank", "dense_rank"):
                 sql = f"{f.fn.upper()}() {d.over(partition, peers)}"
             elif f.fn == "ntile":
-                # DataFusion's NTILE: ⌊i · min(k, n) / n⌋ + 1 for the i-th row
-                # (from 0) of n.
-                pos = f"({d.row_number(over)} - {d.int_lit(1)})"
-                n = f"COUNT(*) {whole()}"
-                k = f"LEAST({d.int_lit(f.offset)}, {n})"
-                sql = f"({d.trunc_div(f'({pos} * {k})', n)} + {d.int_lit(1)})"
+                # The SQL standard's NTILE (`ntileOf`), as DuckDB, Spark and
+                # Snowflake compute it, in the same row order as ROW_NUMBER.
+                sql = f"NTILE({d.int_lit(f.offset)}) {over}"
             elif f.fn in ("percent_rank", "cume_dist"):
                 n = f"COUNT(*) {whole()}"
                 if f.fn == "percent_rank":

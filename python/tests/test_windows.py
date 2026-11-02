@@ -1,6 +1,6 @@
 """Window functions: Lean's semantics agree with DataFusion and with DuckDB
 (in Lean's row order), contracts see through LAG/LEAD/ROW_NUMBER, and ties in
-the window order are refused. Ranks, NTILE (DataFusion's), frames over rows
+the window order are refused. Ranks, NTILE (the SQL standard's), frames over rows
 and over the sort key's values, and aggregates over them agree with DataFusion
 too, on tables with ties and NULL keys where the result does not depend on
 the order of ties."""
@@ -18,10 +18,12 @@ from sverify.engine import (
     connect,
     create_table,
     run_checker,
+    run_plan,
     run_sql,
     run_substrait_json,
     substrait_json,
     to_sql,
+    written_plan,
 )
 from sverify.errors import NotIncremental
 from sverify.ibis_substrait import Unsupported, to_substrait
@@ -261,15 +263,39 @@ def test_ordered_windows_match_datafusion(sql, rows):
     assert canonical(lean) == canonical(expected)
 
 
-def test_ntile_is_datafusions():
-    """DataFusion's NTILE is ⌊i · min(k, n) / n⌋ + 1, not the SQL standard's
-    buckets: 6 rows in 4 tiles are 1 1 2 3 3 4 (DuckDB: 1 1 2 2 3 4)."""
+def test_ntile_is_the_standard():
+    """NTILE deals the rows out as the SQL standard says (`ntileOf`): the first
+    `n % k` buckets hold one row more, so 6 rows in 4 tiles are 1 1 2 2 3 4,
+    as on DuckDB. (DataFusion's own NTILE gives 1 1 2 3 3 4.)"""
     sql = "SELECT t, NTILE(4) OVER (ORDER BY t) AS n FROM r"
     rows = [(0, t, 0) for t in range(6)]
     lean, expected = lean_and_datafusion(sql, rows)
-    assert sorted(lean) == sorted(expected) == [(0, 1), (1, 1), (2, 2), (3, 3), (4, 3), (5, 4)]
+    assert sorted(lean) == sorted(expected) == [(0, 1), (1, 1), (2, 2), (3, 2), (4, 3), (5, 4)]
     lean, _ = lean_and_datafusion(sql, rows[:2])
     assert sorted(lean) == [(0, 1), (1, 2)]
+
+
+@pytest.mark.parametrize(("n", "k"), [(10, 4), (7, 3), (3, 5), (12, 5), (1, 1)])
+def test_ntile_on_every_engine(n, k):
+    """Lean's written plan: DuckDB and Spark write NTILE natively, Polars deals
+    the buckets itself; DataFusion, whose NTILE differs, is refused."""
+    con = connect()
+    t = ibis.table({"t": "int64"}, name="w")
+    create_table(con, "w", t.schema(), [(i,) for i in range(n)])
+    expr = t.select("t", b=ibis.ntile(k).over(order_by=t.t)).order_by("t")
+    plan = json.dumps(to_substrait(expr))
+    q, r = divmod(n, k)
+    # Ibis's ntile counts buckets from 0.
+    expected = [(i, i // (q + 1) if i < r * (q + 1) else (i - r * (q + 1)) // q + r)
+                for i in range(n)]  # fmt: skip
+    rows = [(i,) for i in range(n)]
+    assert sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"w": rows})))) == expected
+    written = written_plan(plan)
+    for engine in ("duckdb", "polars"):
+        got = sorted(tuple(r.values()) for r in run_plan(con, written, engine).to_pylist())
+        assert got == expected, engine
+    with pytest.raises(Exception, match="DataFusion's NTILE"):
+        run_plan(con, written, "datafusion")
 
 
 def test_sliding_double_aggregates_are_refused():

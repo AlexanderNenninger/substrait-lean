@@ -1663,7 +1663,11 @@ def python_windows(
                     elif f.fn == "cume_dist":
                         v = (i + 1 + peers_after) / m
                     elif f.fn == "ntile":
-                        v = i * min(f.n, m) // m + 1
+                        # The SQL standard's buckets (`ntileOf`): the first
+                        # `m % n` hold one row more.
+                        size, big = divmod(m, f.n)
+                        edge = big * (size + 1)
+                        v = i // (size + 1) + 1 if i < edge else (i - edge) // size + big + 1
                     else:
                         frame = [prows[j] for j in _frame_rows(f.frame, sort, prows, i)]
                         vals = [y[f.col] for y in frame] if f.col is not None else [1] * len(frame)
