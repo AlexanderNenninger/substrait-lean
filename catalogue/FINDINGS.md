@@ -275,10 +275,10 @@ semi-structured data.
 | product | 13 | 10 | 0 | 3 | 0 | 13 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 13 | 0 | 2 | 0 | 15 | 13 | 13 | 9 |
-| tpcds | 8 | 6 | 0 | 2 | 0 | 8 | 0 | 6 | 0 |
+| tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 0 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 117 | 0 | 22 | 0 | 136 | 77 | 115 | 68 |
+| **all** | 139 | 119 | 0 | 20 | 0 | 136 | 77 | 117 | 68 |
 
 ### Feature frequency
 
@@ -353,7 +353,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `pivot` | relational | 2 | 1% | yes |
 | `unpivot` | relational | 2 | 1% | partial |
 | `asof_join` | relational | 2 | 1% | yes |
-| `grouping_sets` | aggregation | 2 | 1% | no |
+| `grouping_sets` | aggregation | 2 | 1% | yes |
 | `rank` | windows | 2 | 1% | yes |
 | `in_subquery` | relational | 2 | 1% | yes |
 | `regex_replace` | expressions | 1 | 1% | no |
@@ -382,8 +382,6 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `rows_frame` | 3 | 3 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
 | `min_max` | 2 | 2 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
 | `percentile` | 2 | 2 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
-| `decimal` | 2 | 0 | partial | modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). DuckDB runs decimal plans as the reference computes them (#27); the other engines refuse them. AVG of a decimal over a window is not modelled yet |
-| `grouping_sets` | 2 | 0 | no |  |
 | `corr` | 1 | 1 | no |  |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
 | `hash` | 1 | 1 | no |  |
@@ -397,15 +395,15 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 117 queries that verify (some only as DOUBLE):
+Over the 119 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 23 |
+| snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 22 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 15, "scale": | 22 |
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 21 |
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 10 |
-| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 6 |
+| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 8 |
 | duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
 | polars: error: divide by zero (1 row(s)) | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |

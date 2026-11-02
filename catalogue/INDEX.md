@@ -151,8 +151,8 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | tpcds-q03 | [TPC-DS Q3: brand revenue for a manufacturer in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
 | tpcds-q07 | [TPC-DS Q7: promotional item averages for a demographic](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
-| tpcds-q27 | [TPC-DS Q27: item averages per state with subtotals](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | N | `grouping_sets`, `decimal` |
-| tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✗ | N | `grouping_sets`, `decimal` |
+| tpcds-q27 | [TPC-DS Q27: item averages per state with subtotals](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
+| tpcds-q36 | [TPC-DS Q36: gross margin ranking across a category hierarchy](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
 | tpcds-q42 | [TPC-DS Q42: category revenue for a manager in one month](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
 | tpcds-q51 | [TPC-DS Q51: cumulative web vs store sales](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
 | tpcds-q89 | [TPC-DS Q89: monthly sales deviating from the yearly average](https://github.com/gregrahn/tpcds-kit/tree/master/query_templates) | ✓ | ND |  |
