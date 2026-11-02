@@ -143,7 +143,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | ts-session-starts | [Session starts (without numbering)](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✓ | FPDS |  |
 | ts-local-day-revenue | [Daily revenue in a local time zone](https://www.postgresql.org/docs/current/functions-datetime.html) | ✗ | F | `timezone` |
 | ts-overlapping-bookings | [Overlapping bookings of a resource](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✓ | FPDS |  |
-| ts-pack-intervals | [Merge overlapping bookings (packing intervals)](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✗ | F | `running_agg`, `rows_frame` |
+| ts-pack-intervals | [Merge overlapping bookings (packing intervals)](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✓ | FPDS |  |
 
 ## tpcds
 
