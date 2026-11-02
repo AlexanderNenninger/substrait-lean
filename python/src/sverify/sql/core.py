@@ -3568,7 +3568,11 @@ class _Writer:
             elif f.fn == "ntile":
                 # The SQL standard's NTILE (`ntileOf`), as DuckDB, Spark and
                 # Snowflake compute it, in the same row order as ROW_NUMBER.
-                sql = f"NTILE({d.int_lit(f.offset)}) {over}"
+                # A bare literal: Spark's NTILE takes an INT, and the count is
+                # a positive constant (`positive`).
+                if f.offset > 2**31 - 1:
+                    raise Unsupported("NTILE of more than 2147483647 buckets")
+                sql = f"NTILE({int(f.offset)}) {over}"
             elif f.fn in ("percent_rank", "cume_dist"):
                 n = f"COUNT(*) {whole()}"
                 if f.fn == "percent_rank":
