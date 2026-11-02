@@ -90,6 +90,11 @@ def run(
                     # rows in order when the plan needs `rowid`.
                     drops.append(table.attach(db, name, table=ordered))
                     continue
+                if not ordered:
+                    # A view of the Arrow data, without copying it.
+                    db.register(name, table)
+                    drops.append(functools.partial(_unregister, db, name))
+                    continue
                 # A real table (not a view on the Arrow data): `rowid` numbers its
                 # rows in insertion order, which `to_sql` uses as the scan order.
                 db.register("__sverify_input", table)
@@ -107,6 +112,10 @@ def run(
         finally:
             for drop in drops:
                 drop()
+
+
+def _unregister(db: duckdb.DuckDBPyConnection, name: str) -> None:
+    db.unregister(name)
 
 
 def _drop(db: duckdb.DuckDBPyConnection, name: str) -> None:

@@ -91,28 +91,31 @@ class Merger:
     def __call__(self, a: State, b: State | None = None, *, keep: bool = False) -> State:
         """`a` plus `b` (default: nothing), consolidated: as a `Resident`
         table with `keep`, else as an Arrow table."""
-        from sverify.engine import run_plan
+        from sverify import duckdb_engine
         from sverify.sql.core import Unsupported
 
         b = self.schema.empty_table() if b is None else b
         plan = self.plan()
         if plan is not None:
-            con = self.con
+            tables = {_A: _canonical(a), _B: _canonical(b)}
             try:
-                con.put(_A, a)
-                con.put(_B, b)
-                out = run_plan(con, plan, "duckdb", keep=keep)
+                if keep:
+                    return duckdb_engine.run(plan, tables, keep=True)
+                out = duckdb_engine.run(plan, tables)
             except Unsupported as e:
                 self.refused = f"{type(e).__name__}: {e}"
             else:
-                if isinstance(out, pa.Table):
-                    return out.rename_columns(self.schema.names).cast(self.schema)
-                return out
-            finally:
-                for name in (_A, _B):
-                    con.drop(name)
+                return out.rename_columns(self.schema.names).cast(self.schema)
         merged = consolidated(arrow_of(a).cast(self.schema), arrow_of(b).cast(self.schema))
         return DuckDBStore().keep_table(merged) if keep else merged
+
+
+def _canonical(z: State) -> State:
+    """Arrow tables as a connection holds them (`sverify.engine.canonical`):
+    the plan was checked over such tables."""
+    from sverify.engine import canonical, plain_schema
+
+    return z if isinstance(z, Resident) else canonical(z.cast(plain_schema(z.schema)))
 
 
 class Store:
