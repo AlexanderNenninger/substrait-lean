@@ -40,7 +40,6 @@ from sverify.engine import (
     run_checker,
     run_plan,
     substrait_json,
-    to_sql,
     written_plan,
 )
 from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
@@ -491,7 +490,7 @@ def tod_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tuple
     inline_tables(plan, {"r": [(v,) for v in values]})
     return {
         # chrono's formats and years, which only DataFusion's own SQL has.
-        "datafusion": plain(collect(con.datafusion.sql(to_sql(expr)))),
+        "datafusion": plain(collect(con.datafusion.sql(ibis.to_sql(expr, dialect="datafusion")))),
         "lean": lean_values(json.dumps(plan)),
         "polars": plain(run_plan(con, written, "polars")),
         "duckdb": plain(run_plan(con, written, "duckdb")),
@@ -523,7 +522,7 @@ def test_times_outside_chrono_fail(t):
     put_table(con, "r", pa.table({"ts": pa.array([PART_MIN - 1], pa.timestamp("us"))}))
     expr = R_TS.select(t=t)
     with pytest.raises(BaseException, match="(?i)convert|naive|datetime"):
-        collect(con.datafusion.sql(to_sql(expr)))
+        collect(con.datafusion.sql(ibis.to_sql(expr, dialect="datafusion")))
     report = sv.verify(expr)
     assert "overflow" in [i.kind for i in report.errors]
     with pytest.raises(polars_engine.Overflow):

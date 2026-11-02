@@ -2,7 +2,7 @@
 
 Every query is probed again exactly as `python -m sverify_dev.catalogue --write`
 recorded it in `catalogue/status.json`: compiled, checked by `substrait-check`,
-and, when verified, run on DataFusion, Polars and DuckDB over the synthetic
+and, when verified, run as written by Lean on Polars and DuckDB over the synthetic
 tables (with the results compared) and written as Snowflake SQL. A change in
 coverage, in an engine or in the catalogue shows up here as a status that no
 longer matches; regenerate with `--write` and review the diff.
@@ -61,9 +61,7 @@ def test_some_queries_run_everywhere():
     everywhere = [
         q.id
         for q in QUERIES
-        if all(
-            cat.runs_on(STATUS[q.id], e) for e in ("datafusion", "polars", "duckdb", "snowflake")
-        )
+        if all(cat.runs_on(STATUS[q.id], e) for e in ("native", "polars", "duckdb", "snowflake"))
     ]
     assert len(everywhere) >= 10
 
@@ -75,17 +73,18 @@ def con():
     return connect()
 
 
-#: Pitfalls under which DataFusion running Ibis's SQL gives a wrong answer.
-DATAFUSION_WRONG = {"duration_vs_interval"}
+#: Pitfalls under which DuckDB running the query's own SQL gives another answer
+#: than the plan.
+NATIVE_DIFFERS = {"duration_vs_interval"}
 
 
 @pytest.mark.parametrize("query", QUERIES, ids=lambda q: q.id)
 def test_status_holds(con, query):
     got = cat.probe(con, query, SCHEMAS)
     assert got == STATUS[query.id]
-    # Where a pitfall makes DataFusion's own answer wrong, the engines differ
+    # Where a pitfall makes DuckDB's own answer differ, the engines differ
     # from it rightly (they run the plan Lean checked).
-    if any(p.split(":")[0] in DATAFUSION_WRONG for p in query.pitfalls):
+    if any(p.split(":")[0] in NATIVE_DIFFERS for p in query.pitfalls):
         return
     for engine, result in cat.effective(got).get("engines", {}).items():
-        assert result != "differs", f"{engine} disagrees with DataFusion"
+        assert result != "differs", f"{engine} disagrees with DuckDB's own rows"

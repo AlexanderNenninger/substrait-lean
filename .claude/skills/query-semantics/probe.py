@@ -342,7 +342,7 @@ def main() -> int:
     if code is not None:
         expr = ibis_expr(code, {n: con.table(n) for n in tables})
         if sql is None:
-            print("Ibis's DataFusion SQL:", " ".join(eng.to_sql(expr).split())[:300])
+            print("Ibis's DuckDB SQL:", " ".join(ibis.to_sql(expr, dialect="duckdb").split())[:300])
 
     model: Rows | None = None
     ordered = False

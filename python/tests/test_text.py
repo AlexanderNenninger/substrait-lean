@@ -38,7 +38,6 @@ from sverify.engine import (
     put_table,
     run_plan,
     substrait_json,
-    to_sql,
     written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
@@ -87,7 +86,7 @@ def oracle(con, sql: str) -> list[tuple]:
     else:
         source = PLANS.get(sql, sql)
         if callable(source):
-            source = to_sql(source(ibis.table(R, name="r")))
+            source = ibis.to_sql(source(ibis.table(R, name="r")), dialect="datafusion")
         out = canonical_doubles(collect(con.datafusion.sql(source)))
     return [tuple(x.values()) for x in out.to_pylist()]
 
@@ -296,7 +295,9 @@ def test_patterns_said_to_compile_do(pattern):
         return
     con = connect()
     put_table(con, "t", pa.table({"name": ["abc"], "n": [1]}))
-    collect(con.datafusion.sql(to_sql(T.filter(T.name.re_search(pattern)))))
+    collect(
+        con.datafusion.sql(ibis.to_sql(T.filter(T.name.re_search(pattern)), dialect="datafusion"))
+    )
 
 
 def test_regex_checks():
