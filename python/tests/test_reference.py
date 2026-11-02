@@ -353,3 +353,65 @@ def test_substring_negative_start_error_is_refused():
     plan = substring_plan(con, -2, 2, "ERROR")
     code, out, err = run_checker((), plan)
     assert code != 0 and "negative_start" in out + err
+
+
+# R6 (#209): `avg` of integers follows the plan's declared output type; an
+# integer one is the mean truncated toward zero, NULL for a group without values.
+AVG_ROWS = [(1, -7), (1, -8), (2, 7), (2, 8), (3, None), (4, 5)]
+
+
+def int_avg_plan(con, sql: str) -> str:
+    put_table(
+        con,
+        "v",
+        pa.table({"g": pa.array([r[0] for r in AVG_ROWS], pa.int64()),
+                  "a": pa.array([r[1] for r in AVG_ROWS], pa.int64())}),
+    )  # fmt: skip
+    plan = json.loads(substrait_json(con, sql))
+    i64 = {"i64": {"nullability": "NULLABILITY_NULLABLE"}}
+    for node in _dicts(plan):
+        for key in ("measure", "windowFunction"):
+            if key in node:
+                # Substrait's `avg` of `i64`: an `i64` argument and result
+                # (DataFusion casts the argument to a double).
+                node[key]["outputType"] = i64
+                for a in node[key].get("arguments", []):
+                    if "cast" in a["value"]:
+                        a["value"] = a["value"]["cast"]["input"]
+    return json.dumps(plan)
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        (
+            "SELECT g, avg(a) AS m FROM v GROUP BY g ORDER BY g",
+            [(1, -7), (2, 7), (3, None), (4, 5)],
+        ),
+        (
+            "SELECT g, avg(a) OVER (PARTITION BY g) AS m FROM v ORDER BY g, a",
+            [(1, -7), (1, -7), (2, 7), (2, 7), (3, None), (4, 5)],
+        ),
+    ],
+)
+def test_integer_avg_truncates(sql, expected):
+    con = connect()
+    plan = int_avg_plan(con, sql)
+    rows = {"v": AVG_ROWS}
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), rows))) == expected
+    # The mean of 64-bit integers is one too: nothing may go wrong.
+    assert issues(plan) == []
+    written = written_plan(plan)
+    for engine in ("duckdb", "polars"):
+        assert sorted(arrow_rows(run_plan(con, written, engine)), key=str) == sorted(
+            expected, key=str
+        ), engine
+    with pytest.raises(Exception, match="no integer result"):
+        run_plan(con, written, "datafusion")
+
+
+def test_integer_avg_with_a_double_result_is_the_mean():
+    con = connect()
+    put_table(con, "w", pa.table({"a": pa.array([1, 2], pa.int64())}))
+    plan = substrait_json(con, "SELECT avg(a) AS m FROM w")
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), {"w": [(1,), (2,)]}))) == [(1.5,)]

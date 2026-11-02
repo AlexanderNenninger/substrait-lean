@@ -263,6 +263,12 @@ class SnowflakeDialect(Dialect):
         # NUMBER(38,0) sums are exact far beyond 64 bits.
         return f"CAST({self.checked(f'SUM({v})', row=False)} AS NUMBER(38,0))"
 
+    def int_avg(self, v: str, over: str) -> str:
+        # NUMBER(38,0) sums are exact. Division rounds to a scale, so subtract
+        # the remainder (MOD has the dividend's sign) and divide exactly.
+        total, n = f"SUM({v}) {over}", f"COUNT({v}) {over}"
+        return f"CAST(({total} - MOD({total}, {n})) / {n} AS NUMBER(38,0))"
+
     def window_int_sum(self, v: str, over: str) -> str:
         return f"CAST({self.checked(f'SUM({v}) {over}', row=False)} AS NUMBER(38,0))"
 

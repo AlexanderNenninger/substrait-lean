@@ -329,6 +329,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
     | .dec p s => .dec (min 38 (p + 10)) s
     | _ => .int
   | .fsum | .avg => .float
+  | .iavg => .int
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
 
@@ -1804,9 +1805,10 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | _, _ => none
   if let some (_, s) := decAvg then
     if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
-  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
-  -- (`avg:i64` with an `i64` result), which it is not.
-  if name == "avg" && decAvg.isNone then
+  -- `AVG` of integers follows the plan's declared output type (#209): a
+  -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
+  let intOut := name == "avg" && k == .int && (field? m "outputType").any (typeKind · == .int)
+  if name == "avg" && decAvg.isNone && !intOut then
     if let some ty := field? m "outputType" then
       if typeKind ty != .float then throw "avg with a non-double result is not supported"
   let minMax (k : Kind) :=
@@ -1817,7 +1819,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "sum", .float => pure (.fsum, arg)
     -- Marked as a decimal, which does not wrap at 64 bits (`Safety.lean`).
     | "sum", .dec p s => pure (.sum, .un (.decimal p s) arg)
-    | "avg", .int => pure (.avg, .un .itof arg)
+    | "avg", .int => pure (if intOut then (.iavg, arg) else (.avg, .un .itof arg))
     | "avg", .float => pure (.avg, arg)
     | "avg", .dec p s => pure (.sum, .un (.decimal p s) arg)
     -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
@@ -1975,7 +1977,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- sum of doubles then rounds differently from adding up the frame, an
       -- average of a frame that has become empty is NaN, and a `MIN` of one
       -- with only NULLs left is the last minimum.
-      if (m.fn == .fsum || m.fn == .avg || m.fn == .min) && fr.lo != .unboundedPreceding then
+      if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).
