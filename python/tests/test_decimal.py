@@ -186,3 +186,18 @@ def test_abs_of_a_double_next_to_decimals_is_written(con):
     fs = [r[3] for r in ROWS["t"]]
     assert sorted(g for _, g, _ in got) == sorted(abs(f - 1.0) for f in fs)
     assert sorted(n for _, _, n in got) == sorted(-(f - 1.0) for f in fs)
+
+
+def test_report_shows_decimals_at_their_scale():
+    """A decimal's bound is shown in its digits, with its type, not as its
+    unscaled integer (#250, TPC-H Q6's `revenue`)."""
+    li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
+    sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
+    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li))
+    assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
+    assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
+    t = ibis.table({"a": "decimal(10,2)"}, name="t")
+    # Ibis types `a + a` at `a`'s precision; the model's exact sum needs one more.
+    assert sv.verify(t.select(b=t.a + t.a)).facts["b"] == (
+        "a decimal(11, 2) in [-199999999.98, 199999999.98] or NULL"
+    )

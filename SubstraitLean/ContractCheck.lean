@@ -87,9 +87,36 @@ def _root_.Substrait.Bound.render (b : Bound) : String :=
   | some l, none => s!"an integer ≥ {l}"
   | none, some h => s!"an integer ≤ {h}"
 
-def _root_.Substrait.AVal.render (a : AVal) : String :=
+/-- `i · 10⁻ˢ` in decimal digits (`decimalString 2 (-5)` is `-0.05`). -/
+def _root_.decimalString (s : Nat) (i : Int) : String :=
+  if s = 0 then toString i else
+    let digits := (toString i.natAbs).toList
+    let digits := List.replicate (s + 1 - digits.length) '0' ++ digits
+    let k := digits.length - s
+    (if i < 0 then "-" else "") ++ String.ofList (digits.take k) ++ "." ++ String.ofList (digits.drop k)
+
+#guard decimalString 2 (-5) == "-0.05" && decimalString 2 1234 == "12.34" && decimalString 0 7 == "7"
+#guard decimalString 3 1000 == "1.000" && decimalString 1 0 == "0.0"
+
+/-- A decimal's bound (`Bound.render`) in its digits at scale `s`, as the
+column's type says (#250): `DECIMAL(38, 4) ≥ 45.0000`, not its unscaled
+`450000`. -/
+def _root_.Substrait.Bound.renderDecimal (p s : Nat) (b : Bound) : String :=
+  let b := b.shown
+  let ty := s!"decimal({p}, {s})"
+  let txt := decimalString s
+  match b.lo, b.hi with
+  | none, none => s!"any {ty}"
+  | some l, some h => if l == h then s!"the {ty} {txt l}" else s!"a {ty} in [{txt l}, {txt h}]"
+  | some l, none => s!"a {ty} ≥ {txt l}"
+  | none, some h => s!"a {ty} ≤ {txt h}"
+
+def _root_.Substrait.AVal.render (a : AVal) (dec : Option (Nat × Nat) := none) : String :=
+  let bound (b : Bound) := match dec with
+    | some (p, s) => b.renderDecimal p s
+    | none => b.render
   let parts := (if a.tt then ["TRUE"] else []) ++ (if a.ff then ["FALSE"] else []) ++
-    (a.int.map fun b => [b.render]).getD [] ++ (if a.str then ["a string"] else []) ++
+    (a.int.map fun b => [bound b]).getD [] ++ (if a.str then ["a string"] else []) ++
     (if a.null then ["NULL"] else [])
   match parts with
   | [] => "nothing (no rows)"
@@ -98,13 +125,16 @@ def _root_.Substrait.AVal.render (a : AVal) : String :=
 
 /-- Machine-readable abstract value, so callers can display codes as doubles
 or timestamps. -/
-def _root_.Substrait.AVal.json (a : AVal) : Json :=
+def _root_.Substrait.AVal.json (a : AVal) (dec : Option (Nat × Nat) := none) : Json :=
   let bound (o : Option Int) : Json := (o.map fun i => Json.str (toString i)).getD .null
-  Json.mkObj [("null", Lean.toJson a.null), ("true", Lean.toJson a.tt), ("false", Lean.toJson a.ff),
+  Json.mkObj ([("null", Lean.toJson a.null), ("true", Lean.toJson a.tt), ("false", Lean.toJson a.ff),
     ("string", Lean.toJson a.str),
     ("int", match a.int with
       | some b => Json.mkObj [("lo", bound b.lo), ("hi", bound b.hi)]
-      | none => .null)]
+      | none => .null)] ++
+    -- A decimal's integers are unscaled, at this precision and scale (#250).
+    (dec.map fun (p, s) => [("decimal", Json.mkObj [("precision", Lean.toJson p),
+      ("scale", Lean.toJson s)])]).getD [])
 
 structure Report where
   ensures : List (String × Bool × String)
@@ -204,7 +234,9 @@ def check (input : Json) : Except String Report := do
         let fenv := p.root.aeval cat A F T
         let fnames := if p.names.length == fenv.length then p.names
           else (List.range fenv.length).map (s!"#{·}")
-        fnames.zip (fenv.map fun a => (a.render, a.json))
+        let decs := (p.root.kinds tables).map fun | .dec pr sc => some (pr, sc) | _ => none
+        fnames.zip ((fenv.zip (decs ++ List.replicate fenv.length none)).map fun (a, d) =>
+          (a.render d, a.json d))
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
   let deterministic := transform.all (·.root.windowsTotal cat A F inputKeys)
