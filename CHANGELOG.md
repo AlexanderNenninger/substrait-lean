@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### `any()` and `all()`
+
+Ibis's `any()` and `all()` of booleans are now verified, as `MAX` and `MIN`
+(`BOOL_OR` and `BOOL_AND`): NULLs are skipped, and a group without a
+non-NULL value gives NULL (#53).
+
 ### `division_type: TRUNCATE` is accepted
 
 A plan whose `modulus` states `division_type: TRUNCATE` was refused,

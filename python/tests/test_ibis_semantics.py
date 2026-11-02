@@ -75,6 +75,16 @@ MEANINGS = [
         [(False,), (False,), (None,)],
     ),
     ("nunique skips NULL", lambda t: t.aggregate(r=t.x.nunique()), [(1,)]),
+    (
+        "any and all are BOOL_OR and BOOL_AND",
+        lambda t: t.aggregate(p=(t.a > 6).any(), q=(t.a > 0).all(), n=t.x.isnull().any()),
+        [(True, False, True)],
+    ),
+    (
+        "any and all of no rows are NULL",
+        lambda t: t.aggregate(p=(t.a > 0).any(where=t.a > 100), q=(t.a > 0).all(where=t.a < 0)),
+        [(None, False)],
+    ),
     ("round half away from zero", lambda t: t.select(r=t.v.round()), [(3,), (-3,), (0,)]),
     ("cast to int64 truncates", lambda t: t.select(r=t.v.cast("int64")), [(2,), (-2,), (0,)]),
     ("one zero", lambda t: t.select(r=t.v == 0.0), [(False,), (False,), (True,)]),

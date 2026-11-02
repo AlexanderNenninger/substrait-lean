@@ -1128,6 +1128,10 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.Min | ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
         name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.All | ops.Any):
+        # `all()` / `any()` are BOOL_AND / BOOL_OR too (#53): FALSE < TRUE,
+        # NULLs skipped, and NULL for a group without a non-NULL value.
+        name, args = ("min" if isinstance(op, ops.All) else "max"), [x(op.arg)]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
     else:
