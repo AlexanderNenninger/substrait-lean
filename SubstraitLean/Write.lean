@@ -471,6 +471,19 @@ def decScale? : WKind → Option Nat
   | .int => some 0
   | _ => none
 
+/-- `CASE WHEN c THEN t ELSE e END`, with an `ELSE` that is itself a `CASE`
+merged into one `CASE` of several `WHEN`s: the parser reads it back as the
+same nested conditionals, and evaluates its branches eagerly once rather
+than once per level (`Parse.eagerly`, #238). -/
+def caseChain (c t e : Json) : Json :=
+  let first := obj [("if", c), ("then", t)]
+  match e.getObjValD "ifThen" with
+  | Json.obj kv =>
+    match (Json.obj kv).getObjValD "ifs", (Json.obj kv).getObjValD "else" with
+    | Json.arr ifs, els => obj [("ifThen", obj [("ifs", Json.arr (#[first] ++ ifs)), ("else", els)])]
+    | _, _ => obj [("ifThen", obj [("ifs", Json.arr #[first]), ("else", e)])]
+  | _ => obj [("ifThen", obj [("ifs", Json.arr #[first]), ("else", e)])]
+
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
 def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
@@ -649,9 +662,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       ("ifs", Json.arr #[obj [("if", writeExpr cols .bool (.bin .lt a (.lit (.int 0)))),
         ("then", writeExpr cols ctx (.un .fneg t))]]),
       ("else", writeExpr cols ctx e)])]
-  | .ifThen c t e => obj [("ifThen", obj [
-      ("ifs", Json.arr #[obj [("if", writeExpr cols .bool c), ("then", writeExpr cols ctx t)]]),
-      ("else", writeExpr cols ctx e)])]
+  | .ifThen c t e => caseChain (writeExpr cols .bool c) (writeExpr cols ctx t) (writeExpr cols ctx e)
   | .hof f l b =>
     let kl := wkind cols l
     let elem := match kl with | .list k => k | _ => .other

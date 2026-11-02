@@ -923,11 +923,19 @@ def evaluates (x : Expr) : Expr → Bool
   | e@(.ifThen c _ _) => e == x || evaluates x c
   | e@(.hof _ l _) => e == x || evaluates x l
 
+/-- Does `c` evaluate everything `x` may evaluate? A `CASE` is covered when its
+condition and both branches are: a written plan's nested `CASE`s are the
+branches of one `CASE` that `eagerly` already evaluated (#238). -/
+def covered (c : Expr) : Expr → Bool
+  | .lit _ => true
+  | x@(.ifThen d t e) => evaluates x c || (covered c d && covered c t && covered c e)
+  | x => evaluates x c
+
 /-- The condition `c`, also evaluating each of `xs` on every row. Expressions
 it evaluates already are left out, so the parser reads its own written plans
 back unchanged. -/
 def eagerly (c : Expr) (xs : List Expr) : Expr :=
-  match xs.filter fun x => !(x matches .lit _) && !evaluates x c with
+  match xs.filter fun x => !covered c x with
   | [] => c
   | x :: rest =>
     let tail := rest.foldl (fun acc y => .bin .or acc (.un .isNull y)) (.un .isNull x)
@@ -2285,9 +2293,10 @@ def liftSubquery (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Re
     let counts := Rel.aggregate hay [] [count (.lit (.int 1)), count (.field 0)]
     let both := Rel.cross (.join inp ys .left (.bin .eq x (.field n))) counts
     let (y, c, cy) := (Expr.field n, Expr.field (n + 1), Expr.field (n + 2))
-    let value := Expr.ifThen (.un .not (.un .isNull y)) (.lit (.bool true))
-      (.ifThen (.bin .eq c (.lit (.int 0))) (.lit (.bool false))
-        (.ifThen (.bin .or (.un .isNull x) (.bin .lt cy c)) (.lit .null) (.lit (.bool false))))
+    let (none_, unknown) := (Expr.bin .eq c (.lit (.int 0)), Expr.bin .or (.un .isNull x) (.bin .lt cy c))
+    -- As the parser reads this `CASE` back from a written plan (`eagerly`, #238).
+    let value := Expr.ifThen (eagerly (.un .not (.un .isNull y)) [none_, unknown]) (.lit (.bool true))
+      (.ifThen none_ (.lit (.bool false)) (.ifThen unknown (.lit .null) (.lit (.bool false))))
     return .emit (.project both [value]) (List.range n ++ [n + 3])
   | (_, sp) =>
     if field? sp "predicateOp" != some (.str "PREDICATE_OP_EXISTS") then
