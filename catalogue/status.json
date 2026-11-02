@@ -231,13 +231,11 @@
  },
  "fin-bollinger": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate StandardDev is not supported",
+  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate StandardDev is not supported",
+   "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
    "datafusion": "runs"
   }
  },
@@ -272,15 +270,13 @@
   }
  },
  "fin-realized-volatility": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate StandardDev is not supported",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "stage": "producer",
-   "detail": "aggregate StandardDev is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses"
   }
  },
  "fin-volume-spike": {
@@ -808,8 +804,7 @@
  },
  "pa-zscore-outliers": {
   "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate StandardDev is not supported",
+  "detail": "error: unsupported window function: std_dev",
   "datafusion": "runs"
  },
  "pa-histogram": {

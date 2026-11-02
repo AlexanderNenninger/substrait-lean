@@ -1469,6 +1469,23 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         # `AggFn.iavg`: the exact mean, truncated toward zero (#209).
         q = abs(sum(vs)) // len(vs)
         return q if sum(vs) >= 0 else -q
+    if fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
+        # `varOf` (#54): the mean as `avg`, then the squared deviations added in
+        # list order; an infinity would make a deviation NaN (#257).
+        if math.inf in vs or -math.inf in vs:
+            raise DomainError(f"{fn} of an infinity would make a NaN")
+        n = len(vs)
+        if fn.endswith("_samp") and n == 1:
+            return None
+        acc = 0.0
+        for v in vs:
+            acc = acc + v
+        mean = acc / n
+        ss = 0.0
+        for v in vs:
+            ss = ss + (v - mean) * (v - mean)
+        var = ss / (n - 1 if fn.endswith("_samp") else n)
+        return (math.sqrt(var) if fn.startswith("std") else var) + 0.0
     if fn in ("fsum", "avg"):
         if not window and math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")
@@ -1509,6 +1526,8 @@ class Measure:
             return pl.Int64
         if self.fn == "collect":
             return pl.List(materialize(self.arg.dtype))
+        if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
+            return pl.Float64
         return pl.Float64 if self.fn in ("fsum", "avg") else materialize(self.arg.dtype)
 
     @property
@@ -2081,6 +2100,12 @@ class Translator:
             fn = "sum" if t == pl.Int64 else "fsum"
         elif name == "avg" and t == pl.Float64:
             fn = "avg"
+        elif name in ("variance", "std_dev") and t == pl.Float64:
+            pop = any(
+                o.get("name") == "distribution" and o.get("preference", [None])[0] == "POPULATION"
+                for o in m.get("options", [])
+            )
+            fn = ("var" if name == "variance" else "std") + ("_pop" if pop else "_samp")
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):

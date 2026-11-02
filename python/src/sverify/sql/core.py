@@ -646,6 +646,14 @@ class Dialect:
         values (#209)."""
         raise Unsupported(f"{self.name}: AVG with an integer result is not implemented")
 
+    def float_var(self, v: str, o: str, sample: bool, sqrt: bool) -> str:
+        """`varOf` of the doubles of `v`, in the order of the ordinal `o`, for
+        more than one value of a sample, or one of a population: the mean as
+        `float_sum` divided by the count, then the squares of the deviations
+        added one by one from +0.0, divided by `n - 1` or `n`; its square
+        root for a standard deviation."""
+        raise Unsupported(f"{self.name}: variance of doubles in row order is not implemented")
+
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
         ordinal `o`, from +0.0 (rounding depends on the order)."""
@@ -1003,7 +1011,21 @@ class Distinct:
 class Measure:
     """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
 
-    fn: Literal["count", "sum", "fsum", "avg", "iavg", "min", "max", "dsum", "davg"]
+    fn: Literal[
+        "count",
+        "sum",
+        "fsum",
+        "avg",
+        "iavg",
+        "min",
+        "max",
+        "dsum",
+        "davg",
+        "var_samp",
+        "var_pop",
+        "std_samp",
+        "std_pop",
+    ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
@@ -1100,12 +1122,17 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
             return dsum_kind(a) if isinstance(a, Dec) else "int"
         if m.fn in ("count", "iavg"):
             return "int"
-        if m.fn in ("fsum", "avg"):
+        if m.fn in ("fsum", "avg", *VAR_AGGS):
             return "float"
         return (
             cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else unknown
         )
     return cols[f.col] if f.col < len(cols) else unknown
+
+
+#: `AggFn.var`'s functions: variance and standard deviation, of a sample or a
+#: population (#54).
+VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop")
 
 
 def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
@@ -1117,7 +1144,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
     if m.fn in ("count", "sum", "iavg"):
         return "int"
-    return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
+    return "float" if m.fn in ("fsum", "avg", *VAR_AGGS) else kind(m.arg, cols)
 
 
 def dsum_kind(a: Dec) -> Dec:
@@ -2631,7 +2658,21 @@ class _Parser:
             and _lean_type_kind(m["outputType"]) != "float"
         ):
             raise Unsupported("avg with a non-double result is not supported")
-        fn: Literal["count", "sum", "fsum", "avg", "iavg", "min", "max", "dsum", "davg"]
+        fn: Literal[
+            "count",
+            "sum",
+            "fsum",
+            "avg",
+            "iavg",
+            "min",
+            "max",
+            "dsum",
+            "davg",
+            "var_samp",
+            "var_pop",
+            "std_samp",
+            "std_pop",
+        ]
         match name, k:
             case "count", _:
                 fn = "count"
@@ -2655,6 +2696,14 @@ class _Parser:
                 fn, arg = "avg", Un("itof", arg)
             case "avg", "float":
                 fn = "avg"
+            case (("variance" | "std_dev"), ("float" | "int")):
+                pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
+                if name == "variance":
+                    fn = "var_pop" if pop else "var_samp"
+                else:
+                    fn = "std_pop" if pop else "std_samp"
+                if k == "int":
+                    arg = Un("itof", arg)
             case (("min" | "max"), "float"):
                 raise Unsupported(f"{name} of doubles is not supported")
             case (("min" | "max"), ("int" | "str" | "bool" | "time" | "date")):
@@ -3299,7 +3348,7 @@ class _Writer:
         for e in [*groups, *(x for ms in measures for x in (ms.arg, ms.filter) if x is not None)]:
             self.check_refs(e, m)
         # Double sums add in Lean's list order, which needs the ordinal.
-        sums = any(ms.fn in ("fsum", "avg") for ms in measures)
+        sums = any(ms.fn in ("fsum", "avg", *VAR_AGGS) for ms in measures)
         needs = ordered or sums
         a = self.alias()
 
@@ -3373,6 +3422,19 @@ class _Writer:
                 return d.int_sum(v)
             case "iavg":
                 return d.int_avg(v, "")
+            case "var_samp" | "var_pop" | "std_samp" | "std_pop":
+                sample = m.fn.endswith("_samp")
+                n = f"COUNT({v})"
+                body = d.canon(d.float_var(v, o, sample, m.fn.startswith("std")))
+                none = f"{n} <= {d.int_lit(1 if sample else 0)}"
+                value = d.case_when(none, d.null("float"), body)
+                if not d.guards:
+                    return value
+                # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
+                # creates (#257); NaN sorts above `+∞`, so leave it out.
+                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
+                bad = d.float_eq(top, d.float_lit(math.inf))
+                return d.case_when(bad, d.raise_("domain error", f"MIN({v})", "float"), value)
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":

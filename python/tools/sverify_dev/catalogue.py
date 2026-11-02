@@ -652,7 +652,7 @@ BLOCKERS: list[tuple[str, set[str]]] = [
     (r"date part 'EPOCH'|extract_epoch|to_char", {"epoch"}),
     (r"grouping sets", {"grouping_sets"}),
     (r"aggregate function: (median|approx_median|percentile)|'Quantile'", {"percentile"}),
-    (r"aggregate function: (stddev|var)", {"stddev_var"}),
+    (r"aggregate function: (stddev|var)|window function: (std_dev|variance)", {"stddev_var"}),
     (r"corr takes|aggregate function: (corr|covar)", {"corr"}),
     (r"string_agg|array_agg", {"string_agg"}),
     (r"approx_distinct", {"approx_distinct"}),

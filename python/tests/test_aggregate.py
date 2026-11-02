@@ -32,6 +32,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.ibis_substrait import to_substrait_json
+from sverify.incremental import arrow_rows
 from sverify.testing import canonical, inline_tables, lean_values
 from sverify_dev.examples import orders
 
@@ -255,3 +257,83 @@ def test_errors_in_measures_are_reported():
         .aggregate(q=(100 // orders.amount).max())
     )
     assert not sv.verify(guarded).errors
+
+
+# #54: variance and standard deviation in Lean's row order, bit for bit.
+V = ibis.table({"k": "int64", "x": "float64", "i": "int64"}, name="t")
+finite = st.one_of(
+    st.none(),
+    st.sampled_from([0.0, 0.1, -2.5, 1e300, -1e-300, math.nan]),
+    st.floats(-1e6, 1e6, allow_nan=False),
+)
+v_rows = st.lists(
+    st.tuples(st.integers(0, 2), finite, st.one_of(st.none(), st.integers(-(10**6), 10**6))),
+    max_size=8,
+)
+
+
+def var_expr():
+    return V.group_by("k").aggregate(
+        vs=V.x.var(), vp=V.x.var(how="pop"), ss=V.x.std(), sp=V.x.std(how="pop"), vi=V.i.var()
+    )
+
+
+def decoded(rows: list[tuple]) -> list[tuple]:
+    """Lean writes doubles as codes; NaN as text so it equals itself."""
+    out = []
+    for r in rows:
+        vals = [r[0], *(None if v is None else decode_double(v) if isinstance(v, int) else v
+                        for v in r[1:])]  # fmt: skip
+        out.append(tuple("nan" if isinstance(v, float) and v != v else v for v in vals))
+    return sorted(out, key=repr)
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(rows=v_rows)
+def test_variance_is_the_same_on_every_engine(rows):
+    con = connect()
+    create_table(con, "t", V.schema(), rows)
+    plan = to_substrait_json(var_expr())
+    lean = decoded(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
+    written = written_plan(plan)
+    by = {e: decoded(arrow_rows(run_plan(con, written, e))) for e in ("duckdb", "polars")}
+    # The engines agree bit for bit; Lean prints doubles with six decimals.
+    assert by["duckdb"] == by["polars"]
+    assert len(lean) == len(by["duckdb"])
+    for g, e in zip(lean, by["duckdb"], strict=True):
+        assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)
+
+
+def test_variance_meaning():
+    """The sample's of one value is NULL; the population's is 0; the mean
+    first, then the squared deviations."""
+    con = connect()
+    rows = [(1, 1.5, 1), (1, 2.25, 2), (1, -3.0, 3), (2, 7.0, 4), (2, None, None)]
+    create_table(con, "t", V.schema(), rows)
+    got = decoded(arrow_rows(run_plan(con, written_plan(to_substrait_json(var_expr())), "duckdb")))
+    mean = (1.5 + 2.25 - 3.0) / 3
+    ss = sum((x - mean) * (x - mean) for x in (1.5, 2.25, -3.0))
+    assert got == [
+        (1, ss / 2, ss / 3, math.sqrt(ss / 2), math.sqrt(ss / 3), 1.0),
+        (2, None, 0.0, None, 0.0, None),
+    ]
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_variance_of_an_infinity_raises(engine):
+    """`inf - mean` would be NaN, which no operation creates (#257)."""
+    con = connect()
+    create_table(con, "t", V.schema(), [(1, math.inf, 1), (1, 2.0, 2)])
+    with pytest.raises(Exception, match="(?i)domain|NaN"):
+        run_plan(con, written_plan(to_substrait_json(var_expr())), engine)
+    report = sv.verify(var_expr())
+    assert "domain error" in [i.kind for i in report.issues]
+    bounded = sv.verify(var_expr(), requires={"t": [_.x < 1e300, _.x > -1e300]})
+    assert "domain error" not in [i.kind for i in bounded.issues]
+
+
+def test_variance_is_refused_on_datafusion():
+    con = connect()
+    create_table(con, "t", V.schema(), [(1, 1.0, 1)])
+    with pytest.raises(Exception, match="DataFusion computes a variance in its own order"):
+        run_plan(con, written_plan(to_substrait_json(var_expr())), "datafusion")

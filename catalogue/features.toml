@@ -57,7 +57,7 @@ agg_filter = { lean = "yes", description = "conditional aggregate: FILTER (WHERE
 agg_arithmetic = { lean = "yes", description = "arithmetic on aggregate results inside one aggregation (SUM(a) / SUM(b), MAX - MIN, 100 * SUM(x))", note = "the Ibis producer computes each reduction as a measure and the arithmetic in a projection over the aggregate (#67)" }
 having = { lean = "yes", description = "HAVING" }
 grouping_sets = { lean = "no", description = "ROLLUP / CUBE / GROUPING SETS" }
-stddev_var = { lean = "no", description = "STDDEV / VARIANCE" }
+stddev_var = { lean = "partial", description = "STDDEV / VARIANCE", note = "grouped, of doubles or integers, in row order (#54); not over windows, nor on DataFusion or Snowflake" }
 corr = { lean = "no", description = "CORR / COVAR / REGR_*" }
 percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL" }
 approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }

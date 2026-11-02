@@ -294,6 +294,16 @@ class SparkDialect(Dialect):
         values = f"transform(array_sort({pairs}), p -> p.v)"
         return f"aggregate({values}, {self.float_lit(0.0)}, (acc, x) -> acc + x)"
 
+    def float_var(self, v: str, o: str, sample: bool, sqrt: bool) -> str:
+        pairs = f"collect_list(named_struct('o', {o}, 'v', {v})) FILTER (WHERE {v} IS NOT NULL)"
+        xs = f"transform(array_sort({pairs}), p -> p.v)"
+        zero = self.float_lit(0.0)
+        n = f"CAST(COUNT({v}) AS DOUBLE)"
+        mean = f"(aggregate({xs}, {zero}, (a, b) -> a + b) / {n})"
+        ss = f"aggregate({xs}, {zero}, (acc, y) -> acc + (y - {mean}) * (y - {mean}))"
+        var = f"({ss} / ({n} - {self.float_lit(1.0 if sample else 0.0)}))"
+        return f"sqrt({var})" if sqrt else var
+
     # Strings
 
     def char_length(self, s: str) -> str:

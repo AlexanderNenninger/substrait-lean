@@ -1116,6 +1116,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
 def measure(x: Exprs, op: Any) -> Json:
     distinct = False
     args: list[Json]
+    options: list[Json] = []
     if isinstance(op, ops.ApproxCountDistinct):
         # A subclass of `CountDistinct`, but its value is each engine's own
         # estimate, so no plan gives the same answer on every engine.
@@ -1135,6 +1136,13 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.Min | ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
         name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.Variance | ops.StandardDev):
+        # Of a sample or a population, in row order (#54).
+        name = "variance" if isinstance(op, ops.Variance) else "std_dev"
+        args = [x(op.arg, dt.float64) if op.arg.dtype.is_boolean() else x(op.arg)]
+        options = [
+            {"name": "distribution", "preference": ["POPULATION" if op.how == "pop" else "SAMPLE"]}
+        ]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
     else:
@@ -1146,6 +1154,8 @@ def measure(x: Exprs, op: Any) -> Json:
             "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
         ),
     }
+    if options:
+        agg["options"] = options
     out: Json = {"measure": agg}
     if op.where is not None:
         out["filter"] = x(op.where)
