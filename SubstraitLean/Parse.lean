@@ -265,7 +265,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .neg a => a.kind cols
   | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
   | .un (.froundTo _) _ => .float
-  | .un .ftoi _ | .un (.narrow _) _ => .int
+  | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ => .int
   | .un (.wrap _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _ => .str
   | .un .widen _ => .float
@@ -944,12 +944,14 @@ only on rows where `SubstraitLean/Safety.lean` reports an error anyway (what
 /-- The preferences an option of `base` may list (`none`: any), and whether
 the option is known at all. `float` says the call is on doubles. -/
 def optionAccepts (base : String) (float : Bool) : String → Option (Option (List String))
-  -- Integer overflow raises at the declared width (#202); `SILENT` and
-  -- `SATURATE` are not modelled yet (options as profile parameters, #241).
+  -- Integer overflow raises at the declared width (#202). `+`, `-`, `×` and
+  -- negation of integers also wrap around (`SILENT`) or clamp (`SATURATE`)
+  -- when the plan asks (`UnFn.fit`, #241); `mkScalar` refuses them on decimals.
   | "overflow" =>
     if float then none
-    else if ["add", "subtract", "multiply", "negate", "sum", "divide", "modulus", "abs",
-      "power"].contains base then some (some ["ERROR"])
+    else if ["add", "subtract", "multiply", "negate"].contains base then
+      some (some ["ERROR", "SILENT", "SATURATE"])
+    else if ["sum", "divide", "modulus", "abs", "power"].contains base then some (some ["ERROR"])
     else none
   -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
   -- `TRUNCATE`. `FLOOR` is not modelled yet (#209 R3).
@@ -1012,11 +1014,11 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
 #guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
   ("preference", Json.arr #["ERROR", "SILENT"])]]).toBool
 #guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
-  ("preference", Json.arr #["SATURATE"])]]).toBool == false
+  ("preference", Json.arr #["SATURATE"])]]).toBool
 #guard (checkOptions "divide" false [Json.mkObj [("name", "overflow"),
   ("preference", Json.arr #["SATURATE"])]]).toBool == false
 #guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
-  ("preference", Json.arr #["SILENT"])]]).toBool == false
+  ("preference", Json.arr #["SILENT"])]]).toBool
 #guard (checkOptions "divide" true [Json.mkObj [("name", "on_division_by_zero"),
   ("preference", Json.arr #["LIMIT"])]]).toBool
 #guard (checkOptions "divide" false [Json.mkObj [("name", "on_division_by_zero"),
@@ -1651,6 +1653,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Decimals (#27) are their unscaled integers: `decimalCall` brings the
     -- arguments to one scale.
     if parsed.any (·.kind cols matches .dec _ _) then
+      if ["SILENT", "SATURATE"].contains (optionPref "overflow" "ERROR" (← arrD f "options")) then
+        throw s!"{baseName name}: overflow {optionPref "overflow" "ERROR" (← arrD f "options")} is only modelled for integers"
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
       if let some e ← decimalCall cols (baseName name) outTy parsed then return e
@@ -1700,6 +1704,19 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         | c => c
       -- Arithmetic on integers narrower than 64 bits wraps at their width.
       let w := ((argJs.zip parsed).map fun (j, e) => argBits bits j e).foldl max 8
+      -- `overflow` = `SILENT` or `SATURATE`: the exact result, brought to the
+      -- width (#241).
+      let ov := optionPref "overflow" "ERROR" (← arrD f "options")
+      if ov == "SILENT" || ov == "SATURATE" then
+        let exact? : Option Expr := if call.kind cols != .int then none else match call with
+          | .bin .add a b => some (.bin .dadd a b)
+          | .bin .sub a b => some (.bin .dsub a b)
+          | .bin .mul a b => some (.bin .dmul a b)
+          | .un .neg a => some (.bin .dsub (.lit (.int 0)) a)
+          | _ => none
+        match exact? with
+        | some e => return .un (.fit (if ov == "SILENT" then .silent else .saturate) (.ofBits w)) e
+        | none => throw s!"{baseName name}: overflow {ov} is only modelled for integers"
       if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&
           call.kind cols == .int then
         return .un (.wrap w) call

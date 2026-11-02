@@ -107,6 +107,11 @@ class Dialect:
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `SubstraitLean/Guards.lean`). Integer `SUM` keeps its check."""
 
+    def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
+        """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
+        `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
+        raise Unsupported(f"overflow = {mode} is not supported on {self.name} yet (#241)")
+
     # Identifiers and types
 
     def quote(self, ident: str) -> str:
@@ -807,15 +812,16 @@ class Un:
         "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
-        "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof",
+        "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
-    """The `d` of `froundTo d`, the bits of `narrow`, the months of `addMonths`."""
+    """The `d` of `froundTo d`, the bits of `narrow` and `fit`, the months of
+    `addMonths`."""
     param: str = ""
     """The pattern of `regexMatch` and `replace`, the part of `datePart`, the
     unit of `dateTrunc`; `time` or `date` for `addMonths`; the function of
-    `fmath` (`FMath.name`)."""
+    `fmath` (`FMath.name`); `SILENT` or `SATURATE` for `fit`."""
     origin: int = 0
     """The origin of `bucket` (whose width is `digits`)."""
     replacement: str = ""
@@ -1207,7 +1213,14 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(
-            op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part" | "ascii"
+            op="ftoi"
+            | "narrow"
+            | "fit"
+            | "length"
+            | "regex_match"
+            | "date_part"
+            | "day_part"
+            | "ascii"
         ):
             return "int"
         case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
@@ -1261,7 +1274,14 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(
-            op="ftoi" | "narrow" | "length" | "regex_match" | "date_part" | "day_part" | "ascii"
+            op="ftoi"
+            | "narrow"
+            | "fit"
+            | "length"
+            | "regex_match"
+            | "date_part"
+            | "day_part"
+            | "ascii"
         ):
             return "int"
         case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
@@ -1962,7 +1982,12 @@ class _Parser:
 
                 out_ty = _field(v, "outputType")
                 # Decimals (#27): `Parse.decimalCall`.
+                overflow = _option(v, "overflow", "ERROR")
                 if any(isinstance(lean_expr_kind(e, cols.lean), Dec) for e in parsed):
+                    if overflow in ("SILENT", "SATURATE"):
+                        raise Unsupported(
+                            f"{name}: overflow {overflow} is only modelled for integers"
+                        )
                     if any(
                         _arg_kind(cols.lean, a, e) == "float"
                         for a, e in zip(arg_js, parsed, strict=True)
@@ -2006,6 +2031,8 @@ class _Parser:
                     for a in reversed(parsed):
                         out_e = If(Un("is_null", a), Lit(None, None), out_e)
                     return out_e
+                if float_call and overflow in ("SILENT", "SATURATE"):
+                    raise Unsupported(f"{name}: overflow {overflow} is only modelled for integers")
                 if float_call:
                     # Integer arguments of a double function are converted.
                     parsed = [
@@ -2026,6 +2053,19 @@ class _Parser:
                     op = "idiv" if name == "divide" else "imod"
                     return _div_by_zero(mode, False, op, *parsed)
                 out_e = _call(name, parsed)
+                # `overflow` = SILENT or SATURATE (`UnFn.fit`, #241): the exact
+                # result, wrapped around or clamped at the width. The width is
+                # the call's output type (Lean: its arguments', `argBits`).
+                if overflow in ("SILENT", "SATURATE"):
+                    exact = (isinstance(out_e, Bin) and out_e.op in ("add", "sub", "mul")) or (
+                        isinstance(out_e, Un) and out_e.op == "neg"
+                    )
+                    if not exact or lean_expr_kind(out_e, cols.lean) != "int":
+                        raise Unsupported(
+                            f"{name}: overflow {overflow} is only modelled for integers"
+                        )
+                    bits = _int_bits(out_ty) if isinstance(out_ty, dict) else 64
+                    return Un("fit", out_e, digits=bits, param=overflow)
                 if isinstance(out_e, Bin) and out_e.op == "substr":
                     # A negative start wraps from the end unless the plan says
                     # otherwise (`Text.substrWrap`, #209).
@@ -3781,6 +3821,12 @@ class _Writer:
                 return f"(CASE WHEN {x} NOT BETWEEN {lo} AND {hi} THEN {fail} ELSE {x} END)"
             case Un(op="itos", arg=a):
                 return d.int_to_str(self.int_operand(a, ref, cols, "CAST to VARCHAR"))
+            case Un(op="fit", arg=Un(op="neg", arg=a), digits=bits, param=mode):
+                return d.fit_int(mode, bits, "-", [self.int_operand(a, ref, cols, "negation")])
+            case Un(op="fit", arg=Bin(op=op, left=a, right=b), digits=bits, param=mode):
+                sym = {"add": "+", "sub": "-", "mul": "*"}[op]
+                xs = [self.int_operand(e, ref, cols, "arithmetic") for e in (a, b)]
+                return d.fit_int(mode, bits, sym, xs)
             case Bin(op="and" | "or" as op, left=a, right=b):
                 f = d.and3 if op == "and" else d.or3
                 return f(go(a, "bool"), go(b, "bool"))

@@ -358,6 +358,44 @@ def test_modulus_takes_an_explicit_truncate(division_type, accepted):
     assert lean_values(json.dumps(inline_tables(plan, {"i": [(-7,), (7,)]}))) == [(-1,), (1,)]
 
 
+I64_MIN, I64_MAX = -(2**63), 2**63 - 1
+
+
+@pytest.mark.parametrize(
+    ("op", "mode", "expected"),
+    [
+        ("+", "SILENT", [I64_MIN, I64_MAX, 3, None]),
+        ("+", "SATURATE", [I64_MAX, I64_MIN, 3, None]),
+        ("-", "SILENT", [0, I64_MAX, 3, None]),
+        ("*", "SATURATE", [I64_MAX, I64_MAX, 0, None]),
+        ("*", "SILENT", [I64_MAX, I64_MIN, 0, None]),
+    ],
+)
+def test_integer_overflow_may_ask_to_wrap_or_clamp(op, mode, expected):
+    """`overflow` = SILENT wraps around and SATURATE clamps, when the plan asks
+    (#241, `UnFn.fit`): nothing raises. DuckDB runs them through the generated
+    lowering's templates; the other engines refuse them for now."""
+    con = connect()
+    rows = [(I64_MAX, 1), (I64_MIN, -1), (3, 0), (None, 0)]
+    if op == "-":
+        rows = [(I64_MAX, I64_MAX), (I64_MIN, 1), (3, 0), (None, 0)]
+    columns = {k: pa.array([r[j] for r in rows], pa.int64()) for j, k in enumerate("ab")}
+    put_table(con, "i", pa.table(columns))
+    plan = json.loads(substrait_json(con, f"SELECT a {op} b AS q FROM i"))
+    assert issues(json.dumps(plan)) == ["overflow"]
+    for node in _dicts(plan):
+        if "scalarFunction" in node:
+            node["scalarFunction"]["options"] = [{"name": "overflow", "preference": [mode]}]
+    plan_json = json.dumps(plan)
+    assert issues(plan_json) == []
+    want = [(v,) for v in expected]
+    assert lean_values(json.dumps(inline_tables(plan, {"i": rows}))) == want
+    written = written_plan(plan_json)
+    assert arrow_rows(run_plan(con, written, "duckdb")) == want
+    with pytest.raises(Exception, match="overflow"):
+        run_plan(con, written, "polars")
+
+
 def _dicts(node):
     if isinstance(node, dict):
         yield node

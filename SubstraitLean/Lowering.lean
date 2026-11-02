@@ -121,6 +121,32 @@ theorem Lowering.ref_or (x y : Value) : Profile.reference.bin .or x y = .ok (or3
 
 theorem Lowering.beq_int (a b : Int) : (a == b) = decide (a = b) := rfl
 
+/-- 128-bit arithmetic (decimals' `+`, `-`, `×` on unscaled integers, and `%`
+by a constant other than zero): the functions templates compute with. -/
+theorem Lowering.ref_dadd (x y : Value) : Profile.reference.bin .dadd x y = .ok (BinFn.apply .dadd x y) := by
+  cases x <;> cases y <;> rfl
+
+theorem Lowering.ref_dsub (x y : Value) : Profile.reference.bin .dsub x y = .ok (BinFn.apply .dsub x y) := by
+  cases x <;> cases y <;> rfl
+
+theorem Lowering.ref_dmul (x y : Value) : Profile.reference.bin .dmul x y = .ok (BinFn.apply .dmul x y) := by
+  cases x <;> cases y <;> rfl
+
+theorem Lowering.ref_imod_int (a b : Int) (hb : b ≠ 0) :
+    Profile.reference.bin .imod (.int a) (.int b) = .ok (.int (a.tmod b)) := by
+  simp [Profile.reference, raiseIf, BinFn.issue, BinFn.apply, hb]
+
+/-- Wrapping around in truncating arithmetic (`%` of SQL, `Int.tmod`): adding
+the modulus to a remainder makes it non-negative, so a second remainder is the
+floored one. The wrap schema (`overflow` = `SILENT`) rests on it (#241). -/
+theorem Lowering.tmod_add_tmod (a m : Int) (hm : 0 < m) : (a.tmod m + m).tmod m = a % m := by
+  have h1 := Int.tmod_add_tdiv_mul a m
+  have h2 := Int.lt_tmod_of_pos a hm
+  have h3 : a.tmod m + m = a.tmod m + 1 * m := by omega
+  rw [Int.tmod_eq_emod_of_nonneg (by omega), h3, Int.add_mul_emod_self_right]
+  conv => rhs; rw [← h1]
+  rw [Int.add_mul_emod_self_right]
+
 /-- A function the engine computes as the reference does agrees with it. -/
 theorem Lowering.un_agree_of_eq {p : Profile} {f : UnFn}
     (h : ∀ x, p.un f x = Profile.reference.un f x) (x : Value) :
