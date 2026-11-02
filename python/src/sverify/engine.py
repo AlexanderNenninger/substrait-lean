@@ -554,8 +554,15 @@ def datafusion_plan(plan_json: str) -> str:
     if code != 0:
         msg = (err or out).strip().splitlines()[-1:]
         raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
-    _check_datafusion_plan(json.loads(out))
-    return out
+    plan = json.loads(out)
+    _check_datafusion_plan(plan)
+    # sverify's own remainder of doubles (#256) is DataFusion's `%` of doubles,
+    # C's `fmod` too.
+    for e in plan.get("extensions", []):
+        f = e.get("extensionFunction", {})
+        if f.get("name", "").split(":")[0] == "sverify_fmod":
+            f["name"] = "modulus"
+    return json.dumps(plan)
 
 
 def _check_datafusion_plan(plan: dict) -> None:

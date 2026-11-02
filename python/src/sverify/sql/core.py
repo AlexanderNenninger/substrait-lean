@@ -1821,6 +1821,10 @@ class _Parser:
             case "scalarFunction":
                 full_name = self.name(_nat_d(v, "functionReference"))
                 name = _base_name(full_name)
+                # sverify's own remainder of doubles (#256) is `modulus` on doubles.
+                fmod_ext = name == "sverify_fmod"
+                if fmod_ext:
+                    name = full_name = "modulus"
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 if name in ("any_match", "all_match", "transform", "filter"):
                     raise Unsupported("lambdas have no SQL form yet (#94)")
@@ -1921,6 +1925,8 @@ class _Parser:
                 )  # fmt: skip
                 has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
+                if fmod_ext and not float_call:
+                    raise Unsupported("sverify_fmod takes doubles")
                 if name in (*BITWISE, "bitwise_not", "shift_left", "shift_right") and has_float:
                     raise Unsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
