@@ -9,30 +9,10 @@ decided there; where the two differ, #185 wins.
 ## The reference model
 
 `verify` proves things about `Rel.eval`, the **reference semantics**. It is
-not a model of any engine, DuckDB included. It is (#185, "Principles for the
-reference model"):
-
-1. **Substrait's semantics.** Each function means what its extension YAML
-   says, including its options (`overflow`, `on_division_by_zero`,
-   `division_type`, …). An option set in the plan is part of its meaning.
-2. **The least surprising choice where Substrait leaves one open**, written
-   down with its reason.
-3. **Easy to emulate on every backend.** Types have their declared widths
-   (`i8`…`i64` are fixed-width), and every choice is one that DuckDB,
-   Polars, DataFusion, Spark and Snowflake can be made to follow with a shim
-   (a guard, a cast, a `CASE`).
-4. **Good for optimizations.** Filter pushdown, reordering, sharding and
-   incremental maintenance stay provable.
-
-The decided defaults for a plan that omits an option (#185, "Decided: …"):
-
-* **Overflow** (`add`, `subtract`, `multiply`, `negate`, `abs`, …): ERROR,
-  at the declared width. SILENT and SATURATE only when the plan asks.
-* **Division by zero** (`divide`, `modulus`): ERROR. NULL only when the plan
-  asks.
-* **Errors mean "may raise"**, and rewrites are proved as refinements: an
-  optimized plan may raise in fewer cases, but never answers differently and
-  never raises where the original didn't.
+not a model of any engine, DuckDB included. Its principles, the decided
+defaults (overflow and division by zero are errors, errors mean "may raise",
+rewrites are refinements) and every row of its behaviour, with its status on
+`main`, are in [reference-semantics.md](reference-semantics.md).
 
 An engine runs a plan **correctly** when, on every input, it gives
 `Rel.eval`'s rows or fails.
