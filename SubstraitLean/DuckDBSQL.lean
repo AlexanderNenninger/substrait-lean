@@ -21,7 +21,8 @@ hand-written `DUCKDB` profile it replaces; oracle A (#242) tests it against
 the engine. With `semantics="reference"` a function means the reference's
 function at the same types (an error where DuckDB would give `±∞` or NaN).
 
-Covered so far: `/`, `%` of doubles, `log`, `sign`, `greatest` and `least`,
+Covered so far: `/`, `%` of doubles, the elementary functions (`sqrt`, `exp`,
+the logarithms, trigonometry) and `power`, `sign`, `greatest` and `least`,
 casts between `BIGINT` and `DOUBLE`, and the aggregate `avg` of `BIGINT`s
 (`DuckAgg`). A function the model cannot state
 under a semantics is refused (`DuckFn.refused`), with the reason.
@@ -42,10 +43,11 @@ inductive DuckType where
   | bigint | double | tinyint
   deriving Repr, DecidableEq, Inhabited
 
-/-- Values of the type: `NULL` or an integer (for a `DOUBLE`, its code,
-`SubstraitLean/Float.lean`). -/
+/-- Values of the type: `NULL` or an integer; for a `DOUBLE`, the code of a
+double (`SubstraitLean/Float.lean`): between `-∞`'s and `+∞`'s, or NaN's. -/
 def DuckType.Has : DuckType → Value → Prop
   | _, .null => True
+  | .double, .int c => (FloatCode.negInf ≤ c ∧ c ≤ FloatCode.posInf) ∨ c = FloatCode.nan
   | _, .int _ => True
   | _, _ => False
 
@@ -67,8 +69,11 @@ inductive DuckFn where
   | divDouble
   /-- `a % b` of `DOUBLE`s: C's `fmod` (R4). -/
   | modDouble
-  /-- `log(x)` of a `DOUBLE`: the logarithm to base 10. -/
-  | log
+  /-- `sqrt`, `exp`, `ln`, `log10` (DuckDB's `log(x)`), `log2` and the
+  trigonometric functions of a `DOUBLE` (`FMath`). -/
+  | elementary (f : FMath)
+  /-- `power(x, y)` of `DOUBLE`s. -/
+  | power
   /-- `sign(x)` of a `BIGINT` or a `DOUBLE`: a `TINYINT`, `-1`, `0` or `1`;
   `0` for NaN. -/
   | signBigint | signDouble
@@ -79,15 +84,19 @@ inductive DuckFn where
   deriving Repr, DecidableEq, Inhabited
 
 def DuckFn.all : List DuckFn :=
-  [.divInt, .divDouble, .modDouble, .log, .signBigint, .signDouble, .greatestBigint, .leastBigint,
+  [.divInt, .divDouble, .modDouble] ++ FMath.all.map .elementary ++ [.power, .signBigint, .signDouble, .greatestBigint, .leastBigint,
    .greatestDouble, .leastDouble, .castDoubleBigint, .castBigintDouble]
 
-theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by cases f <;> decide
+theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by
+  cases f
+  case elementary f => cases f <;> decide
+  all_goals decide
 
 /-- The function as DuckDB writes it, with its argument types. -/
 def DuckFn.sql : DuckFn → String
   | .divInt => "BIGINT / BIGINT" | .divDouble => "DOUBLE / DOUBLE"
-  | .modDouble => "DOUBLE % DOUBLE" | .log => "log(DOUBLE)"
+  | .modDouble => "DOUBLE % DOUBLE" | .elementary f => s!"{f.name}(DOUBLE)"
+  | .power => "power(DOUBLE, DOUBLE)"
   | .signBigint => "sign(BIGINT)" | .signDouble => "sign(DOUBLE)"
   | .greatestBigint => "greatest(BIGINT, BIGINT)" | .leastBigint => "least(BIGINT, BIGINT)"
   | .greatestDouble => "greatest(DOUBLE, DOUBLE)" | .leastDouble => "least(DOUBLE, DOUBLE)"
@@ -95,8 +104,8 @@ def DuckFn.sql : DuckFn → String
 
 def DuckFn.args : DuckFn → List DuckType
   | .divInt | .greatestBigint | .leastBigint => [.bigint, .bigint]
-  | .divDouble | .modDouble | .greatestDouble | .leastDouble => [.double, .double]
-  | .log | .signDouble | .castDoubleBigint => [.double]
+  | .divDouble | .modDouble | .greatestDouble | .leastDouble | .power => [.double, .double]
+  | .elementary _ | .signDouble | .castDoubleBigint => [.double]
   | .signBigint | .castBigintDouble => [.bigint]
 
 def DuckFn.result : DuckFn → DuckType
@@ -126,6 +135,15 @@ theorem FloatCode.zero_lt_posInf : 0 < FloatCode.posInf := by
 theorem FloatCode.posInf_lt_nan : FloatCode.posInf < FloatCode.nan := by
   have := FloatCode.maxMag_pos
   simp [FloatCode.posInf, FloatCode.nan, FloatCode.ofMag, FloatCode.infMag, FloatCode.nanMag]
+
+set_option exponentiation.threshold 3000 in
+theorem FloatCode.one_lt_posInf : FloatCode.one < FloatCode.posInf := by
+  rw [FloatCode.posInf_eq]; unfold FloatCode.maxMag FloatCode.one; decide
+
+theorem FloatCode.zero_lt_one : (0 : Int) < FloatCode.one := by
+  unfold FloatCode.one
+  have h : (0 : Int) < 2 ^ 1074 := Int.pow_pos (by decide)
+  omega
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
   have := FloatCode.ofInt_bounds i; omega
@@ -198,11 +216,24 @@ else C's `fmod`. -/
 def duckMod (x y : Int) : Int :=
   if y = 0 ∨ isInfCode x then FloatCode.nan else FloatCode.fmod x y
 
-/-- DuckDB's `log`: `-∞` at zero, NaN below it, else base 10. -/
-def duckLog (x : Int) : Int :=
-  match FMath.apply .log10 x with
+/-- A logarithm (`ln`, `log10`, `log2`)? -/
+def FMath.isLog : FMath → Bool
+  | .ln | .log10 | .log2 => true
+  | _ => false
+
+/-- DuckDB's elementary function of a double (DuckDB 2.0): the function in its
+domain (`FMath.apply`); outside it, `-∞` for a logarithm of zero and NaN
+otherwise (`sqrt(-1)`, `asin(2)`, `sin(±∞)`). -/
+def duckElementary (f : FMath) (x : Int) : Int :=
+  match f.apply x with
   | some r => r
-  | none => if x = 0 then FloatCode.negInf else FloatCode.nan
+  | none => if f.isLog ∧ x = 0 then FloatCode.negInf else FloatCode.nan
+
+/-- DuckDB's `power` of doubles: NaN where IEEE 754 gives it (a negative
+finite base to a finite power that is not an integer, `nanCase`), else the
+native power (`0 ^ -1` is `∞`). -/
+def duckPower (x y : Int) : Int :=
+  if nanCase .fpow x y then FloatCode.nan else FloatCode.lift₂ Float.pow x y
 
 /-- `sign` of an integer, or of a double's code (codes are ordered as their
 doubles; NaN's is the largest, and its sign is `0`). -/
@@ -215,12 +246,14 @@ def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
     .ok (.int (duckDivide (FloatCode.ofInt a) (FloatCode.ofInt b)))
   | .duckdb, .divDouble, [.int a, .int b] => .ok (.int (duckDivide a b))
   | .duckdb, .modDouble, [.int a, .int b] => .ok (.int (duckMod a b))
-  | .duckdb, .log, [.int a] => .ok (.int (duckLog a))
+  | .duckdb, .elementary f, [.int a] => .ok (.int (duckElementary f a))
+  | .duckdb, .power, [.int a, .int b] => .ok (.int (duckPower a b))
   | .reference, .divInt, [.int a, .int b] =>
     Profile.reference.bin .fdiv (.int (FloatCode.ofInt a)) (.int (FloatCode.ofInt b))
   | .reference, .divDouble, [a, b] => Profile.reference.bin .fdiv a b
   | .reference, .modDouble, [a, b] => Profile.reference.bin .fmod a b
-  | .reference, .log, [a] => Profile.reference.un (.fmath .log10) a
+  | .reference, .elementary f, [a] => Profile.reference.un (.fmath f) a
+  | .reference, .power, [a, b] => Profile.reference.bin .fpow a b
   | _, .signBigint, [.int a] => .ok (.int (duckSign a))
   | _, .signDouble, [.int a] => .ok (.int (if a = FloatCode.nan then 0 else duckSign a))
   | _, .greatestBigint, [x, y] | _, .greatestDouble, [x, y] => .ok (match x, y with

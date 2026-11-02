@@ -122,6 +122,9 @@ def urnOf (name : String) : String :=
       "greatest_skip_null", "least_skip_null"].contains name then
     "extension:io.substrait:functions_comparison"
   else if ["and", "or", "not"].contains name then "extension:io.substrait:functions_boolean"
+  else if ["sin", "cos", "tan", "asin", "acos", "atan"].contains name then
+    "extension:io.substrait:functions_arithmetic"
+  else if ["floor", "ceil", "round"].contains name then "extension:io.substrait:functions_rounding"
   else if name == "count" then "extension:io.substrait:functions_aggregate_generic"
   else "extension:io.substrait:functions_arithmetic"
 
@@ -135,7 +138,7 @@ extension URNs: each of `binaryNames` on `i64` and on `fp64`, the logarithms,
 and the guards' comparisons and connectives. -/
 def functions : List (Nat × String × String) :=
   let typed := binaryNames.flatMap fun n => ["i64", "fp64"].map fun t => s!"{n}:{t}_{t}"
-  let unary := ["log10:fp64", "ln:fp64", "log2:fp64"]
+  let unary := (FMath.all.map (·.name) ++ ["floor"]).map (· ++ ":fp64")
   let guards := ["equal:any_any", "lt:any_any", "is_null:any", "is_not_null:any", "is_nan:fp64",
     "and:bool", "or:bool", "not:bool"]
   let aggs := ["avg:i64", "avg:fp64", "sum:i64", "sum:fp64", "count:any"]
@@ -193,7 +196,7 @@ def cores (f : DuckFn) : List (String × Json × List (String × String)) :=
   let out := f.result.substrait
   -- Substrait's `modulus` has no `fp64` signature: the remainder of doubles is
   -- sverify's own `sverify_fmod` (#256).
-  let names := if n == 1 then ["log10", "ln", "log2"]
+  let names := if n == 1 then FMath.all.map (·.name)
     else binaryNames.filter fun m => !(m == "modulus" && f.result == .double)
   let asIs := (List.range n).map fieldJ
   let cast := (f.args.zip asIs).map fun (t, a) => if t == f.result then a else castJ out a
@@ -210,25 +213,45 @@ def cores (f : DuckFn) : List (String × Json × List (String × String)) :=
     fun j => ("constant", j, [])
   casts ++ callsOf ++ consts
 
-/-- Tests of the arguments a guard is built from. -/
+/-- Tests of the arguments a guard is built from: `IS [NOT] NULL` and
+comparisons with `0`; for a double also with `±1`, `isnan`, infinite, and
+"a finite fraction" (`floor(x) <> x`). A double's comparison also comes
+guarded, `NOT isnan(x) AND …` and `NOT isnan(x) AND NOT infinite AND …`: a
+proof cannot see what a native function gives for NaN or `±∞`, and Kleene
+`AND` with a false first operand is false whatever follows. Each atom also
+comes negated. -/
 def atoms (f : DuckFn) : List Json :=
   (f.args.zipIdx).flatMap fun (t, i) =>
     let x := fieldJ i
     let ty := t.substrait
-    let zero := if t == .double then litJ ty (Json.num 0) else litJ ty (toJson (0 : Int))
-    let base := [callJ "is_null:any" [x], callJ "is_not_null:any" [x],
-      callJ "equal:any_any" [x, zero], callJ "lt:any_any" [x, zero], callJ "lt:any_any" [zero, x]]
-    if t == .double then
-      base ++ [callJ "is_nan:fp64" [x],
-        callJ "or:bool" [callJ "equal:any_any" [x, litJ ty "inf"], callJ "equal:any_any" [x, litJ ty "-inf"]]]
+    let num (k : Int) := if t == .double then litJ ty (Json.num k) else litJ ty (toJson k)
+    let cmp (k : Int) := [callJ "equal:any_any" [x, num k], callJ "lt:any_any" [x, num k],
+      callJ "lt:any_any" [num k, x]]
+    let base := [callJ "is_null:any" [x], callJ "is_not_null:any" [x]] ++ cmp 0
+    let pos := if t == .double then
+      let isNan := callJ "is_nan:fp64" [x]
+      let isInf := callJ "or:bool" [callJ "equal:any_any" [x, litJ ty "inf"],
+        callJ "equal:any_any" [x, litJ ty "-inf"]]
+      let notNan := callJ "not:bool" [isNan]
+      let notInf := callJ "not:bool" [isInf]
+      let cmps := cmp 0 ++ cmp 1 ++ cmp (-1)
+      let frac := callJ "and:bool" [notNan, notInf,
+        callJ "not:bool" [callJ "equal:any_any" [callJ? "floor:fp64" [x] [] "fp64" |>.getD .null, x]]]
+      base ++ cmp 1 ++ cmp (-1) ++ [isNan, isInf, frac] ++
+        cmps.map (fun c => callJ "and:bool" [notNan, c]) ++
+        cmps.map (fun c => callJ "and:bool" [notNan, notInf, c])
     else base
+    pos ++ pos.map fun a => callJ "not:bool" [a]
 
 /-- The guards: an atom, or two atoms of different arguments joined by `AND`. -/
 def guards (f : DuckFn) : List Json :=
   let as := atoms f
   let per := as.length / max f.args.length 1
+  -- Pairs of atoms of different arguments, and of one argument (`x < 0 AND
+  -- NOT integral(y)`, `x < 0 AND NOT x is infinite`).
   let pairs := as.zipIdx.flatMap fun (a, i) =>
-    (as.drop ((i / per + 1) * per)).map fun b => callJ "and:bool" [a, b]
+    (as.drop (i + 1)).map fun b => callJ "and:bool" [a, b]
+  let _ := per
   as ++ pairs
 
 /-! ## Samples -/
@@ -237,7 +260,10 @@ def sampleValues : DuckType → List Value
   | .bigint => [.null, .int 0, .int 1, .int (-1), .int 7, .int (-7), .int (2 ^ 63 - 1), .int (-(2 ^ 63))]
   | .tinyint => [.null, .int 0, .int 1, .int (-1), .int 127, .int (-128)]
   | .double => [.null, .int 0, .int (FloatCode.ofFloat 1.5), .int (FloatCode.ofFloat (-2.5)),
-      .int (FloatCode.ofFloat 100), .int (FloatCode.ofFloat 0.5), .int FloatCode.nan,
+      .int (FloatCode.ofFloat 100), .int (FloatCode.ofFloat 0.5), .int (FloatCode.ofFloat (-2)),
+      .int (FloatCode.ofFloat 2), .int (FloatCode.ofFloat (-0.5)), .int (FloatCode.ofFloat 1),
+      .int (FloatCode.ofFloat (-1)), .int (FloatCode.ofFloat (-1.5)), .int (FloatCode.ofFloat 3.5),
+      .int FloatCode.nan,
       .int FloatCode.posInf, .int FloatCode.negInf]
 
 def sampleRows : List DuckType → List Row
@@ -257,6 +283,8 @@ def valueTerm : Value → MetaM Lean.Expr
     let c := if i == FloatCode.nan then Lean.mkConst ``FloatCode.nan
       else if i == FloatCode.posInf then Lean.mkConst ``FloatCode.posInf
       else if i == FloatCode.negInf then Lean.mkConst ``FloatCode.negInf
+      else if i == FloatCode.one then Lean.mkConst ``FloatCode.one
+      else if i == FloatCode.negOne then Lean.mkConst ``FloatCode.negOne
       else toExpr i
     pure (mkApp (Lean.mkConst ``Value.int) c)
   | .list _ => throwError "list literals in a lift template are not supported"
@@ -326,7 +354,7 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
     (j, e, mask (rows.map fun r => match e.evalP Profile.reference r with
       | .ok v => v.isTrue | .error _ => false))
   let vs := (values f).filterMap fun j => (parse f j).map fun e => (j, e, good e)
-  let pairs := gs.flatMap fun (gj, ge, gm) => vs.map fun (vj, ve, vm) => (gj, ge, gm, vj, ve, vm)
+  let base := gs.flatMap fun (gj, ge, gm) => vs.map fun (vj, ve, vm) => (gj, ge, gm, vj, ve, vm)
   -- Right wherever it fires among the rows `rem`.
   let ok (rem gm vm : Nat) := gm &&& rem &&& (all ^^^ vm) == 0
   let mut found := #[]
@@ -334,22 +362,31 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
     let some e := parse f j | continue
     let label := s!"{name} {opts}"
     let mut rem := all
-    let mut bad := all ^^^ good e
+    let ge0 := good e
+    let mut bad := all ^^^ ge0
+    -- A guard may also give the core itself: a shield that keeps rows the
+    -- core gets right from a later guard (`x is infinite` before `x < 0`).
+    let shields := gs.map fun (gj, ge, gm) => (gj, ge, gm, j, e, ge0)
+    let pairs := base
     let mut chain : Array (Json × Substrait.Expr × Json × Substrait.Expr) := #[]
-    for _ in [0:4] do
+    for _ in [0:6] do
       if bad == 0 then break
       -- The guard that fixes most of the rows still wrong.
       let fixes := pairs.filter fun (_, _, gm, _, _, vm) => ok rem gm vm && gm &&& bad != 0
       let best := fixes.foldl (fun acc p => match acc with
         | none => some p
-        | some q => if popcount (p.2.2.1 &&& bad) > popcount (q.2.2.1 &&& bad) then some p else acc) none
+        | some q =>
+          -- Most rows fixed; then fewest rows caught, the narrower test.
+          let (fp, fq) := (popcount (p.2.2.1 &&& bad), popcount (q.2.2.1 &&& bad))
+          if fp > fq || (fp == fq && popcount (p.2.2.1 &&& rem) < popcount (q.2.2.1 &&& rem)) then some p
+          else acc) none
       match best with
       | some (gj, ge, gm, vj, ve, _) =>
         chain := chain.push (gj, ge, vj, ve); rem := rem &&& (all ^^^ gm); bad := bad &&& (all ^^^ gm)
       | none =>
         -- A shield: right where it fires, and once its rows are caught, some
         -- guard fixes rows.
-        let shield := pairs.find? fun (_, _, gm, _, _, vm) =>
+        let shield := shields.find? fun (_, _, gm, _, _, vm) =>
           ok rem gm vm && gm &&& rem != 0 &&
             pairs.any fun (_, _, gm2, _, _, vm2) =>
               ok (rem &&& (all ^^^ gm)) gm2 vm2 && gm2 &&& bad &&& (all ^^^ gm) != 0
@@ -358,6 +395,25 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
           chain := chain.push (gj, ge, vj, ve); rem := rem &&& (all ^^^ gm); bad := bad &&& (all ^^^ gm)
         | none => break
     if bad == 0 then
+      -- Drop the guards the chain does not need: one that, left out, leaves
+      -- every sample row right (each row takes the first guard that fires).
+      let masks : Array (Nat × Nat) := chain.map fun (_, ge, _, ve) =>
+        let gm := mask (rows.map fun r => match ge.evalP Profile.reference r with
+          | .ok v => v.isTrue | .error _ => false)
+        let vm := good ve
+        (gm, if ve == e then ge0 else vm)
+      let right (keep : List Nat) : Bool := Id.run do
+        let mut caught := 0
+        for i in keep do
+          let (gm, vm) := masks[i]!
+          if gm &&& (all ^^^ caught) &&& (all ^^^ vm) != 0 then return false
+          caught := caught ||| gm
+        return (all ^^^ caught) &&& (all ^^^ ge0) == 0
+      let mut keep := List.range chain.size
+      for i in List.range chain.size do
+        let fewer := keep.erase i
+        if right fewer then keep := fewer
+      chain := keep.toArray.map (chain[·]!)
       let tj := chain.foldr (fun (gj, _, vj, _) acc => ifJ gj vj acc) j
       let te := chain.foldr (fun (_, ge, _, ve) acc => Substrait.Expr.ifThen ge ve acc) e
       -- Fewer guards first: a long chain may fit the samples by accident. On a
@@ -373,7 +429,7 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
 their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckLog, ``duckSign,
+    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
     ``nanCase, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
     ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
@@ -396,8 +452,10 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     all_goals have := FloatCode.negInf_lt_zero
     all_goals have := FloatCode.zero_lt_posInf
     all_goals have := FloatCode.posInf_lt_nan
+    all_goals have := FloatCode.one_lt_posInf
+    all_goals have := FloatCode.zero_lt_one
     all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$ev,*]
-    iterate 12
+    iterate 16
       all_goals try
         lowering_split_decide <;>
           simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, $ev,*]
@@ -408,10 +466,10 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
       | omega))
 
 /-- Search for and emit the entry of `f` under `s`; how it lifts, or why not. -/
-def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name) (c : Name) (f : DuckFn) :
-    TermElabM (Except String String) := do
-  let short := c.componentsRev.head!
-  let fE := Lean.mkConst c
+def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
+    (k : LoweringSearch.Construct) (f : DuckFn) : TermElabM (Except String String) := do
+  let short := k.short
+  let fE := mkAppN (Lean.mkConst k.ctor) (k.args.map Lean.mkConst)
   let n := f.args.length
   if let some why := f.refused s then return .error s!"refused: {why}"
   let cands := survivors s f
@@ -583,11 +641,14 @@ def elabGenerateLift : CommandElab := fun stx => do
       discard <| Meta.getUnfoldEqnFor? d (nonRec := true)
     let sE ← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics))
     let s ← evalSemantics sE
-    ctors.mapM fun c => withCurrHeartbeats do
-      let f ← evalDuckFn (Lean.mkConst c)
+    -- A constructor with finite parameters (`elementary f`): one per value.
+    let ks ← ctors.flatMapM fun c => do
+      return (← LoweringSearch.instances c false).getD [⟨c, false, #[]⟩]
+    ks.mapM fun k => withCurrHeartbeats do
+      let f ← evalDuckFn (mkAppN (Lean.mkConst k.ctor) (k.args.map Lean.mkConst))
       let t0 ← IO.monoMsNow
-      let r ← liftOne tbl s sE extra c f
-      return (c, f, r, (← IO.monoMsNow) - t0)
+      let r ← liftOne tbl s sE extra k f
+      return (k, f, r, (← IO.monoMsNow) - t0)
   let aggCtors := (← getConstInfoInduct ``DuckAgg).ctors
   let aggResults ← liftTermElabM do
     let sE ← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics))
@@ -602,15 +663,17 @@ def elabGenerateLift : CommandElab := fun stx => do
       | .ok _ => `(some $(mkIdent (tbl ++ c.componentsRev.head!)))
       | .error _ => `(none)
     `(Lean.Parser.Term.matchAltExpr| | $(mkIdent c) => $rhs)
-  let alts ← results.toArray.mapM fun (c, _, r, _) => do
+  let alts ← results.toArray.mapM fun (k, _, r, _) => do
     let rhs ← match r with
-      | .ok _ => `(some $(mkIdent (tbl ++ c.componentsRev.head!)))
+      | .ok _ => `(some $(mkIdent (tbl ++ k.short)))
       | .error _ => `(none)
-    `(Lean.Parser.Term.matchAltExpr| | $(mkIdent c) => $rhs)
+    let pats ← k.args.mapM fun a => `($(mkIdent a):ident)
+    `(Lean.Parser.Term.matchAltExpr| | $(mkIdent k.ctor) $pats* => $rhs)
   elabCommand (← `(def $(mkIdent short) : Lift $sStx :=
     ⟨fun f => match f with $alts:matchAlt*, fun g => match g with $aggAlts:matchAlt*⟩))
   let summary : List (String × Except String String × Nat) :=
-    results.map (fun ((_, f, r, ms) : Name × DuckFn × Except String String × Nat) => (f.sql, r, ms)) ++
+    results.map (fun ((_, f, r, ms) : LoweringSearch.Construct × DuckFn × Except String String × Nat) =>
+      (f.sql, r, ms)) ++
       aggResults.map (fun ((_, g, r, ms) : Name × DuckAgg × Except String String × Nat) => (g.sql, r, ms))
   let rows ← summary.toArray.mapM fun (sql, r, ms) => do
     let how := match r with | .ok h => h | .error e => e
@@ -622,7 +685,8 @@ def elabGenerateLift : CommandElab := fun stx => do
   if missing.isEmpty then
     elabCommand (← `(theorem $(mkIdent (short ++ `total)) :
         ∀ f, (DuckFn.refused $sStx f).isNone → (($(mkIdent tbl)).entry f).isSome :=
-      fun f h => by cases f <;> first | rfl | simp [DuckFn.refused] at h))
+      fun f h => by
+        cases f <;> (try (rename_i a; cases a)) <;> first | rfl | simp [DuckFn.refused] at h))
   else
     logError m!"no lift found for {missing}"
 
