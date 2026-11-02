@@ -135,29 +135,26 @@ def test_views_keep_their_state_where_their_engine_reads_it(engine):
             assert repr(v.rows()) == repr(v.recompute())
 
 
-def test_old_states_are_dropped():
-    pipe, views = pipeline("duckdb")
+def resident_names(db) -> set[str]:
+    sql = "SELECT table_name FROM duckdb_tables() UNION ALL SELECT view_name FROM duckdb_views()"
+    return {r[0] for r in db.sql(sql).fetchall() if r[0].startswith("__sverify_resident")}
+
+
+def held(pipe) -> set[str]:
+    """Each view's state and the DuckDB view of its rows."""
+    tables = [v.state for v in pipe.views.values()] + [pipe.con.get(n) for n in pipe.views]
+    return {r.name for r in tables if isinstance(r, Resident)}
+
+
+def test_superseded_states_are_dropped():
+    pipe, _ = pipeline("duckdb")
+    db = _duckdb.cursor()
+    first = held(pipe)
+    assert len(first) == 4 and first <= resident_names(db)
     for step in range(5):
         pipe.apply({"o": sv.Changes(inserts=orders(100 + 10 * step))})
     gc.collect()
-    db = _duckdb.cursor()
     _duckdb.collect(db)
-    held = {
-        r[0]
-        for r in db.sql(
-            "SELECT table_name FROM duckdb_tables() UNION ALL SELECT view_name FROM duckdb_views()"
-        ).fetchall()
-        if r[0].startswith("__sverify_resident")
-    }
-    # Each view: its state, and the view of its rows; other tests' may linger.
-    held_by = [v.state for v in pipe.views.values()] + [pipe.con.get(n) for n in pipe.views]
-    live = {r.name for r in held_by if isinstance(r, Resident)}
-    assert len(live) == 4
-    assert live <= held
-    del pipe, views, held_by
-    gc.collect()
-    _duckdb.collect(db)
-    gone = {
-        r[0] for r in db.sql("SELECT table_name FROM duckdb_tables()").fetchall() if r[0] in live
-    }
-    assert not gone
+    now = resident_names(db)
+    assert held(pipe) <= now
+    assert not first & now
