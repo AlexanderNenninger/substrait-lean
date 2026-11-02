@@ -35,6 +35,7 @@ from sverify import _duckdb
 from sverify._scan import Native, Resident, _q
 from sverify._weighted import (
     WEIGHT,
+    _same_rows,
     consolidated,
     expanded,
     has_negative,
@@ -145,7 +146,13 @@ class ArrowStore(Store):
 
 class DuckDBStore(Store):
     """The state as a table DuckDB holds (`Resident`): merges leave their
-    result in DuckDB, and the view's rows are a DuckDB view of it."""
+    result in DuckDB, and the view's rows are a DuckDB view of it.
+
+    A refresh changes the state in place, at the cost of the change
+    (`apply`): the state rows equal to a row of the change (`matching`) are
+    added to the change by the merge plan, and replace those rows, for every
+    view in one transaction. The state then holds each row once with its
+    weight, as a full merge leaves it."""
 
     keep = True
     _db: duckdb.DuckDBPyConnection | None = None
@@ -197,6 +204,43 @@ class DuckDBStore(Store):
         cols = ", ".join(f"s.{_q(c)}" for c in z.schema.names if c != WEIGHT)
         sql = f"SELECT {cols} FROM {z.ref} s, range(s.{_q(WEIGHT)})"
         return self._sql(sql, kind="VIEW", reads=(z,))
+
+    def copy(self, z: Resident) -> Resident:
+        """A new table with the rows of `z`."""
+        return self._sql(f"SELECT * FROM {z.ref}")
+
+    def apply(self, updates: list[tuple[Resident, pa.Table, pa.Table]]) -> None:
+        """For each `(state, change, merged)`, in one transaction: delete
+        the rows of `state` equal to a row of `change`, and insert `merged`
+        (those rows plus the change, by the merge plan)."""
+        with DuckDBStore._lock:
+            if DuckDBStore._db is None:
+                DuckDBStore._db = _duckdb.cursor()
+            db = DuckDBStore._db
+            _duckdb.collect(db)
+            db.execute("BEGIN TRANSACTION")
+            try:
+                for state, change, merged in updates:
+                    keys = [c for c in state.schema.names if c != WEIGHT]
+                    db.register("__sverify_change", change)
+                    db.register("__sverify_merged", merged)
+                    try:
+                        same = _same_rows(keys, "s", "c")
+                        db.execute(
+                            f"DELETE FROM {state.ref} s WHERE EXISTS "
+                            f"(SELECT 1 FROM __sverify_change c WHERE {same})"
+                        )
+                        cols = ", ".join(_q(c) for c in state.schema.names)
+                        db.execute(
+                            f"INSERT INTO {state.ref} ({cols}) SELECT {cols} FROM __sverify_merged"
+                        )
+                    finally:
+                        db.unregister("__sverify_change")
+                        db.unregister("__sverify_merged")
+                db.execute("COMMIT")
+            except BaseException:
+                db.execute("ROLLBACK")
+                raise
 
     def has_negative(self, z: State) -> bool:
         if not isinstance(z, Resident):
