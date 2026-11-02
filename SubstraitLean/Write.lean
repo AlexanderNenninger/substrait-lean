@@ -53,7 +53,11 @@ def coreFns : List (Nat × String) := [
   (122, "sverify_fmod"),
   -- sverify's own: two values as the argument of a two-argument aggregate
   -- (`COVAR_SAMP(x, y)`, #54), written as the measure's two arguments.
-  (123, "sverify_pair")]
+  (123, "sverify_pair"),
+  -- `GREATEST`/`LEAST` of two values, skipping `NULL`s (`BinFn.greatest`,
+  -- #340): untyped, as DataFusion writes its own and the parser reads them;
+  -- Substrait's typed ones propagate `NULL`s.
+  (124, "greatest"), (125, "least")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -157,6 +161,7 @@ def BinFn.anchor : BinFn → Nat
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .fmod => 122 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
   | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11 | .pair => 123
+  | .greatest => 124 | .least => 125
   | .bit op => match op with
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
@@ -676,6 +681,15 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | .concat | .strpos | .startsWith | .endsWith | .like | .trim _ _ | .ilike | .levenshtein =>
       call (BinFn.anchor f) [writeExpr cols .str a, writeExpr cols .str b]
+    -- Lists are written as the conditional they equal (`Expr.eval_greatest`):
+    -- the engines order lists otherwise than `lt` (`listLt3`'s undecided).
+    | .greatest | .least => match ka, kb with
+      | .list _, _ | _, .list _ =>
+        let (ja, jb) := (writeExpr cols ka a, writeExpr cols kb b)
+        let better := if f matches .greatest then call 400 [ja, jb] else call 400 [jb, ja]
+        caseChain (call (UnFn.anchor .isNull) [ja]) jb
+          (caseChain (call (UnFn.anchor .isNull) [jb]) ja (caseChain better jb ja))
+      | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
   -- A double's negation and `ABS`, as the parser reads `negate` and `abs` of a
   -- double (`Parse.mkFloatCall`): written as those calls, so that they read

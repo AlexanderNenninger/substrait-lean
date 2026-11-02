@@ -12,11 +12,11 @@ DuckDB's semantics and with the reference's. `liftDuckDB.coverage` and
 namespace Substrait
 
 generate_lift liftDuckDB : Semantics.duckdb
-  using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all]
+  using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
 
 generate_lift liftReference : Semantics.reference
-  using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all]
+  using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
   cache liftCache
 
 /-- The generated lift table of the semantics. -/

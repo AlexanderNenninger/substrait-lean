@@ -515,3 +515,17 @@ def test_constants_out_of_range_are_cast_not_folded():
 def test_digit_separators_are_read_as_duckdb_reads_them():
     result = check("SELECT 1_000 AS a, 1_000.5 AS b, 2_5e1 AS c", {})
     assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_greatest_and_least_of_many_values_check_fast():
+    # #340: GREATEST/LEAST were read as a conditional that copies its first
+    # argument at each step, so checking 10 of them ran for minutes. As one
+    # operation per pair, 30 check at once and agree with DuckDB.
+    import time
+
+    args = ", ".join(f"amount + {i}" for i in range(30))
+    query = f"SELECT id, LEAST({args}) AS lo, GREATEST({args}, qty) AS hi FROM orders"
+    start = time.monotonic()
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+    assert time.monotonic() - start < 30

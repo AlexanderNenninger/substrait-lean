@@ -713,6 +713,14 @@ class Dialect:
     def lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
 
+    def greatest(self, a: str, b: str) -> str:
+        """`GREATEST(a, b)`, skipping NULLs."""
+        return f"GREATEST({a}, {b})"
+
+    def least(self, a: str, b: str) -> str:
+        """`LEAST(a, b)`, skipping NULLs."""
+        return f"LEAST({a}, {b})"
+
     def and3(self, a: str, b: str) -> str:
         return f"({a} AND {b})"
 
@@ -874,7 +882,7 @@ class Bin:
         "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
         "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
         "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
-        "fatan2", "flogb", "bit", "list_lt", "pair",
+        "fatan2", "flogb", "bit", "list_lt", "pair", "greatest", "least",
     ]  # fmt: skip
     left: Expr
     right: Expr
@@ -1299,7 +1307,7 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "str"
         case Un():
             return "bool"
-        case Bin(op="add" | "sub" | "mul", left=a, right=b):
+        case Bin(op="add" | "sub" | "mul" | "greatest" | "least", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
         case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
@@ -1379,7 +1387,7 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             if ka == "time" and kb == "time":
                 return "interval"
             return ka if ka in ("time", "interval") or kb is None else kb
-        case Bin(op="mul", left=a, right=b):
+        case Bin(op="mul" | "greatest" | "least", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
         case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
             return "float"
@@ -3005,13 +3013,15 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return _coalesce(a, rest)
         case "nullif", [a, b]:
             return If(Bin("eq", a, b), Lit(None, None), a)
+        # `BinFn.greatest`/`least`: one operation per pair, not the conditional
+        # it equals, which copies its first argument (#340).
         case (("greatest" | "greatest_skip_null"), [a, *rest]):
             for b in rest:
-                a = _pick(lambda x, y: Bin("lt", x, y), a, b)
+                a = Bin("greatest", a, b)
             return a
         case (("least" | "least_skip_null"), [a, *rest]):
             for b in rest:
-                a = _pick(lambda x, y: Bin("lt", y, x), a, b)
+                a = Bin("least", a, b)
             return a
         case "abs", [a]:
             return If(Bin("lt", a, Lit(0, "int")), Un("neg", a), a)
@@ -4054,6 +4064,19 @@ class _Writer:
                 return d.list_lt(go(a, None), go(b, None))
             case Bin(op="pair", left=a, right=b):
                 return d.pair(go(a, "float"), go(b, "float"))
+            case Bin(op="greatest" | "least" as op, left=a, right=b):
+                # Skipping NULLs, by the order `lt` has: the engines' own
+                # `GREATEST`/`LEAST` (NaN above everything, the first on a tie).
+                ka, kb = kind(a), kind(b)
+                k = ka or kb
+                if k in ("str", "bool"):
+                    raise Unsupported(
+                        f"ordering comparisons of {k} values are not in the Lean model"
+                    )
+                ca = ka if isinstance(ka, Dec) else k
+                cb = kb if isinstance(kb, Dec) else k
+                sa, sb = go(a, ca), go(b, cb)
+                return d.greatest(sa, sb) if op == "greatest" else d.least(sa, sb)
             case Bin(op="eq" | "lt" as op, left=a, right=b) if isinstance(
                 kind(a), Dec
             ) or isinstance(kind(b), Dec):

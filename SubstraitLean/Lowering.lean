@@ -113,6 +113,14 @@ theorem Lowering.ref_eq (x y : Value) : Profile.reference.bin .eq x y = .ok (Bin
 theorem Lowering.ref_lt (x y : Value) : Profile.reference.bin .lt x y = .ok (BinFn.apply .lt x y) := by
   cases x <;> cases y <;> rfl
 
+theorem Lowering.ref_greatest (x y : Value) :
+    Profile.reference.bin .greatest x y = .ok (BinFn.apply .greatest x y) := by
+  cases x <;> cases y <;> rfl
+
+theorem Lowering.ref_least (x y : Value) :
+    Profile.reference.bin .least x y = .ok (BinFn.apply .least x y) := by
+  cases x <;> cases y <;> rfl
+
 theorem Lowering.ref_and (x y : Value) : Profile.reference.bin .and x y = .ok (and3 x y) := by
   cases x <;> cases y <;> rfl
 

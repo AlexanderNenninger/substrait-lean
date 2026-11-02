@@ -1306,6 +1306,17 @@ class Exprs:
                    "btrim", "ltrim", "rtrim", "repeat", "levenshtein", "ilike")  # fmt: skip
         if name in strings:
             return self.string(name, a, b)
+        if name in ("greatest", "least", "greatest_skip_null", "least_skip_null"):
+            # `BinFn.greatest`/`least` (`Value.pick`): the other value where one
+            # is NULL, else the larger (smaller) by `lt`, the first on a tie.
+            t = unify(ta, tb, name)
+            if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
+                raise Unsupported(f"{name} of {t}")
+            ka, kb = ordered(a.expr, t), ordered(b.expr, t)
+            better = ka < kb if name.startswith("greatest") else kb < ka
+            x, y = a.expr, b.expr
+            e = pl.when(x.is_null()).then(y).when(y.is_null()).then(x).when(better).then(y)
+            return Val(e.otherwise(x), t, issues(a, b))
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
             if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):

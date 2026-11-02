@@ -89,6 +89,8 @@ error_on_division_by_zero=off	BinFn.dsub	native
 error_on_division_by_zero=off	BinFn.dmul	native
 error_on_division_by_zero=off	BinFn.ddiv	native
 error_on_division_by_zero=off	BinFn.pair	native
+error_on_division_by_zero=off	BinFn.greatest	native
+error_on_division_by_zero=off	BinFn.least	native
 error_on_division_by_zero=on	UnFn.not	native
 error_on_division_by_zero=on	UnFn.isNull	native
 error_on_division_by_zero=on	UnFn.neg	native
@@ -180,4 +182,6 @@ error_on_division_by_zero=on	BinFn.dsub	native
 error_on_division_by_zero=on	BinFn.dmul	native
 error_on_division_by_zero=on	BinFn.ddiv	native
 error_on_division_by_zero=on	BinFn.pair	native
+error_on_division_by_zero=on	BinFn.greatest	native
+error_on_division_by_zero=on	BinFn.least	native
 [exit 0]
