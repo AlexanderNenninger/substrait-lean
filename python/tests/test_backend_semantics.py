@@ -316,7 +316,9 @@ FAITHFUL = [
     "SELECT v, v = 0.0, v < 0.0 FROM f0",
     # By zero raises (#204), except for NULL.
     "SELECT v / 0.0 FROM f WHERE v IS NULL",
-    "SELECT v % 2.0, v % CAST('-inf' AS DOUBLE), -v % 2.0 FROM f",
+    # `fmod(-inf, y)` would be NaN, which no operation creates (#257).
+    "SELECT v % 2.0, v % CAST('-inf' AS DOUBLE), -v % 2.0 FROM f"
+    " WHERE v > CAST('-inf' AS DOUBLE) OR v IS NULL",
     "SELECT 7.5 % v, -7.5 % v FROM f WHERE v <> 0.0",
     "SELECT v, CAST(v AS BIGINT) AS c FROM r",
     "SELECT v, round(v) FROM r",
