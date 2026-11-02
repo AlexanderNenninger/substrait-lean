@@ -77,16 +77,11 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   `characterization/duckdb/FACTS.md` records a difference. So far that is
   division and modulus by zero (R2–R5), which depend on the setting
   `error_on_division_by_zero` (on by default since 2.0).
-* **`shimDuckDB s`** rewrites an expression into one DuckDB evaluates to the
-  reference's outcome. Its guards are two functions of the model:
-  `UnFn.raise` (always an error, `Issue.raised`; DuckDB's `error()`) and
-  `UnFn.isNum` (written `x IS NOT NULL`). So a shimmed plan is an ordinary
-  plan, written and run like any other. With the setting off, a division gets
-  `CASE WHEN x IS NOT NULL AND y = 0 THEN error() ELSE x / y END`; `NULL / 0`
-  is NULL in the reference. **`shimDuckDB_correct`** proves that the shimmed
-  expression, under DuckDB's profile, has the reference's outcome: the same
-  value, or an error.
-* **The shims are generated** (#241). `generate_lowering`
+* **The shims are generated** (#241). A shim rewrites an expression into one
+  DuckDB evaluates to the reference's outcome. Its guards are two functions
+  of the model: `UnFn.raise` (always an error, `Issue.raised`; DuckDB's
+  `error()`) and `UnFn.isNum` (written `x IS NOT NULL`). So a shimmed plan is
+  an ordinary plan, written and run like any other. `generate_lowering`
   (`SubstraitLean/LoweringSearch.lean`) is a metaprogram that runs at build
   time. For each construct (each constructor of `UnFn` and `BinFn`, its
   parameters being the signature and options) it first tries to prove the
@@ -97,15 +92,17 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   under both profiles, and the first that passes is proved for all arguments
   by a tactic and added as a declaration, so the kernel checks it. A
   construct with no entry fails the build and shows as `missing` in the
-  coverage report (`substrait-check --lowering-coverage`).
-  `SubstraitLean/Lowering.lean` proves once that lowering with any such table
-  is correct (`Lowering.lower_correct`, and `Lowering.lowerRel_sound` for
-  plans, by `Rel.evalI_mapExprs`). For DuckDB the search finds the
-  hand-written shim exactly: `duckdb_lower_eq_shim` proves the generated
-  lowering equal to `shimDuckDB`, and `shimDuckDB_correct` and
-  `Rel.duckdb_shim_sound` now follow from it. Equality saturation (lean-egg)
-  was considered and not used: it proves equalities rather than finding
-  terms, it is deprecated, and it needs Lean 4.30 and Rust.
+  coverage report (`substrait-check --lowering-coverage`, recorded in the
+  golden test `tests/lowering/duckdb.expected`). With the setting off, the
+  search finds `CASE WHEN x IS NOT NULL AND y = 0 THEN error() ELSE x / y
+  END` for division and modulus (`NULL / 0` is NULL in the reference), the
+  shim first written by hand. `SubstraitLean/Lowering.lean` proves once that
+  lowering with any such table is correct: **`Lowering.lower_correct`** (the
+  lowered expression, under the engine's profile, has the reference's
+  outcome, the same value or an error), and `Lowering.lowerRel_sound` for
+  plans, by `Rel.evalI_mapExprs`. Equality saturation (lean-egg) was
+  considered and not used: it proves equalities rather than finding terms,
+  it is deprecated, and it needs Lean 4.30 and Rust.
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdb_faithful` shows that DuckDB's profile agrees with the
@@ -116,10 +113,10 @@ meets the preconditions, the plan evaluated with DuckDB's functions gives
 (`verified_sql`, #229).
 
 A plan that may raise (an overflow check, a division) is covered too, by
-**partial correctness**. `shimE_exact` shows that every shimmed
+**partial correctness**. `Lowering.duckdb_exact` shows that every lowered
 expression, run with DuckDB's functions, gives the reference's value on every
 row where it does not raise, and `Rel.duckdb_shim_sound` lifts this to plans
-(`shimRel`): unless an expression raises on a row it is evaluated on, DuckDB
+(`Lowering.lowerRel`): unless an expression raises on a row it is evaluated on, DuckDB
 gives `Rel.eval`'s rows. So DuckDB returns the rows a contract is proved
 about, or an error, never other rows. This needs neither a contract nor guard
 elimination, so it covers left joins and windows too (`looseSub`). An engine

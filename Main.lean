@@ -23,9 +23,9 @@ why it cannot be split.
 plan for DataFusion to run, compensating for where its semantics differ
 (`Write.writeRel`); it does not parse back to the same `Rel`.
 
-`substrait-check --lowering-coverage`: print, as JSON, how each construct is
-lowered to DuckDB under each setting of `error_on_division_by_zero` (natively,
-or the generated template; `SubstraitLean/LoweringDuckDB.lean`).
+`substrait-check --lowering-coverage`: print how each construct is lowered to
+DuckDB under each setting of `error_on_division_by_zero`, one per line:
+natively, or the generated template (`SubstraitLean/LoweringDuckDB.lean`).
 
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
@@ -206,11 +206,10 @@ def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
   | ["--lowering-coverage"] => do
-    -- How each construct is lowered to DuckDB, per setting (#241).
-    let rows := [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)].flatMap fun (s, cov) =>
-      cov.map fun (c, how, ms) => Lean.Json.mkObj [("error_on_division_by_zero", s),
-        ("construct", c), ("lowering", how), ("ms", ms)]
-    IO.println (Lean.Json.arr rows.toArray).compress
+    -- How each construct is lowered to DuckDB, per setting (#241); a golden test.
+    for (setting, cov) in [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)] do
+      for (c, how, _) in cov do
+        IO.println s!"error_on_division_by_zero={setting}\t{c}\t{how}"
     return 0
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>

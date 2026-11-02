@@ -27,7 +27,8 @@ characterized as a **diff** against it (`characterization/<engine>/`): which
 behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
 Lean (`SubstraitLean/Profile.lean`: `Profile.reference`,
-`Expr.evalP_reference`, `shimDuckDB_correct`, `Rel.duckdb_shim_sound`).
+`Expr.evalP_reference`; `SubstraitLean/Lowering.lean`: `Lowering.lower_correct`,
+`Rel.duckdb_shim_sound`).
 That each engine matches its profile is tested, not proved. How profiles and
 shims work is in [engine-profiles.md](engine-profiles.md).
 
