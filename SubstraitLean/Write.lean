@@ -147,7 +147,7 @@ def BinFn.anchor : BinFn → Nat
 
 /-- Every anchor a function is written with is declared (0 marks no call). -/
 theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first | decide | (rename_i _ sqrt; cases sqrt <;> decide)
+  cases f <;> first | decide | (rename_i a b; cases a <;> cases b <;> decide)
 
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
