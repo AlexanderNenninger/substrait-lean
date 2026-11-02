@@ -41,7 +41,7 @@ Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substr
 |---|---|---|
 | 1 | DuckDB | Characterized as a diff against the reference model, with proved shims. In progress ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185)). |
 | 2 | Polars, Spark, DataFusion | Differentially tested against the reference in CI, deviations documented. Polars and Spark aim for Tier 1. |
-| 3 | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), not on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
+| 3 | Snowflake | Aspirational: the SQL is checked on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), with no real account yet ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
 Work on the Tier 2 and 3 backends is paused until the generated lowerings land
 ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241), then
@@ -244,12 +244,14 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   proof that the result is the same); `sverify.errors` the exceptions.
 
 Not supported yet: DECIMAL columns (keep money as integer cents),
-framed window aggregates, `RANK` and `NTILE`. The repository's README has
-the coverage table, the full guide, and what is proved and what is trusted.
+framed window aggregates, `RANK` and `NTILE`. The repository has
+[a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md),
+the Ibis coverage table in its README, and
+[what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
 
 ## Configuration
 
-* `SVERIFY_CHECK`: path to a `substrait-check` binary to use instead of the
+* `SVERIFY_CHECK`: path to a `substrait-check` binary that replaces the
   bundled one, for example your own `lake build`.
 * DataFusion is pinned to 51, because Ibis 12's DataFusion backend doesn't
   connect to later versions.

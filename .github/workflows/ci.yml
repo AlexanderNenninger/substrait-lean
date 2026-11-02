@@ -17,7 +17,8 @@ permissions:
 # from the shared lake cache when the Lean sources have not changed.
 #
 # A pull request that changes only docs (`docs/`, `.claude/`, Markdown at the
-# root other than README.md, which tests run) skips everything but `static`,
+# root other than README.md, which tests run, and docs/guide.md and
+# docs/how-it-works.md, which tests run too) skips everything but `static`,
 # and float-bounds runs only when its own package changes. A push to main
 # always runs everything.
 jobs:
@@ -46,7 +47,7 @@ jobs:
           # Here-strings, not pipes: under `pipefail` an early exit of `grep -q`
           # could fail the pipe.
           if grep -qvE '^(docs/|\.claude/|[^/]+\.md$)' <<< "$files" \
-             || grep -qx 'README\.md' <<< "$files"; then
+             || grep -qxE 'README\.md|docs/(guide|how-it-works)\.md' <<< "$files"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
