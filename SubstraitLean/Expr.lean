@@ -36,6 +36,55 @@ operations are in `SubstraitLean/Numeric.lean`.
 
 namespace Substrait
 
+/-- Substrait's `overflow` option, where a plan asks for it (#241): `SILENT`
+wraps around at the declared width, `SATURATE` clamps to it. `ERROR`, what a
+plan that omits the option means, is the arithmetic itself (#202). -/
+inductive OverflowMode where
+  | silent | saturate
+  deriving Repr, DecidableEq, Inhabited
+
+/-- A declared integer width: `i8`, `i16`, `i32` or `i64`. -/
+inductive IntWidth where
+  | i8 | i16 | i32 | i64
+  deriving Repr, DecidableEq, Inhabited
+
+/-- The option's name in Substrait. -/
+def OverflowMode.name : OverflowMode → String
+  | .silent => "SILENT" | .saturate => "SATURATE"
+
+def IntWidth.bits : IntWidth → Nat
+  | .i8 => 8 | .i16 => 16 | .i32 => 32 | .i64 => 64
+
+/-- The width of `n` bits (`i64` from 33 up). -/
+def IntWidth.ofBits (n : Nat) : IntWidth :=
+  if n ≤ 8 then .i8 else if n ≤ 16 then .i16 else if n ≤ 32 then .i32 else .i64
+
+/-- `2^(bits - 1)`, the size of the width's negative half, as a numeral (so
+that the lowering's proofs compute with it, #241). -/
+def IntWidth.half : IntWidth → Int
+  | .i8 => 128 | .i16 => 32768 | .i32 => 2147483648 | .i64 => 9223372036854775808
+
+/-- `2^bits`, the number of integers of the width. -/
+def IntWidth.modulus : IntWidth → Int
+  | .i8 => 256 | .i16 => 65536 | .i32 => 4294967296 | .i64 => 18446744073709551616
+
+/-- The smallest and the largest integer of the width. -/
+def IntWidth.lo : IntWidth → Int
+  | .i8 => -128 | .i16 => -32768 | .i32 => -2147483648 | .i64 => -9223372036854775808
+def IntWidth.hi : IntWidth → Int
+  | .i8 => 127 | .i16 => 32767 | .i32 => 2147483647 | .i64 => 9223372036854775807
+
+theorem IntWidth.half_eq (w : IntWidth) : w.half = 2 ^ (w.bits - 1) := by cases w <;> rfl
+theorem IntWidth.modulus_eq (w : IntWidth) : w.modulus = 2 ^ w.bits := by cases w <;> rfl
+theorem IntWidth.lo_eq (w : IntWidth) : w.lo = -w.half := by cases w <;> rfl
+theorem IntWidth.hi_eq (w : IntWidth) : w.hi = w.half - 1 := by cases w <;> rfl
+
+/-- An exact integer brought to the width: wrapped around (two's complement)
+or clamped. -/
+def IntWidth.fit (w : IntWidth) : OverflowMode → Int → Int
+  | .silent, i => (i + w.half) % w.modulus - w.half
+  | .saturate, i => if i < w.lo then w.lo else if w.hi < i then w.hi else i
+
 inductive UnFn where
   | not | isNull | neg
   /-- Integer to double (`CAST(x AS DOUBLE)`). -/
@@ -127,6 +176,10 @@ inductive UnFn where
   with the message `msg` and the value of its argument; DuckDB's `error()`.
   Its value, which nobody sees, is `NULL`. -/
   | raise (msg : String)
+  /-- `+`, `-`, `×` or negation with `overflow` = `SILENT` or `SATURATE`
+  (#241), applied to the exact result (`BinFn.dadd`, `dsub`, `dmul`): wrapped
+  around or clamped at the width. It leaves anything but an integer as it is. -/
+  | fit (m : OverflowMode) (w : IntWidth)
   /-- `x` is a number (a shim's guard, #185). The SQL printers write `x IS NOT
   NULL`, since in SQL a non-NULL operand of a numeric function is a number. -/
   | isNum
@@ -297,6 +350,8 @@ def UnFn.apply : UnFn → Value → Value
   | .cardinality, .list vs => .int vs.length
   | .isNum, .int _ => .bool true
   | .isNum, _ => .bool false
+  | .fit m w, .int i => .int (w.fit m i)
+  | .fit _ _, v => v
   | _, _ => .null
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/

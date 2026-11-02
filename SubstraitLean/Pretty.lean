@@ -31,6 +31,7 @@ def UnFn.render : UnFn → String
   | .structField i => s!"FIELD_{i}" | .listElement off => s!"ELEMENT_{off}"
   | .cardinality => "CARDINALITY"
   | .raise msg => s!"RAISE_{msg.quote}" | .isNum => "IS_NUMBER"
+  | .fit m w => s!"{m.name}{w.bits}"
 
 def BinFn.render : BinFn → String
   | .add => "+" | .sub => "-" | .mul => "*" | .eq => "=" | .lt => "<"

@@ -629,6 +629,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .cardinality, _ => ⟨true, some (.ge 0), false, false, false⟩
   | .raise _, _ => ⟨true, none, false, false, false⟩
   | .isNum, _ => ⟨false, none, true, true, false⟩
+  | .fit _ _, _ => AVal.top
 
 def arith (op : Bound → Bound → Bound) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt,
@@ -1044,7 +1045,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.Mem, Text.ascii_nonneg,
         Text.capped_le, Text.capped_nonneg]
-  case structField | listElement => exact AVal.mem_top _
+  case structField | listElement | fit => exact AVal.mem_top _
   case raise => cases v <;> rfl
   case isNum => cases v <;> rfl
   case cardinality =>

@@ -104,6 +104,19 @@ class DuckDBDialect(Dialect):
         m, h = 2**64, 2**63
         return f"CAST(((({wide} + {h}) % {m}) + {m}) % {m} - {h} AS BIGINT)"
 
+    def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
+        # The exact result in HUGEINT, wrapped around or clamped at the width:
+        # the generated lowering's templates (`tests/lowering/duckdb.expected`).
+        wide = [f"CAST({a} AS HUGEINT)" for a in args]
+        exact = f"(-{wide[0]})" if len(wide) == 1 else f"({wide[0]} {op} {wide[1]})"
+        h, m = 2 ** (bits - 1), 2**bits
+        if mode == "SILENT":
+            v = f"((({exact} + {h}) % {m} + {m}) % {m} - {h})"
+        else:
+            lo, hi = -h, h - 1
+            v = f"(CASE WHEN {exact} < {lo} THEN {lo} WHEN {hi} < {exact} THEN {hi} ELSE {exact} END)"
+        return f"CAST({v} AS BIGINT)"
+
     def row_ordinal(self) -> str:
         return "rowid"
 
