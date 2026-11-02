@@ -121,7 +121,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [types/bit](types__bit.json) | 0 | 0 |  | 80 | 59 | 0 | lift 80 |
 | [types/blob](types__blob.json) | 0 | 0 |  | 46 | 5 | 0 | lift 46 |
 | [types/date](types__date.json) | 7 | 0 |  | 192 | 10 | 0 | lift 156, checker 36 |
-| [types/decimal](types__decimal.json) | 724 | 12 | lean 12 | 1373 | 16 | 0 | lift 1223, checker 150 |
+| [types/decimal](types__decimal.json) | 1598 | 13 | both 1, lean 12 | 498 | 16 | 0 | checker 252, lift 246 |
 | [types/enum](types__enum.json) | 2 | 0 |  | 1 | 192 | 1 | lift 1 |
 | [types/float](types__float.json) | 165 | 14 | both 12, engine 2 | 369 | 69 | 0 | lift 351, checker 18 |
 | [types/geo](types__geo.json) | 0 | 0 |  | 192 | 209 | 7 | lift 187, tables 5 |
