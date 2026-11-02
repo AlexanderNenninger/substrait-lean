@@ -970,9 +970,10 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
   | "on_domain_error" =>
     -- Outside their domains the elementary functions raise (`Numeric.lean`).
     if doubleFns.contains base then some (some ["ERROR"])
-    -- Double division propagates NaN, and `±∞ / ±∞` is NaN (IEEE 754).
-    else if base == "divide" then (if float then some (some ["NAN"]) else some none)
-    else if base != "power" then none else if float then some (some ["NAN"]) else some none
+    -- No operation creates a NaN (#257): `±∞ / ±∞`, and a power of a negative
+    -- number to a fraction, raise.
+    else if base == "divide" || base == "power" then (if float then some (some ["ERROR"]) else some none)
+    else none
   | "on_log_zero" =>
     if ["ln", "log10", "log2", "logb"].contains base then some (some ["ERROR"]) else none
   -- The model's string matching is case-sensitive (`SubstraitLean/Text.lean`).
