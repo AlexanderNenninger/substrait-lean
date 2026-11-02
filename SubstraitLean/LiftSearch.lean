@@ -219,40 +219,40 @@ comparisons with `0`; for a double also with `±1`, `isnan`, infinite, and
 guarded, `NOT isnan(x) AND …` and `NOT isnan(x) AND NOT infinite AND …`: a
 proof cannot see what a native function gives for NaN or `±∞`, and Kleene
 `AND` with a false first operand is false whatever follows. Each atom also
-comes negated. -/
-def atoms (f : DuckFn) : List Json :=
-  (f.args.zipIdx).flatMap fun (t, i) =>
-    let x := fieldJ i
-    let ty := t.substrait
-    let num (k : Int) := if t == .double then litJ ty (Json.num k) else litJ ty (toJson k)
-    let cmp (k : Int) := [callJ "equal:any_any" [x, num k], callJ "lt:any_any" [x, num k],
-      callJ "lt:any_any" [num k, x]]
-    let base := [callJ "is_null:any" [x], callJ "is_not_null:any" [x]] ++ cmp 0
-    let pos := if t == .double then
-      let isNan := callJ "is_nan:fp64" [x]
-      let isInf := callJ "or:bool" [callJ "equal:any_any" [x, litJ ty "inf"],
-        callJ "equal:any_any" [x, litJ ty "-inf"]]
-      let notNan := callJ "not:bool" [isNan]
-      let notInf := callJ "not:bool" [isInf]
-      let cmps := cmp 0 ++ cmp 1 ++ cmp (-1)
-      let frac := callJ "and:bool" [notNan, notInf,
-        callJ "not:bool" [callJ "equal:any_any" [callJ? "floor:fp64" [x] [] "fp64" |>.getD .null, x]]]
-      base ++ cmp 1 ++ cmp (-1) ++ [isNan, isInf, frac] ++
-        cmps.map (fun c => callJ "and:bool" [notNan, c]) ++
-        cmps.map (fun c => callJ "and:bool" [notNan, notInf, c])
-    else base
-    pos ++ pos.map fun a => callJ "not:bool" [a]
+comes negated, but for the guarded comparisons. -/
+def atomsOf (f : DuckFn) (i : Nat) : List Json :=
+  let t := f.args.getD i .bigint
+  let x := fieldJ i
+  let ty := t.substrait
+  let num (k : Int) := if t == .double then litJ ty (Json.num k) else litJ ty (toJson k)
+  let cmp (k : Int) := [callJ "equal:any_any" [x, num k], callJ "lt:any_any" [x, num k],
+    callJ "lt:any_any" [num k, x]]
+  let base := [callJ "is_null:any" [x], callJ "is_not_null:any" [x]] ++ cmp 0
+  if t == .double then
+    let isNan := callJ "is_nan:fp64" [x]
+    let isInf := callJ "or:bool" [callJ "equal:any_any" [x, litJ ty "inf"],
+      callJ "equal:any_any" [x, litJ ty "-inf"]]
+    let notNan := callJ "not:bool" [isNan]
+    let notInf := callJ "not:bool" [isInf]
+    let cmps := cmp 0 ++ cmp 1 ++ cmp (-1)
+    let frac := callJ "and:bool" [notNan, notInf,
+      callJ "not:bool" [callJ "equal:any_any" [callJ? "floor:fp64" [x] [] "fp64" |>.getD .null, x]]]
+    let simple := base ++ cmp 1 ++ cmp (-1) ++ [isNan, isInf, frac]
+    simple ++ simple.map (fun a => callJ "not:bool" [a]) ++
+      cmps.map (fun c => callJ "and:bool" [notNan, c]) ++
+      cmps.map (fun c => callJ "and:bool" [notNan, notInf, c])
+  else base ++ base.map fun a => callJ "not:bool" [a]
 
-/-- The guards: an atom, or two atoms of different arguments joined by `AND`. -/
+/-- The guards: each argument's atoms, and pairs of atoms joined by `AND`, of
+different arguments (`x < 0 AND y is a finite fraction`), or of the one
+argument of a unary function. -/
 def guards (f : DuckFn) : List Json :=
-  let as := atoms f
-  let per := as.length / max f.args.length 1
-  -- Pairs of atoms of different arguments, and of one argument (`x < 0 AND
-  -- NOT integral(y)`, `x < 0 AND NOT x is infinite`).
-  let pairs := as.zipIdx.flatMap fun (a, i) =>
-    (as.drop (i + 1)).map fun b => callJ "and:bool" [a, b]
-  let _ := per
-  as ++ pairs
+  let byArg := (List.range f.args.length).map (atomsOf f)
+  let pairs := match byArg with
+    | [as] => as.zipIdx.flatMap fun (a, i) => (as.drop (i + 1)).map fun b => callJ "and:bool" [a, b]
+    | _ => byArg.zipIdx.flatMap fun (as, i) => (byArg.drop (i + 1)).flatMap fun bs =>
+        as.flatMap fun a => bs.map fun b => callJ "and:bool" [a, b]
+  byArg.flatten ++ pairs
 
 /-! ## Samples -/
 
@@ -350,6 +350,11 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
   let good (e : Substrait.Expr) : Nat :=
     mask ((rows.zip want).map fun (r, w) => LoweringSearch.Outcome.agreeB (e.evalP Profile.reference r) w)
   let all := (1 <<< rows.length) - 1
+  -- A core that is right alone needs no guards: most functions, and every
+  -- one under the reference's semantics. Guards are read only otherwise.
+  let direct := (cores f).filterMap fun (name, j, opts) => (parse f j).bind fun e =>
+    if good e == all then some (j, e, s!"{name} {opts}") else none
+  if !direct.isEmpty then return direct.take 12
   let gs := (guards f).filterMap fun j => (parse f j).map fun e =>
     (j, e, mask (rows.map fun r => match e.evalP Profile.reference r with
       | .ok v => v.isTrue | .error _ => false))
