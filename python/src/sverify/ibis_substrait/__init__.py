@@ -151,8 +151,8 @@ _REFUSED: dict[str, str] = {
     "DateNow": "the date differs between runs; pass the date in as a column or constant",
     "TypeOf": "the type's name is the engine's own",
     "ScalarParameter": "bind it: pass params={param: value} to verify, which proves the "
-    "transform for that value (an unbound parameter as any value of its type is planned "
-    "as a follow-up to #58)",
+    "transform for that value (an unbound parameter as any value of its type is planned: "
+    "#354)",
     "TryCast": "a cast that gives NULL where it fails is not modelled yet; use cast(), "
     "which raises there, and guard the values",
     "Hash": "hash() is the engine's own and changes between versions; use hexdigest('md5') "
