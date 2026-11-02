@@ -146,6 +146,10 @@ def _float_key(e: pl.Expr) -> pl.Expr:
     )
 
 
+#: `BinFn.greatest`/`least`, as Lean writes them (and as DataFusion does).
+_PICKS = ("greatest", "least", "greatest_skip_null", "least_skip_null")
+
+
 def ordered(e: pl.Expr, dtype: DType) -> pl.Expr:
     """A value that compares like the model's `Value`."""
     return _float_key(e) if dtype == pl.Float64 else e
@@ -888,6 +892,10 @@ class Exprs:
                 raise Unsupported(f"{name} is not yet supported on Polars; see #271")
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
+            if name in _PICKS:
+                # A chain of `BinFn.greatest`/`least`, as one pick over its
+                # values: nested `when`s would each read the whole chain.
+                return self.pick(name, [self(v) for v in self.pick_leaves(name, arg_js)])
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
@@ -1308,6 +1316,8 @@ class Exprs:
                    "btrim", "ltrim", "rtrim", "repeat", "levenshtein", "ilike")  # fmt: skip
         if name in strings:
             return self.string(name, a, b)
+        if name in _PICKS:
+            return self.pick(name, [a, b])
         if name in ("equal", "lt"):
             t = unify(ta, tb, name)
             if name == "lt" and t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
@@ -1317,6 +1327,33 @@ class Exprs:
             ka, kb = ordered(a.expr, t), ordered(b.expr, t)
             return Val(ka == kb if name == "equal" else ka < kb, pl.Boolean, issues(a, b))
         raise Unsupported(f"unsupported function {name}/2 on {[ta, tb]}")
+
+    def pick_leaves(self, name: str, arg_js: list) -> list:
+        """The values of a chain of `name` calls, in order: `greatest(greatest(a,
+        b), c)` is `[a, b, c]`."""
+        out = []
+        for j in arg_js:
+            f = j.get("scalarFunction")
+            if f is not None and self.function(f.get("functionReference")) == name:
+                out += self.pick_leaves(name, [a["value"] for a in f.get("arguments", [])])
+            else:
+                out.append(j)
+        return out
+
+    def pick(self, name: str, vals: list[Val]) -> Val:
+        """`GREATEST`/`LEAST` of `vals` as the pairwise `BinFn.greatest`/`least`
+        computes it (`Value.pick`): skipping NULLs, by the order `lt` has (NaN
+        above everything, as `ordered` keys it), the first of equal values;
+        NULL if all are."""
+        t = pl.Null
+        for v in vals:
+            t = unify(t, v.dtype, name)
+        if t not in (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.Null):
+            raise Unsupported(f"{name} of {t}")
+        keys = [ordered(v.expr, t) for v in vals]
+        best = pl.max_horizontal(keys) if name.startswith("greatest") else pl.min_horizontal(keys)
+        e = pl.coalesce([pl.when(k == best).then(v.expr) for k, v in zip(keys, vals, strict=True)])
+        return Val(e, t, issues(*vals))
 
     def string(self, name: str, a: Val, b: Val) -> Val:
         """The binary functions of `SubstraitLean/Text.lean`."""

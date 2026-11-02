@@ -526,6 +526,20 @@ def test_digit_separators_are_read_as_duckdb_reads_them():
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
+def test_greatest_and_least_of_many_values_check_fast():
+    # #340: GREATEST/LEAST were read as a conditional that copies its first
+    # argument at each step, so checking 10 of them ran for minutes. As one
+    # operation per pair, 30 check at once and agree with DuckDB.
+    import time
+
+    args = ", ".join(f"amount + {i}" for i in range(30))
+    query = f"SELECT id, LEAST({args}) AS lo, GREATEST({args}, qty) AS hi FROM orders"
+    start = time.monotonic()
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+    assert time.monotonic() - start < 30
+
+
 def test_a_string_read_as_a_decimal_rounds_as_duckdb():
     # Half away from zero past the scale; DuckDB raises only where the
     # rounded value does not fit.

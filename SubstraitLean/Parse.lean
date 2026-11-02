@@ -303,6 +303,12 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
   | .bin .pair _ _ => .other
+  -- One of the two values; a literal (`GREATEST(x, 0)`'s `0`) says less than
+  -- the other one.
+  | .bin .greatest a b | .bin .least a b =>
+      match a with
+      | .lit _ => b.kind cols
+      | _ => a.kind cols
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
   -- than the other one.
@@ -1218,10 +1224,11 @@ def mkCall : String → List Expr → J Expr
     | .ifThen c x r => .ifThen (eagerly c as) x r
     | e => e
   | "nullif", [a, b] => pure (.ifThen (.bin .eq a b) (.lit .null) a)
-  | "greatest", a :: as | "greatest_skip_null", a :: as =>
-    pure (as.foldl (pick fun x y => .bin .lt x y) a)
-  | "least", a :: as | "least_skip_null", a :: as =>
-    pure (as.foldl (pick fun x y => .bin .lt y x) a)
+  -- `GREATEST`/`LEAST`, skipping `NULL`s: one operation per pair, which is the
+  -- conditional `pick` (`Expr.eval_greatest`) but not a copy of its first
+  -- argument at each step (#340).
+  | "greatest", a :: as | "greatest_skip_null", a :: as => pure (as.foldl (.bin .greatest) a)
+  | "least", a :: as | "least_skip_null", a :: as => pure (as.foldl (.bin .least) a)
   -- `-a` as `a / -1`, which fails on the smallest integer as `ABS` does.
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .idiv a (.lit (.int (-1)))) a)
   -- Equality where `NULL` equals `NULL`: never `NULL` itself.
@@ -1309,12 +1316,6 @@ where
   coalesce (a : Expr) : List Expr → Expr
     | [] => a
     | b :: bs => .ifThen (.un .not (.un .isNull a)) a (coalesce b bs)
-  /-- `GREATEST`/`LEAST` of two values, where `better x y` says `y` wins. Like
-  DataFusion (whose producer writes them as bare `greatest`/`least`), they skip
-  `NULL`s: the result is `NULL` only if both are. Substrait's typed
-  `greatest`/`least` propagate `NULL`s instead (`parseExpr`). -/
-  pick (better : Expr → Expr → Expr) (a b : Expr) : Expr :=
-    .ifThen (.un .isNull a) b (.ifThen (.un .isNull b) a (.ifThen (better a b) b a))
 
 /-- The kind the source plan declares for an expression: a literal's type,
 a cast's target, a function's output type, a `CASE`'s branches' (a double if one is).

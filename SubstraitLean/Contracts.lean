@@ -69,6 +69,20 @@ def Bound.mul (a b : Bound) : Bound :=
     | some al, some ah, some bl, some bh => Bound.corners al ah bl bh
     | _, _, _, _ => Bound.top
 
+/-- The larger of two optional lower bounds: either one bounds `max x y`. -/
+def maxLo : Option Int → Option Int → Option Int
+  | some a, some b => some (max a b)
+  | some a, none | none, some a => some a
+  | none, none => none
+
+/-- `max x y` for `x ∈ a`, `y ∈ b` (`GREATEST`): from the larger lower bound to
+the larger upper bound. -/
+def Bound.greatest (a b : Bound) : Bound := ⟨maxLo a.lo b.lo, lift2 Max.max a.hi b.hi⟩
+
+/-- `min x y` (`LEAST`): from the smaller lower bound to the smaller upper. -/
+def Bound.least (a b : Bound) : Bound :=
+  ⟨lift2 Min.min a.lo b.lo, (maxLo (a.hi.map (- ·)) (b.hi.map (- ·))).map (- ·)⟩
+
 def Bound.atMost (b : Bound) (k : Int) : Bound :=
   ⟨b.lo, some (match b.hi with | some h => min h k | none => k)⟩
 
@@ -93,6 +107,37 @@ theorem Bound.mem_join_right {a b : Bound} {i : Int} (h : b.Mem i) : (a.join b).
   constructor
   · intro l hl; cases al <;> cases bl <;> simp_all [lift2] <;> subst hl <;> omega
   · intro u hu; cases ah <;> cases bh <;> simp_all [lift2] <;> subst hu <;> omega
+
+theorem Bound.mem_greatest {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
+    (a.greatest b).Mem (if x < y then y else x) := by
+  obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
+  simp only [Bound.Mem, Bound.greatest] at *
+  obtain ⟨hal, hah⟩ := ha; obtain ⟨hbl, hbh⟩ := hb
+  constructor
+  · intro l hl
+    cases al <;> cases bl <;> simp only [maxLo, Option.some.injEq, reduceCtorEq] at hl <;>
+      first | (subst hl; have := hal _ rfl; have := hbl _ rfl; split <;> omega)
+            | (subst hl; have := hal _ rfl; split <;> omega)
+            | (subst hl; have := hbl _ rfl; split <;> omega)
+  · intro u hu
+    cases ah <;> cases bh <;> simp only [lift2, Option.some.injEq, reduceCtorEq] at hu
+    subst hu; have := hah _ rfl; have := hbh _ rfl; split <;> omega
+
+theorem Bound.mem_least {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
+    (a.least b).Mem (if y < x then y else x) := by
+  obtain ⟨⟨al, ah⟩, bl, bh⟩ := a, b
+  simp only [Bound.Mem, Bound.least] at *
+  obtain ⟨hal, hah⟩ := ha; obtain ⟨hbl, hbh⟩ := hb
+  constructor
+  · intro l hl
+    cases al <;> cases bl <;> simp only [lift2, Option.some.injEq, reduceCtorEq] at hl
+    subst hl; have := hal _ rfl; have := hbl _ rfl; split <;> omega
+  · intro u hu
+    cases ah <;> cases bh <;>
+      simp only [Option.map, maxLo, Option.some.injEq, reduceCtorEq] at hu <;>
+      first | (subst hu; have := hah _ rfl; have := hbh _ rfl; split <;> omega)
+            | (subst hu; have := hah _ rfl; split <;> omega)
+            | (subst hu; have := hbh _ rfl; split <;> omega)
 
 theorem Bound.mem_add {a b : Bound} {x y : Int} (ha : a.Mem x) (hb : b.Mem y) :
     (a.add b).Mem (x + y) := by
@@ -670,7 +715,20 @@ def intEq (a b : AVal) : Bool :=
 def intNe (a b : AVal) : Bool :=
   match a.int, b.int with | some x, some y => canNe x y | _, _ => false
 
+/-- `GREATEST`/`LEAST` (`Value.pick`) of values in `a` and `b`: `NULL` only if
+both are; an integer in `both` of two integers, else one side's integer where
+the other is `NULL` or not an integer (the comparison is then FALSE and the
+first value stays, or the `NULL` is skipped); a boolean or string from either. -/
+def pickAbs (both : Bound → Bound → Bound) (a b : AVal) : AVal :=
+  let pair : Option Bound := match a.int, b.int with
+    | some x, some y => some (both x y)
+    | _, _ => none
+  let ints := joinInt (if b.nonInt then a.int else none) (joinInt (if a.null then b.int else none) pair)
+  ⟨a.null && b.null, ints, a.tt || b.tt, a.ff || b.ff, a.str || b.str⟩
+
 def BinFn.abs : BinFn → AVal → AVal → AVal
+  | .greatest, a, b => pickAbs Bound.greatest a b
+  | .least, a, b => pickAbs Bound.least a b
   | .and, a, b =>
       ⟨(a.nonBool && (b.tt || b.nonBool)) || (a.tt && b.nonBool), none, a.tt && b.tt,
        a.ff || b.ff, false⟩
@@ -1272,10 +1330,56 @@ theorem AVal.mem_ofLt3 {a : AVal} {o : Option Bool} (hn : a.null = true)
   | none => exact hn
   | some r => cases r <;> assumption
 
+theorem joinInt_mem_left {x y : Option Bound} {i : Int} (h : ∃ b, x = some b ∧ b.Mem i) :
+    ∃ b, joinInt x y = some b ∧ b.Mem i := by
+  obtain ⟨b, rfl, hm⟩ := h
+  cases y <;> simp [joinInt, hm, Bound.mem_join_left hm]
+
+theorem joinInt_mem_right {x y : Option Bound} {i : Int} (h : ∃ b, y = some b ∧ b.Mem i) :
+    ∃ b, joinInt x y = some b ∧ b.Mem i := by
+  obtain ⟨b, rfl, hm⟩ := h
+  cases x <;> simp [joinInt, hm, Bound.mem_join_right hm]
+
+theorem pickAbs_sound {both : Bound → Bound → Bound} {better : Value → Value → Bool}
+    (hboth : ∀ {x y : Bound} {i j : Int}, x.Mem i → y.Mem j →
+      (both x y).Mem (if better (.int i) (.int j) then j else i))
+    (hmix : ∀ i w, (∀ j, w ≠ .int j) → better (.int i) w = false)
+    (hmix' : ∀ v j, (∀ i, v ≠ .int i) → better v (.int j) = false)
+    {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
+    (pickAbs both a b).Mem (Value.pick better v w) := by
+  rcases v with _ | (_ | _) | i | s | l <;> rcases w with _ | (_ | _) | j | t | m <;>
+    simp only [Value.pick] <;> (try split) <;>
+    simp_all only [AVal.Mem, pickAbs, AVal.nonInt, Bool.and_eq_true, Bool.or_eq_true,
+      true_or, or_true, and_self, reduceCtorEq, ne_eq, not_false_eq_true, implies_true]
+  -- What is left: an integer result.
+  all_goals first
+    -- A comparison of an integer with another kind is FALSE.
+    | (exfalso; simp_all; done)
+    -- Two integers: `both`.
+    | (obtain ⟨x, hx, hm⟩ := ha; obtain ⟨y, hy, hm'⟩ := hb
+       have h := hboth hm hm'
+       refine joinInt_mem_right (joinInt_mem_right ⟨both x y, ?_, ?_⟩)
+       · simp [hx, hy]
+       · simpa [*] using h)
+    -- `NULL` and an integer: the integer.
+    | (obtain ⟨y, hy, hm⟩ := hb
+       refine joinInt_mem_right (joinInt_mem_left ⟨y, ?_, hm⟩); simp [hy]; done)
+    -- An integer and a `NULL`, or a value of another kind: the integer.
+    | (obtain ⟨x, hx, hm⟩ := ha
+       refine joinInt_mem_left ⟨x, ?_, hm⟩; simp_all; done)
+
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
   case pair => exact AVal.mem_top _
+  case greatest =>
+    exact pickAbs_sound (fun hx hy => by simpa [Value.ltB] using Bound.mem_greatest hx hy)
+      (fun _ w hw => by cases w <;> simp_all [Value.ltB])
+      (fun v _ hv => by cases v <;> simp_all [Value.ltB]) ha hb
+  case least =>
+    exact pickAbs_sound (fun hx hy => by simpa [Value.ltB] using Bound.mem_least hx hy)
+      (fun _ w hw => by cases w <;> simp_all [Value.ltB])
+      (fun v _ hv => by cases v <;> simp_all [Value.ltB]) ha hb
   case add => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case sub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb

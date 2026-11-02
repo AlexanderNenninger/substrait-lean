@@ -295,6 +295,13 @@ class SnowflakeDialect(Dialect):
     def octet_length(self, s: str) -> str:
         return f"OCTET_LENGTH(TO_BINARY({s}, 'UTF-8'))"
 
+    def greatest(self, a: str, b: str) -> str:
+        # Snowflake's `GREATEST` is NULL if any argument is.
+        return f"GREATEST_IGNORE_NULLS({a}, {b})"
+
+    def least(self, a: str, b: str) -> str:
+        return f"LEAST_IGNORE_NULLS({a}, {b})"
+
     def levenshtein(self, s: str, t: str) -> str:
         return f"EDITDISTANCE({s}, {t})"
 

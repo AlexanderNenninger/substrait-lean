@@ -241,6 +241,12 @@ inductive BinFn where
   two-argument aggregate (`COVAR_SAMP(x, y)`, #54), whose rows with a NULL
   are skipped. -/
   | pair
+  /-- `GREATEST`/`LEAST` of two values, skipping `NULL`s: the other value if
+  one is `NULL`, else the larger (smaller) by `lt`, the first on a tie or an
+  undecided comparison. As one operation, not the conditional it equals
+  (`apply_greatest`), so that `GREATEST(a, b, c, …)` is linear in its
+  arguments: the conditional copies its first argument (#340). -/
+  | greatest | least
   deriving Repr, DecidableEq
 
 /-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
@@ -475,9 +481,26 @@ def Value.ofLt3 : Option Bool → Value
   | some r => .bool r
   | none => .null
 
+/-- Whether `a < b` is TRUE, as `BinFn.apply .lt` decides it (`ltB_eq`): the
+comparison `GREATEST`/`LEAST` make. -/
+def Value.ltB : Value → Value → Bool
+  | .int a, .int b => decide (a < b)
+  | .str a, .str b => decide (a < b)
+  | .bool a, .bool b => !a && b
+  | .list a, .list b => (Value.ofLt3 (Value.listLt3 a b)).isTrue
+  | _, _ => false
+
+/-- `GREATEST(a, b)` skipping `NULL`s (`better a b`: `b` wins). -/
+def Value.pick (better : Value → Value → Bool) : Value → Value → Value
+  | .null, b => b
+  | a, .null => a
+  | a, b => if better a b then b else a
+
 /-- Arithmetic and comparisons are null-propagating; ill-typed calls yield
 `null` (a well-typed plan never reaches those cases). -/
 def BinFn.apply : BinFn → Value → Value → Value
+  | .greatest, a, b => Value.pick Value.ltB a b
+  | .least, a, b => Value.pick (fun a b => Value.ltB b a) a b
   | .and, a, b => and3 a b
   | .or, a, b => or3 a b
   | .add, .int a, .int b => .int (a + b)
@@ -556,6 +579,43 @@ def Expr.refsLt (n : Nat) : Expr → Prop
   | .bin _ a b => a.refsLt n ∧ b.refsLt n
   | .ifThen c t e => c.refsLt n ∧ t.refsLt n ∧ e.refsLt n
   | .hof _ l _ => l.refsLt n
+
+theorem Value.pick_mem {better : Value → Value → Bool} (v w : Value) :
+    Value.pick better v w = v ∨ Value.pick better v w = w := by
+  cases v <;> cases w <;> simp only [Value.pick] <;> (try split) <;> simp
+
+/-- `ltB` is when `BinFn.apply .lt` is TRUE. -/
+theorem Value.ltB_eq (a b : Value) : Value.ltB a b = (BinFn.apply .lt a b).isTrue := by
+  cases a <;> cases b <;> simp only [Value.ltB, BinFn.apply]
+  all_goals first
+    | rfl
+    | (rename_i x y; generalize decide (x < y) = d; cases d <;> rfl)
+    | (rename_i x y; cases x <;> cases y <;> rfl)
+    | (rename_i x y; generalize Value.listLt3 x y = r; rcases r with _ | _ | _ <;> rfl)
+
+/-- `pick` as the conditional on values. -/
+theorem Value.pick_eq (better : Value → Value → Bool) (v w : Value) :
+    Value.pick better v w =
+      if (UnFn.apply .isNull v).isTrue then w
+      else if (UnFn.apply .isNull w).isTrue then v
+      else if better v w then w else v := by
+  cases v <;> cases w <;> simp [Value.pick, UnFn.apply, Value.isTrue]
+
+/-- `GREATEST` as one operation is the conditional `Parse` used to write
+(`Parse.mkCall.pick`): `b` if `a` is `NULL`, `a` if `b` is, else the larger. -/
+theorem Expr.eval_greatest (row : Row) (a b : Expr) :
+    (Expr.bin .greatest a b).eval row =
+      (Expr.ifThen (.un .isNull a) b
+        (.ifThen (.un .isNull b) a (.ifThen (.bin .lt a b) b a))).eval row := by
+  show Value.pick Value.ltB (a.eval row) (b.eval row) = _
+  rw [Value.pick_eq, Value.ltB_eq]; rfl
+
+theorem Expr.eval_least (row : Row) (a b : Expr) :
+    (Expr.bin .least a b).eval row =
+      (Expr.ifThen (.un .isNull a) b
+        (.ifThen (.un .isNull b) a (.ifThen (.bin .lt b a) b a))).eval row := by
+  show Value.pick (fun a b => Value.ltB b a) (a.eval row) (b.eval row) = _
+  rw [Value.pick_eq, Value.ltB_eq]; rfl
 
 theorem isTrue_and3 (a b : Value) :
     (and3 a b).isTrue = (a.isTrue && b.isTrue) := by

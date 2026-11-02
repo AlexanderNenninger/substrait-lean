@@ -46,7 +46,7 @@ def BinFn.render : BinFn → String
   | .substr n wrap =>
     s!"SUBSTRING_FOR_{(n.map toString).getD "ALL"}{if wrap then "" else "_LEFT_OF_BEGINNING"}"
   | .trim l r => if l && r then "BTRIM" else if l then "LTRIM" else "RTRIM"
-  | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN"
+  | .strRepeat => "REPEAT" | .ilike => "ILIKE" | .levenshtein => "LEVENSHTEIN" | .greatest => "GREATEST" | .least => "LEAST"
   | .dateAdd => "+ DAYS" | .dateDiff => "- DATE"
   | .fatan2 => "ATAN2" | .flogb => "LOGB"
   | .dadd => "+" | .dsub => "-" | .dmul => "*" | .ddiv => "/ROUND"
