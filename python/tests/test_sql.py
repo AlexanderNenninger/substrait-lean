@@ -799,3 +799,48 @@ def test_timestamp_differences_compare_with_intervals(name):
     assert lean, "the query should keep some rows"
     snowflake = to_sql(json.loads(plan), SNOWFLAKE, tie_free=True)
     assert "MICROSECOND" in snowflake
+
+
+# #94: lists in DuckDB's SQL. Elements and lengths, unnest in list order (so
+# an order-dependent FETCH above it sees Lean's rows), and ordered collect.
+LIST_T = ibis.table({"k": "int64", "xs": "array<int64>"}, name="l")
+list_rows = st.lists(
+    st.tuples(
+        st.none() | st.integers(0, 2),
+        st.none() | st.lists(st.none() | st.integers(-3, 3), max_size=4),
+    ),
+    max_size=6,
+)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda t: t.select("k", f=t.xs[0], z=t.xs[-1], o=t.xs[5], n=t.xs.length()),
+        lambda t: t.unnest("xs").limit(5),
+        lambda t: t.unnest("xs").group_by("k").aggregate(c=ibis._.xs.collect(order_by=ibis._.xs)),
+        lambda t: t.select("k", ys=ibis.literal([[1, 2], [3]])),
+    ],
+    ids=["elements", "unnest then limit", "collect ordered", "nested literal"],
+)
+@settings(max_examples=30, deadline=None, suppress_health_check=list(HealthCheck))
+@given(rows=list_rows)
+def test_lists_run_on_duckdb_as_lean_says(build, rows):
+    from sverify.engine import create_table
+    from sverify.testing import lean_values
+
+    expr = build(LIST_T)
+    plan = to_substrait_json(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"l": rows})))
+    con = connect()
+    create_table(con, "l", LIST_T.schema(), rows)
+    for engine in ("duckdb", "polars"):
+        got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), engine).to_pylist()]
+        if order_matters_of(plan):
+            assert repr(got) == repr(lean), engine
+        else:
+            assert sorted(map(repr, got)) == sorted(map(repr, lean)), engine
+
+
+def order_matters_of(plan: str) -> bool:
+    return order_matters(parse_plan(json.loads(plan)).root)

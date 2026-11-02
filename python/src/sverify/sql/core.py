@@ -57,13 +57,21 @@ class Dec:
     s: int
 
 
-Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec
+@dataclass(frozen=True)
+class Lst:
+    """A list of `elem` values (#94): a kind in SQL and in the model
+    (`Kind.list`). `None` is an element kind the model does not know."""
+
+    elem: Any
+
+
+Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec | Lst
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
 zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
 used for columns whose Substrait type the model does not know."""
 
-LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"] | Dec
+LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"] | Dec | Lst
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
 
@@ -121,6 +129,10 @@ class Dialect:
     def type_name(self, kind: Kind) -> str:
         if isinstance(kind, Dec):
             return self.decimal_type(kind)
+        if isinstance(kind, Lst):
+            if kind.elem is None:
+                raise Unsupported("a list whose elements' type is not known")
+            return f"{self.type_name(kind.elem)}[]"
         return {
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
@@ -716,6 +728,30 @@ class Dialect:
         """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
         raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
 
+    def collect(self, v: str, order: Sequence[str]) -> str:
+        """`AggFn.collect` (#94): the non-NULL values of the column `v` as a
+        list, in the order `order`; NULL without values."""
+        raise Unsupported(f"array_agg is not yet supported on {self.name}; see #271")
+
+    def unnest_from(self, source: str, lst: str, alias: str) -> str:
+        """`source` joined with the elements of its list column `lst`, as
+        `alias(e, i)`: element and 1-based position, no row for a NULL or
+        empty list (`Rel.unnest`, #94)."""
+        raise Unsupported(f"unnest is not yet supported on {self.name}; see #271")
+
+    def list_lit(self, items: list[str], kind: Lst) -> str:
+        """A list literal of the SQL items, of kind `kind` (#94)."""
+        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+
+    def list_element(self, x: str, offset: int) -> str:
+        """`UnFn.listElement`: zero-based, from the end for a negative offset,
+        NULL out of range (#94)."""
+        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+
+    def cardinality(self, x: str) -> str:
+        """`UnFn.cardinality`: the number of elements, NULL ones included."""
+        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
         raise Unsupported(
@@ -877,6 +913,7 @@ class Un:
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
         "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
         "regex_extract", "regex_replace", "md5", "sha256", "ftoi_or_null", "narrow_or_null",
+        "list_elem", "cardinality",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -1053,6 +1090,15 @@ class UnionAll:
 
 
 @dataclass(frozen=True)
+class Unnest:
+    """`Rel.unnest` (#94): one row per element of the list in column `col`,
+    in its place; none for a NULL or empty list."""
+
+    input: Rel
+    col: int
+
+
+@dataclass(frozen=True)
 class Window:
     input: Rel
     part: tuple[int, ...]
@@ -1112,6 +1158,7 @@ class Measure:
         "covar_pop",
         "corr",
         "string_agg",
+        "collect",
     ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
@@ -1134,7 +1181,7 @@ class Aggregate:
 
 Rel = (
     Read | Values | Filter | Project | Emit | Cross | Join | Fetch | UnionAll | Window | Semi
-    | OrderBy | Distinct | Aggregate
+    | OrderBy | Distinct | Aggregate | Unnest
 )  # fmt: skip
 
 
@@ -1163,6 +1210,10 @@ def kinds(r: Rel) -> list[Kind | None]:
             return kinds(a) + kinds(b)
         case UnionAll(left=a):
             return kinds(a)
+        case Unnest(input=i, col=c):
+            ks = kinds(i)
+            k = ks[c]
+            return [*ks[:c], k.elem if isinstance(k, Lst) else None, *ks[c + 1 :]]
         case Window(input=i, fns=fns):
             ks = kinds(i)
             return ks + [_win_kind(f, ks, None) for f in fns]
@@ -1194,6 +1245,10 @@ def lean_kinds(r: Rel) -> list[LeanKind]:
             return lean_kinds(a) + lean_kinds(b)
         case UnionAll(left=a):
             return lean_kinds(a)
+        case Unnest(input=i, col=c):
+            ks = lean_kinds(i)
+            k = ks[c]
+            return [*ks[:c], k.elem if isinstance(k, Lst) else "other", *ks[c + 1 :]]
         case Window(input=i, fns=fns):
             ks = lean_kinds(i)
             return ks + [_win_kind(f, ks, "other") for f in fns]
@@ -1237,6 +1292,8 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
     if m.fn in ("count", "sum", "iavg", *BIT_AGGS):
         return "int"
+    if m.fn == "collect":
+        return Lst(kind(m.arg, cols))
     return "float" if m.fn in ("fsum", "avg", *VAR_AGGS) else kind(m.arg, cols)
 
 
@@ -1270,6 +1327,9 @@ def _lean_lit_kind(v: Any) -> LeanKind:
         return "other"
     if isinstance(v, bool):
         return "bool"
+    # A list's, from its first element (`.list (v :: _)`); an empty one says nothing.
+    if isinstance(v, tuple):
+        return Lst(_lean_lit_kind(v[0])) if v else "other"
     return "str" if isinstance(v, str) else "int"
 
 
@@ -1287,6 +1347,12 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return cols[i] if i < len(cols) else "other"
         case Un(op="neg", arg=a):
             return lean_expr_kind(a, cols)
+        # A list's element (#94), and its length.
+        case Un(op="list_elem", arg=a):
+            k = lean_expr_kind(a, cols)
+            return k.elem if isinstance(k, Lst) else "other"
+        case Un(op="cardinality"):
+            return "int"
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(
@@ -1360,6 +1426,11 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return _get(cols, i)
         case Un(op="neg", arg=a):
             return expr_kind(a, cols)
+        case Un(op="list_elem", arg=a):
+            k = expr_kind(a, cols)
+            return k.elem if isinstance(k, Lst) else None
+        case Un(op="cardinality"):
+            return "int"
         case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
             return "float"
         case Un(
@@ -1544,6 +1615,10 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
     if isinstance(d := ty.get("decimal"), dict):
         k = Dec(d.get("precision", 38), d.get("scale", 0))
         return k, k
+    # A list (#94): its elements' kinds.
+    if isinstance(lt := ty.get("list"), dict):
+        lean, sql = _type_kinds(lt.get("type"))
+        return Lst(lean), Lst(sql)
     return "other", None
 
 
@@ -1917,6 +1992,27 @@ def _fold_call(name: str, cs: list[Const]) -> Const | None:
     return None
 
 
+def _list_lit(lit: Any) -> Lit:
+    """A list literal (#94): its elements' values as a tuple, of `Lst` kind."""
+    if (empty := _field(lit, "emptyList")) is not None:
+        return Lit((), Lst(_type_kinds(_field(empty, "type"))[1]))
+    vals: list[Any] = []
+    ks: list[Kind | None] = []
+    for j in _arr(_req(lit, "list"), "values"):
+        if _field(j, "list") is not None or _field(j, "emptyList") is not None:
+            e = _list_lit(j)
+        else:
+            c = _const_literal(j)
+            if c.tag == "dec":
+                raise Unsupported("a list of decimals has no SQL form yet")
+            e = _lit(c)
+            if not isinstance(e, Lit):
+                raise Unsupported("a list element that is not a constant")
+        vals.append(e.value)
+        ks.append(e.kind)
+    return Lit(tuple(vals), Lst(next((k for k in ks if k is not None), None)))
+
+
 def _lit(c: Const) -> Expr:
     """`constExpr`."""
     match c.tag:
@@ -1959,6 +2055,8 @@ class _Parser:
     def const(self, j: Any) -> Const | None:
         """`constOf?`."""
         if (lit := _field(j, "literal")) is not None:
+            if _field(lit, "list") is not None or _field(lit, "emptyList") is not None:
+                return None
             # Months are not microseconds: `temporal_arith` reads these.
             if (iv := _interval_lit(j)) is not None and iv[0] != 0:
                 return None
@@ -1982,7 +2080,12 @@ class _Parser:
         """`parseExpr`."""
         if (c := self.const(j)) is not None:
             return _lit(c)
-        if _field(j, "literal") is not None:
+        lit = _field(j, "literal")
+        if lit is not None and (
+            _field(lit, "list") is not None or _field(lit, "emptyList") is not None
+        ):
+            return _list_lit(lit)
+        if lit is not None:
             raise Unsupported(
                 "month and year intervals are only supported added to a date or timestamp"
             )
@@ -1994,9 +2097,20 @@ class _Parser:
                 if _field(v, "outerReference") is not None:
                     raise Unsupported("outer references are not supported")
                 ref = _req(v, "directReference")
+                if (base := _field(v, "expression")) is not None:
+                    # Elements of a list (#94), segment by segment.
+                    e = self.expr(base, cols)
+                    seg: Any = ref
+                    while seg is not None:
+                        le = _field(seg, "listElement")
+                        if le is None:
+                            raise Unsupported("struct fields have no SQL form yet (#94)")
+                        e = Un("list_elem", e, digits=int(_field(le, "offset") or 0))
+                        seg = _field(le, "child")
+                    return e
                 sf = _field(ref, "structField")
-                if _field(v, "expression") is not None or sf is None or _field(sf, "child"):
-                    raise Unsupported("struct fields and list elements have no SQL form yet (#94)")
+                if sf is None or _field(sf, "child"):
+                    raise Unsupported("struct fields have no SQL form yet (#94)")
                 return Field(_nat_d(sf, "field"))
             case "scalarFunction":
                 full_name = self.name(_nat_d(v, "functionReference"))
@@ -2566,10 +2680,23 @@ class _Parser:
         kind, r = _oneof(
             "relation",
             j,
-            ("read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate"),
-        )
+            ("read", "filter", "project", "cross", "join", "fetch", "set", "sort", "aggregate",
+             "extensionSingle"),
+        )  # fmt: skip
         core: Rel
         match kind:
+            case "extensionSingle":
+                # sverify's unnest (`docs/nested-values.md`, #94).
+                detail = _req(r, "detail")
+                if detail.get("@type") != "type.googleapis.com/sverify.Unnest":
+                    raise Unsupported(f"unsupported extension relation {detail.get('@type')}")
+                if detail.get("keepEmpty"):
+                    raise Unsupported("unnest keeping empty lists is not supported")
+                inp = self.rel(_req(r, "input"))
+                col = _nat_d(detail, "column")
+                if col >= arity(inp) or not isinstance(lean_kinds(inp)[col], Lst):
+                    raise Unsupported("unnest needs a list column")
+                core = Unnest(inp, col)
             case "read":
                 core = self.read(r)
             case "filter":
@@ -2797,7 +2924,7 @@ class _Parser:
         double; `COUNT(*)` may come with no argument."""
         m = _req(mj, "measure")
         name = _base_name(self.name(_nat_d(m, "functionReference")))
-        if _arr(m, "sorts") and name not in ("first", "last", "string_agg"):
+        if _arr(m, "sorts") and name not in ("first", "last", "string_agg", "array_agg"):
             raise Unsupported(f"ordered aggregates are not supported: {name}")
         sort = tuple(self.sort_key(k, cols) for k in _arr(m, "sorts"))
         if name == "string_agg" and not sort:
@@ -2865,6 +2992,7 @@ class _Parser:
             "covar_pop",
             "corr",
             "string_agg",
+            "collect",
         ]
         match name, k:
             case "count", _:
@@ -2895,6 +3023,9 @@ class _Parser:
                 fn = name
             case "string_agg", "str":
                 fn = name
+            # NULLs are skipped (`Measure.inputs`), in the measure's order (#94).
+            case "array_agg", _:
+                fn = "collect"
             case (("variance" | "std_dev"), ("float" | "int")):
                 pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
                 if name == "variance":
@@ -3132,6 +3263,8 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("bit", a, b, param=name)
         case "regexp_match", _:
             raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
+        case "cardinality", [a]:
+            return Un("cardinality", a)
         # A constant pattern (#50); `Text.simpleRegex` is checked in Lean.
         case "regexp_extract", [a, Lit(value=str(pattern))]:
             return Un("regex_extract", a, param=pattern)
@@ -3334,7 +3467,7 @@ def order_matters(r: Rel) -> bool:
             | Aggregate(input=i)
         ):  # fmt: skip
             return order_matters(i)
-        case Semi(left=a):
+        case Semi(left=a) | Unnest(input=a):
             return order_matters(a)
         case Cross(left=a, right=b) | Join(left=a, right=b) | UnionAll(left=a, right=b):
             return order_matters(a) or order_matters(b)
@@ -3513,6 +3646,19 @@ class _Writer:
                 return self.select(items, d.subquery(d.union_all(*branches), u))
             case Window(input=i, part=part, sort=sort, fns=fns):
                 return self.window(i, part, sort, fns, ordered)
+            case Unnest(input=i, col=col):
+                # Each input row's elements in place, in list order after the row's.
+                a, u = self.alias(), self.alias()
+                elem, pos = self.ref(u, d.quote("e")), self.ref(u, d.quote("i"))
+                items = [
+                    f"{elem if j == col else self.ref(a, self.c(j))} AS {self.c(j)}"
+                    for j in range(n)
+                ]
+                if ordered:
+                    keys = [self.asc(self.ordinal(a)), self.asc(pos)]
+                    items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
+                sub = d.subquery(self.rel(i, ordered), a)
+                return self.select(items, d.unnest_from(sub, self.ref(a, self.c(col)), u))
             case Semi(left=left, right=right, anti=anti, on=on):
                 # A correlated `EXISTS`: true when the condition is TRUE for
                 # some right row (`hasMatch`); the left rows keep their order.
@@ -3601,7 +3747,7 @@ class _Writer:
                     keys_k.append((c, key, kind))
             orders.append(keys_k)
         # Without sort keys too: the ordinal is Lean's list order.
-        picks = any(orders) or any(ms.fn in ("first", "last") for ms in measures)
+        picks = any(orders) or any(ms.fn in ("first", "last", "collect") for ms in measures)
         if picks and any(ms.distinct for ms in measures):
             raise Unsupported("an ordered aggregate next to a DISTINCT measure is not supported")
         needs = needs or picks
@@ -3633,12 +3779,14 @@ class _Writer:
         out = [f"{col(c)} AS {self.c(i)}" for i, c in enumerate(g_cols)]
         for k, ms in enumerate(measures):
             v = col(d_cols[k] if ms.distinct else m_cols[k])
-            if ms.fn in ("first", "last", "string_agg"):
+            if ms.fn in ("first", "last", "string_agg", "collect"):
                 # Ties go in Lean's list order: the ordinal breaks them.
                 order = [d.sort_key(col(c), key.desc, key.nulls_first, kind)
                          for c, key, kind in orders[k]] + [self.asc(self.ordinal(b))]  # fmt: skip
                 if ms.fn == "string_agg":
                     sql = d.string_agg(v, d.str_lit(ms.sep), order)
+                elif ms.fn == "collect":
+                    sql = d.collect(v, order)
                 else:
                     sql = d.pick(ms.fn, v, order)
             else:
@@ -3960,6 +4108,8 @@ class _Writer:
         v, k = lit.value, lit.kind
         if v is None:
             return d.null(k or ctx)
+        if isinstance(k, Lst):
+            return d.list_lit([self.lit(Lit(x, k.elem), k.elem) for x in v], k)
         match k:
             case "bool":
                 return d.bool_lit(v)
@@ -4266,6 +4416,10 @@ class _Writer:
                 if unicode_classes(pattern):
                     return self.ascii_only(x, v, f"regular expression {pattern!r}")
                 return v
+            case Un(op="list_elem", arg=a, digits=offset):
+                return d.list_element(go(a, kind(a)), offset)
+            case Un(op="cardinality", arg=a):
+                return d.cardinality(go(a, kind(a)))
             case Un(op="md5" | "sha256" as op, arg=a):
                 return d.digest(op, self.operand(a, "str", ref, cols, op))
             case Un(op="replace", arg=a, param=pattern, replacement=replacement):

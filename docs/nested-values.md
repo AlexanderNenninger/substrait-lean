@@ -168,18 +168,22 @@ both need parameter environments in `eval` and its proofs. Ibis's
 ## Engines
 
 Polars runs lists, `collect` (sorting each group's rows when the measure is
-ordered) and `UNNEST` (filtering empty and NULL lists before `explode`). The
-SQL dialects (DuckDB, Snowflake, Spark) refuse them with `Unsupported` for
-now; DuckDB's `ARRAY_AGG … ORDER BY` and `UNNEST` are part of #94.
+ordered) and `UNNEST` (filtering empty and NULL lists before `explode`).
+DuckDB's SQL runs list columns and literals, list elements (`l[i + 1]`, and
+`l[i]` for a negative offset), `cardinality` (`len`), `collect` (`list(x
+ORDER BY …) FILTER (WHERE x IS NOT NULL)`, the ordinal breaking ties as Lean's
+list order does) and `UNNEST` (a lateral `UNNEST(l) WITH ORDINALITY`, so an
+order-dependent operation above sees each row's elements in order) (#94).
+Snowflake and Spark refuse them until #271.
 
 Polars also runs struct fields, list elements, `cardinality` and the
 higher-order functions (the body on `pl.element()` in `list.eval`; a body's
 errors are checked over every element). The SQL
-dialects refuse struct columns and references into values. DataFusion 51
+dialects refuse struct columns and struct fields. DataFusion 51
 gets no plan with them (`Expr.nestedAccess`): its consumer reads a
 reference into an expression's value as a reference into the row, which gives
 a wrong column, its `cardinality([])` is NULL, and it has no lambdas. The SQL
-dialects refuse lambdas too.
+dialects refuse lambdas too, DuckDB's included for now.
 
 ## Types in plans
 
@@ -203,7 +207,7 @@ Polars. Still to do:
 * lambdas that read the row's columns or an outer lambda's parameter (so
   `contains` of a column);
 * struct construction;
-* lists and structs in the SQL dialects (DuckDB first);
+* structs and lambdas in the SQL dialects (lists run on DuckDB);
 * slicing, and `list.sum`/`min`/`max`/`sort`/`unique`.
 
 Maps and JSON stay out of #94.

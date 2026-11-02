@@ -102,9 +102,8 @@ DUCKDB_ONLY = {
     "snowflake": "no row order|see #271",
     "spark": "no row order|see #271",
 }
-#: The SQL dialects have no lists yet (#94).
+#: Spark and Snowflake have no lists yet; DuckDB has (#94).
 NO_LISTS = {
-    "duckdb": "array_agg|unsupported relation|unsupported literal|unsupported column type",
-    "snowflake": "array_agg|unsupported relation|unsupported literal|unsupported column type",
-    "spark": "array_agg|unsupported relation|unsupported literal|unsupported column type",
+    "snowflake": "see #271|no row order",
+    "spark": "see #271|no row order",
 }
