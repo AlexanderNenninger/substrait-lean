@@ -91,7 +91,9 @@ def test_written_window_plans_run_on_datafusion():
 
 readings = ibis.table({"sensor": "int64", "ts": "timestamp", "value": "float64"}, name="readings")
 by_sensor = ibis.window(group_by=readings.sensor, order_by=readings.ts)
-KEYED = {"readings": [sv.unique("sensor", "ts"), _.sensor.notnull(), _.ts.notnull()]}
+#: `ts - prev_ts` fits in 64 bits for timestamps since 1970 (#202).
+SINCE_1970 = _.ts >= ibis.timestamp("1970-01-01 00:00:00")
+KEYED = {"readings": [sv.unique("sensor", "ts"), _.sensor.notnull(), _.ts.notnull(), SINCE_1970]}
 
 
 def with_neighbours(r):
@@ -295,7 +297,7 @@ def test_sliding_double_aggregates_are_refused():
 def test_window_sums_may_wrap():
     """An integer SUM over a frame wraps around in DataFusion (`Issue.sumWraps`)."""
     report = sv.verify("SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r", tables={"r": SCHEMA})
-    assert "may wrap around" in [i.kind for i in report.warnings]
+    assert "SUM overflow" in [i.kind for i in report.warnings]
 
 
 R = ibis.table(SCHEMA, name="r")

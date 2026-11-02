@@ -988,6 +988,9 @@ class Exprs:
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
         if "i64" in target and v.dtype == pl.Float64:
             return ftoi(v)
+        if "i64" in target and v.dtype in (pl.Int64, pl.Null):
+            # A typed NULL (`CAST(NULL AS BIGINT)`), or an integer as it is.
+            return Val(v.expr.cast(pl.Int64), pl.Int64, v.issues)
         if (bits := next((n for n in (8, 16, 32) if f"i{n}" in target), None)) and v.dtype in (
             pl.Int64,
             pl.Null,

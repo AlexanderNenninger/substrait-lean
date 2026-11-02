@@ -68,7 +68,7 @@ def _():
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
     )
     def doubled(orders):
@@ -105,8 +105,11 @@ def _(mo):
     * The first table of the report has the verdicts. The second is
       everything Lean established about each output column, whether you
       asked or not: a free, proved data dictionary.
-    * The ⚠️ row says `amount * 2` may leave the 64-bit range and wrap around,
-      since nothing bounds `amount` from above. Chapter 6 is about these.
+    * `amount < 1_000_000_000` is there for `amount * 2`: without an upper
+      bound, doubling the largest 64-bit integer overflows, and the reference
+      raises, so the report would say the transformation may fail. Your
+      amounts are below a billion; saying so lets Lean prove they double
+      safely. Chapter 6 is about these runtime errors.
 
     `sv.verify(expr, requires=..., ensures=...)` does the same for an
     expression without a decorator; it returns the report instead of raising.
@@ -118,11 +121,13 @@ def _(mo):
     which values it can hold. This is called *abstract interpretation*.
     Each operator updates the descriptions:
 
-    * the precondition says `amount >= 0` is TRUE on every input row, so
-      `amount` is a non-NULL integer ≥ 0 (`NULL >= 0` is NULL, not TRUE);
+    * the preconditions say `amount >= 0` and `amount < 1_000_000_000` are
+      TRUE on every input row, so `amount` is a non-NULL integer in
+      `[0, 999999999]` (`NULL >= 0` is NULL, not TRUE);
     * the filter `amount > 10` keeps only rows where that is TRUE, so `amount`
       is a non-NULL integer ≥ 11 afterwards (NULL > 10 is not TRUE);
-    * `amount * 2` is then an integer ≥ 22, and never NULL.
+    * `amount * 2` is then an integer in `[22, 1999999998]`, which fits in
+      64 bits, and never NULL.
 
     A postcondition is proved when its description says it can only be TRUE.
     Change the transformation and the conditions below, and we'll watch

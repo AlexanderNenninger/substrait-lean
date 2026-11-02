@@ -307,8 +307,9 @@ def test_reported_runtime_errors():
     assert [i.kind for i in verify("SELECT a // b AS q FROM t", "t", I64, ["a >= 0"]).errors] == [
         "division by zero"
     ]
+    # An overflow at the declared width raises in the reference (#202).
     report = verify("SELECT a + 1 AS s FROM t", "t", I64)
-    assert report.proved and [i.kind for i in report.warnings] == ["may wrap around"]
+    assert not report.proved and [i.kind for i in report.errors] == ["overflow"]
 
 
 gap = pytest.mark.xfail(
@@ -384,7 +385,7 @@ def test_int32_wraps_at_32_bits():
         ["a BETWEEN 0 AND 2147483647", "b BETWEEN 0 AND 2147483647"],
         ["s >= 0"],
     )
-    assert not report.ensures[0].proved or report.warnings
+    assert not report.ensures[0].proved or report.errors
 
 
 def test_uint8_is_refused():

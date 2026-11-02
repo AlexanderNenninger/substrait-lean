@@ -31,7 +31,7 @@ def test_overflow():
     assert out.lean == f'[["{2 * big}"]]'  # unbounded
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in addition")
     assert duckdb_fuzz.kind(out) == "error: Out of Range Error: Overflow in addition of INT"
-    assert any("may wrap around" in i for i in out.issues)
+    assert any("overflow" in i for i in out.issues)
 
 
 def test_division_by_zero():

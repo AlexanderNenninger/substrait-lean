@@ -331,7 +331,15 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
 
-def writeLit (k : WKind) (v : Value) : Json := obj [("literal", writeLitBody k v)]
+/-- A literal of kind `k`. An integer `NULL` is `CAST(NULL AS BIGINT)`: a bare
+`i64` null is what the writer gives a `NULL` of unknown kind, which readers
+do not take as a type. -/
+def writeLit (k : WKind) (v : Value) : Json :=
+  match k, v with
+  | .int, .null => obj [("cast", obj [("type", i64Type),
+      ("input", obj [("literal", obj [("null", i64Type)])]),
+      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | _, _ => obj [("literal", writeLitBody k v)]
 
 /-- An interval of `m` months. -/
 def writeMonths (m : Int) : Json :=
@@ -345,7 +353,8 @@ def valuesLit (ty : Json) (v : Value) : Json :=
   let narrow := ["i8", "i16", "i32"].find? fun k => (ty.getObjVal? k).toOption.isSome
   match narrow, v with
   | some k, .int i => obj [("literal", obj [(k, toJson i)])]
-  | _, _ => writeLit (.ofKind (Parse.typeKind ty)) v
+  -- A literal, which a virtual table's fields must be.
+  | _, _ => obj [("literal", writeLitBody (.ofKind (Parse.typeKind ty)) v)]
 
 /-- A double the model has one zero and one NaN for, as IEEE engines compute
 it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.
@@ -355,6 +364,12 @@ operation that can give `-0.0` or a negative NaN; the parser reads
 def canonical (x : Json) : Json :=
   let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
   call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
+
+/-- `CAST(j AS INT<n>)` that raises where the value does not fit. -/
+def checkedNarrow (n : Nat) (j : Json) : Json :=
+  let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+  obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
+    ("input", j), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
 
 /-- `x`, written as `j`, or as an integer literal of `n` bits. -/
 def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
@@ -520,10 +535,12 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   -- Arithmetic at `n` bits: its integer literals are written at that width,
-  -- which is what makes the engine compute at it.
-  | .un (.wrap n) (.bin f x y) =>
-    call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)]
-  | .un (.wrap n) (.un .neg x) => call 3 [narrowLit n x (writeExpr cols .int x)]
+  -- which is what makes the engine compute at it, and the result is cast to
+  -- it, which raises where it does not fit (#202). The parser reads the cast
+  -- back as the same `wrap`.
+  | .un (.wrap n) (.bin f x y) => checkedNarrow n
+    (call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)])
+  | .un (.wrap n) (.un .neg x) => checkedNarrow n (call 3 [narrowLit n x (writeExpr cols .int x)])
   | .un (.wrap _) a => writeExpr cols ctx a
   | .un .widen a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .float a)])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),

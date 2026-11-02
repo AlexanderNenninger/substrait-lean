@@ -70,7 +70,7 @@ def test_product_of_unbounded_columns_keeps_its_guard():
 def test_sum_keeps_its_check():
     """`SUM` may wrap whatever the rows are (`Issue.sumWraps`): it stays checked."""
     report = sv.verify(GUARD_FREE[2], requires=BOUNDED)
-    assert report.guard_free and [i.kind for i in report.issues] == ["may wrap around"]
+    assert report.guard_free and [i.kind for i in report.issues] == ["SUM overflow"]
     assert "integer overflow in SUM" in to_sql(plan(GUARD_FREE[2]), DUCKDB, guards=False)
 
 

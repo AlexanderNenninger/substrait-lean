@@ -20,7 +20,14 @@ CUSTOMERS = {"name": "!string", "city": "string"}
 
 
 @sv.transform(
-    requires={"orders": [sv.unique("id"), _.amount >= 0, _.ts < dt.datetime(2100, 1, 1)]},
+    requires={
+        "orders": [
+            sv.unique("id"),
+            _.amount >= 0,
+            _.amount < 1_000_000_000,
+            _.ts < dt.datetime(2100, 1, 1),
+        ]
+    },
     ensures=[sv.unique("id"), _.amount > 10, _.doubled > 20],
 )
 def big_orders(orders):

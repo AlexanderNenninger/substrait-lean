@@ -42,8 +42,8 @@ def _(mo):
     pipeline that quietly writes a wrong number instead is worse: nobody
     gets paged at all.
 
-    Some operations can **fail** in DataFusion, and some silently give a
-    **wrong** answer:
+    Some operations can **fail**, and the reference fails on a few more than
+    DataFusion does:
 
     | | operation | what goes wrong |
     |:---|:---|:---|
@@ -53,7 +53,8 @@ def _(mo):
     | ❌ error | integer `POWER` with a negative exponent or a huge result | the query fails |
     | ❌ error | a regular expression that doesn't compile | the query fails |
     | ❌ error | truncating a timestamp near the ends of its range to a month or year | DataFusion panics or returns garbage |
-    | ⚠️ warning | `+`, `-`, `*` leaving 64 bits | DataFusion **wraps around** silently: `2⁶² + 2⁶²` gives `-2⁶³` |
+    | ❌ error | `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`) | the reference raises; DataFusion **wraps around** silently instead (`2⁶² + 2⁶²` gives `-2⁶³`), which an error allows |
+    | ⏱ checked while running | an integer `SUM` leaving 64 bits | the job raises; no proof before running can rule it out, since a group may have any number of rows |
 
     Lean's model computes with exact (unbounded) integers, and
     `SubstraitLean/Safety.lean` lists, for every operation of a plan, which
@@ -173,14 +174,16 @@ def _(mo):
     * **`round(amount)`** becomes a cast to `BIGINT`, which fails on `1e30`
       and NaN. Bounding `amount` first makes it safe, because `ROUND` is
       exact and monotone in the model (`FloatCode.round_mono`).
-    * **`qty + 1`** only warns: on `MAX` it wraps around to `MIN`. No
-      error, but not the mathematical answer either.
+    * **`qty + 1`** may fail too: on `MAX` the result doesn't fit in 64
+      bits, and the reference raises rather than wrap around to `MIN`. A
+      precondition such as `qty < 1000` rules it out.
 
     ## Contracts refuse possible errors
 
     For whoever is on call, this is the part that matters: a contracted
     transformation must be proved free of runtime errors, not only correct
-    when it runs. Warnings (wrap-around) don't block it:
+    when it runs. A `SUM` that might overflow doesn't block it: that one is
+    checked while the job runs.
     """)
     return
 
@@ -216,8 +219,10 @@ def _(VerificationError, mo, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `Report.errors` and `Report.warnings` list the issues; `Report.proved` is
-    true only when every postcondition is proved **and** there are no errors.
+    `Report.errors` lists the issues a proof must rule out, and
+    `Report.warnings` the ones checked while the job runs (a `SUM` that may
+    overflow); `Report.proved` is true only when every postcondition is
+    proved **and** there are no errors.
 
     What's trusted here is the timing: *when* DataFusion evaluates an
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters). The test

@@ -70,15 +70,18 @@ def bound_orders(rows):
 
 #: Keyed orders without a NULL amount.
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.id.notnull(), sv.unique("id")]},
-    ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull(), sv.unique("id")]},
+    ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")],
 )
 def paid(orders):
     return orders.filter(orders.amount.notnull())
 
 
 def _paid_nonzero():
-    @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount > 0])
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
+        ensures=[_.amount > 0, _.amount < 1_000_000_000],
+    )
     def paid(orders):
         return orders.filter(orders.amount > 0)
 
@@ -92,7 +95,7 @@ paid_nonzero = _paid_nonzero()
 
 
 @sv.transform(
-    requires={"t": [_.amount >= 0, _.amount.notnull(), sv.unique("id")]},
+    requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), sv.unique("id")],
 )
 def doubled(t):

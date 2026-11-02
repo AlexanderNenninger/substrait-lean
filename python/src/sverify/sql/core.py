@@ -3646,7 +3646,8 @@ class _Writer:
                 x = self.int_operand(a, ref, cols, "CAST to INT")
                 lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)
                 fail = d.raise_(f"CAST to a {bits}-bit integer out of range", x, "int")
-                return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} ELSE {fail} END)"
+                # `NOT BETWEEN` is NULL on a NULL `x`, which then stays NULL.
+                return f"(CASE WHEN {x} NOT BETWEEN {lo} AND {hi} THEN {fail} ELSE {x} END)"
             case Un(op="itos", arg=a):
                 return d.int_to_str(self.int_operand(a, ref, cols, "CAST to VARCHAR"))
             case Bin(op="and" | "or" as op, left=a, right=b):
