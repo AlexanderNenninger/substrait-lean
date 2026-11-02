@@ -61,7 +61,9 @@ def stringFns : List (Nat × String) := [
   (27, "str_concat"), (28, "strpos"), (29, "starts_with"), (30, "ends_with"), (31, "like"),
   (32, "substring"), (33, "btrim"), (34, "ltrim"), (35, "rtrim"),
   (200, "reverse"), (201, "ascii"), (202, "replace"), (203, "repeat"), (204, "ilike"),
-  (205, "levenshtein")]
+  (205, "levenshtein"),
+  -- Regular expressions with a constant pattern, and digests (#50).
+  (206, "regexp_extract"), (207, "regexp_replace"), (208, "md5"), (209, "sha256")]
 
 /-- Dates and times: new anchors 300–399. -/
 def temporalFns : List (Nat × String) := [
@@ -131,6 +133,7 @@ def UnFn.anchor : UnFn → Nat
     | .cos => 106 | .tan => 107 | .asin => 108 | .acos => 109 | .atan => 110
   -- Strings
   | .upper => 20 | .lower => 21 | .length => 22 | .reverse => 200 | .ascii => 201 | .replace _ _ => 202
+  | .regexExtract _ _ => 206 | .regexReplace _ _ _ => 207 | .md5 => 208 | .sha256 => 209
   -- Dates and times
   | .datePart _ | .dayPart _ => 25 | .dateTrunc _ | .dayTrunc _ => 26 | .addMonths _ _ => 4
   | .strftime _ => 61 | .bucket _ _ => 62
@@ -175,7 +178,10 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
 
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
+  cases f
+  case regexExtract => exact Or.inr (by simp only [UnFn.anchor]; decide)
+  case regexReplace => exact Or.inr (by simp only [UnFn.anchor]; decide)
+  all_goals first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
 
 theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
   cases f
@@ -628,6 +634,14 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .length a => call (UnFn.anchor .length) [writeExpr cols .str a]
   | .un (.raise msg) a => call 118 [writeExpr cols (wkind cols a) a, writeLit .str (.str msg)]
   | .un (.replace p r) a => call 202 [writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)]
+  | .un (.regexExtract p g) a =>
+    call 206 [writeExpr cols .str a, writeLit .str (.str p), writeLit .int (.int g)]
+  -- DuckDB's and DataFusion's flags argument: `'g'` replaces every match.
+  | .un (.regexReplace p r g) a =>
+    call 207 ([writeExpr cols .str a, writeLit .str (.str p), writeLit .str (.str r)] ++
+      if g then [writeLit .str (.str "g")] else [])
+  | .un .md5 a => call 208 [writeExpr cols .str a]
+  | .un .sha256 a => call 209 [writeExpr cols .str a]
   -- A reference into the value of `a` (#94).
   | .un (.structField i) a => reference (obj [("structField", obj [("field", toJson i)])])
       (writeExpr cols (wkind cols a) a)

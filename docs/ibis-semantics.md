@@ -6,8 +6,8 @@ about the plan that producer writes, under `Rel.eval`. So the meaning of an
 Ibis expression is the producer's, and it is the same whichever Ibis backend
 the expression came from.
 
-Where Ibis backends disagree (chapter 15 of the notebook tour,
-`notebooks/15_backend_semantics.py`), this table says which meaning
+Where Ibis backends disagree (see
+`catalogue/backend_semantics.py`), this table says which meaning
 `verify` takes. `python/tests/test_ibis_semantics.py` runs each row through the
 producer and checks Lean's evaluation against it.
 

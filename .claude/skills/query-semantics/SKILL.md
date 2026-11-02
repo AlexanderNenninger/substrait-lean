@@ -40,9 +40,9 @@ It prints, per source:
 | section | source | answers |
 |---|---|---|
 | features | `catalogue/features.toml` | is the construct in the Lean model (`yes`/`partial`/`no`) |
-| pitfalls | `catalogue/pitfalls.toml` | what each engine does, plus the ids of chapter 17's entries |
-| nb17 | `notebooks/17_backend_semantics.py` (`E(...)` entries) | per engine, Ibis backend, standard SQL and Snowflake; `picks` is the Lean model's answer |
-| nb17 §8 | `notebooks/17_backend_semantics.py` (`B(...)` entries) | DataFusion running checked plans, tagged agree/handled/GAP when the notebook runs |
+| pitfalls | `catalogue/pitfalls.toml` | what each engine does, plus the ids of backend_semantics.py's entries |
+| nb17 | `catalogue/backend_semantics.py` (`E(...)` entries) | per engine, Ibis backend, standard SQL and Snowflake; `picks` is the Lean model's answer |
+| nb17 §8 | `catalogue/backend_semantics.py` (`B(...)` entries) | DataFusion running checked plans, tagged agree/handled/GAP when the notebook runs |
 | parser | `SubstraitLean/Parse.lean` | how Lean reads the Substrait function, or that it refuses it |
 | backends | docstrings of `python/src/sverify/sql/{duckdb,snowflake,spark,core}.py` and `polars_engine.py` | how each backend is made to give Lean's value, and the divergences it works around |
 | catalogue | `catalogue/status.json` | real queries with the same features: verified? which engines run them? |
@@ -99,7 +99,7 @@ Rows compare as bags, or in order when an ORDER BY reaches the result. Doubles c
 
 - **A difference under a window or FETCH may be legitimate.** Where sort keys tie, engines may number, pair or pick rows differently from `Rel.eval`'s stable order. The probe prints a note; check whether the differing rows tie (pitfall `tie_order`). In `win-top-n-per-group`, DataFusion "differs" only on two products tied at 85.
 - **`raises` on a backend is by design, not a bug.** For division by zero, i64 overflow or a bad cast, Lean's `Rel.eval` value is NULL. The engines running Lean's plan raise instead (`sverify: division by zero`); `SubstraitLean/Safety.lean` and the contract checks say when that can happen. Natively, DuckDB and Polars SQL give `inf`, and DataFusion and Spark raise.
-- **Polars SQL and the Polars expression API differ.** `x IN (1, NULL)` follows SQL in `pl.SQLContext`, but chapter 17's N2 shows `pl.col('x').is_in([1, None])` ignoring the NULL. The probe runs Polars SQL; for the expression API, read the `polars:` field of the chapter 17 entry.
+- **Polars SQL and the Polars expression API differ.** `x IN (1, NULL)` follows SQL in `pl.SQLContext`, but backend_semantics.py's N2 shows `pl.col('x').is_in([1, None])` ignoring the NULL. The probe runs Polars SQL; for the expression API, read the `polars:` field of the backend_semantics.py entry.
 - **Ibis is not SQL.** Chapter 17's "leaky" entries mean different things per Ibis backend: `row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`, and the default window frame is the whole partition. Give both `--sql` and `--ibis` when the question is about Ibis.
 - **Snowflake is never executed.** Its SQL is generated and (in the catalogue) parsed with sqlglot only. It refuses sorts, FETCH and windows over named tables (no row order) unless `tie_free=True`, and so does Spark for windows.
 - **Native DataFusion can be wrong** where Lean refuses. For example, `NOT IN (subquery)` with a NULL returns rows in DataFusion 51's own SQL; the parser refuses that plan, so nothing is proved.

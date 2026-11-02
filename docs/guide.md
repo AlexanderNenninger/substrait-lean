@@ -67,7 +67,7 @@ table.
 ## Workflows
 
 Three complete jobs, condensed from the [query catalogue](../catalogue/INDEX.md)
-of 139 real analytical queries, are the first chapters of the
+of 139 real analytical queries, are the first notebooks of the
 [tour](../README.md#the-tour). Each starts from source tables, states and proves a
 contract, runs on every engine, keeps up with new data, writes a sink, and
 shows what goes wrong without the checker. `poe notebooks` runs them
@@ -178,8 +178,7 @@ The most common, and what sverify does about each:
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
 threshold (a total over all parts) into each part's own sum, so the query
-compared each part with itself, and nothing failed. Chapter
-[17](../notebooks/17_backend_semantics.py) of the tour checks every such quirk
+compared each part with itself, and nothing failed. [backend_semantics.py](../catalogue/backend_semantics.py) checks every such quirk
 against the model, and its section 8 checks DataFusion as a backend.
 
 ## Using sverify
@@ -202,8 +201,7 @@ from `python/great-docs.yml` with `uv run poe docs`), and so do
 for coding agents that write sverify code (`npx skills add
 https://alexandernenninger.github.io/substrait-lean/`, or `sverify/skills/` in
 the wheel). The [tour](../README.md#the-tour)
-explains each feature in a chapter of its own
-(chapters 4 to 12).
+covers each feature in notebooks 4 and 5.
 
 ### Contracts
 
@@ -501,7 +499,7 @@ checks. A `sverify.io.Sink` implements `write(change)` and optionally
 `committed()`, and sverify writes each state once, with its contract;
 `sink_from(fn)` hands the whole table to a function. `Storage` holds object
 store credentials, or a function that renews them, for every table that
-needs them. [Chapter 10](../notebooks/10_pipelines.py) of the tour walks
+needs them. [Notebook 5](../notebooks/05_pipelines_and_engines.py) of the tour walks
 through both.
 
 A restarted job resumes from its sink and skips the recompute. You build the

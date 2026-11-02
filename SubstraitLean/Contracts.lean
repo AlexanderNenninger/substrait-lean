@@ -604,7 +604,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ftod _, a => partialAbs false a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .widen, a => a
-  | .upper, a | .lower, a | .reverse, a | .replace _ _, a => ⟨a.nonStr, none, false, false, a.str⟩
+  | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
+  | .regexReplace _ _ _, a | .md5, a | .sha256, a => ⟨a.nonStr, none, false, false, a.str⟩
   -- Below `Text.sizeCap`, by the size hypothesis for strings.
   | .length, a | .ascii, a =>
     ⟨a.nonStr, if a.str then some ⟨some 0, some Text.sizeCap⟩ else none, false, false, false⟩
@@ -1043,7 +1044,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ |
       ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
-  case upper | lower | length | reverse | ascii | replace =>
+  case upper | lower | length | reverse | ascii | replace | regexExtract | regexReplace | md5 | sha256 =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩ <;>
       simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonStr, Bound.Mem, Text.ascii_nonneg,
         Text.capped_le, Text.capped_nonneg]

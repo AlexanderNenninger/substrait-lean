@@ -141,6 +141,8 @@ class Exprs:
 
 #: Why some operations are refused (#58).
 _NONDETERMINISTIC = "each run gives another value, so no contract can be proved about it"
+_URL_PARTS = ("Authority", "File", "Fragment", "Host", "Path", "Protocol", "Query", "UserInfo")
+
 _REFUSED: dict[str, str] = {
     "RandomScalar": _NONDETERMINISTIC,
     "RandomUUID": _NONDETERMINISTIC,
@@ -151,6 +153,13 @@ _REFUSED: dict[str, str] = {
     "ScalarParameter": "bind the parameter first, for example with a literal",
     "TryCast": "a cast that gives NULL where it fails is not modelled yet; use cast(), "
     "which raises there, and guard the values",
+    "Hash": "hash() is the engine's own and changes between versions; use hexdigest('md5') "
+    "or hexdigest('sha256')",
+    # Ibis's URL parts: `host()`, `protocol()`, …
+    **dict.fromkeys(
+        [f"Extract{p}" for p in _URL_PARTS],
+        "URL parts are not modelled; extract them with re_extract",
+    ),
 }
 
 
@@ -650,6 +659,29 @@ def _regex_search(x: Exprs, op: Any) -> Json:
     return if_then([(call("is_null", [arg]), literal(None, dt.boolean))], found)
 
 
+def _regex_extract(x: Exprs, op: Any) -> Json:
+    if not isinstance(op.pattern, ops.Literal) or not isinstance(op.index, ops.Literal):
+        raise Unsupported("re_extract needs a constant pattern and group")
+    return call("regexp_extract", [x(op.arg), x(op.pattern), x(op.index, dt.int64)])
+
+
+def _regex_replace(x: Exprs, op: Any) -> Json:
+    if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
+        raise Unsupported("re_replace needs a constant pattern and replacement")
+    # Every match, as Ibis's SQL does (DuckDB's flag `'g'`).
+    args = [x(op.arg), x(op.pattern), x(op.replacement), literal("g", dt.string)]
+    return call("regexp_replace", args)
+
+
+def _hex_digest(x: Exprs, op: Any) -> Json:
+    if op.how not in ("md5", "sha256") or not op.arg.dtype.is_string():
+        raise Unsupported(
+            f"hexdigest({op.how!r}) of {op.arg.dtype} is not supported; "
+            "md5 and sha256 of strings are"
+        )
+    return call(op.how, [x(op.arg)])
+
+
 def _date_part(part: str) -> Callable[[Exprs, Any], Json]:
     return lambda x, op: call("date_part", [literal(part, dt.string), x(op.arg)])
 
@@ -1050,6 +1082,9 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Translate: _translate,
     ops.StringConcat: _string_concat,
     ops.RegexSearch: _regex_search,
+    ops.RegexExtract: _regex_extract,
+    ops.RegexReplace: _regex_replace,
+    ops.HexDigest: _hex_digest,
     ops.ExtractYear: _date_part("year"),
     ops.ExtractQuarter: _date_part("quarter"),
     ops.ExtractMonth: _date_part("month"),

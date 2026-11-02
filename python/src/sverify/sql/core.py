@@ -675,6 +675,20 @@ class Dialect:
         in the order `order`, joined by `sep`; NULL without values."""
         raise Unsupported(f"string_agg is not yet supported on {self.name}; see #271")
 
+    def regex_extract(self, s: str, pattern: str, group: int) -> str:
+        """`UnFn.regexExtract` (#50): group `group` of the first match of the
+        constant `pattern` in `s`, `''` where there is none."""
+        raise Unsupported(f"regexp_extract is not yet supported on {self.name}; see #271")
+
+    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
+        """`UnFn.regexReplace` (#50): the first match of the constant `pattern`
+        in `s`, or every match, replaced (`\\1` is a group)."""
+        raise Unsupported(f"regexp_replace is not yet supported on {self.name}; see #271")
+
+    def digest(self, fn: str, s: str) -> str:
+        """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
+        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
         raise Unsupported(
@@ -835,19 +849,23 @@ class Un:
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
         "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
+        "regex_extract", "regex_replace", "md5", "sha256",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`, the bits of `narrow` and `fit`, the months of
-    `addMonths`."""
+    `addMonths`, the group of `regexExtract`."""
     param: str = ""
-    """The pattern of `regexMatch` and `replace`, the part of `datePart`, the
-    unit of `dateTrunc`; `time` or `date` for `addMonths`; the function of
-    `fmath` (`FMath.name`); `SILENT` or `SATURATE` for `fit`."""
+    """The pattern of `regexMatch`, `regexExtract`, `regexReplace` and
+    `replace`, the part of `datePart`, the unit of `dateTrunc`; `time` or
+    `date` for `addMonths`; the function of `fmath` (`FMath.name`); `SILENT`
+    or `SATURATE` for `fit`."""
     origin: int = 0
     """The origin of `bucket` (whose width is `digits`)."""
     replacement: str = ""
-    """The replacement of `replace`."""
+    """The replacement of `replace` and `regexReplace`."""
+    flags: str = ""
+    """The flags of `regexReplace`: `g` for every match."""
 
 
 @dataclass(frozen=True)
@@ -1255,7 +1273,17 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             | "ascii"
         ):
             return "int"
-        case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
+        case Un(
+            op="itos"
+            | "upper"
+            | "lower"
+            | "reverse"
+            | "replace"
+            | "regex_extract"
+            | "regex_replace"
+            | "md5"
+            | "sha256"
+        ):
             return "str"
         case Un(op="date_trunc"):
             return "time"
@@ -1316,7 +1344,17 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             | "ascii"
         ):
             return "int"
-        case Un(op="itos" | "upper" | "lower" | "reverse" | "replace"):
+        case Un(
+            op="itos"
+            | "upper"
+            | "lower"
+            | "reverse"
+            | "replace"
+            | "regex_extract"
+            | "regex_replace"
+            | "md5"
+            | "sha256"
+        ):
             return "str"
         case Un(op="date_trunc"):
             return "time"
@@ -3045,6 +3083,25 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("bit", a, b, param=name)
         case "regexp_match", _:
             raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
+        # A constant pattern (#50); `Text.simpleRegex` is checked in Lean.
+        case "regexp_extract", [a, Lit(value=str(pattern))]:
+            return Un("regex_extract", a, param=pattern)
+        case "regexp_extract", [a, Lit(value=str(pattern)), Lit(value=int(g))] if (
+            not isinstance(g, bool) and g >= 0
+        ):
+            return Un("regex_extract", a, param=pattern, digits=g)
+        case "regexp_extract", _:
+            raise Unsupported("regexp_extract needs a constant pattern and group")
+        case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r))]:
+            return Un("regex_replace", a, param=pattern, replacement=r)
+        case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r)), Lit(value="g")]:
+            return Un("regex_replace", a, param=pattern, replacement=r, flags="g")
+        case "regexp_replace", [_, _, _, *_]:
+            raise Unsupported(
+                "regexp_replace needs a constant pattern and replacement, and no flags but 'g'"
+            )
+        case (("md5" | "sha256"), [a]):
+            return Un(name, a)
         # Timestamps (`SubstraitLean/Time.lean`).
         case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
             if part.lower() not in DATE_PARTS:
@@ -4142,6 +4199,20 @@ class _Writer:
             case Un(op="ascii", arg=a):
                 x = self.operand(a, "str", ref, cols, "ascii")
                 return self.ascii_only(x, d.first_code_point(x), "ascii", "int")
+            case Un(op="regex_extract", arg=a, param=pattern, digits=group):
+                x = self.operand(a, "str", ref, cols, "regexp_extract")
+                v = d.regex_extract(x, pattern, group)
+                if unicode_classes(pattern):
+                    return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return v
+            case Un(op="regex_replace", arg=a, param=pattern, replacement=r, flags=flags):
+                x = self.operand(a, "str", ref, cols, "regexp_replace")
+                v = d.regex_replace(x, pattern, r, flags == "g")
+                if unicode_classes(pattern):
+                    return self.ascii_only(x, v, f"regular expression {pattern!r}")
+                return v
+            case Un(op="md5" | "sha256" as op, arg=a):
+                return d.digest(op, self.operand(a, "str", ref, cols, op))
             case Un(op="replace", arg=a, param=pattern, replacement=replacement):
                 if not pattern:
                     # Rust puts the replacement around every character; SQL engines
@@ -4444,13 +4515,13 @@ def like_pattern(p: str) -> str:
 
 
 def unicode_classes(p: str) -> bool:
-    """Does the pattern use `\\d`, `\\w` or `\\s` (or their negations)? Rust's
-    are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's are
-    ASCII-only, so they agree on ASCII text only."""
+    """Does the pattern use `\\d`, `\\w`, `\\s` or `\\b` (or their negations)?
+    Rust's are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's
+    are ASCII-only, so they agree on ASCII text only (`Text.classesDiffer`)."""
     i = 0
     while i < len(p):
         if p[i] == "\\" and i + 1 < len(p):
-            if p[i + 1] in "dDwWsS":
+            if p[i + 1] in "dDwWsSbB":
                 return True
             i += 2
         else:
@@ -4461,7 +4532,8 @@ def unicode_classes(p: str) -> bool:
 def regex_groups(p: str) -> int:
     """The entries `regexp_match(s, p)` has on a match: its capture groups, or
     the whole match if there are none. Groups are counted as `(` outside
-    classes and escapes, which is exact for patterns without `(?`."""
+    classes and escapes, but `(?:`, which is exact for patterns without
+    other `(?`."""
     groups, k, in_class = 0, 0, False
     while k < len(p):
         c = p[k]
@@ -4478,9 +4550,13 @@ def regex_groups(p: str) -> int:
             if p[k + 1 : k + 2] == "]":
                 k += 1
         elif c == "(":
-            if p[k + 1 : k + 2] == "?":
+            if p[k + 1 : k + 3] == "?:":
+                # Non-capturing.
+                k += 1
+            elif p[k + 1 : k + 2] == "?":
                 raise Unsupported(f"regular expressions with '(?' are not supported: {p!r}")
-            groups += 1
+            else:
+                groups += 1
         k += 1
     return max(groups, 1)
 

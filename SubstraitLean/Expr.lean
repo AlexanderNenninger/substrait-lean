@@ -119,6 +119,14 @@ inductive UnFn where
   /-- `array_length(regexp_match(s, p))` for a constant pattern `p` (a black box):
   `NULL` if `p` does not match. -/
   | regexMatch (p : String)
+  /-- `regexp_extract(s, p, g)` for a constant pattern `p` (a black box): `''`
+  where `p` does not match. -/
+  | regexExtract (p : String) (g : Nat)
+  /-- `regexp_replace(s, p, r)` for a constant pattern `p` and replacement `r`
+  (a black box): the first match, or every match if `global` (the `'g'` flag). -/
+  | regexReplace (p r : String) (global : Bool)
+  /-- `md5(s)` and `sha256(s)`: lowercase hex digests (black boxes). -/
+  | md5 | sha256
   /-- `date_part(p, ts)`: `NULL` outside the years ±262142. -/
   | datePart (p : Time.DatePart)
   /-- `date_trunc(u, ts)`. -/
@@ -323,6 +331,10 @@ def UnFn.apply : UnFn → Value → Value
   | .regexMatch p, .str s => match Text.regexMatch s p with
     | some k => .int (k + 1)
     | none => .null
+  | .regexExtract p g, .str s => .str (Text.regexExtract s p g)
+  | .regexReplace p r g, .str s => .str (Text.regexReplace s p r g)
+  | .md5, .str s => .str (Text.md5 s)
+  | .sha256, .str s => .str (Text.sha256 s)
   | .datePart p, .int ts => match Time.datePart p ts with
     | some v => .int v
     | none => .null

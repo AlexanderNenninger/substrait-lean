@@ -8,6 +8,7 @@ import ibis
 import ibis.expr.types as ir
 
 from sverify_dev.coverage_cases._common import (
+    DUCKDB_ONLY,
     Case,
     R,
     V,
@@ -43,6 +44,17 @@ CASES: list[Case] = [
     case("strings", "capitalize", V, lambda: t.select(x=t.name.capitalize())),
     case("strings", "slice", V, lambda: t.select(x=t.name[1:3], y=t.name[:2], z=t.name[1:])),
     case("strings", "translate", R, lambda: t.select(x=t.name.translate("ab", "xy"))),
+    case("strings", "re_extract", V, lambda: t.select(x=t.name.re_extract("^(a|b)(.)", 2))),
+    case("strings", "re_replace", V, lambda: t.select(x=t.name.re_replace("[aeiou]", r"<\0>"))),
+    case(
+        "strings",
+        "hexdigest",
+        V,
+        lambda: t.select(m=t.name.hexdigest("md5"), s=t.name.hexdigest("sha256")),
+    ),
+    # DuckDB's `hash()` is its own, and changes between versions.
+    case("strings", "hash", R, lambda: t.select(x=t.name.hash())),
+    case("strings", "host", R, lambda: t.select(x=t.name.host())),
 ]
 
 #: Rust's `replace` puts the replacement around every character for an empty
@@ -50,6 +62,10 @@ CASES: list[Case] = [
 _EMPTY_PATTERN = "replace with an empty pattern differs between engines"
 REFUSED: dict[str, dict[str, str]] = {
     "replace ''": {"duckdb": _EMPTY_PATTERN, "snowflake": _EMPTY_PATTERN, "spark": _EMPTY_PATTERN},
+    # DuckDB only until the generated lowerings (#271).
+    "re_extract": DUCKDB_ONLY,
+    "re_replace": DUCKDB_ONLY,
+    "hexdigest": DUCKDB_ONLY,
 }
 
 NO_DUCKDB_SQL = {

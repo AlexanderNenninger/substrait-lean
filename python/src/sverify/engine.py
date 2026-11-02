@@ -574,7 +574,10 @@ def _check_datafusion_plan(plan: dict) -> None:
                 # DataFusion spreads the larger buckets out (upstream/LEDGER.md).
                 raise sql.Unsupported("DataFusion's NTILE does not deal out buckets as SQL does")
             f = node.get("scalarFunction")
-            if isinstance(f, dict) and names.get(f.get("functionReference")) == "substring":
+            fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
+            if fname in ("regexp_extract", "regexp_replace", "md5", "sha256"):
+                raise sql.Unsupported(f"{fname} is not yet supported on DataFusion; see #271")
+            if isinstance(f, dict) and fname == "substring":
                 left = any(
                     o.get("name") == "negative_start"
                     and o.get("preference", [])[:1] == ["LEFT_OF_BEGINNING"]

@@ -1,6 +1,6 @@
 # Correctness pitfalls across engines. A query lists them as "tag: what it
 # means for this query". `quirks` are entries of
-# notebooks/17_backend_semantics.py (chapter 17 of the tour): its questions per
+# catalogue/backend_semantics.py: its questions per
 # engine, and its section 8 on DataFusion as a backend (E and D entries).
 
 [tie_order]
