@@ -102,7 +102,13 @@ def domain(dtype: dt_types.DataType, literals: Mapping[str, set[object]]) -> Dom
         values = [False, True]
     elif dtype.is_timestamp() and dtype.timezone is None:  # type: ignore[attr-defined]
         micros = sorted({v + d for v in literals["ts"] for d in (-1, 0, 1)})  # type: ignore[operator]
-        near_ts = [EPOCH + dt.timedelta(microseconds=m) for m in micros]
+        # Python's datetimes stop at years 1 and 9999.
+        lo, hi = dt.datetime.min - EPOCH, dt.datetime.max - EPOCH
+        near_ts = [
+            EPOCH + dt.timedelta(microseconds=m)
+            for m in micros
+            if lo <= dt.timedelta(microseconds=m) <= hi
+        ]
         values = [EPOCH, dt.datetime(2024, 1, 1), *near_ts]
     elif dtype.is_date():
         values = [EPOCH.date(), dt.date(2024, 1, 1)]

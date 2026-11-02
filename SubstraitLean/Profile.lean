@@ -431,16 +431,18 @@ theorem Profile.duckdb_faithful (s : DuckDBSettings) : (Profile.duckdb s).impl.F
 /-- **A verified plan runs correctly on DuckDB.** When `Rel.mayIssues` reports
 nothing but integer `SUM`s that may wrap (which keep their check), on every
 catalog that satisfies the preconditions `A`, `F`, evaluating the plan with
-DuckDB's functions gives `Rel.eval`'s rows, under any settings. Trusted: that
-`Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
+DuckDB's functions gives `Rel.eval`'s rows, under any settings, provided the
+plan's windows read fewer than `2⁶²` rows (the size hypothesis, `Rel.Small`).
+Trusted: that `Profile.duckdb` is DuckDB's, and that the SQL printer is
+faithful. -/
 theorem Rel.duckdb_sound (s : DuckDBSettings) {cat : Catalog} (hcat : cat.WF)
     {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
-    {r : Rel} (hwf : r.WF cat) (hs : r.looseSub = true)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) :
     r.evalI (Profile.duckdb s).impl cat = r.eval cat :=
-  Rel.guardFree_sound hcat hA hF hT hwf hs hm (Profile.duckdb_faithful s)
+  Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm (Profile.duckdb_faithful s)
 
 /-! ## Plans that may raise
 

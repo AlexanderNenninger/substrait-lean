@@ -70,10 +70,25 @@ def findFrom (t : List Char) : List Char → Nat → Option Nat
       | [] => none
       | _ :: r => findFrom t r (i + 1)
 
+/-- **The size hypothesis for strings** (trusted, #202): every string has
+fewer than `2⁶²` characters, which every engine's memory guarantees. So a
+length or position never reaches `sizeCap`, and capping it there changes
+nothing; it gives the range analysis an upper bound, so that `strpos(s, t) - 1`
+is proved not to overflow. -/
+def sizeCap : Int := 2 ^ 62
+
+/-- A length or position, which the size hypothesis keeps below `sizeCap`. -/
+def capped (n : Int) : Int := min n sizeCap
+
+theorem capped_le (n : Int) : capped n ≤ sizeCap := Int.min_le_right _ _
+
+theorem capped_nonneg {n : Int} (h : 0 ≤ n) : 0 ≤ capped n := by
+  unfold capped sizeCap; omega
+
 def strpos (s t : String) : Int :=
-  match findFrom t.toList s.toList 1 with
+  capped (match findFrom t.toList s.toList 1 with
   | some i => i
-  | none => 0
+  | none => 0)
 
 def startsWith (s t : String) : Bool := t.toList.isPrefixOf s.toList
 

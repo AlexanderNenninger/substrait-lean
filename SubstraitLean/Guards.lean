@@ -463,16 +463,17 @@ theorem Rel.evalI_eq {I : Impl} (hI : I.Faithful) {cat : Catalog} :
 
 /-- **Guard elimination from contracts**: when `Rel.mayIssues` reports
 nothing but integer `SUM`s, on every catalog that satisfies the
-preconditions, the plan runs correctly with unchecked functions. -/
+preconditions and the size hypothesis (`Rel.Small`: windows read fewer than
+`2⁶²` rows), the plan runs correctly with unchecked functions. -/
 theorem Rel.guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
-    {r : Rel} (hwf : r.WF cat) (hs : r.looseSub = true)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
     (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true)
     {I : Impl} (hI : I.Faithful) : r.evalI I cat = r.eval cat :=
   evalI_eq hI (u := false) hs fun p hp => by
-    have := List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf p hp)
+    have := List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp)
     simpa using this
 
 end Substrait
