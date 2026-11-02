@@ -330,6 +330,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         if f.name.lower() not in _KNOWN:
             raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
     _check_aliases(tree, schemas)
+    _check_using_stars(tree)
     catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
     }
@@ -674,6 +675,10 @@ class _Lift:
             return one, [Column(None, "", dt.int32)]
         rel, scope = self.source(node.args["from_"].this)
         for join in node.args.get("joins") or []:
+            if method := join.args.get("method"):
+                # Not the inner join of its ON: an ASOF join keeps each left
+                # row's latest match, a POSITIONAL join pairs rows by position.
+                raise Unsupported(f"{str(method).upper()} JOIN is not supported yet")
             right, cols = self.source(join.this)
             side, kind = (join.side or "").upper(), (join.kind or "").upper()
             on = join.args.get("on")
@@ -1385,7 +1390,12 @@ def _temporal(e: E, t: Any) -> E:
 
 def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _COMPARISONS[type(node)]
-    args = _operands(lf, [sub(node.this), sub(node.expression)], name)
+    a, b = sub(node.this), sub(node.expression)
+    if name not in ("equal", "not_equal") and any(x.type.is_nested() for x in (a, b)):
+        # DuckDB orders structs and lists field by field, NULLs last; the
+        # model's order of nested values is not that one yet.
+        raise Unsupported(f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet")
+    args = _operands(lf, [a, b], name)
     return E(_fn(name, args, dt.boolean), dt.boolean)
 
 
@@ -2343,6 +2353,19 @@ def _count_star() -> Json:
             "invocation": "AGGREGATION_INVOCATION_ALL",
         }
     }
+
+
+def _check_using_stars(tree: sge.Expression) -> None:
+    """Refuse `t.*` in a SELECT whose joins have USING: `qualify` leaves the
+    USING columns out of the right table's `t.*`, where DuckDB keeps them."""
+    for node in tree.find_all(sge.Select):
+        if not any(j.args.get("using") for j in node.args.get("joins") or []):
+            continue
+        for e in node.expressions:
+            if isinstance(e, sge.Column) and isinstance(e.this, sge.Star) and e.table:
+                raise Unsupported(
+                    f"{e.table}.* with JOIN … USING is not supported yet; list the columns"
+                )
 
 
 def _count(node: sge.Expression, what: str) -> int:
