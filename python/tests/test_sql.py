@@ -169,7 +169,7 @@ def integral(v: object) -> object:
     return int(v) if isinstance(v, Decimal) and v == int(v) else v
 
 
-def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple] | None, list[tuple]]:
+def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list[tuple]]:
     """The plan's rows on DataFusion and on DuckDB. DataFusion runs the plan
     as Lean writes it for DataFusion (`run_plan`, `--write-datafusion`): some
     fixtures are hand-written in encodings its protobuf parser no longer
@@ -177,13 +177,19 @@ def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple] | Non
     con = connect()
     for name, t in tables.items():
         put_table(con, name, t)
-    try:
-        df = [tuple(map(integral, r)) for r in arrow_rows(run_plan(con, plan_json, "datafusion"))]
-    except Unsupported:
-        # DataFusion cannot be made to give the reference result (a
-        # `substring` from a negative start, #209): only DuckDB and Lean.
-        df = None
+    df = [tuple(map(integral, r)) for r in arrow_rows(run_plan(con, plan_json, "datafusion"))]
     return df, duckdb_rows(plan_json, tables)
+
+
+def both_or_duckdb(
+    plan_json: str, tables: dict[str, pa.Table]
+) -> tuple[list[tuple] | None, list[tuple]]:
+    """`both`, with no DataFusion rows where DataFusion cannot be made to give
+    the reference result (a `substring` from a negative start, #209)."""
+    try:
+        return both(plan_json, tables)
+    except Unsupported:
+        return None, duckdb_rows(plan_json, tables)
 
 
 def lean_printable(plan: dict) -> bool:
@@ -277,7 +283,7 @@ def test_virtual_fixtures_match_the_golden_rows(name):
 def test_fixtures_agree_on_random_tables(name, data):
     plan = fixture(name)
     tables = {t: data.draw(table_for(s)) for t, s in schemas(plan).items()}
-    df, duck = both(json.dumps(plan), tables)
+    df, duck = both_or_duckdb(json.dumps(plan), tables)
     agree(plan, df, duck, lean_on(plan, tables) if lean_printable(plan) else None)
 
 
@@ -331,7 +337,7 @@ def test_delta_plans_agree(name, data):
     for d in deltas:
         plan = json.loads(d)
         needed = {t: tables[t] for t in read_tables(plan)}
-        df, duck = both(d, needed)
+        df, duck = both_or_duckdb(d, needed)
         agree(plan, df, duck, lean_on(plan, needed) if lean_printable(plan) else None)
 
 
