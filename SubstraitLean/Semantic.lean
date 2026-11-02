@@ -772,7 +772,7 @@ theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
       List.map_congr_left fun x hx =>
         h x (hl x ((m.kept_sublist l).subset hx)) m.arg (by simp [Measure.exprs])
     simp only [Measure.inputs, hk, List.map_map, Function.comp_def, ha]
-  -- `collect` and `pick` sort first; `g` keeps the sort columns.
+  -- `collect`, `pick` and `concat` sort first; `g` keeps the sort columns.
   have hcol : ∀ x ∈ grp, ∀ k ∈ m.sort, (g x).getD k.col .null = x.getD k.col .null :=
     fun x hx k hk => by
       simpa [Expr.eval] using h x hx (.field k.col) (by simp [Measure.exprs]; exact .inr (.inr ⟨k, hk, rfl⟩))
@@ -780,6 +780,7 @@ theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
     (List.map_mergeSort fun a ha b hb => (sortLe_congr (hcol a ha) (hcol b hb)).symm).symm
   unfold Measure.eval
   split
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hin grp fun _ h => h]
