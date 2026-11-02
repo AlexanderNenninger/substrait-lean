@@ -85,7 +85,6 @@ CASES: list[Case] = [
 
 REFUSED: dict[str, dict[str, str]] = {
     "count, max, mean": NO_ROW_ORDER,
-    "std": NO_ROW_ORDER,
     "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
     "collect ordered": NO_LISTS,

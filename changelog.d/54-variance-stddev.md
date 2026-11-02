@@ -1,9 +1,9 @@
 ### Variance and standard deviation
 
 `var()` and `std()` of doubles and integers, of a sample or a population
-(`how="pop"`), are verified (#54). sverify fixes how they are computed: the
-mean first, then the squared deviations added in row order, so DuckDB,
-Polars and Spark give the same result to the last bit. DataFusion and
-Snowflake, which add in their own order, are refused, and so are variances
-over windows. A sample of one value gives NULL, and an infinite value raises,
-since its deviation would be NaN.
+(`how="pop"`), are verified on every engine (#54). Each engine uses its own
+algorithm for now, so results may differ in the last bits, and a contract
+can rely only on the value being a non-negative double, or NULL: for no
+values, and for a sample of one value. A NaN passes through; an infinite
+value raises, since its deviation from the mean would be NaN. Variances over
+windows are refused.
