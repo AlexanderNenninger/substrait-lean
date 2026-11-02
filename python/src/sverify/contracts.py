@@ -247,8 +247,10 @@ class Report:
     facts: dict[str, str] = field(default_factory=dict)
     """What Lean established about each output column."""
     deterministic: bool = True
-    """False when rows may tie in a window's ORDER BY: the engine then picks
-    an order, and nothing is proved about the result."""
+    """False when rows may tie in the ORDER BY of a window or of an ordered
+    aggregate (`first`, `last`, `group_concat`; without an `order_by` every
+    row ties): the engine then picks an order, and nothing is proved about
+    the result."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, and SUM overflows, Lean could not rule out; when empty,
     the transformation provably runs without them."""
@@ -344,8 +346,9 @@ class Report:
 
 
 TIES_HINT = (
-    "rows may tie in a window's ORDER BY, so the engine decides their order. "
-    "Declare `unique(...)` on the partition and order columns of the input."
+    "rows may tie in the ORDER BY of a window or of first(), last() or group_concat(), so the "
+    "engine decides their order. Declare `unique(...)` on the partition (or grouping) and "
+    "order columns of the input."
 )
 
 
@@ -725,7 +728,7 @@ def verify(
                 if ok
                 else "not shown to be a key"
                 if out["deterministic"]
-                else "undetermined: rows may tie in a window's ORDER BY"
+                else "undetermined: rows may tie in an ORDER BY"
             )
             cols = next(key_iter)
             cex = None if ok else find(cols)

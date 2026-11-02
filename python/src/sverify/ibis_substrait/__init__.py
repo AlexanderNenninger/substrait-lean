@@ -1292,12 +1292,11 @@ def group_concat(x: Exprs, op: Any) -> Json:
 
 def first_last(x: Exprs, op: Any) -> Json:
     """`FIRST(x ORDER BY …)` / `LAST(…)` of the non-NULL values (#55). Without
-    `order_by` it is any row's value, which is refused."""
+    `order_by` it is any row's value (Ibis's `distinct(on=)`): verified, but
+    reported as the engine's choice unless the group is a key."""
     name = "first" if isinstance(op, ops.First) else "last"
     if op.include_null:
         raise Unsupported(f"{name}(include_null=True) is not supported")
-    if not op.order_by:
-        raise Unsupported(f"{name}() without order_by is any row's value; give it an order_by")
     sorts = []
     for k in op.order_by:
         key = _sort_key(x, k)

@@ -95,7 +95,9 @@ inductive AggFn where
   /-- `FIRST` (`last := false`) and `LAST` of the values in the measure's
   `sort` order (#55), as `ARRAY_AGG(x ORDER BY …)[1]` and its last element:
   NULLs skipped, NULL without values. Ties make it depend on the engine, as
-  for `collect`, which `Rel.windowsTotal` reports. -/
+  for `collect`, which `Rel.windowsTotal` reports; without a sort every row
+  ties (an engine may even pick each measure's value from another row), so
+  contracts see only the values' range (`Measure.abs`). -/
   | pick (last : Bool)
   /-- `COVAR_SAMP`/`COVAR_POP` and `CORR` of pairs of doubles (#54), whose
   argument is `pair x y` (rows with a NULL skipped). Engines compute them
