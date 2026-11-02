@@ -502,7 +502,9 @@ def elabGenerateLowering : CommandElab := fun stx => do
     for (c, unary) in ctors do
       let t0 ← IO.monoMsNow
       if !excluded.contains c then
-        if ← lowerNative tbl pE ntac unary c then
+        -- Each constructor starts afresh: heartbeats count all of the
+        -- command's work, and every new constructor adds to it.
+        if ← withCurrHeartbeats (lowerNative tbl pE ntac unary c) then
           results := results.push (c, some #[(⟨c, unary, #[]⟩, .ok "native", (← IO.monoMsNow) - t0)])
           if guardFns.contains c then natives := natives.push (tbl ++ c.componentsRev.head!.appendAfter "_native")
           continue
@@ -513,7 +515,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
       let mut done := #[]
       for k in ks do
         let t0 ← IO.monoMsNow
-        let how ← lowerSearch tbl pE p tac (excluded.contains c) k
+        let how ← withCurrHeartbeats (lowerSearch tbl pE p tac (excluded.contains c) k)
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
     return results
