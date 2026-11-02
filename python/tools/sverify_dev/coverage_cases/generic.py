@@ -14,7 +14,7 @@ from sverify_dev.coverage_cases._common import (
 
 CASES: list[Case] = [
     case("generic", "try_cast", R, lambda: t.select(x=t.name.try_cast("int64"))),
-    case("generic", "param", R, lambda: t.filter(t.qty > ibis.param("int64"))),
+    case("generic", "param", R, lambda: t.filter(t.qty > ibis.param(ibis.dtype("int64")))),
     case("generic", "typeof", R, lambda: t.select(x=t.qty.typeof())),
     case("generic", "random", R, lambda: t.select(x=ibis.random())),
     case("generic", "uuid", R, lambda: t.select(x=ibis.uuid())),
