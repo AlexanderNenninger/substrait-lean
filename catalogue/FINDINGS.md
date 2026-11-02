@@ -267,7 +267,7 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DataFusion runs | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 6 | 0 | 1 | 0 | 7 | 6 | 6 | 6 |
-| finance | 18 | 12 | 1 | 5 | 0 | 17 | 3 | 7 | 4 |
+| finance | 18 | 13 | 0 | 5 | 0 | 17 | 2 | 11 | 3 |
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 10 | 0 | 2 | 0 | 12 | 10 | 10 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
@@ -275,10 +275,10 @@ semi-structured data.
 | product | 13 | 10 | 0 | 3 | 0 | 12 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
-| tpcds | 8 | 3 | 2 | 3 | 0 | 8 | 2 | 2 | 0 |
-| tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 5 | 5 |
+| tpcds | 8 | 6 | 0 | 2 | 0 | 8 | 0 | 6 | 0 |
+| tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 111 | 3 | 23 | 2 | 134 | 78 | 87 | 67 |
+| **all** | 139 | 115 | 0 | 22 | 2 | 134 | 75 | 112 | 67 |
 
 ### Feature frequency
 
@@ -378,12 +378,12 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `decimal` | 6 | 3 | partial | modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). No engine runs decimal plans yet (#27, stage 2), so the catalogue also probes each such query with DOUBLE in their place. AVG of a decimal over a window is not modelled yet |
 | `stddev_var` | 4 | 3 | no |  |
 | `arg_max` | 3 | 3 | no | first_value aggregates are refused |
-| `min_max` | 3 | 2 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
 | `rows_frame` | 3 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
+| `min_max` | 2 | 2 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
 | `percentile` | 2 | 1 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
+| `decimal` | 2 | 0 | partial | modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). DuckDB runs decimal plans as the reference computes them (#27); the other engines refuse them. AVG of a decimal over a window is not modelled yet |
 | `grouping_sets` | 2 | 0 | no |  |
 | `corr` | 1 | 1 | no |  |
 | `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
@@ -398,22 +398,20 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 ### Why engines refuse verified queries
 
-Over the 114 queries that verify (some only as DOUBLE):
+Over the 115 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| polars: refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27) | 24 |
-| duckdb: refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27) | 24 |
-| snowflake: refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27) | 24 |
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 15 |
-| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 15, "scale": | 6 |
-| snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 5 |
-| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 4 |
+| snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 23 |
+| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 15, "scale": | 22 |
+| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 21 |
+| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 18, "scale": | 10 |
+| polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 6 |
 | duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
 | polars: error: divide by zero (1 row(s)) | 2 |
+| snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 2 |
+| duckdb: differs | 1 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 1 |
-| duckdb: refused: min of this type is not supported | 1 |
-| snowflake: refused: min of this type is not supported | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency
