@@ -30,6 +30,7 @@ from dataclasses import replace
 from typing import Any, Literal
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 try:
@@ -50,7 +51,8 @@ try:
         ManifestFile,
         ManifestWriterV2,
     )
-    from pyiceberg.table import FileScanTask, Table, Transaction
+    from pyiceberg.schema import index_name_by_id
+    from pyiceberg.table import FileScanTask, Table, TableProperties, Transaction
     from pyiceberg.table.snapshots import Operation
     from pyiceberg.table.snapshots import Snapshot as IcebergSnapshot
     from pyiceberg.table.update.snapshot import _FastAppendFiles
@@ -58,6 +60,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
+from sverify._scan import Scan, ScanSnapshot, local_path
 from sverify._weighted import expanded, negated, positive
 from sverify.contracts import Fact
 from sverify.incremental import (
@@ -189,6 +192,49 @@ def _scan(t: Table, tasks: Sequence[FileScanTask]) -> pa.Table:
     return ArrowScan(t.metadata, t.io, t.schema(), AlwaysTrue()).to_table(tasks)
 
 
+def _by_name(t: Table) -> bool:
+    """Whether reading the data files by column name reads the columns
+    pyiceberg reads by field id: no field had another name in any of the
+    table's schemas and no name meant another field, no name mapping (for
+    files without field ids), and no partition fields (whose values files
+    added from elsewhere may lack)."""
+    if t.properties.get(TableProperties.DEFAULT_NAME_MAPPING):
+        return False
+    if any(spec.fields for spec in t.specs().values()):
+        return False
+    names: dict[int, str] = {}
+    ids: dict[str, int] = {}
+    for schema in t.metadata.schemas:
+        for fid, name in index_name_by_id(schema).items():
+            if names.setdefault(fid, name) != name or ids.setdefault(name, fid) != fid:
+                return False
+    return True
+
+
+def _deleted_rows(paths: dict[str, set[str]]) -> pa.Table:
+    """The rows position delete files delete: from each delete file's path
+    to the data files it applies to, as `Scan.deleted` (local paths)."""
+    parts = []
+    for delete, data in paths.items():
+        local = local_path(delete)
+        assert local is not None
+        rows = pq.read_table(local, columns=["file_path", "pos"])
+        rows = rows.filter(
+            pc.call_function(
+                "is_in", [rows.column("file_path")], pc.SetLookupOptions(pa.array(sorted(data)))
+            )
+        )
+        files = [local_path(f) for f in rows.column("file_path").to_pylist()]
+        parts.append(
+            pa.table(
+                {"file": pa.array(files, pa.string()), "pos": rows.column("pos").cast(pa.int64())}
+            )
+        )
+    if not parts:
+        return pa.table({"file": pa.array([], pa.string()), "pos": pa.array([], pa.int64())})
+    return pa.concat_tables(parts)
+
+
 def contract_facts(t: Table) -> list[Fact]:
     """The contract the table's properties record, if every snapshot of the
     table was written under it."""
@@ -269,6 +315,34 @@ class IcebergSource(Pipeable):
         v = _version(s)
         files = _live_files(t, s)
         return Snapshot(v, _read(t, s), self._facts(t, files, f"file stats @v{v}"))
+
+    def _native(self, version: int | None = None) -> ScanSnapshot | None:
+        """The snapshot at `version` as the Parquet files DuckDB reads
+        itself (#173), with their position deletes, and the same facts as
+        `snapshot`. None where reading the files by column name may not give
+        pyiceberg's rows (`_by_name`), and for equality deletes, other file
+        formats and object stores."""
+        t = self.table()
+        s = t.current_snapshot() if version is None else _at(t, version)
+        if (version is not None and s is None and version != 0) or not _by_name(t):
+            return None
+        files: list[str] = []
+        deletes: dict[str, set[str]] = {}
+        for task in _tasks(t, s).values():
+            local = local_path(task.file.file_path)
+            if local is None or task.file.file_format != FileFormat.PARQUET:
+                return None
+            files.append(local)
+            for d in task.delete_files:
+                if d.content != DataFileContent.POSITION_DELETES:
+                    return None
+                if d.file_format != FileFormat.PARQUET or local_path(d.file_path) is None:
+                    return None
+                deletes.setdefault(d.file_path, set()).add(task.file.file_path)
+        v = _version(s)
+        deleted = _deleted_rows(deletes) if deletes else None
+        scan = Scan(tuple(sorted(files)), _arrow_schema(t), deleted, None, f"{self.name}@v{v}")
+        return ScanSnapshot(v, scan, self._facts(t, _live_files(t, s), f"file stats @v{v}"))
 
     def contract(self) -> Contract | None:
         """The contract the table property `sverify.contract` records, or

@@ -14,11 +14,12 @@ from __future__ import annotations
 import functools
 import json
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import duckdb
 import pyarrow as pa
 
+from sverify._scan import Scan
 from sverify.sql import to_sql
 from sverify.sql.duckdb import DUCKDB
 
@@ -34,26 +35,42 @@ _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 
 
-def run(plan: str | dict, tables: Mapping[str, pa.Table], *, guards: bool = True) -> pa.Table:
-    """Run a Substrait JSON plan on DuckDB over `tables`.
+def run(
+    plan: str | dict, tables: Mapping[str, pa.Table | Scan], *, guards: bool = True
+) -> pa.Table:
+    """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or
+    `Scan`s of Parquet files, which DuckDB reads itself.
 
     One in-process database serves every call (opening one costs ~10 ms); the
     tables are created for the call and dropped after it. `guards=False`:
     see `sverify.sql.to_sql`."""
     global _DB
     sql = _sql(plan, guards) if isinstance(plan, str) else to_sql(plan, DUCKDB, guards=guards)
+    # `to_sql` numbers a table's rows with `rowid` where the plan needs their order.
+    ordered = DUCKDB.row_ordinal() in sql
     with _LOCK:
         if _DB is None:
             _DB = duckdb.connect()
         db = _DB
+        drops: list[Callable[[], None]] = []
         try:
             for name, table in tables.items():
+                if isinstance(table, Scan):
+                    # A view reads the files where the plan scans the table;
+                    # a table holds them in file order when `rowid` is needed.
+                    drops.append(table.attach(db, name, table=ordered))
+                    continue
                 # A real table (not a view on the Arrow data): `rowid` numbers its
                 # rows in insertion order, which `to_sql` uses as the scan order.
                 db.register("__sverify_input", table)
                 db.execute(f"CREATE TABLE {DUCKDB.quote(name)} AS SELECT * FROM __sverify_input")
                 db.unregister("__sverify_input")
+                drops.append(functools.partial(_drop, db, name))
             return db.sql(sql).to_arrow_table()
         finally:
-            for name in tables:
-                db.execute(f"DROP TABLE IF EXISTS {DUCKDB.quote(name)}")
+            for drop in drops:
+                drop()
+
+
+def _drop(db: duckdb.DuckDBPyConnection, name: str) -> None:
+    db.execute(f"DROP TABLE IF EXISTS {DUCKDB.quote(name)}")

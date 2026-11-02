@@ -92,11 +92,9 @@ def mutate(fmt: str, root: Path, n: int) -> None:
         write_deltalake(root / "orders", new, mode="append")
         DeltaTable(str(root / "orders")).delete(where)
     else:
-        from pyiceberg.expressions import And, GreaterThanOrEqual, LessThan
-
         t = catalog(root).load_table("db.orders")
         t.append(new)
-        t.delete(And(GreaterThanOrEqual("id", lo), LessThan("id", lo + k)))
+        t.delete(where)
 
 
 def peak_mb() -> float:
@@ -176,7 +174,7 @@ def main(argv: list[str]) -> None:
                     continue
                 print(f"{fmt:8} {n:>11} rows: setup {time.perf_counter() - t:7.1f} s", flush=True)
                 result = run(ctx, measure, (fmt, root, n), float(timeout))
-                if isinstance(result, str):
+                if result is None or isinstance(result, str):
                     print(f"{fmt:8} {n:>11} rows: {result}", flush=True)
                 else:
                     for name, secs, mb in result:
