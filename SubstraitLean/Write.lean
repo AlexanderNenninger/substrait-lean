@@ -42,7 +42,12 @@ def coreFns : List (Nat × String) := [
   (116, "bitwise_shift_left"), (117, "bitwise_shift_right"),
   -- sverify's own: a shim's guards (#185), which the SQL printers write as
   -- `error(…)` and `x IS NOT NULL`.
-  (118, "sverify_raise"), (119, "sverify_is_number")]
+  (118, "sverify_raise"), (119, "sverify_is_number"),
+  -- sverify's own: a decimal divided by an integer, rounded half away from
+  -- zero (a decimal `AVG` over a window, #27).
+  (120, "sverify_decimal_div"),
+  -- `abs` of a decimal (`Parse.decimalCall`), #27.
+  (121, "abs")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -436,6 +441,23 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- Decimals (#27): see above. The operands of `+`, `-` and comparisons
   -- are written without their `upscale`.
   | .un (.decimal p s) (.lit (.int m)) => decimalLit p s m
+  -- `abs(a)`: `Parse.decimalCall` makes it `CASE WHEN a < 0 THEN 0 - a ELSE a END`.
+  | .un (.decimal p s) (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .dsub (.lit (.int 0)) a') a'') =>
+    let wa := writeExpr cols (wkind cols a) a
+    if a == a' && a == a'' then call 121 [wa]
+    else
+      let zero := writeLit .int (.int 0)
+      castTo (decType p s) (obj [("ifThen", obj [
+        ("ifs", Json.arr #[obj [("if", call 8 [wa, zero]),
+          ("then", call 5 [zero, writeExpr cols (wkind cols a') a'])]]),
+        ("else", writeExpr cols (wkind cols a'') a'')])])
+  -- `a / b` at scale `s`, rounded half away from zero (`Parse.decimalCall`'s
+  -- `sverify_decimal_div`): a decimal `AVG` over a window.
+  | .un (.dkind p s) (.bin .ddiv (.bin .dmul a (.lit (.int n))) b) =>
+    callTyped 120 [upscaled n (writeExpr cols (wkind cols a) a), writeExpr cols (wkind cols b) b]
+      (decType p s)
+  | .un (.dkind p s) (.bin .ddiv a b) =>
+    callTyped 120 [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.bin .dadd (.bin .dmul x (.lit (.int n))) b) =>
     let wa := upscaled n (writeExpr cols (wkind cols x) x)
     callTyped 4 [wa, writeExpr cols (wkind cols b) b] (decType p s)

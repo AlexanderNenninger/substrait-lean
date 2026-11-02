@@ -776,8 +776,118 @@ theorem window_tiebreak {part : List Nat} {sort : List SortKey} {fns : List WinF
   rw [this]
   exact (hp.trans hp₀.symm).map _
 
-/-- Does every window's partition and sort columns contain a derived key of
-its input? -/
+/-! ## Windows that do not depend on ties
+
+A `COUNT` or a `SUM` of integers (or decimals) over the whole partition sees
+the partition's rows as a bag: however ties are broken, every row gets the
+same value (`window_orderFree`). Such a window needs no key. -/
+
+/-- A window function whose value does not depend on how ties are broken. -/
+def WinFn.orderFree : WinFn → Bool
+  | .agg m _ fr => decide ((m.fn = .count ∨ m.fn = .sum) ∧ m.distinct = false ∧
+      fr.lo = .unboundedPreceding ∧ fr.hi = .unboundedFollowing)
+  | _ => false
+
+private theorem intSum_perm_bag {l l' : List Value} (h : l.Perm l') : intSum l = intSum l' := by
+  induction h with
+  | nil => rfl
+  | cons x _ ih => cases x <;> simp [intSum, ih]
+  | swap x y l => cases x <;> cases y <;> simp [intSum] <;> omega
+  | trans _ _ ih₁ ih₂ => exact ih₁.trans ih₂
+
+private theorem Measure.inputs_perm_bag {m : Measure} (hd : m.distinct = false) {rows rows' : Relation}
+    (h : rows.Perm rows') : (m.inputs rows).Perm (m.inputs rows') := by
+  have hk : (m.kept rows).Perm (m.kept rows') := by
+    unfold Measure.kept; split
+    · exact h
+    · exact h.filter _
+  simp only [Measure.inputs, hd, Bool.false_eq_true, ↓reduceIte]
+  exact (hk.map _).filter _
+
+/-- A `COUNT` or a `SUM` without `DISTINCT` sees its rows as a bag. -/
+private theorem Measure.eval_perm_bag {m : Measure} (hf : m.fn = .count ∨ m.fn = .sum)
+    (hd : m.distinct = false) {rows rows' : Relation} (h : rows.Perm rows') :
+    m.eval rows = m.eval rows' := by
+  have hc : m.fn ≠ .collect := by rcases hf with hf | hf <;> rw [hf] <;> decide
+  rw [Measure.eval_eq hc, Measure.eval_eq hc]
+  have hp := Measure.inputs_perm_bag hd h
+  rcases hf with hf | hf
+  · rw [hf]; simp [AggFn.apply, hp.length_eq]
+  · rw [hf]
+    cases hi : m.inputs rows with
+    | nil => rw [hi] at hp; rw [List.nil_perm.mp hp]
+    | cons v vs =>
+      rw [hi] at hp
+      cases hi' : m.inputs rows' with
+      | nil => rw [hi'] at hp; exact absurd hp.length_eq (by simp)
+      | cons w ws => rw [hi'] at hp; simp only [AggFn.apply, intSum_perm_bag hp]
+
+/-- The frame of the whole partition. -/
+theorem Frame.rows_all {fr : Frame} (hlo : fr.lo = .unboundedPreceding)
+    (hhi : fr.hi = .unboundedFollowing) (sort : List SortKey) (pb : List Row) (x : Row)
+    (pa : List Row) : fr.rows sort pb x pa = pb ++ x :: pa := by
+  unfold Frame.rows
+  simp only [hlo, hhi]
+  split
+  · exact List.filter_eq_self.mpr fun _ _ => rfl
+  · rw [List.filter_eq_self.mpr fun ⟨_, j⟩ hj => by
+        have := List.snd_lt_of_mem_zipIdx hj
+        simp only [Nat.add_zero] at this
+        simp only [Bool.and_eq_true, decide_eq_true_eq]
+        omega]
+    exact List.zipIdx_map_fst 0 _
+
+/-- An order-free function's value at `x`: from the rows of `x`'s partition. -/
+def WinFn.wholeValue (part : List Nat) (all : List Row) (x : Row) : WinFn → Value
+  | .agg m _ _ => m.eval (all.filter (samePart part x))
+  | _ => .null
+
+theorem WinFn.value_orderFree {f : WinFn} (hf : f.orderFree = true) (part : List Nat)
+    (b a : List Row) (x : Row) : f.value part b a x = f.wholeValue part (b ++ x :: a) x := by
+  match f, hf with
+  | .agg m sort fr, hf =>
+    simp only [WinFn.orderFree, decide_eq_true_eq] at hf
+    simp only [WinFn.value, WinFn.valueIn, WinFn.wholeValue,
+      Frame.rows_all hf.2.2.1 hf.2.2.2, List.filter_append, List.filter_cons, samePart_refl,
+      ↓reduceIte]
+
+theorem WinFn.wholeValue_perm {f : WinFn} (hf : f.orderFree = true) (part : List Nat)
+    {all all' : List Row} (h : all.Perm all') (x : Row) :
+    f.wholeValue part all x = f.wholeValue part all' x := by
+  match f, hf with
+  | .agg m _ _, hf =>
+    simp only [WinFn.orderFree, decide_eq_true_eq] at hf
+    exact Measure.eval_perm_bag hf.1 hf.2.1 (h.filter _)
+
+theorem windowRows_orderFree {part : List Nat} {fns : List WinFn}
+    (hf : fns.all WinFn.orderFree = true) :
+    ∀ (pre l : List Row), windowRows part fns pre l =
+      l.map fun x => x ++ fns.map (·.wholeValue part (pre ++ l) x)
+  | _, [] => rfl
+  | pre, x :: l => by
+    simp only [windowRows, List.map_cons]
+    rw [windowRows_orderFree hf (pre ++ [x]) l]
+    simp only [List.append_assoc, List.cons_append, List.nil_append]
+    congr 1
+    exact congrArg (x ++ ·) (List.map_congr_left fun f hfm =>
+      WinFn.value_orderFree (List.all_eq_true.mp hf f hfm) part pre l x)
+
+/-- **Ties don't matter** when every window function is order-free: any
+arrangement `s` of the input gives the same rows as `Rel.eval`'s stable sort. -/
+theorem window_orderFree {part : List Nat} {sort : List SortKey} {fns : List WinFn}
+    {rows : Relation} (hf : fns.all WinFn.orderFree = true) {s : List Row} (hp : s.Perm rows) :
+    (windowRows part fns [] s).Perm (windowEval part sort fns rows) := by
+  unfold windowEval
+  have hp' : s.Perm (rows.mergeSort (sortLe sort)) := hp.trans (List.mergeSort_perm rows _).symm
+  rw [windowRows_orderFree hf, windowRows_orderFree hf]
+  simp only [List.nil_append]
+  rw [List.map_congr_left fun x _ => congrArg (x ++ ·) (List.map_congr_left fun f hfm =>
+    WinFn.wholeValue_perm (List.all_eq_true.mp hf f hfm) part hp' x)]
+  exact hp'.map _
+
+/-- Is every window deterministic: do its partition and sort columns contain
+a derived key of its input (`Rel.window_deterministic`), or are its functions
+order-free (`window_orderFree`)? -/
 def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
@@ -785,8 +895,9 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
   | .aggregate r _ _ | .unnest r _ => r.windowsTotal cat A F K
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
-  | .window r part sort _ =>
-      r.windowsTotal cat A F K && (r.keys cat A F K).any fun k => k.all (· ∈ part ++ sort.map (·.col))
+  | .window r part sort fns =>
+      r.windowsTotal cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
+        fns.all WinFn.orderFree)
 
 /-- The check at one window: then the engine's tie-breaking is irrelevant. -/
 theorem Rel.window_deterministic {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}

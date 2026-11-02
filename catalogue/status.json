@@ -108,18 +108,13 @@
   }
  },
  "fin-running-balance": {
-  "checker": "rejected",
-  "detail": "error: window aggregates of expressions are not supported; use a column",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-velocity-check": {
@@ -368,10 +363,11 @@
   },
   "contract": {
    "proved": true,
-   "guard_free": false
+   "guard_free": false,
+   "deterministic": false
   },
   "verified_sql": {
-   "duckdb": "yes"
+   "duckdb": "no"
   }
  },
  "h2o-groupby-q9": {
@@ -1127,43 +1123,68 @@
   }
  },
  "tpcds-q51": {
-  "checker": "rejected",
-  "detail": "error: window aggregates of expressions are not supported; use a column",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "detail": "error: max of doubles is not supported",
-   "datafusion": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": true,
+   "deterministic": false,
+   "unproved": [
+    "(_.web_cumulative > _.store_cumulative)",
+    "(_.store_cumulative >= 0)"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpcds-q89": {
-  "checker": "rejected",
-  "detail": "error: avg of DECIMAL over a window is not supported yet (#27)",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "overflow: DECIMAL_22_6((($6 * 10000) - $7))",
+    "overflow: DECIMAL_22_6(IF (DECIMAL_22_6((($6 * 10000) - $7)) < 0) THEN (0 - DECIMAL_22_6((($6 * 10000) - $7))) ELSE DECIMAL_22_6((($6 * 10000) - $7)))",
+    "division by zero: (DECIMAL_TO_DOUBLE_6(DECIMAL_22_6(IF (DECIMAL_22_6((($6 * 10000) - $7)) < 0) THEN (0 - DECIMAL_22_6((($6 * 10000) - $7))) ELSE DECIMAL_22_6((($6 * 10000) - $7)))) /. DECIMAL_TO_DOUBLE_6($7))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpcds-q98": {
-  "checker": "rejected",
-  "detail": "error: window aggregates of expressions are not supported; use a column",
+  "checker": "verified",
+  "incremental": false,
   "datafusion": "runs",
-  "as_double": {
-   "checker": "verified",
-   "incremental": false,
-   "datafusion": "runs",
-   "engines": {
-    "duckdb": "runs",
-    "polars": "runs",
-    "snowflake": "refused: snowflake does not add a frame's doubles in order, and the rounding depends on it"
-   }
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "overflow: DECIMAL_37_2(($5 * 100))",
+    "division by zero: (DECIMAL_TO_DOUBLE_2(DECIMAL_37_2(($5 * 100))) /. DECIMAL_TO_DOUBLE_2($6))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q01": {

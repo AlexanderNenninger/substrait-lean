@@ -62,9 +62,10 @@ meet the contracts' preconditions.
 For a query with a contract, the probe records `contract` (whether `verify`
 proves it, whether the plan is `guard_free`, and whether the synthetic tables
 meet the preconditions) and `verified_sql.duckdb`. It is `yes` when every
-postcondition is proved, the synthetic tables meet the preconditions, and
-DuckDB gives the reference's rows on them. (`proved` additionally rules out
-runtime errors.) Two theorems in
+postcondition is proved, no window's rows depend on how ties are broken
+(`deterministic`: `Rel.window_deterministic`, `window_orderFree`), the
+synthetic tables meet the preconditions, and DuckDB gives the reference's rows
+on them. (`proved` additionally rules out runtime errors.) Two theorems in
 `SubstraitLean/Profile.lean` then say what DuckDB does on *every* database
 that meets the preconditions:
 
