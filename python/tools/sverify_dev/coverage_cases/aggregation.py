@@ -109,12 +109,8 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-<<<<<<< HEAD
-    # DuckDB only until the generated lowerings (#271).
-    "cov, corr": {"polars": "see #271", "snowflake": "see #271", "spark": "see #271"},
-=======
+    "cov, corr": DUCKDB_ONLY,
     "first, last ordered": DUCKDB_ONLY,
->>>>>>> origin/main
     "count, max, mean": NO_ROW_ORDER,
     "scalar subquery": NO_ROW_ORDER,
     "collect": NO_LISTS,
@@ -124,19 +120,13 @@ REFUSED: dict[str, dict[str, str]] = {
 
 UNORDERED_LISTS = {"collect"}
 
-<<<<<<< HEAD
 APPROXIMATE = {"std", "cov, corr"}
 
 NO_DUCKDB_SQL = {
     # CORR is NULL for fewer than two pairs or a flat side (the SQL standard);
     # DuckDB's own CORR gives NaN there (#54).
     "cov, corr": "DuckDB's CORR gives NaN where the reference gives NULL",
-=======
-APPROXIMATE = {"std"}
-
-NO_DUCKDB_SQL = {
     # Rows tied in the order go in Lean's list order in the written plan; in
     # Ibis's own SQL, in DuckDB's (`Rel.windowsTotal` reports it, #55).
     "first, last ordered": "ties in ORDER BY are the engine's",
->>>>>>> origin/main
 }
