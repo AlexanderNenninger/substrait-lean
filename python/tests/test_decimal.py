@@ -11,11 +11,13 @@ the plans.
 import json
 from decimal import Decimal as D
 
+import ibis
 import pyarrow as pa
 import pytest
 
 import sverify as sv
 from sverify.engine import connect, put_table, run_checker, substrait_json
+from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
 
 pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
@@ -94,14 +96,25 @@ def test_sum_min_max(con):
 
 
 def test_avg_rounds_half_away_from_zero(con):
-    """`DECIMAL(10, 2)` averages are `DECIMAL(14, 6)`: 0.02 / 3 is 0.006667."""
-    sql = "SELECT k, avg(x) AS v, sum(x) AS s, count(x) AS n FROM g GROUP BY k ORDER BY k"
-    assert lean(con, sql) == [
+    """An `AVG` of a `DECIMAL(10, 2)` with a decimal result is a
+    `DECIMAL(14, 6)`, rounded half away from zero: 0.02 / 3 is 0.006667. Ibis
+    types it so; DuckDB's SQL types it as a DOUBLE: the sum by the count."""
+    g = ibis.table(SCHEMAS["g"], name="g")
+    expr = g.group_by("k").aggregate(v=g.x.mean(), s=g.x.sum(), n=g.x.count()).order_by("k")
+    plan = inline_tables(json.loads(to_substrait_json(expr)), ROWS)
+    rows = lean_values(json.dumps(plan))
+    assert [tuple(str(v) if isinstance(v, D) else v for v in r) for r in rows] == [
         (1, "0.006667", "0.02", 3),
         (2, "-0.050000", "-0.05", 1),
         (3, None, None, 0),
     ]
-    assert lean(con, "SELECT avg(x) AS v FROM g") == [("-0.007500",)]
+    sql = "SELECT k, avg(x) AS v, sum(x) AS s, count(x) AS n FROM g GROUP BY k ORDER BY k"
+    assert lean(con, sql) == [
+        (1, 0.006667, "0.02", 3),
+        (2, -0.05, "-0.05", 1),
+        (3, None, None, 0),
+    ]
+    assert lean(con, "SELECT avg(x) AS v FROM g") == [(-0.0075,)]
 
 
 def test_avg_over_a_window(con):
