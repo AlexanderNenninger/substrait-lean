@@ -48,6 +48,7 @@ def BinFn.render : BinFn → String
   | .dadd => "+" | .dsub => "-" | .dmul => "*" | .ddiv => "/ROUND"
   | .bit op => match op with
     | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
+  | .pair => "PAIR"
 
 def HoFn.name : HoFn → String
   | .anyMatch => "ANY_MATCH" | .allMatch => "ALL_MATCH" | .transform => "TRANSFORM"

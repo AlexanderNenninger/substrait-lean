@@ -50,7 +50,10 @@ def coreFns : List (Nat × String) := [
   (121, "abs"),
   -- sverify's own: the remainder of doubles, C's `fmod` (#256). Substrait's
   -- `modulus` has no double impl.
-  (122, "sverify_fmod")]
+  (122, "sverify_fmod"),
+  -- sverify's own: two values as the argument of a two-argument aggregate
+  -- (`COVAR_SAMP(x, y)`, #54), written as the measure's two arguments.
+  (123, "sverify_pair")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -140,7 +143,7 @@ def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .fmod => 122 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
-  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11
+  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11 | .pair => 123
   | .bit op => match op with
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
@@ -162,10 +165,10 @@ theorem UnFn.anchor_declared (f : UnFn) :
   cases f <;> first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
 
 theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first
-    | exact of_decide_eq_true rfl
-    | (rename_i a b; cases a <;> cases b <;> decide)
-    | (rename_i op; cases op <;> decide)
+  cases f
+  case trim l r => cases l <;> cases r <;> decide
+  case bit op => cases op <;> decide
+  all_goals exact of_decide_eq_true rfl
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 

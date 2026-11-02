@@ -697,6 +697,8 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       ⟨mismatch, none,
        intEq a b || (a.tt && b.tt) || (a.ff && b.ff) || (a.str && b.str),
        intNe a b || (a.tt && b.ff) || (a.ff && b.tt) || (a.str && b.str), false⟩
+  -- A list, which the abstraction does not look into, or `NULL`.
+  | .pair, _, _ => AVal.top
   | .lt, a, b =>
       -- Two strings may compare either way; FALSE < TRUE.
       let s := a.str && b.str
@@ -1239,6 +1241,7 @@ theorem AVal.mem_ofLt3 {a : AVal} {o : Option Bool} (hn : a.null = true)
 theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (hb : b.Mem w) :
     (f.abs a b).Mem (f.apply v w) := by
   cases f
+  case pair => exact AVal.mem_top _
   case add => exact arith_sound Bound.mem_add (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case sub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dateDiff => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
