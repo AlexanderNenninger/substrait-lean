@@ -331,7 +331,15 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
   | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
 
-def writeLit (k : WKind) (v : Value) : Json := obj [("literal", writeLitBody k v)]
+/-- A literal of kind `k`. An integer `NULL` is `CAST(NULL AS BIGINT)`: a bare
+`i64` null is what the writer gives a `NULL` of unknown kind, which readers
+do not take as a type. -/
+def writeLit (k : WKind) (v : Value) : Json :=
+  match k, v with
+  | .int, .null => obj [("cast", obj [("type", i64Type),
+      ("input", obj [("literal", obj [("null", i64Type)])]),
+      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | _, _ => obj [("literal", writeLitBody k v)]
 
 /-- An interval of `m` months. -/
 def writeMonths (m : Int) : Json :=
@@ -345,7 +353,8 @@ def valuesLit (ty : Json) (v : Value) : Json :=
   let narrow := ["i8", "i16", "i32"].find? fun k => (ty.getObjVal? k).toOption.isSome
   match narrow, v with
   | some k, .int i => obj [("literal", obj [(k, toJson i)])]
-  | _, _ => writeLit (.ofKind (Parse.typeKind ty)) v
+  -- A literal, which a virtual table's fields must be.
+  | _, _ => obj [("literal", writeLitBody (.ofKind (Parse.typeKind ty)) v)]
 
 /-- A double the model has one zero and one NaN for, as IEEE engines compute
 it: `nanvl(x + 0.0, NaN)` makes `-0.0` zero and every NaN the positive one.

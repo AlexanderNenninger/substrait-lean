@@ -531,11 +531,22 @@ def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
         | .min | .max => m.arg.bits bs
         | _ => 64
 
+/-- Does the expression read a column? One that doesn't is built from
+literals, whose kinds say nothing (a timestamp literal is an integer). -/
+def _root_.Substrait.Expr.readsField : Expr → Bool
+  | .lit _ => false
+  | .field _ => true
+  | .un _ a => a.readsField
+  | .bin _ a b => a.readsField || b.readsField
+  | .ifThen c t e => c.readsField || t.readsField || e.readsField
+  | .hof _ l _ => l.readsField
+
 /-- The width of an argument: a literal's own type, or the expression's. -/
 def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   match field? j "literal" with
   | some l => if (field? l "null").isSome then 8 else intBits l
-  | none => e.bits cols
+  -- Arithmetic on constants alone is 64-bit, as their own types are.
+  | none => if e.readsField then e.bits cols else 64
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -817,16 +828,6 @@ def stringFns : List (String × List Nat) :=
 
 /-- Functions on booleans. -/
 def booleanFns : List String := ["and", "or", "not", "xor"]
-
-/-- Does the expression read a column? One that doesn't is built from
-literals, whose kinds say nothing (a timestamp literal is an integer). -/
-def _root_.Substrait.Expr.readsField : Expr → Bool
-  | .lit _ => false
-  | .field _ => true
-  | .un _ a => a.readsField
-  | .bin _ a b => a.readsField || b.readsField
-  | .ifThen c t e => c.readsField || t.readsField || e.readsField
-  | .hof _ l _ => l.readsField
 
 def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
   let base := baseName name
@@ -2236,9 +2237,11 @@ def kindSchemaType : Kind → Json
   | .tod => Json.mkObj [("precisionTime", Json.mkObj [("precision", 6)])]
   | .str => Json.mkObj [("string", Json.mkObj [])]
   | .bool => Json.mkObj [("bool", Json.mkObj [])]
+  | .int => Json.mkObj [("i64", Json.mkObj [])]
   | _ => Json.mkObj []
 
-#guard [Kind.float, .time, .date, .tod, .str, .bool].all fun k => typeKind (kindSchemaType k) == k
+#guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
+  typeKind (kindSchemaType k) == k
 
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
@@ -2251,7 +2254,11 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
   let refined : List Kind := (ejs.zip es).map fun (j, e) =>
     let k := declaredKind fns j
     if [Kind.int, .other].contains (e.kind cols) &&
-        [Kind.float, .time, .date, .tod, .str, .bool].contains k then k else Kind.other
+        [Kind.float, .time, .date, .tod, .str, .bool].contains k then k
+    -- A typed `NULL` of an integer type, which engines otherwise read as
+    -- untyped (`CAST(NULL AS BIGINT)` under `DISTINCT`).
+    else if e.kind cols == .other && k == .int then k
+    else Kind.other
   if prev.isNone && refined.all (· == .other) then return
   let refined := match prev with
     | some (_, s) =>
