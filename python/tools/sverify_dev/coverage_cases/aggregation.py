@@ -40,6 +40,12 @@ CASES: list[Case] = [
     ),
     case(
         "aggregation",
+        "any, all",
+        V,
+        lambda: t.group_by("name").aggregate(a=(t.qty > 0).any(), b=t.flag.all()),
+    ),
+    case(
+        "aggregation",
         "bit_and, bit_or, bit_xor",
         V,
         lambda: t.group_by("name").aggregate(

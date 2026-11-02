@@ -33,10 +33,14 @@ where DuckDB and the reference (#185, #209) differ:
   DuckDB differs.
 
 The subset (#239): SELECT, WHERE, arithmetic, comparisons, AND/OR/NOT,
-IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE, `date_trunc`, a timestamp
-plus or minus a constant interval; inner, left and
-cross joins
-and subqueries in FROM; GROUP BY with `count`, `sum`, `avg`, `min` and
+IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE; dates and timestamps
+(`date_trunc`, date parts: `EXTRACT`, `date_part`, `year()`, …, a date or
+timestamp plus or minus a constant interval, `DATE - DATE`, `datediff`);
+strings (`length`, `substring`, `trim`, `strpos`, `contains`, `starts_with`,
+LIKE and ILIKE, `||`, `concat`, `replace`, `repeat`, `left`, `upper`,
+`lower`); inner, left, right, full, semi, anti and cross joins; subqueries
+in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
+CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
 `max`, HAVING; DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
 functions (`Anonymous`) included, raises `Unsupported` saying what.
 """
@@ -68,6 +72,7 @@ from sverify.plan_json import (
     anchor,
     call,
     cast_json,
+    chain,
     compiling,
     distinct_rel,
     emit_rel,
@@ -85,6 +90,9 @@ from sverify.plan_json import (
 __all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
 
 DIALECT = "duckdb"
+
+#: DuckDB's functions SQLGlot parses as `Anonymous`, which the lift reads.
+_KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 
 
 # --------------------------------------------------------------------------
@@ -173,8 +181,9 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
         raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
-    if (f := tree.find(sge.Anonymous)) is not None:
-        raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
+    for f in tree.find_all(sge.Anonymous):
+        if f.name.lower() not in _KNOWN:
+            raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
     _check_aliases(tree, schemas)
     catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
@@ -231,11 +240,19 @@ _NO_VALUE = object()
 @dataclasses.dataclass
 class E:
     """A lifted expression: its JSON, its type in the plan, and its value if
-    it is a constant (which coercions write as a literal of the new type)."""
+    it is a constant (which coercions write as a literal of the new type).
+
+    `midnight`: DuckDB types it a TIMESTAMP, but it is always a date at
+    midnight (`DATE + INTERVAL 1 DAY`, `date_trunc` of a DATE), so the plan
+    holds the date. It compares, truncates and has date parts exactly as
+    the timestamp; only where a timestamp is needed (an output column, a
+    comparison with a timestamp column) is it refused, for Lean has no cast
+    of a DATE column to a timestamp yet (#240)."""
 
     json: Json
     type: Any
     value: Any = _NO_VALUE
+    midnight: bool = False
 
     @property
     def constant(self) -> bool:
@@ -269,6 +286,22 @@ _AGGREGATES: dict[type, str] = {
     sge.Max: "max",
 }
 
+#: Joins with a condition, by SQLGlot's (side, kind).
+_JOIN_TYPES = {
+    ("", ""): "JOIN_TYPE_INNER",
+    ("", "INNER"): "JOIN_TYPE_INNER",
+    ("LEFT", ""): "JOIN_TYPE_LEFT",
+    ("LEFT", "OUTER"): "JOIN_TYPE_LEFT",
+    ("RIGHT", ""): "JOIN_TYPE_RIGHT",
+    ("RIGHT", "OUTER"): "JOIN_TYPE_RIGHT",
+    ("FULL", ""): "JOIN_TYPE_OUTER",
+    ("FULL", "OUTER"): "JOIN_TYPE_OUTER",
+    ("", "SEMI"): "JOIN_TYPE_LEFT_SEMI",
+    ("LEFT", "SEMI"): "JOIN_TYPE_LEFT_SEMI",
+    ("", "ANTI"): "JOIN_TYPE_LEFT_ANTI",
+    ("LEFT", "ANTI"): "JOIN_TYPE_LEFT_ANTI",
+}
+
 _COMPARISONS: dict[type, str] = {
     sge.EQ: "equal",
     sge.NEQ: "not_equal",
@@ -282,6 +315,7 @@ _ARITHMETIC: dict[type, str] = {sge.Add: "add", sge.Sub: "subtract", sge.Mul: "m
 
 #: The arguments of a SELECT the lift reads; any other one set is refused.
 _SELECT_ARGS = {
+    "with_",
     "expressions",
     "from_",
     "joins",
@@ -296,7 +330,6 @@ _SELECT_ARGS = {
 
 #: The clauses of the queries SQLGlot reads that the subset lacks, by name.
 _CLAUSES = {
-    "with_": "CTEs (WITH)",
     "qualify": "QUALIFY",
     "windows": "WINDOW",
     "laterals": "LATERAL",
@@ -349,6 +382,10 @@ class _Lift:
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
+        # The CTEs in scope, by name, and the scopes of the queries a
+        # subquery is in (which it may not read: no correlated subqueries).
+        self.ctes: dict[str, sge.Expression] = {}
+        self.outer: list[list[Column]] = []
 
     # -- relations ---------------------------------------------------------
 
@@ -358,6 +395,20 @@ class _Lift:
             return self.query(node.this)
         if not isinstance(node, sge.Select):
             raise Unsupported(f"{type(node).__name__} is not supported; only SELECT queries are")
+        if (with_ := node.args.get("with_")) is not None:
+            # CTEs are inlined where they are read; each sees the ones before.
+            if with_.args.get("recursive"):
+                raise Unsupported("WITH RECURSIVE is not supported")
+            saved = self.ctes
+            self.ctes = dict(saved)
+            for cte in with_.expressions:
+                self.ctes[_normalized(cte.alias)] = cte.this
+            body = node.copy()
+            body.set("with_", None)
+            try:
+                return self.query(body)
+            finally:
+                self.ctes = saved
         for arg, what in _CLAUSES.items():
             if node.args.get(arg):
                 raise Unsupported(f"{what} is not supported yet")
@@ -384,6 +435,9 @@ class _Lift:
 
         outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
         names = [e.alias_or_name for e in node.expressions]
+        outs = [
+            self.timestamp_of(e, n) if e.midnight else e for e, n in zip(outs, names, strict=True)
+        ]
         # Sort keys that are not output columns are computed after them, and
         # dropped after the sort.
         keys: list[Json] = []
@@ -413,6 +467,17 @@ class _Lift:
         if extra_keys:
             rel = emit_rel(rel, list(range(len(outs))))
         return rel, [Column(None, n, e.type) for n, e in zip(names, outs, strict=True)]
+
+    def timestamp_of(self, e: E, name: str) -> E:
+        """An output column DuckDB types a TIMESTAMP that the plan holds as a
+        date at midnight: a constant becomes the timestamp; a column needs a
+        cast Lean lacks."""
+        if e.constant:
+            return self.to(E(e.json, e.type, e.value), dt.timestamp(scale=6))
+        raise Unsupported(
+            f"output column {name} is a TIMESTAMP in DuckDB (a DATE at midnight), and Lean "
+            "has no cast of a DATE column to a timestamp yet (#240)"
+        )
 
     def output_index(
         self, key: sge.Expression, names: list[str], outs: list[sge.Expression]
@@ -452,21 +517,25 @@ class _Lift:
                 raise Unsupported("JOIN … USING is not supported")
             if kind == "CROSS" or (not side and not kind and on is None):
                 rel = {"cross": {"left": rel, "right": right}}
-            elif side in ("", "LEFT") and kind in ("", "INNER", "OUTER") and on is not None:
-                if side == "" and kind == "OUTER":
-                    raise Unsupported("FULL OUTER JOIN is not supported yet")
-                cond = self.condition(on, scope + cols)
-                how = "JOIN_TYPE_LEFT" if side == "LEFT" else "JOIN_TYPE_INNER"
-                rel = {"join": {"left": rel, "right": right, "expression": cond, "type": how}}
-            else:
+                scope = scope + cols
+                continue
+            how = _JOIN_TYPES.get((side, kind))
+            if how is None or on is None:
                 what = " ".join(w for w in (side, kind) if w) or "this"
                 raise Unsupported(f"{what} JOIN is not supported yet")
-            scope = scope + cols
+            cond = self.condition(on, scope + cols)
+            rel = {"join": {"left": rel, "right": right, "expression": cond, "type": how}}
+            # A semi or anti join keeps the left side's columns only.
+            if kind not in ("SEMI", "ANTI"):
+                scope = scope + cols
         return rel, scope
 
     def source(self, node: sge.Expression) -> tuple[Json, list[Column]]:
         """A relation in FROM or JOIN, and its columns under its alias."""
         alias = node.alias_or_name
+        if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
+            rel, cols = self.query(self.ctes[node.name])
+            return rel, [Column(alias, c.name, c.type) for c in cols]
         if isinstance(node, sge.Table):
             if (
                 node.args.get("db")
@@ -484,6 +553,14 @@ class _Lift:
             rel, cols = self.query(node.this)
             return rel, [Column(alias, c.name, c.type) for c in cols]
         raise Unsupported(f"FROM {_shown(node)} is not supported")
+
+    def nested(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, list[Column]]:
+        """A subquery inside an expression over `scope`."""
+        self.outer.append(scope)
+        try:
+            return self.query(node)
+        finally:
+            self.outer.pop()
 
     def aggregate(
         self,
@@ -508,7 +585,9 @@ class _Lift:
             "measures": [m for m, _ in measures],
         }
         types = [g.type for g in groups] + [t for _, t in measures]
-        bound = {k: E(field_ref(i), types[i]) for i, k in enumerate(keys)}
+        bound = {
+            k: E(field_ref(i), types[i], midnight=groups[i].midnight) for i, k in enumerate(keys)
+        }
         for j, a in enumerate(aggs):
             bound[a] = E(field_ref(len(keys) + j), types[len(keys) + j])
         cols = [Column(None, f"_{i}", t) for i, t in enumerate(types)]
@@ -529,6 +608,11 @@ class _Lift:
             if not isinstance(node, sge.Count) and node.expressions:
                 raise Unsupported(f"{_shown(node)} takes one argument")
             a = self.expr(arg, scope)
+            if a.midnight:
+                raise Unsupported(
+                    f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
+                    "TIMESTAMP is not supported yet (#240)"
+                )
             args = [a]
             t = a.type
             if name == "count":
@@ -592,6 +676,12 @@ class _Lift:
             raise Unsupported(f"column {_shown(node)} must be in GROUP BY or inside an aggregate")
         if type(node) in _AGGREGATES:
             raise Unsupported(f"aggregate {_shown(node)} is not allowed here")
+        if node.args.get("negate"):
+            # SQLGlot writes `s NOT LIKE p` as `LIKE` with `negate`.
+            inner = node.copy()
+            inner.set("negate", None)
+            e = self.expr(inner, scope, bound)
+            return E(_fn("not", [_bool_json(self, e)], dt.boolean), dt.boolean)
         rule = _RULES.get(type(node))
         if rule is None:
             raise Unsupported(f"{type(node).__name__} ({_shown(node)}) is not supported yet")
@@ -603,6 +693,12 @@ class _Lift:
             i for i, c in enumerate(scope) if c.name == name and (not table or c.table == table)
         ]
         if len(found) != 1:
+            if not found and any(
+                c.name == name and (not table or c.table == table) for o in self.outer for c in o
+            ):
+                raise Unsupported(
+                    f"correlated subqueries are not supported yet (it reads {_shown(node)})"
+                )
             what = "unknown" if not found else "ambiguous"
             raise Unsupported(f"{what} column {_shown(node)}")
         return E(field_ref(found[0]), scope[found[0]].type)
@@ -626,6 +722,11 @@ class _Lift:
                 return E(literal(v, t), t, v)
         if e.type.is_null():
             return E(literal(None, t), t, None)
+        if e.type.is_date() and t.is_timestamp():
+            raise Unsupported(
+                "a DATE column as a TIMESTAMP is not supported yet: Lean has no cast of a "
+                "DATE column to a timestamp (#240)"
+            )
         return E(cast_json(e.json, t), t)
 
     def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:
@@ -721,7 +822,12 @@ def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _ARITHMETIC[type(node)]
     a, b = sub(node.this), sub(node.expression)
     if a.type.is_interval() or b.type.is_interval():
-        return _timestamp_plus(name, a, b)
+        return _temporal_plus(name, a, b)
+    if name == "subtract" and a.type.is_date() and b.type.is_date():
+        # DuckDB's DATE - DATE is a BIGINT of days.
+        if a.midnight or b.midnight:
+            raise Unsupported("a TIMESTAMP minus a DATE (an interval) is not supported yet")
+        return E(_fn("date_diff", [a.json, b.json], dt.int64), dt.int64)
     if not (_numeric(a.type) or a.type.is_null()) or not (_numeric(b.type) or b.type.is_null()):
         raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
     t = lf.common([a, b], name, sum_digits=name != "multiply")
@@ -814,11 +920,36 @@ def _temporal_literals(es: list[E]) -> list[E]:
     temporal = [e.type for e in es if e.type.is_date() or e.type.is_timestamp()]
     if not temporal:
         return es
-    return [_temporal(e, temporal[0]) if e.type.is_string() and e.constant else e for e in es]
+    es = [_temporal(e, temporal[0]) if e.type.is_string() and e.constant else e for e in es]
+    # Next to a DATE column, a timestamp constant at midnight compares as its
+    # date (exactly); Lean cannot cast the column to a timestamp (#240).
+    if any(e.type.is_date() and not e.constant for e in es):
+        es = [_as_date(e) if e.type.is_timestamp() and e.constant else e for e in es]
+    return es
+
+
+def _as_date(e: E) -> E:
+    v = e.value
+    if v is None:
+        return E(literal(None, dt.date), dt.date, None)
+    if v.time() != dt_.time():
+        raise Unsupported(
+            f"comparing a DATE column with the timestamp {v} is not supported yet: Lean has "
+            "no cast of a DATE column to a timestamp (#240)"
+        )
+    return E(literal(v.date(), dt.date), dt.date, v.date())
 
 
 def _temporal(e: E, t: Any) -> E:
+    # DuckDB reads a date with spaces around it, and a timestamp with spaces
+    # before it, or after it if it has a time of day.
     text = e.value
+    if isinstance(text, str):
+        if t.is_date() or re.search(r"\d[ T]\d", text.strip()):
+            text = text.strip()
+        elif text != text.rstrip():
+            raise Unsupported(f"DuckDB cannot read {text!r} as a {t}")
+        text = text.lstrip()
     try:
         if t.is_date():
             v: Any = dt_.date.fromisoformat(text)
@@ -876,8 +1007,20 @@ def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
 
 
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
-    if node.args.get("query") is not None or node.args.get("unnest") is not None:
-        raise Unsupported("IN with a subquery is not supported yet")
+    if node.args.get("unnest") is not None:
+        raise Unsupported("IN UNNEST is not supported yet")
+    if (query := node.args.get("query")) is not None:
+        # SQL's NULLs: NULL when no value matches and the needle or a value
+        # is NULL (the model lifts it so, `Parse.liftSubquery`).
+        needle = sub(node.this)
+        rel, cols = lf.nested(query, scope)
+        if len(cols) != 1:
+            raise Unsupported("an IN subquery must return one column")
+        t = cols[0].type
+        if not needle.type.is_null() and not _same(lf.common([needle, E({}, t)], "IN"), t):
+            raise Unsupported(f"IN of a {needle.type} in a subquery of {t} is not supported yet")
+        x = lf.to(needle, t).json
+        return E({"subquery": {"inPredicate": {"needles": [x], "haystack": rel}}}, dt.boolean)
     es = [sub(node.this), *(sub(o) for o in node.expressions)]
     es = _temporal_literals(es)
     t = lf.common(es, "IN")
@@ -906,7 +1049,8 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
                 raise Unsupported(f"CASE WHEN {_shown(i.this)}: a {c.type}, not a condition")
             conds.append(lf.to(c, dt.boolean).json)
     pairs = [(c, lf.to(r, t).json) for c, r in zip(conds, results, strict=True)]
-    return E(if_then(pairs, lf.to(dflt, t).json), t)
+    midnight = t.is_date() and any(r.midnight for r in [*results, dflt])
+    return E(if_then(pairs, lf.to(dflt, t).json), t, midnight=midnight)
 
 
 def _coalesce(lf: _Lift, node: sge.Coalesce, sub: Sub, scope: list[Column]) -> E:
@@ -914,7 +1058,8 @@ def _coalesce(lf: _Lift, node: sge.Coalesce, sub: Sub, scope: list[Column]) -> E
     t = lf.common(es, "COALESCE")
     if t.is_null():
         t = dt.int32
-    return E(_fn("coalesce", [lf.to(e, t).json for e in es], t), t)
+    midnight = t.is_date() and any(e.midnight for e in es)
+    return E(_fn("coalesce", [lf.to(e, t).json for e in es], t), t, midnight=midnight)
 
 
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
@@ -952,6 +1097,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     if a.constant and a.value is not None and _numeric(a.type) and _numeric(t) and exact:
         with contextlib.suppress(Unsupported):
             return lf.to(a, t)
+    if a.constant and a.type.is_date() and t.is_timestamp():
+        return lf.to(a, t)  # the timestamp at the date's midnight
     return lf.to(E(a.json, a.type), t)
 
 
@@ -972,8 +1119,11 @@ def _date_trunc(lf: _Lift, node: sge.TimestampTrunc, sub: Sub, scope: list[Colum
     a = sub(node.this)
     ts = dt.timestamp(scale=6)
     if a.type.is_date():
-        # Lean reads the cast date as microseconds (#240).
-        raise Unsupported("date_trunc of a DATE is not supported yet")
+        # A DATE truncates to a date: to a day or less it is itself.
+        if name in ("second", "minute", "hour", "day"):
+            return E(a.json, dt.date, a.value, midnight=True)
+        out = _fn("date_trunc", [literal(name, dt.string), a.json], dt.date)
+        return E(out, dt.date, midnight=True)
     if not (a.type.is_timestamp() or a.type.is_null()):
         raise Unsupported(f"date_trunc of a {a.type} is not supported")
     if a.type.is_timestamp() and a.type.timezone is not None:
@@ -997,35 +1147,325 @@ _INTERVAL_UNITS = {
 
 
 def _interval(lf: _Lift, node: sge.Interval, sub: Sub, scope: list[Column]) -> E:
-    """A constant interval of one unit: `INTERVAL '10' MILLISECONDS`,
-    `INTERVAL 1 DAY`."""
+    """A constant interval: `INTERVAL '10' MILLISECONDS`, `INTERVAL 1 DAY`,
+    `INTERVAL '1 month 2 days'`."""
     unit, value = node.args.get("unit"), node.this
-    name = unit.name.lower().removesuffix("s") if isinstance(unit, sge.Var) else None
     text = value.this if isinstance(value, sge.Literal) else None
-    if name not in _INTERVAL_UNITS or text is None or not re.fullmatch(r"-?\d+", text.strip()):
+    if isinstance(unit, sge.Var) and text is not None:
+        text = f"{text} {unit.name}"
+    # `INTERVAL '1 month 2 days'`: integers, each with a unit.
+    pairs = re.findall(r"(-?\d+)\s*([a-z]+)", (text or "").lower())
+    rest = re.sub(r"(-?\d+)\s*([a-z]+)", "", (text or "").lower()).strip()
+    units = [u.removesuffix("s") for _, u in pairs]
+    if not pairs or rest or any(u not in _INTERVAL_UNITS for u in units):
         raise Unsupported(
-            f"{_shown(node)} is not supported yet; an interval is one integer and a unit "
-            f"({', '.join(_INTERVAL_UNITS)})"
+            f"{_shown(node)} is not supported yet; an interval is integers, each with a "
+            f"unit ({', '.join(_INTERVAL_UNITS)})"
         )
-    n = int(text.strip())
-    months, micros = _INTERVAL_UNITS[name]
-    parts = (n * months, n * micros)
+    parts = (0, 0)
+    for (n, _), u in zip(pairs, units, strict=True):
+        months, micros = _INTERVAL_UNITS[u]
+        parts = (parts[0] + int(n) * months, parts[1] + int(n) * micros)
     return E(interval_json(*parts), dt.Interval(unit=IntervalUnit.MICROSECOND), parts)
 
 
-def _timestamp_plus(name: str, a: E, b: E) -> E:
-    """A timestamp plus or minus a constant interval, a timestamp."""
+_DAY = 86_400_000_000
+
+
+def _add_months(d: dt_.date, months: int) -> dt_.date:
+    """`d` plus `months`, clamped to the month's last day, as DuckDB adds
+    (`DATE '2024-01-31' + INTERVAL 1 MONTH` is February 29)."""
+    y, m = divmod(d.year * 12 + d.month - 1 + months, 12)
+    last = (dt_.date(y + (m + 1) // 12, (m + 1) % 12 + 1, 1) - dt_.timedelta(days=1)).day
+    return dt_.date(y, m + 1, min(d.day, last))
+
+
+def _temporal_plus(name: str, a: E, b: E) -> E:
+    """A timestamp or date plus or minus a constant interval. DuckDB's
+    `DATE ± INTERVAL` is a TIMESTAMP; of whole days or months it is the date
+    at midnight, which the plan holds as a date (`E.midnight`)."""
     if name == "add" and a.type.is_interval():
         a, b = b, a
     if name == "multiply" or not b.type.is_interval() or not b.constant:
         raise Unsupported(f"{name} of {a.type} and {b.type} is not supported yet")
+    months, micros = b.value
+    if name == "subtract":
+        months, micros = -months, -micros
+    ts = dt.timestamp(scale=6)
     if a.type.is_date():
-        # DuckDB's DATE + INTERVAL is a TIMESTAMP; Lean misreads a cast date (#240).
-        raise Unsupported("a DATE plus an interval is not supported yet")
+        if a.constant:
+            if a.value is None:
+                return E(literal(None, ts), ts, None)
+            d = _add_months(a.value, months)
+            if micros % _DAY == 0:
+                d += dt_.timedelta(days=micros // _DAY)
+                return E(literal(d, dt.date), dt.date, d, midnight=True)
+            v = dt_.datetime.combine(d, dt_.time()) + dt_.timedelta(microseconds=micros)
+            return E(literal(v, ts), ts, v)
+        if micros % _DAY != 0:
+            raise Unsupported(
+                "a DATE column plus an interval of hours or less is a TIMESTAMP, which needs a "
+                "cast Lean lacks (#240)"
+            )
+        return E(_fn(name, [a.json, b.json], dt.date), dt.date, midnight=True)
     if not a.type.is_timestamp() or a.type.timezone is not None:
         raise Unsupported(f"{name} of {a.type} and an interval is not supported yet")
-    ts = dt.timestamp(scale=6)
     return E(_fn(name, [a.json, b.json], ts), ts)
+
+
+#: Date parts, by the names DuckDB's SQL gives them, as `Time.DatePart`'s.
+_DATE_PARTS = {
+    "year": "year",
+    "quarter": "quarter",
+    "month": "month",
+    "week": "week",
+    "weekofyear": "week",
+    "day": "day",
+    "dayofmonth": "day",
+    "dow": "dow",
+    "dayofweek": "dow",
+    "doy": "doy",
+    "dayofyear": "doy",
+    "hour": "hour",
+    "minute": "minute",
+    "second": "second",
+    "millisecond": "millisecond",
+    "milliseconds": "millisecond",
+    "microsecond": "microsecond",
+    "microseconds": "microsecond",
+}
+_TIME_PARTS = ("hour", "minute", "second", "millisecond", "microsecond")
+
+
+def _date_part(lf: _Lift, part: str, a: E) -> E:
+    """`date_part(part, a)`, a BIGINT: DuckDB's parts, which Lean's are
+    (ISO weeks, Sunday as day 0 of the week)."""
+    p = _DATE_PARTS.get(part.lower())
+    if p is None:
+        raise Unsupported(f"the date part {part} is not supported yet")
+    if a.type.is_date() and not a.midnight and p in _TIME_PARTS:
+        raise Unsupported(f"the {p} of a DATE is not supported")
+    if not (a.type.is_date() or a.type.is_timestamp() or a.type.is_null()):
+        raise Unsupported(f"date parts of a {a.type} are not supported")
+    if a.type.is_timestamp() and a.type.timezone is not None:
+        raise Unsupported("timestamps with a time zone are not supported")
+    if a.type.is_date() and p in _TIME_PARTS:
+        return E(literal(0, dt.int64), dt.int64, 0)  # a DATE at midnight
+    return E(_fn("date_part", [literal(p, dt.string), a.json], dt.int64), dt.int64)
+
+
+def _extract(lf: _Lift, node: sge.Extract, sub: Sub, scope: list[Column]) -> E:
+    return _date_part(lf, node.this.name, sub(node.expression))
+
+
+def _part_fn(part: str) -> Callable[..., E]:
+    """`year(d)`, `month(d)`, …"""
+    return lambda lf, node, sub, scope: _date_part(lf, part, sub(node.this))
+
+
+def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) -> E:
+    """The functions SQLGlot does not know but DuckDB has (`_KNOWN`)."""
+    name = node.name.lower()
+    args = node.expressions
+    if name in _ANONYMOUS_STRINGS and len(args) == 2:
+        return _ANONYMOUS_STRINGS[name](lf, [sub(a) for a in args])
+    if name in ("date_part", "datepart") and len(args) == 2:
+        part = args[0]
+        if not (isinstance(part, sge.Literal) and part.is_string):
+            raise Unsupported(f"{name} needs a constant part")
+        return _date_part(lf, part.this, sub(args[1]))
+    raise Unsupported(f"unknown function {node.name}(): DuckDB SQL here has no such function")
+
+
+def _date_diff(lf: _Lift, node: sge.DateDiff, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB's `datediff('day', a, b)` is `b - a` in days.
+    unit = node.args.get("unit")
+    name = unit.name.lower() if unit is not None else "day"
+    if name not in ("day", "days"):
+        raise Unsupported(f"datediff in {name} is not supported yet")
+    later, earlier = sub(node.this), sub(node.expression)
+    for e in (later, earlier):
+        if not e.type.is_date() or e.midnight:
+            raise Unsupported(f"datediff of a {e.type} is not supported yet")
+    return E(_fn("date_diff", [later.json, earlier.json], dt.int64), dt.int64)
+
+
+# -- strings ---------------------------------------------------------------
+
+
+def _strings(lf: _Lift, es: list[E], what: str) -> list[Json]:
+    """Arguments that must be strings (a NULL is a string NULL)."""
+    for e in es:
+        if not (e.type.is_string() or e.type.is_null()):
+            raise Unsupported(f"{what} of a {e.type} is not supported yet")
+    return [lf.to(e, dt.string).json for e in es]
+
+
+def _string_fn(name: str, out: Any = dt.string) -> Callable[..., E]:
+    """A function of strings: `upper(s)`, `reverse(s)`, `starts_with(s, t)`, …"""
+
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        args = [node.this, *(a for a in [node.args.get("expression")] if a is not None)]
+        return E(_fn(name, _strings(lf, [sub(a) for a in args], name), out), out)
+
+    return rule
+
+
+def _bool_json(lf: _Lift, e: E) -> Json:
+    if not (e.type.is_boolean() or e.type.is_null()):
+        raise Unsupported(f"NOT of a {e.type} is not supported")
+    return lf.to(e, dt.boolean).json
+
+
+def _reverse(lf: _Lift, node: sge.Reverse, sub: Sub, scope: list[Column]) -> E:
+    raise Unsupported(
+        "reverse is not supported yet: DuckDB reverses grapheme clusters, the model code points"
+    )
+
+
+def _length(lf: _Lift, node: sge.Length, sub: Sub, scope: list[Column]) -> E:
+    # Characters (code points), a BIGINT; `strlen` (bytes) is another node.
+    if node.args.get("binary"):
+        raise Unsupported("the length of a BLOB is not supported")
+    (s_,) = _strings(lf, [sub(node.this)], "length")
+    return E(_fn("character_length", [s_], dt.int64), dt.int64)
+
+
+def _trim(lf: _Lift, node: sge.Trim, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB trims spaces, or the characters given.
+    position = (node.args.get("position") or "BOTH").upper()
+    name = {"BOTH": "btrim", "LEADING": "ltrim", "TRAILING": "rtrim"}.get(position)
+    if name is None or node.args.get("collation"):
+        raise Unsupported(f"{_shown(node)} is not supported yet")
+    chars = node.args.get("expression")
+    s_, c = _strings(
+        lf, [sub(node.this), sub(chars) if chars is not None else _const_str(" ")], name
+    )
+    return E(_fn(name, [s_, c], dt.string), dt.string)
+
+
+def _const_str(v: str) -> E:
+    return E(literal(v, dt.string), dt.string, v)
+
+
+def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB counts from 1, and from the end for a negative start: Substrait's
+    # `negative_start` WRAP_FROM_END, the reference's default (#209 R13).
+    s_ = sub(node.this)
+    start, length = node.args.get("start"), node.args.get("length")
+    args = _strings(lf, [s_], "substring")
+    for a in (start, length):
+        if a is None:
+            continue
+        e = sub(a)
+        if not (e.type.is_integer() or e.type.is_null()):
+            raise Unsupported(f"substring with a {e.type} position is not supported")
+        if a is length and e.constant and e.value is not None and e.value < 0:
+            raise Unsupported("substring with a negative length is not supported yet")
+        args.append(lf.to(e, dt.int64).json)
+    if start is None:
+        raise Unsupported("substring needs a start")
+    opt = _option("negative_start", "WRAP_FROM_END")
+    return E(_fn("substring", args, dt.string, [opt]), dt.string)
+
+
+def _strpos(lf: _Lift, node: sge.StrPosition, sub: Sub, scope: list[Column]) -> E:
+    # 1-based, 0 if absent; `strpos(s, '')` is 1.
+    if node.args.get("position") is not None or node.args.get("occurrence") is not None:
+        raise Unsupported(f"{_shown(node)} is not supported yet")
+    args = _strings(lf, [sub(node.this), sub(node.args["substr"])], "strpos")
+    return E(_fn("strpos", args, dt.int64), dt.int64)
+
+
+def _contains(lf: _Lift, node: sge.Contains, sub: Sub, scope: list[Column]) -> E:
+    s_, t = _strings(lf, [sub(node.this), sub(node.expression)], "contains")
+    pos = _fn("strpos", [s_, t], dt.int64)
+    return E(_fn("gt", [pos, literal(0, dt.int64)], dt.boolean), dt.boolean)
+
+
+def _like(name: str) -> Callable[..., E]:
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        # DuckDB's LIKE has no escape character without ESCAPE: a backslash
+        # is itself. The model's (DataFusion's) escapes with a backslash, so
+        # a pattern must be a constant without one.
+        p = sub(node.expression)
+        if not p.constant:
+            raise Unsupported(f"{name.upper()} with a pattern that is not a constant")
+        if isinstance(p.value, str) and "\\" in p.value:
+            raise Unsupported(
+                f"{name.upper()} with a backslash in the pattern is not supported yet"
+            )
+        args = _strings(lf, [sub(node.this), p], name)
+        return E(_fn(name, args, dt.boolean), dt.boolean)
+
+    return rule
+
+
+def _dpipe(lf: _Lift, node: sge.DPipe, sub: Sub, scope: list[Column]) -> E:
+    # `a || b` is NULL if either is.
+    args = _strings(lf, [sub(node.this), sub(node.expression)], "||")
+    return E(_fn("str_concat", args, dt.string), dt.string)
+
+
+def _concat(lf: _Lift, node: sge.Concat, sub: Sub, scope: list[Column]) -> E:
+    # `concat(…)` leaves out NULLs: '' for all of them.
+    args = _strings(lf, [sub(a) for a in node.expressions], "concat")
+    empty = literal("", dt.string)
+    parts = [_fn("coalesce", [a, empty], dt.string) for a in args]
+    return E(chain("str_concat", parts) if parts else empty, dt.string)
+
+
+def _replace(lf: _Lift, node: sge.Replace, sub: Sub, scope: list[Column]) -> E:
+    pattern, replacement = sub(node.expression), sub(node.args["replacement"])
+    if not (pattern.constant and replacement.constant):
+        raise Unsupported("replace needs a constant pattern and replacement")
+    args = _strings(lf, [sub(node.this), pattern, replacement], "replace")
+    return E(_fn("replace", args, dt.string), dt.string)
+
+
+def _repeat(lf: _Lift, node: sge.Repeat, sub: Sub, scope: list[Column]) -> E:
+    n = sub(node.args["times"])
+    if not (n.type.is_integer() or n.type.is_null()):
+        raise Unsupported(f"repeat by a {n.type} is not supported")
+    (s_,) = _strings(lf, [sub(node.this)], "repeat")
+    return E(_fn("repeat", [s_, lf.to(n, dt.int64).json], dt.string), dt.string)
+
+
+def _left(lf: _Lift, node: sge.Left, sub: Sub, scope: list[Column]) -> E:
+    # The first `n` characters; a negative `n` is not supported.
+    n = sub(node.expression)
+    if not (n.constant and isinstance(n.value, int) and n.value >= 0):
+        raise Unsupported("left needs a constant count of 0 or more")
+    (s_,) = _strings(lf, [sub(node.this)], "left")
+    args = [s_, literal(1, dt.int64), literal(n.value, dt.int64)]
+    return E(_fn("substring", args, dt.string), dt.string)
+
+
+def _affix(name: str) -> Callable[[_Lift, list[E]], E]:
+    """`prefix(s, t)`, `suffix(s, t)` (DuckDB's names)."""
+
+    def rule(lf: _Lift, args: list[E]) -> E:
+        return E(_fn(name, _strings(lf, args, name), dt.boolean), dt.boolean)
+
+    return rule
+
+
+_ANONYMOUS_STRINGS = {"prefix": _affix("starts_with"), "suffix": _affix("ends_with")}
+
+
+def _scalar_subquery(lf: _Lift, node: sge.Subquery, sub: Sub, scope: list[Column]) -> E:
+    # At most one row, which the checker must prove (an aggregate without
+    # groups, LIMIT 1); no row is NULL.
+    rel, cols = lf.nested(node.this, scope)
+    if len(cols) != 1:
+        raise Unsupported("a scalar subquery must return one column")
+    return E({"subquery": {"scalar": {"input": rel}}}, cols[0].type.copy(nullable=True))
+
+
+def _exists(lf: _Lift, node: sge.Exists, sub: Sub, scope: list[Column]) -> E:
+    rel, _ = lf.nested(node.this, scope)
+    exists_ = {"predicateOp": "PREDICATE_OP_EXISTS", "tuples": rel}
+    return E({"subquery": {"setPredicate": exists_}}, dt.boolean)
 
 
 _RULES: dict[type, Callable[..., E]] = {
@@ -1058,6 +1498,49 @@ _RULES: dict[type, Callable[..., E]] = {
     sge.Cast: _cast,
     sge.TimestampTrunc: _date_trunc,
     sge.Interval: _interval,
+    sge.Extract: _extract,
+    sge.Anonymous: _anonymous,
+    sge.DateDiff: _date_diff,
+    sge.Subquery: _scalar_subquery,
+    sge.Exists: _exists,
+    sge.Length: _length,
+    sge.Upper: _string_fn("upper"),
+    sge.Lower: _string_fn("lower"),
+    sge.Reverse: _reverse,
+    sge.StartsWith: _string_fn("starts_with", dt.boolean),
+    sge.EndsWith: _string_fn("ends_with", dt.boolean),
+    sge.Trim: _trim,
+    sge.Substring: _substring,
+    sge.StrPosition: _strpos,
+    sge.Contains: _contains,
+    sge.Like: _like("like"),
+    sge.ILike: _like("ilike"),
+    sge.DPipe: _dpipe,
+    sge.Concat: _concat,
+    sge.Replace: _replace,
+    sge.Repeat: _repeat,
+    sge.Left: _left,
+    **{
+        cls: _part_fn(part)
+        for cls, part in (
+            (getattr(sge, n, None), part)
+            for n, part in (
+                ("Year", "year"),
+                ("Quarter", "quarter"),
+                ("Month", "month"),
+                ("Week", "week"),
+                ("WeekOfYear", "week"),
+                ("Day", "day"),
+                ("DayOfMonth", "day"),
+                ("DayOfWeek", "dow"),
+                ("DayOfYear", "doy"),
+                ("Hour", "hour"),
+                ("Minute", "minute"),
+                ("Second", "second"),
+            )
+        )
+        if cls is not None
+    },
 }
 
 
