@@ -1,14 +1,14 @@
 # sverify
 
-**Prove a data pipeline's contracts before it runs, get the same result on
+**Sverify proves a data pipeline's contracts before it runs, gets the same result on
 [DuckDB](https://duckdb.org), [Polars](https://pola.rs),
 [DataFusion](https://datafusion.apache.org) and
-[Spark](https://spark.apache.org), and keep it up to date from Delta Lake and
+[Spark](https://spark.apache.org), and keeps it up to date from Delta Lake and
 Iceberg change feeds.**
 
-You write a transformation in [Ibis](https://ibis-project.org) or SQL and say
-what it assumes about its inputs (`requires`) and what it guarantees about
-its output (`ensures`). A checker written in [Lean](https://lean-lang.org)
+In sverify you write a data transformation as usual, in
+[Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
+inputs (`requires`) and what it guarantees about its output (`ensures`). A checker written in [Lean](https://lean-lang.org)
 proves the guarantees for every possible input, or says why it can't. Then:
 
 * **Contracts are proved, not tested.** `not_null`, `unique`, ranges and
@@ -24,14 +24,13 @@ proves the guarantees for every possible input, or says why it can't. Then:
   equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-sverify is a young, independent project, and for now it is purely
-observational: it tells you what it can and can't prove, and describes how
-each engine behaves as observed at pinned versions, without certifying or
-ranking them. It isn't affiliated with any engine's project or vendor. Use it
-as a careful second pair of eyes rather than a gate production depends on,
-and expect the API to keep changing between minor releases. What it's for is
-making data engineering more joyful: fewer 3 a.m. pages, fewer surprises
-between engines, more trust in the tables you hand on.
+Sverify is an assistant that makes data engineering more joyful: fewer
+3 a.m. pages, fewer surprises between engines, more trust in the tables you
+hand on. It is young and independent, and for now purely observational: it
+reports what it can and can't prove, and describes each engine as observed at
+pinned versions, without certifying or ranking them. It isn't affiliated with
+any engine's project or vendor. Use it as a second pair of eyes, not as a gate
+production depends on, and expect the API to change between minor releases.
 
 What the reference means is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
 

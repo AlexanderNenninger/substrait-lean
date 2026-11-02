@@ -1,15 +1,16 @@
 # substrait-lean
 
-**Prove a data pipeline's contracts before it runs, get the same result on
-DuckDB, Polars, DataFusion and Spark, and keep it up to date from Delta Lake
-and Iceberg change feeds.**
+**Sverify proves a data pipeline's contracts before it runs, gets the same
+result on DuckDB, Polars, DataFusion and Spark, and keeps it up to date from
+Delta Lake and Iceberg change feeds.**
 
-You write a transformation in [Ibis](https://ibis-project.org) or SQL, as
-usual, and say what it assumes about its inputs (`requires`) and what it
-guarantees about its output (`ensures`). The Python package `sverify` hands
-the query plan to a checker written in [Lean](https://lean-lang.org), a
-proof assistant, which proves the guarantees for every possible input or
-says why it can't. The checked plan then runs on the engine you choose.
+In sverify you write a data transformation as usual, in
+[Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
+inputs (`requires`) and what it guarantees about its output (`ensures`).
+Sverify hands the query plan to a checker written in
+[Lean](https://lean-lang.org), a proof assistant, which proves the guarantees
+for every possible input or says why it can't. The checked plan then runs on
+the engine you choose.
 
 ```python
 import ibis
@@ -36,25 +37,23 @@ big.refresh()             # updated from the changes alone
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 ```
 
-The three postconditions were proved before anything ran, and the result
-was updated from the changes alone, by a plan proved to give the same result
-as a full recompute.
+The three postconditions were proved before anything ran. The result was
+updated from the changes alone, by a plan proved equal to a full recompute.
 
 ## Where it stands
 
-sverify is a young, independent project, and for now it is purely
-observational. It tells you what it can and can't prove about your
-transformations, and it describes how each engine behaves as we observed it:
-at pinned versions, through their documentation, their own test suites and
-our differential tests. Those findings describe engines; they don't certify
-or rank them, and sverify isn't affiliated with any engine's project or
-vendor. Use it as a careful second pair of eyes on your pipelines rather
-than a gate production depends on, and expect the API to keep changing
-between minor releases.
+Sverify is an assistant that makes data engineering more joyful: fewer
+3 a.m. pages over an unexpected NULL, fewer afternoons spent finding out why
+two engines disagree, and more trust in the tables you hand to the next team.
 
-What it's for is making data engineering more joyful: fewer 3 a.m. pages
-over a NULL nobody expected, fewer afternoons spent finding out why two
-engines disagree, and more trust in the tables you hand to the next team.
+Sverify is young and independent, and for now purely observational. It
+reports what it can and can't prove about your transformations, and
+describes each engine as observed at pinned versions: from its
+documentation, its own tests and our differential tests. These findings
+describe engines; they don't certify or rank them. Sverify isn't affiliated
+with any engine's project or vendor. Use it as a second pair of eyes on your
+pipelines, not as a gate production depends on, and expect the API to change
+between minor releases.
 
 What `Rel.eval` means, row by row (integers, NaN, decimals, casts, NULL,
 text, time, ties) and what is still pending, is in
