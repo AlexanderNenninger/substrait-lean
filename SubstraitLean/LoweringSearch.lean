@@ -266,12 +266,15 @@ or the message log) if it fails, runs out of heartbeats, leaves goals or uses
 `sorry`. -/
 def prove (type : Lean.Expr) (tac : Syntax) : TermElabM (Option Lean.Expr) := withCurrHeartbeats do
   let s ← saveState
+  -- Only an error this proof logs counts, not an earlier one of the command.
+  let had ← MonadLog.hasErrors
   tryCatchRuntimeEx
     (do
       let mv ← mkFreshExprMVar type
       let gs ← Tactic.run mv.mvarId! (Tactic.evalTactic tac)
       let pf ← instantiateMVars mv
-      if gs.isEmpty && !pf.hasMVar && !pf.hasSorry && !(← MonadLog.hasErrors) then return some pf
+      let errs := !had && (← MonadLog.hasErrors)
+      if gs.isEmpty && !pf.hasMVar && !pf.hasSorry && !errs then return some pf
       s.restore; return none)
     fun _ => do s.restore; return none
 

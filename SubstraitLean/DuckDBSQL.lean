@@ -22,7 +22,8 @@ the engine. With `semantics="reference"` a function means the reference's
 function at the same types (an error where DuckDB would give `±∞` or NaN).
 
 Covered so far: `/`, `%` of doubles, `log`, `sign`, `greatest` and `least`,
-and casts between `BIGINT` and `DOUBLE`. A function the model cannot state
+casts between `BIGINT` and `DOUBLE`, and the aggregate `avg` of `BIGINT`s
+(`DuckAgg`). A function the model cannot state
 under a semantics is refused (`DuckFn.refused`), with the reason.
 -/
 
@@ -233,5 +234,36 @@ def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
   | .reference, .castDoubleBigint, [a] => Profile.reference.un .ftoi a
   | _, .castBigintDouble, [.int a] => .ok (.int (FloatCode.ofInt a))
   | _, _, _ => .ok .null
+
+/-! ## Aggregates -/
+
+/-- A DuckDB aggregate at one signature. -/
+inductive DuckAgg where
+  /-- `avg(x)` of a `BIGINT`: a `DOUBLE`. -/
+  | avgBigint
+  deriving Repr, DecidableEq, Inhabited
+
+def DuckAgg.all : List DuckAgg := [.avgBigint]
+
+def DuckAgg.sql : DuckAgg → String
+  | .avgBigint => "avg(BIGINT)"
+
+def DuckAgg.arg : DuckAgg → DuckType
+  | .avgBigint => .bigint
+
+def DuckAgg.result : DuckAgg → DuckType
+  | .avgBigint => .double
+
+/-- What the aggregate gives for its argument's values on a group's rows,
+under the semantics. DuckDB's `avg` of integers sums them exactly (in 128
+bits), then divides the sum, as a double, by their count: no rounding before
+the end. The reference's is Substrait's `avg` of their conversions to doubles
+(`AggFn.avg`), which rounds as it sums. Both are `NULL` without values. -/
+def DuckAgg.eval : Semantics → DuckAgg → List Value → Value
+  | .duckdb, .avgBigint, vs =>
+    match vs.filter (· != .null) with
+    | [] => .null
+    | xs => .int (FloatCode.lift₂ (· / ·) (FloatCode.ofInt (intSum xs)) (FloatCode.ofInt xs.length))
+  | .reference, .avgBigint, vs => AggFn.apply .avg ((vs.map (UnFn.apply .itof)).filter (· != .null))
 
 end Substrait

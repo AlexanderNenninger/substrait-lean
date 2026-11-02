@@ -832,5 +832,89 @@
    "anchor": 26},
   {"urn": "extension:io.substrait:functions_boolean",
    "name": "not:bool",
-   "anchor": 27}]}
+   "anchor": 27},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "avg:i64",
+   "anchor": 28},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "avg:fp64",
+   "anchor": 29},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "sum:i64",
+   "anchor": 30},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "sum:fp64",
+   "anchor": 31},
+  {"urn": "extension:io.substrait:functions_aggregate_generic",
+   "name": "count:any",
+   "anchor": 32}],
+ "aggregates":
+ [{"semantics": "duckdb",
+   "result": "fp64",
+   "construct": "avg(BIGINT)",
+   "args": ["i64"],
+   "aggregate":
+   {"measures":
+    [{"measure":
+      {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+       "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "invocation": "AGGREGATION_INVOCATION_ALL",
+       "functionReference": 30,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     {"measure":
+      {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+       "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "invocation": "AGGREGATION_INVOCATION_ALL",
+       "functionReference": 32,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}}],
+    "finish":
+    {"scalarFunction":
+     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+      "options": [],
+      "functionReference": 2,
+      "arguments":
+      [{"value":
+        {"cast":
+         {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+          "input":
+          {"selection":
+           {"rootReference": {},
+            "directReference": {"structField": {"field": 0}}}},
+          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
+       {"value":
+        {"cast":
+         {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+          "input":
+          {"selection":
+           {"rootReference": {},
+            "directReference": {"structField": {"field": 1}}}},
+          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}}}},
+  {"semantics": "reference",
+   "result": "fp64",
+   "construct": "avg(BIGINT)",
+   "args": ["i64"],
+   "aggregate":
+   {"measures":
+    [{"measure":
+      {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
+       "outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "invocation": "AGGREGATION_INVOCATION_ALL",
+       "functionReference": 28,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}}],
+    "finish":
+    {"selection":
+     {"rootReference": {},
+      "directReference": {"structField": {"field": 0}}}}}}]}
 [exit 0]

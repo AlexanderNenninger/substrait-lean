@@ -35,6 +35,14 @@ def Lift.tableJson : Lean.Json :=
     Lean.Json.mkObj ([("semantics", Lean.toJson s.name), ("construct", Lean.toJson f.sql),
       ("args", Lean.toJson (f.args.map DuckType.substrait)),
       ("result", Lean.toJson f.result.substrait)] ++ how)
-  Lean.Json.mkObj [("functions", LiftSearch.functionsJson), ("lift", Lean.Json.arr entries.toArray)]
+  let aggs := [Semantics.duckdb, .reference].flatMap fun s => DuckAgg.all.map fun g =>
+    let tmpl : Lean.Json := match (Lift.duckdb s).agg g with
+      | some e => (Lean.Json.parse e.json).toOption.getD .null
+      | none => .null
+    Lean.Json.mkObj [("semantics", Lean.toJson s.name), ("construct", Lean.toJson g.sql),
+      ("args", Lean.toJson [g.arg.substrait]), ("result", Lean.toJson g.result.substrait),
+      ("aggregate", tmpl)]
+  Lean.Json.mkObj [("functions", LiftSearch.functionsJson), ("lift", Lean.Json.arr entries.toArray),
+    ("aggregates", Lean.Json.arr aggs.toArray)]
 
 end Substrait

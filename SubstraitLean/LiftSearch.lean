@@ -30,6 +30,11 @@ where its value is right, and the chain catches every row the core gets
 wrong. This states what Substrait's options cannot: DuckDB's `log(0)` is
 `-∞`. Templates with fewer guards are tried first.
 
+An aggregate (`DuckAgg`) lifts to measures and an expression that finishes
+them: one measure (`avg` or `sum`), or the exact `sum` and the `count` divided
+as doubles; each is read by `Parse.parseMeasure`, compared with
+`DuckAgg.eval` on sample groups, and proved for every group.
+
 Each candidate is read by the parser, evaluated on sample arguments under the
 reference, and compared with `DuckFn.eval`; the first that agrees on all of
 them is proved for every argument of the function's types. The entry is a
@@ -72,9 +77,21 @@ theorem LiftEntry.of₂ {s : Semantics} {f : DuckFn} {t u : DuckType} {tmpl : Ex
   match xs, hx with
   | [x, y], hx => exact h x y hx.1 hx.2.1
 
-/-- A lift table: an entry for each function under the semantics, or none. -/
+/-- A lifted aggregate: measures over its argument (field `0`), and an
+expression over their results (fields `0`, `1`, …) that finishes it, with the
+proof that, on every group, this is what DuckDB's aggregate gives. -/
+structure AggEntry (s : Semantics) (g : DuckAgg) where
+  json : String
+  measures : List Measure
+  finish : Expr
+  agree : ∀ vs : List Value, (∀ v ∈ vs, g.arg.Has v) →
+    (finish.evalP Profile.reference (measures.map (·.eval (vs.map ([·]))))).Agree (.ok (g.eval s vs))
+
+/-- A lift table: an entry for each function and aggregate under the
+semantics, or none. -/
 structure Lift (s : Semantics) where
   entry : (f : DuckFn) → Option (LiftEntry s f)
+  agg : (g : DuckAgg) → Option (AggEntry s g)
 
 namespace LiftSearch
 
@@ -105,6 +122,7 @@ def urnOf (name : String) : String :=
       "greatest_skip_null", "least_skip_null"].contains name then
     "extension:io.substrait:functions_comparison"
   else if ["and", "or", "not"].contains name then "extension:io.substrait:functions_boolean"
+  else if name == "count" then "extension:io.substrait:functions_aggregate_generic"
   else "extension:io.substrait:functions_arithmetic"
 
 /-- Functions of two arguments of one type that candidates call. -/
@@ -120,7 +138,8 @@ def functions : List (Nat × String × String) :=
   let unary := ["log10:fp64", "ln:fp64", "log2:fp64"]
   let guards := ["equal:any_any", "lt:any_any", "is_null:any", "is_not_null:any", "is_nan:fp64",
     "and:bool", "or:bool", "not:bool"]
-  (typed ++ unary ++ guards).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
+  let aggs := ["avg:i64", "avg:fp64", "sum:i64", "sum:fp64", "count:any"]
+  (typed ++ unary ++ guards ++ aggs).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
 
 def fns : List (Nat × String) := functions.map fun (a, n, _) => (a, n)
 
@@ -253,10 +272,15 @@ deriving instance Lean.ToExpr for UnFn
 deriving instance Lean.ToExpr for BinFn
 deriving instance Lean.ToExpr for HoFn
 deriving instance Lean.ToExpr for DuckType
+deriving instance Lean.ToExpr for DuckAgg
+deriving instance Lean.ToExpr for Semantics
 
 unsafe def evalSemanticsImpl (e : Lean.Expr) : TermElabM Semantics :=
   Meta.evalExpr Semantics (Lean.mkConst ``Semantics) e
 @[implemented_by evalSemanticsImpl] opaque evalSemantics (e : Lean.Expr) : TermElabM Semantics
+
+unsafe def evalDuckAggImpl (e : Lean.Expr) : TermElabM DuckAgg := Meta.evalExpr DuckAgg (Lean.mkConst ``DuckAgg) e
+@[implemented_by evalDuckAggImpl] opaque evalDuckAgg (e : Lean.Expr) : TermElabM DuckAgg
 
 unsafe def evalDuckFnImpl (e : Lean.Expr) : TermElabM DuckFn := Meta.evalExpr DuckFn (Lean.mkConst ``DuckFn) e
 @[implemented_by evalDuckFnImpl] opaque evalDuckFn (e : Lean.Expr) : TermElabM DuckFn
@@ -427,6 +451,120 @@ def functionsJson : Json :=
   Json.arr (functions.map fun (a, n, u) =>
     Json.mkObj [("anchor", toJson a), ("name", toJson n), ("urn", toJson u)]).toArray
 
+/-! ## Aggregates -/
+
+def measureJ? (full : String) (arg : Json) (out : String) : Option Json := do
+  let a ← anchorOf full
+  return Json.mkObj [("measure", Json.mkObj [("functionReference", toJson a),
+    ("outputType", typeJ out), ("arguments", Json.arr #[Json.mkObj [("value", arg)]]),
+    ("phase", "AGGREGATION_PHASE_INITIAL_TO_RESULT"),
+    ("invocation", "AGGREGATION_INVOCATION_ALL")])]
+
+/-- The candidates for an aggregate: one measure (`avg` or `sum`, of the
+argument as it is or cast to the result's type, with the result's or the
+argument's type), or the exact `sum` and the `count`, finished by dividing
+the one by the other as doubles (with each `on_division_by_zero`). Each is
+the measures' JSON, the finishing expression's, and what kinds the measures
+give. -/
+def aggCandidates (g : DuckAgg) : List (List Json × Json × List Parse.Kind) :=
+  let t := g.arg.substrait
+  let r := g.result.substrait
+  let x := fieldJ 0
+  let kindOf (ty : String) := if ty == "fp64" then Parse.Kind.float else .int
+  let single := ["avg", "sum"].flatMap fun name => [(x, t), (castJ r x, r)].flatMap fun (a, ta) =>
+    [r, t].filterMap fun out => (measureJ? s!"{name}:{ta}" a out).map fun m => ([m], fieldJ 0, [kindOf out])
+  let pair := match measureJ? s!"sum:{t}" x t, measureJ? "count:any" x "i64" with
+    | some sm, some cm => (optionChoices "divide" true).filterMap fun opts =>
+      (callJ? "divide:fp64_fp64" [castJ "fp64" (fieldJ 0), castJ "fp64" (fieldJ 1)] opts r).map
+        fun fin => ([sm, cm], fin, [kindOf t, .int])
+    | _, _ => []
+  single ++ pair
+
+def aggSampleGroups (t : DuckType) : List (List Value) :=
+  let vs := sampleValues t
+  -- Large integers whose sum rounds as doubles: `2⁵³ + 1 + 1`.
+  [[], [.null], [.int 1], [.int 1, .int 2], [.int (-5), .int 3, .null], [.int (2 ^ 53), .int 1, .int 1],
+   [.int (2 ^ 62), .int (-(2 ^ 62)), .int 3]] ++ vs.map ([·])
+
+/-- Read an aggregate candidate as the parser does. -/
+def parseAgg (g : DuckAgg) (ms : List Json) (fin : Json) (kinds : List Parse.Kind) :
+    Option (List Measure × Substrait.Expr) := do
+  let cols := [if g.arg == .double then Parse.Kind.float else .int]
+  let measures ← ms.mapM fun mj => ((Parse.parseMeasure fns cols [64] mj).toOption.map (·.1))
+  let finish ← (Parse.parseExpr fns kinds (kinds.map fun _ => 64) fin).toOption
+  return (measures, finish)
+
+deriving instance Lean.ToExpr for AggFn
+
+def measureTerm (m : Measure) : MetaM Lean.Expr := do
+  unless m.filter.isNone && m.sort.isEmpty do throwError "only plain measures are lifted"
+  return mkAppN (Lean.mkConst ``Measure.mk) #[toExpr m.fn, ← exprTerm m.arg, toExpr m.distinct,
+    mkApp (Lean.mkConst ``Option.none [Level.zero]) (Lean.mkConst ``Substrait.Expr),
+    ← mkListLit (Lean.mkConst ``SortKey) []]
+
+/-- The proof tactic for an aggregate: compute the measures on the group's
+rows, then split on whether any value is not `NULL`. -/
+def aggTac (_defs : Array Name) : TermElabM Syntax := do
+  let ev ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
+    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
+    ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r, ``AggFn.apply, ``nanCase, ``isInfCode,
+    ``Substrait.Expr.evalP,
+    ``Lowering.beq_int, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
+    ``Bool.false_eq_true, ``ite_false, ``ite_true, ``Bool.or_false, ``Bool.false_or,
+    ``Bool.and_false, ``Bool.false_and, ``Outcome.Agree, ``List.length_cons, ``Lowering.ref_eq,
+    ``Lowering.ref_lt, ``Lowering.ref_not, ``Lowering.ref_isNull, ``DuckDBSQL.apply_eq_int,
+    ``DuckDBSQL.apply_lt_int, ``Value.isTrue, ``decide_false, ``Bool.not_false]
+  `(tactic| (
+    intro vs _
+    simp only [List.map_cons, List.map_nil, Measure.eval, Measure.inputs, Measure.kept,
+      List.map_map, Function.comp_def, Substrait.Expr.eval, List.getD_cons_zero, List.map_id',
+      DuckAgg.eval, Bool.false_eq_true, ite_false]
+    first
+      | (simp only [Substrait.Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
+         exact Outcome.agree_refl _)
+      | (generalize List.filter (fun x => x != Value.null) vs = xs
+         cases xs with
+         | nil => simp [$ev,*]
+         | cons x xs =>
+           have hne := FloatCode.ofInt_ne_zero (i := ((xs.length + 1 : Nat) : Int)) (by omega)
+           simp only [$ev,*, hne, decide_false])))
+
+/-- Search for and emit the entry of the aggregate `g` under `s`. -/
+def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAgg) :
+    TermElabM (Except String String) := do
+  let short := c.componentsRev.head!
+  let rows := aggSampleGroups g.arg
+  let mut passed := 0
+  for (ms, fin, kinds) in aggCandidates g do
+    let some (measures, finish) := parseAgg g ms fin kinds | continue
+    let ok := rows.all fun vs => LoweringSearch.Outcome.agreeB
+      (finish.evalP Profile.reference (measures.map (·.eval (vs.map ([·]))))) (.ok (g.eval s vs))
+    unless ok do continue
+    passed := passed + 1
+    let r ← withCurrHeartbeats do
+      let mTerm ← mkListLit (Lean.mkConst ``Measure) (← measures.mapM fun m => do return ← measureTerm m)
+      let fTerm ← exprTerm finish
+      let gT := toExpr g
+      let ty ← Term.elabType (← `(∀ vs : List Value, (∀ v ∈ vs, (DuckAgg.arg $(← Term.exprToSyntax gT)).Has v) →
+        (Expr.evalP Profile.reference (($(← Term.exprToSyntax mTerm) : List Measure).map
+          (·.eval (vs.map ([·])))) $(← Term.exprToSyntax fTerm)).Agree
+          (.ok (DuckAgg.eval $(← Term.exprToSyntax sE) $(← Term.exprToSyntax gT) vs))))
+      Term.synthesizeSyntheticMVarsNoPostponing
+      let ty ← instantiateMVars ty
+      if ty.hasMVar then return none
+      let some pf ← prove ty (← aggTac #[]) | return none
+      let agreeName := tbl ++ short.appendAfter "_agree"
+      addDecl <| .thmDecl { name := agreeName, levelParams := [], type := ty, value := pf }
+      let json := Json.mkObj [("measures", Json.arr ms.toArray), ("finish", fin)]
+      let entry ← mkAppM ``AggEntry.mk #[toExpr json.compress, mTerm, fTerm, Lean.mkConst agreeName]
+      let eTy ← inferType entry
+      addAndCompile <| .defnDecl {
+        name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
+        type := eTy, value := entry }
+      return some json.compress
+    if let some j := r then return .ok j
+  return .error s!"missing: {passed} candidates passed the samples, none proved"
+
 syntax (name := generateLift) "generate_lift " ident " : " term " using " "[" ident,* "]" : command
 
 /-- `generate_lift L : s using [lemmas]`: the lift table `L : Lift s`, with
@@ -450,18 +588,36 @@ def elabGenerateLift : CommandElab := fun stx => do
       let t0 ← IO.monoMsNow
       let r ← liftOne tbl s sE extra c f
       return (c, f, r, (← IO.monoMsNow) - t0)
+  let aggCtors := (← getConstInfoInduct ``DuckAgg).ctors
+  let aggResults ← liftTermElabM do
+    let sE ← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics))
+    let s ← evalSemantics sE
+    aggCtors.mapM fun c => withCurrHeartbeats do
+      let g ← evalDuckAgg (Lean.mkConst c)
+      let t0 ← IO.monoMsNow
+      let r ← liftAgg tbl s sE c g
+      return (c, g, r, (← IO.monoMsNow) - t0)
+  let aggAlts ← aggResults.toArray.mapM fun (c, _, r, _) => do
+    let rhs ← match r with
+      | .ok _ => `(some $(mkIdent (tbl ++ c.componentsRev.head!)))
+      | .error _ => `(none)
+    `(Lean.Parser.Term.matchAltExpr| | $(mkIdent c) => $rhs)
   let alts ← results.toArray.mapM fun (c, _, r, _) => do
     let rhs ← match r with
       | .ok _ => `(some $(mkIdent (tbl ++ c.componentsRev.head!)))
       | .error _ => `(none)
     `(Lean.Parser.Term.matchAltExpr| | $(mkIdent c) => $rhs)
-  elabCommand (← `(def $(mkIdent short) : Lift $sStx := ⟨fun f => match f with $alts:matchAlt*⟩))
-  let rows ← results.toArray.mapM fun (_, f, r, ms) => do
+  elabCommand (← `(def $(mkIdent short) : Lift $sStx :=
+    ⟨fun f => match f with $alts:matchAlt*, fun g => match g with $aggAlts:matchAlt*⟩))
+  let summary : List (String × Except String String × Nat) :=
+    results.map (fun ((_, f, r, ms) : Name × DuckFn × Except String String × Nat) => (f.sql, r, ms)) ++
+      aggResults.map (fun ((_, g, r, ms) : Name × DuckAgg × Except String String × Nat) => (g.sql, r, ms))
+  let rows ← summary.toArray.mapM fun (sql, r, ms) => do
     let how := match r with | .ok h => h | .error e => e
-    `(($(quote f.sql), $(quote how), $(quote ms)))
+    `(($(quote sql), $(quote how), $(quote ms)))
   elabCommand (← `(def $(mkIdent (short ++ `coverage)) : List (String × String × Nat) := [$rows,*]))
-  let missing := results.filterMap fun (_, f, r, _) => match r with
-    | .error e => if e.startsWith "refused: " then none else some s!"{f.sql} ({e})"
+  let missing := summary.filterMap fun (sql, r, _) => match r with
+    | .error e => if e.startsWith "refused: " then none else some s!"{sql} ({e})"
     | .ok _ => none
   if missing.isEmpty then
     elabCommand (← `(theorem $(mkIdent (short ++ `total)) :
