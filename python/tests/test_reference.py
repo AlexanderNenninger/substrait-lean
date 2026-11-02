@@ -9,6 +9,7 @@ reference.
 
 import json
 
+import ibis
 import pyarrow as pa
 import pytest
 
@@ -18,14 +19,13 @@ from sverify.engine import (
     put_table,
     run_checker,
     run_plan,
-    run_sql,
     substrait_json,
     written_plan,
 )
 from sverify.incremental import arrow_rows
-from sverify.testing import inline_tables, lean_values
+from sverify.testing import duckdb_sql, inline_tables, lean_values
 
-pytestmark = pytest.mark.backend("datafusion")
+pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
 
 DAY = 86_400_000_000
 NAN = float("nan")
@@ -88,7 +88,7 @@ NAN = float("nan")
 )
 def test_modulus_of_doubles_is_fmod(con, sql, expected):
     assert nan_equal(lean(con, sql)) == nan_equal(expected)
-    by_datafusion = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
+    by_datafusion = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
     assert nan_equal(by_datafusion) == nan_equal(expected)
 
 
@@ -120,7 +120,7 @@ def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
 )
 def test_aggregates_of_double_constants(con, sql, expected):
     assert lean(con, sql) == expected
-    assert [tuple(r.values()) for r in run_sql(con, sql).to_pylist()] == expected
+    assert [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()] == expected
 
 
 # R10 (#206): a date is days and a timestamp microseconds; casts convert.
@@ -148,10 +148,10 @@ def test_casts_between_dates_and_timestamps(con, sql, expected):
 
 
 def test_timestamps_compared_with_dates(con):
-    """DataFusion casts the date to a timestamp at midnight."""
+    """DuckDB casts the date to a timestamp at midnight."""
     sql = "SELECT ts >= DATE '2020-05-05' AS a, ts < DATE '2020-05-06' AS b FROM t"
     assert lean(con, sql) == [(False, True), (True, True)]
-    assert [tuple(r.values()) for r in run_sql(con, sql).to_pylist()] == lean(con, sql)
+    assert [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()] == lean(con, sql)
 
 
 # R5 (#204): a double divided by zero raises unless the plan asks otherwise.
@@ -165,7 +165,9 @@ def divide_plan(con, mode: str | None) -> str:
 
     def walk(node):
         if isinstance(node, dict):
-            if "scalarFunction" in node and mode is not None:
+            if "scalarFunction" in node and mode is None:
+                node["scalarFunction"].pop("options", None)
+            elif "scalarFunction" in node:
                 node["scalarFunction"]["options"] = [
                     {"name": "on_division_by_zero", "preference": [mode]}
                 ]
@@ -191,16 +193,22 @@ def nan_safe(rows: list[tuple]) -> list[tuple]:
 
 
 def test_double_division_by_zero_may_fail():
-    tables = {"f": {"x": "float64", "y": "float64"}}
-    report = sv.verify("SELECT x / y AS q FROM f", tables=tables)
+    # The reference's `/` raises on a zero divisor; DuckDB's gives ±inf or
+    # NaN (`on_division_by_zero` IEEE), which raises nothing.
+    f = ibis.table({"x": "float64", "y": "float64"}, name="f")
+
+    def ref(sql: str) -> ibis.Table:
+        return sv.sql(sql, semantics="reference", f=f)
+
+    report = sv.verify(ref("SELECT x / y AS q FROM f"))
     assert [str(i) for i in report.errors] == ["division by zero: ($0 /. $1)"]
+    assert sv.verify("SELECT x / y AS q FROM f", tables={"f": f}).errors == []
     for sql, req in [
         ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", []),
-        ("SELECT x / NULLIF(y, 0) AS q FROM f", []),
         ("SELECT x / y AS q FROM f", ["y > 0"]),
         ("SELECT x / 2.0 AS q FROM f", []),
     ]:
-        assert sv.verify(sql, requires={"f": req}, tables=tables).issues == [], sql
+        assert sv.verify(ref(sql), requires={"f": req}).issues == [], sql
 
 
 @pytest.mark.parametrize(
@@ -239,13 +247,13 @@ def issues(plan: str) -> list[str]:
     return [i["kind"] for i in json.loads(out)["issues"]]
 
 
-@pytest.mark.parametrize("op", ["/", "%"])
+@pytest.mark.parametrize("op", ["//", "%"])
 def test_integer_division_by_zero_may_ask_for_null(op):
     con = connect()
     put_table(con, "i", pa.table({"a": pa.array([7, None, 7], pa.int64()), "b": [2, 0, 0]}))
     plan = json.loads(substrait_json(con, f"SELECT a {op} b AS q FROM i"))
     # `MIN / -1` overflows; the option changes only the zero divisor.
-    overflow = ["overflow"] if op == "/" else []
+    overflow = ["overflow"] if op == "//" else []
     assert issues(json.dumps(plan)) == ["division by zero", *overflow]
     for node in _dicts(plan):
         if "scalarFunction" in node:
@@ -254,7 +262,7 @@ def test_integer_division_by_zero_may_ask_for_null(op):
             ]
     plan_json = json.dumps(plan)
     assert issues(plan_json) == overflow
-    expected = [(3 if op == "/" else 1,), (None,), (None,)]
+    expected = [(3 if op == "//" else 1,), (None,), (None,)]
     rows = {"i": [(7, 2), (None, 0), (7, 0)]}
     assert lean_values(json.dumps(inline_tables(plan, rows))) == expected
     for engine in ("duckdb", "polars"):

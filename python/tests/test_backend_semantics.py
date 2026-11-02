@@ -24,6 +24,8 @@ import sverify as sv
 from sverify import duckdb_engine, polars_engine
 from sverify.engine import connect, put_table, read_tables, substrait_json, written_plan
 
+pytestmark = pytest.mark.lift_backlog
+
 
 def ints(**cols: list) -> pa.Table:
     return pa.table({k: pa.array(v, pa.int64()) for k, v in cols.items()})

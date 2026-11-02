@@ -23,15 +23,18 @@ import sverify as sv
 from sverify.contracts import decode_double
 from sverify.engine import connect, create_table, put_table, run_sql, substrait_json, to_sql
 from sverify.errors import VerificationError
-from sverify.testing import canonical, duckdb_rows, inline_tables, lean_values
+from sverify.ibis_substrait import to_substrait_json
+from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_values
+
+pytestmark = pytest.mark.lift_backlog
 
 R = ibis.schema({"a": "int64", "b": "int64"})
 MIN = -(2**63)
 
 INT_QUERIES = [
-    "SELECT a, b, a / b AS q, a % b AS m FROM r WHERE b <> 0",
-    "SELECT a, CASE WHEN b <> 0 THEN a / b END AS q FROM r",
-    "SELECT a / NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r",
+    "SELECT a, b, a // b AS q, a % b AS m FROM r WHERE b <> 0",
+    "SELECT a, CASE WHEN b <> 0 THEN a // b END AS q FROM r",
+    "SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r",
     "SELECT power(a, 2) AS p, power(b, 3) AS c FROM r",
     "SELECT CAST(a AS VARCHAR) AS s FROM r",
 ]
@@ -48,7 +51,7 @@ small = st.one_of(st.none(), st.integers(-7, 7))
 def test_integer_semantics_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
+    expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
     out = lean_values(json.dumps(plan))
     assert canonical(out) == canonical(expected)
@@ -73,7 +76,7 @@ def test_rounding_semantics_match_datafusion(sql):
     con = connect()
     rows = [(f,) for f in DOUBLES]
     create_table(con, "r", F, rows)
-    expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
+    expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
     got = lean_values(json.dumps(plan))
     # Doubles come back printed, or as codes when tiny (±0.0); `CAST(... AS
@@ -239,7 +242,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     )
     con = connect()
     put_table(con, "t", table)
-    plan = substrait_json(con, to_sql(expr))
+    plan = to_substrait_json(expr)
     try:
         duckdb_rows(plan, {"t": table})
     except duckdb.Error as e:

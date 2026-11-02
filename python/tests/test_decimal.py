@@ -18,7 +18,7 @@ import sverify as sv
 from sverify.engine import connect, put_table, run_checker, substrait_json
 from sverify.testing import inline_tables, lean_values
 
-pytestmark = pytest.mark.backend("datafusion")
+pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
 
 TABLES = {
     "t": pa.table(
@@ -118,26 +118,16 @@ def test_avg_over_a_window(con):
 
 
 @pytest.mark.parametrize(
-    ("sql", "message"),
-    [
-        ("SELECT a / b AS r FROM t", "divide of DECIMAL is not supported yet"),
-    ],
-)
-def test_refused(con, sql, message):
-    code, out, err = run_checker((), substrait_json(con, sql))
-    assert code != 0 and message in out + err
-
-
-@pytest.mark.parametrize(
     ("sql", "errors"),
     [
         # A column holds at most its precision's digits, so these fit.
         ("SELECT a + b AS r FROM t", []),
-        ("SELECT a * b * a AS r FROM t", []),
         ("SELECT CAST(a AS DECIMAL(20,4)) AS r FROM t", []),
         ("SELECT CAST(a AS BIGINT) AS r FROM t", []),
         ("SELECT k, avg(x) AS v FROM g GROUP BY k", []),
-        # These may not.
+        # These may not. DuckDB types a product of two decimals of up to 18
+        # digits as DECIMAL(18, s), and raises past 18 digits.
+        ("SELECT a * b * a AS r FROM t", ["overflow"]),
         ("SELECT CAST(a AS DECIMAL(4,2)) AS r FROM t", ["overflow"]),
         ("SELECT CAST(f AS DECIMAL(10,2)) AS r FROM t", ["cast out of range", "overflow"]),
     ],

@@ -42,7 +42,9 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.ibis_substrait import Unsupported, to_substrait, to_substrait_json
-from sverify.testing import canonical, inline_tables, lean_values
+from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
+
+pytestmark = pytest.mark.lift_backlog
 
 MIN, MAX = -(2**63), 2**63 - 1
 #: DataFusion's nanosecond range, and the years `chrono` represents.
@@ -103,7 +105,7 @@ def lean_and_datafusion(sql: str, values: list[int | None]) -> tuple[list, list]
     """Rows from both; timestamps as microseconds."""
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
-    out = run_sql(con, sql)
+    out = duckdb_sql(con, sql)
     columns = [c.cast(pa.int64()) if pa.types.is_timestamp(c.type) else c for c in out.columns]
     out = pa.table(columns, names=out.column_names)
     expected = [tuple(x.values()) for x in out.to_pylist()]
@@ -295,7 +297,7 @@ def date_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
     written = written_plan(json.dumps(plan))
     inline_tables(plan, {"r": [(v,) for v in values]})
     return {
-        "datafusion": days_of(run_sql(con, sql)),
+        "datafusion": days_of(duckdb_sql(con, sql)),
         "lean": lean_values(json.dumps(plan)),
         "polars": days_of(run_plan(con, written, "polars")),
         "duckdb": days_of(run_plan(con, written, "duckdb")),
@@ -464,7 +466,7 @@ def tod_runs(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
     written = written_plan(json.dumps(plan))
     inline_tables(plan, {"r": [(v,) for v in values]})
     return {
-        "datafusion": plain(run_sql(con, sql)),
+        "datafusion": plain(duckdb_sql(con, sql)),
         "lean": lean_values(json.dumps(plan)),
         "polars": plain(run_plan(con, written, "polars")),
         "duckdb": plain(run_plan(con, written, "duckdb")),

@@ -293,16 +293,14 @@ def test_sql_checks_dialect_and_semantics():
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)
-    with pytest.raises(ValueError, match="needs a dialect"):
-        sv.sql("SELECT a FROM t", semantics="duckdb", t=t)
     with pytest.raises(Unsupported, match="unknown function"):
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
 
-def test_without_a_dialect_sql_stays_datafusions():
+def test_sql_is_duckdbs_by_default():
     t = ibis.table({"a": "int64"}, name="t")
     op: Any = sv.sql("SELECT a FROM t", t=t).op()
-    assert op.dialect is None and op.semantics is None
+    assert (op.dialect, op.semantics) == ("duckdb", "duckdb")
 
 
 def test_benchmark_queries_through_the_lift():

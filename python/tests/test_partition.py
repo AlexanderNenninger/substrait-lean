@@ -16,7 +16,7 @@ from sverify.engine import connect, create_table, run_plan, substrait_json, writ
 from sverify.partition import NotShardable, run_sharded, split
 from sverify.testing import canonical
 
-pytestmark = pytest.mark.backend("polars")
+pytestmark = [pytest.mark.backend("polars"), pytest.mark.lift_backlog]
 
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "string"})

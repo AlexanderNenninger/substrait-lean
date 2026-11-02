@@ -33,7 +33,8 @@ where DuckDB and the reference (#185, #209) differ:
   DuckDB differs.
 
 The subset (#239): SELECT, WHERE, arithmetic, comparisons, AND/OR/NOT,
-IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE; inner, left and cross joins
+IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE, `date_trunc`; inner, left and
+cross joins
 and subqueries in FROM; GROUP BY with `count`, `sum`, `avg`, `min` and
 `max`, HAVING; DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
 functions (`Anonymous`) included, raises `Unsupported` saying what.
@@ -615,6 +616,8 @@ class _Lift:
                     v = Decimal(v)
                 elif t.is_integer() and isinstance(v, Decimal):
                     v = None if v != v.to_integral_value() else int(v)
+                elif t.is_timestamp() and type(v) is dt_.date:
+                    v = dt_.datetime.combine(v, dt_.time())
             if v is not None or e.value is None:
                 return E(literal(v, t), t, v)
         if e.type.is_null():
@@ -933,6 +936,32 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     return lf.to(E(a.json, a.type), t)
 
 
+#: The units `date_trunc` truncates a timestamp to (`SubstraitLean/Time.lean`).
+_TRUNC_UNITS = ("second", "minute", "hour", "day", "week", "month", "quarter", "year")
+
+
+def _date_trunc(lf: _Lift, node: sge.TimestampTrunc, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB returns a timestamp, of a date too (the timestamp at its
+    # midnight); weeks start on Monday.
+    unit = node.args.get("unit")
+    name = unit.name.lower() if isinstance(unit, sge.Var | sge.Literal) else None
+    if name not in _TRUNC_UNITS:
+        raise Unsupported(
+            f"date_trunc to {_shown(unit) if unit is not None else '?'} is not supported; "
+            f"the unit must be one of {', '.join(_TRUNC_UNITS)}"
+        )
+    a = sub(node.this)
+    ts = dt.timestamp(scale=6)
+    if a.type.is_date():
+        # Lean reads the cast date as microseconds (#240).
+        raise Unsupported("date_trunc of a DATE is not supported yet")
+    if not (a.type.is_timestamp() or a.type.is_null()):
+        raise Unsupported(f"date_trunc of a {a.type} is not supported")
+    if a.type.is_timestamp() and a.type.timezone is not None:
+        raise Unsupported("timestamps with a time zone are not supported")
+    return E(_fn("date_trunc", [literal(name, dt.string), lf.to(a, ts).json], ts), ts)
+
+
 _RULES: dict[type, Callable[..., E]] = {
     sge.Column: _column,
     sge.Literal: _literal,
@@ -961,6 +990,7 @@ _RULES: dict[type, Callable[..., E]] = {
     sge.Case: _case,
     sge.Coalesce: _coalesce,
     sge.Cast: _cast,
+    sge.TimestampTrunc: _date_trunc,
 }
 
 

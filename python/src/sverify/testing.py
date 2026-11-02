@@ -253,6 +253,29 @@ def parse_rows(output: str, doubles: bool = False) -> list[tuple]:
     return rows
 
 
+def duckdb_sql(con: Connection, sql: str) -> pa.Table:
+    """DuckDB running `sql` (DuckDB's SQL) over the connection's tables, the
+    oracle for a plan sverify's lift writes for it; doubles in the result as
+    `sverify.engine.canonical` makes them."""
+    import duckdb
+
+    from sverify.engine import canonical as canonical_doubles
+
+    db = duckdb.connect()
+    for name, table in con.arrow.items():
+        db.register(name, table)
+    rel = db.sql(sql)
+    # DuckDB sums integers as HUGEINTs; the lifted plan sums into BIGINT
+    # (raising past 64 bits).
+    if any(str(t) == "HUGEINT" for t in rel.types):
+        cols = [
+            f'CAST("{c}" AS BIGINT) AS "{c}"' if str(t) == "HUGEINT" else f'"{c}"'
+            for c, t in zip(rel.columns, rel.types, strict=True)
+        ]
+        rel = rel.project(", ".join(cols))
+    return canonical_doubles(rel.to_arrow_table())
+
+
 def duckdb_rows(plan_json: str, tables: Mapping[str, pa.Table] | None = None) -> list[tuple]:
     """Rows of the plan's SQL on a fresh DuckDB database holding `tables`."""
     from sverify import duckdb_engine

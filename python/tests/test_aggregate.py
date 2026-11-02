@@ -32,8 +32,10 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.testing import canonical, inline_tables, lean_values
+from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 from sverify_dev.examples import orders
+
+pytestmark = pytest.mark.lift_backlog
 
 T = ibis.schema({"a": "int64", "b": "int64", "s": "string"})
 F = ibis.schema({"k": "int64", "x": "float64"})
@@ -60,7 +62,16 @@ EXACT = [
 ]
 
 
+def duckdb_rows_of(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
+    """DuckDB running `sql`, the oracle for the lifted plan."""
+    con = connect()
+    create_table(con, "t", schema, rows)
+    out = duckdb_sql(con, sql)
+    return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
+
+
 def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
+    """DataFusion running `sql`, as an engine."""
     con = connect()
     create_table(con, "t", schema, rows)
     out = run_sql(con, sql)
@@ -68,7 +79,7 @@ def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
 
 
 def run(sql: str, schema: ibis.Schema, rows: list) -> tuple[list[tuple], list[tuple]]:
-    expected = datafusion_rows(sql, schema, rows)
+    expected = duckdb_rows_of(sql, schema, rows)
     con = connect()
     create_table(con, "t", schema, rows)
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"t": rows})
@@ -103,7 +114,7 @@ def engine_rows(sql: str, schema: ibis.Schema, rows: list) -> dict[str, list[tup
 def test_engines_match_datafusion(sql, t):
     out = engine_rows(sql, T, t)
     assert canonical(out["polars"]) == canonical(out["duckdb"])
-    assert canonical(out["polars"]) == canonical(datafusion_rows(sql, T, t))
+    assert canonical(out["polars"]) == canonical(duckdb_rows_of(sql, T, t))
 
 
 def test_engines_raise_where_sum_wraps():
@@ -163,10 +174,10 @@ def test_double_aggregates_match_datafusion(sql, t):
 @given(t=f_rows)
 def test_engines_add_doubles_in_lean_order(sql, t):
     """Both engines add in Lean's list order, so they agree bit for bit; with
-    DataFusion, whose order is its own, only approximately."""
+    DuckDB running the SQL, whose order is its own, only approximately."""
     out = engine_rows(sql, F, t)
     assert canonical(out["polars"]) == canonical(out["duckdb"])  # bit for bit
-    expected = sorted(datafusion_rows(sql, F, t), key=repr)
+    expected = sorted(duckdb_rows_of(sql, F, t), key=repr)
     got = sorted(out["polars"], key=repr)
     assert len(got) == len(expected)
     for g, e in zip(got, expected, strict=True):

@@ -53,8 +53,8 @@ guarantees of their own. A composed result can be maintained incrementally
 checked on each batch of changes, and its guarantees hold in every state.
 
 Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
-or SQL snippets (`"amount >= 0"`). SQL snippets are compiled to Substrait by
-DataFusion, so they need the `datafusion` extra.
+or SQL snippets (`"amount >= 0"`). SQL snippets are DuckDB's SQL, compiled to
+Substrait by sverify's lift (`sverify.sql_lift`).
 
 Runtime checks run through Ibis, on the connection the tables are bound to
 (`sverify.connect()`), by default; naming an engine (`engine="duckdb"`,
@@ -485,10 +485,20 @@ def resolve(cond: Condition, table: ir.Table) -> ir.BooleanValue:
 
 def condition_query(table: Transform, cond: Condition) -> Transform:
     """A query selecting one condition column from a table or transformation:
-    SQL for SQL conditions, an Ibis expression otherwise."""
+    SQL for a SQL condition on a SQL transformation, an Ibis expression
+    otherwise (a SQL condition on an Ibis table is a SQL model over it)."""
     if isinstance(cond, str):
-        source = table if isinstance(table, str) else to_sql(table)
-        return f'SELECT ({cond}) AS "c" FROM ({source}) AS "t"'
+        query = f'SELECT ({cond}) AS "c" FROM {{}} AS "t"'
+        if isinstance(table, str):
+            return query.format(f"({table})")
+        from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
+
+        query = query.format('"t"')
+        try:
+            schema = sql_model_schema(query, {"t": table.schema()})
+        except Unsupported as e:
+            raise Unsupported(f"condition {cond!r}: {e}") from e
+        return SQLModel(query, (table.op(),), ("t",), schema).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
     return table.select(c=resolve(cond, table))
@@ -515,8 +525,8 @@ def verify(
     Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DataFusion, DuckDB and
-    Polars. A SQL string means what the SQL producer (DataFusion's) makes of
-    it.
+    Polars. A SQL string is DuckDB's SQL, and means what DuckDB computes
+    (`sverify.sql_lift`, with `semantics="duckdb"`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -548,8 +558,7 @@ def verify(
         TypeError: An Ibis condition is given for a SQL transform.
 
     Examples:
-        A SQL query, with its input schema (compiling SQL needs the
-        `datafusion` extra):
+        A SQL query (DuckDB's SQL), with its input schema:
 
         ```python
         import ibis

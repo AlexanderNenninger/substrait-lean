@@ -35,9 +35,10 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.engines import ENGINES, delta_plans
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.sql import Unsupported
-from sverify.testing import canonical, inline_tables, lean_rows, lean_values
+from sverify.testing import canonical, duckdb_sql, inline_tables, lean_rows, lean_values
 from sverify_dev.examples import PIPELINES, create_tables
 from test_numeric import DOUBLES, INT_QUERIES, MIN, F
 from test_numeric import PIPELINES as NUMERIC_PIPELINES
@@ -49,7 +50,7 @@ from test_sql import EVENTS, interval_queries, lean_on
 from test_windows import QUERIES as WINDOW_QUERIES
 from test_windows import SCHEMA as WINDOW_SCHEMA
 
-pytestmark = pytest.mark.backend("polars")
+pytestmark = [pytest.mark.backend("polars"), pytest.mark.lift_backlog]
 
 #: The repository's golden fixtures; absent when the tests run against a wheel.
 FIXTURES = sorted((Path(__file__).parents[2] / "tests" / "fixtures").glob("*.json"))
@@ -246,7 +247,7 @@ def test_windows_match_lean_in_order(sql, rows):
     create_table(con, "r", WINDOW_SCHEMA, rows)
     lean, polars = lean_and_polars(con, sql, {"r": rows})
     assert lean == polars
-    assert same_bag(rows_of(run_sql(con, sql)), polars)
+    assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
 
 
 @pytest.mark.parametrize("sql", REWRITE_QUERIES)
@@ -261,7 +262,7 @@ def test_rewrites_match_lean_in_order(sql, r, s):
     create_table(con, "s", S, s)
     lean, polars = lean_and_polars(con, sql, {"r": r, "s": s})
     assert lean == polars
-    assert same_bag(rows_of(run_sql(con, sql)), polars)
+    assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
 
 
 # --- Delta plans -------------------------------------------------------------
@@ -407,7 +408,7 @@ def test_three_valued_logic_in_filters():
     for sql, want in cases.items():
         assert polars_rows(con, sql) == want, sql
         assert lean_and_polars(con, sql, {"r": rows})[0] == want, sql
-        assert same_bag(rows_of(run_sql(con, sql)), want), sql
+        assert same_bag(rows_of(duckdb_sql(con, sql)), want), sql
 
 
 @pytest.mark.parametrize(
@@ -423,7 +424,7 @@ def test_null_order_in_windows(direction):
     )
     lean, polars = lean_and_polars(con, sql, {"r": rows})
     assert lean == polars
-    assert same_bag(rows_of(run_sql(con, sql)), polars)
+    assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
     first = [r[1] for r in polars if r[0] == 1 and r[2] == 1]
     assert first == ([None] if "NULLS FIRST" in direction else [0 if "ASC" in direction else 2])
 
@@ -549,7 +550,7 @@ def test_integer_functions_match_lean_in_order(sql, rows):
     inlined = inline_tables(json.loads(plan), {"r": rows})
     polars = rows_of(run_plan(con, plan, "polars"))
     assert lean_values(json.dumps(inlined)) == polars
-    assert same_bag(rows_of(run_sql(con, sql)), polars)
+    assert same_bag(rows_of(duckdb_sql(con, sql)), polars)
 
 
 def test_rounding_matches_datafusion_bit_for_bit():
@@ -588,10 +589,10 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
 @pytest.mark.parametrize(
     ("sql", "error"),
     [
-        ("SELECT a / b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
+        ("SELECT a // b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a % b AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
         ("SELECT a % CAST(b AS DOUBLE) AS q FROM r WHERE a = 5", polars_engine.DivisionByZero),
-        ("SELECT a / b AS q FROM r WHERE b = -1", polars_engine.Overflow),
+        ("SELECT a // b AS q FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, 2) AS p FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, b) AS p FROM r WHERE b = -1", polars_engine.NegativeExponent),
         # Both sides of AND are evaluated.
@@ -613,9 +614,9 @@ def test_runtime_errors_raise(sql, error):
 @pytest.mark.parametrize(
     "sql",
     [
-        "SELECT CASE WHEN b <> 0 THEN a / b END AS q FROM r",
-        "SELECT a / NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r",
-        "SELECT a / b AS q FROM r WHERE b > 0",
+        "SELECT CASE WHEN b <> 0 THEN a // b END AS q FROM r",
+        "SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r",
+        "SELECT a // b AS q FROM r WHERE b > 0",
         "SELECT CASE WHEN b > 0 THEN power(a, b) ELSE 0 END AS p FROM r WHERE a = 7",
     ],
 )
@@ -652,7 +653,7 @@ def test_polars_fails_only_where_reported(i, rows):
             }
         ),
     )
-    plan = written_plan(substrait_json(con, to_sql(expr)))
+    plan = written_plan(to_substrait_json(expr))
     try:
         polars = rows_of(run_plan(con, plan, "polars"))
     except polars_engine.IntegerOverflow:
@@ -665,7 +666,12 @@ def test_polars_fails_only_where_reported(i, rows):
         df = rows_of(run_sql(con, to_sql(expr)))
     except Exception:  # noqa: BLE001 - DataFusion evaluates more rows (`Rel.loose`)
         return
-    assert same_bag(df, polars)
+
+    def numbers(rows: list[tuple]) -> list[tuple]:
+        # Ibis types `qty ** n` as a double; its DataFusion SQL, as an integer.
+        return [tuple(float(v) if type(v) is int else v for v in r) for r in rows]
+
+    assert same_bag(numbers(df), numbers(polars))
 
 
 @pytest.mark.parametrize("name", ["lag_gap", "before_constant"])

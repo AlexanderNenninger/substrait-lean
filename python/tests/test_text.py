@@ -38,7 +38,9 @@ from sverify.engine import (
     written_plan,
 )
 from sverify.sql import Unsupported
-from sverify.testing import canonical, inline_tables, lean_values
+from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
+
+pytestmark = pytest.mark.lift_backlog
 
 R = ibis.schema({"s": "string", "t": "string", "a": "int64"})
 
@@ -183,7 +185,7 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 def test_ilike_matches_datafusion(rows):
     con = connect()
     create_table(con, "r", R, rows)
-    expected = canonical(tuple(x.values()) for x in run_sql(con, ILIKE).to_pylist())
+    expected = canonical(tuple(x.values()) for x in duckdb_sql(con, ILIKE).to_pylist())
     plan = written_plan(substrait_json(con, ILIKE))
     assert (
         canonical(tuple(x.values()) for x in run_plan(con, plan, "polars").to_pylist()) == expected

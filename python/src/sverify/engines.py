@@ -24,7 +24,7 @@ Running plans:
 Plans:
 
 * A node's `plan` is the plan Lean checked, in Lean's written form.
-* `substrait_json` compiles SQL with DataFusion's producer; `written_plan`
+* `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
   is a plan as Lean parsed and wrote it back, the form `run` and `to_sql` take; `delta_plans` are
   the weighted delta plans Lean derives for incremental maintenance.
 
