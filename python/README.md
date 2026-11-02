@@ -191,7 +191,7 @@ from source tables to a sink, with what goes wrong without the checker:
   dimension, in Ibis and in SQL.
 
 The [whole tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks)
-explains every feature in a chapter of its own; it runs locally with
+adds two guides, to contracts and to pipelines and engines; it runs locally with
 `uvx marimo edit --sandbox notebooks` from a clone.
 
 ## The API in brief

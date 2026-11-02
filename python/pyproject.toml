@@ -176,11 +176,11 @@ env = { BUDGET.default = "600" }
 [tool.poe.tasks.notebooks]
 help = "Check the tour notebooks with marimo and run each one headless"
 shell = """
-marimo check --strict [0-9]*.py || exit 1
+marimo check --strict [0-9]*.py ../catalogue/backend_semantics.py || exit 1
 out=$(mktemp -d)
-for nb in [0-9]*.py; do
+for nb in [0-9]*.py ../catalogue/backend_semantics.py; do
   echo "running $nb"
-  marimo export html "$nb" -o "$out/${nb%.py}.html" > /dev/null || exit 1
+  marimo export html "$nb" -o "$out/$(basename "${nb%.py}").html" > /dev/null || exit 1
 done
 rm -rf "$out"
 """

@@ -7,8 +7,8 @@ to have it compiled), names the constructs, and prints, for each source:
 
   features   catalogue/features.toml: is the construct in the Lean model?
   pitfalls   catalogue/pitfalls.toml: what each engine does, with the ids of
-             chapter 17's entries
-  nb17       notebooks/17_backend_semantics.py: the question per engine, Ibis
+             backend_semantics.py's entries
+  nb17       catalogue/backend_semantics.py: the question per engine, Ibis
              backend, standard SQL and Snowflake, and the Lean model's pick;
              and (section 8) DataFusion running checked plans, tagged
              agree/handled/GAP
@@ -257,10 +257,10 @@ def main() -> int:
             quirks |= set(p.get("quirks", []))
             print(f"  [{t}] {p['description']}\n      engines: {p['engines']}")
             if p.get("quirks"):
-                print(f"      chapter 17 entries: {', '.join(p['quirks'])}")
+                print(f"      backend_semantics.py entries: {', '.join(p['quirks'])}")
 
-    nb17 = ROOT / "notebooks/17_backend_semantics.py"
-    print("\n== notebooks/17_backend_semantics.py (per engine; the Lean model's pick)")
+    nb17 = ROOT / "catalogue/backend_semantics.py"
+    print("\n== catalogue/backend_semantics.py (per engine; the Lean model's pick)")
     entries = calls(nb17, "E")
     hits = ranked(entries, lambda x: x["args"][3] if len(x["args"]) > 3 else None, mine, words)
     chosen = [x for _, x in hits[:6]] + [x for x in entries if x["args"][0] in quirks]
@@ -276,7 +276,7 @@ def main() -> int:
     entries = calls(nb17, "B")
     hits = ranked(entries, lambda x: x["args"][3] if len(x["args"]) > 3 else None, mine, words)
     chosen = [x for _, x in hits[:5]] + [x for x in entries if x["args"][0] in quirks]
-    print("\n== notebooks/17_backend_semantics.py, section 8 (DataFusion as a backend;")
+    print("\n== catalogue/backend_semantics.py, section 8 (DataFusion as a backend;")
     print("   the agree/handled/GAP tag is computed when the notebook runs)")
     for x in {x["args"][0]: x for x in chosen}.values():
         a = x["args"]

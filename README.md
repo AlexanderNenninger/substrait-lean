@@ -110,7 +110,7 @@ writer, which are trusted code.
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
 | `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
-| `notebooks/` | The tour: three workflows, nine feature chapters, three on how it works and an appendix (marimo) |
+| `notebooks/` | The tour: three workflows and two guides (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |
@@ -224,9 +224,9 @@ tasks need `lake` on your PATH.
 
 ### The tour
 
-The notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
-[`00_start_here.py`](notebooks/00_start_here.py). Open the whole folder, so the
-links between chapters work:
+The five notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
+[`01_duplicate_payments.py`](notebooks/01_duplicate_payments.py). Open the whole folder, so the
+links between notebooks work:
 
 ```bash
 uvx marimo edit --sandbox notebooks              # from the project root
@@ -240,28 +240,20 @@ from `python/` as declared in the notebook's header; the first start takes a
 minute. Build the checker first (`lake build`). The project's own
 environment works too: `uv run --project python marimo edit notebooks`.
 
-| | Chapter | What it covers |
+| | Notebook | What it covers |
 |---:|:---|:---|
-| 0 | [Start here](notebooks/00_start_here.py) | what the library does for you, and how to use the tour |
 | 1 | [Duplicate card payments](notebooks/01_duplicate_payments.py) | workflow: Delta source and sink, a self-join's contract, refresh from the Change Data Feed |
 | 2 | [Sensor alerts](notebooks/02_sensor_alerts.py) | workflow: Iceberg source and sink, `LAG` and ties, NaN, Snowflake and Spark |
 | 3 | [An orders mart](notebooks/03_orders_mart.py) | workflow: a point-in-time join to a type-2 dimension, dbt tests as a contract, SQL |
-| 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, what Lean tracks, `on_unproved` |
-| 5 | [Keys and relations](notebooks/05_keys_and_relations.py) | `sv.unique`, facts between columns, joins |
-| 6 | [Runtime errors](notebooks/06_runtime_errors.py) | division by zero, overflow, casts; proving they can't happen |
-| 7 | [Windows and ASOF joins](notebooks/07_windows_and_asof.py) | LAG, LEAD, ROW_NUMBER, ties; aligning two sensors |
-| 8 | [Composing contracts](notebooks/08_composition.py) | proving one step's preconditions from the previous step |
-| 9 | [Incremental views](notebooks/09_incremental_views.py) | nodes kept up to date from changes, what is recomputed, Z-sets and delta rules |
-| 10 | [Pipelines](notebooks/10_pipelines.py) | composing nodes, `.write`, `sv.group`, contracts that hold in every state, your own source and sink |
-| 11 | [Engines and SQL](notebooks/11_engines.py) | DuckDB, Polars, DataFusion; SQL for DuckDB, Snowflake and Spark |
-| 12 | [Doubles, time and text](notebooks/12_values.py) | NaN and −0.0, timestamps and intervals, calendar functions, strings |
-| 13 | [Plans, meaning and proofs](notebooks/13_plans_and_proofs.py) | under the hood: Substrait plans, Lean's interpreter, theorems, NULL |
-| 14 | [The checker](notebooks/14_the_checker.py) | under the hood: `substrait-check`, Lean as a reference engine, Ibis coverage |
-| 15 | [What is proved, what is trusted](notebooks/15_trust.py) | under the hood: the trusted boundary, a glossary and a map of the code |
-| 17 | [One expression, many engines](notebooks/17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question, and DataFusion as a backend |
+| 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, keys and relations, runtime errors, windows and ASOF joins, composing contracts |
+| 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, DataFusion, Spark and Snowflake SQL, doubles, time and text |
 
-`poe notebooks` (part of `poe qa`) checks every chapter with `marimo check` and
-runs it headless. The chapters' tables come from `sverify.display`, which needs
+[catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a sixth marimo app outside the tour: one
+expression asked of every engine. Under-the-hood detail is in
+[docs/how-it-works.md](docs/how-it-works.md).
+
+`poe notebooks` (part of `poe qa`) checks every notebook with `marimo check` and
+runs it headless. The notebooks' tables come from `sverify.display`, which needs
 marimo.
 
 ### Wheels

@@ -32,8 +32,8 @@ def test_well_formed():
 
 
 def test_pitfall_quirks_are_entries():
-    """Each pitfall's `quirks` names an entry of the tour's chapter 17."""
-    notebook = (cat.ROOT.parent / "notebooks" / "17_backend_semantics.py").read_text()
+    """Each pitfall's `quirks` names an entry of catalogue/backend_semantics.py."""
+    notebook = (cat.ROOT / "backend_semantics.py").read_text()
     entries = set(re.findall(r'^ {8}[EB]\(\n {12}"(\w+)",', notebook, re.M))
     unknown = {q for p in PITFALLS.values() for q in p.get("quirks", [])} - entries
     assert not unknown

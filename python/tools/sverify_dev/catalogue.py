@@ -846,7 +846,7 @@ def stats(
     out += [
         "### Pitfall frequency",
         "",
-        "| pitfall | queries | chapter 17 entries |",
+        "| pitfall | queries | backend_semantics.py entries |",
         "|---|---|---|",
     ]
     for t, k in tags.most_common():

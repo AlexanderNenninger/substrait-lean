@@ -15,7 +15,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", app_title="17. One expression, many engines")
+app = marimo.App(width="full", app_title="One expression, many engines")
 
 
 @app.cell(hide_code=True)
@@ -28,18 +28,10 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 15. [What is proved, what is trusted](?file=15_trust.py) · [Contents](?file=00_start_here.py)
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # 17. One expression, many engines
+    # One expression, many engines
 
     If you've ever moved a query from one engine to another and watched a
-    number change, this appendix is the long version of why. A query or an
+    number change, this app is the long version of why. A query or an
     Ibis expression has no single meaning: each engine gives it its own.
     This notebook collects the questions that a semantics written
     *from first principles* (instead of read off one implementation) has to
@@ -64,7 +56,7 @@ def _(mo):
       timestamps as microseconds). Then the plan Lean writes back out
       (`written_plan`), run by sverify's own translators to **Polars** and
       **DuckDB**, plus whether the **Snowflake** and **Spark** SQL generators
-      accept it (chapter 11 runs the Spark SQL on a real Spark session).
+      accept it (notebook 5 of the tour runs the Spark SQL on a real Spark session).
       These translators are meant to reproduce `Rel.eval` exactly, whatever
       the native engine would do.
 
@@ -1690,14 +1682,6 @@ def _(mo):
     edge of an engine. When a number changes after a migration, start here:
     the answer is usually one of these entries, and the fix is usually to
     let sverify's translation say what you meant.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ← 15. [What is proved, what is trusted](?file=15_trust.py) · [Contents](?file=00_start_here.py)
     """)
     return
 
