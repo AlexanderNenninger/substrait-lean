@@ -680,7 +680,10 @@ def date_trunc(unit: str, v: Val) -> Val:
 
 #: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
 #: within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
-DAY_MIN, DAY_MAX = -96465292, 95026236
+#: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`, #251), and
+#: the days chrono represents (`Time.chronoDayMin`), where `date_part` works.
+DAY_MIN, DAY_MAX = -719162, 2932896
+CHRONO_DAY_MIN, CHRONO_DAY_MAX = -96465292, 95026236
 NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
 
 
@@ -752,14 +755,19 @@ def date_range(v: Val, days: pl.Expr, lo: int, hi: int, what: str, *vals: Val) -
     x = _days(v)
     bad = (x < lo) | (x > hi) | (days < lo) | (days > hi)
     value = pl.when(bad).then(None).otherwise(days).cast(pl.Int32).cast(pl.Date)
-    message = f"{what} outside the dates DataFusion computes"
+    where = (
+        "outside the reference's dates (0001-01-01 to 9999-12-31)"
+        if (lo, hi) == (DAY_MIN, DAY_MAX)
+        else "outside the dates DataFusion computes"
+    )
+    message = f"{what} {where}"
     return Val(value, pl.Date, (*issues(v, *vals), issue(bad, Overflow, message)))
 
 
 def day_part(part: str, v: Val) -> Val:
     """`UnFn.dayPart`: the part of the date's midnight."""
     x = _days(v)
-    inside = (x >= DAY_MIN) & (x <= DAY_MAX)
+    inside = (x >= CHRONO_DAY_MIN) & (x <= CHRONO_DAY_MAX)
     ts = (pl.when(inside).then(x) * US_PER_DAY).cast(US)
     return date_part(part, Val(ts, US, v.issues))
 

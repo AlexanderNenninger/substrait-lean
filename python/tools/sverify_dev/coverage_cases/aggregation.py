@@ -111,6 +111,8 @@ REFUSED: dict[str, dict[str, str]] = {
 
 UNORDERED_LISTS = {"collect"}
 
+APPROXIMATE = {"std"}
+
 NO_DUCKDB_SQL = {
     # Rows tied in the order go in Lean's list order in the written plan; in
     # Ibis's own SQL, in DuckDB's (`Rel.windowsTotal` reports it, #55).

@@ -2,7 +2,7 @@
  "clickbench-q06": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -19,7 +19,7 @@
  "clickbench-q09": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -36,7 +36,7 @@
  "clickbench-q13": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -53,7 +53,7 @@
  "clickbench-q21": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -71,12 +71,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "RegexReplace is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "clickbench-q37": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -93,7 +93,7 @@
  "clickbench-q42": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -110,7 +110,7 @@
  "fin-running-balance": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -120,7 +120,7 @@
  "fin-velocity-check": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -130,7 +130,7 @@
  "fin-impossible-travel": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -140,7 +140,7 @@
  "fin-duplicate-payments": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -150,7 +150,7 @@
  "fin-structuring": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -160,7 +160,7 @@
  "fin-reconciliation": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -170,7 +170,7 @@
  "fin-double-entry-check": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -180,9 +180,9 @@
  "fin-ar-aging": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "error: Binder Error: Cannot compare values of type BIGINT and type INTERVAL - an explicit cast is required",
   "engines": {
-   "duckdb": "differs",
+   "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
@@ -190,7 +190,7 @@
  "fin-rfm": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -200,7 +200,7 @@
  "fin-dormant-reactivation": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
@@ -210,7 +210,7 @@
  "fin-vwap": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "error: Invalid Input Error: sverify: division by zero: 0.0",
    "polars": "error: divide by zero (1 row(s))",
@@ -221,38 +221,38 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate ArgMin is not supported",
-  "datafusion": "runs",
+  "native": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
    "detail": "aggregate ArgMin is not supported",
-   "datafusion": "runs"
+   "native": "runs"
   }
  },
  "fin-bollinger": {
   "checker": "rejected",
   "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
-  "datafusion": "runs",
+  "native": "runs",
   "as_double": {
    "checker": "rejected",
    "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
-   "datafusion": "runs"
+   "native": "runs"
   }
  },
  "fin-max-drawdown": {
   "checker": "rejected",
   "detail": "error: max of doubles is not supported",
-  "datafusion": "runs",
+  "native": "runs",
   "as_double": {
    "checker": "rejected",
    "detail": "error: max of doubles is not supported",
-   "datafusion": "runs"
+   "native": "runs"
   }
  },
  "fin-log-returns": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -262,7 +262,7 @@
  "fin-fifo-pnl": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -272,7 +272,7 @@
  "fin-realized-volatility": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -283,18 +283,18 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "frame offsets must be non-negative integer constants",
-  "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")",
+  "native": "error: Invalid Input Error: Window ROWS FOLLOWING expression cannot be negative",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
    "detail": "frame offsets must be non-negative integer constants",
-   "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for ROWS / GROUPS must be non negative integers\")"
+   "native": "error: Invalid Input Error: Window ROWS FOLLOWING expression cannot be negative"
   }
  },
  "h2o-groupby-q1": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -311,7 +311,7 @@
  "h2o-groupby-q3": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -329,12 +329,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate Median is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "h2o-groupby-q7": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -351,7 +351,7 @@
  "h2o-groupby-q8": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -370,12 +370,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate Correlation is not supported",
-  "datafusion": "runs"
+  "native": "error: <class 'sqlglot.dialects.duckdb.DuckDB'> only implements `pop` correlation coefficient"
  },
  "h2o-groupby-q10": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -392,7 +392,7 @@
  "h2o-join-q1": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -409,7 +409,7 @@
  "h2o-join-q3": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -426,7 +426,7 @@
  "h2o-join-q5": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -443,7 +443,7 @@
  "iot-time-weighted-average": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -453,7 +453,7 @@
  "iot-silent-devices": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -463,7 +463,7 @@
  "iot-condition-duration": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -473,7 +473,7 @@
  "iot-time-in-state": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -483,7 +483,7 @@
  "iot-counter-increase": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -493,7 +493,7 @@
  "iot-gapfill-locf": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -504,12 +504,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate ArgMax is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "iot-latest-reading": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -519,7 +519,7 @@
  "iot-change-detection": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -529,7 +529,7 @@
  "iot-consecutive-threshold": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -539,12 +539,12 @@
  "iot-daily-energy": {
   "checker": "rejected",
   "detail": "error: max of doubles is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "iot-event-correlation": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -554,7 +554,7 @@
  "job-1a": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -571,7 +571,7 @@
  "job-2a": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -588,7 +588,7 @@
  "job-6a": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -605,7 +605,7 @@
  "dbt-pivot-conditional": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -615,7 +615,7 @@
  "dbt-pivot-wider": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -626,12 +626,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "Unnest is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "dbt-unpivot-union": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -641,7 +641,7 @@
  "dbt-scd2-from-updates": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -651,7 +651,7 @@
  "dbt-scd2-point-in-time": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -662,12 +662,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "Hash is not supported",
-  "datafusion": "error: Compilation rule for 'Hash' operation is not defined"
+  "native": "runs"
  },
  "dbt-union-sources": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -677,7 +677,7 @@
  "dbt-mrr-movements": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -688,18 +688,18 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "WITH RECURSIVE is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "dbt-generate-date-spine": {
   "checker": "rejected",
   "stage": "producer",
   "detail": "FROM UNNEST(GENERATE_SERIES(CAST('2024-01-01' AS TIMESTAMP), C... is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "dbt-accepted-values-test": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -709,7 +709,7 @@
  "dbt-unique-test": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -719,7 +719,7 @@
  "dbt-relationships-test": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -729,7 +729,7 @@
  "pa-funnel-ordered": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -739,7 +739,7 @@
  "pa-cohort-retention": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -749,7 +749,7 @@
  "pa-day-n-retention": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "error: Invalid Input Error: sverify: division by zero: 0.0",
    "polars": "error: divide by zero (1 row(s))",
@@ -759,7 +759,7 @@
  "pa-first-touch": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -769,7 +769,7 @@
  "pa-repeat-purchase-rate": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -779,7 +779,7 @@
  "pa-users-without-orders": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -789,7 +789,7 @@
  "pa-market-basket": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -800,17 +800,17 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate Median is not supported",
-  "datafusion": "error: Compilation rule for 'Quantile' operation is not defined"
+  "native": "runs"
  },
  "pa-zscore-outliers": {
   "checker": "rejected",
   "detail": "error: unsupported window function: std_dev",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "pa-histogram": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -821,12 +821,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate GroupConcat is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "pa-ntile-free-spenders": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -836,7 +836,7 @@
  "pa-cumulative-signups": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -846,7 +846,7 @@
  "ssb-q1.1": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -863,7 +863,7 @@
  "ssb-q2.1": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -880,7 +880,7 @@
  "ssb-q3.1": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -897,7 +897,7 @@
  "ssb-q4.1": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -914,7 +914,7 @@
  "ts-asof-trades-quotes": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -924,7 +924,7 @@
  "ts-asof-fx-tolerance": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -934,7 +934,7 @@
  "ts-resample-15min": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "error: Compilation rule for 'TimestampBucket' operation is not defined",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -944,7 +944,7 @@
  "ts-hourly-rollup": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -954,12 +954,12 @@
  "ts-rolling-time-window": {
   "checker": "rejected",
   "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
-  "datafusion": "error: DataFusion error: Plan(\"Invalid window frame: frame offsets for RANGE must be either a numeric value, a string value or an interval\")"
+  "native": "runs"
  },
  "ts-rolling-7day-calendar": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -969,7 +969,7 @@
  "ts-date-spine": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -979,7 +979,7 @@
  "ts-dau-rolling-7d": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -989,7 +989,7 @@
  "ts-weekly-active-users": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -999,7 +999,7 @@
  "ts-mom-growth": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1009,7 +1009,7 @@
  "ts-sessionize": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1019,7 +1019,7 @@
  "ts-session-starts": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1030,12 +1030,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "AtTimeZone (orders.order_ts AT TIME ZONE 'Europe/Berlin') is not supported yet",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "ts-overlapping-bookings": {
   "checker": "verified",
   "incremental": true,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1045,7 +1045,7 @@
  "ts-pack-intervals": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1055,7 +1055,7 @@
  "tpcds-q03": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
@@ -1072,7 +1072,7 @@
  "tpcds-q07": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
@@ -1090,30 +1090,30 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate GROUPING() is not supported yet",
-  "datafusion": "runs",
+  "native": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
    "detail": "aggregate GROUPING() is not supported yet",
-   "datafusion": "runs"
+   "native": "runs"
   }
  },
  "tpcds-q36": {
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate GROUPING() is not supported yet",
-  "datafusion": "runs",
+  "native": "runs",
   "as_double": {
    "checker": "rejected",
    "stage": "producer",
    "detail": "aggregate GROUPING() is not supported yet",
-   "datafusion": "runs"
+   "native": "runs"
   }
  },
  "tpcds-q42": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
@@ -1130,7 +1130,7 @@
  "tpcds-q51": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
@@ -1152,7 +1152,7 @@
  "tpcds-q89": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
@@ -1174,7 +1174,7 @@
  "tpcds-q98": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
@@ -1195,7 +1195,7 @@
  "tpch-q01": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1212,7 +1212,7 @@
  "tpch-q02": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1229,7 +1229,7 @@
  "tpch-q03": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1246,7 +1246,7 @@
  "tpch-q04": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1263,7 +1263,7 @@
  "tpch-q05": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1280,7 +1280,7 @@
  "tpch-q06": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1297,7 +1297,7 @@
  "tpch-q07": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1314,7 +1314,7 @@
  "tpch-q08": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1334,7 +1334,7 @@
  "tpch-q09": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1351,7 +1351,7 @@
  "tpch-q10": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1368,7 +1368,7 @@
  "tpch-q11": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1388,7 +1388,7 @@
  "tpch-q12": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1405,7 +1405,7 @@
  "tpch-q13": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1422,7 +1422,7 @@
  "tpch-q14": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1443,7 +1443,7 @@
  "tpch-q15": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1460,7 +1460,7 @@
  "tpch-q16": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1477,7 +1477,7 @@
  "tpch-q17": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1497,7 +1497,7 @@
  "tpch-q18": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1514,7 +1514,7 @@
  "tpch-q19": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1531,7 +1531,7 @@
  "tpch-q20": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1551,7 +1551,7 @@
  "tpch-q21": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1568,7 +1568,7 @@
  "tpch-q22": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
@@ -1585,7 +1585,7 @@
  "win-dedup-latest": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1596,12 +1596,12 @@
   "checker": "rejected",
   "stage": "producer",
   "detail": "aggregate ArgMax is not supported",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "win-top-n-per-group": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1611,7 +1611,7 @@
  "win-top-n-with-ties": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1621,7 +1621,7 @@
  "win-running-total": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1631,12 +1631,12 @@
  "win-moving-average": {
   "checker": "rejected",
   "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
-  "datafusion": "runs"
+  "native": "runs"
  },
  "win-percent-of-total": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1646,7 +1646,7 @@
  "win-above-group-average": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1656,7 +1656,7 @@
  "win-ntile-quartiles": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1666,7 +1666,7 @@
  "win-gaps-and-islands": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1676,7 +1676,7 @@
  "win-forward-fill": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1686,7 +1686,7 @@
  "win-lag-change": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
@@ -1696,7 +1696,7 @@
  "win-keyset-pagination": {
   "checker": "verified",
   "incremental": false,
-  "datafusion": "runs",
+  "native": "runs",
   "engines": {
    "duckdb": "runs",
    "polars": "runs",

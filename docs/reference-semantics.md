@@ -179,7 +179,7 @@ The values are right; the rendering is not.
 | `date` | Days since 1970-01-01, proleptic Gregorian. | ✓ |
 | `timestamp` | Microseconds since 1970-01-01 00:00, **no time zone**. Time-zone-aware timestamps (`timestampTz`) are a separate kind the model does not compute with. | ✓ |
 | Intervals | Day-to-second intervals are microseconds; year-to-month intervals are months. Adding months keeps the day of month. | ✓ |
-| Range | **Not yet the reference's own.** The limits that apply are DataFusion's: `date_part` is NULL outside the years −262143 to 262142, and calendar truncations raise outside ±2⁶³ nanoseconds. The reference should decide the range, and the written SQL should not guard DataFusion's. [#251](https://github.com/AlexanderNenninger/substrait-lean/issues/251) | #251 |
+| Range | **Dates: the SQL standard's, 0001-01-01 to 9999-12-31** (`Time.dayMin`, `Time.dayMax`; decided on #251). Every engine represents them. Date arithmetic (adding days or months) whose operand or result leaves them is an error, reported by `verify` and raised by the engines as "outside the reference's dates". With constant operands (TPC-H Q6's `DATE '1994-01-01' + INTERVAL 1 YEAR`) this is decided when the plan is written, and the SQL has no guard. **Not yet the reference's own:** `date_part` is NULL outside chrono's years −262143 to 262142, and calendar truncations raise outside DataFusion's ±2⁶³ nanoseconds. | ✓ date arithmetic ([#251](https://github.com/AlexanderNenninger/substrait-lean/issues/251)); `date_part` and truncation ranges open |
 
 ## 11. Lists and structs
 

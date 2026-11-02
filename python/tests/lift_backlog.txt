@@ -15,8 +15,6 @@ tests/test_relations.py::test_bags_match_duckdb[SELECT a FROM t EXCEPT SELECT a 
 tests/test_relations.py::test_bags_match_duckdb[SELECT a FROM t INTERSECT SELECT a FROM u]
 tests/test_relations.py::test_bags_match_duckdb[SELECT a FROM t UNION SELECT a FROM u]
 tests/test_sql_spark.py::test_date_trunc_matches_lean
-tests/test_time.py::test_comparing_durations_with_days_is_refused
-tests/test_time.py::test_date_differences_are_refused
 tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[microsecond]
 tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[millisecond]
 

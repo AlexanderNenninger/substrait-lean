@@ -2,8 +2,7 @@
 runtime errors.
 
 * The reference's rounding and casts of doubles agree with Python's.
-* `sverify` compiles Ibis's integer `//` to exact integer floor division, also
-  in the DataFusion SQL it writes (`sverify.engine.to_sql`).
+* `sverify` compiles Ibis's integer `//` to exact integer floor division.
 * The runtime-error check (`Rel.mayIssues_sound`) reports what it should, and
   whenever DataFusion or DuckDB running the plan fails on random data, the
   check had reported an error: this tests the trusted part, the model of when
@@ -24,13 +23,11 @@ from ibis import _
 import sverify as sv
 from sverify.contracts import decode_double
 from sverify.engine import (
-    collect,
     connect,
     create_table,
     put_table,
     run_plan,
     substrait_json,
-    to_sql,
     written_plan,
 )
 from sverify.errors import VerificationError
@@ -122,12 +119,17 @@ def test_rounding_semantics(sql):
 )
 @settings(max_examples=30, deadline=None)
 def test_integer_floor_division_is_exact(pairs):
-    con = connect()
     t = ibis.table(R, name="r")
-    create_table(con, "r", R, pairs)
-    out = collect(con.datafusion.sql(to_sql(t.select(q=t.a // t.b))))
-    got = [r["q"] for r in out.to_pylist()]
-    assert got == [a // b for a, b in pairs]
+    plan = to_substrait_json(t.select(q=t.a // t.b))
+    want = [(a // b,) for a, b in pairs]
+    assert lean_values(json.dumps(inline_tables(json.loads(plan), {"r": pairs}))) == want
+    assert (
+        duckdb_rows(
+            written_plan(plan),
+            {"r": pa.table({"a": [a for a, _ in pairs], "b": [b for _, b in pairs]})},
+        )
+        == want
+    )
 
 
 T = ibis.table({"qty": "int64", "n": "int64", "amount": "float64"}, name="t")
@@ -253,8 +255,8 @@ def test_datafusion_fails_only_where_reported(i, rows):
 )
 @given(rows=st.lists(st.tuples(values, values), max_size=6))
 def test_duckdb_fails_only_where_reported(i, rows):
-    """The generated SQL raises where DataFusion fails, and also where
-    DataFusion wraps around; both are reported."""
+    """The generated SQL raises where the reference raises (a reported
+    error) or an engine would wrap around (a warning)."""
     expr = PIPELINES[i]
     report = sv.verify(expr)
     reported = report.errors + report.warnings
