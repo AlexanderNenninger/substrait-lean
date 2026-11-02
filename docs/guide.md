@@ -19,7 +19,7 @@ orders.apply(sv.Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))  # n
 
 ## What it does for you
 
-In order of what it is worth in day-to-day data engineering:
+In order of day-to-day value:
 
 1. Contracts proved before the pipeline runs. The checks you would
    write as dbt tests or data expectations (`not_null`, `unique`, accepted
@@ -46,8 +46,8 @@ In order of what it is worth in day-to-day data engineering:
    recompute. It reads Delta's Change Data Feed and Iceberg's appends
    (skipping the Delta files a proof shows a filter can't match),
    writes each state to a Delta or Iceberg sink exactly once, and the sink
-   carries the proved contract to the next job, which builds on it instead
-   of re-checking the data.
+   carries the proved contract to the next job, which builds on it without
+   re-checking the data.
 4. Proved optimizations. A plan can be split across shards (Delta or
    Iceberg partitions, files) and the results combined, with a proof that
    the result is the same; per-row overflow checks can be dropped where a
@@ -70,8 +70,8 @@ Three complete jobs, condensed from the [query catalogue](../catalogue/INDEX.md)
 of 139 real analytical queries, are the first chapters of the
 [tour](../README.md#the-tour). Each starts from source tables, states and proves a
 contract, runs on every engine, keeps up with new data, writes a sink, and
-shows what goes wrong without the checker. They run headless in CI, so they
-stay correct.
+shows what goes wrong without the checker. `poe notebooks` runs them
+headless in CI.
 
 | Workflow | Sources and sinks | What the checker catches |
 |---|---|---|
@@ -277,7 +277,7 @@ except VerificationError as e:
   pins down the other side's key).
 * Foreign keys: `sv.references("cust", "customers", "id")` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
-  like `unique`). It is only an assumption: nothing proves it in `ensures`.
+  like `unique`). Nothing proves it in `ensures`, so it stays an assumption.
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first, so
   every postcondition is `undetermined` and `report.deterministic` is

@@ -15,9 +15,6 @@ create_table(con, "orders", ibis.schema({"id": "int64", "customer": "string", "a
              [(2, "bob", 5), (3, "cy", 50)])
 ```
 
-The rest of this README looks under the hood: how plans are checked, how the
-engines are made to agree, and exactly what is proved.
-
 ```bash
 lake build                                                  # proofs + CLI
 tests/run.sh                                                # golden tests for the CLI
@@ -487,7 +484,7 @@ and `Rel.duckdb_sound`. So `ROW_NUMBER() - 1` and Ibis's `find` (`strpos - 1`)
 are proved not to overflow without a precondition, while `amount * 2` still
 needs one.
 
-## How do I know it's right?
+## How the results are checked
 
 * Proofs: `lake build` re-checks every theorem. The main ones say that the
   update plan computes exactly the change to the result, and that running it on
