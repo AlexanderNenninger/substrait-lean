@@ -1968,7 +1968,7 @@ def issueFree : Expr → Bool
 The frame matters to aggregates and `FIRST_VALUE`/`LAST_VALUE`/`NTH_VALUE`
 only; ranks and `ROW_NUMBER`, `LAG`, `LEAD` ignore it. -/
 def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (w : Json) :
-    J (List Nat × List SortKey × List WinFn × Option (Nat × Nat)) := do
+    J (List Nat × List SortKey × List WinFn × Option (Nat × Nat × Bool)) := do
   let anchor ← natD w "functionReference"
   let some name := fns.lookup anchor
     | throw s!"function reference {anchor} is not declared in extensions"
@@ -2043,14 +2043,14 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).
-      if let some (_, _, true) := decAvg then
-        throw "avg of a DECIMAL with a double result over a window is not supported"
       if decAvg.isSome then
         pure (.agg m sort fr, some (.agg { m with fn := .count } sort fr))
       else pure (.agg m sort fr, none)
-  let decAvg : Option (Nat × Nat) := match f.2, f.1 with
+  -- A double if the plan says so, as DuckDB types it (as `decimalAvgs`).
+  let dblOut := (field? w "outputType").any (typeKind · == .float)
+  let decAvg : Option (Nat × Nat × Bool) := match f.2, f.1 with
     | some _, .agg m _ _ => match m.arg.kind cols with
-      | .dec p s => some (p, s)
+      | .dec p s => some (p, s, dblOut)
       | _ => none
     | _, _ => none
   return (part, sort, f.1 :: f.2.toList, decAvg)
@@ -2128,14 +2128,20 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
       off := off + fs.length
     return off
   let (rewritten, _) := (es.mapM (replaceWindows (fieldJson ∘ column))).run 0
-  let wcols := cols ++ (windowed.kinds []).drop n
-  let wbits := bits ++ (windowed.bits []).drop n
   -- A decimal `AVG`'s column stands for its `SUM` divided by its `COUNT`
   -- (the next column), as `decimalAvgs` computes it.
-  let avgs := uses.zipIdx.filterMap fun ((_, _, _, d), k) => d.map fun (p, s) => (column k, p, s)
-  let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s) =>
-    Expr.replaceField c (.un (.dkind (min 38 (p + 4)) (s + 4))
-      (.bin .ddiv (upscale 4 (.field c)) (.field (c + 1)))) e
+  let avgs := uses.zipIdx.filterMap fun ((_, _, _, d), k) =>
+    d.map fun (p, s, dbl) => (column k, p, s, dbl)
+  -- An `AVG` with a double result is a double in the expressions over it.
+  let wcols := avgs.foldl (init := cols ++ (windowed.kinds []).drop n) fun ks (c, _, _, dbl) =>
+    if dbl then ks.set c .float else ks
+  let wbits := bits ++ (windowed.bits []).drop n
+  let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s, dbl) =>
+    let (total, count) := (Expr.field c, Expr.field (c + 1))
+    -- A double: the sum as a double by the count, NULL without values.
+    Expr.replaceField c (if dbl then .ifThen (.bin .eq count (.lit (.int 0))) (.lit .null)
+        (.bin .fdiv (.un (.dtof s) total) (.un .itof count))
+      else .un (.dkind (min 38 (p + 4)) (s + 4)) (.bin .ddiv (upscale 4 total) count)) e
   -- Bare window functions are their columns; other expressions are computed
   -- after the windows.
   let parsed ← rewritten.mapM fun e => do
