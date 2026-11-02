@@ -405,7 +405,10 @@ def elabGenerateLowering : CommandElab := fun stx => do
   elabCommand (← `(def $(mkIdent short) : Lowering $pStx :=
     ⟨fun f => match f with $unAlts:matchAlt*, fun f => match f with $binAlts:matchAlt*⟩))
   -- The coverage report.
-  let rows := found.toList.map (fun f => (f.ctor, f.how, f.ms)) ++ missing.toList.map (·, "missing", 0)
+  -- In the constructors' order.
+  let rows := ctors.map fun (c, _) => match found.find? (·.ctor == c) with
+    | some f => (c, f.how, f.ms)
+    | none => (c, "missing", 0)
   let rows ← rows.mapM fun (c, how, ms) =>
     `(($(quote (c.replacePrefix `Substrait .anonymous).toString), $(quote how), $(quote ms)))
   elabCommand (← `(def $(mkIdent (short ++ `coverage)) : List (String × String × Nat) := [$(rows.toArray),*]))
