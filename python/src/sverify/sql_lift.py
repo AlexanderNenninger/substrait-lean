@@ -621,6 +621,7 @@ class _Lift:
             return self.expr(n, scope, bound)
 
         args: list[Json] = []
+        output: Json | None = None
         if type(f) in _RANKING:
             name, out = _RANKING[type(f)]
             if isinstance(f, sge.Ntile):
@@ -665,11 +666,16 @@ class _Lift:
             if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
                 raise Unsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
             name = _AGGREGATES[type(f)]
+            output = agg["outputType"]
             values = [E(a["value"], dt.null) for a in agg["arguments"]]
             args = [column(v) for v in values]
         else:
             raise Unsupported(f"window function {_shown(f)} is not supported yet")
         fn = self.window_json(w, name, args, scope, bound)
+        if output is not None:
+            # The aggregate's type, as for a measure: DuckDB's AVG of a
+            # DECIMAL is a DOUBLE.
+            fn["windowFunction"]["outputType"] = output
         return [(fn, out)], lambda refs: E(refs[0], out)
 
     def window_json(
