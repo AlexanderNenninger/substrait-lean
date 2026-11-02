@@ -183,7 +183,7 @@ theorem Triple.of_aeval {S : String → List AVal} {pre : String → List Expr}
     Triple (Spec S pre K) r.query fun rows => ∀ row ∈ rows, EnvMem Sx row := by
   intro cat hcat hsat hwf row hrow i
   obtain ⟨T, hT, hsub⟩ := h cat hcat hsat hwf
-  exact hsub i _ (Rel.aeval_sound hcat (Spec.env_sound hsat) (Spec.facts_sound hsat) hT hwf row hrow i)
+  exact hsub i _ (Rel.aeval_sound hcat (Spec.env_sound hsat) (Spec.facts_sound hsat) hT (sz := false) hwf nofun row hrow i)
 
 /-- **Composed contracts, as `sverify` checks them.** `g` is proved to
 guarantee `f`'s whole contract on its input `x` (schema, preconditions and

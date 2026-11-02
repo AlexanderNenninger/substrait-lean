@@ -363,7 +363,7 @@
   },
   "contract": {
    "proved": true,
-   "guard_free": false,
+   "guard_free": true,
    "deterministic": false
   },
   "verified_sql": {

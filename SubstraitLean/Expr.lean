@@ -255,9 +255,9 @@ def UnFn.apply : UnFn → Value → Value
   | .itos, .int i => .str (toString i)
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)
-  | .length, .str s => .int s.length
+  | .length, .str s => .int (Text.capped s.length)
   | .reverse, .str s => .str (Text.reverse s)
-  | .ascii, .str s => .int (Text.ascii s)
+  | .ascii, .str s => .int (Text.capped (Text.ascii s))
   | .replace p r, .str s => .str (Text.replace s p r)
   | .regexMatch p, .str s => match Text.regexMatch s p with
     | some k => .int (k + 1)
@@ -430,7 +430,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .trim l r, .str s, .str set => .str (Text.trim l r s set)
   | .strRepeat, .str s, .int n => .str (if Text.repeatFits s n then Text.repeatStr s n else "")
   | .ilike, .str a, .str b => .bool (Text.ilike a b)
-  | .levenshtein, .str a, .str b => .int (Text.levenshtein a b)
+  | .levenshtein, .str a, .str b => .int (Text.capped (Text.levenshtein a b))
   | .dadd, .int a, .int b => .int (a + b)
   | .dsub, .int a, .int b => .int (a - b)
   | .dmul, .int a, .int b => .int (a * b)

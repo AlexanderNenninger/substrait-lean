@@ -1546,7 +1546,7 @@ theorem Rel.fkMatch_sound {a b : Rel} {on : Expr} (hm : Rel.fkMatch cat A F K R 
       simp only [Bool.and_eq_true, List.contains_iff_mem, Bool.not_eq_true'] at hm
       obtain ⟨hfk, hnn⟩ := hm
       have hT := keyedWindows_sound hcat hA hF hK
-      have hmem := aeval_sound hcat hA hF hT ha x hx i
+      have hmem := aeval_sound hcat hA hF hT (sz := false) ha nofun x hx i
       have hxn : x.getD i .null ≠ .null := fun h0 => by
         rw [h0] at hmem
         simp only [AVal.Mem, List.getD_eq_getElem?_getD] at hmem hnn
@@ -1628,7 +1628,7 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
   have cond : ∀ {r : Rel}, r.WF cat → ∀ c : Expr, ∀ row ∈ r.eval cat,
       (r.condVal cat A F K c).Mem (c.eval row) := fun hr c row hrow =>
     have hT := keyedWindows_sound hcat hA hF hK
-    Expr.absD_sound (aeval_sound hcat hA hF hT hr row hrow) (facts_sound hcat hF hT hr row hrow)
+    Expr.absD_sound (aeval_sound hcat hA hF hT (sz := false) hr nofun row hrow) (facts_sound hcat hF hT hr row hrow)
       (fun _ h => by simp at h) c
   match r, hwf, h with
   | .filter r c, hwf, h =>
@@ -1662,7 +1662,7 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
             simp only [eval]
             refine (filter_leftJoin fun z hz => ?_).symm
             have hT := keyedWindows_sound hcat hA hF hK
-            have hpad := (aeval_sound hcat hA hF hT hwf.1.1 z hz).append (EnvMem.nullRow (y.arity cat))
+            have hpad := (aeval_sound hcat hA hF hT (sz := false) hwf.1.1 nofun z hz).append (EnvMem.nullRow (y.arity cat))
               (by rw [aeval_length hwf.1.1, eval_arity hcat hwf.1.1 z hz])
             have hm := Expr.absD_sound hpad (fs := []) (ks := []) (fun _ h => by simp at h)
               (fun _ h => by simp at h) c

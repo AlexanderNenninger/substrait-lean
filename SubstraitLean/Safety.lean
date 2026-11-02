@@ -814,10 +814,10 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     Bool → Rel → List (Issue × Expr)
   | _, .read _ | _, .values _ _ => []
   | _, .filter r c =>
-    r.mayIssues cat A F T true ++ c.mayIssues (r.loose.aeval cat A F T) (r.loose.facts cat F T)
+    r.mayIssues cat A F T true ++ c.mayIssues (r.loose.aeval cat A F T true) (r.loose.facts cat F T)
   | u, .project r es =>
     let s := if u then r.loose else r
-    r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T))
+    r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T))
   | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r
   | u, .unnest r _ => r.mayIssues cat A F T u
   | u, .window r _ _ fns => r.mayIssues cat A F T u ++ (WinFn.sumArg? fns).map (.sumWraps, ·)
@@ -825,16 +825,28 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
     a.mayIssues cat A F T true ++ b.mayIssues cat A F T true ++
-      on.mayIssues (ab.aeval cat A F T) (ab.facts cat F T)
+      on.mayIssues (ab.aeval cat A F T true) (ab.facts cat F T)
   -- Nothing bounds the number of rows in a group, so any integer sum may wrap.
   | u, .aggregate r gs ms =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++
-      (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T) (s.facts cat F T)) ++
+      (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T)) ++
       ms.filterMap fun m =>
         if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
+
+/-- `Rel.loose` keeps every window as it is, so it keeps the size hypothesis. -/
+theorem Rel.Small.loose {cat : Catalog} : ∀ {r : Rel}, r.Small cat → r.loose.Small cat
+  | .read _, h | .values _ _, h => h
+  | .filter r _, h | .orderBy r _, h | .distinct r, h => Rel.Small.loose (r := r) h
+  | .project r _, h | .emit r _, h => Rel.Small.loose (r := r) h
+  | .cross a b, h | .unionAll a b, h => ⟨Rel.Small.loose (r := a) h.1, Rel.Small.loose (r := b) h.2⟩
+  | .join a b ty _, h => by
+    cases ty <;> exact ⟨Rel.Small.loose (r := a) h.1, Rel.Small.loose (r := b) h.2⟩
+  | .semi a _ _ _, h => Rel.Small.loose (r := a) h.1
+  | .fetch _ _ _, h | .window _ _ _ _, h | .aggregate _ _ _, h => h
+  | .unnest r _, h => ⟨Rel.Small.loose (r := r) h, Rel.Small.loose (r := r) h⟩
 
 /-- Join and semi-join conditions run on pairs of loose input rows. -/
 theorem condIssue_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
@@ -842,92 +854,102 @@ theorem condIssue_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {a b : Rel} {on : Expr} {p : Issue × Expr} {x y : Row} (ha : a.WF cat) (hb : b.WF cat)
-    (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) (hp : p ∈ on.issues (x ++ y)) :
-    p ∈ on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T)
+    (hsa : a.Small cat) (hsb : b.Small cat) (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) (hp : p ∈ on.issues (x ++ y)) :
+    p ∈ on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T true)
       ((Rel.cross a.loose b.loose).facts cat F T) := by
   have hab : (Rel.cross a.loose b.loose).WF cat := ⟨Rel.loose_wf ha, Rel.loose_wf hb⟩
   have hrow : x ++ y ∈ (Rel.cross a.loose b.loose).eval cat := by
     simp only [Rel.eval, mem_crossRows]; exact ⟨x, hx, y, hy, rfl⟩
-  exact Expr.mayIssues_sound (Rel.aeval_sound hcat hA hF hT hab _ hrow)
+  exact Expr.mayIssues_sound (Rel.aeval_sound hcat hA hF hT hab (fun _ => ⟨hsa.loose, hsb.loose⟩) _ hrow)
     (Rel.facts_sound hcat hF hT hab _ hrow) (KsHold.nil _) on p hp
 
 /-- **Soundness**: every issue that can happen when running a well-formed plan
-is among `Rel.mayIssues`. So an empty list proves the plan runs without
-errors and without wrapping around. -/
+is among `Rel.mayIssues`, provided its windows read fewer than `2⁶²` rows
+(the size hypothesis, `Rel.Small`). So an empty list proves the plan runs
+without errors and without wrapping around. -/
 theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat) :
-    ∀ {u : Bool} {r : Rel}, r.WF cat → ∀ p, r.HasIssue cat u p → p ∈ r.mayIssues cat A F T u
-  | _, .read _, _, _, h | _, .values _ _, _, _, h => h.elim
-  | _, .filter r c, hwf, p, h => by
+    ∀ {u : Bool} {r : Rel}, r.WF cat → r.Small cat → ∀ p, r.HasIssue cat u p →
+      p ∈ r.mayIssues cat A F T u
+  | _, .read _, _, _, _, h | _, .values _ _, _, _, _, h => h.elim
+  | _, .filter r c, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
     rcases h with h | ⟨row, hrow, hp⟩
-    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 p h)
+    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)
     · have hl := loose_wf hwf.1
-      exact .inr (Expr.mayIssues_sound (aeval_sound hcat hA hF hT hl row hrow)
+      exact .inr (Expr.mayIssues_sound (aeval_sound hcat hA hF hT hl (fun _ => Rel.Small.loose (r := r) hsm) row hrow)
         (facts_sound hcat hF hT hl row hrow) (KsHold.nil row) c p hp)
-  | u, .project r es, hwf, p, h => by
+  | u, .project r es, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap]
     rcases h with h | ⟨row, hrow, e, he, hp⟩
-    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 p h)
+    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
         · exact hwf.1
         · exact loose_wf hwf.1
-      exact .inr ⟨e, he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs row hrow)
+      have hsm' : (if u then r.loose else r).Small cat := by
+        cases u
+        · exact hsm
+        · exact Rel.Small.loose (r := r) hsm
+      exact .inr ⟨e, he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩
-  | _, .emit r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
-  | _, .fetch r _ _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
-  | _, .window r _ _ _, hwf, p, h => by
+  | _, .emit r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
+  | _, .fetch r _ _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf hsm p h
+  | _, .window r _ _ _, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
     rcases h with h | h
-    · exact .inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h)
+    · exact .inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h)
     · exact .inr h
-  | _, .orderBy r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
-  | _, .distinct r, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf p h
-  | _, .unnest r _, hwf, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 p h
-  | _, .cross a b, hwf, p, h => by
+  | _, .orderBy r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
+  | _, .distinct r, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf hsm p h
+  | _, .unnest r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
+  | _, .cross a b, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
     rcases h with h | h
-    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 p h)
-    · exact .inr (mayIssues_sound hcat hA hF hT hwf.2 p h)
-  | _, .unionAll a b, hwf, p, h => by
+    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 hsm.1 p h)
+    · exact .inr (mayIssues_sound hcat hA hF hT hwf.2 hsm.2 p h)
+  | _, .unionAll a b, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
     rcases h with h | h
-    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 p h)
-    · exact .inr (mayIssues_sound hcat hA hF hT hwf.2.1 p h)
-  | _, .join a b ty on, hwf, p, h => by
+    · exact .inl (mayIssues_sound hcat hA hF hT hwf.1 hsm.1 p h)
+    · exact .inr (mayIssues_sound hcat hA hF hT hwf.2.1 hsm.2 p h)
+  | _, .join a b ty on, hwf, hsm, p, h => by
     have ha : a.WF cat := by cases ty <;> exact hwf.1
     have hb : b.WF cat := by cases ty <;> exact hwf.2.1
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
     rcases h with h | h | ⟨x, hx, y, hy, hp⟩
-    · exact .inl (.inl (mayIssues_sound hcat hA hF hT ha p h))
-    · exact .inl (.inr (mayIssues_sound hcat hA hF hT hb p h))
-    · exact .inr (condIssue_sound hcat hA hF hT ha hb hx hy hp)
-  | _, .semi a b _ on, hwf, p, h => by
+    · exact .inl (.inl (mayIssues_sound hcat hA hF hT ha hsm.1 p h))
+    · exact .inl (.inr (mayIssues_sound hcat hA hF hT hb hsm.2 p h))
+    · exact .inr (condIssue_sound hcat hA hF hT ha hb hsm.1 hsm.2 hx hy hp)
+  | _, .semi a b _ on, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append]
     rcases h with h | h | ⟨x, hx, y, hy, hp⟩
-    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 p h))
-    · exact .inl (.inr (mayIssues_sound hcat hA hF hT hwf.2.1 p h))
-    · exact .inr (condIssue_sound hcat hA hF hT hwf.1 hwf.2.1 hx hy hp)
-  | u, .aggregate r gs ms, hwf, p, h => by
+    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm.1 p h))
+    · exact .inl (.inr (mayIssues_sound hcat hA hF hT hwf.2.1 hsm.2 p h))
+    · exact .inr (condIssue_sound hcat hA hF hT hwf.1 hwf.2.1 hsm.1 hsm.2 hx hy hp)
+  | u, .aggregate r gs ms, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
     rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩
-    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 p h))
+    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h))
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
         · exact hwf.1
         · exact loose_wf hwf.1
-      exact .inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs row hrow)
+      have hsm' : (if u then r.loose else r).Small cat := by
+        cases u
+        · exact hsm
+        · exact Rel.Small.loose (r := r) hsm
+      exact .inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩)
     · exact .inr ⟨m, hm, by simp [hf, hd]⟩
 

@@ -57,6 +57,9 @@ theorem dedupN_spec {α : Type} [DecidableEq α] : ∀ (n : Nat) (l : List α), 
       simp only [List.mem_filter, bne_iff_ne, ne_eq] at this
       exact fun h => this.2 h.symm
 
+theorem dedup_length_le {α : Type} [DecidableEq α] (l : List α) : (dedup l).length ≤ l.length :=
+  (dedupN_spec l.length l (Nat.le_refl _)).2.1.length_le
+
 theorem mem_dedup {α : Type} [DecidableEq α] {l : List α} {y : α} : y ∈ dedup l ↔ y ∈ l :=
   (dedupN_spec _ l (Nat.le_refl _)).1 y
 theorem dedup_sublist {α : Type} [DecidableEq α] (l : List α) : (dedup l).Sublist l :=

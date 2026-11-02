@@ -1304,6 +1304,16 @@ translator, the SQL generator, and each engine's execution (DataFusion's
 Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by golden tests,
 round trips and the differential tests instead.
 
+**The size hypothesis** (trusted, stated in the theorems that use it): every
+string has fewer than 2⁶² characters, and every relation a window reads fewer
+than 2⁶² rows. No machine's memory holds more, and it is what bounds lengths,
+positions and ranks: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`,
+`levenshtein` and `ascii` there (a cap the hypothesis never reaches), and
+`Rel.Small` is a hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound`
+and `Rel.duckdb_sound`. So `ROW_NUMBER() - 1` and Ibis's `find` (`strpos - 1`)
+are proved not to overflow without a precondition, while `amount * 2` still
+needs one.
+
 ### How do I know it's right?
 
 * **Proofs**: `lake build` re-checks every theorem. The main ones say that the

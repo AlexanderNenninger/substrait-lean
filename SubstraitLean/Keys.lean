@@ -538,8 +538,8 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       · rwa [copyCols_getD (eval_arity hcat hwf.1 _ hx) (hr c hc) hp,
           copyCols_getD (eval_arity hcat hwf.1 _ hy) (hr c hc) hp] at he
       · exact linCols_inj (eval_arity hcat hwf.1 _ hx) (eval_arity hcat hwf.1 _ hy)
-          (aeval_sound hcat hA hF (WindowKeys.none_sound cat) hwf.1 _ hx)
-          (aeval_sound hcat hA hF (WindowKeys.none_sound cat) hwf.1 _ hy) hp he
+          (aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.1 nofun _ hx)
+          (aeval_sound hcat hA hF (WindowKeys.none_sound cat) (sz := false) hwf.1 nofun _ hy) hp he
   | .emit r m, hwf, k, hk => by
       simp only [Rel.keys, List.mem_filterMap] at hk
       obtain ⟨k₀, hk₀, he⟩ := hk
