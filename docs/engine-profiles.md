@@ -100,6 +100,19 @@ meets the preconditions, the plan evaluated with DuckDB's functions gives
 `Rel.eval`'s rows. The catalogue's benchmark queries are checked this way
 (`verified_sql`, #229).
 
+A plan that may raise (an overflow check, a division) is covered too, by
+**partial correctness**. `shimDuckDB_exact` shows that every shimmed
+expression, run with DuckDB's functions, gives the reference's value on every
+row where it does not raise, and `Rel.duckdb_shim_sound` lifts this to plans
+(`shimRel`): unless an expression raises on a row it is evaluated on, DuckDB
+gives `Rel.eval`'s rows. So DuckDB returns the rows a contract is proved
+about, or an error, never other rows. This needs neither a contract nor guard
+elimination, so it covers left joins and windows too (`looseSub`). An engine
+may evaluate an expression on fewer rows than the model (a hash join, a
+pushed-down filter); that skips evaluations without changing a value, which
+is the engine's own correctness. `verified_sql` in the catalogue rests on
+this theorem; `guard_free` is the stronger fact that nothing raises.
+
 Trusted: that `Profile.duckdb` matches DuckDB (to be checked by the fuzzer),
 and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
 NOT NULL` included). Next: relations, the

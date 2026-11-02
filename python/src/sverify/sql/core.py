@@ -610,14 +610,25 @@ class Dialect:
     def decimal_sum(self, v: str, k: Dec) -> str:
         return self.cast(f"SUM({v})", k)
 
-    def decimal_avg(self, v: str, a: Dec, k: Dec) -> str:
-        """`SUM(v) / COUNT(v)` at scale `a.s + 4`, rounded half away from zero
-        (`roundDivInt?`), in 128-bit integers; NULL with no values."""
-        n = f"COUNT({v})"
-        u = f"CAST(SUM({v}) * {10**a.s} AS HUGEINT)"
-        q = f"(CASE WHEN {u} < 0 THEN -1 ELSE 1 END * ((2 * ABS({u}) * 10000 + {n}) // (2 * {n})))"
-        scaled = f"{self.cast(q, Dec(38, 0))} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
+    def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
+        """`a / b`, a decimal of scale `sa` by an integer, at scale `k.s`,
+        rounded half away from zero (`roundDivInt?`), in 128-bit integers;
+        NULL for `b = 0` (`BinFn.ddiv`)."""
+        u = f"CAST({a} * {10**sa} AS HUGEINT)"
+        n = f"CAST({b} AS HUGEINT)"
+        sign = f"CASE WHEN ({u} < 0) <> ({n} < 0) THEN -1 ELSE 1 END"
+        mag = f"((2 * ABS({u}) * {10 ** (k.s - sa)} + ABS({n})) // (2 * ABS({n})))"
+        q = self.cast(f"({sign} * {mag})", Dec(38, 0))
+        scaled = f"{q} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
         return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
+
+    def decimal_avg(self, v: str, a: Dec, k: Dec) -> str:
+        """`SUM(v) / COUNT(v)` at scale `a.s + 4` (`decimalAvgs`); NULL with
+        no values."""
+        return self.decimal_div(f"SUM({v})", f"COUNT({v})", a.s, k)
+
+    def decimal_window_sum(self, v: str, w: str, k: Dec) -> str:
+        return self.cast(f"SUM({v}) {w}", k)
 
     def int_sum(self, v: str) -> str:
         """`SUM` of the BIGINT column `v`, exactly; a sum outside 64 bits
@@ -832,7 +843,7 @@ class DecOp:
     integer or a double rounds half away from zero to a smaller scale. The
     result has `p` digits, else the reference raises (`UnFn.decimal`)."""
 
-    op: Literal["lit", "add", "sub", "mul", "neg", "abs", "cast"]
+    op: Literal["lit", "add", "sub", "mul", "neg", "abs", "cast", "div"]
     args: tuple[Expr, ...]
     p: int
     s: int
@@ -1071,7 +1082,11 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
         return "float"
     if f.fn == "agg" and f.measure is not None:
         m = f.measure
-        if m.fn in ("count", "sum"):
+        if m.fn == "sum":
+            # A decimal column's sum is a decimal (#27).
+            a = cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else None
+            return dsum_kind(a) if isinstance(a, Dec) else "int"
+        if m.fn == "count":
             return "int"
         if m.fn in ("fsum", "avg"):
             return "float"
@@ -2150,8 +2165,10 @@ class _Parser:
                 m = self.measure({"measure": {k: w[k] for k in keys if k in w}}, cols)
                 if m.distinct:
                     raise Unsupported("DISTINCT window aggregates are not supported")
-                if m.fn in ("dsum", "davg") or isinstance(lean_expr_kind(m.arg, cols.lean), Dec):
-                    raise Unsupported("window aggregates of decimals are not supported yet (#27)")
+                if m.fn == "davg":
+                    raise Unsupported(
+                        "avg of DECIMAL over a window is written as SUM and COUNT (#27)"
+                    )
                 if not _issue_free(m.arg):
                     raise Unsupported(
                         "window aggregates of expressions are not supported; use a column"
@@ -2514,6 +2531,12 @@ class _Parser:
                 return DecOp("neg", (a,), p, sc)
             case "abs", [a], [(p, sc)]:
                 return DecOp("abs", (a,), p, sc)
+            case "sverify_decimal_div", [a, b], [(_, s1), (_, 0)]:
+                # sverify's own: a decimal by an integer at the declared scale,
+                # rounded half away from zero (a decimal AVG over a window).
+                if not isinstance(declared, Dec) or declared.s < s1:
+                    raise Unsupported("sverify_decimal_div needs a DECIMAL type of a larger scale")
+                return DecOp("div", (a, b), declared.p, declared.s)
             case _, [a, b], _ if name in _COMPARISONS:
                 # SQL compares decimals of any scales, and with integers, exactly.
                 return _call(name, [a, b])
@@ -3476,6 +3499,11 @@ class _Writer:
                 return f"COUNT({v}) {w}"
             case "sum":
                 return d.window_int_sum(v, w)
+            case "dsum":
+                a = expr_kind(m.arg, ks)
+                if not isinstance(a, Dec):
+                    raise Unsupported("dsum of a non-decimal")
+                return d.decimal_window_sum(v, w, dsum_kind(a))
             case "fsum" | "avg":
                 total = d.window_float_sum(v, w)
                 if m.fn == "avg":
@@ -3842,6 +3870,9 @@ class _Writer:
                 return d.decimal_abs(a)
             case "cast", [a]:
                 return d.decimal_cast(a, k)
+            case "div", [a, b]:
+                ka = expr_kind(e.args[0], cols)
+                return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)
         raise Unsupported(f"decimal {e.op} of {len(xs)} arguments")
 
     def operand(

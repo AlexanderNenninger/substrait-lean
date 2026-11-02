@@ -104,11 +104,23 @@ def test_avg_rounds_half_away_from_zero(con):
     assert lean(con, "SELECT avg(x) AS v FROM g") == [("-0.007500",)]
 
 
+def test_avg_over_a_window(con):
+    """Over a window too: the frame's `SUM` by its `COUNT`, at scale 6."""
+    sql = "SELECT k, avg(x) OVER (PARTITION BY k) AS v FROM g ORDER BY k"
+    assert lean(con, sql) == [
+        (1, "0.006667"),
+        (1, "0.006667"),
+        (1, "0.006667"),
+        (2, "-0.050000"),
+        (2, "-0.050000"),
+        (3, None),
+    ]
+
+
 @pytest.mark.parametrize(
     ("sql", "message"),
     [
         ("SELECT a / b AS r FROM t", "divide of DECIMAL is not supported yet"),
-        ("SELECT avg(a) OVER () AS r FROM t", "avg of DECIMAL over a window"),
     ],
 )
 def test_refused(con, sql, message):

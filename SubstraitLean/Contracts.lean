@@ -423,6 +423,60 @@ theorem tdiv_between {a b : Int} (hb : 0 < b) : min a 0 ≤ a.tdiv b ∧ a.tdiv 
     rw [Int.neg_tdiv] at h₁ h₂
     omega
 
+/-- `roundDivInt?` for a non-zero divisor: a decimal `AVG`'s quotient (#27). -/
+def roundDiv (a b : Int) : Int := (roundDivInt? a b).getD 0
+
+theorem nat_roundDiv_le (A B : Nat) (hB : 0 < B) : (2 * A + B) / (2 * B) ≤ A := by
+  apply Nat.le_of_lt_succ
+  rw [Nat.div_lt_iff_lt_mul (by omega)]
+  have h1 : A ≤ A * B := Nat.le_mul_of_pos_right A hB
+  have h2 : (A + 1) * (2 * B) = 2 * (A * B) + 2 * B := by
+    rw [Nat.add_mul, Nat.one_mul, Nat.mul_left_comm]
+  rw [Nat.succ_eq_add_one, h2]; omega
+
+/-- The rounded quotient is no larger than the dividend in absolute value. -/
+theorem roundDiv_natAbs_le {a b : Int} (hb : b ≠ 0) : (roundDiv a b).natAbs ≤ a.natAbs := by
+  have hq := nat_roundDiv_le a.natAbs b.natAbs (Int.natAbs_pos.mpr hb)
+  unfold roundDiv roundDivInt?
+  simp only [hb, ↓reduceIte]
+  generalize (2 * a.natAbs + b.natAbs) / (2 * b.natAbs) = q at hq ⊢
+  dsimp only [Option.getD_some]
+  split <;> simp only [Int.natAbs_neg, Int.natAbs_natCast] <;> exact hq
+
+/-- For a positive divisor, the rounded quotient lies between 0 and the
+dividend, as `tdiv_between` says of truncation. -/
+theorem roundDiv_between {a b : Int} (hb : 0 < b) :
+    min a 0 ≤ roundDiv a b ∧ roundDiv a b ≤ max a 0 := by
+  have hq := nat_roundDiv_le a.natAbs b.natAbs (Int.natAbs_pos.mpr (by omega))
+  have hb0 : b ≠ 0 := by omega
+  unfold roundDiv roundDivInt?
+  simp only [hb0, ↓reduceIte]
+  generalize (2 * a.natAbs + b.natAbs) / (2 * b.natAbs) = q at hq ⊢
+  dsimp only [Option.getD_some]
+  have hbn : ¬b < 0 := by omega
+  have hq' : (q : Int) ≤ a.natAbs := Int.ofNat_le.mpr hq
+  split
+  · rename_i hs
+    have ha : 0 ≤ a := by
+      rcases Int.lt_or_le a 0 with h | h
+      · exact absurd (hs ▸ h) hbn
+      · exact h
+    have h1 : (a.natAbs : Int) = a := Int.natAbs_of_nonneg ha
+    omega
+  · rename_i hs
+    have ha : a < 0 := by
+      rcases Int.lt_or_le a 0 with h | h
+      · exact h
+      · exact absurd (propext ⟨fun h' => absurd h' (by omega), fun h' => absurd h' hbn⟩) hs
+    have h1 : (a.natAbs : Int) = -a := Int.ofNat_natAbs_of_nonpos (by omega)
+    omega
+
+/-- Decimal division (`AVG`): between 0 and the dividend for a divisor that is
+not negative (a zero divisor gives NULL), no larger than it in absolute value
+otherwise. -/
+def ddivBound (x y : Bound) : Bound :=
+  if y.lo.any (0 ≤ ·) then x.signHull else x.absHull
+
 /-- The remainder is smaller in absolute value than the divisor, and not
 negative for a non-negative dividend. -/
 def modBound (x y : Bound) : Bound :=
@@ -607,7 +661,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .dadd, a, b => arith Bound.add a b
   | .dsub, a, b => arith Bound.sub a b
   | .dmul, a, b => arith Bound.mul a b
-  | .ddiv, a, b => partialAbs₂ false a b
+  | .ddiv, a, b => divAbs ddivBound a b
   | .dateAdd, a, b => arith Bound.add a b
   | .fadd, a, b | .fsub, a, b | .fmul, a, b | .fdiv, a, b | .fmod, a, b | .fpow, a, b =>
       arith (fun _ _ => Bound.top) a b
@@ -1041,6 +1095,26 @@ theorem divBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (
           obtain ⟨u₀, h₀, rfl⟩ := hu'; have := hi.2 u₀ h₀; omega
     · exact Bound.mem_absHull hi (Int.natAbs_tdiv_le_natAbs i j)
 
+theorem ddivBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (hj0 : j ≠ 0) :
+    (ddivBound x y).Mem (roundDiv i j) := by
+  unfold ddivBound
+  split
+  · rename_i hpos
+    obtain ⟨yl, yh⟩ := y
+    cases yl with
+    | none => simp at hpos
+    | some l =>
+      simp only [Option.any_some, decide_eq_true_eq] at hpos
+      have hj1 := hj.1 l rfl
+      obtain ⟨h₁, h₂⟩ := roundDiv_between (a := i) (b := j) (by omega)
+      obtain ⟨xl, xh⟩ := x
+      refine ⟨fun l' hl' => ?_, fun u' hu' => ?_⟩
+      · simp only [Bound.signHull, Option.map_eq_some_iff] at hl'
+        obtain ⟨l₀, h₀, rfl⟩ := hl'; have := hi.1 l₀ h₀; omega
+      · simp only [Bound.signHull, Option.map_eq_some_iff] at hu'
+        obtain ⟨u₀, h₀, rfl⟩ := hu'; have := hi.2 u₀ h₀; omega
+  · exact Bound.mem_absHull hi (roundDiv_natAbs_le hj0)
+
 theorem modBound_sound {x y : Bound} {i j : Int} (hi : x.Mem i) (hj : y.Mem j) (hj0 : j ≠ 0) :
     (modBound x y).Mem (i.tmod j) := by
   have hlt : (i.tmod j).natAbs < j.natAbs := by rw [Int.natAbs_tmod]; exact Nat.mod_lt _ (by omega)
@@ -1141,8 +1215,12 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
   case dsub => exact arith_sound Bound.mem_sub (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case dmul => exact arith_sound Bound.mem_mul (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case ddiv =>
-    exact partialAbs₂_sound (g := roundDivInt?) (fun v w => by cases v <;> cases w <;> rfl)
-      (fun hs => by simp at hs) ha hb
+    refine divAbs_sound ddivBound_sound (fun v w => ?_) ha hb
+    cases v <;> cases w <;> try rfl
+    rename_i i j
+    by_cases hj : j = 0
+    · simp [BinFn.apply, roundDivInt?, hj]
+    · simp [BinFn.apply, roundDiv, roundDivInt?, hj]
   case fadd => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fsub => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
   case fmul => exact arith_sound (fun _ _ => Bound.mem_top _) (fun v w => by cases v <;> cases w <;> rfl) ha hb
@@ -2932,15 +3010,6 @@ def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD 
 
 def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
-/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
-value of the same column of another input row, or give the default;
-`PERCENT_RANK` and `CUME_DIST` are doubles. Aggregates over frames and
-`FIRST_VALUE` and friends may be anything. -/
-def WinFn.abs (env : List AVal) : WinFn → AVal
-  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
-  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
-  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
-  | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Sums of integers in `b` keep their sign. -/
 def sumBound (b : Bound) : Bound :=
@@ -2981,6 +3050,20 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .fsum | .avg => AVal.double
   | .min | .max => a.nullable
   | .collect => AVal.top
+
+/-- `ROW_NUMBER` and the ranks are positive integers; `LAG`/`LEAD` read a
+value of the same column of another input row, or give the default;
+`PERCENT_RANK` and `CUME_DIST` are doubles. An aggregate over a frame is
+described like one over a group (`Measure.abs`); `FIRST_VALUE` and friends
+may be anything. -/
+def WinFn.abs (env : List AVal) : WinFn → AVal
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ => ⟨false, some ⟨some 1, none⟩, false, false, false⟩
+  | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
+  -- An aggregate over a frame, rows of the input: a sum of non-negative
+  -- integers is not negative, `MIN` and `MAX` are among the inputs (#229).
+  | .agg m _ _ => m.abs env []
+  | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
+  | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
 /-- Abstract evaluation. `A t` describes the columns of table `t`; `F t` holds
 facts about its rows. Computed columns use the facts of their input. -/
@@ -3275,7 +3358,16 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
       simp only [WinFn.abs, WinFn.value, WinFn.valueIn, floatRatio]
       split <;> exact ⟨_, rfl, Bound.mem_top _⟩
   | .cumeDist _ => ⟨_, rfl, Bound.mem_top _⟩
-  | .agg _ _ _ | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
+  | .agg m sort fr => by
+      simp only [WinFn.abs, WinFn.value, WinFn.valueIn]
+      refine Measure.abs_sound (fun y hy => ⟨?_, by simp [FactsHold]⟩) m
+      have hy' := Frame.mem_rows hy
+      simp only [List.mem_append, List.mem_cons, List.mem_filter] at hy'
+      rcases hy' with ⟨hb, _⟩ | rfl | ⟨ha, _⟩
+      · exact hall y (.inr (.inl hb))
+      · exact hall y (.inl rfl)
+      · exact hall y (.inr (.inr ha))
+  | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.mem_top _
   | .lag c k d => by
       simp only [WinFn.abs]
       rcases WinFn.value_lag (part := part) (b := b) (a := a) (x := x) (c := c) (k := k)

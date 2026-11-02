@@ -364,6 +364,9 @@ def probe_contract(
     requires, ensures = contract(q, schemas, profile)
     report = sverify.verify(query, requires=requires, ensures=ensures)
     out: dict[str, Any] = {"proved": report.proved, "guard_free": report.guard_free}
+    if not report.deterministic:
+        # Rows may tie in a window, and the engine breaks the ties its own way.
+        out["deterministic"] = False
     if unproved := [c.label for c in report.unproved]:
         out["unproved"] = unproved
     if errors := [str(i) for i in report.errors]:
@@ -547,9 +550,12 @@ def probe_profile(
     }
     if q.requires is not None:
         c = result["contract"] = probe_contract(con, q, schemas, profile, query)
-        # Verified SQL (#229): the contract is proved, nothing may raise, the
-        # data meets the preconditions, and DuckDB gives the rows.
-        ok = c["proved"] and c["guard_free"] and "data" not in c
+        # Verified SQL (#229): every postcondition is proved, ties cannot
+        # change the rows, the data meets the preconditions, and DuckDB gives
+        # the rows. DuckDB then returns
+        # rows the postconditions hold of, or raises (`Rel.duckdb_shim_sound`);
+        # `proved` (no runtime error either) is stronger.
+        ok = "unproved" not in c and "data" not in c and c.get("deterministic", True)
         result["verified_sql"] = {
             "duckdb": "yes" if ok and result["engines"].get("duckdb") == "runs" else "no"
         }
