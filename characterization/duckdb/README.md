@@ -60,7 +60,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [function/generic](function__generic.json) | 42 | 4 | 0 |  | 221 | 161 | 2 | lift 216, checker 4 |
 | [function/index](function__index.json) | 0 | 0 | 0 |  | 27 | 20 | 0 | lift 27 |
 | [function/interval](function__interval.json) | 4 | 0 | 0 |  | 33 | 131 | 0 | lift 33 |
-| [function/list](function__list.json) | 11 | 9 | 0 |  | 1859 | 1536 | 10 | lift 1838, checker 20 |
+| [function/list](function__list.json) | 11 | 0 | 0 |  | 1859 | 1536 | 10 | lift 1838, checker 20 |
 | [function/nested](function__nested.json) | 0 | 0 | 0 |  | 32 | 10 | 0 | lift 32 |
 | [function/numeric](function__numeric.json) | 48 | 16 | 7 | lean 7 | 230 | 199 | 0 | lift 230 |
 | [function/operator](function__operator.json) | 47 | 2 | 21 | lean 21 | 98 | 74 | 0 | lift 98 |
@@ -103,7 +103,7 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [secrets](secrets.json) | 0 | 0 | 0 |  | 16 | 14 | 3 | lift 16 |
 | [select](select.json) | 11 | 0 | 0 |  | 37 | 21 | 0 | lift 37 |
 | [serialization](serialization.json) | 2 | 0 | 0 |  | 1 | 0 | 0 | tables 1 |
-| [setops](setops.json) | 18 | 0 | 0 |  | 87 | 147 | 0 | lift 87 |
+| [setops](setops.json) | 79 | 0 | 0 |  | 26 | 147 | 0 | lift 26 |
 | [settings](settings.json) | 6 | 1 | 0 |  | 712 | 85 | 7 | lift 712 |
 | [show_select](show_select.json) | 1 | 0 | 0 |  | 20 | 0 | 1 | lift 19, tables 1 |
 | [sql_export](sql_export.json) | 124 | 1 | 2 | engine 2 | 739 | 1170 | 8 | lift 732, tables 5 |
@@ -129,9 +129,9 @@ Totals over 46367 queries of DuckDB's tests: 7117 agree, 407 disagree, 26169 ref
 | [types/geo](types__geo.json) | 0 | 0 | 0 |  | 192 | 209 | 7 | lift 187, tables 5 |
 | [types/hugeint](types__hugeint.json) | 1 | 0 | 0 |  | 175 | 85 | 0 | lift 175 |
 | [types/interval](types__interval.json) | 42 | 0 | 1 | both 1 | 223 | 74 | 0 | lift 215, checker 8 |
-| [types/list](types__list.json) | 157 | 46 | 4 | lean 4 | 348 | 41 | 0 | lift 249, checker 99 |
+| [types/list](types__list.json) | 158 | 0 | 4 | lean 4 | 347 | 41 | 0 | lift 248, checker 99 |
 | [types/map](types__map.json) | 0 | 0 | 0 |  | 37 | 4 | 0 | lift 37 |
-| [types/nested](types__nested.json) | 38 | 13 | 3 | both 1, lean 2 | 654 | 176 | 5 | lift 619, checker 35 |
+| [types/nested](types__nested.json) | 38 | 1 | 3 | both 1, lean 2 | 654 | 176 | 5 | lift 619, checker 35 |
 | [types/null](types__null.json) | 6 | 1 | 0 |  | 2 | 21 | 0 | lift 2 |
 | [types/numeric](types__numeric.json) | 10 | 0 | 7 | engine 1, lean 6 | 274 | 34 | 3 | lift 246, checker 21 |
 | [types/string](types__string.json) | 7 | 0 | 0 |  | 1 | 0 | 0 | lift 1 |
