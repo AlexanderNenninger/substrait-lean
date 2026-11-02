@@ -363,7 +363,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `hash` | expressions | 1 | 1% | partial |
 | `recursive_cte` | relational | 1 | 1% | no |
 | `generate_series` | relational | 1 | 1% | partial |
-| `string_agg` | aggregation | 1 | 1% | no |
+| `string_agg` | aggregation | 1 | 1% | partial |
 | `time_bucket` | expressions | 1 | 1% | partial |
 | `range_frame` | windows | 1 | 1% | partial |
 | `timezone` | expressions | 1 | 1% | no |
@@ -386,7 +386,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `range_frame` | 1 | 1 | partial | offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). DataFusion's Substrait producer drops RANGE offsets, so such SQL is refused, and DataFusion cannot run Ibis's SQL for an interval frame. Sliding AVG/MIN as for rows_frame |
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
 | `stddev_var` | 1 | 1 | partial | grouped, of doubles or integers, with each engine's own algorithm (#54); not over windows |
-| `string_agg` | 1 | 1 | no |  |
+| `string_agg` | 1 | 1 | partial | STRING_AGG with an ORDER BY of columns (DuckDB only so far, #271); without one the order is the engine's, which is refused |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 
