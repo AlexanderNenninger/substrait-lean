@@ -321,6 +321,15 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         # expands otherwise than DuckDB.
         ("SELECT id FROM orders ASOF JOIN customers ON customer >= name", "ASOF JOIN"),
         ("SELECT id FROM orders POSITIONAL JOIN customers", "POSITIONAL JOIN"),
+        # What SQLGlot hangs on a table, and literals it reads otherwise.
+        ("FROM orders o1, orders o2 SELECT count(*)", "with joins"),
+        ("SELECT count(*) FROM orders TABLESAMPLE 2 ROWS", "with sample"),
+        ("SELECT * FROM orders PIVOT (sum(amount) FOR customer IN ('ada'))", "with pivots"),
+        ("SELECT 1__2", "underscore not between two digits"),
+        ("SELECT 1._5", "underscore not between two digits"),
+        ("SELECT '1e38'::DECIMAL(38,0)", "does not fit"),
+        ('SELECT 42::TINYINT::"null"', "CAST to"),
+        ("SELECT INTERVAL 2 DAYS AS x", "INTERVAL output column"),
         (
             "SELECT orders.*, c.* FROM orders FULL JOIN customers AS c (customer, region)"
             " USING (customer)",
@@ -493,3 +502,16 @@ def test_nested_values_have_no_order_yet():
     schema = {"t": ibis.schema({"s": "struct<p: int64, q: int64>"})}
     with pytest.raises(Refused, match="ordering comparisons"):
         lift("SELECT a.s < b.s AS c FROM t AS a, t AS b", schema)
+
+
+def test_constants_out_of_range_are_cast_not_folded():
+    # `200::TINYINT` raises in DuckDB: the plan casts, it doesn't hold an
+    # INT8 literal of 200.
+    plan = lift("SELECT 200::TINYINT AS x, 100::TINYINT AS y", {}).plan
+    exprs = plan["relations"][0]["root"]["input"]["project"]["expressions"]
+    assert "cast" in exprs[0] and exprs[1] == {"literal": {"i8": 100}}
+
+
+def test_digit_separators_are_read_as_duckdb_reads_them():
+    result = check("SELECT 1_000 AS a, 1_000.5 AS b, 2_5e1 AS c", {})
+    assert result.ok, f"{result.stage}: {result.detail}"
