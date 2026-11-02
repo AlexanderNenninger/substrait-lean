@@ -30,6 +30,11 @@ natively, or the generated template (`SubstraitLean/LoweringDuckDB.lean`).
 `substrait-check --lift-table`: print, as JSON, what each DuckDB SQL function
 lifts to under each semantics, generated and proved (`SubstraitLean/LiftDuckDB.lean`).
 
+`substrait-check --outcomes plan.json`: for a plan that projects expressions
+over a `VALUES`, each row's outcomes under the reference profile
+(`Expr.evalP`): the value (doubles as their codes) or the error raised, one
+JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
+
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
 
@@ -74,6 +79,31 @@ def renderCell : Kind → Value → String
   | .dec _ s, .int i => decimalString s i
   | .int, .int i | .time, .int i | .date, .int i => toString i
   | _, v => v.render
+
+/-- A value as JSON, doubles as their codes (`SubstraitLean/Float.lean`). -/
+def valueJson : Value → Lean.Json
+  | .null => .null
+  | .bool b => .bool b
+  | .int i => .num (Lean.JsonNumber.fromInt i)
+  | .str s => .str s
+  | .list vs => .arr (vs.attach.map fun ⟨v, _⟩ => valueJson v).toArray
+
+/-- `--outcomes`: a `Project` over a `VALUES`, each row's expressions
+evaluated under the reference profile (`Expr.evalP`): the value, or the error
+it raises. One JSON list per row, for probing an engine's functions (#242). -/
+def outcomes (plan : Plan) : IO UInt32 := do
+  let rec body : Rel → Option (Relation × List Expr)
+    | .emit r _ => body r
+    | .project (.values _ rows) es => some (rows, es)
+    | _ => none
+  let some (rows, es) := body plan.root
+    | IO.eprintln "error: --outcomes needs a Project over a VALUES"; return 1
+  for row in rows do
+    let outs := es.map fun e => match e.evalP Profile.reference row with
+      | .ok v => Lean.Json.mkObj [("ok", valueJson v)]
+      | .error k => Lean.Json.mkObj [("error", toString (repr k))]
+    IO.println (Lean.Json.arr outs.toArray).compress
+  return 0
 
 def check (plan : Plan) : IO UInt32 := do
   let cat := plan.catalog
@@ -154,6 +184,7 @@ def runOn (flag : String) (input : String) : IO UInt32 := do
     | "--delta" => pure delta
     | "--write" => pure (write false)
     | "--write-datafusion" => pure (write true)
+    | "--outcomes" => pure outcomes
     | _ => IO.eprintln s!"unknown mode {flag}"; return 1
   match parsePlan input with
   | .ok plan => mode plan
@@ -217,11 +248,11 @@ def main (args : List String) : IO UInt32 := do
     return 0
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--write-datafusion", "--shard"].contains flag then
+    if ["--delta", "--contract", "--write", "--write-datafusion", "--shard", "--outcomes"].contains flag then
       return ← runOn flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage | --lift-table | --lift-cache"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --lowering-coverage | --lift-table | --lift-cache"
     return 1
