@@ -142,16 +142,6 @@ class DuckDBDialect(Dialect):
         start = self.cast("0", "float")
         return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
 
-    def float_var(self, v: str, o: str, sample: bool, sqrt: bool) -> str:
-        xs = f"list({v} ORDER BY {o}) FILTER (WHERE {v} IS NOT NULL)"
-        zero = self.cast("0", "float")
-        n = f"CAST(COUNT({v}) AS DOUBLE)"
-        mean = f"(list_reduce(list_prepend({zero}, {xs}), lambda a, b: a + b) / {n})"
-        squares = f"list_transform({xs}, lambda y: (y - {mean}) * (y - {mean}))"
-        ss = f"list_reduce(list_prepend({zero}, {squares}), lambda a, b: a + b)"
-        var = f"({ss} / ({n} - {self.cast('1' if sample else '0', 'float')}))"
-        return f"sqrt({var})" if sqrt else var
-
     def char_length(self, s: str) -> str:
         return f"length({s})"
 

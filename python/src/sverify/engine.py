@@ -535,16 +535,58 @@ def datafusion_plan(plan_json: str) -> str:
         f = e.get("extensionFunction", {})
         if f.get("name", "").split(":")[0] == "sverify_fmod":
             f["name"] = "modulus"
+    _datafusion_variances(plan)
     return json.dumps(plan)
+
+
+def _datafusion_variances(plan: dict) -> None:
+    """Substrait's `variance` and `std_dev` say sample or population in an
+    option; DataFusion has a function for each (#54)."""
+    exts = plan.get("extensions", [])
+    names = {
+        e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
+        for e in exts
+        if "extensionFunction" in e
+    }
+    anchors: dict[str, int] = {}
+
+    def anchor(name: str) -> int:
+        if name not in anchors:
+            a = max([*names, *anchors.values(), 0]) + 1
+            anchors[name] = a
+            exts.append({"extensionFunction": {"functionAnchor": a, "name": name}})
+        return anchors[name]
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            m = node.get("measure")
+            if isinstance(m, dict) and names.get(m.get("functionReference")) in (
+                "variance",
+                "std_dev",
+            ):
+                pop = any(
+                    o.get("name") == "distribution"
+                    and o.get("preference", [])[:1] == ["POPULATION"]
+                    for o in m.get("options", [])
+                )
+                base = "var" if names[m["functionReference"]] == "variance" else "stddev"
+                m["functionReference"] = anchor(f"{base}_pop" if pop else f"{base}_samp")
+                m.pop("options", None)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan)
 
 
 def _check_datafusion_plan(plan: dict) -> None:
     """Refuse what DataFusion computes differently from the reference (#209):
     a `substring` whose start may be negative (DataFusion puts it left of the
     beginning, the reference counts it from the end, `Text.substrWrap`) unless
-    the plan asks for `LEFT_OF_BEGINNING`; an `avg` with an integer result
-    (`AggFn.iavg`), which DataFusion computes as a double; and a variance or
-    standard deviation (`AggFn.var`), whose rounding depends on the order."""
+    the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
+    (`AggFn.iavg`), which DataFusion computes as a double."""
     names = {
         e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
         for e in plan.get("extensions", [])
@@ -559,15 +601,6 @@ def _check_datafusion_plan(plan: dict) -> None:
                 ints = ("i8", "i16", "i32", "i64")
                 if is_avg and any(k in a.get("outputType", {}) for k in ints):
                     raise sql.Unsupported("DataFusion's AVG has no integer result")
-                if isinstance(a, dict) and names.get(a.get("functionReference")) in (
-                    "variance",
-                    "std_dev",
-                ):
-                    # #54: the reference adds the squared deviations in row order.
-                    raise sql.Unsupported(
-                        "DataFusion computes a variance in its own order, and its rounding "
-                        "depends on the order"
-                    )
             f = node.get("scalarFunction")
             if isinstance(f, dict) and names.get(f.get("functionReference")) == "substring":
                 left = any(

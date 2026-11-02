@@ -646,13 +646,12 @@ class Dialect:
         values (#209)."""
         raise Unsupported(f"{self.name}: AVG with an integer result is not implemented")
 
-    def float_var(self, v: str, o: str, sample: bool, sqrt: bool) -> str:
-        """`varOf` of the doubles of `v`, in the order of the ordinal `o`, for
-        more than one value of a sample, or one of a population: the mean as
-        `float_sum` divided by the count, then the squares of the deviations
-        added one by one from +0.0, divided by `n - 1` or `n`; its square
-        root for a standard deviation."""
-        raise Unsupported(f"{self.name}: variance of doubles in row order is not implemented")
+    def float_var(self, fn: str, v: str) -> str:
+        """`AggFn.var` of the doubles of `v` with the engine's own algorithm
+        (#54): `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP` or `STDDEV_POP`."""
+        name = {"var_samp": "VAR_SAMP", "var_pop": "VAR_POP", "std_samp": "STDDEV_SAMP",
+                "std_pop": "STDDEV_POP"}[fn]  # fmt: skip
+        return f"{name}({v})"
 
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
@@ -3348,7 +3347,7 @@ class _Writer:
         for e in [*groups, *(x for ms in measures for x in (ms.arg, ms.filter) if x is not None)]:
             self.check_refs(e, m)
         # Double sums add in Lean's list order, which needs the ordinal.
-        sums = any(ms.fn in ("fsum", "avg", *VAR_AGGS) for ms in measures)
+        sums = any(ms.fn in ("fsum", "avg") for ms in measures)
         needs = ordered or sums
         a = self.alias()
 
@@ -3425,9 +3424,14 @@ class _Writer:
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
-                body = d.canon(d.float_var(v, o, sample, m.fn.startswith("std")))
+                body = d.canon(d.float_var(m.fn, v))
                 none = f"{n} <= {d.int_lit(1 if sample else 0)}"
-                value = d.case_when(none, d.null("float"), body)
+                # A NaN passes through; DuckDB's VAR_POP of one NaN is 0.0
+                # (upstream/LEDGER.md).
+                nan = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))}) > {d.int_lit(0)}"
+                value = d.case_when(
+                    none, d.null("float"), d.case_when(nan, d.float_lit(math.nan), body)
+                )
                 if not d.guards:
                     return value
                 # An infinity makes a deviation `∞ - ∞`, NaN, which no operation

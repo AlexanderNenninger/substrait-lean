@@ -270,11 +270,12 @@ def test_errors_in_measures_are_reported():
     assert not sv.verify(guarded).errors
 
 
-# #54: variance and standard deviation in Lean's row order, bit for bit.
+# #54: variance and standard deviation with each engine's own algorithm,
+# compared approximately (#85 will bound the error).
 V = ibis.table({"k": "int64", "x": "float64", "i": "int64"}, name="t")
 finite = st.one_of(
     st.none(),
-    st.sampled_from([0.0, 0.1, -2.5, 1e300, -1e-300, math.nan]),
+    st.sampled_from([0.0, 0.1, -2.5, 1e150, -1e-300, math.nan]),
     st.floats(-1e6, 1e6, allow_nan=False),
 )
 v_rows = st.lists(
@@ -299,35 +300,50 @@ def decoded(rows: list[tuple]) -> list[tuple]:
     return sorted(out, key=repr)
 
 
+def near(x: object, y: object) -> bool:
+    """Equal up to the algorithm's rounding (and Lean's six printed decimals)."""
+    if isinstance(x, float) and isinstance(y, float):
+        return math.isclose(x, y, rel_tol=1e-6, abs_tol=1e-6)
+    return x == y
+
+
 @settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(rows=v_rows)
-def test_variance_is_the_same_on_every_engine(rows):
+def test_variance_agrees_across_engines(rows):
     con = connect()
     create_table(con, "t", V.schema(), rows)
     plan = to_substrait_json(var_expr())
     lean = decoded(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))))
     written = written_plan(plan)
-    by = {e: decoded(arrow_rows(run_plan(con, written, e))) for e in ("duckdb", "polars")}
-    # The engines agree bit for bit; Lean prints doubles with six decimals.
-    assert by["duckdb"] == by["polars"]
-    assert len(lean) == len(by["duckdb"])
-    for g, e in zip(lean, by["duckdb"], strict=True):
-        assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)
+    for engine in ("duckdb", "polars", "datafusion"):
+        got = decoded(arrow_rows(run_plan(con, written, engine)))
+        assert len(got) == len(lean), engine
+        for g, e in zip(got, lean, strict=True):
+            assert all(near(x, y) for x, y in zip(g, e, strict=True)), (engine, g, e)
+            # Only the sign is claimed exactly: never negative.
+            assert all(not isinstance(x, float) or x != x or x >= 0 for x in g[1:]), g
 
 
 def test_variance_meaning():
-    """The sample's of one value is NULL; the population's is 0; the mean
-    first, then the squared deviations."""
+    """A sample of one value is NULL; a population of one is 0."""
     con = connect()
     rows = [(1, 1.5, 1), (1, 2.25, 2), (1, -3.0, 3), (2, 7.0, 4), (2, None, None)]
     create_table(con, "t", V.schema(), rows)
-    got = decoded(arrow_rows(run_plan(con, written_plan(to_substrait_json(var_expr())), "duckdb")))
     mean = (1.5 + 2.25 - 3.0) / 3
     ss = sum((x - mean) * (x - mean) for x in (1.5, 2.25, -3.0))
-    assert got == [
+    expected = [
         (1, ss / 2, ss / 3, math.sqrt(ss / 2), math.sqrt(ss / 3), 1.0),
         (2, None, 0.0, None, 0.0, None),
     ]
+    written = written_plan(to_substrait_json(var_expr()))
+    for engine in ("duckdb", "polars", "datafusion"):
+        got = decoded(arrow_rows(run_plan(con, written, engine)))
+        for g, e in zip(got, expected, strict=True):
+            assert all(near(x, y) for x, y in zip(g, e, strict=True)), (engine, g, e)
+    report = sv.verify(var_expr())
+    assert all(report.facts[c] == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")), (
+        report.facts
+    )
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
@@ -341,10 +357,3 @@ def test_variance_of_an_infinity_raises(engine):
     assert "domain error" in [i.kind for i in report.issues]
     bounded = sv.verify(var_expr(), requires={"t": [_.x < 1e300, _.x > -1e300]})
     assert "domain error" not in [i.kind for i in bounded.issues]
-
-
-def test_variance_is_refused_on_datafusion():
-    con = connect()
-    create_table(con, "t", V.schema(), [(1, 1.0, 1)])
-    with pytest.raises(Exception, match="DataFusion computes a variance in its own order"):
-        run_plan(con, written_plan(to_substrait_json(var_expr())), "datafusion")

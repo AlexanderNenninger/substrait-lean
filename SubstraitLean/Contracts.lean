@@ -3081,7 +3081,9 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  | .fsum | .avg | .var _ _ => AVal.double
+  | .fsum | .avg => AVal.double
+  -- Some double that is not negative (NaN is above every number), or NULL.
+  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false⟩
   | .iavg => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
   | .collect => AVal.top
@@ -3370,7 +3372,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       simp only [AggFn.apply, varOf]
       split
       · rfl
-      · exact ⟨_, rfl, Bound.mem_top _⟩
+      · exact ⟨_, rfl, fun l hl => by cases hl; omega, fun h hh => by cases hh⟩
   case min | max =>
     have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
     rw [hf] at hmm

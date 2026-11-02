@@ -1470,22 +1470,16 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         q = abs(sum(vs)) // len(vs)
         return q if sum(vs) >= 0 else -q
     if fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
-        # `varOf` (#54): the mean as `avg`, then the squared deviations added in
-        # list order; an infinity would make a deviation NaN (#257).
+        # `AggFn.var` (#54), with Polars' own algorithm; an infinity would make
+        # a deviation NaN (#257).
         if math.inf in vs or -math.inf in vs:
             raise DomainError(f"{fn} of an infinity would make a NaN")
-        n = len(vs)
-        if fn.endswith("_samp") and n == 1:
+        if fn.endswith("_samp") and len(vs) == 1:
             return None
-        acc = 0.0
-        for v in vs:
-            acc = acc + v
-        mean = acc / n
-        ss = 0.0
-        for v in vs:
-            ss = ss + (v - mean) * (v - mean)
-        var = ss / (n - 1 if fn.endswith("_samp") else n)
-        return (math.sqrt(var) if fn.startswith("std") else var) + 0.0
+        s = pl.Series(vs, dtype=pl.Float64)
+        ddof = 1 if fn.endswith("_samp") else 0
+        r = s.std(ddof=ddof) if fn.startswith("std") else s.var(ddof=ddof)
+        return float(r) + 0.0  # pyrefly: ignore
     if fn in ("fsum", "avg"):
         if not window and math.inf in vs and -math.inf in vs:
             raise DomainError(f"{fn} of +inf and -inf would make a NaN")

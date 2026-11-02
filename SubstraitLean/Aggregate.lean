@@ -84,9 +84,10 @@ inductive AggFn where
   #209): the exact mean, truncated toward zero. It always fits. -/
   | iavg
   /-- `VARIANCE` (`sqrt := false`) and `STDDEV` of doubles, of a sample
-  (`n - 1`) or a population (`n`), #54: the mean as `avg` computes it, then
-  the squares of the deviations from it added in list order, all with
-  native doubles. A sample of one value has none. -/
+  (`n - 1`) or a population (`n`), #54. Engines compute it with their own
+  algorithms, so the model claims only some double that is not negative (or
+  NaN), and NULL where the definition has no value: no values, or a sample
+  of one. The value it computes is one such double (`varOf`). -/
   | var (sample sqrt : Bool)
   deriving Repr, DecidableEq
 
@@ -140,13 +141,16 @@ def sqDevSum (m : Int) (vs : List Value) : Int :=
       FloatCode.lift₂ (· + ·) acc (FloatCode.lift₂ (· * ·) d d)
     | _ => acc) (FloatCode.ofInt 0)
 
-/-- `AggFn.var` of the doubles `vs` (at least one). -/
+/-- `AggFn.var` of the doubles `vs` (at least one): the mean, then the
+squares of the deviations, with native doubles, and never below `0`. Only
+NULL and the sign are exact; engines may differ in the last bits (#54, until
+#85 bounds the error). -/
 def varOf (sample sqrt : Bool) (vs : List Value) : Value :=
   if sample && vs.length == 1 then .null else
     let m := FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length)
     let v := FloatCode.lift₂ (· / ·) (sqDevSum m vs)
       (FloatCode.ofInt (if sample then vs.length - 1 else vs.length))
-    .int (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v)
+    .int (max 0 (if sqrt then FloatCode.ofFloat (FloatCode.toFloat v).sqrt else v))
 
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
