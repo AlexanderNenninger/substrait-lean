@@ -278,12 +278,13 @@ def test_an_unproved_ensures_names_the_condition():
 
 
 def test_the_semantics_changes_what_the_contract_can_prove():
-    # DuckDB's `/` by zero is inf, so `ratio` is never an error there; the
-    # reference raises on a zero divisor, which `verify` reports.
+    # DuckDB's `/` by zero is inf, so a zero divisor is never an error there;
+    # the reference raises on one, which `verify` reports. Both raise on
+    # `inf / inf`, which would be NaN (#257).
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
     duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
     ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="reference", t=t)
-    assert not sv.verify(duck).issues
+    assert [i.kind for i in sv.verify(duck).issues] == ["domain error"]
     assert any("zero" in str(i) for i in sv.verify(ref).issues)
 
 
@@ -310,3 +311,11 @@ def test_benchmark_queries_through_the_lift():
     results = score(["ssb"])
     assert len(results) == 4
     assert all(c.ok for c in results.values()), results
+
+
+def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
+    # `sverify_fmod` (#256): C's `fmod`, as DuckDB computes `%` of doubles.
+    result = check(
+        "SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "reference"
+    )
+    assert result.ok, f"{result.stage}: {result.detail}"

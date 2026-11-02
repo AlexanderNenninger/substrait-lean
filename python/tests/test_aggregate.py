@@ -85,13 +85,13 @@ def test_aggregates_match_datafusion(sql, t):
     assert canonical(got) == canonical(expected)
 
 
-def engine_rows(sql: str, schema: ibis.Schema, rows: list) -> dict[str, list[tuple]]:
+def engine_rows(sql: str, schema: ibis.Schema, rows: list, *engines: str) -> dict[str, list[tuple]]:
     con = connect()
     create_table(con, "t", schema, rows)
     plan = written_plan(substrait_json(con, sql))
     return {
         e: [tuple(r.values()) for r in run_plan(con, plan, e).to_pylist()]
-        for e in ("polars", "duckdb")
+        for e in engines or ("polars", "duckdb")
     }
 
 
@@ -163,7 +163,13 @@ def test_double_aggregates_match_datafusion(sql, t):
 @given(t=f_rows)
 def test_engines_add_doubles_in_lean_order(sql, t):
     """Both engines add in Lean's list order, so they agree bit for bit; with
-    DataFusion, whose order is its own, only approximately."""
+    DataFusion, whose order is its own, only approximately. A double sum of
+    `+inf` and `-inf` would be NaN, so both raise there (#257)."""
+    if both_infinities(sql, t):
+        for engine in ("duckdb", "polars"):
+            with pytest.raises(Exception, match="(?i)domain|NaN"):
+                engine_rows(sql, F, t, engine)
+        return
     out = engine_rows(sql, F, t)
     assert canonical(out["polars"]) == canonical(out["duckdb"])  # bit for bit
     expected = sorted(datafusion_rows(sql, F, t), key=repr)
@@ -171,6 +177,16 @@ def test_engines_add_doubles_in_lean_order(sql, t):
     assert len(got) == len(expected)
     for g, e in zip(got, expected, strict=True):
         assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)
+
+
+def both_infinities(sql: str, rows: list) -> bool:
+    """Does a `SUM(x)` or `AVG(x)` of `sql` see `+inf` and `-inf` in one group?"""
+    if "SUM(x)" not in sql and "AVG(x)" not in sql:
+        return False
+    groups: dict = {}
+    for k, x in rows:
+        groups.setdefault(k if "GROUP BY k" in sql else None, set()).add(x)
+    return any(math.inf in g and -math.inf in g for g in groups.values())
 
 
 def test_min_and_max_of_doubles_are_refused():

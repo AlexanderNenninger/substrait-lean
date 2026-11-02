@@ -379,6 +379,11 @@ class Dialect:
         """TRUE for NaN, NULL for NULL."""
         return f"({x} <> {x})"
 
+    def is_inf(self, x: str) -> str:
+        """TRUE for `±∞`, NULL for NULL."""
+        inf, ninf = self.float_lit(math.inf), self.float_lit(-math.inf)
+        return f"({self.float_eq(x, inf)} OR {self.float_eq(x, ninf)})"
+
     def float_rank(self, x: str) -> str:
         """1 for NaN, 0 for other doubles, NULL for NULL: NaN is above `inf`."""
         return f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN 1 ELSE 0 END)"
@@ -1322,6 +1327,28 @@ def _oneof(what: str, j: dict, keys: Sequence[str]) -> tuple[str, Any]:
     raise Unsupported(f"unsupported {what}: {_short(j)}")
 
 
+def _float_lit(e: Expr) -> float | None:
+    """The value of a double constant that is a number (not NaN or `±inf`)."""
+    if isinstance(e, Lit) and isinstance(e.value, float) and math.isfinite(e.value):
+        return e.value
+    return None
+
+
+def _nan_ruled_out(op: str, a: Expr, b: Expr) -> bool:
+    """Does a constant operand rule out `nan_case` (#257)?"""
+    fa, fb = _float_lit(a), _float_lit(b)
+    match op:
+        case "fadd" | "fsub" | "fdiv":
+            return fa is not None or fb is not None
+        case "fmul":
+            return bool(fa) or bool(fb)
+        case "fmod":
+            return fa is not None
+        case "fpow":
+            return (fb is not None and fb.is_integer()) or (fa is not None and fa >= 0)
+    return False
+
+
 def _base_name(name: str) -> str:
     return name.split(":")[0]
 
@@ -1816,6 +1843,10 @@ class _Parser:
             case "scalarFunction":
                 full_name = self.name(_nat_d(v, "functionReference"))
                 name = _base_name(full_name)
+                # sverify's own remainder of doubles (#256) is `modulus` on doubles.
+                fmod_ext = name == "sverify_fmod"
+                if fmod_ext:
+                    name = full_name = "modulus"
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 if name in ("any_match", "all_match", "transform", "filter"):
                     raise Unsupported("lambdas have no SQL form yet (#94)")
@@ -1916,6 +1947,8 @@ class _Parser:
                 )  # fmt: skip
                 has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
+                if fmod_ext and not float_call:
+                    raise Unsupported("sverify_fmod takes doubles")
                 if name in (*BITWISE, "bitwise_not", "shift_left", "shift_right") and has_float:
                     raise Unsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
@@ -3344,7 +3377,17 @@ class _Writer:
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v})")))
-                return d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
+                total = d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
+                if not d.guards:
+                    return total
+                # `+∞` and `-∞` would sum to NaN, which no operation creates (#257).
+                # NaN sorts above `+∞`, so the largest number leaves NaN out.
+                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), v)})"
+                both = (
+                    f"({d.float_eq(top, d.float_lit(math.inf))} AND "
+                    f"{d.float_eq(f'MIN({v})', d.float_lit(-math.inf))})"
+                )
+                return d.case_when(both, d.raise_("domain error", f"MIN({v})", "float"), total)
         # `Value.le`: strings by code point (no collation), FALSE < TRUE.
         f = "MIN" if m.fn == "min" else "MAX"
         if kind == "bool":
@@ -3689,7 +3732,11 @@ class _Writer:
                 sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
                 sql = sql if op in ("fadd", "fsub") else d.canon(sql)
-                if op != "fdiv" or not d.guards:
+                if not d.guards:
+                    return sql
+                if not _nan_ruled_out(op, a, b):
+                    sql = self.domain(sa, self.nan_case(op, sa, sb), sql)
+                if op != "fdiv":
                     return sql
                 # `on_division_by_zero` = ERROR (`BinFn.issue`); `NULL / 0.0` is NULL.
                 zero = f"({sa} IS NOT NULL AND {sb} = {d.float_lit(0.0)})"
@@ -4036,6 +4083,38 @@ class _Writer:
         if name in ("asin", "acos"):
             below, above = d.float_lt(x, d.float_lit(-1.0)), d.float_lt(d.float_lit(1.0), x)
             return f"({below} OR ({above} AND NOT {d.is_nan(x)}))"
+        if name in ("sin", "cos", "tan"):
+            # `±∞` would give NaN, which no operation creates (#257).
+            return d.is_inf(x)
+        return d.bool_lit(False)
+
+    def nan_case(self, op: str, a: str, b: str) -> str:
+        """Would IEEE make a new NaN of `a op b` (`nanCase`), which no
+        operation creates (#257)? NULL for NULL; NaN arguments stay NaN."""
+        d = self.d
+        pinf, ninf, zero = d.float_lit(math.inf), d.float_lit(-math.inf), d.float_lit(0.0)
+        if op in ("fadd", "fsub"):
+            other = ninf if op == "fadd" else pinf
+            same = pinf if op == "fadd" else ninf
+            return (
+                f"(({d.float_eq(a, pinf)} AND {d.float_eq(b, other)}) OR "
+                f"({d.float_eq(a, ninf)} AND {d.float_eq(b, same)}))"
+            )
+        if op == "fmul":
+            return (
+                f"(({d.float_eq(a, zero)} AND {d.is_inf(b)}) OR "
+                f"({d.is_inf(a)} AND {d.float_eq(b, zero)}))"
+            )
+        if op == "fdiv":
+            return f"({d.is_inf(a)} AND {d.is_inf(b)})"
+        if op == "fmod":
+            return f"({d.is_inf(a)} AND NOT {d.is_nan(b)})"
+        if op == "fpow":
+            # A negative base to a finite power that is not a whole number.
+            return (
+                f"({d.float_lt(ninf, a)} AND {d.float_lt(a, zero)} AND {d.float_lt(ninf, b)} "
+                f"AND {d.float_lt(b, pinf)} AND NOT {d.float_eq(d.float_floor(b), b)})"
+            )
         return d.bool_lit(False)
 
     def domain(self, dep: str, bad: str, sql: str, kind: Kind = "float") -> str:

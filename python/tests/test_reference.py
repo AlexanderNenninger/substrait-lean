@@ -9,6 +9,7 @@ reference.
 
 import json
 
+import ibis
 import pyarrow as pa
 import pytest
 
@@ -22,7 +23,9 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
+from sverify.sql_lift import lift
 from sverify.testing import inline_tables, lean_values
 
 pytestmark = pytest.mark.backend("datafusion")
@@ -95,7 +98,8 @@ def test_modulus_of_doubles_is_fmod(con, sql, expected):
 @pytest.mark.parametrize(
     ("sql", "errors"),
     [
-        ("SELECT x % 0.0 AS m FROM f", ["division by zero"]),
+        # `x` may be infinite too, and `fmod(±∞, y)` would be NaN (#257).
+        ("SELECT x % 0.0 AS m FROM f", ["division by zero", "domain error"]),
         ("SELECT 1.5 % x AS m FROM f", ["division by zero"]),
         ("SELECT 1.5 % x AS m FROM f WHERE x <> 0.0", []),
     ],
@@ -104,6 +108,49 @@ def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
     """As on integers; `verify` proves it absent where the plan rules a zero
     divisor out (DataFusion gives NaN)."""
     assert [i.kind for i in sv.verify(sql, tables={"f": {"x": "float64"}}).errors] == errors
+
+
+# #256: the remainder of doubles is sverify's own `sverify_fmod`, as
+# Substrait's `modulus` has no double impl. Lean reads both and writes it;
+# DataFusion runs it as its own `%`.
+def declared(plan: str) -> set[str]:
+    return {e["extensionFunction"]["name"] for e in json.loads(plan)["extensions"]}
+
+
+def test_the_written_remainder_of_doubles_is_sverify_fmod(con):
+    sql = "SELECT x % 2.0 AS m FROM f WHERE x < 1e300"
+    written = written_plan(substrait_json(con, sql))
+    assert "sverify_fmod" in declared(written)
+    assert lean_values(json.dumps(inline_tables(json.loads(written), ROWS))) == [(1.5,), (0.0,)]
+    for engine in ("duckdb", "polars", "datafusion"):
+        assert arrow_rows(run_plan(con, written, engine)) == [(1.5,), (0.0,)], engine
+
+
+def test_the_frontends_write_sverify_fmod():
+    t = ibis.table({"x": "float64", "i": "int64"}, name="t")
+    assert "sverify_fmod" in declared(to_substrait_json(t.select(m=t.x % 2.5)))
+    assert "sverify_fmod" not in declared(to_substrait_json(t.select(m=t.i % 2)))
+    lifted = lift("SELECT x % 2.5 AS m FROM t", {"t": t.schema()}, "reference")
+    assert "sverify_fmod" in declared(json.dumps(lifted.plan))
+
+
+def test_sverify_fmod_takes_doubles(con):
+    plan = json.loads(written_plan(substrait_json(con, "SELECT x % 2.0 AS m FROM f")))
+    (fmod,) = (
+        e["extensionFunction"]["functionAnchor"]
+        for e in plan["extensions"]
+        if e["extensionFunction"]["name"] == "sverify_fmod"
+    )
+    project = plan["relations"][0]["root"]["input"]["project"]
+    call = project["expressions"][0]
+    while "scalarFunction" in call and call["scalarFunction"]["functionReference"] != fmod:
+        call = call["scalarFunction"]["arguments"][0]["value"]
+    call["scalarFunction"]["arguments"] = [
+        {"value": {"literal": {"i64": "7"}}},
+        {"value": {"literal": {"i64": "2"}}},
+    ]
+    code, out, err = run_checker((), json.dumps(plan))
+    assert code != 0 and "sverify_fmod takes doubles" in out + err
 
 
 # R7 (#205): an aggregate of a double constant adds doubles, not their codes.
@@ -193,11 +240,16 @@ def nan_safe(rows: list[tuple]) -> list[tuple]:
 def test_double_division_by_zero_may_fail():
     tables = {"f": {"x": "float64", "y": "float64"}}
     report = sv.verify("SELECT x / y AS q FROM f", tables=tables)
-    assert [str(i) for i in report.errors] == ["division by zero: ($0 /. $1)"]
+    # `∞ / ∞` would be NaN, which no operation creates (#257).
+    assert [str(i) for i in report.errors] == [
+        "division by zero: ($0 /. $1)",
+        "domain error: ($0 /. $1)",
+    ]
+    finite = ["x < 1e300", "x > -1e300"]
     for sql, req in [
-        ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", []),
-        ("SELECT x / NULLIF(y, 0) AS q FROM f", []),
-        ("SELECT x / y AS q FROM f", ["y > 0"]),
+        ("SELECT CASE WHEN y <> 0 THEN x / y END AS q FROM f", finite),
+        ("SELECT x / NULLIF(y, 0) AS q FROM f", finite),
+        ("SELECT x / y AS q FROM f", [*finite, "y > 0"]),
         ("SELECT x / 2.0 AS q FROM f", []),
     ]:
         assert sv.verify(sql, requires={"f": req}, tables=tables).issues == [], sql
@@ -217,7 +269,8 @@ def test_double_division_options(dcon, mode, by_zero):
     rows = {"d": DIV_ROWS}
     expected = nan_safe([(v,) for v in [*by_zero, None, 2.0]])
     assert nan_safe(lean_values(json.dumps(inline_tables(json.loads(plan), rows)))) == expected
-    assert issues(plan) == []
+    # Only `∞ / ∞`, which would be NaN (#257): the dividend is not bounded.
+    assert issues(plan) == ["domain error"]
     written = written_plan(plan)
     for engine in ("duckdb", "polars"):
         assert nan_safe(arrow_rows(run_plan(dcon, written, engine))) == expected, engine
@@ -225,7 +278,7 @@ def test_double_division_options(dcon, mode, by_zero):
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_double_division_by_zero_raises(dcon, engine):
-    assert issues(divide_plan(dcon, None)) == ["division by zero"]
+    assert issues(divide_plan(dcon, None)) == ["division by zero", "domain error"]
     with pytest.raises(Exception, match="(?i)division by zero|divide by zero"):
         run_plan(dcon, written_plan(divide_plan(dcon, None)), engine)
 
@@ -259,6 +312,29 @@ def test_integer_division_by_zero_may_ask_for_null(op):
     assert lean_values(json.dumps(inline_tables(plan, rows))) == expected
     for engine in ("duckdb", "polars"):
         assert arrow_rows(run_plan(con, written_plan(plan_json), engine)) == expected, engine
+
+
+@pytest.mark.parametrize(
+    ("division_type", "accepted"), [(None, True), ("TRUNCATE", True), ("FLOOR", False)]
+)
+def test_modulus_takes_an_explicit_truncate(division_type, accepted):
+    """`modulus`'s remainder takes the dividend's sign, `division_type` =
+    TRUNCATE, which a plan may also state; FLOOR is not modelled (#209 R3)."""
+    con = connect()
+    put_table(con, "i", pa.table({"a": pa.array([-7, 7], pa.int64())}))
+    plan = json.loads(substrait_json(con, "SELECT a % 2 AS m FROM i"))
+    if division_type:
+        for node in _dicts(plan):
+            if "scalarFunction" in node:
+                node["scalarFunction"]["options"] = [
+                    {"name": "division_type", "preference": [division_type]}
+                ]
+    code, out, err = run_checker((), json.dumps(plan))
+    if not accepted:
+        assert code != 0 and "division_type" in out + err
+        return
+    assert code == 0, err or out
+    assert lean_values(json.dumps(inline_tables(plan, {"i": [(-7,), (7,)]}))) == [(-1,), (1,)]
 
 
 def _dicts(node):
@@ -464,3 +540,81 @@ def test_floats_read_compare_and_widen_exactly(f32, sql, expected):
 def test_float_arithmetic_is_refused(f32, sql, message):
     code, out, err = run_checker((), substrait_json(f32, sql))
     assert code != 0 and message in out + err
+
+
+# R14 (#257): no operation creates a NaN. Where IEEE would make one from
+# numbers (`inf - inf`, `0 * inf`, `inf / inf`, `fmod(inf, y)`, a negative
+# base to a fractional power, `sin(inf)`, a double `SUM` of `inf` and
+# `-inf`), the reference raises a domain error; a NaN in the input stays NaN.
+FINITE = ["x < 1e300", "x > -1e300", "y < 1e300", "y > -1e300"]
+
+
+@pytest.mark.parametrize(
+    ("sql", "requires", "errors"),
+    [
+        ("SELECT x + y AS v FROM f", [], ["domain error"]),
+        ("SELECT x + y AS v FROM f", FINITE, []),
+        ("SELECT x - y AS v FROM f", [], ["domain error"]),
+        ("SELECT x * y AS v FROM f", [], ["domain error"]),
+        ("SELECT x * y AS v FROM f", FINITE, []),
+        # Infinity plus a number is infinity, never NaN.
+        ("SELECT x + 1.5 AS v FROM f", [], []),
+        ("SELECT power(x, 0.5) AS v FROM f", [], ["domain error"]),
+        ("SELECT power(x, 0.5) AS v FROM f", ["x >= 0"], []),
+        ("SELECT power(x, 2.0) AS v FROM f", [], []),
+        ("SELECT sin(x) AS v FROM f", [], ["domain error"]),
+        ("SELECT sin(x) AS v FROM f", FINITE, []),
+        ("SELECT sum(x) AS v FROM f", [], ["domain error"]),
+        ("SELECT sum(x) AS v FROM f", ["x >= 0"], []),
+        # An integer converts to a finite double.
+        ("SELECT avg(CAST(i AS DOUBLE)) AS v FROM f", [], []),
+    ],
+)
+def test_nan_creation_is_a_domain_error(sql, requires, errors):
+    tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
+    report = sv.verify(sql, requires={"f": requires}, tables=tables)
+    assert [i.kind for i in report.issues] == errors
+
+
+INF_ROWS = [(INF, -INF, 0.0), (1.5, 2.0, 3.0), (NAN, 1.0, 1.0)]
+
+
+@pytest.fixture(scope="module")
+def icon():
+    c = connect()
+    put_table(c, "n", pa.table({k: [r[j] for r in INF_ROWS] for j, k in enumerate("xyz")}))
+    return c
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT x + y AS v FROM n",
+        "SELECT x - x AS v FROM n",
+        "SELECT x * z AS v FROM n",
+        "SELECT x / y AS v FROM n WHERE y <> 0.0",
+        "SELECT sin(x) AS v FROM n",
+        "SELECT power(z - 5.0, 0.5) AS v FROM n",
+    ],
+)
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_engines_raise_where_ieee_would_make_a_nan(icon, sql, engine):
+    with pytest.raises(Exception, match="(?i)domain|NaN"):
+        run_plan(icon, written_plan(substrait_json(icon, sql)), engine)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_nan_in_the_input_stays_nan(icon, engine):
+    sql = "SELECT x + y AS v FROM n WHERE z > 0.5"
+    got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
+    assert got == [(3.5,), ("NaN",)]
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_double_sum_of_both_infinities_raises(icon, engine):
+    sql = "SELECT sum(v) AS s FROM (SELECT x AS v FROM n UNION ALL SELECT y AS v FROM n)"
+    with pytest.raises(Exception, match="(?i)domain|NaN"):
+        run_plan(icon, written_plan(substrait_json(icon, sql)), engine)
+    sql = "SELECT sum(y) AS s, avg(x) AS a FROM n"
+    got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
+    assert got == [(-INF, "NaN")]

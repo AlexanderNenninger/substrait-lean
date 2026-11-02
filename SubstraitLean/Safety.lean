@@ -160,6 +160,28 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .raise _, _ => some .raised
   | _, _ => none
 
+/-- Is `c` the code of `+∞` or `-∞`? -/
+def isInfCode (c : Int) : Bool := c == FloatCode.posInf || c == FloatCode.negInf
+
+/-- The inputs on which IEEE 754 makes a double operation's result NaN though
+neither input is NaN (#257): `∞ - ∞`, `0 · ∞`, `∞ / ∞` (`0 / 0` is a division
+by zero), a power of a finite negative number to a finite exponent that is
+not an integer, and `fmod` of `±∞`. The reference never creates a NaN, so
+these raise (a domain error). -/
+def nanCase : BinFn → Int → Int → Bool
+  | .fadd, a, b => (a == FloatCode.posInf && b == FloatCode.negInf) ||
+      (a == FloatCode.negInf && b == FloatCode.posInf)
+  | .fsub, a, b => (a == FloatCode.posInf && b == FloatCode.posInf) ||
+      (a == FloatCode.negInf && b == FloatCode.negInf)
+  | .fmul, a, b => (a == 0 && isInfCode b) || (isInfCode a && b == 0)
+  | .fdiv, a, b => isInfCode a && isInfCode b
+  | .fmod, a, b => isInfCode a && b != FloatCode.nan
+  | .fpow, a, b => decide (FloatCode.negInf < a) && decide (a < 0) &&
+      decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) && FloatCode.floor b != b
+  | _, _, _ => false
+
+def nanIssue (f : BinFn) (a b : Int) : Option Issue := if nanCase f a b then some .domain else none
+
 def BinFn.issue : BinFn → Value → Value → Option Issue
   | .add, .int a, .int b => wrapIf (a + b)
   | .sub, .int a, .int b => wrapIf (a - b)
@@ -167,11 +189,16 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .dateAdd, .int a, .int b => rangeIssue Time.dayMin Time.dayMax a (a + b)
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
-  | .imod, .int _, .int b | .fmod, .int _, .int b => if b = 0 then some .divByZero else none
+  | .imod, .int _, .int b => if b = 0 then some .divByZero else none
   -- A double divided by zero (the code of `0.0`): Substrait's
   -- `on_division_by_zero` = ERROR. The parser writes the other options as a
   -- `CASE` around this (`Parse.divByZero`).
-  | .fdiv, .int _, .int b => if b = 0 then some .divByZero else none
+  | .fdiv, .int a, .int b => if b = 0 then some .divByZero else nanIssue .fdiv a b
+  | .fmod, .int a, .int b => if b = 0 then some .divByZero else nanIssue .fmod a b
+  | .fadd, .int a, .int b => nanIssue .fadd a b
+  | .fsub, .int a, .int b => nanIssue .fsub a b
+  | .fmul, .int a, .int b => nanIssue .fmul a b
+  | .fpow, .int a, .int b => nanIssue .fpow a b
   | .ipow, .int a, .int b =>
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
@@ -295,6 +322,81 @@ def repeatFitsAbs : Option Nat → AVal → Bool
 def repeatMay (sz : Option Nat) (ab : AVal) : List Issue :=
   if repeatFitsAbs sz ab then [] else [.overflow]
 
+/-- May `a` be the double with code `c`? -/
+def AVal.has (a : AVal) (c : Int) : Bool := a.int.any fun b => b.lo.all (· ≤ c) && b.hi.all (c ≤ ·)
+
+/-- May `a` be a finite negative double? -/
+def AVal.negFinite (a : AVal) : Bool :=
+  a.int.any fun b => b.lo.all (· < 0) && b.hi.all (FloatCode.negInf < ·)
+
+/-- May the inputs be a `nanCase` of `f`? -/
+def BinFn.mayNan (f : BinFn) (aa ab : AVal) : Bool :=
+  let inf (x : AVal) := x.has FloatCode.posInf || x.has FloatCode.negInf
+  match f with
+  | .fadd => (aa.has FloatCode.posInf && ab.has FloatCode.negInf) ||
+      (aa.has FloatCode.negInf && ab.has FloatCode.posInf)
+  | .fsub => (aa.has FloatCode.posInf && ab.has FloatCode.posInf) ||
+      (aa.has FloatCode.negInf && ab.has FloatCode.negInf)
+  | .fmul => (aa.has 0 && inf ab) || (inf aa && ab.has 0)
+  | .fdiv => inf aa && inf ab
+  | .fmod => inf aa
+  -- An integer exponent (`x ** 2`) is fine.
+  | .fpow => aa.negFinite && !(ab.int.any fun b => b.point.any fun k => FloatCode.floor k == k)
+  | _ => false
+
+theorem AVal.has_of_mem {a : AVal} {i : Int} (h : a.Mem (.int i)) : a.has i = true := by
+  obtain ⟨b, hb, hm⟩ := h
+  obtain ⟨bl, bh⟩ := b
+  simp only [AVal.has, hb, Option.any_some, Bool.and_eq_true, Option.all_eq_true,
+    decide_eq_true_eq]
+  exact ⟨fun l hl => hm.1 l hl, fun u hu => hm.2 u hu⟩
+
+theorem AVal.negFinite_of_mem {a : AVal} {i : Int} (h : a.Mem (.int i))
+    (h1 : FloatCode.negInf < i) (h2 : i < 0) : a.negFinite = true := by
+  obtain ⟨b, hb, hm⟩ := h
+  obtain ⟨bl, bh⟩ := b
+  simp only [AVal.negFinite, hb, Option.any_some, Bool.and_eq_true, Option.all_eq_true,
+    decide_eq_true_eq]
+  exact ⟨fun l hl => by have := hm.1 l hl; omega, fun u hu => by have := hm.2 u hu; omega⟩
+
+/-- An IEEE NaN case of the inputs is one `BinFn.mayNan` reports. -/
+theorem BinFn.mayNan_sound {f : BinFn} {aa ab : AVal} {a b : Int} (ha : aa.Mem (.int a))
+    (hb : ab.Mem (.int b)) (h : nanCase f a b = true) : BinFn.mayNan f aa ab = true := by
+  have hA := fun {c : Int} (e : a = c) => AVal.has_of_mem (e ▸ ha)
+  have hB := fun {c : Int} (e : b = c) => AVal.has_of_mem (e ▸ hb)
+  cases f <;> simp only [nanCase, Bool.false_eq_true] at h
+  all_goals simp only [BinFn.mayNan, isInfCode, Bool.or_eq_true, Bool.and_eq_true,
+    beq_iff_eq, bne_iff_ne, ne_eq] at h ⊢
+  · rcases h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+    · exact .inl ⟨hA h1, hB h2⟩
+    · exact .inr ⟨hA h1, hB h2⟩
+  · rcases h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+    · exact .inl ⟨hA h1, hB h2⟩
+    · exact .inr ⟨hA h1, hB h2⟩
+  · rcases h with ⟨h1, h2 | h2⟩ | ⟨h1 | h1, h2⟩
+    · exact .inl ⟨hA h1, .inl (hB h2)⟩
+    · exact .inl ⟨hA h1, .inr (hB h2)⟩
+    · exact .inr ⟨.inl (hA h1), hB h2⟩
+    · exact .inr ⟨.inr (hA h1), hB h2⟩
+  · obtain ⟨h1 | h1, h2 | h2⟩ := h
+    all_goals exact ⟨by first | exact .inl (hA h1) | exact .inr (hA h1),
+      by first | exact .inl (hB h2) | exact .inr (hB h2)⟩
+  · obtain ⟨h1 | h1, _⟩ := h
+    · exact .inl (hA h1)
+    · exact .inr (hA h1)
+  · obtain ⟨⟨⟨⟨h1, h2⟩, _⟩, _⟩, h5⟩ := h
+    simp only [decide_eq_true_eq] at h1 h2
+    refine ⟨AVal.negFinite_of_mem ha h1 h2, ?_⟩
+    obtain ⟨bd, hbd, hm⟩ := hb
+    rw [hbd]
+    simp only [Option.any_some]
+    cases hp : bd.point with
+    | none => rfl
+    | some k =>
+      have := Bound.point_mem hp hm
+      subst this
+      simpa using h5
+
 /-- `nz`: the divisor is never the integer 0; `sz`: the first argument's
 size, if it is a constant string. -/
 def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat → List Issue
@@ -303,8 +405,15 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .dateAdd, aa, _, ar, _, _ => rangeMay Time.dayMin Time.dayMax aa ar
   | .idiv, _, _, ar, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if ar.intFits then [] else [.overflow])
-  | .imod, _, _, _, nz, _ | .fdiv, _, _, _, nz, _ | .fmod, _, _, _, nz, _ =>
-    if nz then [] else [.divByZero]
+  | .imod, _, _, _, nz, _ => if nz then [] else [.divByZero]
+  | .fdiv, aa, ab, _, nz, _ =>
+    (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fdiv aa ab then [.domain] else [])
+  | .fmod, aa, ab, _, nz, _ =>
+    (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fmod aa ab then [.domain] else [])
+  | .fadd, aa, ab, _, _, _ => if BinFn.mayNan .fadd aa ab then [.domain] else []
+  | .fsub, aa, ab, _, _, _ => if BinFn.mayNan .fsub aa ab then [.domain] else []
+  | .fmul, aa, ab, _, _, _ => if BinFn.mayNan .fmul aa ab then [.domain] else []
+  | .fpow, aa, ab, _, _, _ => if BinFn.mayNan .fpow aa ab then [.domain] else []
   | .ipow, aa, ab, _, _, _ =>
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
@@ -593,13 +702,32 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
       · rename_i hn hfits
         exact absurd (AVal.inI64_of_fits hfits (by simpa [BinFn.apply, hj] using hr)) hn
       · simp
-  case imod.int.int i j | fdiv.int.int i j | fmod.int.int i j =>
+  case imod.int.int i j =>
     simp only [BinFn.mayIssue]
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
     subst hk
     split
     · rename_i hj hnz'; exact absurd hj (hnz hnz' j rfl)
     · simp
+  case fdiv.int.int i j | fmod.int.int i j =>
+    simp only [BinFn.mayIssue, List.mem_append]
+    split at hk
+    · rename_i hj; simp only [Option.some.injEq] at hk; subst hk
+      left; split
+      · rename_i hnz'; exact absurd hj (hnz hnz' j rfl)
+      · simp
+    · simp only [nanIssue] at hk
+      split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+      subst hk
+      rename_i hn
+      right; simp [BinFn.mayNan_sound ha hb hn]
+  case fadd.int.int i j | fsub.int.int i j | fmul.int.int i j | fpow.int.int i j =>
+    simp only [BinFn.mayIssue]
+    simp only [nanIssue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    rename_i hn
+    simp [BinFn.mayNan_sound ha hb hn]
   case ipow.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     obtain ⟨x, hx, hi⟩ := ha
@@ -815,8 +943,13 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .aggregate r gs ms, p => r.HasIssue cat u p ∨
       (∃ row ∈ (if u then r.loose else r).eval cat, ∃ e ∈ gs ++ ms.flatMap Measure.exprs,
         p ∈ e.issues row) ∨
-      ∃ m ∈ ms, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
-        ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false
+      (∃ m ∈ ms, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false) ∨
+      -- A double `SUM` or `AVG` of `+∞` and `-∞` would be NaN, which no
+      -- operation creates (#257).
+      ∃ m ∈ ms, (m.fn = .fsum ∨ m.fn = .avg) ∧ p = (.domain, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat),
+          .int FloatCode.posInf ∈ m.inputs grp ∧ .int FloatCode.negInf ∈ m.inputs grp
 
 /-- The issues the abstract evaluation cannot rule out. -/
 def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
@@ -840,10 +973,22 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++
       (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T)) ++
+      ms.filterMap (fun m =>
+        if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none) ++
       ms.filterMap fun m =>
-        if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none
+        let a := m.arg.absD (r.aeval cat A F T true) (r.facts cat F T)
+        if (m.fn = .fsum ∨ m.fn = .avg) ∧ a.has FloatCode.posInf ∧ a.has FloatCode.negInf
+        then some (.domain, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
+
+theorem mem_of_mem_aggGroups {gs : List Expr} {rows grp : Relation} {y : Row}
+    (hg : grp ∈ aggGroups gs rows) (hy : y ∈ grp) : y ∈ rows := by
+  unfold aggGroups at hg
+  split at hg
+  · simp only [List.mem_singleton] at hg; exact hg ▸ hy
+  · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
+    exact (List.mem_filter.1 hy).1
 
 /-- `Rel.loose` keeps every window as it is, so it keeps the size hypothesis. -/
 theorem Rel.Small.loose {cat : Catalog} : ∀ {r : Rel}, r.Small cat → r.loose.Small cat
@@ -948,8 +1093,9 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | u, .aggregate r gs ms, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
-    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩
-    · exact .inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h))
+    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩ |
+      ⟨m, hm, hfn, rfl, grp, hgrp, hpos, hneg⟩
+    · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)))
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
         · exact hwf.1
@@ -958,8 +1104,18 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         cases u
         · exact hsm
         · exact Rel.Small.loose (r := r) hsm
-      exact .inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
-        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩)
-    · exact .inr ⟨m, hm, by simp [hf, hd]⟩
+      exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
+        (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
+    · exact .inl (.inr ⟨m, hm, by simp [hf, hd]⟩)
+    · have has : ∀ c, .int c ∈ m.inputs grp →
+          (m.arg.absD (r.aeval cat A F T true) (r.facts cat F T)).has c = true := by
+        intro c hc
+        obtain ⟨_, y, hy, hey⟩ := Measure.mem_inputs hc
+        have hyr := mem_of_mem_aggGroups hgrp hy
+        have := Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
+          (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg
+        rw [hey] at this
+        exact AVal.has_of_mem this
+      exact .inr ⟨m, hm, by simp [hfn, has _ hpos, has _ hneg]⟩
 
 end Substrait
