@@ -31,6 +31,15 @@ exactly with dates, but as an output column or next to a timestamp column
 they need a cast of a date column to a timestamp the model lacks yet, and
 are refused.
 
+And strings (#240): `length`, `substring`/`substr` (from 1; a negative
+start counts from the end), `trim`/`ltrim`/`rtrim` (spaces, or the
+characters given), `strpos`/`instr`/`position`, `contains`, `starts_with`,
+`ends_with`, `prefix`, `suffix`, `LIKE`/`ILIKE` and their `NOT` (a
+constant pattern without a backslash: DuckDB's LIKE has no escape
+character, the model's has one), `||`, `concat` (which leaves NULLs out),
+`replace`, `repeat`, `left`, `upper` and `lower`. `reverse` is refused:
+DuckDB reverses grapheme clusters.
+
 ### `division_type: TRUNCATE` is accepted
 
 A plan whose `modulus` states `division_type: TRUNCATE` was refused,
