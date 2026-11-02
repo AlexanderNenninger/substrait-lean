@@ -212,7 +212,7 @@ def test_ledger(replayed, tmp_path):
     assert led["disagree_sides"] == {"lean": 2}
     assert len(led["results"]) == len(rows)
     summary = slt.write_summary(tmp_path).read_text()
-    assert "| [area](area.json) | 1 | 2 | lean 2 | 1 | 2 | 1 |" in summary
+    assert "| [area](area.json) | 1 | 0 | 2 | lean 2 | 1 | 2 | 1 |" in summary
     # Rewriting keeps one table.
     assert slt.write_summary(tmp_path).read_text().count("<!-- slt:start -->") == 1
 
@@ -267,3 +267,15 @@ def test_the_summary_skips_files_that_are_not_ledgers(tmp_path):
     )
     text = slt.write_summary(tmp_path).read_text()
     assert "| [area](area.json) | 1 | 0 |" in text and "probes" not in text
+
+
+def test_nested_values_become_arrow_structs():
+    """A struct is the list of its fields in the model, a dict in Arrow."""
+    import pyarrow as pa
+
+    t = pa.list_(pa.struct([("a", pa.int64()), ("b", pa.list_(pa.int64()))]))
+    assert slt._nested([[1, [2]], None, [None, None]], t) == [
+        {"a": 1, "b": [2]},
+        None,
+        {"a": None, "b": None},
+    ]
