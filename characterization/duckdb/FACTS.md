@@ -141,6 +141,8 @@ Evidence: `function/operator/test_division_by_zero.test`; fuzz:
 - **Substrait and the reference:** `modulus` on integers raises on a zero
   divisor (the decided default for division by zero). Its
   `division_type: [TRUNCATE, FLOOR]`, the remainder's sign, is **open**.
+  The parser accepts an explicit `TRUNCATE`, which is what it models, and
+  refuses `FLOOR`.
 - **Lean: no finding.** `verify` reports `division by zero` as an error.
   The remainder truncates (`Int.tmod`).
 - **DuckDB: native.** `%` raises on zero and truncates
