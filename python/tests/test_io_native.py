@@ -96,10 +96,17 @@ class ArrowOnly:
         self._src = src
         self.name = src.name
 
-    def __getattr__(self, name):
-        if name == "_native":
-            raise AttributeError(name)
-        return getattr(self._src, name)
+    def schema(self):
+        return self._src.schema()
+
+    def latest(self):
+        return self._src.latest()
+
+    def snapshot(self, version=None):
+        return self._src.snapshot(version)
+
+    def changes(self, since, until=None):
+        return self._src.changes(since, until)
 
 
 def no_python_reads(monkeypatch):
@@ -298,7 +305,7 @@ def test_iceberg_scan_reads_the_snapshots_rows(catalog):
     src = iceberg(catalog, wide(range(0, 8)))
     src.table().append(wide(range(8, 12), x=-1.5))
     src.table().delete("id = 3")
-    assert src._native(0).scan.files == ()
+    assert native(src, 0).files == ()
     check_versions(src, [0, 1, 2, 3, None])
 
 
