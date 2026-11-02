@@ -6,10 +6,12 @@ It parses the SQL with sqlglot (Ibis code: give Ibis's SQL for it, or `--ibis`
 to have it compiled), names the constructs, and prints, for each source:
 
   features   catalogue/features.toml: is the construct in the Lean model?
-  pitfalls   catalogue/pitfalls.toml: what each engine does, with quirk ids
-  nb15       notebooks/17_backend_semantics.py: the question per engine, Ibis
-             backend, standard SQL and Snowflake, and the Lean model's pick
-  nb14       notebooks/16_datafusion_semantics.py: DataFusion's quirks
+  pitfalls   catalogue/pitfalls.toml: what each engine does, with the ids of
+             chapter 17's entries
+  nb17       notebooks/17_backend_semantics.py: the question per engine, Ibis
+             backend, standard SQL and Snowflake, and the Lean model's pick;
+             and (section 8) DataFusion running checked plans, tagged
+             agree/handled/GAP
   parser     SubstraitLean/Parse.lean: how the Substrait function is read
              (or refused), and the Lean operator it becomes
   backends   the docstrings of sverify/sql/{duckdb,snowflake,spark,core}.py and
@@ -255,12 +257,14 @@ def main() -> int:
             quirks |= set(p.get("quirks", []))
             print(f"  [{t}] {p['description']}\n      engines: {p['engines']}")
             if p.get("quirks"):
-                print(f"      DataFusion quirks: {', '.join(p['quirks'])}")
+                print(f"      chapter 17 entries: {', '.join(p['quirks'])}")
 
-    nb15 = ROOT / "notebooks/17_backend_semantics.py"
+    nb17 = ROOT / "notebooks/17_backend_semantics.py"
     print("\n== notebooks/17_backend_semantics.py (per engine; the Lean model's pick)")
-    for _, x in ranked(calls(nb15, "E"), lambda x: x["args"][3] if len(x["args"]) > 3 else None,
-                       mine, words)[:6]:  # fmt: skip
+    entries = calls(nb17, "E")
+    hits = ranked(entries, lambda x: x["args"][3] if len(x["args"]) > 3 else None, mine, words)
+    chosen = [x for _, x in hits[:6]] + [x for x in entries if x["args"][0] in quirks]
+    for x in {x["args"][0]: x for x in chosen}.values():
         a = x["args"]
         print(f"  {a[0]} {a[1]}: {a[3]}")
         for k in ("std", "snowflake", "polars", "ibis", "engines", "sverify"):
@@ -269,18 +273,14 @@ def main() -> int:
         print(f"      why: {x.get('why', '')}")
         print(f"      Lean picks: {x.get('picks', '')}")
 
-    nb14 = ROOT / "notebooks/16_datafusion_semantics.py"
-    entries = calls(nb14, "Q")
-    hits = ranked(entries, lambda x: x["args"][2] if len(x["args"]) > 2 else None, mine, words)
+    entries = calls(nb17, "B")
+    hits = ranked(entries, lambda x: x["args"][3] if len(x["args"]) > 3 else None, mine, words)
     chosen = [x for _, x in hits[:5]] + [x for x in entries if x["args"][0] in quirks]
-    print("\n== notebooks/16_datafusion_semantics.py (DataFusion's quirks)")
-    seen = set()
-    for x in chosen:
+    print("\n== notebooks/17_backend_semantics.py, section 8 (DataFusion as a backend;")
+    print("   the agree/handled/GAP tag is computed when the notebook runs)")
+    for x in {x["args"][0]: x for x in chosen}.values():
         a = x["args"]
-        if a[0] in seen:
-            continue
-        seen.add(a[0])
-        print(f"  {a[0]} {a[1]} [{a[3] if len(a) > 3 else ''}]: {a[2]}")
+        print(f"  {a[0]} {a[1]}: {a[3]}")
         print(f"      {a[4] if len(a) > 4 else ''}")
 
     parse = ROOT / "SubstraitLean/Parse.lean"

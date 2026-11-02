@@ -652,6 +652,13 @@ class Dialect:
         without values (#53)."""
         return f"{fn.upper()}({v}){over and ' ' + over}"
 
+    def float_var(self, fn: str, v: str) -> str:
+        """`AggFn.var` of the doubles of `v` with the engine's own algorithm
+        (#54): `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP` or `STDDEV_POP`."""
+        name = {"var_samp": "VAR_SAMP", "var_pop": "VAR_POP", "std_samp": "STDDEV_SAMP",
+                "std_pop": "STDDEV_POP"}[fn]  # fmt: skip
+        return f"{name}({v})"
+
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
         ordinal `o`, from +0.0 (rounding depends on the order)."""
@@ -1022,6 +1029,10 @@ class Measure:
         "bit_and",
         "bit_or",
         "bit_xor",
+        "var_samp",
+        "var_pop",
+        "std_samp",
+        "std_pop",
     ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
@@ -1119,7 +1130,7 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
             return dsum_kind(a) if isinstance(a, Dec) else "int"
         if m.fn in ("count", "iavg", *BIT_AGGS):
             return "int"
-        if m.fn in ("fsum", "avg"):
+        if m.fn in ("fsum", "avg", *VAR_AGGS):
             return "float"
         return (
             cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else unknown
@@ -1129,6 +1140,9 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
 
 #: `AggFn.bit`'s functions (#53).
 BIT_AGGS = ("bit_and", "bit_or", "bit_xor")
+#: `AggFn.var`'s functions: variance and standard deviation, of a sample or a
+#: population (#54).
+VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop")
 
 
 def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
@@ -1140,7 +1154,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
     if m.fn in ("count", "sum", "iavg", *BIT_AGGS):
         return "int"
-    return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
+    return "float" if m.fn in ("fsum", "avg", *VAR_AGGS) else kind(m.arg, cols)
 
 
 def dsum_kind(a: Dec) -> Dec:
@@ -2667,6 +2681,10 @@ class _Parser:
             "bit_and",
             "bit_or",
             "bit_xor",
+            "var_samp",
+            "var_pop",
+            "std_samp",
+            "std_pop",
         ]
         match name, k:
             case "count", _:
@@ -2693,6 +2711,14 @@ class _Parser:
                 fn = "avg"
             case (("bit_and" | "bit_or" | "bit_xor"), "int"):
                 fn = name
+            case (("variance" | "std_dev"), ("float" | "int")):
+                pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
+                if name == "variance":
+                    fn = "var_pop" if pop else "var_samp"
+                else:
+                    fn = "std_pop" if pop else "std_samp"
+                if k == "int":
+                    arg = Un("itof", arg)
             case (("min" | "max"), "float"):
                 raise Unsupported(f"{name} of doubles is not supported")
             case (("min" | "max"), ("int" | "str" | "bool" | "time" | "date")):
@@ -3413,6 +3439,25 @@ class _Writer:
                 return d.int_avg(v, "")
             case "bit_and" | "bit_or" | "bit_xor":
                 return d.bit_agg(m.fn, v, "")
+            case "var_samp" | "var_pop" | "std_samp" | "std_pop":
+                sample = m.fn.endswith("_samp")
+                n = f"COUNT({v})"
+                body = d.canon(d.float_var(m.fn, v))
+                none = f"{n} <= {d.int_lit(1 if sample else 0)}"
+                # A NaN passes through; DuckDB's VAR_POP of one NaN is 0.0
+                # (upstream/LEDGER.md).
+                nans = f"COUNT({d.case_when(d.is_nan(v), d.int_lit(1), d.null('int'))})"
+                nan = f"{nans} > {d.int_lit(0)}"
+                value = d.case_when(
+                    none, d.null("float"), d.case_when(nan, d.float_lit(math.nan), body)
+                )
+                if not d.guards:
+                    return value
+                # An infinity makes a deviation `∞ - ∞`, NaN, which no operation
+                # creates (#257); NaN sorts above `+∞`, so leave it out.
+                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
+                bad = d.float_eq(top, d.float_lit(math.inf))
+                return d.case_when(bad, d.raise_("domain error", f"MIN({v})", "float"), value)
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":

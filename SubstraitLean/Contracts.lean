@@ -998,10 +998,10 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case itof =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
-    · have := FloatCode.finite_bounds (FloatCode.ofFloat (Float.ofInt i))
+    · have := FloatCode.ofInt_bounds i
       refine ⟨⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩, by simp [UnFn.abs, hb],
         ?_, ?_⟩ <;> intro x hx <;> simp only [Option.some.injEq] at hx <;> subst hx <;>
-        simp only [FloatCode.ofInt] <;> omega
+        omega
     all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fmath f =>
@@ -3159,6 +3159,8 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
   | .fsum | .avg => AVal.double
+  -- Some double that is not negative (NaN is above every number), or NULL.
+  | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false⟩
   | .iavg | .bit _ => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
   | .collect => AVal.top
@@ -3440,6 +3442,14 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           rw [ha] at hb'; cases hb'; exact hm
   case fsum | avg | iavg | bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+  case var sample sqrt =>
+    cases m.inputs grp with
+    | nil => rfl
+    | cons v vs =>
+      simp only [AggFn.apply, varOf]
+      split
+      · rfl
+      · exact ⟨_, rfl, fun l hl => by cases hl; omega, fun h hh => by cases hh⟩
   case min | max =>
     have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
     rw [hf] at hmm

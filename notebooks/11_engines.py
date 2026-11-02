@@ -348,7 +348,7 @@ def _(mo):
     Unlike Snowflake, Spark runs locally: the tests run every coverage case
     and every query of the Snowflake suite on a local Spark session and
     compare them with `Rel.eval`. DataFusion's own departures from the model
-    are in [chapter 16](?file=16_datafusion_semantics.py).
+    are in [chapter 17](?file=17_backend_semantics.py), section 8.
 
     ## Testing the engines against the model
 

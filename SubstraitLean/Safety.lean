@@ -437,6 +437,8 @@ def Expr.nonZero (env : List AVal) (fs : List Fact) (ks : Assumptions) (x : Expr
       (!(ac.nonBool || ac.ff) || e.nonZero (c.refineNeg env) fs (c.cstrs false ++ ks))
   -- A product of non-zero integers (exact in the model; overflow is an error).
   | .bin .mul a b => a.nonZero env fs ks && b.nonZero env fs ks
+  -- A non-zero integer is a non-zero double (`FloatCode.ofInt_ne_zero`).
+  | .un .itof a => a.nonZero env fs ks
   | _ => false
 
 def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
@@ -521,6 +523,12 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
       subst hj
       exact Int.mul_ne_zero (Expr.nonZero_sound h hfs hks a hc.1 x ha)
         (Expr.nonZero_sound h hfs hks b hc.2 y hb)
+    · rename_i a
+      simp only [eval] at hj
+      cases ha : a.eval row <;> simp [ha, UnFn.apply] at hj
+      rename_i i
+      subst hj
+      exact FloatCode.ofInt_ne_zero (Expr.nonZero_sound h hfs hks a hc i ha)
     · simp at hc
 
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
@@ -932,6 +940,29 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
   | .unnest r _, h => ⟨⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩, loose_wf (r := r) h.1,
       by simp [arity, loose_arity]⟩
 
+/-- Would IEEE make the aggregate of these values NaN, from numbers (#257)?
+A double `SUM` or `AVG` of `+∞` and `-∞`, and a variance of an infinity
+(`∞ - ∞` in its deviations). -/
+def AggFn.makesNan : AggFn → List Value → Bool
+  | .fsum, vs | .avg, vs => vs.contains (.int FloatCode.posInf) && vs.contains (.int FloatCode.negInf)
+  | .var _ _, vs => vs.contains (.int FloatCode.posInf) || vs.contains (.int FloatCode.negInf)
+  | _, _ => false
+
+/-- May `makesNan` hold of values that `a` describes? -/
+def AggFn.mayNan : AggFn → AVal → Bool
+  | .fsum, a | .avg, a => a.has FloatCode.posInf && a.has FloatCode.negInf
+  | .var _ _, a => a.has FloatCode.posInf || a.has FloatCode.negInf
+  | _, _ => false
+
+theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
+    (has : ∀ c, .int c ∈ vs → a.has c = true) (h : f.makesNan vs = true) : f.mayNan a = true := by
+  cases f <;> simp only [makesNan, mayNan, Bool.and_eq_true, Bool.or_eq_true,
+    List.contains_iff_mem] at h ⊢
+  all_goals first
+    | exact ⟨has _ h.1, has _ h.2⟩
+    | exact h.imp (has _) (has _)
+    | simp at h
+
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
 join condition (`under`), which may inline them. Aggregates evaluate their
@@ -956,11 +987,9 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
         p ∈ e.issues row) ∨
       (∃ m ∈ ms, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
         ∃ grp ∈ aggGroups gs (r.eval cat), inI64 (intSum (m.inputs grp)) = false) ∨
-      -- A double `SUM` or `AVG` of `+∞` and `-∞` would be NaN, which no
-      -- operation creates (#257).
-      ∃ m ∈ ms, (m.fn = .fsum ∨ m.fn = .avg) ∧ p = (.domain, m.arg) ∧
-        ∃ grp ∈ aggGroups gs (r.eval cat),
-          .int FloatCode.posInf ∈ m.inputs grp ∧ .int FloatCode.negInf ∈ m.inputs grp
+      -- An aggregate that would be NaN, which no operation creates (#257).
+      ∃ m ∈ ms, p = (.domain, m.arg) ∧
+        ∃ grp ∈ aggGroups gs (r.eval cat), m.fn.makesNan (m.inputs grp) = true
 
 /-- The issues the abstract evaluation cannot rule out. -/
 def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
@@ -987,8 +1016,7 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
       ms.filterMap (fun m =>
         if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none) ++
       ms.filterMap fun m =>
-        let a := m.arg.absD (r.aeval cat A F T true) (r.facts cat F T)
-        if (m.fn = .fsum ∨ m.fn = .avg) ∧ a.has FloatCode.posInf ∧ a.has FloatCode.negInf
+        if m.fn.mayNan (m.arg.absD (r.aeval cat A F T true) (r.facts cat F T))
         then some (.domain, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
@@ -1105,7 +1133,7 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
     rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩ |
-      ⟨m, hm, hfn, rfl, grp, hgrp, hpos, hneg⟩
+      ⟨m, hm, rfl, grp, hgrp, hnan⟩
     · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)))
     · have hs : (if u then r.loose else r).WF cat := by
         cases u
@@ -1127,6 +1155,6 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
           (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg
         rw [hey] at this
         exact AVal.has_of_mem this
-      exact .inr ⟨m, hm, by simp [hfn, has _ hpos, has _ hneg]⟩
+      exact .inr ⟨m, hm, by simp [AggFn.mayNan_of_makesNan has hnan]⟩
 
 end Substrait
