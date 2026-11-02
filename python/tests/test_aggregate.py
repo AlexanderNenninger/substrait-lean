@@ -32,6 +32,7 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
+from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
 from sverify_dev.examples import orders
 
@@ -266,3 +267,49 @@ def test_errors_in_measures_are_reported():
         .aggregate(q=(100 // orders.amount).max())
     )
     assert not sv.verify(guarded).errors
+
+
+B = ibis.table({"a": "int64", "b": "int64"}, name="t")
+i64 = st.integers(-(2**63), 2**63 - 1)
+
+
+def bit_fold(op, vs: list) -> int | None:
+    """`AggFn.bit`: the operation over the non-NULL values, NULL without one."""
+    vs = [v for v in vs if v is not None]
+    if not vs:
+        return None
+    acc = -1 if op == "and" else 0
+    for v in vs:
+        acc = acc & v if op == "and" else acc | v if op == "or" else acc ^ v
+    return acc
+
+
+@settings(
+    max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(t=st.lists(st.tuples(small, st.one_of(st.none(), i64)), max_size=7))
+def test_bit_aggregates_match_every_engine(t):
+    """`AggFn.bit` (#53): the 64-bit operation folded over the non-NULL values."""
+    expr = B.group_by("a").aggregate(
+        x=B.b.bit_and(), o=B.b.bit_or(), r=B.b.bit_xor(), p=B.b.bit_xor(where=B.b > 0)
+    )
+    groups: dict = {}
+    for a, b in t:
+        groups.setdefault(a, []).append(b)
+    expected = sorted(
+        (
+            (a, bit_fold("and", vs), bit_fold("or", vs), bit_fold("xor", vs),
+             bit_fold("xor", [v for v in vs if v is not None and v > 0]))
+            for a, vs in groups.items()
+        ),
+        key=repr,
+    )  # fmt: skip
+    plan = to_substrait_json(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": t})))
+    assert sorted(lean, key=repr) == expected
+    con = connect()
+    create_table(con, "t", B.schema(), t)
+    written = written_plan(plan)
+    for engine in ("duckdb", "polars", "datafusion"):
+        got = [tuple(r.values()) for r in run_plan(con, written, engine).to_pylist()]
+        assert sorted(got, key=repr) == expected, engine

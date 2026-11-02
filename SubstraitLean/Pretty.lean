@@ -63,6 +63,7 @@ def Expr.render : Expr → String
 def AggFn.name : AggFn → String
   | .count => "COUNT" | .sum | .fsum => "SUM" | .avg | .iavg => "AVG" | .min => "MIN" | .max => "MAX"
   | .collect => "ARRAY_AGG"
+  | .bit op => s!"BIT_{op.name.toUpper}"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with
