@@ -540,7 +540,8 @@ def test_a_string_read_as_a_decimal_rounds_as_duckdb():
 
 
 # #348: list literals, indexing and UNNEST in DuckDB's SQL. Lean's rows match
-# DuckDB's (oracle A); DuckDB's writer has no lists yet (#94), so oracle C waits.
+# DuckDB's (oracle A), and so do DuckDB's running the plan Lean writes (oracle
+# C, #94).
 LISTS = ibis.schema({"a": "int64", "l": "array<int64>"})
 LIST_ROWS = [(1, [1, 2, 3]), (2, []), (3, None), (4, [5, None]), (None, [7])]
 LIST_QUERIES = [
@@ -559,7 +560,7 @@ LIST_QUERIES = [
 
 @pytest.mark.parametrize("sql", LIST_QUERIES)
 def test_lists_lift_as_duckdb_reads_them(sql):
-    from sverify.engine import connect, put_table, written_plan
+    from sverify.engine import connect, put_table, run_plan, written_plan
     from sverify.testing import duckdb_sql, inline_tables, lean_values
 
     con = connect()
@@ -577,7 +578,8 @@ def test_lists_lift_as_duckdb_reads_them(sql):
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": LIST_ROWS})))
     want = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
     assert sorted(map(repr, lean)) == sorted(map(repr, want))
-    written_plan(plan)  # Lean writes it back; DuckDB's SQL writer has no lists yet (#94).
+    got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()]
+    assert sorted(map(repr, got)) == sorted(map(repr, want))
 
 
 @pytest.mark.parametrize(
