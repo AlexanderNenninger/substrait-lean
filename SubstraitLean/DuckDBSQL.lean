@@ -21,7 +21,9 @@ hand-written `DUCKDB` profile it replaces; oracle A (#242) tests it against
 the engine. With `semantics="reference"` a function means the reference's
 function at the same types (an error where DuckDB would give `±∞` or NaN).
 
-This first slice covers `/`, `%` of doubles and `log`.
+Covered so far: `/`, `%` of doubles, `log`, `sign`, `greatest` and `least`,
+and casts between `BIGINT` and `DOUBLE`. A function the model cannot state
+under a semantics is refused (`DuckFn.refused`), with the reason.
 -/
 
 namespace Substrait
@@ -36,7 +38,7 @@ def Semantics.name : Semantics → String
 
 /-- A DuckDB SQL type of the lifted functions' arguments and results. -/
 inductive DuckType where
-  | bigint | double
+  | bigint | double | tinyint
   deriving Repr, DecidableEq, Inhabited
 
 /-- Values of the type: `NULL` or an integer (for a `DOUBLE`, its code,
@@ -54,7 +56,7 @@ def DuckType.HaveAll : List DuckType → List Value → Prop
 
 /-- The Substrait type. -/
 def DuckType.substrait : DuckType → String
-  | .bigint => "i64" | .double => "fp64"
+  | .bigint => "i64" | .double => "fp64" | .tinyint => "i8"
 
 /-- A DuckDB SQL function at one signature. -/
 inductive DuckFn where
@@ -66,9 +68,18 @@ inductive DuckFn where
   | modDouble
   /-- `log(x)` of a `DOUBLE`: the logarithm to base 10. -/
   | log
+  /-- `sign(x)` of a `BIGINT` or a `DOUBLE`: a `TINYINT`, `-1`, `0` or `1`;
+  `0` for NaN. -/
+  | signBigint | signDouble
+  /-- `greatest(x, y)` and `least(x, y)`: DuckDB skips `NULL`s. -/
+  | greatestBigint | leastBigint | greatestDouble | leastDouble
+  /-- `CAST(x AS BIGINT)` of a `DOUBLE`, and `CAST(x AS DOUBLE)` of a `BIGINT`. -/
+  | castDoubleBigint | castBigintDouble
   deriving Repr, DecidableEq, Inhabited
 
-def DuckFn.all : List DuckFn := [.divInt, .divDouble, .modDouble, .log]
+def DuckFn.all : List DuckFn :=
+  [.divInt, .divDouble, .modDouble, .log, .signBigint, .signDouble, .greatestBigint, .leastBigint,
+   .greatestDouble, .leastDouble, .castDoubleBigint, .castBigintDouble]
 
 theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by cases f <;> decide
 
@@ -76,14 +87,28 @@ theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by cases f <;> decide
 def DuckFn.sql : DuckFn → String
   | .divInt => "BIGINT / BIGINT" | .divDouble => "DOUBLE / DOUBLE"
   | .modDouble => "DOUBLE % DOUBLE" | .log => "log(DOUBLE)"
+  | .signBigint => "sign(BIGINT)" | .signDouble => "sign(DOUBLE)"
+  | .greatestBigint => "greatest(BIGINT, BIGINT)" | .leastBigint => "least(BIGINT, BIGINT)"
+  | .greatestDouble => "greatest(DOUBLE, DOUBLE)" | .leastDouble => "least(DOUBLE, DOUBLE)"
+  | .castDoubleBigint => "CAST(DOUBLE AS BIGINT)" | .castBigintDouble => "CAST(BIGINT AS DOUBLE)"
 
 def DuckFn.args : DuckFn → List DuckType
-  | .divInt => [.bigint, .bigint]
-  | .divDouble | .modDouble => [.double, .double]
-  | .log => [.double]
+  | .divInt | .greatestBigint | .leastBigint => [.bigint, .bigint]
+  | .divDouble | .modDouble | .greatestDouble | .leastDouble => [.double, .double]
+  | .log | .signDouble | .castDoubleBigint => [.double]
+  | .signBigint | .castBigintDouble => [.bigint]
 
 def DuckFn.result : DuckFn → DuckType
+  | .signBigint | .signDouble => .tinyint
+  | .greatestBigint | .leastBigint | .castDoubleBigint => .bigint
   | _ => .double
+
+/-- Functions the model cannot state under the semantics, and why: the lift
+refuses them (`sverify.sql_lift` raises `Unsupported`). -/
+def DuckFn.refused : Semantics → DuckFn → Option String
+  | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
+      (they truncate) cannot state; use semantics='reference', or round() first"
+  | _, _ => none
 
 /-! The special codes' order, which the generated proofs compare with. -/
 
@@ -178,8 +203,12 @@ def duckLog (x : Int) : Int :=
   | some r => r
   | none => if x = 0 then FloatCode.negInf else FloatCode.nan
 
+/-- `sign` of an integer, or of a double's code (codes are ordered as their
+doubles; NaN's is the largest, and its sign is `0`). -/
+def duckSign (x : Int) : Int := if x < 0 then -1 else if 0 < x then 1 else 0
+
 /-- What the function gives for its arguments, under the semantics. `NULL`
-in, `NULL` out. -/
+in, `NULL` out, but for `greatest` and `least`, which skip `NULL`s. -/
 def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
   | .duckdb, .divInt, [.int a, .int b] =>
     .ok (.int (duckDivide (FloatCode.ofInt a) (FloatCode.ofInt b)))
@@ -191,6 +220,18 @@ def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
   | .reference, .divDouble, [a, b] => Profile.reference.bin .fdiv a b
   | .reference, .modDouble, [a, b] => Profile.reference.bin .fmod a b
   | .reference, .log, [a] => Profile.reference.un (.fmath .log10) a
+  | _, .signBigint, [.int a] => .ok (.int (duckSign a))
+  | _, .signDouble, [.int a] => .ok (.int (if a = FloatCode.nan then 0 else duckSign a))
+  | _, .greatestBigint, [x, y] | _, .greatestDouble, [x, y] => .ok (match x, y with
+    | .int a, .int b => .int (if a < b then b else a)
+    | .null, v | v, .null => v
+    | _, _ => .null)
+  | _, .leastBigint, [x, y] | _, .leastDouble, [x, y] => .ok (match x, y with
+    | .int a, .int b => .int (if b < a then b else a)
+    | .null, v | v, .null => v
+    | _, _ => .null)
+  | .reference, .castDoubleBigint, [a] => Profile.reference.un .ftoi a
+  | _, .castBigintDouble, [.int a] => .ok (.int (FloatCode.ofInt a))
   | _, _, _ => .ok .null
 
 end Substrait

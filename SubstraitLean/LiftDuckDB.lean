@@ -23,16 +23,18 @@ def Lift.duckdb : (s : Semantics) → Lift s
 
 /-- The lift tables as JSON (`substrait-check --lift-table`): for each
 semantics and DuckDB function, its argument and result types and the
-Substrait expression it lifts to, over its arguments as field references
-`0`, `1`, … whose `functionReference`s are `functions`' anchors. -/
+Substrait expression it lifts to (`template`), over its arguments as field
+references `0`, `1`, … whose `functionReference`s are `functions`' anchors, or
+why the lift refuses it (`refused`). -/
 def Lift.tableJson : Lean.Json :=
   let entries := [Semantics.duckdb, .reference].flatMap fun s => DuckFn.all.map fun f =>
-    let tmpl : Lean.Json := match (Lift.duckdb s).entry f with
-      | some e => (Lean.Json.parse e.json).toOption.getD .null
-      | none => .null
-    Lean.Json.mkObj [("semantics", Lean.toJson s.name), ("construct", Lean.toJson f.sql),
+    let how : List (String × Lean.Json) := match (Lift.duckdb s).entry f, f.refused s with
+      | some e, _ => [("template", (Lean.Json.parse e.json).toOption.getD .null)]
+      | none, some why => [("refused", Lean.toJson why)]
+      | none, none => [("template", .null)]
+    Lean.Json.mkObj ([("semantics", Lean.toJson s.name), ("construct", Lean.toJson f.sql),
       ("args", Lean.toJson (f.args.map DuckType.substrait)),
-      ("result", Lean.toJson f.result.substrait), ("template", tmpl)]
+      ("result", Lean.toJson f.result.substrait)] ++ how)
   Lean.Json.mkObj [("functions", LiftSearch.functionsJson), ("lift", Lean.Json.arr entries.toArray)]
 
 end Substrait
