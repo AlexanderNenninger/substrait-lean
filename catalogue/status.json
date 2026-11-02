@@ -1043,10 +1043,14 @@
   }
  },
  "ts-pack-intervals": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "window functions (MAX(bookings.end_ts) OVER (PARTITION BY bookings.resource...) are not supported yet",
-  "datafusion": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "datafusion": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql (tie_free)"
+  }
  },
  "tpcds-q03": {
   "checker": "verified",

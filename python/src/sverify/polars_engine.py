@@ -1469,6 +1469,12 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         # `AggFn.iavg`: the exact mean, truncated toward zero (#209).
         q = abs(sum(vs)) // len(vs)
         return q if sum(vs) >= 0 else -q
+    if fn in ("bit_and", "bit_or", "bit_xor"):
+        # `AggFn.bit`: the operation folded over the 64-bit values (#53).
+        acc = -1 if fn == "bit_and" else 0
+        for v in vs:
+            acc = acc & v if fn == "bit_and" else acc | v if fn == "bit_or" else acc ^ v
+        return acc
     if fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
         # `AggFn.var` (#54), with Polars' own algorithm; an infinity would make
         # a deviation NaN (#257).
@@ -1516,7 +1522,7 @@ class Measure:
 
     @property
     def dtype(self) -> DType:
-        if self.fn in ("count", "sum", "iavg"):
+        if self.fn in ("count", "sum", "iavg", "bit_and", "bit_or", "bit_xor"):
             return pl.Int64
         if self.fn == "collect":
             return pl.List(materialize(self.arg.dtype))
@@ -1961,7 +1967,8 @@ class Translator:
             if name in ("min", "max") and t == pl.Float64:
                 raise Unsupported(f"{name} of doubles is not supported")
             out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
-                   "iavg": pl.Int64}  # fmt: skip
+                   "iavg": pl.Int64, "bit_and": pl.Int64, "bit_or": pl.Int64,
+                   "bit_xor": pl.Int64}  # fmt: skip
             return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
         raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
@@ -2106,6 +2113,8 @@ class Translator:
             fn = name
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):
             fn = "collect"
+        elif name in ("bit_and", "bit_or", "bit_xor") and t == pl.Int64:
+            fn = name
         if fn is None:
             raise Unsupported(f"unsupported aggregate {name} of {t}")
         sorts = []

@@ -3161,7 +3161,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .fsum | .avg => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
   | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false⟩
-  | .iavg => ⟨true, some Bound.top, false, false, false⟩
+  | .iavg | .bit _ => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
   | .collect => AVal.top
 
@@ -3440,7 +3440,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have := hin (.int i) (hvs ▸ hi)
           obtain ⟨b', hb', hm⟩ := this
           rw [ha] at hb'; cases hb'; exact hm
-  case fsum | avg | iavg =>
+  case fsum | avg | iavg | bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case var sample sqrt =>
     cases m.inputs grp with

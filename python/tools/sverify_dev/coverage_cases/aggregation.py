@@ -46,6 +46,14 @@ CASES: list[Case] = [
     ),
     case(
         "aggregation",
+        "bit_and, bit_or, bit_xor",
+        V,
+        lambda: t.group_by("name").aggregate(
+            a=t.qty.bit_and(), o=t.qty.bit_or(), x=t.qty.bit_xor()
+        ),
+    ),
+    case(
+        "aggregation",
         "sum(where=)",
         V,
         lambda: t.group_by("name").aggregate(s=t.qty.sum(where=t.flag)),

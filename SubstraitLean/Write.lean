@@ -77,7 +77,9 @@ def nestedFns : List (Nat × String) := [
 /-- Aggregate functions: new anchors 500–599. -/
 def aggregateFns : List (Nat × String) := [
   (36, "count"), (37, "sum"), (38, "avg"), (39, "min"), (40, "max"), (42, "array_agg"),
-  -- The variance and standard deviation of doubles, in row order (#54).
+  -- 64-bit integers folded with a bit operation (#53).
+  (500, "bit_and"), (501, "bit_or"), (502, "bit_xor"),
+  -- The variance and standard deviation of doubles, each engine's own algorithm (#54).
   (503, "variance"), (504, "std_dev")]
 
 /-- Window functions: new anchors 600–699. -/
@@ -104,6 +106,7 @@ example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a &&
 
 def AggFn.anchor : AggFn → Nat
   | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
+  | .bit op => match op with | .and => 500 | .or => 501 | _ => 502
   | .var _ sqrt => if sqrt then 504 else 503
 
 def UnFn.anchor : UnFn → Nat
@@ -147,7 +150,10 @@ def BinFn.anchor : BinFn → Nat
 
 /-- Every anchor a function is written with is declared (0 marks no call). -/
 theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first | decide | (rename_i a b; cases a <;> cases b <;> decide)
+  cases f
+  case bit op => cases op <;> decide
+  case var sample sqrt => cases sample <;> cases sqrt <;> decide
+  all_goals decide
 
 theorem UnFn.anchor_declared (f : UnFn) :
     UnFn.anchor f = 0 ∨ UnFn.anchor f ∈ declared.map (·.1) := by
@@ -725,7 +731,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           ks.getD c .other
         | .agg m _ _ => match m.fn with
-          | .count | .iavg => .int
+          | .count | .iavg | .bit _ => .int
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg | .var _ _ => .float
           | .min | .max => wkind ks m.arg
@@ -733,7 +739,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
-        | .count | .iavg => .int
+        | .count | .iavg | .bit _ => .int
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg | .var _ _ => .float
         | .min | .max => wkind ks m.arg

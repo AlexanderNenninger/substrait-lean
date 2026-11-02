@@ -274,11 +274,11 @@ semi-structured data.
 | modelling | 14 | 10 | 0 | 4 | 0 | 13 | 10 | 10 | 9 |
 | product | 13 | 10 | 0 | 3 | 0 | 12 | 9 | 9 | 9 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
-| timeseries | 15 | 12 | 0 | 3 | 0 | 13 | 12 | 12 | 8 |
+| timeseries | 15 | 13 | 0 | 2 | 0 | 13 | 13 | 13 | 9 |
 | tpcds | 8 | 6 | 0 | 2 | 0 | 8 | 0 | 6 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 115 | 0 | 24 | 0 | 134 | 75 | 112 | 67 |
+| **all** | 139 | 116 | 0 | 23 | 0 | 134 | 76 | 113 | 68 |
 
 ### Feature frequency
 
@@ -380,8 +380,8 @@ How many of the 139 queries need each feature (as originally written, so subquer
 |---|---|---|---|---|
 | `stddev_var` | 4 | 3 | no |  |
 | `arg_max` | 3 | 3 | no | first_value aggregates are refused |
-| `rows_frame` | 3 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
 | `min_max` | 2 | 2 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
+| `rows_frame` | 2 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
 | `percentile` | 2 | 1 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
 | `decimal` | 2 | 0 | partial | modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). DuckDB runs decimal plans as the reference computes them (#27); the other engines refuse them. AVG of a decimal over a window is not modelled yet |
 | `grouping_sets` | 2 | 0 | no |  |
@@ -394,11 +394,10 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `string_agg` | 1 | 1 | no |  |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
-| `running_agg` | 1 | 0 | yes |  |
 
 ### Why engines refuse verified queries
 
-Over the 115 queries that verify (some only as DOUBLE):
+Over the 116 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|

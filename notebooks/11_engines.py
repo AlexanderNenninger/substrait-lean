@@ -306,10 +306,9 @@ def _(con, dialect, json, mo, sql_query, sqlglot, substrait_json):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Long, but every line is there for a reason. A window shows why: for
-    `t.mutate(rn=ibis.row_number().over(group_by="k", order_by="qty"))`
-    (the SQL lift does not read window functions yet, #240), DuckDB gets an
-    ordinal column so ties break the way
+    Long, but every line is there for a reason. Try
+    `select k, row_number() over (partition by k order by qty) as rn from t`
+    in each dialect: DuckDB gets an ordinal column so ties break the way
     Lean's stable sort breaks them, while **Snowflake and Spark refuse**,
     because their tables have no row order to break ties with. If a
     contract report says `deterministic` (chapter 7), pass `tie_free=True`

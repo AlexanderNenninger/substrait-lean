@@ -646,6 +646,12 @@ class Dialect:
         values (#209)."""
         raise Unsupported(f"{self.name}: AVG with an integer result is not implemented")
 
+    def bit_agg(self, fn: str, v: str, over: str) -> str:
+        """`AggFn.bit` (`bit_and`, `bit_or`, `bit_xor`) of the BIGINT column
+        `v` (over the window `over`, or grouped for `''`): NULLs skipped, NULL
+        without values (#53)."""
+        return f"{fn.upper()}({v}){over and ' ' + over}"
+
     def float_var(self, fn: str, v: str) -> str:
         """`AggFn.var` of the doubles of `v` with the engine's own algorithm
         (#54): `VAR_SAMP`, `VAR_POP`, `STDDEV_SAMP` or `STDDEV_POP`."""
@@ -1020,6 +1026,9 @@ class Measure:
         "max",
         "dsum",
         "davg",
+        "bit_and",
+        "bit_or",
+        "bit_xor",
         "var_samp",
         "var_pop",
         "std_samp",
@@ -1119,7 +1128,7 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
             # A decimal column's sum is a decimal (#27).
             a = cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else None
             return dsum_kind(a) if isinstance(a, Dec) else "int"
-        if m.fn in ("count", "iavg"):
+        if m.fn in ("count", "iavg", *BIT_AGGS):
             return "int"
         if m.fn in ("fsum", "avg", *VAR_AGGS):
             return "float"
@@ -1129,6 +1138,8 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
     return cols[f.col] if f.col < len(cols) else unknown
 
 
+#: `AggFn.bit`'s functions (#53).
+BIT_AGGS = ("bit_and", "bit_or", "bit_xor")
 #: `AggFn.var`'s functions: variance and standard deviation, of a sample or a
 #: population (#54).
 VAR_AGGS = ("var_samp", "var_pop", "std_samp", "std_pop")
@@ -1141,7 +1152,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         if not isinstance(a, Dec):
             raise Unsupported(f"{m.fn} of a non-decimal")
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
-    if m.fn in ("count", "sum", "iavg"):
+    if m.fn in ("count", "sum", "iavg", *BIT_AGGS):
         return "int"
     return "float" if m.fn in ("fsum", "avg", *VAR_AGGS) else kind(m.arg, cols)
 
@@ -2667,6 +2678,9 @@ class _Parser:
             "max",
             "dsum",
             "davg",
+            "bit_and",
+            "bit_or",
+            "bit_xor",
             "var_samp",
             "var_pop",
             "std_samp",
@@ -2695,6 +2709,8 @@ class _Parser:
                 fn, arg = "avg", Un("itof", arg)
             case "avg", "float":
                 fn = "avg"
+            case (("bit_and" | "bit_or" | "bit_xor"), "int"):
+                fn = name
             case (("variance" | "std_dev"), ("float" | "int")):
                 pop = _option(m, "distribution", "SAMPLE") == "POPULATION"
                 if name == "variance":
@@ -3421,6 +3437,8 @@ class _Writer:
                 return d.int_sum(v)
             case "iavg":
                 return d.int_avg(v, "")
+            case "bit_and" | "bit_or" | "bit_xor":
+                return d.bit_agg(m.fn, v, "")
             case "var_samp" | "var_pop" | "std_samp" | "std_pop":
                 sample = m.fn.endswith("_samp")
                 n = f"COUNT({v})"
@@ -3639,6 +3657,8 @@ class _Writer:
                 return d.window_int_sum(v, w)
             case "iavg":
                 return d.int_avg(v, w)
+            case "bit_and" | "bit_or" | "bit_xor":
+                return d.bit_agg(m.fn, v, w)
             case "dsum":
                 a = expr_kind(m.arg, ks)
                 if not isinstance(a, Dec):

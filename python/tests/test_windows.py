@@ -24,7 +24,7 @@ from sverify.engine import (
     to_sql,
 )
 from sverify.errors import NotIncremental
-from sverify.ibis_substrait import Unsupported, to_substrait
+from sverify.ibis_substrait import to_substrait
 from sverify.incremental import IncrementalView
 from sverify.testing import (
     canonical,
@@ -34,8 +34,6 @@ from sverify.testing import (
     lean_rows,
     lean_values,
 )
-
-pytestmark = pytest.mark.lift_backlog
 
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})
 
@@ -261,13 +259,14 @@ def test_ordered_windows_match_datafusion(sql, rows):
     assert canonical(lean) == canonical(expected)
 
 
-def test_ntile_is_datafusions():
-    """DataFusion's NTILE is ⌊i · min(k, n) / n⌋ + 1, not the SQL standard's
-    buckets: 6 rows in 4 tiles are 1 1 2 3 3 4 (DuckDB: 1 1 2 2 3 4)."""
+def test_ntile_is_the_sql_standards():
+    """DuckDB's NTILE is the SQL standard's buckets: 6 rows in 4 tiles are
+    1 1 2 2 3 4. The lift writes it from ROW_NUMBER and COUNT, for the
+    model's `ntile` is DataFusion's, ⌊i · min(k, n) / n⌋ + 1 (1 1 2 3 3 4)."""
     sql = "SELECT t, NTILE(4) OVER (ORDER BY t) AS n FROM r"
     rows = [(0, t, 0) for t in range(6)]
     lean, expected = lean_and_datafusion(sql, rows)
-    assert sorted(lean) == sorted(expected) == [(0, 1), (1, 1), (2, 2), (3, 3), (4, 3), (5, 4)]
+    assert sorted(lean) == sorted(expected) == [(0, 1), (1, 1), (2, 2), (3, 2), (4, 3), (5, 4)]
     lean, _ = lean_and_datafusion(sql, rows[:2])
     assert sorted(lean) == [(0, 1), (1, 2)]
 
@@ -326,9 +325,12 @@ def test_range_frames_match_datafusion(i, rows):
     assert canonical(lean) == canonical(expected)
 
 
-def test_sql_range_offsets_are_refused():
-    con = connect()
-    create_table(con, "r", SCHEMA, [])
-    sql = "SELECT COUNT(*) OVER (ORDER BY t RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS b FROM r"
-    with pytest.raises(Unsupported, match="RANGE"):
-        substrait_json(con, sql)
+def test_sql_range_offsets_are_the_sort_keys_distance():
+    """A RANGE frame with an offset holds the rows whose sort key is within
+    it (DataFusion's SQL producer dropped such offsets; the lift writes them)."""
+    sql = (
+        "SELECT t, COUNT(*) OVER (ORDER BY t RANGE BETWEEN 1 PRECEDING AND CURRENT ROW) AS b FROM r"
+    )
+    rows = [(0, t, 0) for t in (1, 2, 4, 5, 7)] + [(1, 2, 0)]
+    lean, expected = lean_and_datafusion(sql, rows)
+    assert sorted(lean) == sorted(expected) == [(1, 1), (2, 3), (2, 3), (4, 1), (5, 2), (7, 1)]

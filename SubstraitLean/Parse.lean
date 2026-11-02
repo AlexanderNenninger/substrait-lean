@@ -330,7 +330,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
     | .dec p s => .dec (min 38 (p + 10)) s
     | _ => .int
   | .fsum | .avg | .var _ _ => .float
-  | .iavg => .int
+  | .iavg | .bit _ => .int
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
 
@@ -1877,6 +1877,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- NULLs are skipped (`Measure.inputs`), as with Ibis's
     -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
     | "array_agg", _ => pure (.collect, arg)
+    -- 64-bit integers only (#53): a narrower one would need its own width.
+    | "bit_and", .int | "bit_or", .int | "bit_xor", .int =>
+      if argBits bits (args.headD .null) arg != 64 then
+        throw s!"{name} of an integer narrower than 64 bits is not supported"
+      pure (.bit (if name == "bit_and" then .and else if name == "bit_or" then .or else .xor), arg)
     -- Of doubles, or of integers converted to doubles, as `avg` (#54); the
     -- sample's unless the plan asks for the population's.
     | "variance", .float | "std_dev", .float | "variance", .int | "std_dev", .int =>

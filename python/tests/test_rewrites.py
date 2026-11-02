@@ -25,8 +25,6 @@ from sverify.engine import (
 )
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
 
-pytestmark = pytest.mark.lift_backlog
-
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "int64"})
 
