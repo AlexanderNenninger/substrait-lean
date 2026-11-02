@@ -261,22 +261,35 @@ elab "lowering_split_decide" : tactic => do
   let gs ← g.byCases p `hd
   replaceMainGoal [gs.1.mvarId, gs.2.mvarId]
 
-/-- Prove `type` with the tactic; `none` (and nothing left in the environment
-or the message log) if it fails, runs out of heartbeats, leaves goals or uses
-`sorry`. -/
-def prove (type : Lean.Expr) (tac : Syntax) : TermElabM (Option Lean.Expr) := withCurrHeartbeats do
+/-- Prove `type` with the tactic: the proof, or why it failed (the first goal
+left, or the error), with nothing left in the environment or the message log.
+A proof that runs out of heartbeats or uses `sorry` fails. -/
+def proveE (type : Lean.Expr) (tac : Syntax) : TermElabM (Except String Lean.Expr) :=
+  withCurrHeartbeats do
   let s ← saveState
   -- Only an error this proof logs counts, not an earlier one of the command.
   let had ← MonadLog.hasErrors
+  let n0 := (← Core.getMessageLog).toList.length
   tryCatchRuntimeEx
     (do
       let mv ← mkFreshExprMVar type
       let gs ← Tactic.run mv.mvarId! (Tactic.evalTactic tac)
       let pf ← instantiateMVars mv
       let errs := !had && (← MonadLog.hasErrors)
-      if gs.isEmpty && !pf.hasMVar && !pf.hasSorry && !errs then return some pf
-      s.restore; return none)
-    fun _ => do s.restore; return none
+      if gs.isEmpty && !pf.hasMVar && !pf.hasSorry && !errs then return .ok pf
+      let why : String ← match gs with
+        | g :: _ => pure s!"goal left: {← Meta.ppGoal g}"
+        | [] => do
+          let msgs ← ((← Core.getMessageLog).toList.drop n0).mapM (·.toString)
+          pure s!"error: {msgs.headD "sorry or metavariables"}"
+      s.restore; return .error why)
+    fun e => do
+      let m ← e.toMessageData.toString
+      s.restore; return .error s!"exception: {m}"
+
+/-- `proveE`, without the reason. -/
+def prove (type : Lean.Expr) (tac : Syntax) : TermElabM (Option Lean.Expr) := do
+  return (← proveE type tac).toOption
 
 unsafe def evalProfileImpl (e : Lean.Expr) : TermElabM Profile :=
   Meta.evalExpr Profile (Lean.mkConst ``Profile) e

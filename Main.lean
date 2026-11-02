@@ -201,6 +201,10 @@ partial def serve : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
+  | ["--lift-cache"] => do
+    -- A new SubstraitLean/LiftCache.lean from this build's tables (#268).
+    IO.print Lift.cacheSource
+    return 0
   | ["--lift-table"] => do
     -- What DuckDB SQL lifts to, generated and proved (#268).
     IO.println Lift.tableJson.pretty
@@ -219,5 +223,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage | --lift-table"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard] <file.json> | --serve | --lowering-coverage | --lift-table | --lift-cache"
     return 1

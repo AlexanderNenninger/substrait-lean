@@ -23,6 +23,8 @@ import SubstraitLean.Lowering
 import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.DuckDBSQL
+import SubstraitLean.LiftHint
+import SubstraitLean.LiftCache
 import SubstraitLean.LiftSearch
 import SubstraitLean.LiftDuckDB
 import SubstraitLean.Keys
