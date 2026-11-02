@@ -150,3 +150,39 @@ def batch(node, **refresh):
     report = node.refresh(**refresh)[node.name].report
     assert report is not None, f"{node.name}: the refresh computed it in full"
     return report
+
+
+def integer_powers(plan: dict) -> dict:
+    """`plan` with each `power` of integers (the lift's `power(CAST(a AS
+    DOUBLE), 2.0)`) as the model's integer `power(a, 2)`, which raises on
+    overflow and on a negative exponent. DuckDB's SQL computes `power` in
+    doubles; no producer writes the integer one any more."""
+    names = {e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
+             for e in plan["extensions"]}  # fmt: skip
+
+    def integer(arg: dict) -> dict | None:
+        value = arg["value"]
+        if "cast" in value and "fp64" in value["cast"]["type"]:
+            return {"value": value["cast"]["input"]}
+        lit = value.get("literal", {})
+        if isinstance(lit.get("fp64"), float | int) and float(lit["fp64"]).is_integer():
+            return {"value": {"literal": {"i64": str(int(lit["fp64"]))}}}
+        return None
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            f = node.get("scalarFunction")
+            if f is not None and names.get(f["functionReference"]) == "power":
+                args = [integer(a) for a in f["arguments"]]
+                if all(a is not None for a in args):
+                    f["arguments"] = args
+                    f["outputType"] = {"i64": {"nullability": "NULLABILITY_NULLABLE"}}
+                    f.pop("options", None)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan)
+    return plan

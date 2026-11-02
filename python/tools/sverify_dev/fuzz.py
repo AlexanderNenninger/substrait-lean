@@ -321,13 +321,17 @@ class Refused(Exception):
 REFUSALS = (polars_engine.Unsupported, sql_core.Unsupported)
 
 KNOWN: list[tuple[int, Callable[[Finding], bool]]] = [
-    # One integer kind in the model: a widening cast of an `int32` is dropped.
+    # One integer kind in the model: a widening cast of an `int32` is
+    # dropped, and an `int32` literal (DuckDB's `0`) comes back as an `int64`
+    # from an engine.
     (
         18,
         lambda f: (
             f.oracle.startswith("types:")
-            and "int32" in f.detail.splitlines()[-1]
-            and "int64" in f.detail.splitlines()[-2]
+            and {"int32", "int64"}
+            <= {t for line in f.detail.splitlines()[-2:] for t in ("int32", "int64") if t in line}
+            and f.detail.splitlines()[-1].replace("int64", "int32").split(": ", 1)[-1]
+            == f.detail.splitlines()[-2].replace("int64", "int32").split(": ", 1)[-1]
         ),
     ),
 ]

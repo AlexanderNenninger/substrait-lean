@@ -19,6 +19,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
+from _pipelines import integer_powers
 from sverify import polars_engine
 from sverify.engine import (
     connect,
@@ -342,8 +343,10 @@ def test_polars_view_matches_datafusion_view(name, data):
 
 
 def polars_rows(con, sql: str) -> list[tuple]:
-    # The reference's semantics: Polars against the model.
-    return rows_of(run_plan(con, written_plan(substrait_json(con, sql, "reference")), "polars"))
+    # The reference's semantics, and the model's integer `power`: Polars
+    # against the model.
+    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    return rows_of(run_plan(con, written_plan(json.dumps(plan)), "polars"))
 
 
 def test_null_join_keys_never_match():
