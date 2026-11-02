@@ -708,3 +708,31 @@ def test_timestamp_differences_compare_with_intervals(name):
     lean = lean_on(json.loads(plan), {"events": EVENTS})
     got = run_plan(con, plan, "polars")
     assert canonical([tuple(r.values()) for r in got.to_pylist()]) == canonical(lean)
+
+
+def test_greatest_and_least_of_many_columns_run_in_one_pick():
+    # #340: a chain of GREATEST pairs as nested `when`s reads the whole chain
+    # at each step, exponential in the columns. As one pick over the values,
+    # 20 columns run at once, as DuckDB runs the same written plan, NaN, -0.0
+    # and NULLs included.
+    import time
+
+    from sverify.sql_lift import lift
+
+    values = [None, 0.0, -0.0, 1.5, math.inf, -math.inf, math.nan]
+    cols = {f"c{i}": pa.array(values[i % 7 :] + values[: i % 7], pa.float64()) for i in range(20)}
+    table = pa.table(cols)
+    con = connect()
+    put_table(con, "t", table)
+    names = ", ".join(cols)
+    sql = f"SELECT GREATEST({names}) AS g, LEAST({names}) AS l FROM t"
+    schema = {"t": ibis.Schema.from_pyarrow(table.schema)}
+    plan = written_plan(json.dumps(lift(sql, schema, "duckdb").plan))
+    start = time.monotonic()
+    got = run_plan(con, plan, "polars")
+    assert time.monotonic() - start < 10
+    key = [["nan" if isinstance(v, float) and math.isnan(v) else repr(v) for v in r.values()]
+           for r in got.to_pylist()]  # fmt: skip
+    want = [["nan" if isinstance(v, float) and math.isnan(v) else repr(v) for v in r.values()]
+            for r in run_plan(con, plan, "duckdb").to_pylist()]  # fmt: skip
+    assert key == want
