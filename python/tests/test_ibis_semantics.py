@@ -16,9 +16,9 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.engine import connect, plan_json, put_table, run_checker
-from sverify.ibis_substrait import Unsupported
-from sverify.testing import inline_tables, lean_values
+from sverify.engine import connect, create_table, plan_json, put_table, run_checker
+from sverify.ibis_substrait import Unsupported, to_substrait_json
+from sverify.testing import duckdb_sql, inline_tables, lean_values
 
 T = pa.table(
     {
@@ -149,7 +149,7 @@ def test_refused_operations(con):
         (lambda t: t.select(r=ibis.now()), "pass the time in"),
         (lambda t: t.select(r=ibis.today()), "pass the date in"),
         (lambda t: t.select(r=t.v.typeof()), "the type's name is the engine's own"),
-        (lambda t: t.filter(t.v > ibis.param(ibis.dtype("float64"))), "bind the parameter first"),
+        (lambda t: t.filter(t.v > ibis.param(ibis.dtype("float64"))), "pass params"),
         (lambda t: t.select(r=t.v.try_cast("int64")), "use cast()"),
     ],
 )
@@ -164,3 +164,47 @@ def test_day_of_week_index_starts_on_monday(con):
     sunday, monday = ibis.timestamp("2024-05-05 00:00:00"), ibis.timestamp("2024-05-06 00:00:00")
     expr = t.select(s=sunday.day_of_week.index(), m=monday.day_of_week.index())
     assert lean(con, expr) == [(6, 0)] * 3
+
+
+# #58: `ibis.param`s are bound at verification time, as Ibis's
+# `execute(params=...)` binds them.
+def test_params_are_bound_for_verify():
+    t = ibis.table({"qty": "int64", "name": "string"}, name="t")
+    p, q = ibis.param(ibis.dtype("int64")), ibis.param(ibis.dtype("string"))
+    expr = t.filter((t.qty > p) & (t.name != q))
+    report = sv.verify(expr, params={p: 5, q: "x"}, ensures=[ibis._.qty > 5])
+    assert report.proved, str(report)
+    # The proof is for these values only, and the report says so.
+    assert report.params == ["param1 (int64) = 5", "param2 (string) = 'x'"]
+    assert "proved for these parameter values only" in str(report)
+    assert not sv.verify(expr, params={p: 0, q: "x"}, ensures=[ibis._.qty > 5]).proved
+    with pytest.raises(ValueError, match="pass params"):
+        sv.verify(expr, params={p: 5})
+    with pytest.raises(TypeError, match="parameter's type"):
+        sv.verify(expr, params={p: "five", q: "x"})
+    with pytest.raises(TypeError, match="ibis.param"):
+        sv.verify(expr, params={t.qty: 5, q: "x"})
+    with pytest.raises(TypeError, match="not SQL"):
+        sv.verify("SELECT qty FROM t", tables={"t": t}, params={p: 5})
+
+
+def test_bound_params_mean_what_ibis_execute_gives():
+    rows = [(1, "a"), (7, "b"), (9, "x"), (None, "c")]
+    p, q = ibis.param(ibis.dtype("int64")), ibis.param(ibis.dtype("string"))
+    params = {p: 5, q: "x"}
+
+    def build(t):
+        return t.filter((t.qty > p) & (t.name != q)).select("qty", "name", r=t.qty + p)
+
+    t = ibis.table({"qty": "int64", "name": "string"}, name="t")
+    plan = to_substrait_json(sv.contracts.bind_params(build(t), params))
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    # Ibis binds them itself in its own DuckDB SQL.
+    con = connect()
+    create_table(con, "t", t.schema(), rows)
+    native = duckdb_sql(con, ibis.to_sql(build(t), dialect="duckdb", params=params))
+    assert sorted(lean, key=repr) == sorted(native_rows(native), key=repr)
+
+
+def native_rows(table: pa.Table) -> list[tuple]:
+    return [tuple(r.values()) for r in table.to_pylist()]

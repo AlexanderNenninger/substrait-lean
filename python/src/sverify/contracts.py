@@ -269,6 +269,10 @@ class Report:
     did not return one."""
     rewrites: list[str] = field(default_factory=list)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
+    params: list[str] = field(default_factory=list)
+    """The `ibis.param` values the transformation was verified with
+    (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
+    these values only."""
 
     @property
     def proved(self) -> bool:
@@ -307,6 +311,8 @@ class Report:
         lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
+        if self.params:
+            lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
         if self.facts:
             lines.append("known about the output:")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
@@ -331,6 +337,8 @@ class Report:
         ]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
+        if self.params:
+            note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
         return "\n".join(
             [
                 *note,
@@ -344,6 +352,8 @@ class Report:
             ]
         )
 
+
+PARAMS_NOTE = "proved for these parameter values only"
 
 TIES_HINT = (
     "rows may tie in the ORDER BY of a window or of first(), last() or group_concat(), so the "
@@ -524,6 +534,28 @@ def resolve(cond: Condition, table: ir.Table) -> ir.BooleanValue:
     return cond  # type: ignore[return-value]
 
 
+def bind_params(expr: ir.Table, params: Mapping[ir.Scalar, Any]) -> ir.Table:
+    """`expr` with each `ibis.param` in `params` replaced by its value, a
+    literal of the parameter's type (#58), as Ibis's `execute(params=...)`
+    binds them.
+
+    Raises:
+        TypeError: A key is not an `ibis.param`, or a value does not fit its
+            type.
+    """
+    mapping: dict[Any, Any] = {}
+    for p, value in params.items():
+        op = p.op() if isinstance(p, ir.Expr) else None
+        if not isinstance(op, ops.ScalarParameter):
+            raise TypeError(f"params keys must be ibis.param expressions, not {p!r}")
+        try:
+            lit = ibis.literal(value, type=op.dtype)
+        except Exception as e:  # noqa: BLE001 - Ibis raises several kinds
+            raise TypeError(f"{value!r} is not a value of the parameter's type {op.dtype}") from e
+        mapping[op] = lit.op()
+    return expr.op().replace(mapping).to_expr()
+
+
 def condition_query(table: Transform, cond: Condition) -> Transform:
     """A query selecting one condition column from a table or transformation:
     SQL for a SQL condition on a SQL transformation, an Ibis expression
@@ -552,6 +584,7 @@ def verify(
     ensures: Sequence[Condition] = (),
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
     counterexamples: int = 200,
+    params: Mapping[ir.Scalar, Any] | None = None,
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -587,6 +620,10 @@ def verify(
         counterexamples: How many small inputs to try per unproved
             postcondition when searching for one that breaks it. Default 200;
             0 skips the search.
+        params: Values for the `ibis.param`s of an Ibis transform, as Ibis's
+            `execute(params=...)` takes them. The report is about the
+            transform with these values (`bind_params`); an unbound parameter
+            is refused.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -631,6 +668,14 @@ def verify(
         name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
         for name, s in (tables or {}).items()
     }
+    bound: list[str] = []
+    if params:
+        if isinstance(transform, str):
+            raise TypeError("params bind the ibis.param values of an Ibis expression, not SQL")
+        transform = bind_params(transform, params)
+        bound = [
+            f"param{k} ({p.type()}) = {v!r}" for k, (p, v) in enumerate(params.items(), start=1)
+        ]
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
     requires = requires or {}
@@ -749,6 +794,7 @@ def verify(
         guard_free=out["guard_free"],
         optimized=out["optimized"],
         rewrites=out["rewrites"],
+        params=bound,
     )
 
 
