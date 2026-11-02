@@ -36,7 +36,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind
+from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind, Lst
 
 #: The timestamps chrono represents (`Time.partMin`, `Time.partMax`).
 PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
@@ -173,6 +173,25 @@ class DuckDBDialect(Dialect):
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         return f"string_agg({v}, {sep} ORDER BY {', '.join(order)})"
+
+    def collect(self, v: str, order: Sequence[str]) -> str:
+        return f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
+
+    def unnest_from(self, source: str, lst: str, alias: str) -> str:
+        e, i = self.quote("e"), self.quote("i")
+        return f"{source}, UNNEST({lst}) WITH ORDINALITY AS {alias}({e}, {i})"
+
+    def list_lit(self, items: list[str], kind: Lst) -> str:
+        if not items:
+            return self.cast("[]", kind)
+        return self.cast(f"[{', '.join(items)}]", kind)
+
+    def list_element(self, x: str, offset: int) -> str:
+        # DuckDB counts from 1, and from the end (-1 the last) like the model.
+        return f"({x})[{offset + 1 if offset >= 0 else offset}]"
+
+    def cardinality(self, x: str) -> str:
+        return f"len({x})"
 
     def pair(self, a: str, b: str) -> str:
         return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"

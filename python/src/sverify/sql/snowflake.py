@@ -60,7 +60,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from sverify.sql.core import Dec, Dialect, Kind, Unsupported
+from sverify.sql.core import Dec, Dialect, Kind, Lst, Unsupported
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 NAN = "CAST('NaN' AS FLOAT)"
@@ -83,6 +83,8 @@ class SnowflakeDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
         if isinstance(kind, Dec):
             return super().type_name(kind)
+        if isinstance(kind, Lst):
+            raise Unsupported("lists are not yet supported on Snowflake; see #271")
         return _TYPES[kind]
 
     def result_kind(self, kind: Kind | None) -> None:
