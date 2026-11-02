@@ -20,6 +20,7 @@ from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql_lift import DUCKDB, REFERENCE, lift
+from sverify_dev import catalogue
 from sverify_dev.lift import check, score
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -436,6 +437,10 @@ def test_sql_is_duckdbs_by_default():
     assert (op.dialect, op.semantics) == ("duckdb", "duckdb")
 
 
+@pytest.mark.skipif(
+    not (catalogue.ROOT / "schemas.toml").is_file(),
+    reason="catalogue/ of the repository is not here",
+)
 def test_benchmark_queries_through_the_lift():
     # The #229 score (`python -m sverify_dev.lift`), on SSB's four queries.
     results = score(["ssb"])
