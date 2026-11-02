@@ -1145,9 +1145,9 @@ class _Lift:
                 if t.is_float64():
                     v = float(v)
                 elif t.is_decimal():
-                    # Exactly, or not at all: a double's binary value is not
-                    # the decimal DuckDB reads.
-                    v = None if isinstance(v, float) else Decimal(v)
+                    # A double's exact binary value: `_fits` folds it only
+                    # where the decimal holds it exactly (10.0, 2.5, not 0.1).
+                    v = Decimal(v)
                 elif t.is_integer() and isinstance(v, Decimal):
                     v = None if v != v.to_integral_value() else int(v)
                 elif t.is_timestamp() and type(v) is dt_.date:
