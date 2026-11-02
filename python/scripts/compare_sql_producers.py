@@ -17,6 +17,7 @@ DIALECT = {
     r"\bpower\(": "Calcite's POWER is a DOUBLE; DataFusion's of integers an integer",
     r"\b(GREATEST|LEAST)\(": "Calcite's GREATEST/LEAST are NULL if any argument is",
     r"\bsubstr\(s, (0|-)": "Calcite's SUBSTR counts a negative start from the end",
+    r"(?i)\bavg\(": "Calcite's AVG of integers is an integer (truncated); DataFusion's a double",
 }
 
 
