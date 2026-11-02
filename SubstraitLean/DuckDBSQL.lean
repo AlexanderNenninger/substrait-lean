@@ -192,6 +192,19 @@ theorem DuckDBSQL.ref_fmod_null_l (y : Value) : Profile.reference.bin .fmod .nul
 theorem DuckDBSQL.ref_fmod_null_r (x : Value) : Profile.reference.bin .fmod x .null = .ok .null := by
   cases x <;> rfl
 
+theorem DuckDBSQL.ref_fpow_int (a b : Int) :
+    Profile.reference.bin .fpow (.int a) (.int b) =
+      if nanCase .fpow a b then .error .domain else .ok (.int (FloatCode.lift₂ Float.pow a b)) := by
+  by_cases hn : nanCase .fpow a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+theorem DuckDBSQL.ref_fpow_null_l (y : Value) : Profile.reference.bin .fpow .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fpow_null_r (x : Value) : Profile.reference.bin .fpow x .null = .ok .null := by
+  cases x <;> rfl
+theorem DuckDBSQL.ref_ffloor_int (c : Int) :
+    Profile.reference.un .ffloor (.int c) = .ok (.int (FloatCode.floor c)) := rfl
+theorem DuckDBSQL.ref_ffloor_null : Profile.reference.un .ffloor .null = .ok .null := rfl
+
 theorem DuckDBSQL.apply_eq_int (a b : Int) : BinFn.apply .eq (.int a) (.int b) = .bool (decide (a = b)) := rfl
 theorem DuckDBSQL.apply_lt_int (a b : Int) : BinFn.apply .lt (.int a) (.int b) = .bool (decide (a < b)) := rfl
 theorem DuckDBSQL.apply_eq_null_l (y : Value) : BinFn.apply .eq .null y = .null := by cases y <;> rfl

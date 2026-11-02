@@ -2,6 +2,7 @@ import Lean
 import SubstraitLean.Parse
 import SubstraitLean.DuckDBSQL
 import SubstraitLean.LoweringSearch
+import SubstraitLean.LiftHint
 
 /-!
 # The lift generator (#268)
@@ -163,6 +164,26 @@ def callJ? (full : String) (args : List Json) (opts : List (String × String)) (
 /-- A guard's call (its function is always in `functions`). -/
 def callJ (full : String) (args : List Json) : Json :=
   (callJ? full args [] "boolean").getD .null
+
+/-- A template with each call naming its function (`"function"`), for the
+cache (`LiftHint`); `anchored` turns it back. -/
+partial def named : Json → Json
+  | .obj kvs => Json.mkObj (kvs.toArray.toList.map fun (k, v) =>
+      if k == "functionReference" then
+        let name := (v.getNat?.toOption).bind fun a => fns.lookup a
+        ("function", match name with | some n => toJson n | none => v)
+      else (k, named v))
+  | .arr vs => .arr (vs.map named)
+  | j => j
+
+partial def anchored : Json → Option Json
+  | .obj kvs => do
+    let kvs ← kvs.toArray.toList.mapM fun (k, v) => do
+      if k == "function" then return ("functionReference", toJson (← anchorOf (← v.getStr?.toOption)))
+      else return (k, ← anchored v)
+    return Json.mkObj kvs
+  | .arr vs => do return .arr (← vs.mapM anchored)
+  | j => some j
 
 def ifJ (c t e : Json) : Json :=
   Json.mkObj [("ifThen", Json.mkObj [
@@ -440,7 +461,9 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
     ``DuckDBSQL.apply_lt_int, ``DuckDBSQL.apply_eq_null_l, ``DuckDBSQL.apply_eq_null_r,
     ``DuckDBSQL.apply_lt_null_l, ``DuckDBSQL.apply_lt_null_r, ``Lowering.ref_eq, ``Lowering.ref_lt,
-    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan,
+    ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_int,
+    ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_int,
+    ``DuckDBSQL.ref_ffloor_null,
     ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_int,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
@@ -459,11 +482,15 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     all_goals have := FloatCode.posInf_lt_nan
     all_goals have := FloatCode.one_lt_posInf
     all_goals have := FloatCode.zero_lt_one
-    all_goals simp (config := { failIfUnchanged := false, decide := true }) only [$ev,*]
+    all_goals simp (config := { failIfUnchanged := false }) only [$ev,*, Int.reduceEq, Int.reduceLT,
+      Int.reduceLE, Int.reduceNeg, Int.reduceAdd, Int.reduceSub, Nat.reduceEqDiff, decide_true,
+      decide_false, Bool.not_true, Bool.not_false]
     iterate 16
       all_goals try
         lowering_split_decide <;>
-          simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, $ev,*]
+          simp (config := { failIfUnchanged := false }) only [$(mkIdent `hd):ident, $ev,*,
+            Int.reduceEq, Int.reduceLT, Int.reduceLE, Int.reduceNeg, decide_true, decide_false,
+            Bool.not_true, Bool.not_false]
     all_goals (repeat' split)
     all_goals first
       | (simp_all [$fin,*]; done)
@@ -472,12 +499,12 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
 
 /-- Search for and emit the entry of `f` under `s`; how it lifts, or why not. -/
 def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
-    (k : LoweringSearch.Construct) (f : DuckFn) : TermElabM (Except String String) := do
+    (k : LoweringSearch.Construct) (f : DuckFn) (hint? : Option LiftHint) :
+    TermElabM (Except String String) := do
   let short := k.short
   let fE := mkAppN (Lean.mkConst k.ctor) (k.args.map Lean.mkConst)
   let n := f.args.length
   if let some why := f.refused s then return .error s!"refused: {why}"
-  let cands := survivors s f
   let tac ← liftTac n extra
   let firstWhy ← IO.mkRef (none : Option String)
   let liftCand (j : Json) (e : Substrait.Expr) (label : String) : TermElabM (Option String) := do
@@ -509,6 +536,15 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
       name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
       type := ← inferType entry, value := entry }
     return some s!"{label}: {j.compress}"
+  -- The cache's template first, if it still agrees on the samples.
+  if let some h := hint? then
+    let some j := (Json.parse h.template).toOption.bind anchored | pure ()
+    let some e := parse f j | pure ()
+    let rows := sampleRows f.args
+    if rows.all fun r => LoweringSearch.Outcome.agreeB (e.evalP Profile.reference r) (DuckFn.eval s f r) then
+      let src := if h.source.startsWith "seeded" then "seeded" else "cached"
+      if let some r ← withCurrHeartbeats (liftCand j e s!"{src}") then return .ok r
+  let cands := survivors s f
   for (j, e, label) in cands do
     -- Evaluating and proving count as heartbeats; each candidate starts afresh.
     let some r ← withCurrHeartbeats (liftCand j e label) | continue
@@ -635,7 +671,12 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
     if let some j := r then return .ok j
   return .error s!"missing: {passed} candidates passed the samples, none proved"
 
-syntax (name := generateLift) "generate_lift " ident " : " term " using " "[" ident,* "]" : command
+syntax (name := generateLift) "generate_lift " ident " : " term " using " "[" ident,* "]"
+  " cache " ident : command
+
+unsafe def evalHintsImpl (n : Name) : TermElabM (List LiftHint) := do
+  Meta.evalExpr (List LiftHint) (← mkAppM ``List #[Lean.mkConst ``LiftHint]) (Lean.mkConst n)
+@[implemented_by evalHintsImpl] opaque evalHints (n : Name) : TermElabM (List LiftHint)
 
 /-- `generate_lift L : s using [lemmas]`: the lift table `L : Lift s`, with
 `L.coverage` and, when every function has an entry, `L.total`. -/
@@ -645,6 +686,7 @@ def elabGenerateLift : CommandElab := fun stx => do
   let tbl := (← getCurrNamespace) ++ short
   let sStx : Term := ⟨stx[3]⟩
   let extra ← (stx[6].getSepArgs).mapM fun i => liftCoreM (realizeGlobalConstNoOverloadWithInfo i)
+  let cacheName ← liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[9])
   let ctors := (← getConstInfoInduct ``DuckFn).ctors
   let results ← liftTermElabM do
     -- Equation lemmas once, outside the attempts (a failed one discards them).
@@ -656,10 +698,12 @@ def elabGenerateLift : CommandElab := fun stx => do
     -- A constructor with finite parameters (`elementary f`): one per value.
     let ks ← ctors.flatMapM fun c => do
       return (← LoweringSearch.instances c false).getD [⟨c, false, #[]⟩]
+    let hints ← evalHints cacheName
     ks.mapM fun k => withCurrHeartbeats do
       let f ← evalDuckFn (mkAppN (Lean.mkConst k.ctor) (k.args.map Lean.mkConst))
       let t0 ← IO.monoMsNow
-      let r ← liftOne tbl s sE extra k f
+      let hint? := hints.find? fun h => h.semantics == s.name && h.construct == f.sql
+      let r ← liftOne tbl s sE extra k f hint?
       return (k, f, r, (← IO.monoMsNow) - t0)
   let aggCtors := (← getConstInfoInduct ``DuckAgg).ctors
   let aggResults ← liftTermElabM do
