@@ -235,10 +235,9 @@ The most common, and what sverify does about each:
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's
 threshold (a total over all parts) into each part's own sum, so the query
-compared each part with itself, and nothing failed. Chapters
-[16](notebooks/16_datafusion_semantics.py) and
-[17](notebooks/17_backend_semantics.py) of the tour check every such quirk
-against the model.
+compared each part with itself, and nothing failed. Chapter
+[17](notebooks/17_backend_semantics.py) of the tour checks every such quirk
+against the model, and its section 8 checks DataFusion as a backend.
 
 ## Using sverify
 
@@ -803,8 +802,7 @@ environment instead: `uv run --project python marimo edit notebooks`.
 | 13 | [Plans, meaning and proofs](notebooks/13_plans_and_proofs.py) | under the hood: Substrait plans, Lean's interpreter, theorems, NULL |
 | 14 | [The checker](notebooks/14_the_checker.py) | under the hood: `substrait-check`, Lean as a reference engine, Ibis coverage |
 | 15 | [What is proved, what is trusted](notebooks/15_trust.py) | under the hood: the trusted boundary, a glossary and a map of the code |
-| 16 | [DataFusion's surprising semantics](notebooks/16_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
-| 17 | [One expression, many engines](notebooks/17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
+| 17 | [One expression, many engines](notebooks/17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question, and DataFusion as a backend |
 
 `poe notebooks` (part of `poe qa`) checks every chapter with `marimo check` and
 runs it headless. The chapters' tables come from `sverify.display`, which needs
@@ -925,9 +923,11 @@ The parser ([Parse.lean](SubstraitLean/Parse.lean)) and writer
 ([Write.lean](SubstraitLean/Write.lean)) are **trusted, unverified code**. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
-`df_*.json` fixtures are real plans: the Ibis pipelines in
-`sverify_dev/examples.py`, compiled by Ibis and DataFusion
-(`python/scripts/capture_fixtures.py`). The others are hand-written.
+`df_*.json` fixtures are real plans that DataFusion's Substrait producer wrote
+for the Ibis pipelines in `sverify_dev/examples.py`, kept as static golden
+inputs since sverify stopped planning SQL with DataFusion
+([`tests/fixtures/README.md`](tests/fixtures/README.md)). The others are
+hand-written.
 
 ### How incremental views work
 
@@ -1365,7 +1365,7 @@ needs one.
 | `SubstraitLean/Pretty.lean` | Plan / row rendering |
 | `Main.lean` | `substrait-check` CLI (`--delta` for engine delta plans) |
 | `python/` | `sverify`: contracts, incremental views, pipelines, Delta/Iceberg IO, sharding; the DuckDB, Polars, DataFusion and Spark runners and the Snowflake SQL; differential tests |
-| `notebooks/` | The tour: three workflows, nine feature chapters, three on how it works and two appendices (marimo) |
+| `notebooks/` | The tour: three workflows, nine feature chapters, three on how it works and an appendix (marimo) |
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) |
 | `docs/optimizations.md` | Proved optimizations beyond incremental maintenance: what engines already do, what is proved, what is next |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O, practitioner, IoT and finance idioms), probed against the checker and the engines; [`FINDINGS.md`](catalogue/FINDINGS.md) |

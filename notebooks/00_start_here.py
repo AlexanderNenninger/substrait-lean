@@ -144,8 +144,7 @@ def _(mo):
     | 13 | [Plans, meaning and proofs](?file=13_plans_and_proofs.py) | Substrait plans, Lean's interpreter, theorems, NULL |
     | 14 | [The checker](?file=14_the_checker.py) | `substrait-check`: well-formedness, Lean as a reference engine, Ibis coverage |
     | 15 | [What is proved, what is trusted](?file=15_trust.py) | the trusted boundary, a glossary and a map of the code |
-    | 16 | [DataFusion's surprising semantics](?file=16_datafusion_semantics.py) | appendix: every DataFusion quirk, checked against the Lean model |
-    | 17 | [One expression, many engines](?file=17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question |
+    | 17 | [One expression, many engines](?file=17_backend_semantics.py) | appendix: DataFusion, DuckDB, Polars, Snowflake and Ibis, question by question, and DataFusion as a backend |
 
     No knowledge of formal verification is needed for any of it.
 
