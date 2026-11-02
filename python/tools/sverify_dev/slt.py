@@ -52,6 +52,7 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 import tomllib
 from collections import Counter
 from collections.abc import Iterable, Iterator, Sequence
@@ -876,6 +877,9 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
 #: kills the checker (Lean evaluating a plan that does not finish on a test's
 #: few rows), records the query as skipped with the reason, and goes on.
 CHECK_TIMEOUT = 120
+#: A query slower than this (seconds) is logged as slow (not in the ledger,
+#: whose contents stay the same from run to run): leads on checker performance.
+SLOW = 10
 
 
 @contextlib.contextmanager
@@ -921,8 +925,11 @@ def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
             rp.statement(rec)
             continue
         try:
+            start = time.monotonic()
             with _watchdog(CHECK_TIMEOUT) as fired:
                 res = rp.probe(rec)
+            if (took := time.monotonic() - start) > SLOW:
+                print(f"slow: {rel}:{rec.line} {took:.0f} s {_clip(rec.sql, 150)!r}", flush=True)
             if fired[0]:
                 res.cls, res.side = "skipped", None
                 res.reason = f"harness: the checker took over {CHECK_TIMEOUT} s"
@@ -1024,6 +1031,8 @@ def write_summary(out: Path = LEDGER) -> Path:
     rows = []
     for p in sorted(out.glob("*.json")):
         led = json.loads(p.read_text())
+        if "summary" not in led:
+            continue  # not a ledger (`probes.json`)
         s = led["summary"]
         reasons = Counter(
             (r.get("reason") or "").split(":")[0] for r in led["results"] if r["cls"] == "refused"

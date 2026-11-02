@@ -509,3 +509,16 @@ def test_constants_out_of_range_are_cast_not_folded():
 def test_digit_separators_are_read_as_duckdb_reads_them():
     result = check("SELECT 1_000 AS a, 1_000.5 AS b, 2_5e1 AS c", {})
     assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_a_string_read_as_a_decimal_rounds_as_duckdb():
+    # Half away from zero past the scale; DuckDB raises only where the
+    # rounded value does not fit.
+    query = (
+        "SELECT '1.5'::DECIMAL(2,0) AS a, '-2.5'::DECIMAL(2,0) AS b,"
+        " '1.25'::DECIMAL(3,1) AS c, '9.4'::DECIMAL(1,0) AS d"
+    )
+    result = check(query, {})
+    assert result.ok, f"{result.stage}: {result.detail}"
+    with pytest.raises(Refused, match="does not fit"):
+        lift("SELECT '9.99'::DECIMAL(1,0)", {})

@@ -62,7 +62,7 @@ import dataclasses
 import datetime as dt_
 import re
 from collections.abc import Callable, Mapping, Sequence
-from decimal import Decimal, localcontext
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Any
 
 import ibis
@@ -1145,9 +1145,9 @@ class _Lift:
                 if t.is_float64():
                     v = float(v)
                 elif t.is_decimal():
-                    # Exactly, or not at all: a double's binary value is not
-                    # the decimal DuckDB reads.
-                    v = None if isinstance(v, float) else Decimal(v)
+                    # A double's exact binary value: `_fits` folds it only
+                    # where the decimal holds it exactly (10.0, 2.5, not 0.1).
+                    v = Decimal(v)
                 elif t.is_integer() and isinstance(v, Decimal):
                     v = None if v != v.to_integral_value() else int(v)
                 elif t.is_timestamp() and type(v) is dt_.date:
@@ -1555,6 +1555,11 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             v = Decimal(text)
         except ArithmeticError as e:
             raise Unsupported(f"CAST of {text!r} to {t} is not supported") from e
+        if v.is_finite():
+            # DuckDB rounds the digits past the scale half away from zero.
+            with localcontext() as ctx:
+                ctx.prec = 100
+                v = v.quantize(Decimal(1).scaleb(-t.scale), rounding=ROUND_HALF_UP)
         if not (v.is_finite() and _fits(v, t)):
             raise Unsupported(f"CAST of {text!r} to {t}: DuckDB raises, the value does not fit")
         return E(literal(v, t), t, v)
