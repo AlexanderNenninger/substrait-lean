@@ -32,11 +32,11 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | fin-dormant-reactivation | [Dormant accounts that became active again](https://risingwave.com/blog/aml-transaction-monitoring-streaming-database) | ✓ | FDS |  |
 | fin-vwap | [Volume-weighted average price per minute](https://questdb.com/docs/cookbook/sql/finance/vwap/) | ✓ | F |  |
 | fin-ohlc | [OHLC candlesticks](https://questdb.com/docs/cookbook/sql/finance/ohlc/) | ✗ | F | `arg_max` |
-| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `stddev_var` |
+| fin-bollinger | [Bollinger bands](https://questdb.com/docs/cookbook/sql/finance/bollinger-bands/) | ✗ | F | `rows_frame` |
 | fin-max-drawdown | [Maximum drawdown](https://questdb.com/docs/cookbook/sql/finance/maximum-drawdown/) | ✗ | F | `min_max` |
 | fin-log-returns | [Log returns](https://questdb.com/docs/cookbook/sql/finance/log-returns/) | ✓ | FPD |  |
 | fin-fifo-pnl | [FIFO realised profit and loss](https://www.sqlservercentral.com/articles/solving-fifo-queues-using-windowed-functions) | ✓ | FPD |  |
-| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✗ | F | `stddev_var` |
+| fin-realized-volatility | [Daily realised volatility](https://questdb.com/docs/cookbook/sql/finance/realized-volatility/) | ✓ | FPD |  |
 | fin-volume-spike | [Volume spikes](https://questdb.com/docs/cookbook/sql/finance/volume-spike/) | ✗ | — | `rows_frame` |
 
 ## h2o
@@ -45,7 +45,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 |---|---|---|---|---|
 | h2o-groupby-q1 | [H2O groupby q1: sum v1 by id1](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPDS |  |
 | h2o-groupby-q3 | [H2O groupby q3: sum v1, mean v3 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPD |  |
-| h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | F | `percentile`, `stddev_var` |
+| h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | F | `percentile` |
 | h2o-groupby-q7 | [H2O groupby q7: max v1 minus min v2 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPDS |  |
 | h2o-groupby-q8 | [H2O groupby q8: largest two v3 by id6](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | FPDS |  |
 | h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | F | `corr` |

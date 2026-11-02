@@ -267,7 +267,7 @@ semi-structured data.
 | suite | queries | verified | as DOUBLE only | rejected | upstream | DataFusion runs | Polars | DuckDB | Snowflake SQL |
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 6 | 0 | 1 | 0 | 7 | 6 | 6 | 6 |
-| finance | 18 | 13 | 0 | 5 | 0 | 17 | 2 | 11 | 3 |
+| finance | 18 | 14 | 0 | 4 | 0 | 17 | 3 | 12 | 3 |
 | h2o | 10 | 8 | 0 | 2 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 10 | 0 | 2 | 0 | 12 | 10 | 10 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
@@ -278,7 +278,7 @@ semi-structured data.
 | tpcds | 8 | 6 | 0 | 2 | 0 | 8 | 0 | 6 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 116 | 0 | 23 | 0 | 134 | 76 | 113 | 68 |
+| **all** | 139 | 117 | 0 | 22 | 0 | 134 | 77 | 114 | 68 |
 
 ### Feature frequency
 
@@ -329,7 +329,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `arithmetic_int` | expressions | 5 | 4% | yes |
 | `string_compare` | expressions | 4 | 3% | partial |
 | `rows_frame` | windows | 4 | 3% | partial |
-| `stddev_var` | aggregation | 4 | 3% | no |
+| `stddev_var` | aggregation | 4 | 3% | partial |
 | `anti_join` | relational | 4 | 3% | yes |
 | `date_part` | expressions | 4 | 3% | partial |
 | `exists_subquery` | relational | 4 | 3% | yes |
@@ -378,11 +378,10 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `stddev_var` | 4 | 3 | no |  |
 | `arg_max` | 3 | 3 | no | first_value aggregates are refused |
+| `rows_frame` | 3 | 3 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
 | `min_max` | 2 | 2 | partial | integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused |
-| `rows_frame` | 2 | 2 | partial | SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding) |
-| `percentile` | 2 | 1 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
+| `percentile` | 2 | 2 | no | refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL |
 | `decimal` | 2 | 0 | partial | modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). DuckDB runs decimal plans as the reference computes them (#27); the other engines refuse them. AVG of a decimal over a window is not modelled yet |
 | `grouping_sets` | 2 | 0 | no |  |
 | `corr` | 1 | 1 | no |  |
@@ -391,13 +390,14 @@ How many of the 139 queries need each feature (as originally written, so subquer
 | `range_frame` | 1 | 1 | partial | offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). DataFusion's Substrait producer drops RANGE offsets, so such SQL is refused, and DataFusion cannot run Ibis's SQL for an interval frame. Sliding AVG/MIN as for rows_frame |
 | `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
 | `regex_replace` | 1 | 1 | no |  |
+| `stddev_var` | 1 | 1 | partial | grouped, of doubles or integers, with each engine's own algorithm (#54); not over windows |
 | `string_agg` | 1 | 1 | no |  |
 | `timezone` | 1 | 1 | no |  |
 | `unnest` | 1 | 1 | no | DataFusion's Substrait producer has no Unnest |
 
 ### Why engines refuse verified queries
 
-Over the 116 queries that verify (some only as DOUBLE):
+Over the 117 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
@@ -408,40 +408,40 @@ Over the 116 queries that verify (some only as DOUBLE):
 | polars: refused: unsupported column type {"decimal": {"nullability": "NULLABILITY_NULLABLE", "precision": 7, "scale":  | 6 |
 | duckdb: error: Invalid Input Error: sverify: division by zero: 0.0 | 2 |
 | polars: error: divide by zero (1 row(s)) | 2 |
+| snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 2 |
 | duckdb: differs | 1 |
-| snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused | 1 |
 
 ### Pitfall frequency
 
-| pitfall | queries | DataFusion quirks |
+| pitfall | queries | chapter 17 entries |
 |---|---|---|
-| `tie_order` | 44 | O2, O3, O5 |
-| `null_join_keys` | 19 | N5, N6 |
-| `empty_aggregate` | 16 | N4 |
-| `timezone_dst` | 14 | T2, T3, T4, T5 |
-| `division_by_zero` | 14 | I2, F4 |
+| `tie_order` | 44 | – |
+| `null_join_keys` | 19 | N4 |
+| `empty_aggregate` | 16 | A1 |
+| `timezone_dst` | 14 | D8 |
+| `division_by_zero` | 14 | I4, I5, F5 |
 | `decimal_scale` | 12 | – |
-| `float_sum_order` | 12 | F9 |
+| `float_sum_order` | 12 | F8 |
 | `window_default_frame` | 11 | O4 |
-| `gap_threshold` | 11 | T5 |
-| `null_aggregate` | 11 | – |
-| `float_nan` | 8 | F1, F2, F3, F7, F8 |
-| `null_ordering` | 8 | O1 |
+| `gap_threshold` | 11 | – |
+| `null_aggregate` | 11 | A2 |
+| `float_nan` | 8 | F1, F2, F3, F4, D10 |
+| `null_ordering` | 8 | O1, O2 |
 | `rank_semantics` | 6 | – |
-| `integer_division` | 4 | I3 |
-| `count_distinct_null` | 3 | N6 |
-| `string_collation` | 3 | S1, S4, S6 |
+| `integer_division` | 4 | I1, I3 |
+| `count_distinct_null` | 3 | A3 |
+| `string_collation` | 3 | S7, S4, D5 |
 | `percentile_method` | 3 | – |
-| `not_in_null` | 3 | N2, N3 |
-| `limit_without_order` | 2 | O3 |
-| `int_overflow` | 2 | I1, I6 |
-| `week_definition` | 2 | – |
-| `implicit_coercion` | 2 | F6, I10, I11 |
-| `regex_dialect` | 1 | – |
+| `not_in_null` | 3 | N2 |
+| `limit_without_order` | 2 | – |
+| `int_overflow` | 2 | I6, I7, I8, D2, D11 |
+| `week_definition` | 2 | T1, T2, T4 |
+| `implicit_coercion` | 2 | I1, D1, D7 |
+| `regex_dialect` | 1 | S6 |
 | `duration_vs_interval` | 1 | – |
 | `eager_evaluation` | 1 | E1, E2, E4, E5 |
-| `like_escape` | 1 | – |
-| `substr_index` | 1 | S3 |
+| `like_escape` | 1 | S5 |
+| `substr_index` | 1 | S1, S2, S3 |
 <!-- stats:end -->
