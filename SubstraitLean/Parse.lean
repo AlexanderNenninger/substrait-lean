@@ -265,7 +265,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .neg a => a.kind cols
   | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
   | .un (.froundTo _) _ => .float
-  | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ => .int
+  | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ | .un .ftoiOrNull _
+  | .un (.narrowOrNull _) _ => .int
   | .un (.wrap _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
@@ -501,7 +502,7 @@ it is an argument). -/
 def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .field i => cols.getD i 64
   | .lit _ => 8
-  | .un (.wrap n) _ | .un (.narrow n) _ => n
+  | .un (.wrap n) _ | .un (.narrow n) _ | .un (.narrowOrNull n) _ => n
   | .un .neg a => a.bits cols
   | .bin .add a b | .bin .sub a b | .bin .mul a b | .bin .idiv a b | .bin .imod a b =>
     max (a.bits cols) (b.bits cols)
@@ -1792,6 +1793,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         else input
       | none => input
     let e ← parseExpr fns cols bits input
+    -- `TRY_CAST` (#58): NULL where the cast fails, which is then no error.
+    let orNull := (field? c "failureBehavior").any (· == .str "FAILURE_BEHAVIOR_RETURN_NULL")
     if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
@@ -1800,6 +1803,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
     if let .dec p s := target then
+      if orNull then throw "TRY_CAST to DECIMAL is not supported yet"
       let e' ← match k with
         | .dec _ s₀ => pure (if s₀ ≤ s then upscale (s - s₀) e else .un (.dround (s₀ - s)) e)
         | .int => pure (upscale s e)
@@ -1812,6 +1816,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         let bits := intBits (← field c "type")
         -- A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits always fits a `BIGINT`.
         if bits == 64 && p₀ - s₀ ≤ 18 then return .un (.dtrunc s₀) e
+        if orNull then throw "TRY_CAST of a DECIMAL to an integer is not supported yet"
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
@@ -1829,7 +1834,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`SubstraitLean/Safety.lean`).
-    if target == .int && k == .float then return .un .ftoi e
+    if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
     -- `FLOAT` to `DOUBLE`: exact, but kept, so that the written plan widens too.
     if target == .float && k == .float && argBits bits input e == 32 then return .un .widen e
@@ -1844,7 +1849,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       -- `checkedNarrow`): the cast changes nothing.
       if let .un (.wrap n) _ := e then
         if n ≤ bits then return e
-      return if bits < 64 then .un (.narrow bits) e else e
+      return if bits < 64 then .un (if orNull then .narrowOrNull bits else .narrow bits) e else e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
   | ("singularOrList", l) =>

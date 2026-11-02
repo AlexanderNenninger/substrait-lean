@@ -143,6 +143,7 @@ def UnFn.anchor : UnFn → Nat
   | .strftime _ => 61 | .bucket _ _ => 62
   -- Casts are written as casts, not calls; `regexp_match` as two calls.
   | .itof | .ftoi | .narrow _ | .itos | .widen | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
+  | .ftoiOrNull | .narrowOrNull _ => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
   -- Written as the arithmetic inside, with its `overflow` option.
@@ -592,6 +593,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  -- `TRY_CAST` (#58).
+  | .un .ftoiOrNull a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
+      ("failureBehavior", "FAILURE_BEHAVIOR_RETURN_NULL")])]
+  | .un (.narrowOrNull n) a =>
+    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+    obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
+      ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_RETURN_NULL")])]
   -- Arithmetic at `n` bits: its integer literals are written at that width,
   -- which is what makes the engine compute at it, and the result is cast to
   -- it, which raises where it does not fit (#202). The parser reads the cast

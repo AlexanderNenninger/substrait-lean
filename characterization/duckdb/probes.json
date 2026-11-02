@@ -728,6 +728,215 @@
     "error_on_division_by_zero": true,
     "ieee_floating_point_ops": true
    },
+   "construct": "round(DOUBLE, -1000)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -20)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 2)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 16)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 400)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": true
+   },
    "construct": "sqrt(DOUBLE)",
    "function": "sqrt",
    "option": null,
@@ -2255,6 +2464,215 @@
     "error_on_division_by_zero": true,
     "ieee_floating_point_ops": false
    },
+   "construct": "round(DOUBLE, -1000)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -20)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 2)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 16)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 400)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": true,
+    "ieee_floating_point_ops": false
+   },
    "construct": "sqrt(DOUBLE)",
    "function": "sqrt",
    "option": null,
@@ -3636,6 +4054,215 @@
    ],
    "candidates": {
     "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -1000)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -20)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, -1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 2)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 16)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": true
+   },
+   "construct": "round(DOUBLE, 400)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
      "differ": 0,
      "examples": []
     }
@@ -5163,6 +5790,215 @@
    ],
    "candidates": {
     "TIE_AWAY_FROM_ZERO": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -1000)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -20)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, -1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 1)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 2)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 16)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 308)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 309)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
+     "differ": 0,
+     "examples": []
+    }
+   }
+  },
+  {
+   "settings": {
+    "error_on_division_by_zero": false,
+    "ieee_floating_point_ops": false
+   },
+   "construct": "round(DOUBLE, 400)",
+   "function": "round",
+   "option": null,
+   "rows": 12,
+   "matching": [
+    "(none)"
+   ],
+   "candidates": {
+    "(none)": {
      "differ": 0,
      "examples": []
     }

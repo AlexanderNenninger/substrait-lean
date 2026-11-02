@@ -622,6 +622,9 @@ def _check_datafusion_plan(plan: dict) -> None:
                 raise sql.Unsupported(
                     "covariance and correlation are not yet supported on DataFusion; see #271"
                 )
+            c = node.get("cast")
+            if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
+                raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; see #271")
             w = node.get("windowFunction")
             if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
                 # DataFusion spreads the larger buckets out (upstream/LEDGER.md).
@@ -630,6 +633,11 @@ def _check_datafusion_plan(plan: dict) -> None:
             fname = names.get(f.get("functionReference")) if isinstance(f, dict) else None
             if fname in ("regexp_extract", "regexp_replace", "md5", "sha256"):
                 raise sql.Unsupported(f"{fname} is not yet supported on DataFusion; see #271")
+            if isinstance(f, dict) and fname == "round" and len(f.get("arguments", [])) == 2:
+                # DataFusion's `round(x · 10ᵈ) / 10ᵈ` is not DuckDB's (#335).
+                raise sql.Unsupported(
+                    "round(x, d) is DuckDB's (#335) and not yet supported on DataFusion; see #271"
+                )
             if isinstance(f, dict) and fname == "substring":
                 left = any(
                     o.get("name") == "negative_start"

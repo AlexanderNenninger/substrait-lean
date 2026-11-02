@@ -151,8 +151,6 @@ _REFUSED: dict[str, str] = {
     "DateNow": "the date differs between runs; pass the date in as a column or constant",
     "TypeOf": "the type's name is the engine's own",
     "ScalarParameter": "bind the parameter first, for example with a literal",
-    "TryCast": "a cast that gives NULL where it fails is not modelled yet; use cast(), "
-    "which raises there, and guard the values",
     "Hash": "hash() is the engine's own and changes between versions; use hexdigest('md5') "
     "or hexdigest('sha256')",
     # Ibis's URL parts: `host()`, `protocol()`, …
@@ -484,6 +482,13 @@ def _cast(x: Exprs, op: Any) -> Json:
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
     return cast_json(x(op.arg), op.to)
+
+
+def _try_cast(x: Exprs, op: Any) -> Json:
+    """`TRY_CAST`: NULL where the cast fails (#58)."""
+    if same_type(op.arg.dtype, op.to):
+        return x(op.arg)
+    return cast_json(x(op.arg), op.to, or_null=True)
 
 
 def _variadic(name: str) -> Callable[[Exprs, Any], Json]:
@@ -1027,6 +1032,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
     ops.Floor: _rounding("floor"),
     ops.Round: _rounding("round"),
     ops.Cast: _cast,
+    ops.TryCast: _try_cast,
     ops.Equals: _compare("equal"),
     ops.NotEquals: _compare("not_equal"),
     ops.Less: _compare("lt"),

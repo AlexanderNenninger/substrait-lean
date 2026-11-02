@@ -478,7 +478,7 @@ ROUNDING += [math.nan, NEG_NAN, math.inf, -math.inf, 9.2e18, -9.2e18, 1.005, Non
     "sql",
     [
         "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
-        "SELECT f, round(f, 2) AS x, round(f, -1) AS y, power(f, 2) AS p FROM r",
+        "SELECT f, power(f, 2) AS p FROM r",
         "SELECT f, CAST(f AS BIGINT) AS i FROM r WHERE f > -1e18 AND f < 1e18",
         "SELECT CAST(i AS VARCHAR) AS s FROM r",
     ],
@@ -497,6 +497,25 @@ def test_rounding_and_casts_match_datafusion(sql):
     )
     df, duck = both(plan_of(sql, {"r": r}, "reference"), {"r": r})
     assert canonical(duck) == canonical(df)
+
+
+@pytest.mark.backend("datafusion")
+def test_round_to_digits_is_duckdbs_and_refused_on_datafusion():
+    """`round(x, d)` is DuckDB's (#335): DataFusion's `round(x · 10ᵈ) / 10ᵈ`
+    rounds otherwise, so it refuses; the written plan on DuckDB is DuckDB's own."""
+    r = pa.table({"f": pa.array(ROUNDING, pa.float64())})
+    sql = "SELECT f, round(f, 2) AS x, round(f, -1) AS y, round(f, -400) AS z FROM r"
+    plan = plan_of(sql, {"r": r}, "reference")
+    with pytest.raises(Unsupported, match="#335"):
+        both(plan, {"r": r})
+    native = duckdb.connect()
+    native.register("r", r)
+    # The model has one zero; DuckDB's own result keeps -0.0.
+    own = [
+        tuple(v + 0.0 if isinstance(v, float) else v for v in row)
+        for row in native.execute(sql).fetchall()
+    ]
+    assert canonical(duckdb_rows(plan, {"r": r})) == canonical(own)
 
 
 @pytest.mark.backend("datafusion")

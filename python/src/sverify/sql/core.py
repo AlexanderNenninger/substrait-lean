@@ -347,9 +347,26 @@ class Dialect:
         return f"ROUND({x})"
 
     def float_round_to(self, x: str, digits: int) -> str:
-        """`ROUND(x, d)` as DataFusion computes it: `round(x · 10ᵈ) / 10ᵈ`."""
-        p = self.float_lit(10.0**digits)
-        return self.float_div(self.float_round(self.float_mul(x, p)), p)
+        """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB's, #335): with
+        `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` (`x` where that is not
+        finite), `round(x / m) · m` for `d < 0` (0 where that is not finite);
+        `±∞` and NaN stay."""
+        m = pow10(abs(digits))
+        odd = f"({self.is_nan(x)} OR {self.is_inf(x)})"
+        if math.isinf(m):
+            # `x · ∞` and `x / ∞` leave no finite result: `x`, or 0 (NULL stays).
+            if digits >= 0:
+                return x
+            return self.case_when(f"({x} IS NULL OR {odd})", x, self.float_lit(0.0))
+        ml = self.float_lit(m)
+        if digits >= 0:
+            r = self.float_div(self.float_round(self.float_mul(x, ml)), ml)
+            fallback = x
+        else:
+            r = self.float_mul(self.float_round(self.float_div(x, ml)), ml)
+            fallback = self.float_lit(0.0)
+        bad = f"({self.is_nan(r)} OR {self.is_inf(r)})"
+        return self.case_when(odd, x, self.case_when(bad, fallback, r))
 
     def float_pow(self, a: str, b: str) -> str:
         """C's `pow`: IEEE results, no errors."""
@@ -380,6 +397,16 @@ class Dialect:
         """`CAST(x AS BIGINT)`: truncation toward zero; NaN, ±inf and values
         outside 64 bits must raise (Lean: NULL)."""
         raise Unsupported(f"{self.name}: CAST(double AS BIGINT) is not implemented")
+
+    def float_to_int_or_null(self, x: str) -> str:
+        """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
+        zero, NULL for NaN, ±inf and values outside 64 bits."""
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
+
+    def narrow_or_null(self, x: str, bits: int) -> str:
+        """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
+        or NULL where it does not fit."""
+        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; see #271")
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""
@@ -857,7 +884,7 @@ class Un:
         "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
         "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
         "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
-        "regex_extract", "regex_replace", "md5", "sha256",
+        "regex_extract", "regex_replace", "md5", "sha256", "ftoi_or_null", "narrow_or_null",
     ]  # fmt: skip
     arg: Expr
     digits: int = 0
@@ -1272,6 +1299,8 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return "float"
         case Un(
             op="ftoi"
+            | "ftoi_or_null"
+            | "narrow_or_null"
             | "narrow"
             | "fit"
             | "length"
@@ -1343,6 +1372,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return "float"
         case Un(
             op="ftoi"
+            | "ftoi_or_null"
+            | "narrow_or_null"
             | "narrow"
             | "fit"
             | "length"
@@ -2085,7 +2116,13 @@ class _Parser:
                     "add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
                     "floor", "ceil", "round", *DOUBLE_FNS,
                 )  # fmt: skip
-                has_float = any(lean_expr_kind(e, cols.lean) == "float" for e in parsed)
+                # A double literal is its code in Lean, which `lean_expr_kind`
+                # calls an integer; its declared kind says double (`doubleJ`).
+                has_float = any(
+                    lean_expr_kind(e, cols.lean) == "float"
+                    or (isinstance(e, Lit) and e.kind == "float")
+                    for e in parsed
+                )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
                     raise Unsupported("sverify_fmod takes doubles")
@@ -2174,12 +2211,16 @@ class _Parser:
                     inp = {"scalarFunction": {**f, "outputType": {"date": {}}}}
                 e = self.expr(inp, cols)
                 k = lean_expr_kind(e, cols.lean)
+                # `TRY_CAST` (#58): NULL where the cast fails.
+                or_null = _field(v, "failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL"
                 # `Parse.wideIntDecimal`; a duration compared with an interval.
                 if k == "int" and _wide_int_decimal(_req(v, "type")):
                     return e
                 # Decimals (#27): rescaled, rounding half away from zero to a
                 # smaller scale; to an integer truncates toward zero.
                 if isinstance(target, Dec):
+                    if or_null:
+                        raise Unsupported("TRY_CAST to DECIMAL is not supported yet")
                     if k in ("int", "float") or isinstance(k, Dec):
                         return DecOp("cast", (e,), target.p, target.s)
                     raise Unsupported(
@@ -2190,7 +2231,13 @@ class _Parser:
                         bits = _int_bits(_req(v, "type"))
                         # A `DECIMAL(p, s)` with `p - s ≤ 18` integer digits fits a `BIGINT`.
                         t = Un("dtrunc", e)
-                        return t if bits == 64 and k.p - k.s <= 18 else Un("narrow", t, digits=bits)
+                        if bits == 64 and k.p - k.s <= 18:
+                            return t
+                        if or_null:
+                            raise Unsupported(
+                                "TRY_CAST of a DECIMAL to an integer is not supported yet"
+                            )
+                        return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
                     raise Unsupported(f"unsupported cast from DECIMAL to {target}")
@@ -2200,7 +2247,7 @@ class _Parser:
                     return Un("itof", e)
                 # Fails on NaN, ±inf and out-of-range values.
                 if target == "int" and k == "float":
-                    return Un("ftoi", e)
+                    return Un("ftoi_or_null" if or_null else "ftoi", e)
                 if target == "str" and k == "int":
                     return Un("itos", e)
                 if target == "date" and k == "time":
@@ -2213,7 +2260,9 @@ class _Parser:
                 # Fails where the value does not fit (`UnFn.narrow`).
                 if target == "int" and k == "int":
                     bits = _int_bits(_req(v, "type"))
-                    return Un("narrow", e, digits=bits) if bits < 64 else e
+                    if bits == 64:
+                        return e
+                    return Un("narrow_or_null" if or_null else "narrow", e, digits=bits)
                 if target == k and target != "other":
                     return e
                 raise Unsupported(f"unsupported cast from {k} to {target}")
@@ -3984,6 +4033,10 @@ class _Writer:
                 return d.canon(d.float_round_to(self.float_operand(a, ref, cols), digits))
             case Un(op="ftoi", arg=a):
                 return d.float_to_int(self.float_operand(a, ref, cols))
+            case Un(op="ftoi_or_null", arg=a):
+                return d.float_to_int_or_null(self.float_operand(a, ref, cols))
+            case Un(op="narrow_or_null", arg=a, digits=bits):
+                return d.narrow_or_null(self.int_operand(a, ref, cols, "TRY_CAST to INT"), bits)
             case Un(op="narrow", arg=a, digits=bits):
                 x = self.int_operand(a, ref, cols, "CAST to INT")
                 lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)
@@ -4537,6 +4590,15 @@ def like_pattern(p: str) -> str:
     the next character, and a trailing one stands for itself (where SQL
     engines reject it), so it is escaped."""
     return p + "\\" if (len(p) - len(p.rstrip("\\"))) % 2 else p
+
+
+def pow10(k: int) -> float:
+    """C's `pow(10, k)` for `k ≥ 0`, `inf` from 10³⁰⁹ on (Python's `10.0**k`
+    raises there)."""
+    try:
+        return math.pow(10.0, k)
+    except OverflowError:
+        return math.inf
 
 
 def unicode_classes(p: str) -> bool:

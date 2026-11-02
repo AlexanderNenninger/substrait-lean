@@ -295,12 +295,14 @@ def if_then(ifs: list[tuple[Json, Json]], default: Json) -> Json:
     return {"ifThen": {"ifs": [{"if": c, "then": t} for c, t in ifs], "else": default}}
 
 
-def cast_json(e: Json, to: Any) -> Json:
+def cast_json(e: Json, to: Any, or_null: bool = False) -> Json:
+    """`CAST(e AS to)`, or `TRY_CAST` (`or_null`: NULL where it fails, #58)."""
+    behavior = "RETURN_NULL" if or_null else "THROW_EXCEPTION"
     return {
         "cast": {
             "type": type_json(to),
             "input": e,
-            "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION",
+            "failureBehavior": f"FAILURE_BEHAVIOR_{behavior}",
         }
     }
 

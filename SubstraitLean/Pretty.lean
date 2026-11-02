@@ -18,7 +18,8 @@ def Row.render (row : Row) : String :=
 def UnFn.render : UnFn → String
   | .not => "NOT" | .isNull => "IS_NULL" | .neg => "-" | .itof => "DOUBLE" | .fneg => "-."
   | .ffloor => "FLOOR" | .fceil => "CEIL" | .fround => "ROUND" | .froundTo d => s!"ROUND_{d}"
-  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE" | .upper => "UPPER" | .lower => "LOWER"
+  | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .ftoiOrNull => "TRY_BIGINT"
+  | .narrowOrNull n => s!"TRY_INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE" | .upper => "UPPER" | .lower => "LOWER"
   | .length => "LENGTH" | .reverse => "REVERSE" | .ascii => "ASCII"
   | .replace p r => s!"REPLACE_{p.quote}_{r.quote}" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .regexExtract p g => s!"REGEXP_EXTRACT_{p.quote}_{g}"
