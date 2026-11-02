@@ -182,6 +182,21 @@ compares them, so the merge gives the same state on every engine
 (`python/tests/test_state.py` runs it on each). A sink's change between two
 states is the same plan on the new state and the negated old one.
 
+A node on DuckDB has DuckDB write its Delta and Iceberg sinks
+(`sverify.io._engine`). DuckDB writes the Parquet files of the state or of
+the change, cast to the sink's schema. It finds where the rows a change
+deletes are by joining the sink's scan, with each row's file and position,
+to the deleted rows by the model's row equality, one position per deleted
+copy. sverify then commits the files: for Delta, add and remove actions in
+one transaction (the files holding deleted rows are rewritten without them)
+with statistics as delta-rs writes them and the transaction `(app_id,
+epoch)`; for Iceberg, a data file with the table's field ids and a position
+delete file, in one snapshot. Readers of the sink's change feed see the
+rewritten files as deleted and added, which nets to the change.
+`python/tests/test_io_engine_sinks.py` writes the same nodes through DuckDB
+and through delta-rs and pyiceberg, and compares the tables after every
+refresh and the statistics both record.
+
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it runs plans
 with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
