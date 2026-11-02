@@ -190,14 +190,8 @@ QUERIES = [
     "SELECT id, rank() OVER (PARTITION BY amount % 2 ORDER BY -amount, id) AS r FROM orders",
     "SELECT customer, sum(amount) AS s FROM orders GROUP BY customer"
     " ORDER BY CASE WHEN s > 6 THEN customer END, customer",
-    pytest.param(
-        "SELECT 7 / 2 AS h",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="oracle C: the written plan's IEEE division of two double literals "
-            "reads them as integer codes (#96)",
-        ),
-    ),
+    # The written plan's division of two double literals (#96, fixed with #335).
+    "SELECT 7 / 2 AS h",
 ]
 
 

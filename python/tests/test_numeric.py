@@ -337,3 +337,32 @@ def test_division_overflow_is_reported_at_every_width(ty, dtype, lo):
     plan = written_plan(json.dumps(lift("SELECT a // b AS x FROM t", {"t": schema}, "duckdb").plan))
     with pytest.raises(Exception, match="(?i)out of range|overflow"):
         run_plan(con, plan, "duckdb")
+
+
+# #335: `round(x, d)` is DuckDB's for every `d`, to the bit: Lean (as codes),
+# DuckDB's own `round`, and the plan Lean writes on DuckDB and on Polars.
+@settings(max_examples=40, deadline=None, suppress_health_check=list(HealthCheck))
+@given(
+    xs=st.lists(st.none() | st.floats(allow_nan=True, allow_infinity=True), min_size=1, max_size=6),
+    d=st.one_of(
+        st.integers(-25, 25), st.sampled_from([-(2**31), -1000, -309, -308, 308, 309, 400])
+    ),
+)
+def test_round_to_digits_is_duckdbs(xs, d):
+    from sverify_dev import probe
+
+    p = probe.Probe("round({0}, {1})", "round", ("float64",), "float64", constants=((d, "int64"),))
+    rows = [(x,) for x in xs]
+    native = duckdb.connect()
+    assert probe.lean_outcomes(p, rows, None) == [probe.duckdb_outcome(native, p, r) for r in rows]
+    con = connect()
+    create_table(con, "r", F, rows)
+    plan = written_plan(
+        json.dumps(lift(f"SELECT round(f, {d}) AS x FROM r", {"r": F}, "duckdb").plan)
+    )
+    sql = f"SELECT round(x, ({d})::INT) FROM (SELECT unnest(?::DOUBLE[]) AS x)"
+    code = probe.encode_double
+    want = [("ok", None if v is None else code(v)) for (v,) in native.execute(sql, [xs]).fetchall()]
+    for engine in ("duckdb", "polars"):
+        got = [r["x"] for r in run_plan(con, plan, engine).to_pylist()]
+        assert [("ok", None if v is None else code(v)) for v in got] == want, engine

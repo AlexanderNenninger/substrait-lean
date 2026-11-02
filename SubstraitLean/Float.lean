@@ -69,10 +69,18 @@ def toFloat (c : Int) : Float :=
 
 def lift₂ (op : Float → Float → Float) (a b : Int) : Int := ofFloat (op (toFloat a) (toFloat b))
 
-/-- `ROUND(x, d)`, as DataFusion computes it: `round(x · 10ᵈ) / 10ᵈ`. -/
+/-- `ROUND(x, d)`, as DuckDB computes it (#335), halves away from zero: with
+`m = 10^|d|` (C's `pow`), `round(x · m) / m` for `d ≥ 0`, or `x` itself where
+that is not finite (`m` or `x · m` is `±∞`); `round(x / m) · m` for `d < 0`,
+or 0 where that is not finite (`round(42, -1000)` is 0, not `0 · ∞`). `±∞`
+and NaN stay. -/
 def roundTo (d : Int) (c : Int) : Int :=
-  let p := Float.pow 10.0 (Float.ofInt d)
-  ofFloat ((toFloat c * p).round / p)
+  let x := toFloat c
+  if x.isNaN || x.isInf then c
+  else
+    let m := Float.pow 10.0 (Float.ofNat d.natAbs)
+    let r := if 0 ≤ d then (x * m).round / m else (x / m).round * m
+    if r.isNaN || r.isInf then (if 0 ≤ d then c else 0) else ofFloat r
 
 /-- Negation flips the sign; zero (code `0`) stays zero. Code negation would
 turn NaN into a code below `-∞`, so the parser writes `negate` as
@@ -141,6 +149,14 @@ def isNan (c : Int) : Bool := c == nan
 #guard ofFloat (Float.ofBits 0x8000000000000000) == 0 && ofFloat 0.0 == 0
 #guard ofFloat (Float.ofBits 0xFFF8000000000000) == nan && ofFloat (0.0 / 0.0) == nan
 #guard neg (ofFloat 0.0) == 0 && neg (ofFloat 1.5) == ofFloat (-1.5)
+-- `ROUND(x, d)` as DuckDB gives it (#335), at ordinary and extreme digits.
+#guard roundTo (-1) (ofFloat 42.0) == ofFloat 40.0 && roundTo (-2) (ofFloat 42.0) == 0
+#guard roundTo (-1000) (ofFloat 42.0) == 0 && roundTo (-2147483648) (ofFloat 1.0) == 0
+#guard roundTo (-5) (ofFloat 521924.88982515107) == ofFloat 500000.0
+#guard roundTo 2 (ofFloat 42.123) == ofFloat 42.12 && roundTo 0 (ofFloat 2.5) == ofFloat 3.0
+#guard roundTo 400 (ofFloat 5e-324) == ofFloat 5e-324 && roundTo 308 (ofFloat 5e-324) == 0
+#guard roundTo (-309) (ofFloat 1e308) == 0 && roundTo (-308) (ofFloat 1e308) == ofFloat 1e308
+#guard roundTo (-3) posInf == posInf && roundTo 3 nan == nan
 #guard ofFloat (-1.0 * 0.0) == 0 && negInf < ofFloat (-1.0) && ofFloat 5e-324 > 0 && posInf < nan
 
 /-- `(-1)^s · m · 2⁻¹⁰⁷⁴` for a finite code, as `(negative, m)`. -/
