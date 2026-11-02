@@ -1,10 +1,10 @@
 import Lean
-import SubstraitLean.Lowering
+import SubstraitLean.LoweringHint
 
 /-!
 # The lowering generator (#241)
 
-`generate_lowering L : p unfolding [defs] using [lemmas] excluding [fns]`
+`generate_lowering L : p unfolding [defs] using [lemmas] excluding [fns] cache hints`
 builds a `Lowering p` named `L` at build time. Each constructor of `UnFn` and
 `BinFn` is a construct (the function, its signature, its options as
 constructor parameters); a constructor whose parameters are all finite
@@ -68,6 +68,9 @@ inductive Tm where
   /-- A constant written by name (`FloatCode.posInf`), so that proofs unfold
   it as the profile's definitions do; `v` is its value, `label` how it shows. -/
   | named (v : Value) (term : Lean.Expr) (label : String)
+  /-- An expression written by name (`Lowering.pow2Chain`), so that the proofs
+  rewrite it with its own lemma; `e` is its value. -/
+  | expr (e : Substrait.Expr) (term : Lean.Expr) (label : String)
   deriving Inhabited
 
 instance : Inhabited Substrait.Expr := ⟨.lit .null⟩
@@ -83,6 +86,7 @@ partial def Tm.toModel (mk : List Substrait.Expr → Substrait.Expr) : Tm → Su
   | .self args => mk (args.map (·.toModel mk))
   | .ite c t e => .ifThen (c.toModel mk) (t.toModel mk) (e.toModel mk)
   | .named v _ _ => .lit v
+  | .expr e _ _ => e
 
 /-- A value as a Lean term (the literals guards use). -/
 def valueTerm : Value → Lean.Expr
@@ -109,9 +113,10 @@ partial def Tm.toTerm (self : Lean.Expr) (unary : Bool) : Tm → Lean.Expr
   | .ite c t e =>
     mkApp3 (Lean.mkConst ``Substrait.Expr.ifThen) (c.toTerm self unary) (t.toTerm self unary) (e.toTerm self unary)
   | .named _ term _ => mkApp (Lean.mkConst ``Substrait.Expr.lit) term
+  | .expr _ term _ => term
 
 partial def Tm.size : Tm → Nat
-  | .field _ | .lit _ | .named .. => 1
+  | .field _ | .lit _ | .named .. | .expr .. => 1
   | .un _ _ a | .raise _ a => a.size + 1
   | .bin _ _ a b => a.size + b.size + 1
   | .self args => (args.map Tm.size).sum + 1
@@ -136,7 +141,7 @@ partial def Tm.show (fn : String) : Tm → String
   | .bin _ n a b => s!"{n.getString!}({a.show fn}, {b.show fn})"
   | .self args => s!"{fn}({", ".intercalate (args.map (·.show fn))})"
   | .ite c t e => s!"CASE WHEN {c.show fn} THEN {t.show fn} ELSE {e.show fn} END"
-  | .named _ _ l => l
+  | .named _ _ l | .expr _ _ l => l
 
 /-! ## Evaluation on samples -/
 
@@ -203,7 +208,6 @@ def candidates (n : Nat) (msg : Option String) : List Tm :=
 def daddFn : Tm → Tm → Tm := .bin .dadd ``BinFn.dadd
 def dsubFn : Tm → Tm → Tm := .bin .dsub ``BinFn.dsub
 def imodFn : Tm → Tm → Tm := .bin .imod ``BinFn.imod
-def dmulFn : Tm → Tm → Tm := .bin .dmul ``BinFn.dmul
 
 /-- Constants of a unary construct: the integers it gives for an integer
 other than that integer (a clamp's bounds), at most four. -/
@@ -325,27 +329,17 @@ def schemaBin? (f : BinFn) : Option Tm :=
   | .fdiv | .fmod => (nan self).map zeroGuard
   | .imod => some (zeroGuard
       (.ite (andFn (eqFn (.field 1) (.lit (.int (-1)))) (isNumFn (.field 0))) (.lit (.int 0)) self))
-  | .bit .shl =>
-    -- `2ʸ` for `y` in `0`–`63` as a `CASE` of constants, and the product
-    -- wrapped around at 64 bits as `overflow` = `SILENT` does (`schema?`).
-    let pow := (List.range 63).foldr (fun (k : Nat) e =>
-      Tm.ite (eqFn (.field 1) (.lit (.int (k : Int)))) (.lit (.int ((2 : Int) ^ k))) e)
-      (.ite (eqFn (.field 1) (.lit (.int 63))) (.lit (.int ((2 : Int) ^ 63))) (.lit .null))
-    let h : Int := 2 ^ 63
-    let m : Int := 2 ^ 64
-    let wrap (x : Tm) : Tm :=
-      dsubFn (imodFn (daddFn (imodFn (daddFn x (.lit (.int h))) (.lit (.int m))) (.lit (.int m)))
-        (.lit (.int m))) (.lit (.int h))
-    some (.ite (andFn (isNumFn (.field 0))
-      (orFn (ltFn (.field 1) (.lit (.int 0))) (notFn (ltFn (.field 1) (.lit (.int 64))))))
-      (.raise "domain" (.field 1)) (wrap (dmulFn (.field 0) pow)))
+  -- `<<` is `Lowering.shlTemplate`, written and proved by hand
+  -- (`Lowering.bit_shl_agree`): the tactic does not reach it in time.
+  | .bit .shl => some (.expr Lowering.shlTemplate (Lean.mkConst ``Lowering.shlTemplate)
+      "shl: error outside 0-63, else wrap64(#0 * 2^#1)")
   | .bit .shr => some (.ite (andFn (isNumFn (.field 0))
       (orFn (ltFn (.field 1) (.lit (.int 0))) (notFn (ltFn (.field 1) (.lit (.int 64))))))
       (.raise "domain" (.field 1)) self)
   | _ => nan self
 
 partial def Tm.hasSelf : Tm → Bool
-  | .field _ | .lit _ | .named .. => false
+  | .field _ | .lit _ | .named .. | .expr .. => false
   | .un _ _ a | .raise _ a => a.hasSelf
   | .bin _ _ a b => a.hasSelf || b.hasSelf
   | .self _ => true
@@ -457,8 +451,7 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
 engine's, and the reference's, and the lemmas `extra`), split on the
 arguments' kinds and on the comparisons the template and the profile make,
 and compute. -/
-def templateTac (unfold natives extra : Array Name) (unary : Bool) (shifts : Bool := false) :
-    TermElabM Syntax := do
+def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM Syntax := do
   let preNames := #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
     ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
@@ -477,16 +470,6 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (shifts : Boo
     #[`hP, `hN, `hQ, `hO, `hM].mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
   let ref := ref ++ eqs
   let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree])) ++ eqs
-  -- A shift by `y`: one case per `y` in `0`–`63` (and below, above), so that
-  -- each computes with a literal `2ʸ` (`schemaBin?`'s `CASE` of constants).
-  let split ← if !shifts then `(tactic| skip) else do
-    let ks := (List.range 64).map toString
-    let disj := " ∨ ".intercalate ("b < 0" :: ks.map (s!"b = {·}")) ++ " ∨ 64 ≤ b"
-    let pats := " | ".intercalate ("hb" :: ks.map (fun _ => "rfl")) ++ " | hb"
-    let src := s!"all_goals try (rename_i a b; rcases (show {disj} by omega) with {pats})"
-    match Parser.runParserCategory (← getEnv) `tactic src with
-    | .ok stx => pure ⟨stx⟩
-    | .error e => throwError "shift split: {e}"
   let cases ← if unary then `(tactic| (rename_i x; cases x))
     else `(tactic| (rename_i x y; cases x <;> cases y))
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
@@ -506,11 +489,10 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) (shifts : Boo
     intros
     simp (config := { decide := true }) only [$pre,*]
     $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
-    $split:tactic
     all_goals first
       | exact Outcome.agree_refl _
       | (simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
-         iterate 70
+         iterate 6
            all_goals try
              lowering_split_decide <;>
                simp (config := { failIfUnchanged := false, decide := true }) only [$(mkIdent `hd):ident, decide_true, decide_false, ite_true, ite_false]
@@ -582,7 +564,7 @@ samples, prove the first that passes, and emit `tbl.k_agree` and the entry
 `tbl.k`. Hand-written schemas come first; a construct the engine does not
 have (`excluded`) gets no template that calls it. -/
 def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excluded : Bool)
-    (k : Construct) : TermElabM (Except String String) := do
+    (k : Construct) (hint? : Option String := none) : TermElabM (Except String String) := do
   let unary := k.unary
   let n := if unary then 1 else 2
   forallTelescope (← getConstInfoCtor k.ctor).type fun ps _ => do
@@ -615,13 +597,17 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
         let rhs ← mkAppM (if unary then ``Profile.un else ``Profile.bin)
           (#[Lean.mkConst ``Profile.reference, selfE] ++ xs)
         mkForallFVars (ps ++ xs) (← mkAppM ``Outcome.Agree #[lhs, rhs])
+      -- A hand-written schema may come with its proof, `Lowering.<construct>_agree`.
+      let hand := ``Lowering ++ k.short.appendAfter "_agree"
+      let tac : Syntax ← if written && (← getEnv).contains hand then
+          `(tactic| (intros; apply $(mkIdent hand))) else pure tac
       let some agree ← prove agreeTy tac | return none
       let agreeName := tbl ++ k.short.appendAfter "_agree"
       addDecl <| .thmDecl { name := agreeName, levelParams := [], type := agreeTy, value := agree }
       let mustE ← mkAppM ``Expr.must #[tmpl]
       let mem (i : Nat) := mkAppM ``Membership.mem #[mustE, toExpr i]
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
-      let some strict ← prove strictTy (← `(tactic| simp [Substrait.Expr.must])) | return none
+      let some strict ← prove strictTy (← `(tactic| simp [Substrait.Expr.must, Lowering.shlTemplate])) | return none
       let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
         #[tmpl, strict, mkAppN (Lean.mkConst agreeName) ps]
       addAndCompile <| .defnDecl {
@@ -629,7 +615,16 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
         type := ← mkForallFVars ps (← inferType entry), value := ← mkLambdaFVars ps entry }
       let shown := cand.show k.ctor.componentsRev.head!.toString
       return some (if written then s!"hand-written schema: {shown}" else shown)
-    for (cand, written) in schema.toList ++ searched.map (·, false) do
+    -- The cache's template first (`LoweringHint`), found among the candidates
+    -- by how it prints; then the schema, then the search.
+    let fn := k.ctor.componentsRev.head!.toString
+    let shownOf (c : Tm) (w : Bool) : String :=
+      if w then s!"hand-written schema: {c.show fn}" else c.show fn
+    let all := schema.toList ++ searched.map (·, false)
+    let order := match hint? with
+      | some h => all.filter (fun (c, w) => shownOf c w == h) ++ all.filter (fun (c, w) => shownOf c w != h)
+      | none => all
+    for (cand, written) in order do
       -- A hand-written schema is one proof, not one of many: it gets more.
       let budget (ctx : Core.Context) :=
         if written then { ctx with maxHeartbeats := ctx.maxHeartbeats * 4 } else ctx
@@ -646,11 +641,17 @@ def guardFns : List Name :=
    ``BinFn.and, ``BinFn.or, ``BinFn.dadd, ``BinFn.dsub, ``BinFn.dmul, ``BinFn.imod]
 
 syntax (name := generateLowering) "generate_lowering " ident " : " term
-  " unfolding " "[" ident,* "]" " using " "[" ident,* "]" " excluding " "[" ident,* "]" : command
+  " unfolding " "[" ident,* "]" " using " "[" ident,* "]" " excluding " "[" ident,* "]"
+  (" cache " ident)? : command
 
-/-- `generate_lowering L : p unfolding [defs] using [lemmas] excluding [ctors]`:
-`defs` unfold the profile, `lemmas` help the proofs, and `ctors` are functions
-the engine does not have, which every template must avoid. -/
+unsafe def evalHintsImpl (n : Name) : TermElabM (List LoweringHint) := do
+  Meta.evalExpr (List LoweringHint) (← mkAppM ``List #[Lean.mkConst ``LoweringHint]) (Lean.mkConst n)
+@[implemented_by evalHintsImpl] opaque evalHints (n : Name) : TermElabM (List LoweringHint)
+
+/-- `generate_lowering L : p unfolding [defs] using [lemmas] excluding [ctors] cache hints`:
+`defs` unfold the profile, `lemmas` help the proofs, `ctors` are functions the
+engine does not have, which every template must avoid, and `hints` (optional,
+a `List LoweringHint`) the templates to try first. -/
 @[command_elab generateLowering]
 def elabGenerateLowering : CommandElab := fun stx => do
   let short := stx[1].getId
@@ -660,12 +661,18 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let unfold ← names 6
   let extra ← names 10
   let excluded ← names 14
+  let cacheName ← if stx[16].isNone then pure none
+    else some <$> liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[16][1])
   let ctors ← [(``UnFn, true), (``BinFn, false)].flatMapM fun (ind, unary) => do
     return (← getConstInfoInduct ind).ctors.map (·, unary)
   -- Each constructor: native, or its constructs, each with how it was lowered.
   let results ← liftTermElabM do
     let pE ← instantiateMVars (← elabTermEnsuringType pStx (Lean.mkConst ``Profile))
     let p ← evalProfile pE
+    let hints ← match cacheName with | some n => evalHints n | none => pure []
+    let hintOf (k : Construct) : Option String :=
+      (hints.find? fun h => h.table == short.toString && h.construct == k.label && !h.template.isEmpty).map
+        (·.template)
     let mut results : Array (Name × Option (Array (Construct × Except String String × Nat))) := #[]
     -- Natives first: templates are built from them.
     let ntac ← nativeTac unfold
@@ -682,12 +689,13 @@ def elabGenerateLowering : CommandElab := fun stx => do
           continue
       rest := rest.push (c, unary)
     for (c, unary) in rest do
-      let tac ← templateTac unfold natives extra unary (c == ``BinFn.bit)
+      let tac ← templateTac unfold natives extra unary
       let ks := (← withCurrHeartbeats (instances c unary)).getD [⟨c, unary, #[]⟩]
       let mut done := #[]
       for k in ks do
         let t0 ← IO.monoMsNow
-        let how ← withCurrHeartbeats (lowerSearch tbl pE p tac (excluded.contains c) k)
+        let t := tac
+        let how ← withCurrHeartbeats (lowerSearch tbl pE p t (excluded.contains c) k (hintOf k))
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
     return results
@@ -724,7 +732,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
   if missing.isEmpty then
     elabCommand (← `(theorem $(mkIdent (short ++ `total)) : ($(mkIdent tbl)).Total :=
       ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-       fun f => by cases f <;> rfl⟩))
+       fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
   else
     logError m!"no lowering found for {missing.toList}"
 

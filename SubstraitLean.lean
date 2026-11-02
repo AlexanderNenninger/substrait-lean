@@ -20,6 +20,8 @@ import SubstraitLean.Partition
 import SubstraitLean.Guards
 import SubstraitLean.Profile
 import SubstraitLean.Lowering
+import SubstraitLean.LoweringHint
+import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.DuckDBSQL
