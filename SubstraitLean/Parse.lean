@@ -1512,6 +1512,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let anchor ← natD f "functionReference"
     let some name := fns.lookup anchor
       | throw s!"function reference {anchor} is not declared in extensions"
+    -- sverify's own remainder of doubles (#256) is `modulus` on doubles.
+    let fmodExt := baseName name == "sverify_fmod"
+    let name := if fmodExt then "modulus" else name
     let argJs ← (← arrD f "arguments").mapM fun a => field a "value"
     -- `f(l, x -> body)`, with a closed lambda (#94).
     if let some hf := hofFn? (baseName name) then
@@ -1635,6 +1638,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) &&
       (out == .float || hasFloat || doubleFns.contains (baseName name))
+    if fmodExt && !floatCall then throw "sverify_fmod takes doubles"
     if arithmeticFns.bitFns.contains (baseName name) && hasFloat then
       throw s!"{baseName name} is only supported on integers"
     -- Decimals (#27) are their unscaled integers: `decimalCall` brings the

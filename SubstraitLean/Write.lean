@@ -47,7 +47,10 @@ def coreFns : List (Nat × String) := [
   -- zero (a decimal `AVG` over a window, #27).
   (120, "sverify_decimal_div"),
   -- `abs` of a decimal (`Parse.decimalCall`), #27.
-  (121, "abs")]
+  (121, "abs"),
+  -- sverify's own: the remainder of doubles, C's `fmod` (#256). Substrait's
+  -- `modulus` has no double impl.
+  (122, "sverify_fmod")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -127,7 +130,7 @@ def UnFn.anchor : UnFn → Nat
 def BinFn.anchor : BinFn → Nat
   -- Core
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
-  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod | .fmod => 18 | .ipow | .fpow => 19
+  | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .fmod => 122 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
   | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11
   | .bit op => match op with
