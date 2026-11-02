@@ -105,7 +105,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `sverify.engines.substrait_json` asks DataFusion for the Substrait plan of a query.
+    `sverify.engines.substrait_json` lifts a query, in DuckDB's SQL, to a Substrait plan.
     Edit the SQL and the checker re-runs. Try a join (`select o.id, c.city
     from orders o join customers c on o.customer = c.name`), a `limit 2`, or
     a `group by` (which the model doesn't cover yet).

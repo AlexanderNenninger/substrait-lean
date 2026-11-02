@@ -7,12 +7,12 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 plans over them (DuckDB by default), and Ibis tables bound to them
 (`con.table(name)`). `plan_json` compiles Ibis expressions with the vendored
 producer (`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings
-with DataFusion's SQL producer. `run_plan` runs a plan in Lean's
+(DuckDB's SQL) with sverify's lift (`sverify.sql_lift`). `run_plan` runs a plan in Lean's
 written form (`substrait-check --write`, `--delta`) on the connection's engine
 or the one a call names.
 
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it is needed
-only to run plans with `engine="datafusion"` and to compile SQL strings.
+only to run plans with `engine="datafusion"`.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ import atexit
 import functools
 import json
 import os
-import re
 import subprocess
 import threading
 from pathlib import Path
@@ -37,7 +36,7 @@ from google.protobuf import json_format
 from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
-from sverify.ibis_substrait import Unsupported, to_substrait_json
+from sverify.ibis_substrait import to_substrait_json
 from sverify.sql import core as sql
 
 Engine = Literal["duckdb", "polars", "datafusion"]
@@ -108,15 +107,6 @@ def has_datafusion() -> bool:
     return True
 
 
-def default_sql_producer() -> Literal["datafusion"]:
-    """The SQL producer: DataFusion's, if DataFusion is installed."""
-    if has_datafusion():
-        return "datafusion"
-    raise ImportError(
-        "compiling SQL strings needs a SQL producer: pip install 'sverify[datafusion]'"
-    )
-
-
 def _register(ctx: Any, name: str, table: pa.Table) -> None:
     """Register (or replace) a table in a DataFusion session, as record
     batches rather than a PyArrow dataset: DataFusion pushes filters into
@@ -160,7 +150,7 @@ class Connection:
       another.
     * `datafusion` is a DataFusion session holding the same tables (with the
       functions Ibis's DataFusion SQL calls), created on first use; only the
-      DataFusion engine and DataFusion's SQL producer need it.
+      DataFusion engine needs it.
 
     `sverify.connect()` makes one.
 
@@ -287,66 +277,49 @@ def to_sql(expr: ir.Table) -> str:
 
 def plan_json(con: Connection, query: ir.Table | str) -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
-    through the vendored producer, SQL through DataFusion's (`substrait_json`)."""
+    through the vendored producer, SQL through sverify's lift
+    (`substrait_json`)."""
     if isinstance(query, str):
         return substrait_json(con, query)
     return to_substrait_json(query)
 
 
-#: `substrait_json` changes a session setting while it plans.
-_analyse_lock = threading.Lock()
+def substrait_json(con: Connection, sql: str, semantics: str = "duckdb") -> str:
+    """Compile DuckDB's SQL to a Substrait plan with sverify's lift
+    (`sverify.sql_lift`, SQLGlot), as protobuf JSON.
 
-#: A RANGE frame bounded by an offset, in DataFusion's plan display.
-_RANGE_OFFSET = re.compile(
-    r"RANGE BETWEEN (?!UNBOUNDED PRECEDING AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
-    r"(?!CURRENT ROW AND (UNBOUNDED FOLLOWING|CURRENT ROW))"
-)
-
-
-def substrait_json(con: Connection, sql: str) -> str:
-    """Compile SQL to a Substrait plan with DataFusion, as protobuf JSON.
-
-    The plan is the *analysed* one: DataFusion's type coercion makes its
-    implicit casts explicit (`int > double` compares `CAST(int AS DOUBLE)`),
-    which the unanalysed plan leaves to the consumer. The optimizer, whose
-    rewrites would change the plan's shape, runs no passes.
-
-    DataFusion 51's producer writes the offsets of a RANGE frame (`RANGE
-    BETWEEN 1 PRECEDING AND …`) as UNBOUNDED, so the plan would mean another
-    query: those are refused.
+    The plan reads the connection's tables by name, and states every choice
+    DuckDB's SQL leaves implicit: casts, output types, function options and
+    sort directions.
 
     Args:
         con: The connection whose tables the SQL reads.
-        sql: A query in DataFusion's SQL dialect.
+        sql: A query in DuckDB's SQL dialect.
+        semantics: `"duckdb"` (the default): what DuckDB computes; or
+            `"reference"`: what sverify's reference model computes where the
+            two differ.
 
     Returns:
         The Substrait plan as protobuf JSON.
 
     Raises:
-        ImportError: DataFusion is not installed.
-        ValueError: The query has a RANGE frame with an offset (the vendored
-            Ibis producer's `Unsupported`, a `ValueError`).
-        Exception: DataFusion's own error for SQL it cannot plan.
+        Unsupported: The query is outside what the lift reads (a
+            `ValueError`), saying what.
     """
-    ss = _datafusion().substrait
-    ctx = con.datafusion
-    key = "datafusion.optimizer.max_passes"
-    with _analyse_lock:
-        passes = ctx.sql(f"SHOW {key}").to_pylist()[0]["value"]
-        ctx.sql(f"SET {key} = 0").collect()
-        try:
-            logical = ctx.sql(sql).optimized_logical_plan()
-        finally:
-            ctx.sql(f"SET {key} = {passes}").collect()
-    if _RANGE_OFFSET.search(logical.display_indent()):
-        raise Unsupported(
-            "DataFusion's Substrait producer drops the offsets of RANGE frames; "
-            "write the window in Ibis"
-        )
-    plan = ss.Producer.to_substrait_plan(logical, ctx)
-    proto = Plan()
-    proto.ParseFromString(plan.encode())
-    return json_format.MessageToJson(proto)
+    import sqlglot as sg
+
+    from sverify.sql_lift import lift
+
+    try:
+        read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+    except sg.errors.ParseError:
+        read = set()  # the lift says why
+    schemas = {
+        name: ibis.Schema.from_pyarrow(t.schema)
+        for name, t in con.arrow.items()
+        if name.lower() in read
+    }
+    return json.dumps(lift(sql, schemas, semantics).plan)
 
 
 def quote(name: str) -> str:

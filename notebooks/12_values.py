@@ -71,7 +71,7 @@ def _():
     import ibis
     import sverify as sv
     from sverify.engine import run_sql
-    from sverify.engines import create_table, substrait_json, table_rows
+    from sverify.engines import create_table, table_rows
 
     con = sv.connect()
     create_table(
@@ -80,7 +80,7 @@ def _():
         ibis.schema({"v": "float64"}),
         [(1.5,), (math.nan,), (-1.0,), (0.0,), (-0.0,), (math.inf,), (-9999.0,), (None,)],
     )
-    return con, create_table, dt, ibis, json, run_sql, substrait_json, sv, table_rows
+    return con, create_table, dt, ibis, json, run_sql, sv, table_rows
 
 
 @app.cell(hide_code=True)
@@ -251,22 +251,29 @@ def _(mo):
 
 
 @app.cell
-def _(con, create_table, display, ibis, json, run_sql, substrait_json, table_rows):
+def _(con, create_table, display, ibis, json, run_sql, table_rows):
+    from sverify.engine import to_sql
+    from sverify.ibis_substrait import to_substrait_json
     from sverify.testing import inline_tables, lean_rows
 
     create_table(
         con, "w", ibis.schema({"word": "string"}), [("Grüße",), ("naïve ",), ("a%b",), (None,)]
     )
-    _sql = (
-        "select word, substr(word, 2, 3) as middle, character_length(word) as len,"
-        " word like 'a\\%b' as literal_percent, btrim(word) as trimmed, strpos(word, 'ß') as eszett from w"
+    _w = con.table("w")
+    _words = _w.select(
+        "word",
+        middle=_w.word.substr(1, 3),
+        len=_w.word.length(),
+        literal_percent=_w.word.like("a\\%b"),
+        trimmed=_w.word.strip(),
+        eszett=_w.word.find("ß"),
     )
-    _plan = json.loads(substrait_json(con, _sql))
+    _plan = json.loads(to_substrait_json(_words))
     _cols = _plan["relations"][0]["root"]["names"]
     _lean = lean_rows(json.dumps(inline_tables(_plan, {"w": table_rows(con, "w")})))
     display.side_by_side(
         display.table(_lean, _cols, title="Lean"),
-        display.arrow(run_sql(con, _sql), title="DataFusion"),
+        display.arrow(run_sql(con, to_sql(_words)), title="DataFusion"),
     )
     return
 

@@ -28,13 +28,14 @@ import sqlglot
 import sverify as sv
 from sverify.engine import run_checker
 from sverify.engines import create_table, substrait_json
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify_dev import examples
 from sverify_dev.examples import PIPELINES, create_tables
 
-pytestmark = pytest.mark.backend("snowflake")
+pytestmark = [pytest.mark.backend("snowflake"), pytest.mark.lift_backlog]
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -112,27 +113,33 @@ def fixture_plan(path: Path) -> dict:
 def pipeline_plans() -> dict[str, dict]:
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
-    queries = {name: sv.engine.to_sql(expr) for name, expr in PIPELINES.items()}
-    queries["sql_query"] = SQL_QUERY
-    return {name: json.loads(substrait_json(con, q)) for name, q in queries.items()}
+    plans = {name: json.loads(to_substrait_json(expr)) for name, expr in PIPELINES.items()}
+    plans["sql_query"] = json.loads(substrait_json(con, SQL_QUERY))
+    return plans
 
 
 PLANS = pipeline_plans()
 
+
 # Windows and FETCH over named tables are refused (no row order). Over
 # literal rows, which have one, they run, and so do windows with tie_free.
-ORDERED_QUERIES = {
-    "window": "select g, x, lag(x) over (partition by g order by x nulls first) as p, "
-    "lead(x, 2, -1) over (order by x desc nulls last) as n, "
-    "row_number() over (partition by g order by x asc nulls last) as rn from w",
-    "fetch": "select x from w where g is not null limit 2 offset 1",
-}
-
-
 def ordered_plans() -> dict[str, dict]:
+    ibis = sv.engine.ibis
+    w = ibis.table({"g": "int64", "x": "int64"}, name="w")
+    window = w.select(
+        "g",
+        "x",
+        p=w.x.lag().over(group_by=w.g, order_by=ibis.asc(w.x, nulls_first=True)),
+        n=w.x.lead(2, -1).over(order_by=ibis.desc(w.x)),
+        rn=ibis.row_number().over(group_by=w.g, order_by=w.x),
+    )
     con = sv.connect()
-    create_table(con, "w", sv.engine.ibis.schema({"g": "int64", "x": "int64"}), ORDERED_ROWS)
-    return {name: json.loads(substrait_json(con, q)) for name, q in ORDERED_QUERIES.items()}
+    create_table(con, "w", ibis.schema({"g": "int64", "x": "int64"}), ORDERED_ROWS)
+    fetch = "select x from w where g is not null limit 2 offset 1"
+    return {
+        "window": json.loads(to_substrait_json(window)),
+        "fetch": json.loads(substrait_json(con, fetch)),
+    }
 
 
 def feature_plans() -> dict[str, dict]:
@@ -160,7 +167,7 @@ def feature_plans() -> dict[str, dict]:
     }
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
-    return {k: json.loads(substrait_json(con, sv.engine.to_sql(e))) for k, e in exprs.items()}
+    return {k: json.loads(to_substrait_json(e)) for k, e in exprs.items()}
 
 
 FEATURE_PLANS = feature_plans()
@@ -370,7 +377,7 @@ def run_differential(
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
     for name, expr in SORTED.items():
-        plan = json.loads(substrait_json(con, sv.engine.to_sql(expr)))
+        plan = json.loads(to_substrait_json(expr))
         got = run(retarget(to_sql(plan, d, tie_free=True)))
         assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():

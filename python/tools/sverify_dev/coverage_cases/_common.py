@@ -41,8 +41,8 @@ M = ibis.memtable(
 
 def sql_view(table: ir.Table, query: str) -> ir.Table:
     """`table.alias("v").sql(query)` without a backend: `Table.sql` needs one
-    to infer the schema, which DataFusion does here. (Ibis 12's DuckDB backend
-    cannot: it calls a method DuckDB 2 no longer has.)"""
+    to infer the schema, which sverify's lift does here. (Ibis 12's DuckDB
+    backend cannot: it calls a method DuckDB 2 no longer has.)"""
     from sverify.ibis_substrait import sql_view_schema
 
     parent: Any = table.alias("v").op()

@@ -1,7 +1,9 @@
 """Capture real Substrait plans from DataFusion into tests/fixtures/df_*.json.
 
 The pipelines are the Ibis expressions in `sverify_dev.examples`, compiled to SQL by
-Ibis and to Substrait by DataFusion, the same route incremental maintenance takes.
+Ibis and to Substrait by DataFusion's producer. sverify no longer plans SQL with
+DataFusion (#211); these fixtures keep its encodings in the golden tests, which
+`SubstraitLean/Parse.lean` still reads.
 
 Run from python/:  uv run python scripts/capture_fixtures.py
 """
@@ -10,12 +12,26 @@ import json
 from pathlib import Path
 
 import ibis
+from google.protobuf import json_format
+from substrait.plan_pb2 import Plan
 
 from sverify.asof import asof_join
-from sverify.engine import connect, create_table, substrait_json, to_sql
+from sverify.engine import Connection, connect, create_table, to_sql
 from sverify_dev.examples import PIPELINES, UNSUPPORTED, create_tables, customers, orders
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
+
+
+def datafusion_plan(con: Connection, sql: str) -> str:
+    """DataFusion's Substrait plan of `sql` (its analysed logical plan)."""
+    from datafusion import substrait as ss
+
+    ctx = con.datafusion
+    logical = ctx.sql(sql).optimized_logical_plan()
+    proto = Plan()
+    proto.ParseFromString(ss.Producer.to_substrait_plan(logical, ctx).encode())
+    return json_format.MessageToJson(proto)
+
 
 READINGS = ibis.table({"ts": "timestamp", "value": "float64"}, name="readings")
 SENSORS = ibis.table({"sensor": "int64", "ts": "timestamp", "value": "float64"}, name="sensors")
@@ -88,7 +104,7 @@ def main() -> None:
     create_table(con, "acc", ACC.schema())
     create_table(con, "gyr", GYR.schema())
     for name, expr in CAPTURED.items():
-        plan = json.loads(substrait_json(con, to_sql(expr)))
+        plan = json.loads(datafusion_plan(con, to_sql(expr)))
         path = FIXTURES / f"df_{name}.json"
         path.write_text(json.dumps(plan, indent=2) + "\n")
         print(f"wrote {path.relative_to(FIXTURES.parents[1])}")

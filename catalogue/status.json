@@ -685,15 +685,15 @@
   }
  },
  "dbt-org-hierarchy": {
-  "checker": "upstream",
-  "stage": "substrait",
-  "detail": "NotImplemented(\"Unsupported plan type: RecursiveQuery { name: \\\"chain\\\", static_term: Projection(Projection { expr: [Column(Column { relation: Some(Bare { table: \\\"employees\\\" }), name: \\\"emp_id\\\" }),",
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "CTEs (WITH) is not supported yet",
   "datafusion": "runs"
  },
  "dbt-generate-date-spine": {
-  "checker": "upstream",
-  "stage": "substrait",
-  "detail": "NotImplemented(\"Unsupported plan type: Unnest { input: Projection(Projection { expr: [Alias(Alias { expr: ScalarFunction(ScalarFunction { func: ScalarUDF { inner: Range { signature: Signature { type_s",
+  "checker": "rejected",
+  "stage": "producer",
+  "detail": "FROM UNNEST(GENERATE_SERIES(CAST('2024-01-01' AS TIMESTAMP), C... is not supported",
   "datafusion": "runs"
  },
  "dbt-accepted-values-test": {
@@ -1028,7 +1028,8 @@
  },
  "ts-local-day-revenue": {
   "checker": "rejected",
-  "detail": "error: unsupported cast from Substrait.Parse.Kind.time to Substrait.Parse.Kind.timeTz",
+  "stage": "producer",
+  "detail": "AtTimeZone (orders.order_ts AT TIME ZONE 'Europe/Berlin') is not supported yet",
   "datafusion": "runs"
  },
  "ts-overlapping-bookings": {
@@ -1043,7 +1044,8 @@
  },
  "ts-pack-intervals": {
   "checker": "rejected",
-  "detail": "error: window aggregates of expressions are not supported; use a column",
+  "stage": "producer",
+  "detail": "CTEs (WITH) is not supported yet",
   "datafusion": "runs"
  },
  "tpcds-q03": {
@@ -1082,21 +1084,25 @@
  },
  "tpcds-q27": {
   "checker": "rejected",
-  "detail": "error: grouping sets are not supported",
+  "stage": "producer",
+  "detail": "aggregate GROUPING() is not supported yet",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "detail": "error: grouping sets are not supported",
+   "stage": "producer",
+   "detail": "aggregate GROUPING() is not supported yet",
    "datafusion": "runs"
   }
  },
  "tpcds-q36": {
   "checker": "rejected",
-  "detail": "error: grouping sets are not supported",
+  "stage": "producer",
+  "detail": "aggregate GROUPING() is not supported yet",
   "datafusion": "runs",
   "as_double": {
    "checker": "rejected",
-   "detail": "error: grouping sets are not supported",
+   "stage": "producer",
+   "detail": "aggregate GROUPING() is not supported yet",
    "datafusion": "runs"
   }
  },

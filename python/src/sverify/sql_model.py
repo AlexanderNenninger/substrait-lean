@@ -10,9 +10,9 @@ public name (`sql`) is re-exported by `sverify`.
         return sv.sql("SELECT region, sum(amount_cents) AS revenue_cents "
                       "FROM orders GROUP BY region", orders=orders)
 
-The query reads each input by its keyword name. It becomes one relation of
-the Ibis expression (`ibis_substrait.SQLModel`), whose plan is the SQL
-producer's plan (DataFusion's) with each
+The query is DuckDB's SQL, and reads each input by its keyword name. It
+becomes one relation of the Ibis expression (`ibis_substrait.SQLModel`),
+whose plan is sverify's lift of the query (`sverify.sql_lift`) with each
 input's plan spliced in where the query reads it. So a SQL model composes
 with Ibis transforms on either side, fuses with them, and is checked like
 any other plan; it needs no backend, so it works on the placeholder tables
@@ -50,20 +50,20 @@ def sql(
     /,
     *,
     as_: str | None = None,
-    dialect: str | None = None,
-    semantics: str | None = None,
+    dialect: str = "duckdb",
+    semantics: str = "duckdb",
 ) -> SQLStep: ...
 @overload
 def sql(
-    query: str, /, *, dialect: str | None = None, semantics: str | None = None, **tables: ir.Table
+    query: str, /, *, dialect: str = "duckdb", semantics: str = "duckdb", **tables: ir.Table
 ) -> ir.Table: ...
 def sql(
     query: str,
     /,
     *,
     as_: str | None = None,
-    dialect: str | None = None,
-    semantics: str | None = None,
+    dialect: str = "duckdb",
+    semantics: str = "duckdb",
     **tables: ir.Table,
 ) -> ir.Table | SQLStep:
     """SQL as a step of `Node.pipe`, or as the body of a transform.
@@ -81,10 +81,8 @@ def sql(
     reads each table by its keyword name.
 
     Either way, every table the query reads must be an input, so the plan
-    is closed and checked. Without a `dialect`, the schema and plan come
-    from DataFusion's SQL producer (`pip install 'sverify[datafusion]'`).
-    With `dialect="duckdb"`, the
-    query is DuckDB's SQL, and sverify's own lift (SQLGlot, #239) plans it,
+    is closed and checked. The query is DuckDB's SQL, and sverify's own lift
+    (SQLGlot, #239) plans it,
     with every choice DuckDB's SQL leaves implicit written into the plan:
     `semantics="duckdb"` (the default) means what DuckDB computes, and
     `semantics="reference"` means what sverify's reference model computes
@@ -98,10 +96,9 @@ def sql(
         query: The SQL query.
         as_: For a step: the table the chained node is, checked against the
             one table the keyword inputs of `pipe` leave over. Default None.
-        dialect: The query's SQL dialect: None (DataFusion's, the default)
-            or `"duckdb"`.
-        semantics: With `dialect="duckdb"`: `"duckdb"` (the default) or
-            `"reference"`.
+        dialect: The query's SQL dialect: `"duckdb"`, the default and so
+            far the only one.
+        semantics: `"duckdb"` (the default) or `"reference"`.
         **tables: For the body of a transform: the Ibis tables the query
             reads, by name.
 
@@ -114,8 +111,7 @@ def sql(
             its inputs); or the query cannot be parsed.
         TypeError: A table is a node or a source (pipe a step instead), or
             `as_` is given with tables or is not a table the query reads.
-        ValueError: `dialect` or `semantics` is not one sverify knows, or
-            `semantics` is given without a dialect.
+        ValueError: `dialect` or `semantics` is not one sverify knows.
             In `pipe`: a table of the query has no input, the chained node
             is left unused, a keyword is not a table the query reads, or
             `as_` is not the table left over.
@@ -156,12 +152,7 @@ def sql(
     names = tuple(tables)
     schemas = {n: t.schema() for n, t in tables.items()}
     try:
-        if dialect is None:
-            schema = sql_model_schema(query, schemas)
-        else:
-            from sverify.sql_lift import lift
-
-            schema = lift(query, schemas, semantics or dialect).schema
+        schema = sql_model_schema(query, schemas, semantics)
     except ProducerRefused as e:
         raise Unsupported(str(e)) from e
     inputs: Any = tuple(t.op() for t in tables.values())
@@ -170,28 +161,21 @@ def sql(
     return expr
 
 
-def _semantics(dialect: str | None, semantics: str | None) -> str | None:
-    """`semantics` checked against `dialect`, with its default."""
-    if dialect is None:
-        if semantics is not None:
-            raise ValueError(
-                "sverify.sql: semantics= needs a dialect: sql(query, dialect='duckdb', "
-                f"semantics={semantics!r})"
-            )
-        return None
+def _semantics(dialect: str, semantics: str) -> str:
+    """`semantics`, checked, with `dialect`."""
     if dialect != "duckdb":
-        raise ValueError(f"sverify.sql: dialect must be 'duckdb' (or None), not {dialect!r}")
-    if semantics not in (None, "duckdb", "reference"):
+        raise ValueError(f"sverify.sql: dialect must be 'duckdb', not {dialect!r}")
+    if semantics not in ("duckdb", "reference"):
         raise ValueError(
             f"sverify.sql: semantics must be 'duckdb' or 'reference', not {semantics!r}"
         )
-    return semantics or "duckdb"
+    return semantics
 
 
-def query_tables(query: str, dialect: str | None = None) -> list[str]:
+def query_tables(query: str, dialect: str = "duckdb") -> list[str]:
     """The tables `query` reads, in the order it first names them: not its
-    CTEs, and each once. Unquoted names are lower-cased, as DataFusion and
-    DuckDB read them."""
+    CTEs, and each once. Unquoted names are lower-cased, as DuckDB reads
+    them."""
     from sverify.sql import Unsupported
 
     try:
@@ -223,16 +207,16 @@ class SQLStep(ContractedTransform):
         query: The SQL query.
         tables: The tables the query reads, in the order it names them.
         as_: The table the chained node is, or None.
-        dialect: The query's dialect (None: DataFusion's), as `sql`'s.
-        semantics: With a dialect, `"duckdb"` or `"reference"`, as `sql`'s.
+        dialect: The query's dialect (`"duckdb"`), as `sql`'s.
+        semantics: `"duckdb"` or `"reference"`, as `sql`'s.
     """
 
     def __init__(
         self,
         query: str,
         as_: str | None = None,
-        dialect: str | None = None,
-        semantics: str | None = None,
+        dialect: str = "duckdb",
+        semantics: str = "duckdb",
     ):
         self.query, self.as_ = query, as_
         self.dialect, self.semantics = dialect, _semantics(dialect, semantics)
@@ -301,7 +285,7 @@ def _check(expr: ir.Table) -> None:
 def _visit_sql_model(self, op, *, query, inputs, names, schema, dialect, semantics):  # noqa: ANN001, ANN202, ARG001
     # The query with each input as a CTE of its name: Ibis's SQL for the
     # expression, which contracts use to tell expressions apart.
-    out: Any = sg.parse_one(query, read=dialect or self.dialect)
+    out: Any = sg.parse_one(query, read=dialect or "duckdb")
     for name, rel in zip(names, inputs, strict=True):
         if isinstance(rel, sg.exp.Subquery):
             rel = rel.this

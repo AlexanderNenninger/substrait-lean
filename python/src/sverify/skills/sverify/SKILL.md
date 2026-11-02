@@ -174,8 +174,10 @@ test_doubles_are_big()
   break unless `requires` has a key on the partition and order columns
   (`sv.unique("device_id", "ts")`); without it every postcondition is
   undetermined and `report.deterministic` is False.
-* **SQL strings need a SQL producer:** the `datafusion` extra. Ibis
-  expressions don't.
+* **SQL strings are DuckDB's SQL**, read by sverify's lift, which covers a
+  subset so far (SELECT, WHERE, joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST,
+  arithmetic): write the rest in Ibis. In DuckDB's SQL, `/` divides as
+  doubles; integer division is `//`.
 * **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
 * **Incremental maintenance** covers filters, projections, inner and cross

@@ -34,7 +34,7 @@ gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deploym
 
 - **Open PRs:** ask which belong in the release. Those must merge first.
 - **`main`'s CI** must be green on the commit that will be tagged.
-- **`CHANGELOG.md`** has an `## <version> (unreleased)` section covering what's merged since the last tag (`git log v<last>..origin/main --merges --oneline`). If the release breaks the public API, it lists the moves.
+- **`CHANGELOG.md`** gets the release's section from the fragments in `changelog.d/` (one file per PR; see its README), plus anything already under `## Unreleased`. Check them against what's merged since the last tag (`git log v<last>..origin/main --merges --oneline`). If the release breaks the public API, the section lists the moves.
 - **Pages** must be turned on with "GitHub Actions" as the source. If `build_type` isn't `workflow`, ask the user to turn it on. Its `github-pages` environment must also allow `v*` tags to deploy: GitHub's default allows only `main`, and the deploy then fails with "Tag … is not allowed to deploy to github-pages due to environment protection rules". If the `tag v*` policy is missing, ask the user before adding it with `gh api -X POST …/environments/github-pages/deployment-branch-policies -f name='v*' -f type=tag`.
 - **Version:** if the user gave none, propose one by [semver](https://semver.org) for 0.x: minor for new features or breaking changes, patch for fixes only.
 
@@ -45,9 +45,11 @@ gh api repos/AlexanderNenninger/substrait-lean/environments/github-pages/deploym
 ```bash
 git switch -c release-<version> origin/main
 # python/pyproject.toml: version = "<version>"   (the only place the version is written)
-# CHANGELOG.md: "## <version> (unreleased)" -> "## <version> (<YYYY-MM-DD>)"
+# CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
+#   changelog.d/*.md fragments (file-name order) under it, then git rm the fragments
+#   (keep changelog.d/README.md)
 cd python && uv lock && cd ..        # updates only sverify's own version in uv.lock
-git diff --stat                      # exactly these three files
+git diff --stat                      # these three files, plus the removed fragments
 git commit -am "Release <version>"
 git push -u origin release-<version>
 gh pr create --base main --title "Release <version>" --body "…"

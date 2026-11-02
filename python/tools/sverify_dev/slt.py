@@ -11,8 +11,9 @@ compares three results with the expected one:
 * `duckdb`: DuckDB running the test's own SQL, a control. If it differs from
   the expected result, the test was written for another DuckDB version or
   the harness misreads it, and the query is `skipped`.
-* `lean`: `Rel.eval` (via `substrait-check`) on the plan DataFusion's SQL
-  producer writes for the query, with the tables the test created inlined.
+* `lean`: `Rel.eval` (via `substrait-check`) on the plan sverify's lift
+  (`sverify.sql_lift`) writes for the query, DuckDB's SQL as it is with
+  DuckDB's semantics, with the tables the test created inlined.
 * `engine`: DuckDB running the plan Lean writes back out
   (`sverify.engines.run`).
 
@@ -21,20 +22,13 @@ and classifies the query:
 * `agree`: Lean and the engine give the expected result (an expected error
   counts when they raise, or Lean's verifier says the plan may raise);
 * `disagree`: Lean or the engine does not (`side` says which);
-* `refused`: sverify does not plan the query (the SQL translation, the
-  producer or the checker refuses it);
+* `refused`: sverify does not plan the query (the lift or the checker
+  refuses it);
 * `skipped`: the test needs something the replay does not have (an
   extension, a setting, a second connection, a loop too long, …).
 
-With `--frontend lift`, sverify's own lift (`sverify.sql_lift`, #239) plans
-DuckDB's SQL as it is, with DuckDB's semantics, in place of the translation
-and DataFusion's producer (the M1 score of #231).
-
-Tests are in DuckDB's dialect and the producer reads DataFusion's, so each
-query is translated with sqlglot first (`translate`): DuckDB's `/` is float
-division, `//` integer division, `x::T` a cast. A `SELECT` without `FROM`
-reads a one-row table, as DataFusion's producer refuses an empty relation.
-The translated SQL is in the ledger.
+The lift reads DuckDB's default NULL order only: queries run under
+`SET default_null_order` are skipped.
 
 `fetch` checks out `test/sql` at the DuckDB version `python/uv.lock` pins
 (sparse and shallow, into `~/.cache/sverify/duckdb-slt`); `parse` reads the
@@ -356,123 +350,6 @@ def parse(text: str) -> TestFile:
     return TestFile(records, file_skip)
 
 
-# --- translating ---------------------------------------------------------------
-
-
-@functools.cache
-def _dialects() -> dict[str, Any]:
-    """sqlglot's DuckDB dialect under each implicit NULL ordering (to tell
-    the ORDER BY items that name theirs from those that do not), and the
-    DataFusion dialect to write."""
-    import logging
-
-    from ibis.backends.sql.dialects import DataFusion
-    from sqlglot import exp
-    from sqlglot.dialects.duckdb import DuckDB
-
-    logging.getLogger("sqlglot").setLevel(logging.ERROR)
-
-    class Target(DataFusion):
-        class Generator(DataFusion.Generator):
-            TYPE_MAPPING = {
-                **DataFusion.Generator.TYPE_MAPPING,
-                exp.DataType.Type.TINYINT: "TINYINT",
-                exp.DataType.Type.DOUBLE: "DOUBLE",
-            }
-            TRANSFORMS = {
-                **DataFusion.Generator.TRANSFORMS,
-                # DuckDB's `//` on integers truncates, as DataFusion's `/` does.
-                exp.IntDiv: lambda self, e: (
-                    f"({self.sql(e, 'this')} / {self.sql(e, 'expression')})"
-                ),
-            }
-
-    readers: dict[str, Any] = {"duckdb": DuckDB}
-    for order in ("nulls_are_small", "nulls_are_large"):
-        readers[order] = type(f"DuckDB_{order}", (DuckDB,), {"NULL_ORDERING": order})
-    readers["target"] = Target
-    return readers
-
-
-def _parse(sql: str, dialect: Any) -> Any:
-    import sqlglot
-
-    try:
-        trees = [t for t in sqlglot.parse(sql, read=dialect) if t is not None]
-    except Exception as e:  # noqa: BLE001 - sqlglot's errors vary
-        raise ValueError(f"sqlglot: {str(e).splitlines()[0][:200]}") from e
-    if len(trees) != 1:
-        raise ValueError("not one statement")
-    return trees[0]
-
-
-def translate(sql: str, null_order: str = "nulls_last") -> tuple[str, str, list[str], bool]:
-    """DuckDB SQL as DataFusion SQL, the same query as sqlglot read it
-    written back as DuckDB SQL (to check the reading), the tables it reads,
-    and whether the outermost query orders its rows.
-
-    `null_order` is DuckDB's `default_null_order` (`nulls_last`, its
-    default, or `nulls_first`): the place of NULLs for an ORDER BY item that
-    does not name it, written out explicitly.
-
-    Raises:
-        ValueError: sqlglot cannot read or write the query, or would drop
-            part of it (a function it does not know how to write).
-    """
-    from sqlglot import exp
-    from sqlglot.errors import ErrorLevel
-
-    d = _dialects()
-    tree = _parse(sql, d["duckdb"])
-    if not isinstance(tree, exp.Query):
-        raise ValueError(f"not a query: {type(tree).__name__}")
-    if any(
-        j.args.get("method") or "POSITIONAL" in (j.text("kind") or "").upper()
-        for j in tree.find_all(exp.Join)
-    ) or re.search(r"\bPOSITIONAL\s+JOIN\b", sql, re.I):
-        raise ValueError("sqlglot: does not translate POSITIONAL or ASOF JOIN")
-    for node in tree.walk():
-        # sqlglot writes these with another meaning in DataFusion's SQL:
-        # `strftime`'s format in Postgres's syntax, DuckDB's top-n
-        # `min(x, n)` as `LEAST(x, n)`.
-        if isinstance(node, (exp.TimeToStr, exp.StrToTime, exp.StrToDate)) or (
-            isinstance(node, (exp.Min, exp.Max)) and node.expressions
-        ):
-            raise ValueError(f"sqlglot: does not translate {node.key}")
-    # An item names its NULL order if every implicit ordering reads it alike.
-    small, large = (_parse(sql, d[o]) for o in ("nulls_are_small", "nulls_are_large"))
-    trios = zip(
-        tree.find_all(exp.Ordered),
-        small.find_all(exp.Ordered),
-        large.find_all(exp.Ordered),
-        strict=False,
-    )
-    for o, s, g in trios:
-        explicit = (
-            o.args.get("nulls_first") == s.args.get("nulls_first") == g.args.get("nulls_first")
-        )
-        if not explicit:
-            o.set("nulls_first", null_order == "nulls_first")
-    try:
-        back = tree.sql(dialect=d["duckdb"], unsupported_level=ErrorLevel.RAISE)
-    except Exception as e:  # noqa: BLE001
-        raise ValueError(f"sqlglot: {str(e).splitlines()[0][:200]}") from e
-    ctes = {c.alias_or_name for c in tree.find_all(exp.CTE)}
-    for sel in list(tree.find_all(exp.Select)):
-        if not sel.args.get("from_"):
-            sel.set("from_", exp.From(this=exp.to_table(ONE)))
-    tables = []
-    for t in tree.find_all(exp.Table):
-        if isinstance(t.this, exp.Identifier) and t.name not in ctes and t.name not in tables:
-            tables.append(t.name)
-    ordered = bool(tree.args.get("order"))
-    try:
-        out = tree.sql(dialect=d["target"], unsupported_level=ErrorLevel.RAISE)
-    except Exception as e:  # noqa: BLE001
-        raise ValueError(f"sqlglot: {str(e).splitlines()[0][:200]}") from e
-    return out, back, tables, ordered
-
-
 # --- comparing -------------------------------------------------------------------
 
 
@@ -577,7 +454,6 @@ class Result:
     side: str | None = None
     """For `disagree`: `lean`, `engine` or `both`."""
     reason: str | None = None
-    translated: str | None = None
 
 
 def _clip(s: str, n: int = 300) -> str:
@@ -594,7 +470,7 @@ def _error(e: BaseException) -> str:
 
 
 #: DuckDB settings that change what a query means: queries run while one is
-#: set are skipped. `default_null_order` is followed instead (`translate`).
+#: set are skipped, and so are those under `default_null_order` (`Replay.probe_lift`).
 SEMANTIC = {
     "binary_as_string", "calendar", "current_dialect", "default_collation", "default_order",
     "dialect_compatibility_mode", "disable_timestamptz_casts", "error_on_division_by_zero",
@@ -604,7 +480,7 @@ SEMANTIC = {
     "search_path", "sqlite_all_varchar", "timezone", "variable",
 }  # fmt: skip
 
-#: Statements after which a name no longer means what DataFusion takes it to:
+#: Statements after which a name no longer means what the lift takes it to:
 #: a collation, a macro or function named like a builtin, a user type.
 _REDEFINES = re.compile(
     r"\bCOLLATE\b|\bCREATE\s+(OR\s+REPLACE\s+)?(TEMP\w*\s+)?(MACRO|FUNCTION|TYPE)\b", re.I
@@ -628,11 +504,10 @@ class Replay:
     """One test file's replay: a DuckDB database holding the test's state,
     and a sverify connection that mirrors the tables a query reads."""
 
-    def __init__(self, rel: str, frontend: str = "datafusion") -> None:
+    def __init__(self, rel: str) -> None:
         from sverify.engine import connect
 
         self.rel = rel
-        self.frontend = frontend
         self.db = duckdb.connect()
         self.fmt = Formatter()
         self.con = connect()
@@ -672,7 +547,7 @@ class Replay:
                 "WHERE schema_name = 'main' AND NOT internal"
             ).fetchall()
         }
-        # DuckDB's identifiers are case-insensitive; DataFusion lowercases
+        # DuckDB's identifiers are case-insensitive; the lift lowercases
         # unquoted ones.
         lower = {k.lower(): k for k in known}
         for name in list(self.con.arrow):
@@ -755,53 +630,7 @@ class Replay:
             # DuckDB's binder or parser, not what the query computes.
             res.reason = "DuckDB frontend error"
             return res
-        if self.frontend == "lift":
-            return self.probe_lift(rec, res, outcome, ddb_rows, ddb_err)
-        try:
-            sql, back, tables, ordered = translate(rec.sql, self.null_order)
-        except ValueError as e:
-            res.cls, res.reason = "refused", f"translate: {e}"
-            return res
-        res.translated = _clip(sql, 1000)
-        # sqlglot must read the query as DuckDB does: its reading, written
-        # back as DuckDB SQL, gives DuckDB's result.
-        try:
-            back_rows, back_err = self.fmt.rows(self.arrow(back)), None
-        except Exception as e:  # noqa: BLE001
-            back_rows, back_err = None, _error(e)
-        self.version += 1
-        same = (back_err is None) == (ddb_err is None) and (
-            back_rows is None or _same_bag(back_rows, ddb_rows or [], ordered)
-        )
-        if not same:
-            res.cls, res.reason = "refused", "translate: sqlglot reads the query differently"
-            return res
-        if not outcome(ddb_rows, ddb_err, ordered):
-            res.reason = "DuckDB's own result differs from the expected one"
-            return res
-        try:
-            rows = self.sync(tables)
-        except OverflowError as e:
-            res.reason = str(e)
-            return res
-        except Exception as e:  # noqa: BLE001 - a type Arrow or sverify cannot hold
-            res.cls, res.reason = "refused", f"tables: {_clip(str(e), 200)}"
-            return res
-
-        from sverify.engine import substrait_json
-
-        try:
-            plan = substrait_json(self.con, sql)
-            schema = _schema(self.con, sql)
-        except Exception as e:  # noqa: BLE001 - the producer refusing
-            res.cls, res.reason = "refused", f"producer: {_datafusion_message(e)}"
-            return res
-        if '"virtualTable": {}' in plan:
-            # DataFusion 51 writes `VALUES (…)` as an empty virtual table.
-            res.cls, res.reason = "refused", "producer: VALUES written as an empty virtual table"
-            return res
-        issues = functools.partial(_issues, sql, self.con)
-        return self.judge(rec, res, plan, schema, rows, ordered, outcome, issues)
+        return self.probe_lift(rec, res, outcome, ddb_rows, ddb_err)
 
     def probe_lift(
         self,
@@ -811,8 +640,8 @@ class Replay:
         ddb_rows: list[list[str]] | None,
         ddb_err: str | None,
     ) -> Result:
-        """The rest of `probe` with the SQLGlot lift (`sverify.sql_lift`, #239)
-        as the frontend: DuckDB's SQL as it is, with DuckDB's semantics."""
+        """The rest of `probe`: the query through the SQLGlot lift
+        (`sverify.sql_lift`), DuckDB's SQL as it is, with DuckDB's semantics."""
         import ibis
         import sqlglot as sg
 
@@ -851,7 +680,6 @@ class Replay:
             kind = "" if type(e).__name__ == "Unsupported" else f"{type(e).__name__}: "
             res.cls, res.reason = "refused", f"lift: {kind}{_clip(str(e), 200)}"
             return res
-        res.translated = "(lifted)"
         plan = json.dumps(lifted.plan)
         schema = lifted.schema.to_pyarrow()
         return self.judge(
@@ -950,19 +778,8 @@ class Replay:
         return res
 
 
-def _issues(sql: str, con: Any) -> list[str]:
-    """The runtime errors and wrap-arounds `verify` cannot rule out."""
-    from sverify.contracts import verify
-
-    try:
-        report = verify(sql, tables={n: con.table(n).schema() for n in con.arrow})
-    except Exception:  # noqa: BLE001
-        return []
-    return [str(i) for i in report.issues]
-
-
 def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
-    """`_issues` of the lifted plan."""
+    """The runtime errors and wrap-arounds `verify` cannot rule out."""
     import ibis
 
     from sverify.contracts import verify
@@ -974,14 +791,6 @@ def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     except Exception:  # noqa: BLE001
         return []
     return [str(i) for i in report.issues]
-
-
-def _datafusion_message(e: BaseException) -> str:
-    """The message of a DataFusion error, without its diagnostic wrapping."""
-    text = str(e)
-    if m := re.search(r'message: "((?:[^"\\]|\\.)*)"', text):
-        text = m.group(1)
-    return _clip(text.removeprefix("DataFusion error: "), 200)
 
 
 def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
@@ -1009,20 +818,8 @@ def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
     return plan
 
 
-def _schema(con: Any, sql: str) -> pa.Schema:
-    """The query's output schema after DataFusion's type coercion (the
-    unanalysed plan's can still say `Int64` for a `CASE` of an integer and a
-    double): the result's, if DataFusion runs it."""
-    from sverify.engine import run_sql
-
-    try:
-        return run_sql(con, sql).schema
-    except Exception:  # noqa: BLE001 - a runtime error: the plan's schema
-        return con.datafusion.sql(sql).schema()
-
-
 def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
-    """Lean's values as a table of DataFusion's output schema: timestamps
+    """Lean's values as a table of the lifted plan's output schema: timestamps
     and dates come back as integer codes."""
     from sverify.testing import EPOCH
 
@@ -1067,19 +864,17 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
     return pa.table(cols, names=[f"c{i}" for i in range(len(cols))])
 
 
-def replay_file(
-    path: Path, rel: str, frontend: str = "datafusion"
-) -> tuple[list[Result], str | None]:
+def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     """The results of one test file, and why it was skipped (if it was)."""
     tf = parse(path.read_text(errors="replace"))
     if tf.skip:
         return [], tf.skip
     with tempfile.TemporaryDirectory(prefix="sverify-slt-") as tmp:
-        return _replay(tf, rel, tmp, frontend), None
+        return _replay(tf, rel, tmp), None
 
 
-def _replay(tf: TestFile, rel: str, tmp: str, frontend: str = "datafusion") -> list[Result]:
-    rp = Replay(rel, frontend)
+def _replay(tf: TestFile, rel: str, tmp: str) -> list[Result]:
+    rp = Replay(rel)
     results: list[Result] = []
     for rec in tf.records:
         # Files a test writes go to a temporary directory.
@@ -1102,7 +897,7 @@ def _replay(tf: TestFile, rel: str, tmp: str, frontend: str = "datafusion") -> l
             results.append(rp.probe(rec))
         except (KeyboardInterrupt, SystemExit):
             raise
-        except BaseException as e:  # noqa: BLE001 - the harness goes on (a DataFusion panic, …)
+        except BaseException as e:  # noqa: BLE001 - the harness goes on (a crash in a native library, …)
             results.append(
                 Result(
                     rel,
@@ -1119,10 +914,10 @@ def _replay(tf: TestFile, rel: str, tmp: str, frontend: str = "datafusion") -> l
     return results
 
 
-def _replay_one(args: tuple[str, str, str]) -> tuple[str, list[dict], str | None]:
-    path, rel, frontend = args
+def _replay_one(args: tuple[str, str]) -> tuple[str, list[dict], str | None]:
+    path, rel = args
     try:
-        results, skip = replay_file(Path(path), rel, frontend)
+        results, skip = replay_file(Path(path), rel)
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException as e:  # noqa: BLE001
@@ -1147,7 +942,7 @@ def _compact(r: dict) -> dict:
     return {
         k: _clip(v, n) if isinstance(v, str) and k != "file" else v
         for k, v in keep.items()
-        if v not in (None, "") and not (k == "translated" and r["cls"] == "agree")
+        if v not in (None, "")
     }
 
 
@@ -1245,14 +1040,14 @@ def test_files(root: Path, areas: Sequence[str]) -> dict[str, list[tuple[str, st
 
 
 def replay_files(
-    files: list[tuple[str, str]], jobs: int, frontend: str = "datafusion"
+    files: list[tuple[str, str]], jobs: int
 ) -> Iterator[tuple[str, list[dict], str | None]]:
     """`_replay_one` on each file, in `jobs` processes. The files a dying
     worker takes down (a crash in a native library) are retried one by one,
     and a file that crashes alone is skipped."""
     broken: list[tuple[str, str]] = []
     with concurrent.futures.ProcessPoolExecutor(jobs) as pool:
-        futures = {pool.submit(_replay_one, (*f, frontend)): f for f in files}
+        futures = {pool.submit(_replay_one, f): f for f in files}
         for fut in concurrent.futures.as_completed(futures):
             try:
                 yield fut.result()
@@ -1261,7 +1056,7 @@ def replay_files(
     for f in sorted(broken):
         with concurrent.futures.ProcessPoolExecutor(1) as pool:
             try:
-                yield pool.submit(_replay_one, (*f, frontend)).result()
+                yield pool.submit(_replay_one, f).result()
             except concurrent.futures.process.BrokenProcessPool:
                 yield f[1], [], "harness: the replay process crashed"
 
@@ -1273,13 +1068,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--out", type=Path, default=LEDGER)
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
-    parser.add_argument(
-        "--frontend",
-        choices=("datafusion", "lift"),
-        default="datafusion",
-        help="DataFusion's SQL producer on the translated SQL (default), or the SQLGlot "
-        "lift on DuckDB's SQL (#239); write the lift's ledgers elsewhere with --out",
-    )
     args = parser.parse_args(argv)
     version = args.version or duckdb_version()
     root = fetch(version)
@@ -1289,7 +1077,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             continue
         results: list[dict] = []
         skipped: dict[str, str] = {}
-        for rel, res, skip in replay_files(files, args.jobs, args.frontend):
+        for rel, res, skip in replay_files(files, args.jobs):
             results += res
             if skip:
                 skipped[rel] = skip

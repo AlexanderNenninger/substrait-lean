@@ -2,8 +2,8 @@
 
 Each test runs a script in a fresh interpreter where importing `datafusion`
 fails, as if the package were not installed: incremental views, pipelines and
-contracts on DuckDB (the default) and Polars; and a clear error for what
-does need DataFusion (its engine, and SQL strings).
+contracts on DuckDB (the default) and Polars, SQL strings (sverify's own lift);
+and a clear error for what does need DataFusion (its engine).
 """
 
 import subprocess
@@ -118,15 +118,23 @@ def test_what_needs_datafusion_says_so():
         from sverify.engine import plan_json, run_plan, written_plan
 
         plan = written_plan(plan_json(con, orders.filter(orders.amount > 10)))
-        for attempt in (
-            lambda: run_plan(con, plan, "datafusion"),
-            lambda: plan_json(con, "SELECT * FROM orders"),
-        ):
-            try:
-                attempt()
-            except ImportError as e:
-                assert "sverify[datafusion]" in str(e), e
-            else:
-                raise AssertionError("expected an ImportError")
+        try:
+            run_plan(con, plan, "datafusion")
+        except ImportError as e:
+            assert "sverify[datafusion]" in str(e), e
+        else:
+            raise AssertionError("expected an ImportError")
+        """
+    )
+
+
+def test_sql_needs_no_datafusion():
+    # SQL strings go through sverify's own lift (SQLGlot).
+    run(
+        """
+        from sverify.engine import plan_json, run_plan, written_plan
+
+        plan = written_plan(plan_json(con, "SELECT id FROM orders WHERE amount > 10"))
+        assert run_plan(con, plan, "duckdb").num_rows >= 0
         """
     )

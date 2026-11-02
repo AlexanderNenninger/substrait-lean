@@ -20,11 +20,12 @@ from sverify.engine import (
     create_table,
     put_table,
     run_checker,
-    run_sql,
     run_substrait_json,
     substrait_json,
 )
-from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows
+from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
+
+pytestmark = pytest.mark.lift_backlog
 
 R = ibis.schema({"a": "int64", "b": "int64", "c": "int64"})
 S = ibis.schema({"b": "int64", "d": "int64"})
@@ -59,7 +60,7 @@ def test_lean_semantics_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", R, r)
     create_table(con, "s", S, s)
-    expected = [tuple(x.values()) for x in run_sql(con, sql).to_pylist()]
+    expected = [tuple(x.values()) for x in duckdb_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": r, "s": s})
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)
@@ -110,7 +111,7 @@ def test_written_plans_run_on_datafusion(sql):
     put_table(con, "f", table)
     plan = substrait_json(con, sql)
     got = run_substrait_json(con, written(plan)).to_pylist()
-    want = run_sql(con, sql).to_pylist()
+    want = duckdb_sql(con, sql).to_pylist()
     assert canonical(tuple(r.values()) for r in got) == canonical(tuple(r.values()) for r in want)
     on_duckdb = duckdb_rows(plan, {"f": table})
     assert canonical(on_duckdb) == canonical(tuple(r.values()) for r in want)
