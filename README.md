@@ -364,7 +364,7 @@ try:
     share(orders)
 except VerificationError as e:
     print(str(e).splitlines()[0])
-# could not prove: no runtime error (division by zero: ($2 % ($2 - 30))), ...
+# could not prove: no runtime error (division by zero: (($2 - 1) / ($2 - 30))), ...
 ```
 
 Errors are what an engine fails on: integer division or remainder by zero,
