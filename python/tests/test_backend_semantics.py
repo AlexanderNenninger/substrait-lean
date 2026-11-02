@@ -413,8 +413,6 @@ def test_constant_casts_truncate_like_datafusion(con):
         ("' 12'", "BIGINT"),
         ("'1_000'", "BIGINT"),
         ("' 1.5'", "DOUBLE"),
-        ("' 2024-01-01'", "TIMESTAMP"),
-        ("'2024-01-01 '", "DATE"),
     ],
 )
 def test_constant_strings_datafusion_cannot_cast_are_refused(con, value, kind):
@@ -425,3 +423,15 @@ def test_constant_strings_datafusion_cannot_cast_are_refused(con, value, kind):
         con.datafusion.sql(sql).to_arrow_table()
     with pytest.raises(ValueError, match="cannot (cast|parse)"):
         sv.verify(sql, tables={"j": {"a": "int64"}})
+
+
+def test_padded_date_strings_are_read_as_duckdb_reads_them():
+    """S8 for dates: DuckDB's SQL reads a date with spaces around it, and a
+    timestamp with spaces before it, as the lift does; DataFusion's cast
+    fails on both."""
+    j = {"j": {"a": "int64"}}
+    for value, kind in [("' 2024-01-01'", "TIMESTAMP"), ("'2024-01-01 '", "DATE")]:
+        sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"
+        assert sv.verify(sql, tables=j, ensures=[f"c = CAST('2024-01-01' AS {kind})"]).proved
+    with pytest.raises(ValueError, match="DuckDB cannot read"):
+        sv.verify("SELECT CAST('2024-01-01 ' AS TIMESTAMP) AS c FROM j", tables=j)

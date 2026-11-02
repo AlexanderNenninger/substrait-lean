@@ -137,6 +137,9 @@ anywhere = st.one_of(edges, st.integers(MIN, MAX), st.integers(-400 * 365 * DAY,
 @settings(max_examples=40, deadline=None)
 @given(values=st.lists(st.one_of(st.none(), anywhere), max_size=8))
 def test_date_part_matches_datafusion(values):
+    # Outside chrono's years, Lean reports an overflow (`test_times_outside_chrono_fail`);
+    # DuckDB computes there.
+    values = [v for v in values if v is None or PART_MIN <= v <= PART_MAX]
     sql = "SELECT " + ", ".join(f"date_part('{p}', ts) AS {p}" for p in PARTS) + " FROM r"
     got, expected = lean_and_datafusion(sql, values)
     assert canonical(got) == canonical(expected)
