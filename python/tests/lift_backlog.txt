@@ -24,8 +24,7 @@ tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[microsecon
 tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[millisecond]
 
 # Tests of other features that wait on the model or the producers: FLOAT
-# columns (#208), `avg` of a DECIMAL as a double (DuckDB's).
-tests/test_reference.py::test_aggregates_of_double_constants[SELECT avg(2.5) AS a FROM f-expected3]
+# columns (#208).
 tests/test_reference.py::test_float_arithmetic_is_refused[SELECT CAST(d AS FLOAT) AS y FROM s-casts to FLOAT]
 tests/test_reference.py::test_float_arithmetic_is_refused[SELECT sqrt(x) AS r FROM s-sqrt of FLOAT]
 tests/test_reference.py::test_float_arithmetic_is_refused[SELECT x + x AS s FROM s-add of FLOAT]

@@ -121,6 +121,7 @@ exact, and a result of more than `p` digits is an overflow error
 | comparisons | — | At the larger scale. | ✓ |
 | `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact. | ✓ |
 | `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
+| `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Not over windows yet. | ✓ (M2) |
 | `/` | — | **Refused** (apart from sverify's own `sverify_decimal_div`, a decimal by an integer, which is how a windowed `AVG` is written). | ✓ |
 | declared output type | If the plan declares a precision, it is used. A declared scale that differs from the exact one is refused. | | ✓ |
 | mixed with a double | **Refused**; cast one side. | | ✓ |

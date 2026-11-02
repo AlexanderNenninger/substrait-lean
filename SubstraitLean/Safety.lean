@@ -437,6 +437,8 @@ def Expr.nonZero (env : List AVal) (fs : List Fact) (ks : Assumptions) (x : Expr
       (!(ac.nonBool || ac.ff) || e.nonZero (c.refineNeg env) fs (c.cstrs false ++ ks))
   -- A product of non-zero integers (exact in the model; overflow is an error).
   | .bin .mul a b => a.nonZero env fs ks && b.nonZero env fs ks
+  -- A non-zero integer is a non-zero double (`FloatCode.ofInt_ne_zero`).
+  | .un .itof a => a.nonZero env fs ks
   | _ => false
 
 def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) :
@@ -521,6 +523,12 @@ theorem Expr.nonZero_sound {env : List AVal} {fs : List Fact} {ks : Assumptions}
       subst hj
       exact Int.mul_ne_zero (Expr.nonZero_sound h hfs hks a hc.1 x ha)
         (Expr.nonZero_sound h hfs hks b hc.2 y hb)
+    · rename_i a
+      simp only [eval] at hj
+      cases ha : a.eval row <;> simp [ha, UnFn.apply] at hj
+      rename_i i
+      subst hj
+      exact FloatCode.ofInt_ne_zero (Expr.nonZero_sound h hfs hks a hc i ha)
     · simp at hc
 
 theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}

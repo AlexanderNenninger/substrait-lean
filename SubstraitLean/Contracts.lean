@@ -998,10 +998,10 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case itof =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
-    · have := FloatCode.finite_bounds (FloatCode.ofFloat (Float.ofInt i))
+    · have := FloatCode.ofInt_bounds i
       refine ⟨⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩, by simp [UnFn.abs, hb],
         ?_, ?_⟩ <;> intro x hx <;> simp only [Option.some.injEq] at hx <;> subst hx <;>
-        simp only [FloatCode.ofInt] <;> omega
+        omega
     all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fmath f =>

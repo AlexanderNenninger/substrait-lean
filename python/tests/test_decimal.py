@@ -115,6 +115,18 @@ def test_avg_rounds_half_away_from_zero(con):
     assert lean(con, G.aggregate(v=G.x.mean())) == [("-0.007500",)]
 
 
+def test_duckdb_sql_averages_a_decimal_as_a_double(con):
+    """DuckDB types the `AVG` of a DECIMAL as a DOUBLE: the exact sum, as a
+    double, by the count; NULL without values."""
+    sql = "SELECT k, avg(x) AS v, sum(x) AS s, count(x) AS n FROM g GROUP BY k ORDER BY k"
+    assert lean(con, sql) == [
+        (1, 0.006667, "0.02", 3),
+        (2, -0.05, "-0.05", 1),
+        (3, None, None, 0),
+    ]
+    assert lean(con, "SELECT avg(x) AS v FROM g") == [(-0.0075,)]
+
+
 def test_avg_over_a_window(con):
     """Over a window too: the frame's `SUM` by its `COUNT`, at scale 6."""
     windowed = G.select("k", v=G.x.mean().over(group_by="k")).order_by("k")
