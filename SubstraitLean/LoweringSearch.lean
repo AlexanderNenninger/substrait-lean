@@ -286,13 +286,22 @@ def schema? : UnFn → Option Tm
         (.lit (.int m))) (.lit (.int h))) x)
   | .fmath f =>
     let x := Tm.field 0
-    let fE := fmathTerm f
-    let bound (get : Lean.Name) (v : Int) (l : String) : Tm :=
-      namedInt v (mkApp3 (Lean.mkConst ``Option.getD [Level.zero]) (Lean.mkConst ``Int)
-        (mkApp (Lean.mkConst get) fE) (toExpr (0 : Int))) l
-    let lo := f.lo?.map fun v => ltFn x (bound ``FMath.lo? v s!"lo({f.name})")
+    -- The bounds as `FMath.lo?` and `FMath.hi?` write them, by name, so that
+    -- the proofs treat `±1` and `±∞` as the variables they generalize to.
+    let c (n : Lean.Name) := Lean.mkConst n
+    let op (h i inst : Lean.Name) (a : Lean.Expr) : Lean.Expr :=
+      mkApp6 (Lean.mkConst h [Level.zero, Level.zero, Level.zero]) (c ``Int) (c ``Int) (c ``Int)
+        (mkApp2 (Lean.mkConst i [Level.zero]) (c ``Int) (c inst)) a (toExpr (1 : Int))
+    let term (v : Int) : Lean.Expr :=
+      if v == FloatCode.negOne then c ``FloatCode.negOne
+      else if v == FloatCode.one then c ``FloatCode.one
+      else if v == FloatCode.negInf + 1 then op ``HAdd.hAdd ``instHAdd ``Int.instAdd (c ``FloatCode.negInf)
+      else if v == FloatCode.posInf - 1 then op ``HSub.hSub ``instHSub ``Int.instSub (c ``FloatCode.posInf)
+      else toExpr v
+    let bound (v : Int) (l : String) : Tm := namedInt v (term v) l
+    let lo := f.lo?.map fun v => ltFn x (bound v s!"lo({f.name})")
     let hi := f.hi?.map fun v =>
-      andFn (ltFn (bound ``FMath.hi? v s!"hi({f.name})") x) (notFn (eqFn x nanT))
+      andFn (ltFn (bound v s!"hi({f.name})") x) (notFn (eqFn x nanT))
     let g := match lo, hi with
       | some a, some b => some (orFn a b)
       | some a, none => some a
@@ -448,7 +457,8 @@ def nativeTac (unfold : Array Name) : TermElabM Syntax := do
 engine's, and the reference's, and the lemmas `extra`), split on the
 arguments' kinds and on the comparisons the template and the profile make,
 and compute. -/
-def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM Syntax := do
+def templateTac (unfold natives extra : Array Name) (unary : Bool) (shifts : Bool := false) :
+    TermElabM Syntax := do
   let preNames := #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
     ``Outcome.ok_bind, ``Lowering.ref_isNum, ``Lowering.ref_isNull, ``Lowering.ref_not,
     ``Lowering.ref_raise, ``Lowering.ref_eq, ``Lowering.ref_lt, ``Lowering.ref_and,
@@ -467,6 +477,16 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM S
     #[`hP, `hN, `hQ, `hO, `hM].mapM fun h => `(Lean.Parser.Tactic.simpLemma| $(mkIdent h):ident)
   let ref := ref ++ eqs
   let fin := (← simpArgs (unfold ++ extra ++ #[``Issue.isError, ``Outcome.Agree])) ++ eqs
+  -- A shift by `y`: one case per `y` in `0`–`63` (and below, above), so that
+  -- each computes with a literal `2ʸ` (`schemaBin?`'s `CASE` of constants).
+  let split ← if !shifts then `(tactic| skip) else do
+    let ks := (List.range 64).map toString
+    let disj := " ∨ ".intercalate ("b < 0" :: ks.map (s!"b = {·}")) ++ " ∨ 64 ≤ b"
+    let pats := " | ".intercalate ("hb" :: ks.map (fun _ => "rfl")) ++ " | hb"
+    let src := s!"all_goals try (rename_i a b; rcases (show {disj} by omega) with {pats})"
+    match Parser.runParserCategory (← getEnv) `tactic src with
+    | .ok stx => pure ⟨stx⟩
+    | .error e => throwError "shift split: {e}"
   let cases ← if unary then `(tactic| (rename_i x; cases x))
     else `(tactic| (rename_i x y; cases x <;> cases y))
   let codes := #[(``FloatCode.posInf, `cP, `hP), (``FloatCode.negInf, `cN, `hN),
@@ -486,8 +506,9 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM S
     intros
     simp (config := { decide := true }) only [$pre,*]
     $cases:tactic <;> simp (config := { failIfUnchanged := false, decide := true }) only [$vals,*]
+    $split:tactic
     all_goals first
-      | with_reducible exact Outcome.agree_refl _
+      | exact Outcome.agree_refl _
       | (simp (config := { failIfUnchanged := false, decide := true }) only [$ref,*] at *
          iterate 70
            all_goals try
@@ -661,7 +682,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
           continue
       rest := rest.push (c, unary)
     for (c, unary) in rest do
-      let tac ← templateTac unfold natives extra unary
+      let tac ← templateTac unfold natives extra unary (c == ``BinFn.bit)
       let ks := (← withCurrHeartbeats (instances c unary)).getD [⟨c, unary, #[]⟩]
       let mut done := #[]
       for k in ks do

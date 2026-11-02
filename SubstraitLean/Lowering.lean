@@ -158,6 +158,14 @@ theorem Lowering.bin_agree_of_eq {p : Profile} {f : BinFn}
     (p.bin f x y).Agree (Profile.reference.bin f x y) := by
   rw [h]; exact Outcome.agree_refl _
 
+/-! `floor`, which the guard of `power` compares with its argument. -/
+
+theorem Lowering.apply_ffloor_int (c : Int) : UnFn.apply .ffloor (.int c) = .int (FloatCode.floor c) := rfl
+theorem Lowering.apply_ffloor_null : UnFn.apply .ffloor .null = .null := rfl
+theorem Lowering.apply_ffloor_bool (b : Bool) : UnFn.apply .ffloor (.bool b) = .null := rfl
+theorem Lowering.apply_ffloor_str (t : String) : UnFn.apply .ffloor (.str t) = .null := rfl
+theorem Lowering.apply_ffloor_list (vs : List Value) : UnFn.apply .ffloor (.list vs) = .null := rfl
+
 /-! `<<` and `>>` as the templates compute them (`LoweringSearch.schemaBin?`). -/
 
 theorem Lowering.shl_toInt (a : Int) (n : Nat) (h : n < 64) :
@@ -183,16 +191,28 @@ theorem Lowering.bmod_fit (x : Int) : Int.bmod x (2 ^ 64) = (x + 2 ^ 63) % 2 ^ 6
   split <;> omega
 
 /-- A left shift wraps `a · 2ᵇ` around at 64 bits. -/
+-- The conditions as the templates' guards compare (`b < 0`, `b < 64`), so
+-- that the proofs' case splits decide them.
 theorem Lowering.shl_apply (a b : Int) : BitOp.apply .shl a b =
-    if 0 ≤ b ∧ b < 64 then some ((a * 2 ^ b.toNat + 2 ^ 63) % 2 ^ 64 - 2 ^ 63) else none := by
+    if b < 0 then none
+    else if b < 64 then some ((a * 2 ^ b.toNat + 2 ^ 63) % 2 ^ 64 - 2 ^ 63) else none := by
   simp only [BitOp.apply]
-  split
-  · rename_i h
-    rw [Lowering.shl_toInt a b.toNat (by omega), Lowering.bmod_fit]
-  · rfl
+  by_cases h0 : b < 0
+  · simp [h0]; omega
+  · by_cases h1 : b < 64
+    · rw [if_pos (by omega), if_neg h0, if_pos h1, Lowering.shl_toInt a b.toNat (by omega),
+        Lowering.bmod_fit]
+    · rw [if_neg (by omega), if_neg h0, if_neg h1]
 
 theorem Lowering.shr_apply (a b : Int) : BitOp.apply .shr a b =
-    if 0 ≤ b ∧ b < 64 then some ((BitVec.ofInt 64 a).sshiftRight b.toNat).toInt else none := rfl
+    if b < 0 then none
+    else if b < 64 then some ((BitVec.ofInt 64 a).sshiftRight b.toNat).toInt else none := by
+  simp only [BitOp.apply]
+  by_cases h0 : b < 0
+  · simp [h0]; omega
+  · by_cases h1 : b < 64
+    · rw [if_pos (by omega), if_neg h0, if_pos h1]
+    · rw [if_neg (by omega), if_neg h0, if_neg h1]
 
 /-- A template for the unary function `f` under `p`. -/
 structure UnEntry (p : Profile) (f : UnFn) where

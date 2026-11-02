@@ -47,7 +47,9 @@ generate_lowering duckdbOff : Profile.duckdb { errorOnDivZero := false }
   using [Lowering.ref_fit, Lowering.apply_fit_int, Lowering.apply_fit_null, Lowering.apply_fit_bool,
     Lowering.apply_fit_str, Lowering.apply_fit_list, IntWidth.fit, IntWidth.lo, IntWidth.hi,
     IntWidth.half, IntWidth.modulus, Lowering.tmod_add_tmod, Profile.duckdb_imod_pos,
-    Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow]
+    Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow,
+    Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
+    Lowering.apply_ffloor_str, Lowering.apply_ffloor_list]
   excluding [UnFn.fit]
 
 generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
@@ -56,7 +58,9 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
   using [Lowering.ref_fit, Lowering.apply_fit_int, Lowering.apply_fit_null, Lowering.apply_fit_bool,
     Lowering.apply_fit_str, Lowering.apply_fit_list, IntWidth.fit, IntWidth.lo, IntWidth.hi,
     IntWidth.half, IntWidth.modulus, Lowering.tmod_add_tmod, Profile.duckdb_imod_pos,
-    Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow]
+    Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow,
+    Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
+    Lowering.apply_ffloor_str, Lowering.apply_ffloor_list]
   excluding [UnFn.fit]
 
 /-- The generated lowering to DuckDB under settings `s`, with IEEE operations
