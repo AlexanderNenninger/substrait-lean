@@ -43,6 +43,10 @@ PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 
 @dataclass(frozen=True)
 class DuckDBDialect(Dialect):
+    # DuckDB computes decimals exactly (#27): `+`, `-` and `×` at the types the
+    # reference gives them, casts rounding half away from zero.
+    decimals: bool = True
+
     def type_name(self, kind: Kind) -> str:
         return "DOUBLE" if kind == "float" else super().type_name(kind)
 

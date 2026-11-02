@@ -127,9 +127,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-impossible-travel": {
@@ -157,9 +157,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-reconciliation": {
@@ -169,7 +169,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
-   "snowflake": "sql"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-double-entry-check": {
@@ -177,9 +177,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-ar-aging": {
@@ -187,9 +187,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "differs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-rfm": {
@@ -197,9 +197,9 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 18, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
   }
  },
  "fin-dormant-reactivation": {
@@ -1060,9 +1060,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpcds-q07": {
@@ -1070,9 +1077,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpcds-q27": {
@@ -1100,9 +1114,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpcds-q51": {
@@ -1150,9 +1171,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q02": {
@@ -1160,9 +1188,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "duckdb": "refused: min of this type is not supported",
+   "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
-   "snowflake": "refused: min of this type is not supported"
+   "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q03": {
@@ -1170,9 +1205,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q04": {
@@ -1183,6 +1225,13 @@
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q05": {
@@ -1190,9 +1239,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q06": {
@@ -1200,9 +1256,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q07": {
@@ -1210,9 +1273,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q08": {
@@ -1220,9 +1290,19 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "division by zero: (DECIMAL_TO_DOUBLE_4($1) /. DECIMAL_TO_DOUBLE_4($2))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q09": {
@@ -1230,9 +1310,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q10": {
@@ -1240,9 +1327,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q11": {
@@ -1250,9 +1344,19 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "overflow: DECIMAL_38_6(($0 * DECIMAL_4_4(1)))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q12": {
@@ -1263,6 +1367,13 @@
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q13": {
@@ -1273,6 +1384,13 @@
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": false
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q14": {
@@ -1280,9 +1398,20 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "overflow: DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))",
+    "division by zero: (DECIMAL_TO_DOUBLE_5(DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))) /. DECIMAL_TO_DOUBLE_4($1))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q15": {
@@ -1290,9 +1419,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q16": {
@@ -1300,9 +1436,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "duckdb": "runs (DataFusion's SQL differs)",
+   "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": false
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q17": {
@@ -1310,9 +1453,19 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "overflow: DECIMAL_21_7(($23 * DECIMAL_1_1(2)))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q18": {
@@ -1320,9 +1473,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q19": {
@@ -1330,9 +1490,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q20": {
@@ -1340,9 +1507,19 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "may_fail": [
+    "overflow: DECIMAL_27_3(($6 * DECIMAL_1_1(5)))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpch-q21": {
@@ -1353,6 +1530,13 @@
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpch-q22": {
@@ -1360,9 +1544,16 @@
   "incremental": false,
   "datafusion": "runs",
   "engines": {
-   "polars": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "duckdb": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)",
-   "snowflake": "refused: error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
+   "duckdb": "runs",
+   "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 15, \"scale\": 2}}",
+   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "win-dedup-latest": {

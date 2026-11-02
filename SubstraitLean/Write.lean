@@ -111,7 +111,7 @@ def UnFn.anchor : UnFn → Nat
   | .itof | .ftoi | .narrow _ | .itos | .toDate | .regexMatch _ | .timeOfDay | .asTime => 0
   -- Not a function: the arithmetic inside is written at its width.
   | .wrap _ => 0
-  -- Decimals are not written yet (`Rel.decimalOps`).
+  -- Decimals are written as casts and typed calls (`writeExpr`).
   | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => 0
   -- Lists and structs; field and element access are references, not calls.
   | .cardinality => 401
@@ -310,6 +310,11 @@ def writeLitBody (k : WKind) (v : Value) : Json :=
     obj [("list", obj [("values", Json.arr (vs.attach.map fun ⟨v, _⟩ => writeLitBody e v).toArray)])]
   | .struct _, .null => obj [("null", kindType k.toKind)]
   | .struct _, .list vs => obj [("struct", obj [("fields", Json.arr (vs.map writeValue).toArray)])]
+  -- A decimal is its unscaled integer (#27).
+  | .dec p s, .int m => obj [("decimal", obj [
+      ("value", toJson (Base64.encode (Base64.leBytes16 m))),
+      ("precision", toJson p), ("scale", toJson s)])]
+  | .dec _ _, .null => obj [("null", kindType k.toKind)]
   -- A bare double, which no context types (#96).
   | _, .int c => if isDoubleCode c then obj [("fp64", writeDouble c)] else writeValue (.int c)
   | _, v => writeValue v
@@ -369,6 +374,58 @@ partial def paramRefs : Json → Json
       if k == "rootReference" then ("lambdaParameterReference", obj []) else (k, paramRefs v))
   | j => j
 
+/-! ### Decimals (#27)
+
+The parser computes a decimal as its unscaled integer: `Parse.decimalCall`
+brings operands to one scale with `Parse.upscale` (`x · 10ᵏ`) and checks the
+result's precision with `UnFn.decimal`; a decimal cast rescales the same way.
+The writer undoes that: it writes the Substrait call or cast the parser reads
+back as the same `Expr` (the round trip checks it). A bare `dmul` by a power
+of ten is only ever an `upscale`. -/
+
+/-- `10ᵏ` for `k ≥ 1`. -/
+def isPow10 (n : Int) : Bool :=
+  let t := toString n
+  n > 1 && t.toList == '1' :: List.replicate (t.length - 1) '0'
+
+def decType (p s : Nat) : Json := kindType (.dec p s)
+
+/-- A call with a declared output type (the parser takes a decimal result's
+precision from it). -/
+def callTyped (anchor : Nat) (args : List Json) (ty : Json) : Json :=
+  obj [("scalarFunction", obj [
+    ("functionReference", toJson anchor),
+    ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
+    ("outputType", ty)])]
+
+def castTo (ty input : Json) : Json :=
+  obj [("cast", obj [("type", ty), ("input", input),
+    ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+
+/-- A `DECIMAL(p, s)` literal of unscaled value `m`. -/
+def decimalLit (p s : Nat) (m : Int) : Json := writeLit (.dec p s) (.int m)
+
+/-- An operand `x · n` of decimal `+` or `-`, written as `x` where `n` is the
+power of ten `Parse.upscale` brought it to the common scale with (it always
+is; the parser rescales it again). -/
+def upscaled (n : Int) (x : Json) : Json :=
+  if isPow10 n then x else call 6 [x, writeLit .int (.int n)]
+
+/-- A comparison (`anchor`) of decimals `x` and `y`, one of which (`left`
+or not) the parser brought to the common scale by `· n`: written without it,
+since the parser rescales it again. -/
+def decimalCompare (anchor : Nat) (n : Int) (left : Bool) (x y : Json) : Json :=
+  if isPow10 n then call anchor [x, y]
+  else
+    let scaled (z : Json) := call 6 [z, writeLit .int (.int n)]
+    call anchor (if left then [scaled x, y] else [x, scaled y])
+
+/-- The scale of a decimal, `0` for an integer (`Parse.decType?`). -/
+def decScale? : WKind → Option Nat
+  | .dec _ s => some s
+  | .int => some 0
+  | _ => none
+
 /-- Write `e` over input columns of kinds `cols`; `ctx` is the kind a literal
 at the top should be written as. -/
 def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
@@ -376,6 +433,53 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .field i => obj [("selection", obj [
       ("directReference", obj [("structField", obj [("field", toJson i)])]),
       ("rootReference", obj [])])]
+  -- Decimals (#27): see above. The operands of `+`, `-` and comparisons
+  -- are written without their `upscale`.
+  | .un (.decimal p s) (.lit (.int m)) => decimalLit p s m
+  | .un (.decimal p s) (.bin .dadd (.bin .dmul x (.lit (.int n))) b) =>
+    let wa := upscaled n (writeExpr cols (wkind cols x) x)
+    callTyped 4 [wa, writeExpr cols (wkind cols b) b] (decType p s)
+  | .un (.decimal p s) (.bin .dadd a (.bin .dmul x (.lit (.int n)))) =>
+    let wb := upscaled n (writeExpr cols (wkind cols x) x)
+    callTyped 4 [writeExpr cols (wkind cols a) a, wb] (decType p s)
+  | .un (.decimal p s) (.bin .dadd a b) =>
+    callTyped 4 [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+  | .un (.decimal p s) (.bin .dsub (.bin .dmul x (.lit (.int n))) b) =>
+    let wa := upscaled n (writeExpr cols (wkind cols x) x)
+    callTyped 5 [wa, writeExpr cols (wkind cols b) b] (decType p s)
+  | .un (.decimal p s) (.bin .dsub a (.bin .dmul x (.lit (.int n)))) =>
+    let wb := upscaled n (writeExpr cols (wkind cols x) x)
+    callTyped 5 [writeExpr cols (wkind cols a) a, wb] (decType p s)
+  | .un (.decimal p s) (.bin .dsub a b) =>
+    let wb := writeExpr cols (wkind cols b) b
+    -- `negate`: `0 - b` at `b`'s own type.
+    if a == .lit (.int 0) && wkind cols b == .dec p s then call 3 [wb]
+    else callTyped 5 [writeExpr cols (wkind cols a) a, wb] (decType p s)
+  -- `CAST(a AS DECIMAL(p, s))` to a larger scale is an `upscale`; otherwise
+  -- this is a product.
+  | .un (.decimal p s) (.bin .dmul a (.lit (.int n))) =>
+    let wa := writeExpr cols (wkind cols a) a
+    let k := (toString n).length - 1
+    if isPow10 n && (decScale? (wkind cols a)).map (· + k) == some s then castTo (decType p s) wa
+    else callTyped 6 [wa, writeLit .int (.int n)] (decType p s)
+  | .un (.decimal p s) (.bin .dmul a b) =>
+    callTyped 6 [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+  | .un (.decimal p s) (.un (.dround _) a) | .un (.decimal p s) (.un (.ftod _) a) =>
+    castTo (decType p s) (writeExpr cols (wkind cols a) a)
+  | .un (.decimal p s) a => castTo (decType p s) (writeExpr cols (wkind cols a) a)
+  | .un (.narrow n) (.un (.dtrunc _) a) =>
+    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else if n ≤ 32 then "i32" else "i64"
+    castTo (obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]) (writeExpr cols (wkind cols a) a)
+  | .un (.dtrunc _) a => castTo i64Type (writeExpr cols (wkind cols a) a)
+  | .un (.dtof _) a => castTo fp64Type (writeExpr cols (wkind cols a) a)
+  | .bin .lt (.bin .dmul a (.lit (.int n))) b =>
+    decimalCompare 8 n true (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .eq (.bin .dmul a (.lit (.int n))) b =>
+    decimalCompare 7 n true (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .lt a (.bin .dmul b (.lit (.int n))) =>
+    decimalCompare 8 n false (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
+  | .bin .eq a (.bin .dmul b (.lit (.int n))) =>
+    decimalCompare 7 n false (writeExpr cols (wkind cols a) a) (writeExpr cols (wkind cols b) b)
   | .un .itof a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .int a)])]
   | .un .toDate a => obj [("cast", obj [("type", obj [("date", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .time a)])]
@@ -504,8 +608,8 @@ def sumKind : WKind → WKind
   | .dec p s => .dec (min 38 (p + 10)) s
   | _ => .int
 
-/-- Does the expression compute with decimals (#27)? The engines get no plans
-with these until they emulate the reference's decimals. -/
+/-- Does the expression compute with decimals (#27)? DataFusion gets no plans
+with these: it does not compute decimals as the reference does. -/
 def _root_.Substrait.Expr.decimalOps : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
@@ -597,6 +701,15 @@ def writeBound : FrameBound → Json
   | .preceding k => obj [("preceding", obj [("offset", toJson (toString k))])]
   | .following k => obj [("following", obj [("offset", toJson (toString k))])]
 
+/-- A measure's argument. A decimal `SUM`'s is marked by `UnFn.decimal` at
+its own type (`Parse.parseMeasure`), which the parser adds again (#27). -/
+def measureArg (cols : List WKind) (m : Measure) : Json :=
+  match m.fn, m.arg with
+  | .sum, .un (.decimal p s) x =>
+    if wkind cols x == .dec p s then writeExpr cols (wkind cols x) x
+    else writeExpr cols (wkind cols m.arg) m.arg
+  | _, _ => writeExpr cols (wkind cols m.arg) m.arg
+
 /-- A window function over input columns of kinds `cols`. -/
 def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f : WinFn) : Json :=
   let col (i : Nat) := writeExpr cols .other (.field i)
@@ -611,7 +724,7 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     | .percentRank _ => (72, [], .all)
     | .cumeDist _ => (73, [], .all)
     | .ntile k => (74, [writeLit .int (.int k)], .all)
-    | .agg m _ fr => (Write.AggFn.anchor m.fn, [writeExpr cols (wkind cols m.arg) m.arg], fr)
+    | .agg m _ fr => (Write.AggFn.anchor m.fn, [measureArg cols m], fr)
     | .firstValue c _ fr => (75, [col c], fr)
     | .lastValue c _ fr => (76, [col c], fr)
     | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
@@ -625,7 +738,7 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
 def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
-  let arg := writeExpr cols (wkind cols m.arg) m.arg
+  let arg := measureArg cols m
   let decimal := obj [("decimal", obj [("precision", toJson 38), ("scale", toJson 0),
     ("nullability", "NULLABILITY_NULLABLE")])]
   let arg := if df && m.fn matches .sum then obj [("cast", obj [("type", decimal), ("input", arg)])]
@@ -662,6 +775,65 @@ def readsOnly (p : Nat → Bool) (e : Expr) : Bool :=
   let (reads, all) := go e
   reads && all
 
+/-- An `AggregateRel` of the written input `input`, whose columns have kinds
+`ks`. -/
+def aggregateJson (df : Bool) (input : Json) (ks : List WKind) (gs : List Expr)
+    (ms : List Measure) (out : Option (List Nat)) : Json :=
+  let agg := withCommon "aggregate" [
+    ("input", input),
+    ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
+    ("groupings", if gs.isEmpty then Json.arr #[] else
+      Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
+    ("measures", Json.arr (ms.map (writeMeasure df ks)).toArray)]
+  -- The DECIMAL sums (`writeMeasure`), cast back to `i64` by a project.
+  let sums := (ms.zipIdx.filter fun (m, _) => df && m.fn matches .sum).map (gs.length + ·.2)
+  if sums.isEmpty then agg out else
+    let n := gs.length + ms.length
+    let back := sums.map fun i => obj [("cast", obj [("type", i64Type),
+      ("input", writeExpr [] .other (.field i)),
+      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+    let cols := (List.range n).map fun j => match sums.idxOf? j with
+      | some k => n + k
+      | none => j
+    withCommon "project" [("input", agg none), ("expressions", Json.arr back.toArray)]
+      (some (match out with
+        | none => cols
+        | some o => o.map (cols.getD · 0)))
+
+/-- The decimal `AVG`s of `Parse.decimalAvgs` (#27): an emit `m` of the
+quotients `qs` over an aggregate with `g` groups whose last measures count the
+inputs of the `AVG`s' sums. Gives the measures as written, `avg` in place of
+those sums, and the emit over their aggregate's columns. -/
+def decimalAvgsOf (g : Nat) (ms : List Measure) (qs : List Expr) (m : List Nat) :
+    Option (List Measure × List Nat) := do
+  let k := qs.length
+  if k == 0 || ms.length < k then none
+  let n := ms.length - k
+  let avgs ← qs.zipIdx.mapM fun (q, j) => match q with
+    | .un (.dkind p' s') (.bin .ddiv (.bin .dmul (.field c) (.lit (.int 10000))) (.field c')) =>
+      if g ≤ c && c < g + n && c' == g + n + j then
+        match ms[c - g]?, ms[n + j]? with
+        | some sm, some cm => match sm.fn, sm.arg with
+          | .sum, .un (.decimal p s) x =>
+            if p' == min 38 (p + 4) && s' == s + 4 && cm == { sm with fn := .count } then
+              some (c - g, x)
+            else none
+          | _, _ => none
+        | _, _ => none
+      else none
+    | _ => none
+  let total := g + n + k
+  let canon := List.range g ++ (List.range n).map fun i =>
+    match avgs.findIdx? (·.1 == i) with
+    | some j => total + j
+    | none => g + i
+  let emit ← m.mapM canon.idxOf?
+  let written := (ms.take n).zipIdx.map fun (sm, i) =>
+    match avgs.find? (·.1 == i) with
+    | some (_, x) => { sm with fn := .avg, arg := x }
+    | none => sm
+  return (written, emit)
+
 /-- Write a relation; `emit` is an output mapping to put on its `RelCommon`.
 
 With `df`, write it for DataFusion to run (`--write-datafusion`), compensating
@@ -671,6 +843,20 @@ back, which fails outside 64 bits instead. Such a plan does not parse back to
 the same `Rel`. -/
 def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
     (hint : List WKind := []) : Rel → Option (List Nat) → Json
+  -- Decimal `AVG`s, written back as `avg` measures (`decimalAvgsOf`).
+  | .emit p@(.project (.aggregate r gs ms) qs) m, out =>
+    match decimalAvgsOf gs.length ms qs m with
+    | some (ms', m') =>
+      aggregateJson df (writeRel schemas cat df [] r none) (relKinds schemas cat r) gs ms'
+        (some (match out with
+          | none => m'
+          | some o => o.map (m'.getD · 0)))
+    | none =>
+      let h := (List.range (relKinds schemas cat p).length).map fun c =>
+        ((m.idxOf? c).bind (hint[·]?)).getD .other
+      writeRel schemas cat df h p (some (match out with
+        | none => m
+        | some o => o.map (m.getD · 0)))
   | .emit r m, out =>
     -- `hint` is for the emitted columns; `r`'s column `c` is emitted at `m.idxOf c`.
     let h := (List.range (relKinds schemas cat r).length).map fun c =>
@@ -755,27 +941,7 @@ def writeRel (schemas : Schemas) (cat : Catalog) (df : Bool := false)
         ("groupings", Json.arr #[obj [("expressionReferences",
           Json.arr ((List.range ks.length).map toJson).toArray)]])] out
   | .aggregate r gs ms, out =>
-      let ks := relKinds schemas cat r
-      let agg := withCommon "aggregate" [
-        ("input", writeRel schemas cat df [] r none),
-        ("groupingExpressions", Json.arr (gs.map fun g => writeExpr ks (wkind ks g) g).toArray),
-        ("groupings", if gs.isEmpty then Json.arr #[] else
-          Json.arr #[obj [("expressionReferences", toJson (List.range gs.length))]]),
-        ("measures", Json.arr (ms.map (writeMeasure df ks)).toArray)]
-      -- The DECIMAL sums (`writeMeasure`), cast back to `i64` by a project.
-      let sums := (ms.zipIdx.filter fun (m, _) => df && m.fn matches .sum).map (gs.length + ·.2)
-      if sums.isEmpty then agg out else
-        let n := gs.length + ms.length
-        let back := sums.map fun i => obj [("cast", obj [("type", i64Type),
-          ("input", writeExpr [] .other (.field i)),
-          ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
-        let cols := (List.range n).map fun j => match sums.idxOf? j with
-          | some k => n + k
-          | none => j
-        withCommon "project" [("input", agg none), ("expressions", Json.arr back.toArray)]
-          (some (match out with
-            | none => cols
-            | some o => o.map (cols.getD · 0)))
+      aggregateJson df (writeRel schemas cat df [] r none) (relKinds schemas cat r) gs ms out
   | .unnest r c, out => withCommon "extensionSingle" [
       ("input", writeRel schemas cat df [] r none),
       ("detail", obj [("@type", "type.googleapis.com/sverify.Unnest"), ("column", toJson c)])] out

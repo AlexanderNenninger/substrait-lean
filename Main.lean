@@ -113,10 +113,16 @@ def check (plan : Plan) : IO UInt32 := do
   return 0
 
 def write (df : Bool) (plan : Plan) : IO UInt32 := do
-  -- The engines do not emulate the reference's decimals yet (#27).
+  -- Decimals (#27) are written back as Substrait's own calls and casts where
+  -- that parses back to the same plan; DataFusion does not compute them as
+  -- the reference does.
   if plan.root.decimalOps then
-    IO.eprintln "error: decimal arithmetic, casts and literals are not supported on the engines yet (#27)"
-    return 1
+    if df then
+      IO.eprintln "error: DataFusion does not compute decimals as the reference does (#27)"
+      return 1
+    if !Write.roundtrips plan then
+      IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
+      return 1
   if df then
     if plan.root.anyExpr Expr.nestedAccess then
       IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"

@@ -192,7 +192,7 @@ def from_lean(plan: dict, rows: list[tuple]) -> list[tuple]:
     ks = kinds(parse_plan(plan).root)
     us = dt.timedelta(microseconds=1)
 
-    def value(v: object, k: str | None) -> object:
+    def value(v: object, k: object) -> object:
         if v is None or not isinstance(v, int):
             return v
         if k == "time":

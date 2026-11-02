@@ -27,6 +27,18 @@ q = (
     .limit(100)
 )
 '''
+requires = '''
+{
+    'date_dim': [sv.unique('d_date_sk')],
+    'store_sales': [_.ss_quantity.between(1, 100), _.ss_list_price.between(1, 300), _.ss_sales_price.between(0, 300), _.ss_coupon_amt.between(0, 30000), _.ss_ext_sales_price.between(0, 30000)],
+    'item': [sv.unique('i_item_sk')],
+}
+'''
+ensures = '''
+[
+    _.sum_agg >= 0,
+]
+'''
 
 [[query]]
 id = "tpcds-q07"
@@ -61,6 +73,20 @@ q = (
     .order_by("i_item_id")
     .limit(100)
 )
+'''
+requires = '''
+{
+    'store_sales': [_.ss_quantity.between(1, 100), _.ss_list_price.between(1, 300), _.ss_sales_price.between(0, 300), _.ss_coupon_amt.between(0, 30000), _.ss_ext_sales_price.between(0, 30000)],
+    'date_dim': [sv.unique('d_date_sk')],
+    'item': [sv.unique('i_item_sk')],
+    'customer_demographics': [sv.unique('cd_demo_sk')],
+    'promotion': [sv.unique('p_promo_sk')],
+}
+'''
+ensures = '''
+[
+    sv.unique('i_item_id'),
+]
 '''
 
 [[query]]
@@ -136,6 +162,19 @@ q = (
     .order_by([ibis.desc("revenue"), "d_year", "i_category"])
     .limit(100)
 )
+'''
+requires = '''
+{
+    'date_dim': [sv.unique('d_date_sk')],
+    'store_sales': [_.ss_quantity.between(1, 100), _.ss_list_price.between(1, 300), _.ss_sales_price.between(0, 300), _.ss_coupon_amt.between(0, 30000), _.ss_ext_sales_price.between(0, 30000)],
+    'item': [sv.unique('i_item_sk')],
+}
+'''
+ensures = '''
+[
+    _.revenue >= 0,
+    sv.unique('d_year', 'i_category'),
+]
 '''
 
 [[query]]

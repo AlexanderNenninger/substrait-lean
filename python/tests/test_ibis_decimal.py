@@ -17,7 +17,7 @@ import pytest
 from ibis import _
 
 from sverify.contracts import decode_double
-from sverify.engine import connect, put_table
+from sverify.engine import connect, put_table, run_plan, written_plan
 from sverify.ibis_substrait import exact, to_substrait
 from sverify.testing import inline_tables, lean_values
 
@@ -111,3 +111,75 @@ def test_decimal_arithmetic_is_exact():
     plan = json.dumps(to_substrait(li.select(x=li.price * (1 - li.disc))))
     assert '"scale": 2' in plan
     assert "cast" not in plan
+
+
+# --------------------------------------------------------------------------
+# DuckDB runs decimal plans as the reference computes them (#27)
+
+ed = ibis.table({"k": "string", "x": "decimal(15, 2)", "y": "decimal(5, 4)"}, name="ed")
+#: `AVG` of one ±0.01 and 31 zeros is ±0.0003125: half away from zero at
+#: scale 6 is ±0.000313, where truncating or a double's rounding differ.
+ED_ROWS = (
+    [("h", D("0.01"), D("1.0000"))]
+    + [("h", D("0.00"), D("0.0001"))] * 31
+    + [("n", D("-0.01"), D("-1.0000"))]
+    + [("n", D("0.00"), D("0.0000"))] * 31
+    + [
+        ("t", D("2.57"), D("9.9999")),
+        ("t", D("-2.57"), D("-9.9999")),
+        ("t", D("9999999999999.99"), D("9.9999")),
+        ("t", None, None),
+    ]
+)
+ED_TABLE = pa.table(
+    {
+        "k": pa.array([r[0] for r in ED_ROWS]),
+        "x": pa.array([r[1] for r in ED_ROWS], pa.decimal128(15, 2)),
+        "y": pa.array([r[2] for r in ED_ROWS], pa.decimal128(5, 4)),
+    }
+)
+
+ENGINE_CASES = {
+    **CASES,
+    "avg rounds half away from zero": lambda: ed.group_by("k").aggregate(m=ed.x.mean()),
+    "cast to an integer truncates": lambda: ed.filter(ed.k == "t").select(i=ed.x.cast("int64")),
+    # 9999999999999.99² has 30 digits; DuckDB types the product of two
+    # `DECIMAL(15, 2)`s with 18 unless it is widened.
+    "a product wider than DuckDB's type": lambda: ed.select(p=ed.x * ed.x, q=ed.y * ed.y),
+    "sum of squares": lambda: ed.group_by("k").aggregate(s=(ed.x * ed.x).sum()),
+    "cast to a double": lambda: ed.select(f=ed.x.cast("float64"), g=(ed.x * ed.x).cast("float64")),
+    "cast to a smaller scale": lambda: ed.select(r=ed.y.cast("decimal(6, 2)")),
+}
+
+
+@pytest.fixture(scope="module")
+def con_ed(con):
+    put_table(con, "ed", ED_TABLE)
+    return con
+
+
+@pytest.mark.parametrize("label", list(ENGINE_CASES))
+def test_duckdb_runs_decimal_plans_as_the_reference(con_ed, label):
+    """The written plan on DuckDB gives `Rel.eval`'s rows: decimals exactly,
+    doubles as Lean prints them."""
+    expr = ENGINE_CASES[label]()
+    plan = to_substrait(expr)
+    op: Any = expr.op()
+    doubles = [exact(ops.Field(op, n)).is_floating() for n in op.schema.names]
+
+    def rows(rs: list) -> list[tuple]:
+        out = [
+            tuple(number(v, True) if d else v for v, d in zip(r, doubles, strict=True)) for r in rs
+        ]
+        return sorted(out, key=repr)
+
+    def duckdb(plan: dict) -> list[tuple]:
+        out = run_plan(con_ed, written_plan(json.dumps(plan)), "duckdb")
+        return rows([tuple(r.values()) for r in out.to_pylist()])
+
+    on_tables = duckdb(plan)
+    # The tables as `VALUES` (`inline_tables` changes the plan in place).
+    inlined = inline_tables(plan, {"li": ROWS, "ed": ED_ROWS})
+    lean = rows(lean_values(json.dumps(inlined)))
+    assert on_tables == lean
+    assert duckdb(inlined) == lean

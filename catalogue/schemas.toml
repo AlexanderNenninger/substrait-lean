@@ -4,6 +4,26 @@
 # integers are drawn from 0..5 (so keys join), and every column is NULL one
 # time in ten unless listed in `not_null`.
 
+# TPC-H's tables have no NULLs, and the primary keys of the single-column-keyed tables are keys (spec 1.4).
+[datasets.tpch]
+keys = ["customer.c_custkey", "orders.o_orderkey", "part.p_partkey", "supplier.s_suppkey", "nation.n_nationkey", "region.r_regionkey"]
+not_null = [
+    "lineitem.l_orderkey", "lineitem.l_partkey", "lineitem.l_suppkey", "lineitem.l_linenumber",
+    "lineitem.l_quantity", "lineitem.l_extendedprice", "lineitem.l_discount", "lineitem.l_tax",
+    "lineitem.l_returnflag", "lineitem.l_linestatus", "lineitem.l_shipdate", "lineitem.l_commitdate",
+    "lineitem.l_receiptdate", "lineitem.l_shipinstruct", "lineitem.l_shipmode", "orders.o_orderkey",
+    "orders.o_custkey", "orders.o_orderstatus", "orders.o_totalprice", "orders.o_orderdate",
+    "orders.o_orderpriority", "orders.o_shippriority", "orders.o_comment", "customer.c_custkey",
+    "customer.c_name", "customer.c_address", "customer.c_nationkey", "customer.c_phone",
+    "customer.c_acctbal", "customer.c_mktsegment", "customer.c_comment", "part.p_partkey",
+    "part.p_name", "part.p_mfgr", "part.p_brand", "part.p_type",
+    "part.p_size", "part.p_container", "supplier.s_suppkey", "supplier.s_name",
+    "supplier.s_address", "supplier.s_nationkey", "supplier.s_phone", "supplier.s_acctbal",
+    "supplier.s_comment", "partsupp.ps_partkey", "partsupp.ps_suppkey", "partsupp.ps_availqty",
+    "partsupp.ps_supplycost", "nation.n_nationkey", "nation.n_name", "nation.n_regionkey",
+    "region.r_regionkey", "region.r_name",
+]
+
 # TPC-H (https://www.tpc.org/tpch/). Money columns are DECIMAL(15,2) as in the spec.
 [datasets.tpch.tables.lineitem]
 l_orderkey = "int64"
@@ -81,6 +101,13 @@ r_name = "string"
 "lineitem.l_shipmode" = ["MAIL", "SHIP", "AIR", "AIR REG", "TRUCK"]
 "lineitem.l_shipinstruct" = ["DELIVER IN PERSON", "NONE"]
 "lineitem.l_quantity" = [1, 5, 10, 15, 20, 25, 30]
+"lineitem.l_extendedprice" = [901.00, 1234.56, 2098.99, 55000.00, 104949.50]
+"lineitem.l_tax" = [0.00, 0.02, 0.04, 0.08]
+"orders.o_totalprice" = [857.71, 1500.00, 250000.00, 555285.16]
+"customer.c_acctbal" = [-999.99, 0.00, 711.56, 9999.99]
+"supplier.s_acctbal" = [-999.99, 0.00, 4192.40, 9999.99]
+"partsupp.ps_supplycost" = [1.00, 20.50, 771.64, 1000.00]
+"partsupp.ps_availqty" = [1, 50, 4000, 9999]
 "lineitem.l_discount" = [0.04, 0.05, 0.06, 0.07, 0.1]
 "orders.o_orderpriority" = ["1-URGENT", "2-HIGH", "3-MEDIUM", "5-LOW"]
 "orders.o_orderstatus" = ["F", "O", "P"]
@@ -95,6 +122,23 @@ r_name = "string"
 "supplier.s_comment" = ["Customer Complaints recorded", "ok"]
 "nation.n_name" = ["FRANCE", "GERMANY", "BRAZIL", "CANADA", "SAUDI ARABIA", "JAPAN"]
 "region.r_name" = ["ASIA", "EUROPE", "AMERICA"]
+
+# TPC-DS: the dimensions' surrogate keys are keys; the columns the queries read are not NULL.
+[datasets.tpcds]
+keys = ["date_dim.d_date_sk", "item.i_item_sk", "store.s_store_sk", "customer_demographics.cd_demo_sk", "promotion.p_promo_sk"]
+not_null = [
+    "date_dim.d_date_sk", "date_dim.d_date", "date_dim.d_year", "date_dim.d_moy",
+    "date_dim.d_qoy", "date_dim.d_month_seq", "store_sales.ss_sold_date_sk", "store_sales.ss_item_sk",
+    "store_sales.ss_customer_sk", "store_sales.ss_cdemo_sk", "store_sales.ss_store_sk", "store_sales.ss_promo_sk",
+    "store_sales.ss_quantity", "store_sales.ss_list_price", "store_sales.ss_sales_price", "store_sales.ss_coupon_amt",
+    "store_sales.ss_ext_sales_price", "store_sales.ss_net_profit", "web_sales.ws_sold_date_sk", "web_sales.ws_item_sk",
+    "web_sales.ws_ext_sales_price", "web_sales.ws_sales_price", "item.i_item_sk", "item.i_item_id",
+    "item.i_item_desc", "item.i_brand_id", "item.i_brand", "item.i_class",
+    "item.i_category", "item.i_manager_id", "item.i_manufact_id", "item.i_current_price",
+    "store.s_store_sk", "store.s_store_name", "store.s_company_name", "store.s_state",
+    "customer_demographics.cd_demo_sk", "customer_demographics.cd_gender", "customer_demographics.cd_marital_status", "customer_demographics.cd_education_status",
+    "promotion.p_promo_sk", "promotion.p_channel_email", "promotion.p_channel_event",
+]
 
 # TPC-DS (https://www.tpc.org/tpcds/), the columns of the chosen queries.
 [datasets.tpcds.tables.date_dim]
@@ -156,6 +200,15 @@ p_channel_event = "string"
 
 [datasets.tpcds.values]
 "date_dim.d_year" = [1998, 1999, 2000, 2001, 2002]
+"store_sales.ss_quantity" = [1, 10, 50, 100]
+"store_sales.ss_list_price" = [1.00, 20.15, 99.99, 300.00]
+"store_sales.ss_sales_price" = [0.00, 15.25, 99.99, 300.00]
+"store_sales.ss_coupon_amt" = [0.00, 5.00, 120.50]
+"store_sales.ss_ext_sales_price" = [0.00, 152.50, 9999.00, 30000.00]
+"store_sales.ss_net_profit" = [-10000.00, -12.50, 0.00, 450.25, 19000.00]
+"web_sales.ws_ext_sales_price" = [0.00, 152.50, 9999.00, 30000.00]
+"web_sales.ws_sales_price" = [0.00, 15.25, 99.99, 300.00]
+"item.i_current_price" = [0.09, 1.50, 27.99, 99.99]
 "date_dim.d_moy" = [11, 12, 1, 2]
 "date_dim.d_qoy" = [1, 2]
 "date_dim.d_month_seq" = [1200, 1205, 1211, 1212]

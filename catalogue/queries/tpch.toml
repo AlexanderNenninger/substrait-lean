@@ -31,6 +31,21 @@ q = (
     .order_by(["l_returnflag", "l_linestatus"])
 )
 '''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+}
+'''
+ensures = '''
+[
+    _.count_order >= 1,
+    _.sum_qty >= 1,
+    _.sum_base_price >= 0,
+    _.sum_disc_price >= 0,
+    _.sum_charge >= 0,
+    sv.unique('l_returnflag', 'l_linestatus'),
+]
+'''
 
 [[query]]
 id = "tpch-q02"
@@ -58,6 +73,20 @@ q = (
     .limit(100)
 )
 '''
+requires = '''
+{
+    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'nation': [sv.unique('n_nationkey')],
+    'region': [sv.unique('r_regionkey')],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+}
+'''
+ensures = '''
+[
+    _.s_acctbal.between(-999.99, 9999.99),
+]
+'''
 
 [[query]]
 id = "tpch-q03"
@@ -81,6 +110,18 @@ q = (
     .limit(10)
 )
 '''
+requires = '''
+{
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+}
+'''
+ensures = '''
+[
+    _.revenue >= 0,
+]
+'''
 
 [[query]]
 id = "tpch-q04"
@@ -100,6 +141,18 @@ q = (
     .aggregate(order_count=_.count())
     .order_by("o_orderpriority")
 )
+'''
+requires = '''
+{
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+}
+'''
+ensures = '''
+[
+    _.order_count >= 1,
+    sv.unique('o_orderpriority'),
+]
 '''
 
 [[query]]
@@ -129,6 +182,22 @@ q = (
     .order_by(ibis.desc("revenue"))
 )
 '''
+requires = '''
+{
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'nation': [sv.unique('n_nationkey')],
+    'region': [sv.unique('r_regionkey')],
+}
+'''
+ensures = '''
+[
+    _.revenue >= 0,
+    sv.unique('n_name'),
+]
+'''
 
 [[query]]
 id = "tpch-q06"
@@ -147,6 +216,16 @@ q = li.filter(
     & li.l_discount.between(0.05, 0.07)
     & (li.l_quantity < 24)
 ).aggregate(revenue=(_.l_extendedprice * _.l_discount).sum())
+'''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+}
+'''
+ensures = '''
+[
+    (_.revenue >= 0) | _.revenue.isnull(),
+]
 '''
 
 [[query]]
@@ -182,6 +261,21 @@ q = (
     .aggregate(revenue=_.volume.sum())
     .order_by(["supp_nation", "cust_nation", "l_year"])
 )
+'''
+requires = '''
+{
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'nation': [sv.unique('n_nationkey')],
+}
+'''
+ensures = '''
+[
+    _.revenue >= 0,
+    sv.unique('supp_nation', 'cust_nation', 'l_year'),
+]
 '''
 
 [[query]]
@@ -224,6 +318,22 @@ q = (
     .order_by("o_year")
 )
 '''
+requires = '''
+{
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'nation': [sv.unique('n_nationkey')],
+    'region': [sv.unique('r_regionkey')],
+}
+'''
+ensures = '''
+[
+    sv.unique('o_year'),
+]
+'''
 
 [[query]]
 id = "tpch-q09"
@@ -253,6 +363,21 @@ q = (
     .order_by(["nation", ibis.desc("o_year")])
 )
 '''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'nation': [sv.unique('n_nationkey')],
+}
+'''
+ensures = '''
+[
+    sv.unique('nation', 'o_year'),
+]
+'''
 
 [[query]]
 id = "tpch-q10"
@@ -281,6 +406,20 @@ q = (
     .limit(20)
 )
 '''
+requires = '''
+{
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'nation': [sv.unique('n_nationkey')],
+}
+'''
+ensures = '''
+[
+    _.revenue >= 0,
+    _.c_acctbal.between(-999.99, 9999.99),
+]
+'''
 
 [[query]]
 id = "tpch-q11"
@@ -305,6 +444,18 @@ q = (
     .select("ps_partkey", "part_value")
     .order_by(ibis.desc("part_value"))
 )
+'''
+requires = '''
+{
+    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'nation': [sv.unique('n_nationkey')],
+}
+'''
+ensures = '''
+[
+    _.part_value >= 0,
+]
 '''
 notes = "The natural Ibis formulation, `per_part.filter(_.part_value > de.value.sum() * 0.0001)`, is silently wrong: Ibis dereferences `de.value.sum()` to the aggregate's own `part_value` column (it is the same expression), so the filter compares each part with itself. The one-row total is cross-joined instead, which is also what a scalar subquery needs to become for the checker."
 
@@ -334,6 +485,19 @@ q = (
     .order_by("l_shipmode")
 )
 '''
+requires = '''
+{
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+}
+'''
+ensures = '''
+[
+    _.high_line_count >= 0,
+    _.low_line_count >= 0,
+    sv.unique('l_shipmode'),
+]
+'''
 
 [[query]]
 id = "tpch-q13"
@@ -356,6 +520,19 @@ q = (
     .order_by([ibis.desc("custdist"), ibis.desc("c_count")])
 )
 '''
+requires = '''
+{
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+}
+'''
+ensures = '''
+[
+    _.custdist >= 1,
+    _.c_count >= 0,
+    sv.unique('c_count'),
+]
+'''
 
 [[query]]
 id = "tpch-q14"
@@ -374,6 +551,15 @@ rev = j.l_extendedprice * (1 - j.l_discount)
 q = j.aggregate(
     promo_revenue=100.0 * ibis.ifelse(j.p_type.startswith("PROMO"), rev, 0).sum() / rev.sum()
 )
+'''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+}
+'''
+ensures = '''
+[]
 '''
 
 [[query]]
@@ -397,6 +583,17 @@ q = (
     .select("s_suppkey", "s_name", "s_address", "s_phone", "total_revenue")
     .order_by("s_suppkey")
 )
+'''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+}
+'''
+ensures = '''
+[
+    _.total_revenue >= 0,
+]
 '''
 
 [[query]]
@@ -422,6 +619,19 @@ q = (
     .order_by([ibis.desc("supplier_cnt"), "p_brand", "p_type", "p_size"])
 )
 '''
+requires = '''
+{
+    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+}
+'''
+ensures = '''
+[
+    _.supplier_cnt >= 1,
+    sv.unique('p_brand', 'p_type', 'p_size'),
+]
+'''
 
 [[query]]
 id = "tpch-q17"
@@ -440,6 +650,15 @@ j = (
     .filter(_.l_quantity < 0.2 * _.avg_qty)
 )
 q = j.aggregate(avg_yearly=j.l_extendedprice.sum() / 7.0)
+'''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+}
+'''
+ensures = '''
+[]
 '''
 
 [[query]]
@@ -463,6 +682,18 @@ q = (
     .order_by([ibis.desc("o_totalprice"), "o_orderdate"])
     .limit(100)
 )
+'''
+requires = '''
+{
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+}
+'''
+ensures = '''
+[
+    _.sum_qty >= 1,
+]
 '''
 
 [[query]]
@@ -490,6 +721,17 @@ q = j.filter(
         | profile("Brand#34", ["LG CASE", "LG BOX", "LG PACK", "LG PKG"], 20, 15)
     )
 ).aggregate(revenue=(_.l_extendedprice * (1 - _.l_discount)).sum())
+'''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+}
+'''
+ensures = '''
+[
+    _.revenue.isnull() | (_.revenue >= 0),
+]
 '''
 
 [[query]]
@@ -519,6 +761,18 @@ q = (
     .select("s_name", "s_address")
     .order_by("s_name")
 )
+'''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
+    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'nation': [sv.unique('n_nationkey')],
+}
+'''
+ensures = '''
+[]
 '''
 
 [[query]]
@@ -551,6 +805,20 @@ q = (
     .limit(100)
 )
 '''
+requires = '''
+{
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+    'nation': [sv.unique('n_nationkey')],
+}
+'''
+ensures = '''
+[
+    _.numwait >= 1,
+    sv.unique('s_name'),
+]
+'''
 
 [[query]]
 id = "tpch-q22"
@@ -572,4 +840,16 @@ q = (
     .aggregate(numcust=_.count(), totacctbal=_.c_acctbal.sum())
     .order_by("cntrycode")
 )
+'''
+requires = '''
+{
+    'customer': [sv.unique('c_custkey'), _.c_acctbal.between(-999.99, 9999.99)],
+    'orders': [sv.unique('o_orderkey'), _.o_totalprice.between(0, 600000)],
+}
+'''
+ensures = '''
+[
+    _.numcust >= 1,
+    sv.unique('cntrycode'),
+]
 '''

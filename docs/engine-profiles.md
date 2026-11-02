@@ -124,3 +124,30 @@ guards that raise) and refuses the plan where it cannot (`Unsupported`).
 "Raise rather than differ" is the standard each one is tested against:
 `Rel.eval` (`lean_rows`), another engine's rows, or a raised error. Guard
 elimination (`SubstraitLean/Guards.lean`) is the part already proved in Lean.
+
+### Decimals (#27)
+
+The reference computes a `DECIMAL(p, s)` as its unscaled integer, exactly, and
+raises where a result needs more than `p` digits. `substrait-check --write`
+writes decimal plans back as Substrait's own typed calls and casts, and
+refuses any it cannot (a plan whose written form does not parse back to the
+same `Rel`). DataFusion gets none: it does not compute decimals as the
+reference does.
+
+Of the SQL dialects, only DuckDB runs decimal plans (`Dialect.decimals`).
+Snowflake, Spark and Polars refuse them for now. DuckDB computes `+`, `-` and
+`×` exactly, and rounds half away from zero when a cast drops decimal places,
+as the reference does. Its translation compensates where DuckDB differs:
+
+| Reference | DuckDB by itself | Translation |
+|---|---|---|
+| a result has the plan's `DECIMAL(p, s)` | its own result types | `CAST(… AS DECIMAL(p, s))` around each operation |
+| `×` is exact up to 38 digits | `DECIMAL(15, 2) × DECIMAL(15, 2)` is a `DECIMAL(18, 4)`, which overflows | the left operand is cast to `DECIMAL(38, s)` first |
+| decimal → integer truncates toward zero | rounds half away from zero | `CAST(TRUNC(x) AS BIGINT)` |
+| decimal → double is correctly rounded | converts the unscaled value and divides, which can round twice | `CAST(CAST(x AS VARCHAR) AS DOUBLE)` |
+| `SUM` has ten more digits | `DECIMAL(38, s)` | cast to `DECIMAL(p + 10, s)` |
+| `AVG` is a `DECIMAL(p + 4, s + 4)`, rounded half away from zero | a `DOUBLE` | `SUM` and `COUNT` divided in `HUGEINT`, rounded half away from zero, cast back to the decimal |
+
+`Profile.duckdb` is the reference on decimals: these compensations are what
+make that true of the SQL, and they are tested against `Rel.eval`
+(`tests/test_ibis_decimal.py`), not proved.
