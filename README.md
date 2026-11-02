@@ -42,7 +42,7 @@ updated from the changes alone, by a plan proved equal to a full recompute.
 
 ## Where it stands
 
-Sverify is an assistant that makes data engineering more joyful: fewer
+Sverify is a light, unobtrusive, helpful assistant that makes data engineering more joyful: fewer
 3 a.m. pages over an unexpected NULL, fewer afternoons spent finding out why
 two engines disagree, and more trust in the tables you hand to the next team.
 

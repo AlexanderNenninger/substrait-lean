@@ -25,7 +25,7 @@ every possible input, or says why it can't. Then:
   equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-Sverify is an assistant that makes data engineering more joyful: fewer
+Sverify is a light, unobtrusive, helpful assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
 hand on. It is young and independent, and for now purely observational: it
 reports what it can and can't prove, and describes each engine as observed at
