@@ -291,7 +291,7 @@ theorem AggFn.apply_minMax {f : AggFn} {max : Bool} (hf : f = (if max then .max 
 
 def AggFn.decomposable : AggFn → Bool
   | .count | .sum | .min | .max => true
-  | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ => false
+  | .fsum | .avg | .iavg | .collect | .bit _ | .var _ _ | .pick _ | .cov _ | .corr => false
 
 theorem AggFn.ne_collect {f : AggFn} (h : f.decomposable = true) : f.sorts = false := by
   cases f <;> simp_all [decomposable, sorts]
@@ -331,11 +331,8 @@ theorem AggFn.apply_perm {f : AggFn} (hf : f.decomposable = true) {vs ws : List 
   · simp [decomposable] at hf
   · exact apply_minMax_perm (max := false) rfl h
   · exact apply_minMax_perm (max := true) rfl h
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
+  -- The rest are not decomposable.
+  all_goals simp [decomposable] at hf
 
 theorem AggFn.apply_sum_cons (v : Value) (vs : List Value) :
     AggFn.sum.apply (v :: vs) = .int (intSum (v :: vs)) := rfl
@@ -434,11 +431,8 @@ theorem AggFn.combine_apply {f : AggFn} (hf : f.decomposable = true) {L : List (
   · simp [decomposable] at hf
   · exact minMax_combine (max := false) rfl hnn
   · exact minMax_combine (max := true) rfl hnn
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
-  · simp [decomposable] at hf
+  -- The rest are not decomposable.
+  all_goals simp [decomposable] at hf
 
 /-! ## Measures that combine -/
 

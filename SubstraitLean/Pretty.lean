@@ -48,6 +48,7 @@ def BinFn.render : BinFn → String
   | .dadd => "+" | .dsub => "-" | .dmul => "*" | .ddiv => "/ROUND"
   | .bit op => match op with
     | .and => "&" | .or => "|" | .xor => "^|" | .shl => "<<" | .shr => ">>"
+  | .pair => "PAIR"
 
 def HoFn.name : HoFn → String
   | .anyMatch => "ANY_MATCH" | .allMatch => "ALL_MATCH" | .transform => "TRANSFORM"
@@ -67,6 +68,8 @@ def AggFn.name : AggFn → String
   | .bit op => s!"BIT_{op.name.toUpper}"
   | .var sample sqrt => s!"{if sqrt then "STDDEV" else "VAR"}_{if sample then "SAMP" else "POP"}"
   | .pick last => if last then "LAST" else "FIRST"
+  | .cov sample => if sample then "COVAR_SAMP" else "COVAR_POP"
+  | .corr => "CORR"
 
 def Measure.render (m : Measure) : String :=
   let filter := match m.filter with

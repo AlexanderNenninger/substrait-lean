@@ -223,6 +223,10 @@ inductive BinFn where
   /-- `a / b` of decimals, rounded half away from zero (`roundDivInt?`), and
   `NULL` for `b = 0`: a decimal `AVG`'s sum by its count (#27). -/
   | ddiv
+  /-- The two values as a list, `NULL` if either is: the argument of a
+  two-argument aggregate (`COVAR_SAMP(x, y)`, #54), whose rows with a NULL
+  are skipped. -/
+  | pair
   deriving Repr, DecidableEq
 
 /-- Substrait's higher-order functions on lists (`functions_list.yaml`), which
@@ -507,6 +511,8 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .bit op, .int a, .int b => match op.apply a b with
     | some r => .int r
     | none => .null
+  | .pair, .null, _ | .pair, _, .null => .null
+  | .pair, a, b => .list [a, b]
   | _, _, _ => .null
 
 /-- Out-of-range field references evaluate to `null`; `Expr.refsLt` rules

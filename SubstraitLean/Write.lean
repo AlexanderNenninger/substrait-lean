@@ -50,7 +50,10 @@ def coreFns : List (Nat × String) := [
   (121, "abs"),
   -- sverify's own: the remainder of doubles, C's `fmod` (#256). Substrait's
   -- `modulus` has no double impl.
-  (122, "sverify_fmod")]
+  (122, "sverify_fmod"),
+  -- sverify's own: two values as the argument of a two-argument aggregate
+  -- (`COVAR_SAMP(x, y)`, #54), written as the measure's two arguments.
+  (123, "sverify_pair")]
 
 /-- Strings: new anchors 200–299. -/
 def stringFns : List (Nat × String) := [
@@ -82,7 +85,9 @@ def aggregateFns : List (Nat × String) := [
   -- The variance and standard deviation of doubles, each engine's own algorithm (#54).
   (503, "variance"), (504, "std_dev"),
   -- The first and last value in the measure's sort order (#55).
-  (505, "first"), (506, "last")]
+  (505, "first"), (506, "last"),
+  -- The covariance and correlation of pairs of doubles (#54).
+  (507, "covar_samp"), (508, "covar_pop"), (509, "corr")]
 
 /-- Window functions: new anchors 600–699. -/
 def windowFns : List (Nat × String) := [
@@ -111,6 +116,8 @@ def AggFn.anchor : AggFn → Nat
   | .bit op => match op with | .and => 500 | .or => 501 | _ => 502
   | .var _ sqrt => if sqrt then 504 else 503
   | .pick last => if last then 506 else 505
+  | .cov sample => if sample then 507 else 508
+  | .corr => 509
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -143,7 +150,7 @@ def BinFn.anchor : BinFn → Nat
   | .add | .fadd => 4 | .sub | .fsub => 5 | .mul | .fmul => 6 | .eq => 7 | .lt => 8
   | .and => 9 | .or => 10 | .fdiv | .idiv => 11 | .imod => 18 | .fmod => 122 | .ipow | .fpow => 19
   | .fatan2 => 111 | .flogb => 112
-  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11
+  | .dadd => 4 | .dsub => 5 | .dmul => 6 | .ddiv => 11 | .pair => 123
   | .bit op => match op with
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
@@ -159,6 +166,7 @@ theorem AggFn.anchor_declared (f : AggFn) : AggFn.anchor f ∈ declared.map (·.
   case bit op => cases op <;> decide
   case var sample sqrt => cases sample <;> cases sqrt <;> decide
   case pick last => cases last <;> decide
+  case cov sample => cases sample <;> decide
   all_goals decide
 
 theorem UnFn.anchor_declared (f : UnFn) :
@@ -166,10 +174,10 @@ theorem UnFn.anchor_declared (f : UnFn) :
   cases f <;> first | exact of_decide_eq_true rfl | (rename_i g; cases g <;> exact of_decide_eq_true rfl)
 
 theorem BinFn.anchor_declared (f : BinFn) : BinFn.anchor f ∈ declared.map (·.1) := by
-  cases f <;> first
-    | exact of_decide_eq_true rfl
-    | (rename_i a b; cases a <;> cases b <;> decide)
-    | (rename_i op; cases op <;> decide)
+  cases f
+  case trim l r => cases l <;> cases r <;> decide
+  case bit op => cases op <;> decide
+  all_goals exact of_decide_eq_true rfl
 
 def obj (kvs : List (String × Json)) : Json := Json.mkObj kvs
 
@@ -785,7 +793,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .agg m _ _ => match m.fn with
           | .count | .iavg | .bit _ => .int
           | .sum => sumKind (wkind ks m.arg)
-          | .fsum | .avg | .var _ _ => .float
+          | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
           | .min | .max | .pick _ => wkind ks m.arg
           | .collect => .list (wkind ks m.arg)
   | .aggregate r gs ms =>
@@ -793,7 +801,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
         | .count | .iavg | .bit _ => .int
         | .sum => sumKind (wkind ks m.arg)
-        | .fsum | .avg | .var _ _ => .float
+        | .fsum | .avg | .var _ _ | .cov _ | .corr => .float
         | .min | .max | .pick _ => wkind ks m.arg
         | .collect => .list (wkind ks m.arg)
   | .unnest r c =>
@@ -861,7 +869,11 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
   let measure := obj [
     ("functionReference", toJson (AggFn.anchor m.fn)),
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
-    ("arguments", Json.arr #[obj [("value", arg)]]),
+    -- A two-argument aggregate's `pair x y` is its two arguments (#54).
+    ("arguments", match m.arg with
+      | .bin .pair x y => Json.arr #[obj [("value", writeExpr cols .float x)],
+          obj [("value", writeExpr cols .float y)]]
+      | _ => Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
   -- An integer `AVG` says so by its output type (`AggFn.iavg`).
   let measure := if m.fn matches .iavg then measure.setObjVal! "outputType" i64Type else measure

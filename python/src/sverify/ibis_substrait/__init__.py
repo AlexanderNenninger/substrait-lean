@@ -1169,6 +1169,13 @@ def measure(x: Exprs, op: Any) -> Json:
         options = [
             {"name": "distribution", "preference": ["POPULATION" if op.how == "pop" else "SAMPLE"]}
         ]
+    elif isinstance(op, ops.Covariance | ops.Correlation):
+        # Of a sample or a population (#54); a correlation is the same for both.
+        if isinstance(op, ops.Correlation):
+            name = "corr"
+        else:
+            name = "covar_pop" if op.how == "pop" else "covar_samp"
+        args = [x(op.left, dt.float64), x(op.right, dt.float64)]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
     elif isinstance(op, ops.First | ops.Last):

@@ -940,18 +940,27 @@ theorem Rel.loose_wf {cat : Catalog} : ∀ {r : Rel}, r.WF cat → r.loose.WF ca
   | .unnest r _, h => ⟨⟨loose_wf (r := r) h.1, by rw [loose_arity]; exact h.2⟩, loose_wf (r := r) h.1,
       by simp [arity, loose_arity]⟩
 
+/-- Is the value a double's `±∞`? -/
+def isInfValue (v : Value) : Bool := v == .int FloatCode.posInf || v == .int FloatCode.negInf
+
 /-- Would IEEE make the aggregate of these values NaN, from numbers (#257)?
 A double `SUM` or `AVG` of `+∞` and `-∞`, and a variance of an infinity
 (`∞ - ∞` in its deviations). -/
 def AggFn.makesNan : AggFn → List Value → Bool
   | .fsum, vs | .avg, vs => vs.contains (.int FloatCode.posInf) && vs.contains (.int FloatCode.negInf)
   | .var _ _, vs => vs.contains (.int FloatCode.posInf) || vs.contains (.int FloatCode.negInf)
+  -- A pair with an infinity: a deviation `∞ - ∞` (#54).
+  | .cov _, vs | .corr, vs => vs.any fun
+    | .list [a, b] => isInfValue a || isInfValue b
+    | _ => false
   | _, _ => false
 
 /-- May `makesNan` hold of values that `a` describes? -/
 def AggFn.mayNan : AggFn → AVal → Bool
   | .fsum, a | .avg, a => a.has FloatCode.posInf && a.has FloatCode.negInf
   | .var _ _, a => a.has FloatCode.posInf || a.has FloatCode.negInf
+  -- A pair's sides are what may be infinite (`Measure.mayNan`).
+  | .cov _, _ | .corr, _ => true
   | _, _ => false
 
 theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
@@ -962,6 +971,64 @@ theorem AggFn.mayNan_of_makesNan {f : AggFn} {vs : List Value} {a : AVal}
     | exact ⟨has _ h.1, has _ h.2⟩
     | exact h.imp (has _) (has _)
     | simp at h
+
+/-- Does the aggregate take pairs (`BinFn.pair`)? -/
+def AggFn.paired : AggFn → Bool
+  | .cov _ | .corr => true
+  | _ => false
+
+/-- May the abstract value hold `±∞`? -/
+def AVal.mayInf (a : AVal) : Bool := a.has FloatCode.posInf || a.has FloatCode.negInf
+
+/-- May either side of a pair be infinite (`true` for anything but a pair)? -/
+def pairMayInf (abs : Expr → AVal) : Expr → Bool
+  | .bin .pair x y => (abs x).mayInf || (abs y).mayInf
+  | _ => true
+
+/-- May `makesNan` hold of the measure's values, whose expressions `abs`
+describes? A two-argument aggregate's pair is looked at side by side. -/
+def Measure.mayNan (m : Measure) (abs : Expr → AVal) : Bool :=
+  if m.fn.paired then pairMayInf abs m.arg else m.fn.mayNan (abs m.arg)
+
+theorem Measure.mayNan_of_makesNan {m : Measure} {grp : Relation} {abs : Expr → AVal}
+    (hsound : ∀ y ∈ grp, ∀ e : Expr, (abs e).Mem (e.eval y))
+    (h : m.fn.makesNan (m.inputs grp) = true) : m.mayNan abs = true := by
+  -- Every input is the argument's value on a row of the group.
+  have from_row : ∀ v ∈ m.inputs grp, ∃ y ∈ grp, m.arg.eval y = v := fun v hv => by
+    obtain ⟨_, y, hy, hv⟩ := Measure.mem_inputs hv; exact ⟨y, hy, hv⟩
+  unfold Measure.mayNan
+  by_cases hp : m.fn.paired = true
+  · simp only [hp, ite_true]
+    -- An input pair with an infinite side, from some row.
+    have hex : ∃ v ∈ m.inputs grp, (match v with
+        | .list [a, b] => isInfValue a || isInfValue b
+        | _ => false) = true := by
+      cases hf : m.fn <;> simp [hf, AggFn.paired] at hp <;> simpa [hf, AggFn.makesNan] using h
+    obtain ⟨v, hv, hinf⟩ := hex
+    obtain ⟨row, hrow, hev⟩ := from_row v hv
+    cases harg : m.arg with
+    | bin f x y =>
+      cases f
+      case pair =>
+        simp only [pairMayInf]
+        rw [harg] at hev
+        simp only [Expr.eval] at hev
+        have hx := hsound row hrow x
+        have hy := hsound row hrow y
+        cases hxv : x.eval row <;> cases hyv : y.eval row <;>
+          simp only [hxv, hyv, BinFn.apply] at hev <;> subst hev <;>
+          simp only [isInfValue, Bool.or_eq_true, beq_iff_eq] at hinf <;>
+          rw [hxv] at hx <;> rw [hyv] at hy <;>
+          simp only [AVal.mayInf, Bool.or_eq_true] <;>
+          rcases hinf with (h1 | h1) | (h1 | h1) <;> simp_all [AVal.has_of_mem]
+      all_goals rfl
+    | _ => rfl
+  · simp only [hp, Bool.false_eq_true, ite_false]
+    refine AggFn.mayNan_of_makesNan (fun c hc => ?_) h
+    obtain ⟨row, hrow, hev⟩ := from_row _ hc
+    have := hsound row hrow m.arg
+    rw [hev] at this
+    exact AVal.has_of_mem this
 
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
@@ -1016,7 +1083,7 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
       ms.filterMap (fun m =>
         if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none) ++
       ms.filterMap fun m =>
-        if m.fn.mayNan (m.arg.absD (r.aeval cat A F T true) (r.facts cat F T))
+        if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
         then some (.domain, m.arg) else none
 
 theorem KsHold.nil (row : Row) : KsHold [] row := by simp [KsHold]
@@ -1146,15 +1213,12 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
       exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
     · exact .inl (.inr ⟨m, hm, by simp [hf, hd]⟩)
-    · have has : ∀ c, .int c ∈ m.inputs grp →
-          (m.arg.absD (r.aeval cat A F T true) (r.facts cat F T)).has c = true := by
-        intro c hc
-        obtain ⟨_, y, hy, hey⟩ := Measure.mem_inputs hc
+    · have hsound : ∀ y ∈ grp, ∀ e : Expr,
+          (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) := by
+        intro y hy e
         have hyr := mem_of_mem_aggGroups hgrp hy
-        have := Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
-          (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg
-        rw [hey] at this
-        exact AVal.has_of_mem this
-      exact .inr ⟨m, hm, by simp [AggFn.mayNan_of_makesNan has hnan]⟩
+        exact Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
+          (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
+      exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
 
 end Substrait

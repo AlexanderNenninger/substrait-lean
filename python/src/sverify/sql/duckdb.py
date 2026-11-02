@@ -163,6 +163,12 @@ class DuckDBDialect(Dialect):
         values = f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
         return f"({values})[{1 if fn == 'first' else -1}]"
 
+    def pair(self, a: str, b: str) -> str:
+        return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"
+
+    def covar(self, fn: str, v: str) -> str:
+        return f"{fn.upper()}({v}[1], {v}[2])"
+
     def char_length(self, s: str) -> str:
         return f"length({s})"
 
