@@ -669,13 +669,13 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
-160 of 184 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
+160 of 185 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
 | rows | ✓ filter, select *inc.* · ✓ mutate *inc.* · ✓ drop, rename *inc.* · ✓ drop_null *inc.* · ✓ isnull *inc.* · ✓ between *inc.* · ✓ isin *inc.* · ✓ notin *inc.* · ✓ ifelse *inc.* · ✓ cases *inc.* · ✓ order_by *inc.* · ✓ limit · ✓ limit with offset · ✓ order_by + limit · ✗ sample · ✓ order_by expression *inc.* · ✗ limit expression · ✗ limit count() · ✓ fill_null table *inc.* · ✓ fill_null all *inc.* · ✓ memtable *inc.* · ✓ constant table *inc.* · ✓ alias *inc.* · ✓ sql view *inc.* · ✓ sql query *inc.* |
 | joins | ✓ inner join *inc.* · ✓ non-equi join *inc.* · ✓ cross join *inc.* · ✓ left join · ✓ right join · ✓ outer join · ✓ semi join · ✓ anti join · ✓ isin subquery · ✓ isin subquery in select · ✓ notin subquery · ✓ scalar subquery in select · ✓ scalar subquery, one row · ✗ scalar subquery, many rows · ✓ exists · ✓ not exists · ✓ exists, uncorrelated · ✗ correlated scalar subquery · ✓ union all *inc.* · ✓ union distinct · ✓ intersect · ✓ difference · ✓ intersect all · ✓ difference all |
-| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ arithmetic over aggregates · ✓ nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✓ scalar subquery · ✓ unnest |
+| aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ arithmetic over aggregates · ✓ nunique · ✗ approx_nunique · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✗ distinct(on=) · ✗ std · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✓ scalar subquery · ✓ unnest |
 | lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* |
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✗ rolling mean (rows) · ✗ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✗ min over a sliding frame · ✗ window sum of an expression |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
