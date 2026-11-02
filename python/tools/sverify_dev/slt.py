@@ -780,15 +780,13 @@ class Replay:
 
 
 def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
-    """The runtime errors and wrap-arounds `verify` cannot rule out."""
-    import ibis
-
+    """The runtime errors and wrap-arounds `verify` cannot rule out. The SQL
+    text goes to `verify` as it is: `sverify.sql` refuses a query that reads
+    no table, which hid `SELECT 7 // 0`'s division by zero (#333)."""
     from sverify.contracts import verify
-    from sverify.sql_model import sql as sv_sql
 
     try:
-        tables = {n: ibis.table(s, name=n) for n, s in schemas.items()}
-        report = verify(sv_sql(sql, dialect="duckdb", **tables))
+        report = verify(sql, tables=schemas)
     except Exception:  # noqa: BLE001
         return []
     return [str(i) for i in report.issues]
