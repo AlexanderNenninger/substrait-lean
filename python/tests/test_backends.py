@@ -258,6 +258,8 @@ def test_spark_agrees_with_duckdb(con, data):
                 query(sql)
             continue
         got = query(sql)
+        if case.label in coverage.APPROXIMATE:
+            got, duck = approximately(got), approximately(duck)
         root = parse_plan(json.loads(plan)).root
         ordered = order_matters(root) and case.label not in TIE_FREE
         assert same(got, duck) if ordered else canonical(got) == canonical(duck), case.label
