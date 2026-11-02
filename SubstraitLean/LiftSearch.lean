@@ -479,6 +479,7 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
   if let some why := f.refused s then return .error s!"refused: {why}"
   let cands := survivors s f
   let tac ← liftTac n extra
+  let firstWhy ← IO.mkRef (none : Option String)
   let liftCand (j : Json) (e : Substrait.Expr) (label : String) : TermElabM (Option String) := do
     -- The parser reads the whole candidate as its parts combined.
     unless parse f j == some e do return none
@@ -493,7 +494,12 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
       let hs ← (xs.zip argTs.toArray).mapM fun (v, t) => mkAppM ``DuckType.Has #[t, v]
       let body ← hs.foldrM (fun h b => mkArrow h b) body
       mkForallFVars xs body
-    let some pf ← prove ty tac | return none
+    let pf ← match ← LoweringSearch.proveE ty tac with
+      | .ok pf => pure pf
+      | .error why =>
+        -- The breadcrumb: why the first candidate failed.
+        if (← firstWhy.get).isNone then firstWhy.set (some s!"{label}: {why}")
+        return none
     let agreeName := tbl ++ short.appendAfter "_agree"
     addDecl <| .thmDecl { name := agreeName, levelParams := [], type := ty, value := pf }
     let hf ← mkEqRefl (← mkAppM ``DuckFn.args #[fE])
@@ -507,7 +513,8 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
     -- Evaluating and proving count as heartbeats; each candidate starts afresh.
     let some r ← withCurrHeartbeats (liftCand j e label) | continue
     return .ok r
-  return .error s!"missing: {cands.length} candidates passed the samples, none proved"
+  let why := ((← firstWhy.get).map fun w => s!"; the first failed with {(w.take 1500)}").getD ""
+  return .error s!"missing: {cands.length} candidates passed the samples, none proved{why}"
 
 /-- The functions a template's `functionReference`s point to, as JSON. -/
 def functionsJson : Json :=
