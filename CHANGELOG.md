@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### `division_type: TRUNCATE` is accepted
+
+A plan whose `modulus` states `division_type: TRUNCATE` was refused,
+although the remainder already takes the dividend's sign. It is now
+accepted; `FLOOR` is still refused, as the model does not compute it.
+
 ### More divisors proved non-zero
 
 `verify` now proves a divisor non-zero from more preconditions:
@@ -88,6 +94,11 @@ divisor is an error, as for integers, so `verify` reports "division by zero"
 unless the plan rules it out (`WHERE y <> 0.0`). The Polars translation gives
 the same results, although Polars' own `%` takes the divisor's sign.
 Substrait itself defines no `modulus` of doubles (#203).
+
+Substrait defines no `modulus` of doubles, so plans now call sverify's own
+`sverify_fmod` for it, which the Ibis producer and the SQL lift emit for `%`
+of doubles and which DataFusion runs as its own `%`. sverify still reads the
+`modulus` of doubles that DataFusion's producer writes (#256).
 
 ## 0.3.0 (2026-11-01)
 

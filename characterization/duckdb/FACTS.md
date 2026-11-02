@@ -141,6 +141,8 @@ Evidence: `function/operator/test_division_by_zero.test`; fuzz:
 - **Substrait and the reference:** `modulus` on integers raises on a zero
   divisor (the decided default for division by zero). Its
   `division_type: [TRUNCATE, FLOOR]`, the remainder's sign, is **open**.
+  The parser accepts an explicit `TRUNCATE`, which is what it models, and
+  refuses `FLOOR`.
 - **Lean: no finding.** `verify` reports `division by zero` as an error.
   The remainder truncates (`Int.tmod`).
 - **DuckDB: native.** `%` raises on zero and truncates
@@ -170,7 +172,9 @@ Evidence: `function/operator/test_division_by_zero.test:28,39,64`,
   exact, computed on the codes. A zero divisor is an error, as on integers and
   as #185 decides for an omitted `on_division_by_zero`, so `verify` can prove
   it absent. Substrait has no such impl; the reference takes the plan
-  DataFusion writes as `fmod`.
+  DataFusion writes as `fmod`. **Since #256** it is sverify's own function
+  `sverify_fmod`, which Lean writes and the frontends emit; Lean still
+  reads DataFusion's `modulus` of doubles as the same function.
 - **DuckDB (native):** `fmod` (`7.5 % 2 = 1.5`, `% 0.0` is NaN, or an error
   with `error_on_division_by_zero`). sverify raises on a zero divisor and
   writes out the NaN and infinite cases, so only finite operands reach `%`.

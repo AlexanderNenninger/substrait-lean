@@ -311,3 +311,11 @@ def test_benchmark_queries_through_the_lift():
     results = score(["ssb"])
     assert len(results) == 4
     assert all(c.ok for c in results.values()), results
+
+
+def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
+    # `sverify_fmod` (#256): C's `fmod`, as DuckDB computes `%` of doubles.
+    result = check(
+        "SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "reference"
+    )
+    assert result.ok, f"{result.stage}: {result.detail}"
