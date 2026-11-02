@@ -30,8 +30,8 @@ only what the upstream one guarantees (`Triple.compose` in
 `SubstraitLean/Compose.lean`):
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, sv.unique("id")]},
-        ensures=[_.amount >= 0, _.amount.notnull(), sv.unique("id")],
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
+        ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull(), sv.unique("id")],
     )
     def paid(orders):
         return orders.filter(orders.amount.notnull())

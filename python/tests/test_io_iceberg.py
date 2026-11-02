@@ -61,6 +61,7 @@ def make_orders(catalog, rows):
         "orders": [
             _.id.notnull(),
             _.amount >= 0,
+            _.amount < 1_000_000_000,
             _.ts >= datetime(2024, 1, 1),
             _.customer != "eve",
             sv.unique("id"),
@@ -80,6 +81,7 @@ def test_appends_are_a_change_feed(catalog):
     assert discharged(first.preconditions) == {
         ("orders", "_.id.notnull()"): SCHEMA,
         ("orders", "(_.amount >= 0)"): "file stats @v1",
+        ("orders", "(_.amount < 1000000000)"): "file stats @v1",
         ("orders", f"(_.ts >= {datetime(2024, 1, 1)!r})"): "file stats @v1",
         ("orders", "(_.customer != 'eve')"): ON_DATA,
         ("orders", "unique(id)"): ON_DATA,
