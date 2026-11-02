@@ -250,3 +250,20 @@ def test_issues_of_queries_without_tables(sql):
     """A query that reads no table still gets `verify`'s issues (#333):
     `sverify.sql` refuses such queries, which hid these."""
     assert any("division by zero" in i for i in slt._lift_issues(sql, {}))
+
+
+def test_the_summary_skips_files_that_are_not_ledgers(tmp_path):
+    # `characterization/duckdb/` also holds `probes.json`.
+    (tmp_path / "probes.json").write_text(json.dumps({"duckdb": "2.0.0", "probes": []}))
+    (tmp_path / "area.json").write_text(
+        json.dumps(
+            {
+                "area": "area",
+                "summary": {"agree": 1, "disagree": 0, "refused": 0, "skipped": 0},
+                "skipped_files": [],
+                "results": [{"cls": "agree"}],
+            }
+        )
+    )
+    text = slt.write_summary(tmp_path).read_text()
+    assert "| [area](area.json) | 1 | 0 |" in text and "probes" not in text

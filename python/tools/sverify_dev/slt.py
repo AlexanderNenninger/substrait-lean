@@ -1024,6 +1024,8 @@ def write_summary(out: Path = LEDGER) -> Path:
     rows = []
     for p in sorted(out.glob("*.json")):
         led = json.loads(p.read_text())
+        if "summary" not in led:
+            continue  # not a ledger (`probes.json`)
         s = led["summary"]
         reasons = Counter(
             (r.get("reason") or "").split(":")[0] for r in led["results"] if r["cls"] == "refused"
