@@ -22,8 +22,12 @@ Feed.
 from __future__ import annotations
 
 import os
+import time
+import uuid
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import PurePosixPath
 from typing import Literal
 from urllib.parse import unquote, urlparse
@@ -41,6 +45,7 @@ try:
         Transaction,
         write_deltalake,
     )
+    from deltalake.transaction import AddAction, RemoveAction
 except ImportError as e:
     raise ImportError("sverify.io.delta needs delta: pip install 'sverify[delta]'") from e
 
@@ -49,6 +54,7 @@ from sverify._state import arrow_of
 from sverify._weighted import WEIGHT, concat, expanded, grouped, rows_of
 from sverify.contracts import Fact
 from sverify.incremental import Snapshot, SourceBatch, Stored, first_line
+from sverify.io import _engine
 from sverify.io._common import (
     FILTER,
     ColumnStats,
@@ -152,6 +158,18 @@ def _basename(uri: str) -> str:
 # Reader features after which a Delta table's files hold its rows by column
 # name: `_native` reads deletion vectors itself.
 _NATIVE_FEATURES = {"deletionVectors", "timestampNtz", "v2Checkpoint", "vacuumProtocolCheck"}
+
+
+def _local_files(root: str, paths: Iterable[str]) -> dict[str, str] | None:
+    """Each add action's path, to the file's local path; None if one is
+    not local."""
+    out = {}
+    for p in paths:
+        local = local_path(p) if urlparse(p).scheme else os.path.join(root, unquote(p))
+        if local is None:
+            return None
+        out[p] = local
+    return out
 
 
 def _deleted(dt: DeltaTable, paths: dict[str, str]) -> pa.Table | None:
@@ -314,12 +332,9 @@ class DeltaSource(Pipeable):
             return None
         files = file_stats(dt)
         keep = self._keep(dt, files)
-        paths = {}
-        for p in keep:
-            local = local_path(p) if urlparse(p).scheme else os.path.join(root, unquote(p))
-            if local is None:
-                return None
-            paths[p] = local
+        paths = _local_files(root, keep)
+        if paths is None:
+            return None
         v = dt.version()
         scan = Scan(
             tuple(sorted(paths.values())),
@@ -477,19 +492,40 @@ class DeltaSource(Pipeable):
         )
 
 
+def _add_action(name: str, path: str, schema: pa.Schema) -> AddAction:
+    """The add action of a file DuckDB wrote at `path` (`name` in the
+    table's directory), with its statistics."""
+    return AddAction(
+        name,
+        os.path.getsize(path),
+        {},
+        int(time.time() * 1000),
+        True,
+        _engine.delta_stats(path, schema),
+    )
+
+
 def _is_in(column: pa.ChunkedArray, values: tuple[str, ...]) -> pa.ChunkedArray:
     return pc.call_function("is_in", [column], pc.SetLookupOptions(pa.array(values)))
 
 
 def _same_sql(a: str | None, b: str) -> bool:
-    """The same condition, up to parentheses: Delta stores a constraint as
-    it reads it (`(x IS NULL) OR (x > 0)` as `x IS NULL OR x > 0`)."""
+    """The same condition, up to parentheses and the spelling of numbers:
+    Delta stores a constraint as it reads it (`(x IS NULL) OR (x > 0)` as
+    `x IS NULL OR x > 0`, `x >= 0.0` as `x >= 0`)."""
     if a is None:
         return False
 
+    def unwrap(n: sg.exp.Expression) -> sg.exp.Expression:
+        return n.this if isinstance(n, sg.exp.Paren) else n
+
+    def number(n: sg.exp.Expression) -> sg.exp.Expression:
+        if isinstance(n, sg.exp.Literal) and n.is_number:
+            return sg.exp.Literal.number(str(Decimal(n.this).normalize()))
+        return n
+
     def tree(sql: str) -> sg.exp.Expression:
-        e = sg.parse_one(sql, read="postgres")
-        return e.transform(lambda n: n.this if isinstance(n, sg.exp.Paren) else n)
+        return sg.parse_one(sql, read="postgres").transform(unwrap).transform(number)
 
     return a == b or tree(a) == tree(b)
 
@@ -635,6 +671,12 @@ class DeltaSink(Sink):
         else:
             mode = "overwrite" if change.replace else "merge"
         missing = self._constraints(dt, contract, replace=mode != "merge")
+        root = local_path(self.uri)
+        if mode != "overwrite" and root is not None and change.native is not None:
+            done = self._write_native(dt, root, mode, change, missing, commit)
+            if done is not None:
+                version = DeltaTable(self.uri, storage_options=options).version()
+                return SinkWrite(mode, version, contract, *done, contract.checks)
         if mode == "merge":
             if missing:
                 dt.alter.add_constraint(missing)
@@ -662,6 +704,81 @@ class DeltaSink(Sink):
             inserted, deleted = rows.num_rows, 0
         version = DeltaTable(self.uri, storage_options=options).version()
         return SinkWrite(mode, version, contract, inserted, deleted, contract.checks)
+
+    def _write_native(
+        self,
+        dt: DeltaTable,
+        root: str,
+        mode: Literal["created", "merge"],
+        change: SinkChange,
+        missing: dict[str, str],
+        commit: CommitProperties,
+    ) -> tuple[int, int] | None:
+        """Have DuckDB write the files of the state (`created`) or of the
+        change (`merge`), and commit them in one transaction with the
+        contract and the epoch: the files holding rows the change deletes
+        are rewritten without them, and the rows it inserts are a new file,
+        as delta-rs's MERGE does. The constraints are the node's proved
+        guarantees, so they hold on the rows without delta-rs checking them.
+        Returns the rows written and deleted; None if the table's files do
+        not hold the rows the change deletes (another writer changed it, or
+        a layout `DeltaSource` does not scan): then the Arrow path writes."""
+        assert change.native is not None
+        rows, delta = change.native
+        schema = change.schema
+        actions: list[AddAction | RemoveAction] = []
+
+        def add(sql: str) -> int:
+            name = f"part-{uuid.uuid4()}-sverify.parquet"
+            path = os.path.join(root, name)
+            n = _engine.copy(sql, path, schema)
+            if n:
+                actions.append(_add_action(name, path, schema))
+            else:
+                os.remove(path)
+            return n
+
+        if mode == "created":
+            # An empty table: adding its constraints reads no rows.
+            if missing:
+                dt.alter.add_constraint(missing)
+            inserted, deleted = add(_engine.rows_sql(rows, schema)), 0
+        else:
+            inserted, deleted = _engine.counts(delta)
+            if not inserted and not deleted:
+                return 0, 0
+            gone = None
+            if deleted:
+                snap = DeltaSource(self.uri, storage_options=self.storage_options)._native()
+                if snap is None:
+                    return None
+                gone = _engine.positions(snap.scan, delta)
+                if gone is None:
+                    return None
+            if missing:
+                dt.alter.add_constraint(missing)
+                dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
+            if gone is not None:
+                logged = _local_files(root, file_stats(dt)) or {}
+                by_local = {v: k for k, v in logged.items()}
+                for file in pc.call_function("unique", [gone.column("file")]).to_pylist():
+                    at = gone.filter(pc.call_function("equal", [gone.column("file"), file]))
+                    name = f"part-{uuid.uuid4()}-sverify.parquet"
+                    path = os.path.join(root, name)
+                    if _engine.rewrite(file, at.select(["pos"]), path):
+                        actions.append(_add_action(name, path, schema))
+                    else:
+                        os.remove(path)
+                    now = int(time.time() * 1000)
+                    actions.append(
+                        RemoveAction(by_local[file], True, now, os.path.getsize(file), {})
+                    )
+            if inserted:
+                add(_engine.inserts_sql(delta, schema))
+        dt.create_write_transaction(
+            actions, mode="append", schema=dt.schema(), commit_properties=commit
+        )
+        return inserted, deleted
 
     def _constraints(self, dt: DeltaTable, contract: Contract, *, replace: bool) -> dict[str, str]:
         """The contract's CHECK constraints the table lacks. A constraint of
