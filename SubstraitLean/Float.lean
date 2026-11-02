@@ -167,10 +167,12 @@ def toDecimal? (c : Int) (s : Nat) : Option Int :=
     some (if negative then -q else q)
 
 /-- A decimal's unscaled integer `n` at scale `s` as a double's code,
-correctly rounded (#27). -/
+correctly rounded (#27). A decimal has at most 38 digits, far below `2¹⁰²⁴`,
+so `finite` changes nothing and tells the checker the double is finite
+(#257). -/
 def ofDecimal (n : Int) (s : Nat) : Int :=
   let f := Float.ofScientific n.natAbs true s
-  ofFloat (if n < 0 then -f else f)
+  finite (ofFloat (if n < 0 then -f else f))
 
 -- The backends' cases: the product rounds in doubles (`-2.675 · 100` is
 -- `-267.5`), and `0.145 · 100` is just below `14.5`.
