@@ -284,10 +284,10 @@ print(doubled.last_report)
 # ensures id IS NOT NULL: proved
 # known about the output:
 #   id: any integer
-#   doubled: an integer ≥ 22
+#   doubled: an integer in [22, 1999999998]
 ```
 
-Lean worked out that `doubled` is at least 22: the filter keeps only
+Lean worked out that `doubled` is at least 22 (and fits in 64 bits): the filter keeps only
 `amount > 10`, and doubling preserves that. A postcondition that doesn't
 follow is refused, with what *is* known:
 

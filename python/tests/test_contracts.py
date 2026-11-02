@@ -27,7 +27,7 @@ def test_postconditions_are_proved():
     report = doubled.last_report
     assert report is not None
     assert report.proved
-    assert report.facts["doubled"] == "an integer ≥ 22"
+    assert report.facts["doubled"] == "an integer in [22, 1999999998]"
     assert report.facts["id"] == "any integer"  # never NULL, by the precondition
 
 
@@ -48,7 +48,9 @@ def test_null_propagates_unless_ruled_out():
     assert not report.proved
     # ...and a filter on `amount` rules that out (NULL > 0 is not TRUE).
     report = sv.verify(
-        orders.filter(orders.amount > 0).select(t=orders.amount + 1), ensures=[_.t.notnull()]
+        orders.filter(orders.amount > 0).select(t=orders.amount + 1),
+        requires={"orders": [_.amount < 1_000_000_000]},
+        ensures=[_.t.notnull()],
     )
     assert report.proved
 

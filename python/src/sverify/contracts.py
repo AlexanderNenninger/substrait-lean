@@ -191,6 +191,14 @@ class CheckedCondition:
     it fails, if the search (`sverify.counterexample`) found one."""
 
 
+#: What a report suggests for an overflow it cannot rule out (#202).
+OVERFLOW_HINT = (
+    "an integer result may not fit its type (64 bits for BIGINT, or a timestamp's "
+    "range), which raises. Bound the columns involved in `requires`, as a fact about "
+    "your data: for example `_.amount < 1_000_000_000`, or, for an ASOF join with a "
+    "tolerance, a lower bound on its time column such as `_.ts >= datetime(2000, 1, 1)`"
+)
+
 #: How a report explains an issue that is checked while the job runs.
 RUNTIME_CHECK = (
     "checked while the job runs, which raises if it happens; no proof before "
@@ -292,6 +300,8 @@ class Report:
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
         lines += [f"may fail: {i}" for i in self.errors]
+        if any(i.kind == "overflow" for i in self.errors):
+            lines.append(f"hint: {OVERFLOW_HINT}")
         lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
@@ -311,6 +321,8 @@ class Report:
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
+        if any(i.kind == "overflow" for i in self.errors):
+            rows.append(f"| hint | {OVERFLOW_HINT} |")
         rows += [
             f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
             for i in self.warnings

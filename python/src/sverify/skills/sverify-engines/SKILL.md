@@ -114,6 +114,8 @@ plan. The right side needs a key on `(by, on)`, or the result is
 undetermined:
 
 ```python
+from datetime import datetime
+
 from ibis import _
 
 acc = ibis.table({"device": "!int64", "ts": "!timestamp", "ax": "float64"}, name="acc")
@@ -121,7 +123,11 @@ gyr = ibis.table({"device": "!int64", "ts": "!timestamp", "gx": "float64"}, name
 
 
 @sv.transform(
-    requires={"acc": [sv.unique("device", "ts")], "gyr": [sv.unique("device", "ts")]},
+    # `ts - 10 ms` overflows only at the smallest timestamp: a lower bound rules it out.
+    requires={
+        "acc": [sv.unique("device", "ts"), _.ts >= datetime(2000, 1, 1)],
+        "gyr": [sv.unique("device", "ts")],
+    },
     ensures=[sv.unique("device", "ts"), _.ts_right.isnull() | (_.ts_right <= _.ts)],
 )
 def aligned(acc, gyr):

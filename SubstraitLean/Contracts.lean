@@ -2640,8 +2640,10 @@ def termDiff (fs : List Fact) (a b : Expr) : Option Bound :=
 /-- No booleans or strings: only integers or NULL. -/
 def AVal.intOrNull (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 
+/-- The difference, from the facts, within what interval arithmetic gives
+(which keeps the bound that shows it fits its width, #202). -/
 def subSharpen : Option Bound → AVal → AVal
-  | some d, base => { base with int := base.int.map fun _ => d }
+  | some d, base => { base with int := base.int.map fun b => b.meet d }
   | none, base => base
 
 def ltSharpen : Option Bound → AVal → AVal
@@ -2823,8 +2825,8 @@ theorem subSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
     generalize hva : a.eval row = va at hbase ⊢
     generalize hvb : b.eval row = vb at hbase ⊢
     cases va <;> cases vb <;> simp only [BinFn.apply] at hbase ⊢ <;> try exact hbase
-    obtain ⟨b₀, hb₀, _⟩ := hbase
-    exact ⟨d, by simp [hb₀], termDiff_sound hd hfs hva hvb⟩
+    obtain ⟨b₀, hb₀, hm⟩ := hbase
+    exact ⟨b₀.meet d, by simp [hb₀], Bound.mem_meet hm (termDiff_sound hd hfs hva hvb)⟩
 
 theorem ltSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {aa base : AVal}
     (hfs : FactsHold fs row) (hint : aa.intOrNull = true) (haa : aa.Mem (a.eval row))

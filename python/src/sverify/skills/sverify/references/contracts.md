@@ -34,7 +34,7 @@ orders = ibis.table({"id": "int64", "amount": "int64"}, name="orders")
 report = sv.verify(
     "select id, amount * 2 as doubled from orders where amount > 10",
     tables={"orders": orders},
-    requires={"orders": ["amount >= 0", sv.unique("id")]},
+    requires={"orders": ["amount >= 0", "amount < 1000000000", sv.unique("id")]},
     ensures=["doubled >= 22", sv.unique("id")],
 )
 assert report.proved

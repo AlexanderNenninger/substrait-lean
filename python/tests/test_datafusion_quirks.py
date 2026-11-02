@@ -403,7 +403,7 @@ def test_int32_wraps_at_32_bits():
         ["a BETWEEN 0 AND 2147483647", "b BETWEEN 0 AND 2147483647"],
         ["s >= 0"],
     )
-    assert not report.ensures[0].proved or report.warnings
+    assert not report.ensures[0].proved or report.errors
 
 
 def test_int32_wrap_in_lean_and_datafusion(con):
