@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### `division_type: TRUNCATE` is accepted
+
+A plan whose `modulus` states `division_type: TRUNCATE` was refused,
+although the remainder already takes the dividend's sign. It is now
+accepted; `FLOOR` is still refused, as the model does not compute it.
+
 ### `approx_nunique` is refused
 
 Ibis's `approx_nunique()` was translated as the exact `nunique()`. Each
@@ -62,18 +68,38 @@ counted as contracted, so a dropped column, or a column widened beyond what
 its values used to fit, raised `SchemaError` instead of planning the node
 again. It is now planned again and recomputed, and its sink is overwritten.
 
+### Changed: no operation creates a NaN
+
+A NaN in your data still passes through, but an operation on numbers no
+longer makes one where IEEE would. `inf - inf`, `0 * inf`, `inf / inf`,
+`fmod(inf, y)`, a negative number to a fractional power, `sin`, `cos` or
+`tan` of an infinity, and a grouped double `SUM` or `AVG` of both `+inf` and
+`-inf` now raise a domain error on DuckDB, Polars, Spark and Snowflake, and
+`verify` reports "domain error" unless the plan rules it out. So a job with
+no NaN in its inputs has none in its outputs. For double arithmetic on
+columns `verify` cannot bound, add bounds such as `_.x < 1e300` and
+`_.x > -1e300` to `requires`. Adding a constant, or a whole-number power,
+needs none. A plan that asks for `on_domain_error: NAN` is refused, and
+`on_division_by_zero: IEEE` still gives NaN for `0.0 / 0.0`, as it asks.
+DataFusion still gives NaN where the others raise (#257).
+
 ### Fixed: `%` of doubles gave wrong values
 
 A plan that takes the remainder of doubles, such as `x % 2.5`, passed the
 check but was evaluated on the doubles' internal codes, so its values were
 wrong (`7.5 % 2.0` came out as a 300-digit integer). It is now C's `fmod`,
 as DuckDB, DataFusion and Spark compute `%`: the result has the sign of the
-dividend (`-7.5 % 2.0` is `-1.5`), an infinite dividend or a NaN give NaN,
-and an infinite divisor gives the dividend. The value is exact. A zero
+dividend (`-7.5 % 2.0` is `-1.5`), a NaN gives NaN, an infinite dividend
+raises (see above), and an infinite divisor gives the dividend. The value is exact. A zero
 divisor is an error, as for integers, so `verify` reports "division by zero"
 unless the plan rules it out (`WHERE y <> 0.0`). The Polars translation gives
 the same results, although Polars' own `%` takes the divisor's sign.
 Substrait itself defines no `modulus` of doubles (#203).
+
+Substrait defines no `modulus` of doubles, so plans now call sverify's own
+`sverify_fmod` for it, which the Ibis producer and the SQL lift emit for `%`
+of doubles and which DataFusion runs as its own `%`. sverify still reads the
+`modulus` of doubles that DataFusion's producer writes (#256).
 
 ## 0.3.0 (2026-11-01)
 

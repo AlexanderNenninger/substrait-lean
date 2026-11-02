@@ -951,6 +951,9 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["add", "subtract", "multiply", "negate", "sum", "divide", "modulus", "abs",
       "power"].contains base then some (some ["ERROR"])
     else none
+  -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
+  -- `TRUNCATE`. `FLOOR` is not modelled yet (#209 R3).
+  | "division_type" => if base == "modulus" then some (some ["TRUNCATE"]) else none
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
@@ -970,9 +973,10 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
   | "on_domain_error" =>
     -- Outside their domains the elementary functions raise (`Numeric.lean`).
     if doubleFns.contains base then some (some ["ERROR"])
-    -- Double division propagates NaN, and `±∞ / ±∞` is NaN (IEEE 754).
-    else if base == "divide" then (if float then some (some ["NAN"]) else some none)
-    else if base != "power" then none else if float then some (some ["NAN"]) else some none
+    -- No operation creates a NaN (#257): `±∞ / ±∞`, and a power of a negative
+    -- number to a fraction, raise.
+    else if base == "divide" || base == "power" then (if float then some (some ["ERROR"]) else some none)
+    else none
   | "on_log_zero" =>
     if ["ln", "log10", "log2", "logb"].contains base then some (some ["ERROR"]) else none
   -- The model's string matching is case-sensitive (`SubstraitLean/Text.lean`).
@@ -1511,6 +1515,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let anchor ← natD f "functionReference"
     let some name := fns.lookup anchor
       | throw s!"function reference {anchor} is not declared in extensions"
+    -- sverify's own remainder of doubles (#256) is `modulus` on doubles.
+    let fmodExt := baseName name == "sverify_fmod"
+    let name := if fmodExt then "modulus" else name
     let argJs ← (← arrD f "arguments").mapM fun a => field a "value"
     -- `f(l, x -> body)`, with a closed lambda (#94).
     if let some hf := hofFn? (baseName name) then
@@ -1634,6 +1641,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) &&
       (out == .float || hasFloat || doubleFns.contains (baseName name))
+    if fmodExt && !floatCall then throw "sverify_fmod takes doubles"
     if arithmeticFns.bitFns.contains (baseName name) && hasFloat then
       throw s!"{baseName name} is only supported on integers"
     -- Decimals (#27) are their unscaled integers: `decimalCall` brings the
