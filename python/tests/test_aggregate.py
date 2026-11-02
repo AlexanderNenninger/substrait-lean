@@ -255,3 +255,26 @@ def test_errors_in_measures_are_reported():
         .aggregate(q=(100 // orders.amount).max())
     )
     assert not sv.verify(guarded).errors
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT a, bit_and(b), bit_or(b), bit_xor(b) FROM t GROUP BY a",
+        "SELECT bit_xor(b) FILTER (WHERE b > 0), bit_and(DISTINCT b) FROM t",
+    ],
+)
+@settings(
+    max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    t=st.lists(st.tuples(small, st.one_of(st.none(), st.integers(-(2**63), 2**63 - 1))), max_size=7)
+)
+def test_bit_aggregates_match_every_engine(sql, t):
+    """`AggFn.bit` (#53): the 64-bit operation folded over the non-NULL values."""
+    schema = ibis.schema({"a": "int64", "b": "int64"})
+    got, expected = run(sql, schema, t)
+    assert sorted(got, key=repr) == sorted(expected, key=repr)
+    out = engine_rows(sql, schema, t)
+    assert sorted(out["polars"], key=repr) == sorted(expected, key=repr)
+    assert sorted(out["duckdb"], key=repr) == sorted(expected, key=repr)

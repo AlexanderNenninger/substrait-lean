@@ -646,6 +646,12 @@ class Dialect:
         values (#209)."""
         raise Unsupported(f"{self.name}: AVG with an integer result is not implemented")
 
+    def bit_agg(self, fn: str, v: str, over: str) -> str:
+        """`AggFn.bit` (`bit_and`, `bit_or`, `bit_xor`) of the BIGINT column
+        `v` (over the window `over`, or grouped for `''`): NULLs skipped, NULL
+        without values (#53)."""
+        return f"{fn.upper()}({v}){over and ' ' + over}"
+
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
         ordinal `o`, from +0.0 (rounding depends on the order)."""
@@ -1003,7 +1009,20 @@ class Distinct:
 class Measure:
     """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
 
-    fn: Literal["count", "sum", "fsum", "avg", "iavg", "min", "max", "dsum", "davg"]
+    fn: Literal[
+        "count",
+        "sum",
+        "fsum",
+        "avg",
+        "iavg",
+        "min",
+        "max",
+        "dsum",
+        "davg",
+        "bit_and",
+        "bit_or",
+        "bit_xor",
+    ]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
@@ -1098,7 +1117,7 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
             # A decimal column's sum is a decimal (#27).
             a = cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else None
             return dsum_kind(a) if isinstance(a, Dec) else "int"
-        if m.fn in ("count", "iavg"):
+        if m.fn in ("count", "iavg", *BIT_AGGS):
             return "int"
         if m.fn in ("fsum", "avg"):
             return "float"
@@ -1108,6 +1127,10 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
     return cols[f.col] if f.col < len(cols) else unknown
 
 
+#: `AggFn.bit`'s functions (#53).
+BIT_AGGS = ("bit_and", "bit_or", "bit_xor")
+
+
 def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], Any]) -> Any:
     """`Measure.kind`."""
     if m.fn in ("dsum", "davg"):
@@ -1115,7 +1138,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         if not isinstance(a, Dec):
             raise Unsupported(f"{m.fn} of a non-decimal")
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
-    if m.fn in ("count", "sum", "iavg"):
+    if m.fn in ("count", "sum", "iavg", *BIT_AGGS):
         return "int"
     return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
 
@@ -2631,7 +2654,20 @@ class _Parser:
             and _lean_type_kind(m["outputType"]) != "float"
         ):
             raise Unsupported("avg with a non-double result is not supported")
-        fn: Literal["count", "sum", "fsum", "avg", "iavg", "min", "max", "dsum", "davg"]
+        fn: Literal[
+            "count",
+            "sum",
+            "fsum",
+            "avg",
+            "iavg",
+            "min",
+            "max",
+            "dsum",
+            "davg",
+            "bit_and",
+            "bit_or",
+            "bit_xor",
+        ]
         match name, k:
             case "count", _:
                 fn = "count"
@@ -2655,6 +2691,8 @@ class _Parser:
                 fn, arg = "avg", Un("itof", arg)
             case "avg", "float":
                 fn = "avg"
+            case (("bit_and" | "bit_or" | "bit_xor"), "int"):
+                fn = name
             case (("min" | "max"), "float"):
                 raise Unsupported(f"{name} of doubles is not supported")
             case (("min" | "max"), ("int" | "str" | "bool" | "time" | "date")):
@@ -3373,6 +3411,8 @@ class _Writer:
                 return d.int_sum(v)
             case "iavg":
                 return d.int_avg(v, "")
+            case "bit_and" | "bit_or" | "bit_xor":
+                return d.bit_agg(m.fn, v, "")
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
@@ -3572,6 +3612,8 @@ class _Writer:
                 return d.window_int_sum(v, w)
             case "iavg":
                 return d.int_avg(v, w)
+            case "bit_and" | "bit_or" | "bit_xor":
+                return d.bit_agg(m.fn, v, w)
             case "dsum":
                 a = expr_kind(m.arg, ks)
                 if not isinstance(a, Dec):

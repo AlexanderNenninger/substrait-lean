@@ -1128,6 +1128,10 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.Min | ops.Max):
         # On booleans Ibis writes BOOL_AND / BOOL_OR, which are MIN / MAX.
         name, args = ("min" if isinstance(op, ops.Min) else "max"), [x(op.arg)]
+    elif isinstance(op, ops.BitAnd | ops.BitOr | ops.BitXor):
+        # 64-bit integers (#53); a narrower column is widened first.
+        name = {ops.BitAnd: "bit_and", ops.BitOr: "bit_or", ops.BitXor: "bit_xor"}[type(op)]
+        args = [x(op.arg, dt.int64)]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
     else:

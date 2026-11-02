@@ -75,6 +75,17 @@ MEANINGS = [
         [(False,), (False,), (None,)],
     ),
     ("nunique skips NULL", lambda t: t.aggregate(r=t.x.nunique()), [(1,)]),
+    (
+        "bit aggregates of 64-bit integers, NULLs skipped",
+        lambda t: t.aggregate(
+            p=t.a.bit_and(),
+            q=t.a.bit_or(),
+            r=t.a.bit_xor(),
+            s=t.x.bit_xor(),
+            e=t.a.bit_and(where=t.a > 100),
+        ),
+        [(1, -1, -5, 0, None)],
+    ),
     ("round half away from zero", lambda t: t.select(r=t.v.round()), [(3,), (-3,), (0,)]),
     ("cast to int64 truncates", lambda t: t.select(r=t.v.cast("int64")), [(2,), (-2,), (0,)]),
     ("one zero", lambda t: t.select(r=t.v == 0.0), [(False,), (False,), (True,)]),
