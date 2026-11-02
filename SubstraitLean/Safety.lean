@@ -11,10 +11,12 @@ bytes, on `date_trunc` to a week, month, quarter or
 year outside ±2⁶³ nanoseconds, and on date arithmetic (`DATE ± days`, adding
 months) outside the years `chrono` represents. `date_trunc` of a DATE goes
 through nanoseconds and gives garbage outside them (1677 to 2262), which is
-reported as an error too. Integer `+`, `-`, `*` and negation do not fail:
-they wrap around silently, so the result differs from `Rel.eval`'s
-(unbounded) integers; so does `date_trunc` to a day or less below `-2⁶³`. All of these are
-`Issue`s; wrapping is a warning, the rest are errors. So are arguments
+reported as an error too. Integer `+`, `-`, `*` and negation do not fail in
+DataFusion: they wrap around silently; so does `date_trunc` to a day or less
+below `-2⁶³`. The reference raises there (#202: `overflow` omitted means
+ERROR, at the declared width), and an error allows DataFusion's answer. All
+of these are `Issue`s and errors, except an integer `SUM` that leaves 64
+bits, which is checked while the job runs (`Issue.sumWraps`). So are arguments
 outside a function's domain (`sqrt` of a negative, a shift by 64, …,
 `SubstraitLean/Numeric.lean`), where the reference raises and DataFusion
 gives an IEEE value or a wrapped shift instead: an error allows that.
@@ -62,10 +64,15 @@ inductive Issue where
   | negExponent
   /-- A regular expression outside `Text.simpleRegex`, which may not compile. -/
   | badRegex
-  /-- `+`, `-`, `*` or negation leaving 64 bits, or the width of narrower
-  integers (`UnFn.wrap`): DataFusion wraps around. -/
+  /-- `+`, `-`, `*` or negation whose result does not fit its declared width:
+  64 bits, or narrower integers (`UnFn.wrap`). With `overflow` omitted or
+  `ERROR`, the reference raises (#202); DataFusion wraps around instead,
+  which an error allows (a refinement). -/
   | wraps
-  /-- An integer `SUM` leaving 64 bits: DataFusion wraps around. Kept apart
+  /-- An integer `SUM` leaving 64 bits. The reference raises, and so does the
+  SQL sverify writes, but no contract on rows can rule it out: nothing bounds
+  how many rows a group has. So it is checked while the job runs and does not
+  count against a proof (`isError` is false, as decided on #202). Kept apart
   from `wraps` because it comes from a group's rows, not from one row:
   `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
@@ -87,7 +94,8 @@ def Issue.name : Issue → String
   | .badCast => "cast out of range"
   | .negExponent => "negative exponent"
   | .badRegex => "invalid regular expression"
-  | .wraps | .sumWraps => "may wrap around"
+  | .wraps => "overflow"
+  | .sumWraps => "SUM overflow"
   | .domain => "domain error"
   | .raised => "raised by a guard"
 
@@ -103,9 +111,10 @@ def WinFn.sumArg? (fns : List WinFn) : List Expr :=
     | .agg m _ _ => if m.fn = .sum ∧ m.arg.isDecimal = false then some m.arg else none
     | _ => none
 
-/-- Errors stop the query; wrapping silently gives a different result. -/
+/-- Errors are what a proof must rule out. A `SUM` overflow raises too, but
+is checked while the job runs instead (`sumWraps`). -/
 def Issue.isError : Issue → Bool
-  | .wraps | .sumWraps => false
+  | .sumWraps => false
   | _ => true
 
 def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)

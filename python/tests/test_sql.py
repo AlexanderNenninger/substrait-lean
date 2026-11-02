@@ -250,6 +250,8 @@ def test_fixture_lists_are_complete():
     assert set(REFUSED) == {
         "bad_field_ref",
         "isthmus_char_padding",
+        # `overflow: SILENT`, which the model does not do (#202).
+        "isthmus_nested_window",
         "isthmus_timestamp_seconds",
         "option_overflow_saturate",
     }

@@ -356,6 +356,12 @@ def canonical (x : Json) : Json :=
   let lit (s : Json) := obj [("literal", obj [("fp64", s)])]
   call 41 [call 4 [x, lit (Json.num 0)], lit "NaN"]
 
+/-- `CAST(j AS INT<n>)` that raises where the value does not fit. -/
+def checkedNarrow (n : Nat) (j : Json) : Json :=
+  let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+  obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
+    ("input", j), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+
 /-- `x`, written as `j`, or as an integer literal of `n` bits. -/
 def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
   match x with
@@ -520,10 +526,12 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   -- Arithmetic at `n` bits: its integer literals are written at that width,
-  -- which is what makes the engine compute at it.
-  | .un (.wrap n) (.bin f x y) =>
-    call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)]
-  | .un (.wrap n) (.un .neg x) => call 3 [narrowLit n x (writeExpr cols .int x)]
+  -- which is what makes the engine compute at it, and the result is cast to
+  -- it, which raises where it does not fit (#202). The parser reads the cast
+  -- back as the same `wrap`.
+  | .un (.wrap n) (.bin f x y) => checkedNarrow n
+    (call (BinFn.anchor f) [narrowLit n x (writeExpr cols .int x), narrowLit n y (writeExpr cols .int y)])
+  | .un (.wrap n) (.un .neg x) => checkedNarrow n (call 3 [narrowLit n x (writeExpr cols .int x)])
   | .un (.wrap _) a => writeExpr cols ctx a
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]

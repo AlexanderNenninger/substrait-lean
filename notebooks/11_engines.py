@@ -193,9 +193,9 @@ def _(mo):
       `NaN > 0` is TRUE; and −0.0 is 0.0 (chapter 12), on every engine.
     * **`qty + 1` on the largest integer** is where engines really differ:
       DataFusion silently wraps around to the smallest integer, while the
-      Polars and DuckDB translators **raise**, because Lean's integers are
-      unbounded and a wrapped result is not the model's answer. That's the
-      "may wrap around" warning of chapter 6, made visible.
+      Polars and DuckDB translators **raise**, as the reference does: an
+      integer that leaves its declared width is an error. That's the
+      "overflow" that `verify` reports, made visible.
 
     **Lean's column** is missing for the last two queries. Values in the
     model are untyped: a double is stored as a very large integer code

@@ -286,7 +286,7 @@ def test_sliding_double_aggregates_are_refused():
 def test_window_sums_may_wrap():
     """An integer SUM over a frame wraps around in DataFusion (`Issue.sumWraps`)."""
     report = sv.verify("SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r", tables={"r": SCHEMA})
-    assert "may wrap around" in [i.kind for i in report.warnings]
+    assert "SUM overflow" in [i.kind for i in report.warnings]
 
 
 R = ibis.table(SCHEMA, name="r")

@@ -931,11 +931,12 @@ only on rows where `SubstraitLean/Safety.lean` reports an error anyway (what
 /-- The preferences an option of `base` may list (`none`: any), and whether
 the option is known at all. `float` says the call is on doubles. -/
 def optionAccepts (base : String) (float : Bool) : String → Option (Option (List String))
-  -- Integer `+`, `-`, `*` and `SUM` wrap around silently (a `wraps` warning).
+  -- Integer overflow raises at the declared width (#202); `SILENT` and
+  -- `SATURATE` are not modelled yet (options as profile parameters, #241).
   | "overflow" =>
     if float then none
-    else if ["add", "subtract", "multiply", "negate", "sum"].contains base then some (some ["SILENT"])
-    else if ["divide", "modulus", "abs", "power"].contains base then some none
+    else if ["add", "subtract", "multiply", "negate", "sum", "divide", "modulus", "abs",
+      "power"].contains base then some (some ["ERROR"])
     else none
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
@@ -992,7 +993,9 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
 #guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
   ("preference", Json.arr #["SATURATE"])]]).toBool == false
 #guard (checkOptions "divide" false [Json.mkObj [("name", "overflow"),
-  ("preference", Json.arr #["SATURATE"])]]).toBool
+  ("preference", Json.arr #["SATURATE"])]]).toBool == false
+#guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["SILENT"])]]).toBool == false
 #guard (checkOptions "divide" true [Json.mkObj [("name", "on_division_by_zero"),
   ("preference", Json.arr #["LIMIT"])]]).toBool
 #guard (checkOptions "divide" false [Json.mkObj [("name", "on_division_by_zero"),
@@ -1741,6 +1744,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
     if target == .int && k == .int then
       let bits := intBits (← field c "type")
+      -- Arithmetic already checked at a width that fits (the writer's
+      -- `checkedNarrow`): the cast changes nothing.
+      if let .un (.wrap n) _ := e then
+        if n ≤ bits then return e
       return if bits < 64 then .un (.narrow bits) e else e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
