@@ -126,7 +126,13 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   samples and proves the first that agrees, for every argument of the
   function's types. `substrait-check --lift-table` prints the table as JSON
   (golden: `tests/lowering/duckdb-lift.expected`) for `sverify.sql_lift` to
-  read. A DuckDB function without an entry fails the build. The parser is
+  read. A DuckDB function without an entry fails the build, unless the spec
+  refuses it with a reason (`DuckFn.refused`). The search keeps a cache,
+  `SubstraitLean/LiftCache.lean` (`substrait-check --lift-cache`), of the
+  templates it found and of why a function's first candidate failed; it tries
+  a cached template first, so a build with the cache takes seconds. A cache
+  entry is only a hint, still read by the parser and proved, and one the search
+  does not reach can be seeded by hand (`source = "seeded: …"`). The parser is
   `partial`, so its reading of an entry is computed at build time rather than
   proved.
 
