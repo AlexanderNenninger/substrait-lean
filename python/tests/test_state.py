@@ -11,6 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 import sverify as sv
@@ -59,7 +60,8 @@ def test_the_merge_plan_groups_as_the_model_on_every_engine(case):
     con = sv.connect()
     merge = Merger(con, z.schema)
     want = consolidated(a, b)
-    assert merge.refused is None and merge.plan() is not None
+    plan = merge.plan()
+    assert merge.refused is None and plan is not None
     assert same(merge(a, b), want)
     kept = merge(a, b, keep=True)
     assert isinstance(kept, Resident) and same(kept.to_arrow(), want)
@@ -68,7 +70,7 @@ def test_the_merge_plan_groups_as_the_model_on_every_engine(case):
     put_table(con, "$merge_b", b)
     for engine in installed_engines():
         try:
-            out = run_plan(con, merge.plan(), engine)
+            out = run_plan(con, plan, engine)
         except ValueError as e:
             # An engine may refuse a type (Polars: decimals), never differ.
             assert type(e).__name__ == "Unsupported", e
@@ -96,7 +98,7 @@ def test_stores_negate_and_expand_alike():
         ),
     ]:
         assert same(arrow_of(got), want)
-    positive = z.filter(pa.compute.greater(z.column(WEIGHT), 0))
+    positive = z.filter(pc.call_function("greater", [z.column(WEIGHT), 0]))
     expanded = arrow_of(duck.expanded(duck.keep_table(positive)))
     assert expanded.num_rows == 1 + 1 + 4 + 1
     assert duck.has_negative(kept) and not duck.has_negative(duck.keep_table(positive))
@@ -110,7 +112,9 @@ def pipeline(engine):
     con = sv.connect(engine)
     schema = pa.schema([("id", pa.int64()), ("c", pa.string()), ("x", pa.float64())])
     put_table(
-        con, "o", pa.Table.from_pylist([dict(zip(schema.names, r)) for r in orders()], schema)
+        con,
+        "o",
+        pa.Table.from_pylist([dict(zip(schema.names, r, strict=True)) for r in orders()], schema),
     )
     pipe = Pipeline(con)
     o = con.table("o")
@@ -146,9 +150,9 @@ def test_old_states_are_dropped():
         if r[0].startswith("__sverify_resident")
     }
     # Each view: its state, and the view of its rows; other tests' may linger.
-    live = {v.state.name for v in pipe.views.values()} | {
-        pipe.con.get(name).name for name in pipe.views
-    }
+    held_by = [v.state for v in pipe.views.values()] + [pipe.con.get(n) for n in pipe.views]
+    live = {r.name for r in held_by if isinstance(r, Resident)}
+    assert len(live) == 4
     assert live <= held
     del pipe, views
     gc.collect()
