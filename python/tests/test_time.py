@@ -264,7 +264,8 @@ def test_datafusion_fails_only_where_reported(i, values):
 
 #: The days chrono represents (`Time.dayMin`, `Time.dayMax`), and those
 #: within DataFusion's nanoseconds (`Time.nsDayMin`, `Time.nsDayMax`).
-DAY_MIN, DAY_MAX = -96465292, 95026236
+#: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`, #251).
+DAY_MIN, DAY_MAX = -719162, 2932896
 NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
 
 #: Date arithmetic and parts, in Ibis: Lean gets the Ibis producer's plan
@@ -323,11 +324,9 @@ def date_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tupl
 
 
 day_edges = st.sampled_from(
-    [0, -1, 19753, 19782, 19813, 11016, 10957, -719162, 2932896, DAY_MIN + 800, DAY_MAX - 800]
+    [0, -1, 19753, 19782, 19813, 11016, 10957, DAY_MIN + 800, DAY_MAX - 800]
 )
-dates = st.one_of(
-    day_edges, st.integers(-800_000, 3_000_000), st.integers(DAY_MIN + 800, DAY_MAX - 800)
-)
+dates = st.one_of(day_edges, st.integers(DAY_MIN + 800, DAY_MAX - 800))
 
 
 @settings(max_examples=25, deadline=None)
@@ -362,9 +361,10 @@ def test_date_trunc_of_dates_matches_datafusion(values):
         (R_DATES.d.truncate("D"), NS_DAY_MIN - 1),
     ],
 )
-def test_dates_outside_chrono_fail(x, d):
-    """`rangeIssue`: where DataFusion panics (or truncates in wrapped
-    nanoseconds), the checker reports an error and the engines raise."""
+def test_dates_outside_the_range_fail(x, d):
+    """`rangeIssue`: date arithmetic that leaves the reference's dates (#251),
+    and `date_trunc` outside DataFusion's nanoseconds: the checker reports an
+    error and the engines raise."""
     con = connect()
     put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
     expr = R_DATES.select(x=x)
@@ -679,3 +679,20 @@ def test_overlapping_windows_are_refused():
     )
     with pytest.raises(Unsupported):
         to_substrait(W.mutate(start=starts.unnest()))
+
+
+def test_constant_date_arithmetic_has_no_guard():
+    """`DATE '1994-01-01' + INTERVAL 1 YEAR` (TPC-H Q6) stays within the
+    reference's dates, which is decided when the plan is written: the SQL
+    has no range guard. A column's arithmetic keeps it (#251)."""
+    from sverify.sql import to_sql as plan_sql
+    from sverify.sql.duckdb import DUCKDB
+
+    t = ibis.table({"d": "date"}, name="t")
+    for expr, guarded in [
+        (t.filter(t.d < ibis.date("1994-01-01") + ibis.interval(years=1)), False),
+        (t.filter(t.d < ibis.date("1994-01-01") + ibis.interval(days=365)), False),
+        (t.select(e=t.d + ibis.interval(years=1)), True),
+    ]:
+        sql = plan_sql(json.loads(written_plan(to_substrait_json(expr))), DUCKDB)
+        assert ("outside the reference" in sql) == guarded, sql

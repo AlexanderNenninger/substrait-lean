@@ -36,6 +36,7 @@ a `Dialect` (see `sverify.sql.duckdb`).
 from __future__ import annotations
 
 import base64
+import calendar
 import json
 import math
 import re
@@ -3962,7 +3963,8 @@ class _Writer:
                 return d.to_date(self.operand(a, "time", ref, cols, "CAST to DATE"))
             case Un(op="day_part", arg=a, param=part):
                 x = self.operand(a, "date", ref, cols, "date_part")
-                inside = f"{d.date_days(x)} BETWEEN {d.int_lit(DAY_MIN)} AND {d.int_lit(DAY_MAX)}"
+                lo, hi = d.int_lit(CHRONO_DAY_MIN), d.int_lit(CHRONO_DAY_MAX)
+                inside = f"{d.date_days(x)} BETWEEN {lo} AND {hi}"
                 return f"(CASE WHEN {inside} THEN {d.date_part(part, d.date_to_time(x))} END)"
             case Un(op="day_trunc", arg=a, param=unit):
                 x = self.operand(a, "date", ref, cols, "date_trunc")
@@ -3977,6 +3979,9 @@ class _Writer:
                 kind: Kind = "time" if k == "time" else "date"
                 x = self.operand(a, kind, ref, cols, "adding months")
                 if kind == "date":
+                    if (c := _const_days(a)) is not None and _in_dates(c, _add_months(months, c)):
+                        # Decided when the plan is written (TPC-H Q6).
+                        return d.add_months(x, months, kind)
                     return self.date_range(
                         x, lambda y: d.add_months(y, months, kind), DAY_MIN, DAY_MAX,
                         "adding months",
@@ -3998,6 +4003,9 @@ class _Writer:
             case Bin(op="date_add", left=a, right=b):
                 x = self.operand(a, "date", ref, cols, "date + days")
                 n = self.int_operand(b, ref, cols, "date + days")
+                c, k = _const_days(a), b.value if isinstance(b, Lit) else None
+                if c is not None and isinstance(k, int) and _in_dates(c, c + k):
+                    return d.date_add_days(x, n)
                 return self.date_range(
                     x, lambda y: d.date_add_days(y, n), DAY_MIN, DAY_MAX, "date + days"
                 )
@@ -4179,7 +4187,12 @@ class _Writer:
             return f(x)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        fail = d.raise_(f"{what} outside the dates DataFusion computes", x, "date")
+        where = (
+            OUTSIDE_DATES
+            if (lo, hi) == (DAY_MIN, DAY_MAX)
+            else "outside the dates DataFusion computes"
+        )
+        fail = d.raise_(f"{what} {where}", x, "date")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
@@ -4306,10 +4319,14 @@ class _Writer:
 #: DataFusion truncates to calendar units exactly from here to here
 #: (`Time.nsMin`, `Time.nsMax`, in microseconds).
 NS_MIN, NS_MAX = -9223372036854775, 9223372036854775
-#: The days chrono represents (`Time.dayMin`, `Time.dayMax`), the timestamps
-#: (`Time.partMin`, `Time.partMax`), and the days within ±2⁶³ ns
-#: (`Time.nsDayMin`, `Time.nsDayMax`).
-DAY_MIN, DAY_MAX = -96465292, 95026236
+#: The reference's dates, 0001-01-01 to 9999-12-31 (`Time.dayMin`,
+#: `Time.dayMax`, #251); the days chrono represents (`Time.chronoDayMin`,
+#: `Time.chronoDayMax`), the timestamps (`Time.partMin`, `Time.partMax`), and
+#: the days within ±2⁶³ ns (`Time.nsDayMin`, `Time.nsDayMax`).
+DAY_MIN, DAY_MAX = -719162, 2932896
+#: What leaving the reference's dates is called in an error.
+OUTSIDE_DATES = "outside the reference's dates (0001-01-01 to 9999-12-31)"
+CHRONO_DAY_MIN, CHRONO_DAY_MAX = -96465292, 95026236
 PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
 #: The longest string DataFusion's `repeat` writes, in bytes (`Text.repeatMax`).
@@ -4448,3 +4465,27 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
+
+
+def _const_days(e: Expr) -> int | None:
+    """The days of a constant DATE."""
+    return e.value if isinstance(e, Lit) and e.kind == "date" and isinstance(e.value, int) else None
+
+
+def _in_dates(*days: int) -> bool:
+    return all(DAY_MIN <= x <= DAY_MAX for x in days)
+
+
+def _add_months(m: int, days: int) -> int:
+    """`Time.addMonths`: the same day `m` months later, or that month's last
+    day; for dates within the reference's (`_in_dates`)."""
+    if not _in_dates(days):
+        return DAY_MAX + 1
+    start = date(1970, 1, 1)
+    day = start + timedelta(days=days)
+    y, mo = divmod(day.month - 1 + m, 12)
+    year, month = day.year + y, mo + 1
+    if not 1 <= year <= 9999:
+        return DAY_MAX + 1
+    last = calendar.monthrange(year, month)[1]
+    return (date(year, month, min(day.day, last)) - start).days
