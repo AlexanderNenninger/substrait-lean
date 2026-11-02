@@ -2,17 +2,18 @@
 
 ## Unreleased
 
-### `any()` and `all()`
-
-Ibis's `any()` and `all()` of booleans are now verified, as `MAX` and `MIN`
-(`BOOL_OR` and `BOOL_AND`): NULLs are skipped, and a group without a
-non-NULL value gives NULL (#53).
-
 ### `division_type: TRUNCATE` is accepted
 
 A plan whose `modulus` states `division_type: TRUNCATE` was refused,
 although the remainder already takes the dividend's sign. It is now
 accepted; `FLOOR` is still refused, as the model does not compute it.
+
+### `approx_nunique` is refused
+
+Ibis's `approx_nunique()` was translated as the exact `nunique()`. Each
+engine computes its own estimate, so no plan gives the same answer
+everywhere; it is now refused, with a hint to use `nunique()` for the exact
+count.
 
 ### Isthmus support removed
 

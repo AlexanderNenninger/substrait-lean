@@ -1,6 +1,7 @@
 #!/bin/sh
 # Golden tests: run substrait-check on every fixture and compare its output
-# and exit code with the recorded `.expected` file.
+# and exit code with the recorded `.expected` file, and the same for the
+# generated lowering tables (`--lowering-coverage`).
 # Pass --update to re-record the expected outputs.
 set -u
 cd "$(dirname "$0")/.."
@@ -17,4 +18,14 @@ for plan in tests/fixtures/*.json; do
     echo "FAIL $plan"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
   fi
 done
+# The generated lowerings (#241): which constructs are native, which guarded.
+expected=tests/lowering/duckdb.expected
+actual=$("$bin" --lowering-coverage 2>&1; echo "[exit $?]")
+if [ "${1:-}" = "--update" ]; then
+  printf '%s\n' "$actual" > "$expected"
+elif printf '%s\n' "$actual" | diff -u "$expected" - > /dev/null; then
+  echo "ok   $expected"
+else
+  echo "FAIL $expected"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
+fi
 exit $fail

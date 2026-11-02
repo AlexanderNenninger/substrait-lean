@@ -34,6 +34,12 @@ CASES: list[Case] = [
     case("aggregation", "nunique", V, lambda: t.group_by("name").aggregate(n=t.id.nunique())),
     case(
         "aggregation",
+        "approx_nunique",
+        R,
+        lambda: t.group_by("name").aggregate(n=t.id.approx_nunique()),
+    ),
+    case(
+        "aggregation",
         "any, all",
         V,
         lambda: t.group_by("name").aggregate(a=(t.qty > 0).any(), b=t.flag.all()),
