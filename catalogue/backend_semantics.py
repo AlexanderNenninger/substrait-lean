@@ -15,7 +15,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", app_title="One expression, many engines")
+app = marimo.App(width="compact", app_title="One expression, many engines")
 
 
 @app.cell(hide_code=True)
