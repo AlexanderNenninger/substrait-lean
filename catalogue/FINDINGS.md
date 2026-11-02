@@ -413,7 +413,7 @@ Over the 120 queries that verify (some only as DOUBLE):
 
 ### Pitfall frequency
 
-| pitfall | queries | chapter 17 entries |
+| pitfall | queries | backend_semantics.py entries |
 |---|---|---|
 | `tie_order` | 44 | – |
 | `null_join_keys` | 19 | N4 |

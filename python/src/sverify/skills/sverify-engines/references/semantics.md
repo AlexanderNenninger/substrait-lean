@@ -26,5 +26,5 @@ the model on random tables.
   calendar (ISO weeks), not the session's week start.
 
 DataFusion runs the plan through its own Substrait consumer, so its own
-semantics apply there; section 8 of the tour's chapter 17 (one expression,
+semantics apply there; section 8 of `catalogue/backend_semantics.py` (one expression,
 many engines) lists where they differ from the model.

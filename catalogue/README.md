@@ -16,7 +16,7 @@ verifies it, and which engines run it.
 |---|---|
 | `queries/*.toml` | The queries, one file per suite: `tpch` (all 22), `tpcds` (8), `ssb` (4), `clickbench` (7), `job` (3), `h2o` (10), and practitioner idioms in `windows`, `timeseries`, `product`, `modelling`, `iot` (12) and `finance` (18) |
 | `features.toml` | The vocabulary of operators and features, with Lean's support for each (`yes`, `partial`, `no`), found by probing |
-| `pitfalls.toml` | Cross-engine correctness pitfalls, each linked to the entries of [chapter 17 of the tour](../notebooks/17_backend_semantics.py) |
+| `pitfalls.toml` | Cross-engine correctness pitfalls, each linked to the entries of [backend_semantics.py](backend_semantics.py), a marimo app that asks one question of every engine |
 | `schemas.toml` | The tables of each dataset (only the columns the queries use), with value pools for synthetic data |
 | `status.json` | What the probes found for every query (generated) |
 | `INDEX.md`, `FINDINGS.md` tables | Generated from the above, on `main` only (see below) |
