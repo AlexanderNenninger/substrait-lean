@@ -88,7 +88,7 @@ def keyCol (ks : List (List Nat)) : Expr → Bool
   | _ => false
 
 def Measure.dropDistinct (ks : List (List Nat)) (m : Measure) : Measure :=
-  if m.distinct && m.fn != .collect && keyCol ks m.arg then { m with distinct := false } else m
+  if m.distinct && !m.fn.sorts && keyCol ks m.arg then { m with distinct := false } else m
 
 /-- Do the grouping expressions include the columns of a key? -/
 def groupsKey (ks : List (List Nat)) (gs : List Expr) : Bool :=
@@ -424,8 +424,9 @@ theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
   unfold dropDistinct
   split
   · rename_i h
-    simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at h
+    simp only [Bool.and_eq_true] at h
     obtain ⟨⟨hd, hfc⟩, hc⟩ := h
+    replace hfc : m.fn.sorts = false := by simpa using hfc
     unfold keyCol at hc
     split at hc
     · rename_i c heq
@@ -771,15 +772,16 @@ theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
       List.map_congr_left fun x hx =>
         h x (hl x ((m.kept_sublist l).subset hx)) m.arg (by simp [Measure.exprs])
     simp only [Measure.inputs, hk, List.map_map, Function.comp_def, ha]
+  -- `collect` and `pick` sort first; `g` keeps the sort columns.
+  have hcol : ∀ x ∈ grp, ∀ k ∈ m.sort, (g x).getD k.col .null = x.getD k.col .null :=
+    fun x hx k hk => by
+      simpa [Expr.eval] using h x hx (.field k.col) (by simp [Measure.exprs]; exact .inr (.inr ⟨k, hk, rfl⟩))
+  have hs : (grp.map g).mergeSort (sortLe m.sort) = (grp.mergeSort (sortLe m.sort)).map g :=
+    (List.map_mergeSort fun a ha b hb => (sortLe_congr (hcol a ha) (hcol b hb)).symm).symm
   unfold Measure.eval
   split
-  · -- `collect` sorts first; `g` keeps the sort columns.
-    have hcol : ∀ x ∈ grp, ∀ k ∈ m.sort, (g x).getD k.col .null = x.getD k.col .null :=
-      fun x hx k hk => by
-        simpa [Expr.eval] using h x hx (.field k.col) (by simp [Measure.exprs]; exact .inr (.inr ⟨k, hk, rfl⟩))
-    have hs : (grp.map g).mergeSort (sortLe m.sort) = (grp.mergeSort (sortLe m.sort)).map g :=
-      (List.map_mergeSort fun a ha b hb => (sortLe_congr (hcol a ha) (hcol b hb)).symm).symm
-    rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
   · rw [hin grp fun _ h => h]
 
 theorem aggregateEval_map {gs : List Expr} {ms : List Measure} {A : Relation} {g : Row → Row}

@@ -96,6 +96,12 @@ NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
 #: A frame's doubles are added in frame order (`floatSum`), which only DuckDB's
 #: and Polars' translations keep.
 FRAME_DOUBLES = {"snowflake": "doubles in order", "spark": "doubles in order"}
+#: New functions run on DuckDB only until the generated lowerings (#271).
+DUCKDB_ONLY = {
+    "polars": "see #271",
+    "snowflake": "no row order|see #271",
+    "spark": "no row order|see #271",
+}
 #: The SQL dialects have no lists yet (#94).
 NO_LISTS = {
     "duckdb": "array_agg|unsupported relation|unsupported literal|unsupported column type",
