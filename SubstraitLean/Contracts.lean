@@ -367,6 +367,13 @@ theorem Bound.fitsDigits_mem {p : Nat} {b : Bound} {i : Int} (h : b.fitsDigits p
   simp only [_root_.Substrait.fitsDigits, Bool.and_eq_true, decide_eq_true_eq]
   omega
 
+/-- `a`, or NULL. -/
+def AVal.nullable (a : AVal) : AVal := { a with null := true }
+
+theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
+  | .null, _ => rfl
+  | .int _, h | .bool true, h | .bool false, h | .str _, h | .list _, h => h
+
 /-- `CAST(x AS INT)`: the integer itself, or NULL where it may not fit. -/
 def narrowAbs (n : Nat) (a : AVal) : AVal :=
   ⟨a.nonInt || a.int.any (!·.fitsBits n), a.int, false, false, false⟩
@@ -593,6 +600,9 @@ def UnFn.abs : UnFn → AVal → AVal
   | .fround, a => monoAbs FloatCode.round a
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
+  -- `ftoi`'s value, or NULL where the cast fails (#58).
+  | .ftoiOrNull, a => (ftoiAbs a).nullable
+  | .narrowOrNull n, a => narrowAbs n a
   | .wrap _, a => a
   | .decimal _ _, a | .dkind _ _, a => a
   | .dround _, a | .dtrunc _, a =>
@@ -971,6 +981,29 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case fround => exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> rfl) h
   case ftoi => exact ftoiAbs_sound h
   case narrow n =>
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
+    · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+    · simp only [UnFn.apply, UnFn.abs]
+      split
+      · exact ⟨b, hb, hi⟩
+      · rename_i hfit
+        cases hfb : b.fitsBits n
+        · simp [AVal.Mem, narrowAbs, hb, hfb]
+        · exact absurd (Bound.fitsBits_mem hfb hi) hfit
+    all_goals simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
+  case ftoiOrNull =>
+    have hf := ftoiAbs_sound h
+    rcases mem_cases h with ⟨rfl, hn⟩ | ⟨c, b, rfl, hb, hc⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf'⟩ | ⟨s, rfl, hs⟩ |
+      ⟨_, rfl, hs⟩
+    · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nullable]
+    · simp only [UnFn.abs, UnFn.apply] at hf ⊢
+      split at hf
+      · split
+        · exact AVal.mem_nullable hf
+        · simp [AVal.Mem, AVal.nullable]
+      · simp [AVal.Mem, AVal.nullable]
+    all_goals simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nullable]
+  case narrowOrNull n =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp_all [UnFn.abs, narrowAbs, UnFn.apply, AVal.Mem, AVal.nonInt]
     · simp only [UnFn.apply, UnFn.abs]
@@ -3124,7 +3157,6 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
 /-- Exactly `n` columns: missing ones are unknown. -/
 def fit (n : Nat) (env : List AVal) : List AVal := (List.range n).map (env.getD · AVal.top)
 
-def AVal.nullable (a : AVal) : AVal := { a with null := true }
 
 
 /-- Sums of integers in `b` keep their sign. -/
@@ -3279,9 +3311,6 @@ theorem EnvMem.replicate (n : Nat) (row : Row) : EnvMem (List.replicate n AVal.t
   simp only [getD_top_eq, List.getElem?_replicate]
   split <;> simp [AVal.mem_top]
 
-theorem AVal.mem_nullable {a : AVal} : ∀ {v}, a.Mem v → a.nullable.Mem v
-  | .null, _ => rfl
-  | .int _, h | .bool true, h | .bool false, h | .str _, h | .list _, h => h
 
 /-- A column replaced by any value, its description by `AVal.top`. -/
 theorem EnvMem.set_top {env : List AVal} {row : Row} (h : EnvMem env row) (c : Nat) (v : Value) :
