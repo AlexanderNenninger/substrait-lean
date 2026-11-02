@@ -951,6 +951,9 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else if ["add", "subtract", "multiply", "negate", "sum", "divide", "modulus", "abs",
       "power"].contains base then some (some ["ERROR"])
     else none
+  -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
+  -- `TRUNCATE`. `FLOOR` is not modelled yet (#209 R3).
+  | "division_type" => if base == "modulus" then some (some ["TRUNCATE"]) else none
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
