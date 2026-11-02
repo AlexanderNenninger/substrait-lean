@@ -1134,6 +1134,7 @@ _RULES: dict[Any, Callable[[Exprs, Any], Json]] = {
 def measure(x: Exprs, op: Any) -> Json:
     distinct = False
     args: list[Json]
+    options: list[Json] = []
     if isinstance(op, ops.ApproxCountDistinct):
         # A subclass of `CountDistinct`, but its value is each engine's own
         # estimate, so no plan gives the same answer on every engine.
@@ -1161,6 +1162,13 @@ def measure(x: Exprs, op: Any) -> Json:
         # 64-bit integers (#53); a narrower column is widened first.
         name = {ops.BitAnd: "bit_and", ops.BitOr: "bit_or", ops.BitXor: "bit_xor"}[type(op)]
         args = [x(op.arg, dt.int64)]
+    elif isinstance(op, ops.Variance | ops.StandardDev):
+        # Of a sample or a population, each engine's own algorithm (#54).
+        name = "variance" if isinstance(op, ops.Variance) else "std_dev"
+        args = [x(op.arg, dt.float64) if op.arg.dtype.is_boolean() else x(op.arg)]
+        options = [
+            {"name": "distribution", "preference": ["POPULATION" if op.how == "pop" else "SAMPLE"]}
+        ]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
     else:
@@ -1172,6 +1180,8 @@ def measure(x: Exprs, op: Any) -> Json:
             "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
         ),
     }
+    if options:
+        agg["options"] = options
     out: Json = {"measure": agg}
     if op.where is not None:
         out["filter"] = x(op.where)

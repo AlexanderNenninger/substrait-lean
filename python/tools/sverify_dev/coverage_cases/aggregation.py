@@ -68,7 +68,7 @@ CASES: list[Case] = [
     case("aggregation", "value_counts", V, lambda: t.name.value_counts()),
     case("aggregation", "distinct", V, lambda: t.select("name").distinct()),
     case("aggregation", "distinct(on=)", R, lambda: t.distinct(on="name", keep="first")),
-    case("aggregation", "std", R, lambda: t.aggregate(s=t.amount.std())),
+    case("aggregation", "std", V, lambda: t.aggregate(s=t.amount.std())),
     case("aggregation", "collect", V, lambda: t.group_by("name").aggregate(xs=t.qty.collect())),
     case(
         "aggregation",

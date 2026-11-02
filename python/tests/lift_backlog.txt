@@ -74,8 +74,7 @@ tests/test_sql.py::test_runtime_errors_raise[SELECT power(a, -1) AS q FROM r-2-0
 tests/test_sql.py::test_runtime_errors_raise[SELECT power(a, 3) AS q FROM r-4194304-0]
 
 # Tests of other features that wait on the model or the producers: FLOAT
-# columns (#208), `avg` of a DECIMAL as a double (DuckDB's).
-tests/test_reference.py::test_aggregates_of_double_constants[SELECT avg(2.5) AS a FROM f-expected3]
+# columns (#208).
 tests/test_reference.py::test_float_arithmetic_is_refused[SELECT CAST(d AS FLOAT) AS y FROM s-casts to FLOAT]
 tests/test_reference.py::test_float_arithmetic_is_refused[SELECT sqrt(x) AS r FROM s-sqrt of FLOAT]
 tests/test_reference.py::test_float_arithmetic_is_refused[SELECT x + x AS s FROM s-add of FLOAT]

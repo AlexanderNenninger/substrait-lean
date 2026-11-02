@@ -821,12 +821,9 @@ class _Lift:
                     if t.is_integer()
                     else dt.float64
                 )
-            elif t.is_decimal():
-                raise Unsupported(
-                    "avg of a DECIMAL is not supported yet: DuckDB gives a DOUBLE, which the "
-                    "model has no measure for (#240)"
-                )
             else:
+                # DuckDB's AVG of a DECIMAL is a DOUBLE too: the plan says so,
+                # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
         agg: Json = {
             "functionReference": anchor(name),

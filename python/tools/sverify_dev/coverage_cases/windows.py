@@ -153,7 +153,3 @@ TIE_FREE = {
     "last, nth",
     "max, count over frame",
 }
-
-NO_DUCKDB_SQL = {
-    "ntile": "DuckDB's NTILE places the remainder rows otherwise than DataFusion's",
-}

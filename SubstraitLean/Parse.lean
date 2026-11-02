@@ -329,7 +329,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
   | .sum => match m.arg.kind cols with
     | .dec p s => .dec (min 38 (p + 10)) s
     | _ => .int
-  | .fsum | .avg => .float
+  | .fsum | .avg | .var _ _ => .float
   | .iavg | .bit _ => .int
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
@@ -954,13 +954,17 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
   -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
   -- `TRUNCATE`. `FLOOR` is not modelled yet (#209 R3).
   | "division_type" => if base == "modulus" then some (some ["TRUNCATE"]) else none
+  -- A variance is of a sample or of a population (#54).
+  | "distribution" =>
+    if base == "variance" || base == "std_dev" then some (some ["SAMPLE", "POPULATION"]) else none
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
     -- `ROUND` rounds halves away from zero (`SubstraitLean/Rounding.lean`).
     else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
     -- Native doubles round to nearest, ties to even.
-    else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg"].contains base then
+    else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg", "variance",
+        "std_dev"].contains base then
       some (some ["TIE_TO_EVEN"])
     else none
   -- Every value is modelled (`divByZero`). `IEEE` and `LIMIT` are only for
@@ -1815,7 +1819,7 @@ def parseSortKey (fns : List (Nat × String)) (cols : List Kind) (s : Json) : J 
 /-- One `AggregateRel` measure. `AVG` of integers averages their conversions
 to double; `COUNT(*)` may come with no argument. -/
 def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (mj : Json) :
-    J (Measure × Option (Nat × Nat)) := do
+    J (Measure × Option (Nat × Nat × Bool)) := do
   let m ← field mj "measure"
   let anchor ← natD m "functionReference"
   let some name := fns.lookup anchor
@@ -1840,11 +1844,13 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let k := if args.any (doubleJ fns) then .float else arg.kind cols
   checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` of a `DECIMAL(p, s)` (#27) is its `SUM` here, divided by a `COUNT`
-  -- in `decimalAvgs`.
-  let decAvg : Option (Nat × Nat) := match name, k with
-    | "avg", .dec p s => some (p, s)
+  -- in `decimalAvgs`: a decimal, or a double if the plan says so (as DuckDB
+  -- types it).
+  let dblOut := (field? m "outputType").any (typeKind · == .float)
+  let decAvg : Option (Nat × Nat × Bool) := match name, k with
+    | "avg", .dec p s => some (p, s, dblOut)
     | _, _ => none
-  if let some (_, s) := decAvg then
+  if let some (_, s, _) := decAvg then
     if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
   -- `AVG` of integers follows the plan's declared output type (#209): a
   -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
@@ -1878,6 +1884,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
       if argBits bits (args.headD .null) arg != 64 then
         throw s!"{name} of an integer narrower than 64 bits is not supported"
       pure (.bit (if name == "bit_and" then .and else if name == "bit_or" then .or else .xor), arg)
+    -- Of doubles, or of integers converted to doubles, as `avg` (#54); the
+    -- sample's unless the plan asks for the population's.
+    | "variance", .float | "std_dev", .float | "variance", .int | "std_dev", .int =>
+      let sample := optionPref "distribution" "SAMPLE" (← arrD m "options") != "POPULATION"
+      pure (.var sample (name == "std_dev"), if k == .int then .un .itof arg else arg)
     | n, _ => throw s!"unsupported aggregate function: {n}"
   if fn == .collect then
     if distinct then throw "array_agg(DISTINCT …) is not supported"
@@ -1894,15 +1905,19 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
 a `DECIMAL(p + 4, s + 4)`, the quotient rounded half away from zero, as Spark
 computes it. The counts are appended, divided in a projection, and the emit
 puts every column back in its place. -/
-def decimalAvgs (inp : Rel) (gs : List Expr) (ms : List (Measure × Option (Nat × Nat))) : Rel :=
+def decimalAvgs (inp : Rel) (gs : List Expr) (ms : List (Measure × Option (Nat × Nat × Bool))) :
+    Rel :=
   let avgs := ms.zipIdx.filterMap fun ((m, d), i) => d.map fun ps => (i, m, ps)
   if avgs.isEmpty then .aggregate inp gs (ms.map (·.1)) else
   let g := gs.length
   let n := ms.length
   let counts := avgs.map fun (_, m, _) => { m with fn := AggFn.count }
-  let quotients := avgs.zipIdx.map fun ((i, _, p, s), j) =>
-    Expr.un (.dkind (min 38 (p + 4)) (s + 4))
-      (.bin .ddiv (upscale 4 (.field (g + i))) (.field (g + n + j)))
+  let quotients := avgs.zipIdx.map fun ((i, _, p, s, dbl), j) =>
+    let (total, count) := (Expr.field (g + i), Expr.field (g + n + j))
+    -- A double: the sum as a double by the count, NULL without values.
+    if dbl then .ifThen (.bin .eq count (.lit (.int 0))) (.lit .null)
+      (.bin .fdiv (.un (.dtof s) total) (.un .itof count))
+    else Expr.un (.dkind (min 38 (p + 4)) (s + 4)) (.bin .ddiv (upscale 4 total) count)
   let total := g + n + avgs.length
   let column (i : Nat) : Nat := match avgs.findIdx? (·.1 == i) with
     | some j => total + j
@@ -2023,10 +2038,13 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- sum of doubles then rounds differently from adding up the frame, an
       -- average of a frame that has become empty is NaN, and a `MIN` of one
       -- with only NULLs left is the last minimum.
+      if m.fn matches .var _ _ then throw s!"{n} over a window is not supported"
       if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).
+      if let some (_, _, true) := decAvg then
+        throw "avg of a DECIMAL with a double result over a window is not supported"
       if decAvg.isSome then
         pure (.agg m sort fr, some (.agg { m with fn := .count } sort fr))
       else pure (.agg m sort fr, none)
@@ -2449,7 +2467,8 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
           else pure (.distinct (.emit inp keys))
         | none => pure (.aggregate inp gs [])
       | some gs, ms =>
-        let parsed ← ms.mapM fun m => (parseMeasure fns cols bits m : J (Measure × Option (Nat × Nat)))
+        let parsed ← ms.mapM fun m =>
+          (parseMeasure fns cols bits m : J (Measure × Option (Nat × Nat × Bool)))
         pure (decimalAvgs inp gs parsed)
     | "extensionSingle" =>
       -- `UNNEST`, our own extension (`docs/nested-values.md`).

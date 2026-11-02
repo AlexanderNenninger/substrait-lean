@@ -144,9 +144,7 @@ def _(con, mo, sql, substrait_check, substrait_json):
         )
     except Exception as _e:
         plan = None
-        _out_cell = mo.callout(
-            mo.md(f"The lift could not plan this query: `{_e}`"), kind="danger"
-        )
+        _out_cell = mo.callout(mo.md(f"The lift could not plan this query: `{_e}`"), kind="danger")
     _out_cell
     return (plan,)
 

@@ -103,6 +103,7 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 | Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ (#215) |
 | `%` on doubles | Substrait has no such function, so the reference defines its own, `sverify_fmod`: C's `fmod`, exact, with the dividend's sign. A zero divisor is an error (`NULL` if the plan asks), an infinite dividend is an error (#257), an infinite divisor gives the dividend, and a NaN passes through. Lean also reads the `modulus` of doubles that DataFusion writes, as the same function. | ✓ ([#256](https://github.com/AlexanderNenninger/substrait-lean/issues/256)): Lean writes `sverify_fmod`, the Ibis producer and the SQLGlot lift emit it for `%` of doubles, and DataFusion runs it as its own `%` |
 | `SUM` / `AVG` | Added in list order with native floats. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds: [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. **Each engine's own algorithm** for now (decided on #54), so results may differ in the last bits: the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; a proved error bound is [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
 | `MIN` / `MAX` of doubles | — | **Refused** by the parser (DataFusion's grouped min/max of doubles is not IEEE) |
 | Casts to and from decimals | See sections 6 and 7. | ✓ |
 
@@ -121,6 +122,7 @@ exact, and a result of more than `p` digits is an overflow error
 | comparisons | — | At the larger scale. | ✓ |
 | `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact. | ✓ |
 | `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
+| `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Not over windows yet. | ✓ (M2) |
 | `/` | — | **Refused** (apart from sverify's own `sverify_decimal_div`, a decimal by an integer, which is how a windowed `AVG` is written). | ✓ |
 | declared output type | If the plan declares a precision, it is used. A declared scale that differs from the exact one is refused. | | ✓ |
 | mixed with a double | **Refused**; cast one side. | | ✓ |
@@ -198,6 +200,7 @@ Design notes: [nested-values.md](nested-values.md).
 | Operators | `read`, `values`, `filter`, `project`, `emit`, `cross`, inner and left `join`, `semi` and `anti`, `fetch`, `orderBy`, `distinct`, `aggregate` (one grouping set), `window`, `unnest`, `UNION ALL`. | ✓ |
 | Set operations | `UNION ALL` is bag union and `UNION DISTINCT` is `distinct` of it. `INTERSECT` and `EXCEPT` are **refused**. | ✓ for union; the other two are not modelled |
 | Ties | `Rel.eval` sorts stably and takes `fetch` rows in list order. Engines promise neither, so theorems about `fetch`, ties and windows hold for one choice. A report's `deterministic` says whether the plan's sort keys and window orders are total on the input's keys; the Spark and Snowflake translations, which have no row order, refuse sorts, `LIMIT` and windows that are not, unless `tie_free=True` is justified by it. | ✓ |
+| `NTILE(k)` | The SQL standard's buckets: of `n` rows, the first `n % k` buckets hold `⌊n / k⌋ + 1` rows and the rest `⌊n / k⌋`; with fewer rows than buckets, a bucket for each row (`ntileOf`). Between 1 and the row's number, proved. | ✓ on DuckDB, Spark, Snowflake and Polars; **refused** on DataFusion, which spreads the larger buckets out (`upstream/LEDGER.md` DF-11) |
 
 ## 13. Trusted assumptions
 
