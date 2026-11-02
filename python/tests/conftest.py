@@ -9,11 +9,14 @@ reference. Tests comparing two engines with each other stay
 in `core`. DataFusion is an optional extra of `sverify`, but the tests need it
 (it is in the `dev` group); `test_without_datafusion.py` blocks it.
 
-Modules marked `lift_backlog` build plans from SQL strings, which go through
-sverify's lift (`sverify.sql_lift`). Where the lift refuses the SQL so far,
-the test is reported as an expected failure, with the refusal as its reason:
-the backlog of M2 (#240), listed by `pytest -rx`. It passes again once the
-lift reads the SQL. Any other failure still fails.
+`tests/lift_backlog.txt` lists the tests that wait on SQL the lift
+(`sverify.sql_lift`) does not read yet: the backlog of M2 (#240). A listed
+test that fails because the lift refuses its SQL is an expected failure,
+with the refusal as its reason (`pytest -rx`); one that fails otherwise
+fails, and one that passes fails too, until its line is removed (strict). A
+test that is not listed fails as usual, whatever refuses it.
+`SVERIFY_LIFT_BACKLOG=<file> pytest …` writes the tests the lift refuses to
+`<file>`, to start or prune the list.
 
 `SVERIFY_EXAMPLES=0.25 poe test` runs every Hypothesis test with a quarter
 of its examples, for a quicker local loop. Every `@settings` sets
@@ -22,6 +25,7 @@ scales the settings each test carries. Unset (as in CI), the counts stay.
 """
 
 import os
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -37,9 +41,7 @@ SCALE = float(os.environ.get("SVERIFY_EXAMPLES", "1"))
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "backend(name): the backend a test runs under")
-    config.addinivalue_line(
-        "markers", "lift_backlog: the lift refusing the test's SQL is an expected failure (#240)"
-    )
+    config._lift_refused = []  # type: ignore[attr-defined]
     for name in BACKENDS:
         config.addinivalue_line("markers", f"{name}: set from the test's backend")
 
@@ -63,15 +65,41 @@ def _lift_refusal(exc: BaseException | None) -> str | None:
     return None
 
 
+#: The tests that wait on the lift (`tests/lift_backlog.txt`), by node id.
+BACKLOG = {
+    line.strip()
+    for line in (Path(__file__).parent / "lift_backlog.txt").read_text().splitlines()
+    if line.strip() and not line.startswith("#")
+}
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Any:
     outcome = yield
     report = outcome.get_result()
-    if not report.failed or call.excinfo is None or not item.get_closest_marker("lift_backlog"):
-        return
-    if reason := _lift_refusal(call.excinfo.value):
-        report.outcome = "skipped"
-        report.wasxfail = f"#240, the lift refuses: {reason}"
+    listed = item.nodeid in BACKLOG
+    if report.failed and call.excinfo is not None:
+        reason = _lift_refusal(call.excinfo.value)
+        if reason is None:
+            return
+        if os.environ.get("SVERIFY_LIFT_BACKLOG"):
+            item.config._lift_refused.append(item.nodeid)  # type: ignore[attr-defined]
+        if listed:
+            report.outcome = "skipped"
+            report.wasxfail = f"#240, the lift refuses: {reason}"
+    elif listed and call.when == "call" and report.passed:
+        report.outcome = "failed"
+        report.longrepr = (
+            f"{item.nodeid} passes: the lift reads its SQL now, so remove it from "
+            "tests/lift_backlog.txt"
+        )
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    if path := os.environ.get("SVERIFY_LIFT_BACKLOG"):
+        refused = getattr(session.config, "_lift_refused", [])
+        with open(path, "a") as f:
+            f.writelines(f"{n}\n" for n in refused)
 
 
 def backend(item: pytest.Item) -> str:

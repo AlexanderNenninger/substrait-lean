@@ -50,7 +50,7 @@ from test_sql import EVENTS, interval_queries, lean_on
 from test_windows import QUERIES as WINDOW_QUERIES
 from test_windows import SCHEMA as WINDOW_SCHEMA
 
-pytestmark = [pytest.mark.backend("polars"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("polars")
 
 #: The repository's golden fixtures; absent when the tests run against a wheel.
 FIXTURES = sorted((Path(__file__).parents[2] / "tests" / "fixtures").glob("*.json"))
@@ -293,7 +293,7 @@ def test_delta_plans_agree(name, data):
         data.draw(st.lists(orders_row, max_size=5)),
         data.draw(st.lists(customers_row, max_size=4)),
     )
-    plan = substrait_json(con, ibis.to_sql(PIPELINES[name], dialect="datafusion"))
+    plan = to_substrait_json(PIPELINES[name])
     for t, row in [("orders", orders_row), ("customers", customers_row)]:
         rows = data.draw(st.lists(row, max_size=4))
         ws = data.draw(st.lists(weights, min_size=len(rows), max_size=len(rows)))
@@ -342,7 +342,8 @@ def test_polars_view_matches_datafusion_view(name, data):
 
 
 def polars_rows(con, sql: str) -> list[tuple]:
-    return rows_of(run_plan(con, written_plan(substrait_json(con, sql)), "polars"))
+    # The reference's semantics: Polars against the model.
+    return rows_of(run_plan(con, written_plan(substrait_json(con, sql, "reference")), "polars"))
 
 
 def test_null_join_keys_never_match():
@@ -472,8 +473,9 @@ def test_timestamp_arithmetic_is_checked_too():
     con = connect()
     schema = ibis.schema({"ts": "timestamp"})
     create_table(con, "t", schema, [(dt.datetime(2024, 1, 1),)])
-    sql = "SELECT ts + INTERVAL 90 SECOND AS x, ts - ts AS d FROM t"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+    t = con.table("t")
+    expr = t.select(x=t.ts + ibis.interval(seconds=90), d=t.ts - t.ts)
+    df, pl_rows = on_both(con, written_plan(to_substrait_json(expr)))
     assert pl_rows == [(dt.datetime(2024, 1, 1, 0, 1, 30), dt.timedelta(0))]
     assert df == pl_rows
 
@@ -576,7 +578,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
     create_table(con, "r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(f AS BIGINT) AS i FROM r"
-    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql)))
+    df, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
     assert df == pl_rows
     create_table(con, "r", F, [(1.0,), (math.nan,)])
     with pytest.raises(polars_engine.BadCast):

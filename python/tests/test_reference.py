@@ -2,9 +2,9 @@
 
 `characterization/duckdb/FACTS.md` judges DuckDB and the Lean model against
 Substrait's semantics. Each test here pins what `Rel.eval` and `verify` do
-for one of its findings (R1…R14), on a plan DataFusion's SQL producer
-writes, and checks the value against DataFusion where it agrees with the
-reference.
+for one of its findings (R1…R14), on the plan sverify's lift writes for DuckDB's
+SQL with the reference's semantics (`semantics="reference"`), and checks the
+value against DuckDB where it agrees with the reference.
 """
 
 import json
@@ -19,15 +19,15 @@ from sverify.engine import (
     put_table,
     run_checker,
     run_plan,
-    substrait_json,
     written_plan,
 )
+from sverify.engine import substrait_json as lift_json
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.sql_lift import lift
 from sverify.testing import duckdb_sql, inline_tables, lean_values
 
-pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("datafusion")
 
 DAY = 86_400_000_000
 NAN = float("nan")
@@ -41,6 +41,19 @@ TABLES = {
     "f": pa.table({"x": [r[0] for r in ROWS["f"]]}),
     "t": pa.table({"ts": pa.array([r[0] for r in ROWS["t"]], pa.timestamp("us"))}),
 }
+
+
+def substrait_json(con, sql: str) -> str:
+    """The plan of `sql` with the reference's semantics."""
+    return lift_json(con, sql, "reference")
+
+
+def verify(sql: str, tables: dict, requires: list | None = None) -> sv.Report:
+    """`sv.verify` of `sql` with the reference's semantics."""
+    inputs = {n: ibis.table(s, name=n) for n, s in tables.items()}
+    return sv.verify(
+        sv.sql(sql, semantics="reference", **inputs), requires={n: requires or [] for n in tables}
+    )
 
 
 @pytest.fixture(scope="module")
@@ -106,7 +119,7 @@ def test_modulus_of_doubles_is_fmod(con, sql, expected):
 def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
     """As on integers; `verify` proves it absent where the plan rules a zero
     divisor out (DataFusion gives NaN)."""
-    assert [i.kind for i in sv.verify(sql, tables={"f": {"x": "float64"}}).errors] == errors
+    assert [i.kind for i in verify(sql, {"f": {"x": "float64"}}).errors] == errors
 
 
 # #256: the remainder of doubles is sverify's own `sverify_fmod`, as
@@ -580,7 +593,7 @@ FINITE = ["x < 1e300", "x > -1e300", "y < 1e300", "y > -1e300"]
 )
 def test_nan_creation_is_a_domain_error(sql, requires, errors):
     tables = {"f": {"x": "float64", "y": "float64", "i": "int64"}}
-    report = sv.verify(sql, requires={"f": requires}, tables=tables)
+    report = verify(sql, tables, requires)
     assert [i.kind for i in report.issues] == errors
 
 
@@ -620,9 +633,11 @@ def test_a_nan_in_the_input_stays_nan(icon, engine):
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_a_double_sum_of_both_infinities_raises(icon, engine):
-    sql = "SELECT sum(v) AS s FROM (SELECT x AS v FROM n UNION ALL SELECT y AS v FROM n)"
+    n = icon.table("n")
+    both = n.select(v=n.x).union(n.select(v=n.y))
+    plan = to_substrait_json(both.aggregate(s=both.v.sum()))
     with pytest.raises(Exception, match="(?i)domain|NaN"):
-        run_plan(icon, written_plan(substrait_json(icon, sql)), engine)
+        run_plan(icon, written_plan(plan), engine)
     sql = "SELECT sum(y) AS s, avg(x) AS a FROM n"
     got = nan_safe(arrow_rows(run_plan(icon, written_plan(substrait_json(icon, sql)), engine)))
     assert got == [(-INF, "NaN")]

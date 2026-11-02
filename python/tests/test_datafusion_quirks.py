@@ -30,10 +30,11 @@ from sverify.engine import (
     substrait_json,
 )
 from sverify.engines import written_plan
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows, lean_values
 
-pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
+pytestmark = pytest.mark.backend("datafusion")
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
@@ -246,8 +247,9 @@ def test_integer_sum_fails_instead_of_wrapping(con):
     """DataFusion's integer SUM wraps around past 64 bits, where `Rel.eval`'s
     is exact. The plan Lean writes for DataFusion sums as DECIMAL(38,0) and
     casts back, which fails instead (#24); within range it agrees."""
-    twice = "SELECT a FROM mx UNION ALL SELECT a FROM mx"
-    over = written_plan(substrait_json(con, f"SELECT sum(a) AS s FROM ({twice})"))
+    mx = ibis.table({"a": "int64"}, name="mx")
+    twice = mx.select("a").union(mx.select("a"))
+    over = written_plan(to_substrait_json(twice.aggregate(s=twice.a.sum())))
     assert arrow_rows(run_substrait_json(con, over)) == [(-2,)]  # wrapped around
     with pytest.raises(Exception, match="out of range Int64"):
         run_plan(con, over, "datafusion")

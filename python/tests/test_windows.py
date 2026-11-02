@@ -35,8 +35,6 @@ from sverify.testing import (
     lean_values,
 )
 
-pytestmark = pytest.mark.lift_backlog
-
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})
 
 #: Window queries over `r(s, t, v)`; (s, t) is a key of every test table, so
