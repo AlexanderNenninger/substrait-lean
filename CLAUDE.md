@@ -29,16 +29,30 @@ works). It is Pop!_OS 24.04 (Ubuntu-based, so `apt`), x86_64, 12 cores,
 which a non-interactive `ssh` does not put on `PATH`. The box has no GitHub
 push credentials, so to test local changes push a branch first.
 
-Several agents share the box, so check its load before starting a run:
+Several agents share the box, and it also runs the user's own services (an
+`ollama` model server among them, using several GB). Two parallel QA runs
+once drove it to a load of over 100 and hung it. So check before starting
+a run:
 
 ```bash
-ssh homelab 'nproc; uptime; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
+ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/dev/null | wc -l'
 ```
 
-If the 1-minute load average is above 8, or two QA runs are already going
-(two `/tmp/substrait-lean-*` directories), don't add another: wait a few
-minutes and check again, or run only the tests your change touches locally.
-Run QA under `nice -n 10` so interactive use of the box stays responsive.
+- **One QA run at a time.** If a `/tmp/substrait-lean-*` directory exists,
+  another run is going: wait, or run only the tests your change touches
+  locally.
+- **Don't start** if the 1-minute load average is above 8, or if less than
+  6 GB is available (the `available` column of `free -g`).
+- **Cap the workers:** the poe test tasks use `pytest -n auto`, which takes
+  every core. Set `PYTEST_XDIST_AUTO_NUM_WORKERS=6` so a run leaves half the
+  box free.
+- **Run under `nice -n 10`** so interactive use of the box stays responsive.
+- **Long-running jobs that aren't QA** (a full sqllogictest replay, fuzzing)
+  count as a run too. Give them a `/tmp/substrait-lean-*` directory, so the
+  check above sees them.
+- **Clean up after yourself.** Delete your directory when the run ends,
+  also when it fails. To stop a run, kill its processes by PID, not with
+  `pkill -f` over `ssh`: the pattern also matches the `ssh` command itself.
 
 Each run gets its own directory,
 `/tmp/substrait-lean-<uuid>`. Never run tests in a shared checkout such as
@@ -49,7 +63,7 @@ afterwards:
 ssh homelab 'export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
   dir=/tmp/substrait-lean-$(uuidgen)
   git clone -q --branch <branch> https://github.com/AlexanderNenninger/substrait-lean.git "$dir"
-  cd "$dir/python" && nice -n 10 uv run poe qa; status=$?
+  cd "$dir/python" && PYTEST_XDIST_AUTO_NUM_WORKERS=6 nice -n 10 uv run poe qa; status=$?
   rm -rf "$dir"; exit $status'
 ```
 
@@ -139,3 +153,9 @@ An ending: "You now have a refund queue you can trust. Its assumptions were
 proved before a single row ran, it stays right as charges arrive and get
 reversed, and the next job can build on it without checking again. Next up:
 sensor alerts, where ties and NaN get involved."
+
+## Changelog
+
+Don't edit `CHANGELOG.md` in a feature PR: parallel PRs all conflict at its top.
+Add one file to `changelog.d/` instead (see its README). The release folds the
+fragments into `CHANGELOG.md`.
