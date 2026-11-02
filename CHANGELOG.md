@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### `approx_nunique` is refused
+
+Ibis's `approx_nunique()` was translated as the exact `nunique()`. Each
+engine computes its own estimate, so no plan gives the same answer
+everywhere; it is now refused, with a hint to use `nunique()` for the exact
+count.
+
 ### Isthmus support removed
 
 sverify no longer compiles SQL strings with Isthmus (substrait-java's
