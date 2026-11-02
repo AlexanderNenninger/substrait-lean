@@ -77,6 +77,9 @@ inductive AggFn where
   | min | max
   /-- `ARRAY_AGG`: the list of the values, in the measure's `sort` order. -/
   | collect
+  /-- `AVG` of integers with an integer result (Substrait's `avg` of `i64`,
+  #209): the exact mean, truncated toward zero. It always fits. -/
+  | iavg
   deriving Repr, DecidableEq
 
 structure Measure where
@@ -130,6 +133,7 @@ def AggFn.apply : AggFn → List Value → Value
   | .sum, vs => .int (intSum vs)
   | .fsum, vs => .int (floatSum vs)
   | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
+  | .iavg, vs => .int ((intSum vs).tdiv vs.length)
   | .min, v :: vs => pickFold (fun a b => !a.le b) v vs
   | .max, v :: vs => pickFold (fun a b => !b.le a) v vs
   | .collect, vs => .list vs

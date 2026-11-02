@@ -98,7 +98,7 @@ example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a &&
   decide
 
 def AggFn.anchor : AggFn → Nat
-  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40 | .collect => 42
+  | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -701,7 +701,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           ks.getD c .other
         | .agg m _ _ => match m.fn with
-          | .count => .int
+          | .count | .iavg => .int
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg => .float
           | .min | .max => wkind ks m.arg
@@ -709,7 +709,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
-        | .count => .int
+        | .count | .iavg => .int
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg => .float
         | .min | .max => wkind ks m.arg
@@ -759,13 +759,15 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     | .firstValue c _ fr => (75, [col c], fr)
     | .lastValue c _ fr => (76, [col c], fr)
     | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
-  obj [("windowFunction", obj [
+  obj [("windowFunction", obj ([
     ("functionReference", toJson anchor),
     ("partitions", Json.arr (part.map col).toArray),
     ("sorts", Json.arr (sort.map (writeSortKey cols)).toArray),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
     ("lowerBound", writeBound fr.lo), ("upperBound", writeBound fr.hi),
-    ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")])]
+    ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")] ++
+    -- An integer `AVG` says so by its output type (`AggFn.iavg`).
+    (match f with | .agg m _ _ => if m.fn matches .iavg then [("outputType", i64Type)] else [] | _ => [])))]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
 def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
@@ -779,6 +781,8 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
     ("arguments", Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
+  -- An integer `AVG` says so by its output type (`AggFn.iavg`).
+  let measure := if m.fn matches .iavg then measure.setObjVal! "outputType" i64Type else measure
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 

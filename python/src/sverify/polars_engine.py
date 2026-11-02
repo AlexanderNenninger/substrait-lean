@@ -1411,6 +1411,11 @@ def _dedup_key(v: Any) -> Any:
     return v
 
 
+def _int_output(f: dict) -> bool:
+    """Does an `avg` declare an integer output type (`AggFn.iavg`)?"""
+    return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
+
+
 def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
     """`Measure.eval` on the values a measure aggregates (NULLs dropped)."""
     if distinct:
@@ -1428,6 +1433,10 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
         return total
     if fn == "collect":
         return list(vs)
+    if fn == "iavg":
+        # `AggFn.iavg`: the exact mean, truncated toward zero (#209).
+        q = abs(sum(vs)) // len(vs)
+        return q if sum(vs) >= 0 else -q
     if fn in ("fsum", "avg"):
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
@@ -1462,7 +1471,7 @@ class Measure:
 
     @property
     def dtype(self) -> DType:
-        if self.fn in ("count", "sum"):
+        if self.fn in ("count", "sum", "iavg"):
             return pl.Int64
         if self.fn == "collect":
             return pl.List(materialize(self.arg.dtype))
@@ -1900,9 +1909,12 @@ class Translator:
             idx = ex.field(sel["selection"])
             t = dtypes[idx]
             fn = {"sum": "fsum" if t == pl.Float64 or itof else "sum"}.get(name, name)
+            if name == "avg" and not itof and t == pl.Int64 and _int_output(w):
+                fn = "iavg"
             if name in ("min", "max") and t == pl.Float64:
                 raise Unsupported(f"{name} of doubles is not supported")
-            out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64}
+            out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
+                   "iavg": pl.Int64}  # fmt: skip
             return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
         raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
@@ -2035,6 +2047,8 @@ class Translator:
             fn = "sum" if t == pl.Int64 else "fsum"
         elif name == "avg" and t == pl.Float64:
             fn = "avg"
+        elif name == "avg" and t == pl.Int64 and _int_output(m):
+            fn = "iavg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
             fn = name
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):

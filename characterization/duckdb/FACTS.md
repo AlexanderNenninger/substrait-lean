@@ -216,8 +216,12 @@ fuzz: `fuzz__float_arith.json` (`d / d` with `d = 0.0`).
   64 bits, so DuckDB alone answers where the reference raises.
   `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan
   already guards this and raises (`test_sum.test:68`).
-- **Open:** Substrait's `avg` of `i64` returns `i64?`, while DataFusion
-  writes `avg` with an `fp64` output, which matches no impl.
+- **`avg` of integers (decided on #209, fixed):** it follows the plan's
+  declared output type. With `fp64` (DataFusion's plans), it is the mean as
+  a double; with `i64` (Substrait's own impl), it is the exact mean
+  truncated toward zero (`AggFn.iavg`), which always fits. DuckDB: the
+  exact `HUGEINT` sum `//` the count. DataFusion's `avg` is a double, so it
+  refuses an integer one.
 
 ## R7. `sum`/`avg` of a double constant
 

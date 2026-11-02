@@ -61,7 +61,7 @@ def Expr.render : Expr → String
   | .hof f l b => s!"{f.name}({l.render}, $0 -> {b.render})"
 
 def AggFn.name : AggFn → String
-  | .count => "COUNT" | .sum | .fsum => "SUM" | .avg => "AVG" | .min => "MIN" | .max => "MAX"
+  | .count => "COUNT" | .sum | .fsum => "SUM" | .avg | .iavg => "AVG" | .min => "MIN" | .max => "MAX"
   | .collect => "ARRAY_AGG"
 
 def Measure.render (m : Measure) : String :=

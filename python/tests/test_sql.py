@@ -249,7 +249,6 @@ def test_fixture_lists_are_complete():
     assert {"filter_project", "virtual_left_join", "union_fetch", "df_window"} <= set(ACCEPTED)
     assert set(REFUSED) == {
         "bad_field_ref",
-        "isthmus_avg_integer",
         "isthmus_char_padding",
         "isthmus_timestamp_seconds",
         "option_overflow_saturate",

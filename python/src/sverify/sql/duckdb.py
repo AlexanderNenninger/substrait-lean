@@ -117,6 +117,10 @@ class DuckDBDialect(Dialect):
             f"THEN CAST({total} AS BIGINT) ELSE {fail} END)"
         )
 
+    def int_avg(self, v: str, over: str) -> str:
+        # SUM of BIGINT is a HUGEINT, so the sum is exact; `//` truncates.
+        return f"CAST(SUM({v}) {over} // COUNT({v}) {over} AS BIGINT)"
+
     def window_int_sum(self, v: str, over: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v}) {over}"

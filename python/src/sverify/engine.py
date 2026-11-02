@@ -680,14 +680,16 @@ def datafusion_plan(plan_json: str) -> str:
     if code != 0:
         msg = (err or out).strip().splitlines()[-1:]
         raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
-    _check_datafusion_substrings(json.loads(out))
+    _check_datafusion_plan(json.loads(out))
     return out
 
 
-def _check_datafusion_substrings(plan: dict) -> None:
-    """DataFusion's `substring` puts a negative start left of the beginning;
-    the reference counts it from the end (`Text.substrWrap`, #209). Refuse a
-    plan whose start may be negative unless it asks for `LEFT_OF_BEGINNING`."""
+def _check_datafusion_plan(plan: dict) -> None:
+    """Refuse what DataFusion computes differently from the reference (#209):
+    a `substring` whose start may be negative (DataFusion puts it left of the
+    beginning, the reference counts it from the end, `Text.substrWrap`) unless
+    the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
+    (`AggFn.iavg`), which DataFusion computes as a double."""
     names = {
         e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
         for e in plan.get("extensions", [])
@@ -696,6 +698,12 @@ def _check_datafusion_substrings(plan: dict) -> None:
 
     def walk(node: Any) -> None:
         if isinstance(node, dict):
+            for key in ("measure", "windowFunction"):
+                a = node.get(key)
+                is_avg = isinstance(a, dict) and names.get(a.get("functionReference")) == "avg"
+                ints = ("i8", "i16", "i32", "i64")
+                if is_avg and any(k in a.get("outputType", {}) for k in ints):
+                    raise sql.Unsupported("DataFusion's AVG has no integer result")
             f = node.get("scalarFunction")
             if isinstance(f, dict) and names.get(f.get("functionReference")) == "substring":
                 left = any(
