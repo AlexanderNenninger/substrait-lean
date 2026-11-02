@@ -142,6 +142,21 @@ QUERIES = [
     " cume_dist() OVER (ORDER BY id) AS cd, lag(amount * 2) OVER (ORDER BY id) AS l2 FROM orders",
     "SELECT customer, sum(amount) AS s, rank() OVER (ORDER BY sum(amount) DESC) AS r,"
     " avg(sum(amount)) OVER () AS a FROM orders GROUP BY customer",
+    # Numbers: DuckDB's `power` and elementary functions are of doubles; its
+    # `greatest`/`least` leave NULLs out; `log(x)` is base 10.
+    "SELECT id, power(amount, 2) AS p, amount ** 2 AS q, abs(qty) AS a, abs(price) AS af,"
+    " sign(price) AS s, isnan(price) AS n FROM orders",
+    "SELECT id, round(price) AS r, round(price, 1) AS r1, floor(price) AS f, ceil(price) AS c,"
+    " floor(qty) AS fq, round(qty) AS rq FROM orders",
+    "SELECT id, greatest(amount, qty, 4) AS g, least(amount, qty) AS l, nullif(amount, 0) AS z,"
+    " qty IS DISTINCT FROM 3 AS d, qty IS NOT DISTINCT FROM NULL AS nn FROM orders",
+    "SELECT id, sqrt(amount + 1) AS s, ln(amount + 1) AS l, log(amount + 1) AS lg,"
+    " log2(amount + 1) AS l2, log(3, amount + 1) AS lb, exp(qty) AS e, sin(price) AS si"
+    " FROM orders",
+    # DISTINCT and FILTER in aggregates.
+    "SELECT customer, count(DISTINCT qty) AS n, sum(DISTINCT amount) AS s,"
+    " sum(amount) FILTER (WHERE amount > 2) AS big, count(*) FILTER (WHERE qty IS NULL) AS nq"
+    " FROM orders GROUP BY customer",
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
@@ -179,6 +194,8 @@ def test_the_profiles_differ_only_in_what_functions_do():
         "float_to_int",
         "decimal_to_int",
         "float_modulus_by_zero",
+        "domain_error",
+        "log_zero",
     }
 
 

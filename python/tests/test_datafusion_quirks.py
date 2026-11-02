@@ -28,6 +28,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
+from _pipelines import integer_powers
 from sverify.engine import (
     connect,
     put_table,
@@ -430,7 +431,7 @@ def test_coalesce_is_eager():
 
 def test_power_of_null_to_zero(con):
     """I9: `power(NULL, 0)` is 1 on DataFusion, NULL in `Rel.eval`."""
-    plan = json.loads(substrait_json(con, "SELECT power(a, 0) AS p FROM pn"))
+    plan = integer_powers(json.loads(substrait_json(con, "SELECT power(a, 0) AS p FROM pn")))
     lean = lean_rows(json.dumps(inline_tables(plan, {"pn": [(None,), (2,)]})))
     assert lean == rows(con, "SELECT power(a, 0) AS p FROM pn")
 

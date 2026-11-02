@@ -23,62 +23,6 @@ tests/test_time.py::test_date_differences_are_refused
 tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[microsecond]
 tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[millisecond]
 
-# Tests of other features whose SQL waits on the numeric scalars and the
-# aggregates the lift reads next (#240): power, abs, round, nullif, greatest,
-# sin, isnan, IS DISTINCT FROM, DISTINCT and FILTER in aggregates.
-tests/test_aggregate.py::test_aggregates_match_datafusion[SELECT a, COUNT(DISTINCT b), SUM(DISTINCT b) FROM t GROUP BY a]
-tests/test_aggregate.py::test_aggregates_match_datafusion[SELECT a, SUM(b) FILTER (WHERE b > 0), COUNT(*) FILTER (WHERE s = 'x') FROM t GROUP BY a]
-tests/test_aggregate.py::test_engines_match_datafusion[SELECT a, COUNT(DISTINCT b), SUM(DISTINCT b) FROM t GROUP BY a]
-tests/test_aggregate.py::test_engines_match_datafusion[SELECT a, SUM(b) FILTER (WHERE b > 0), COUNT(*) FILTER (WHERE s = 'x') FROM t GROUP BY a]
-tests/test_backend_semantics.py::test_translators_agree[SELECT a, a IS DISTINCT FROM NULL, a IS NOT DISTINCT FROM 1 FROM j]
-tests/test_backend_semantics.py::test_translators_agree[SELECT v, round(v) FROM r]
-tests/test_datafusion_quirks.py::test_abs_of_min_fails
-tests/test_datafusion_quirks.py::test_lazy_and_eager_conditionals_that_are_safe
-tests/test_datafusion_quirks.py::test_power_of_null_to_zero
-tests/test_numeric.py::test_integer_semantics_match_datafusion[SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r]
-tests/test_numeric.py::test_integer_semantics_match_datafusion[SELECT power(a, 2) AS p, power(b, 3) AS c FROM r]
-tests/test_numeric.py::test_rounding_semantics_match_datafusion[SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r]
-tests/test_partition.py::test_aggregates_run_in_two_phases[SELECT b, MIN(DISTINCT c) AS lo, MAX(DISTINCT a) AS hi FROM r GROUP BY b]
-tests/test_partition.py::test_sharded_equals_whole[SELECT b, MIN(DISTINCT c) AS lo, MAX(DISTINCT a) AS hi FROM r GROUP BY b]
-tests/test_partition.py::test_split_keys[SELECT COUNT(DISTINCT b) AS n, SUM(DISTINCT b) AS s FROM r-two_phase]
-tests/test_partition.py::test_split_keys[SELECT b, COUNT(DISTINCT a) AS n, SUM(DISTINCT c) AS s FROM r GROUP BY b-linear]
-tests/test_polars.py::test_guarded_operations_do_not_raise[SELECT CASE WHEN b > 0 THEN power(a, b) ELSE 0 END AS p FROM r WHERE a = 7]
-tests/test_polars.py::test_guarded_operations_do_not_raise[SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r]
-tests/test_polars.py::test_integer_functions_match_lean_in_order[SELECT a // NULLIF(b, 0) AS q, a % NULLIF(b, 0) AS m FROM r]
-tests/test_polars.py::test_integer_functions_match_lean_in_order[SELECT power(a, 2) AS p, power(b, 3) AS c FROM r]
-tests/test_polars.py::test_rewrites_match_lean_in_order[SELECT GREATEST(a, b, c) AS x, LEAST(a, b) AS y FROM r]
-tests/test_polars.py::test_rewrites_match_lean_in_order[SELECT a, ABS(a) AS x FROM r]
-tests/test_polars.py::test_rewrites_match_lean_in_order[SELECT a, b FROM r WHERE COALESCE(a, 0) > LEAST(b, 1)]
-tests/test_polars.py::test_rewrites_match_lean_in_order[SELECT a, b, NULLIF(a, b) AS x FROM r]
-tests/test_polars.py::test_rounding_matches_datafusion_bit_for_bit
-tests/test_polars.py::test_runtime_errors_raise[SELECT power(a, 2) AS p FROM r WHERE b = -1-Overflow]
-tests/test_polars.py::test_runtime_errors_raise[SELECT power(a, b) AS p FROM r WHERE b = -1-NegativeExponent]
-tests/test_reference.py::test_engines_raise_where_ieee_would_make_a_nan[duckdb-SELECT power(z - 5.0, 0.5) AS v FROM n]
-tests/test_reference.py::test_engines_raise_where_ieee_would_make_a_nan[duckdb-SELECT sin(x) AS v FROM n]
-tests/test_reference.py::test_engines_raise_where_ieee_would_make_a_nan[polars-SELECT power(z - 5.0, 0.5) AS v FROM n]
-tests/test_reference.py::test_engines_raise_where_ieee_would_make_a_nan[polars-SELECT sin(x) AS v FROM n]
-tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT power(x, 0.5) AS v FROM f-requires6-errors6]
-tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT power(x, 0.5) AS v FROM f-requires7-errors7]
-tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT power(x, 2.0) AS v FROM f-requires8-errors8]
-tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT sin(x) AS v FROM f-requires10-errors10]
-tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT sin(x) AS v FROM f-requires9-errors9]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT GREATEST(a, b, c) AS x, LEAST(a, b) AS y FROM r]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT a, ABS(a) AS x FROM r]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT a, b FROM r WHERE COALESCE(a, 0) > LEAST(b, 1)]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT a, b, NULLIF(a, b) AS x FROM r]
-tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT name, COALESCE(name, 'none') AS x, NULLIF(name, '') AS y FROM f]
-tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT v, ABS(v) AS x FROM f]
-tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT v, COALESCE(v, w, 0) AS x, NULLIF(v, w) AS y FROM f]
-tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT v, w, GREATEST(v, w) AS x, LEAST(v, w) AS y FROM f]
-tests/test_sql.py::test_doubles_compare_by_the_total_order[SELECT v, isnan(v) AS n, -v AS m, ABS(v) AS a FROM f]
-tests/test_sql.py::test_doubles_compare_by_the_total_order[SELECT v, w, GREATEST(v, w) AS g, LEAST(v, w) AS l FROM f]
-tests/test_sql.py::test_integer_powers_are_exact
-tests/test_sql.py::test_integer_powers_with_an_exponent_column
-tests/test_sql.py::test_rounding_and_casts_match_datafusion[SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r]
-tests/test_sql.py::test_rounding_and_casts_match_datafusion[SELECT f, round(f, 2) AS x, round(f, -1) AS y, power(f, 2) AS p FROM r]
-tests/test_sql.py::test_runtime_errors_raise[SELECT power(a, -1) AS q FROM r-2-0]
-tests/test_sql.py::test_runtime_errors_raise[SELECT power(a, 3) AS q FROM r-4194304-0]
-
 # Tests of other features that wait on the model or the producers: FLOAT
 # columns (#208), `avg` of a DECIMAL as a double (DuckDB's).
 tests/test_reference.py::test_aggregates_of_double_constants[SELECT avg(2.5) AS a FROM f-expected3]

@@ -26,6 +26,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
+from _pipelines import integer_powers
 from sverify.engine import (
     connect,
     plan_json,
@@ -336,10 +337,12 @@ def test_delta_plans_agree(name, data):
 
 
 def plan_of(sql: str, tables: dict[str, pa.Table], semantics: str = "duckdb") -> str:
+    """The lifted plan of `sql`, with `power` of integers the model's integer
+    power (`integer_powers`), which these tests are about."""
     con = connect()
     for name, t in tables.items():
         put_table(con, name, t)
-    return substrait_json(con, sql, semantics)
+    return json.dumps(integer_powers(json.loads(substrait_json(con, sql, semantics))))
 
 
 def ints(**cols: list) -> pa.Table:

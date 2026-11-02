@@ -33,7 +33,9 @@ where DuckDB and the reference (#185, #209) differ:
   DuckDB differs.
 
 The subset (#239): SELECT, WHERE, arithmetic, comparisons, AND/OR/NOT,
-IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE; dates and timestamps
+IS NULL, IS [NOT] DISTINCT FROM, BETWEEN, IN lists, CASE, CAST, COALESCE,
+NULLIF; numbers (`power`, `abs`, `round`, `floor`, `ceil`, `sign`, `isnan`,
+`greatest`, `least`, square roots, logarithms, `exp` and trigonometry); dates and timestamps
 (`date_trunc`, date parts: `EXTRACT`, `date_part`, `year()`, …, a date or
 timestamp plus or minus a constant interval, `DATE - DATE`, `datediff`);
 strings (`length`, `substring`, `trim`, `strpos`, `contains`, `starts_with`,
@@ -41,7 +43,7 @@ LIKE and ILIKE, `||`, `concat`, `replace`, `repeat`, `left`, `upper`,
 `lower`); inner, left, right, full, semi, anti and cross joins; subqueries
 in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
 CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
-`max`, HAVING; window functions (ranking, `lag`/`lead`, first/last/nth
+`max`, DISTINCT and FILTER (WHERE …) in them, HAVING; window functions (ranking, `lag`/`lead`, first/last/nth
 value, aggregates; ROWS and RANGE frames); DISTINCT, ORDER BY, LIMIT and
 OFFSET. Anything else, unknown functions (`Anonymous`) included, raises
 `Unsupported` saying what.
@@ -137,6 +139,11 @@ class Profile:
             `"TRUNCATE"` (reference, R9).
         float_modulus_by_zero: `%` of doubles by zero: `"NAN"` (DuckDB) or
             `"ERROR"` (reference).
+        domain_error: Elementary functions and `power` outside their domain
+            (`sqrt(-1)`, `power(-8, 1/3)`): `"NAN"` (DuckDB) or `"ERROR"`
+            (reference, #257).
+        log_zero: A logarithm of 0: `"MINUS_INFINITY"` (DuckDB) or `"ERROR"`
+            (reference).
     """
 
     name: str
@@ -150,6 +157,8 @@ class Profile:
     float_to_int: str = "TRUNCATE"
     decimal_to_int: str = "TRUNCATE"
     float_modulus_by_zero: str = "ERROR"
+    domain_error: str = "ERROR"
+    log_zero: str = "ERROR"
 
 
 DUCKDB = Profile(
@@ -158,6 +167,8 @@ DUCKDB = Profile(
     float_to_int="TIE_TO_EVEN",
     decimal_to_int="TIE_AWAY_FROM_ZERO",
     float_modulus_by_zero="NAN",
+    domain_error="NAN",
+    log_zero="MINUS_INFINITY",
 )
 REFERENCE = Profile("reference")
 PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
@@ -783,12 +794,17 @@ class _Lift:
         scope: list[Column],
         bound: Mapping[sge.Expression, E] | None = None,
     ) -> tuple[Json, Any]:
+        where = None
+        if isinstance(node, sge.Filter):
+            # `agg(…) FILTER (WHERE c)`: the rows where `c` is TRUE.
+            where = self.condition(node.expression.this, scope, bound)
+            node = node.this
         name = _AGGREGATES[type(node)]
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
         if distinct:
-            if name != "count" or len(arg.expressions) != 1:
-                raise Unsupported(f"{_shown(node)}: only count(DISTINCT x) is supported")
+            if len(arg.expressions) != 1:
+                raise Unsupported(f"{_shown(node)}: DISTINCT of several values is not supported")
             arg = arg.expressions[0]
         if isinstance(node, sge.Count) and (arg is None or isinstance(arg, sge.Star)):
             args: list[E] = []
@@ -837,7 +853,7 @@ class _Lift:
                 "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
             ),
         }
-        return {"measure": agg}, out
+        return {"measure": agg, **({"filter": where} if where is not None else {})}, out
 
     # -- expressions -------------------------------------------------------
 
@@ -1657,6 +1673,165 @@ def _exists(lf: _Lift, node: sge.Exists, sub: Sub, scope: list[Column]) -> E:
     return E({"subquery": {"setPredicate": exists_}}, dt.boolean)
 
 
+# -- numbers ------------------------------------------------------------------
+
+
+def _prefer(name: str, value: str) -> Json:
+    """An option preferring `value`, then ERROR: DuckDB's behaviour first,
+    which the model may not support, and the reference's, which it does. A
+    plan whose rows may meet the difference "may raise" (#185); where
+    `verify` rules that out, the two agree."""
+    prefs = [value] if value == "ERROR" else [value, "ERROR"]
+    return {"name": name, "preference": prefs}
+
+
+def _doubles(lf: _Lift, es: list[E], what: str) -> list[Json]:
+    """Numbers as doubles, as DuckDB's elementary functions take them."""
+    for e in es:
+        if not (_numeric(e.type) or e.type.is_null()):
+            raise Unsupported(f"{what} of a {e.type} is not supported")
+    return [lf.to(e, dt.float64).json for e in es]
+
+
+#: Elementary functions of doubles, by SQLGlot's node: the model's name.
+_ELEMENTARY: dict[type, str] = {
+    cls: name
+    for cls, name in (
+        (getattr(sge, n, None), name)
+        for n, name in (
+            ("Sqrt", "sqrt"),
+            ("Exp", "exp"),
+            ("Ln", "ln"),
+            ("Sin", "sin"),
+            ("Cos", "cos"),
+            ("Tan", "tan"),
+            ("Asin", "asin"),
+            ("Acos", "acos"),
+            ("Atan", "atan"),
+        )
+    )
+    if cls is not None
+}
+_LOGS = ("ln", "log10", "log2", "logb")
+
+
+def _elementary_call(lf: _Lift, name: str, args: list[Json]) -> E:
+    opts = [_prefer("on_domain_error", lf.profile.domain_error)]
+    if name in _LOGS:
+        opts.append(_prefer("on_log_zero", lf.profile.log_zero))
+    return E(_fn(name, args, dt.float64, opts), dt.float64)
+
+
+def _elementary(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+    name = _ELEMENTARY[type(node)]
+    return _elementary_call(lf, name, _doubles(lf, [sub(node.this)], name))
+
+
+def _log(lf: _Lift, node: sge.Log, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB's `log(x)` is base 10, `log(b, x)` base b; `log2`, `log10`
+    # are SQLGlot's `Log` with the base set.
+    if node.expression is None:
+        return _elementary_call(lf, "log10", _doubles(lf, [sub(node.this)], "log"))
+    base, x = node.this, node.expression
+    if isinstance(base, sge.Literal) and base.this in ("2", "10"):
+        return _elementary_call(lf, f"log{base.this}", _doubles(lf, [sub(x)], "log"))
+    x_, b = _doubles(lf, [sub(x), sub(base)], "log")
+    return _elementary_call(lf, "logb", [x_, b])
+
+
+def _pow(lf: _Lift, node: sge.Pow, sub: Sub, scope: list[Column]) -> E:
+    # DuckDB's `power` is of doubles, whatever its arguments.
+    args = _doubles(lf, [sub(node.this), sub(node.expression)], "power")
+    opts = [_prefer("on_domain_error", lf.profile.domain_error)]
+    return E(_fn("power", args, dt.float64, opts), dt.float64)
+
+
+def _abs(lf: _Lift, node: sge.Abs, sub: Sub, scope: list[Column]) -> E:
+    a = sub(node.this)
+    if not (_numeric(a.type) or a.type.is_null()):
+        raise Unsupported(f"abs of a {a.type} is not supported")
+    t = dt.int32 if a.type.is_null() else a.type
+    return E(_fn("abs", [lf.to(a, t).json], t, _overflow(lf, t)), t)
+
+
+def _rounding(name: str) -> Callable[..., E]:
+    """`floor`, `ceil`, `round`: of a double, a double (an integer is one
+    first for `floor` and `ceil`, as in DuckDB); `round` rounds halves away
+    from zero, as DuckDB's of doubles does."""
+
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        a = sub(node.this)
+        if a.type.is_decimal():
+            raise Unsupported(f"{name} of a DECIMAL is not supported yet")
+        digits = node.args.get("decimals") if name == "round" else None
+        if name == "round" and a.type.is_integer() and digits is None:
+            return a  # DuckDB's `round` of an integer is itself
+        args = _doubles(lf, [a], name)
+        if digits is not None:
+            d = sub(digits)
+            if not (d.constant and isinstance(d.value, int)):
+                raise Unsupported("round needs a constant number of digits")
+            if a.type.is_integer():
+                raise Unsupported("round of an integer to digits is not supported yet")
+            args.append(literal(d.value, dt.int32))
+        return E(_fn(name, args, dt.float64), dt.float64)
+
+    return rule
+
+
+def _extremum(name: str) -> Callable[..., E]:
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        # DuckDB's `greatest` and `least` leave NULLs out.
+        es = [sub(node.this), *(sub(a) for a in node.expressions)]
+        t = lf.common(es, name)
+        if t.is_null():
+            t = dt.int32
+        return E(_fn(f"{name}_skip_null", [lf.to(e, t).json for e in es], t), t)
+
+    return rule
+
+
+def _nullif(lf: _Lift, node: sge.Nullif, sub: Sub, scope: list[Column]) -> E:
+    a, b = sub(node.this), sub(node.expression)
+    t = lf.common([a, b], "nullif")
+    if t.is_null():
+        t = dt.int32
+    return E(_fn("nullif", [lf.to(a, t).json, lf.to(b, t).json], t), t)
+
+
+def _sign(lf: _Lift, node: sge.Sign, sub: Sub, scope: list[Column]) -> E:
+    # A TINYINT: -1, 0 or 1; 0 for NaN, as DuckDB's.
+    a = sub(node.this)
+    if not (_numeric(a.type) or a.type.is_null()) or a.type.is_decimal():
+        raise Unsupported(f"sign of a {a.type} is not supported yet")
+    t = dt.int64 if a.type.is_null() else a.type
+    x = lf.to(a, t).json
+    i8 = dt.int8
+    ifs = [
+        (_fn("lt", [x, literal(0, t)], dt.boolean), literal(-1, i8)),
+        (_fn("gt", [x, literal(0, t)], dt.boolean), literal(1, i8)),
+    ]
+    if t.is_float64():
+        ifs.insert(0, (_fn("is_nan", [x], dt.boolean), literal(0, i8)))
+    null = _fn("is_null", [x], dt.boolean)
+    return E(if_then([(null, literal(None, i8)), *ifs], literal(0, i8)), i8)
+
+
+def _isnan(lf: _Lift, node: sge.IsNan, sub: Sub, scope: list[Column]) -> E:
+    # NULL for NULL, as in DuckDB.
+    (x,) = _doubles(lf, [sub(node.this)], "isnan")
+    return E(_fn("is_nan", [x], dt.boolean), dt.boolean)
+
+
+def _distinct_from(negate: bool) -> Callable[..., E]:
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        args = _operands(lf, [sub(node.this), sub(node.expression)], "IS DISTINCT FROM")
+        same = _fn("is_not_distinct_from", args, dt.boolean)
+        return E(_fn("not", [same], dt.boolean) if negate else same, dt.boolean)
+
+    return rule
+
+
 _RULES: dict[type, Callable[..., E]] = {
     sge.Column: _column,
     sge.Literal: _literal,
@@ -1691,6 +1866,20 @@ _RULES: dict[type, Callable[..., E]] = {
     sge.Anonymous: _anonymous,
     sge.DateDiff: _date_diff,
     sge.Subquery: _scalar_subquery,
+    sge.Pow: _pow,
+    sge.Abs: _abs,
+    sge.Log: _log,
+    sge.Floor: _rounding("floor"),
+    sge.Ceil: _rounding("ceil"),
+    sge.Round: _rounding("round"),
+    sge.Greatest: _extremum("greatest"),
+    sge.Least: _extremum("least"),
+    sge.Nullif: _nullif,
+    sge.Sign: _sign,
+    sge.IsNan: _isnan,
+    sge.NullSafeEQ: _distinct_from(False),
+    sge.NullSafeNEQ: _distinct_from(True),
+    **{cls: _elementary for cls in _ELEMENTARY},
     sge.Exists: _exists,
     sge.Length: _length,
     sge.Upper: _string_fn("upper"),
@@ -1818,6 +2007,10 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
                     walk(child)
             return
         if isinstance(n, sge.Subquery | sge.Select):
+            return
+        if isinstance(n, sge.Filter) and type(n.this) in _AGGREGATES:
+            if n not in found:
+                found.append(n)
             return
         if type(n) in _AGGREGATES:
             if any(type(a) in _AGGREGATES for a in n.find_all(*_AGGREGATES) if a is not n):
