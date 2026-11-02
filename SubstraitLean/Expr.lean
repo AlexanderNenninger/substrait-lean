@@ -101,6 +101,12 @@ inductive UnFn where
   and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit and
   DataFusion fails (`badCast` in `Safety.lean`). -/
   | narrow (bits : Nat)
+  /-- `TRY_CAST(x AS BIGINT)` of a double (#58): `ftoi`, or `NULL` where that
+  fails (NaN, `±∞`, outside 64 bits), which is then no error. -/
+  | ftoiOrNull
+  /-- `TRY_CAST(x AS INT)` of an integer to `bits` bits (#58): `narrow`, whose
+  `NULL` where the value does not fit is then no error. -/
+  | narrowOrNull (bits : Nat)
   /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
   value itself, like 64-bit arithmetic, which DataFusion wraps around where it
   does not fit (`wraps` in `Safety.lean`). -/
@@ -319,6 +325,10 @@ def UnFn.apply : UnFn → Value → Value
     | some i => .int i
     | none => .null
   | .narrow n, .int i => if fitsBits n i then .int i else .null
+  | .ftoiOrNull, .int c => match FloatCode.toInt? c with
+    | some i => if fitsBits 64 i then .int i else .null
+    | none => .null
+  | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
   | .widen, v => v

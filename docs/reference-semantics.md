@@ -147,6 +147,7 @@ The values are right; the rendering is not.
 | Out of range (`BIGINT` from a wider value, `i8`…`i32` from a larger integer, a double that is NaN, infinite or out of range) | An error: `FAILURE_BEHAVIOR_THROW_EXCEPTION`. | ✓ (`badCast`) |
 | `RETURN_NULL` (`TRY_CAST`) | NULL instead of an error. | **Not honoured**: `Parse.lean` ignores `failureBehavior` and treats every cast as raising. That is conservative: `verify` reports an error that can't happen, never misses one. [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | Double or decimal to integer | Truncates toward zero. | ✓ (decided on #209) |
+| `TRY_CAST` (`failureBehavior: RETURN_NULL`) | NULL where the cast would raise, and then no error: a double to an integer (NaN, `±∞`, outside 64 bits) and an integer to a narrower one. `TRY_CAST` to a DECIMAL, of a DECIMAL to an integer, and of strings is refused. | ✓ on DuckDB (#58); other engines refuse it until #271 |
 | Decimal to a smaller scale | Rounds half away from zero. | ✓ |
 | Integer to decimal | Exact; an error if it doesn't fit the precision. | ✓ |
 | Double to decimal | `round(x · 10ˢ)` computed in doubles, half away from zero (`-2.675` gives `-2.68`). NaN and `±∞` raise. | ✓ (#27) |
