@@ -676,6 +676,11 @@ class _Lift:
             if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
                 raise Unsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
             name = _AGGREGATES[type(f)]
+            if name == "avg" and arg(f.this).type.is_decimal():
+                raise Unsupported(
+                    f"{_shown(w)}: avg of a DECIMAL over a window is not supported yet: "
+                    "DuckDB gives a DOUBLE, which Lean has no window measure for (#240)"
+                )
             values = [E(a["value"], dt.null) for a in agg["arguments"]]
             args = [column(v) for v in values]
         else:
