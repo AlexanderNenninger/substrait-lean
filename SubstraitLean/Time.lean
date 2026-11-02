@@ -333,9 +333,15 @@ represents; `date_trunc` of a DATE goes through nanoseconds, like the
 calendar truncations above. -/
 
 /-- The days `chrono` represents: -262143-01-01 (`partMin`) to 262142-12-31
-(`partMax`). -/
-def dayMin : Int := -96465292
-def dayMax : Int := 95026236
+(`partMax`). `date_part` of a date is NULL outside them. -/
+def chronoDayMin : Int := -96465292
+def chronoDayMax : Int := 95026236
+
+/-- The reference's dates (#251): the SQL standard's, 0001-01-01 to
+9999-12-31, which every engine represents. Date arithmetic that leaves them
+raises (`Safety.lean`). -/
+def dayMin : Int := -719162
+def dayMax : Int := 2932896
 
 /-- The days whose midnight is within DataFusion's nanosecond range. -/
 def nsDayMin : Int := -106751
@@ -400,8 +406,11 @@ theorem truncDay_mono (u : TimeUnit) {d e : Int} (h : d ≤ e) : truncDay u d �
 #guard addMonthsUs 1 (19753 * usPerDay + 36000000000) == 19782 * usPerDay + 36000000000
 #guard addMonthsUs 1 (-1) == 2678400000000 - 1
 #guard [DatePart.year, .month, .day, .dow].map (datePartDay · 19782) == [some 2024, some 2, some 29, some 4]
-#guard datePartDay .year dayMax == some 262142 && datePartDay .year (dayMax + 1) == none
-#guard datePartDay .year dayMin == some (-262143) && datePartDay .year (dayMin - 1) == none
+#guard datePartDay .year chronoDayMax == some 262142 && datePartDay .year (chronoDayMax + 1) == none
+#guard datePartDay .year chronoDayMin == some (-262143) && datePartDay .year (chronoDayMin - 1) == none
+#guard datePartDay .year dayMin == some 1 && datePartDay .year dayMax == some 9999
+#guard [DatePart.month, .day].map (datePartDay · dayMin) == [some 1, some 1]
+#guard [DatePart.month, .day].map (datePartDay · dayMax) == [some 12, some 31]
 #guard [TimeUnit.day, .week, .month, .quarter, .year].map (truncDay · 19782) == [19782, 19779, 19754, 19723, 19723]
 
 /-! ## Formatting (`strftime`, chrono's)
