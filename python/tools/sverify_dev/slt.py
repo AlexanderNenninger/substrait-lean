@@ -818,6 +818,18 @@ def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
     return plan
 
 
+def _nested(v: Any, t: pa.DataType) -> Any:
+    """Lean's value of a nested type for Arrow: a struct is the list of its
+    fields in the model (`docs/nested-values.md`), a dict by name in Arrow."""
+    if v is None:
+        return None
+    if pa.types.is_struct(t) and isinstance(v, list):
+        return {t.field(k).name: _nested(x, t.field(k).type) for k, x in enumerate(v)}
+    if (pa.types.is_list(t) or pa.types.is_large_list(t)) and isinstance(v, list):
+        return [_nested(x, t.value_type) for x in v]
+    return v
+
+
 def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
     """Lean's values as a table of the lifted plan's output schema: timestamps
     and dates come back as integer codes."""
@@ -854,6 +866,8 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
                 ]
             elif pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_string_view(t):
                 t = pa.string()
+            elif pa.types.is_struct(t) or pa.types.is_list(t) or pa.types.is_large_list(t):
+                col = [_nested(v, t) for v in col]
             arr = pa.array(col, t)
             if pa.types.is_integer(t) and any(isinstance(v, float) for v in col):
                 raise TypeError("a double in an integer column")
@@ -999,6 +1013,9 @@ def write_ledger(
     results = sorted(results, key=lambda r: (r["file"], r["line"]))
     counts = Counter(r["cls"] for r in results)
     sides = Counter(r["side"] for r in results if r["cls"] == "disagree")
+    # Agreements where the written plan was refused: Lean's rows matched
+    # DuckDB's (oracle A), but no engine ran the plan back (oracle C).
+    oracle_a = _oracle_a_only(results)
     head = {
         **{
             "duckdb": version,
@@ -1006,6 +1023,7 @@ def write_ledger(
             "license": "test/sql © Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
             "area": area,
             "summary": {c: counts.get(c, 0) for c in CLASSES},
+            "agree_oracle_a_only": oracle_a,
             "disagree_sides": dict(sorted(sides.items())),
             "skipped_files": dict(sorted(skipped_files.items())),
         },
@@ -1026,6 +1044,15 @@ def write_ledger(
     return path
 
 
+def _oracle_a_only(results: list[dict]) -> int:
+    """The agreements no engine ran back: the writer refused the plan."""
+    return sum(
+        1
+        for r in results
+        if r["cls"] == "agree" and str(r.get("engine") or "").startswith("refused")
+    )
+
+
 def write_summary(out: Path = LEDGER) -> Path:
     """`<out>/README.md`'s table, from every ledger in `out`."""
     rows = []
@@ -1041,7 +1068,8 @@ def write_summary(out: Path = LEDGER) -> Path:
         d = led.get("disagree_sides", {})
         sides = ", ".join(f"{k} {n}" for k, n in sorted(d.items()))
         rows.append(
-            f"| [{led['area']}]({p.name}) | {s['agree']} | {s['disagree']} | {sides} "
+            f"| [{led['area']}]({p.name}) | {s['agree']} | {_oracle_a_only(led['results'])} "
+            f"| {s['disagree']} | {sides} "
             f"| {s['refused']} | {s['skipped']} | {len(led['skipped_files'])} | {top} |"
         )
     path = out / "README.md"
@@ -1049,9 +1077,9 @@ def write_summary(out: Path = LEDGER) -> Path:
     table = "\n".join(
         [
             "<!-- slt:start -->",
-            "| Area | Agree | Disagree | Disagree side | Refused | Skipped | Files skipped "
-            "| Refused by |",
-            "|---|---:|---:|---|---:|---:|---:|---|",
+            "| Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped "
+            "| Files skipped | Refused by |",
+            "|---|---:|---:|---:|---|---:|---:|---:|---|",
             *rows,
             "<!-- slt:end -->",
         ]

@@ -596,6 +596,10 @@ class _Lift:
             raise Unsupported("HAVING without GROUP BY or an aggregate")
         if wins := _windows([*node.expressions, node.args.get("order")]):
             rel, scope, bound = self.windows(rel, scope, bound, wins)
+        if explodes := _explodes(node.expressions):
+            if group is not None or aggs or wins:
+                raise Unsupported("UNNEST next to an aggregate or a window is not supported yet")
+            rel, scope, bound = self.unnest(rel, scope, bound, explodes)
 
         outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
         names = [e.alias_or_name for e in node.expressions]
@@ -636,6 +640,29 @@ class _Lift:
         if extra_keys:
             rel = emit_rel(rel, list(range(len(outs))))
         return rel, [Column(None, n, e.type) for n, e in zip(names, outs, strict=True)]
+
+    def unnest(
+        self, rel: Json, scope: list[Column], bound: Bound, explodes: list[sge.Explode]
+    ) -> tuple[Json, list[Column], Bound]:
+        """`UNNEST(l)` in the select list (#348): one row per element of `l`,
+        the other columns repeated, and no row for a NULL or empty list
+        (`Rel.unnest`). The list is computed as a column, unnested in place."""
+        if len(set(explodes)) != 1:
+            raise Unsupported("more than one UNNEST in a SELECT is not supported yet")
+        node = explodes[0]
+        if node.args.get("expressions"):
+            raise Unsupported(f"{_shown(node)} with options is not supported yet")
+        x = self.expr(node.this, scope, bound)
+        if not x.type.is_array():
+            raise Unsupported(f"UNNEST of a {x.type} is not supported")
+        width = len(scope)
+        rel = {"project": {"input": rel, "expressions": [x.json]}}
+        detail = {"@type": "type.googleapis.com/sverify.Unnest", "column": width}
+        rel = {"extensionSingle": {"input": rel, "detail": detail}}
+        elem = x.type.value_type
+        out = Bound(bound, grouped=bound.grouped)
+        out[node] = E(field_ref(width), elem)
+        return rel, [*scope, Column(None, "", elem)], out
 
     def timestamp_of(self, e: E, name: str) -> E:
         """An output column DuckDB types a TIMESTAMP that the plan holds as a
@@ -1943,6 +1970,48 @@ def _affix(name: str) -> Callable[[_Lift, list[E]], E]:
 _ANONYMOUS_STRINGS = {"prefix": _affix("starts_with"), "suffix": _affix("ends_with")}
 
 
+def _array(lf: _Lift, node: sge.Array, sub: Sub, scope: list[Column]) -> E:
+    """A list literal `[a, b, …]` (#348) of constants, at their common type as
+    DuckDB types it (`[1, 2.5]` is a `DECIMAL(11,1)[]`). The model has no list
+    of computed elements."""
+    es = [sub(e) for e in node.expressions]
+    if not es:
+        raise Unsupported("an empty list literal has no element type; cast it, e.g. []::INT[]")
+    if not all(e.constant for e in es):
+        raise Unsupported("a list of computed elements is not supported yet; only constants")
+    t = lf.common(es, "a list literal")
+    if t.is_decimal():
+        # The model holds a decimal unscaled; inside a list nothing rescales it.
+        raise Unsupported(f"a list of {t} is not supported yet")
+    values = [lf.to(e, t).value for e in es]
+    lt = dt.Array(value_type=t)
+    return E(literal(values, lt), lt, values)
+
+
+def _bracket(lf: _Lift, node: sge.Bracket, sub: Sub, scope: list[Column]) -> E:
+    """`l[i]` of a list (#348): DuckDB counts from 1, and from the end for a
+    negative `i`; `l[0]` and an index out of range are NULL. SQLGlot has
+    already subtracted 1 from a constant index (`l[-1]` reads as -2), which is
+    added back here. Slices are not supported yet."""
+    x = sub(node.this)
+    if not x.type.is_array():
+        raise Unsupported(f"{_shown(node)}: indexing a {x.type} is not supported yet")
+    if len(node.expressions) != 1 or isinstance(node.expressions[0], sge.Slice):
+        raise Unsupported(f"{_shown(node)}: list slices are not supported yet")
+    k = sub(node.expressions[0])
+    if not (k.constant and isinstance(k.value, int) and not isinstance(k.value, bool)):
+        raise Unsupported(f"{_shown(node)}: a list element needs a constant index")
+    d = k.value + 1
+    elem = x.type.value_type
+    if d == 0:
+        return E(literal(None, elem), elem, None)
+    offset = d - 1 if d > 0 else d
+    ref = {
+        "selection": {"directReference": {"listElement": {"offset": offset}}, "expression": x.json}
+    }
+    return E(ref, elem)
+
+
 def _scalar_subquery(lf: _Lift, node: sge.Subquery, sub: Sub, scope: list[Column]) -> E:
     # At most one row, which the checker must prove (an aggregate without
     # groups, LIMIT 1); no row is NULL.
@@ -2123,6 +2192,11 @@ def _isnan(lf: _Lift, node: sge.IsNan, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("is_nan", [x], dt.boolean), dt.boolean)
 
 
+def _explodes(parts: list[sge.Expression | None]) -> list[sge.Explode]:
+    """The `UNNEST`s of the select list (SQLGlot's `Explode`)."""
+    return [x for p in parts if p is not None for x in p.find_all(sge.Explode)]
+
+
 def _distinct_from(negate: bool) -> Callable[..., E]:
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         args = _operands(lf, [sub(node.this), sub(node.expression)], "IS DISTINCT FROM")
@@ -2173,6 +2247,8 @@ _RULES: dict[type, Callable[..., E]] = {
     sge.Ceil: _rounding("ceil"),
     sge.Round: _rounding("round"),
     sge.Greatest: _extremum("greatest"),
+    sge.Array: _array,
+    sge.Bracket: _bracket,
     sge.Least: _extremum("least"),
     sge.Nullif: _nullif,
     sge.Sign: _sign,
