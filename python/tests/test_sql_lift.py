@@ -5,6 +5,7 @@ refusals, and oracles A and C (`sverify_dev.lift`)."""
 import datetime as dt
 import json
 from decimal import Decimal
+from typing import Any
 
 import ibis
 import pyarrow as pa
@@ -293,7 +294,7 @@ def test_sql_checks_dialect_and_semantics():
 
 def test_without_a_dialect_sql_stays_datafusions():
     t = ibis.table({"a": "int64"}, name="t")
-    op = sv.sql("SELECT a FROM t", t=t).op()
+    op: Any = sv.sql("SELECT a FROM t", t=t).op()
     assert op.dialect is None and op.semantics is None
 
 

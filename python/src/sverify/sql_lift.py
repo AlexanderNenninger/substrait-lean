@@ -45,7 +45,7 @@ import contextlib
 import dataclasses
 import datetime as dt_
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any
 
@@ -152,7 +152,7 @@ PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
 # Parsing and typing
 
 
-def _sql_type(dtype: dt.DataType) -> str:
+def _sql_type(dtype: Any) -> str:
     return DuckDBType.from_ibis(dtype).sql(DIALECT)
 
 
@@ -169,10 +169,9 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
         raise Unsupported(f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}") from e
-    if tree.find(sge.Anonymous) is not None:
-        f = tree.find(sge.Anonymous)
+    if (f := tree.find(sge.Anonymous)) is not None:
         raise Unsupported(f"unknown function {f.name}(): DuckDB SQL here has no such function")
-    catalog = {
+    catalog: dict[str, object] = {
         name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
     }
     try:
@@ -205,7 +204,7 @@ class E:
     it is a constant (which coercions write as a literal of the new type)."""
 
     json: Json
-    type: dt.DataType
+    type: Any
     value: Any = _NO_VALUE
 
     @property
@@ -217,7 +216,7 @@ class E:
 class Column:
     table: str | None
     name: str
-    type: dt.DataType
+    type: Any
 
 
 @dataclasses.dataclass
@@ -280,7 +279,7 @@ def _option(name: str, value: str) -> Json:
     return {"name": name, "preference": [value]}
 
 
-def _fn(name: str, args: list[Json], out: dt.DataType, options: list[Json] = ()) -> Json:
+def _fn(name: str, args: list[Json], out: Any, options: Sequence[Json] = ()) -> Json:
     """A call of `name` with its output type and options written out."""
     c = call(name, args)
     c["scalarFunction"]["outputType"] = type_json(out)
@@ -289,22 +288,22 @@ def _fn(name: str, args: list[Json], out: dt.DataType, options: list[Json] = ())
     return c
 
 
-def _decimal(p: int, s: int) -> dt.Decimal:
+def _decimal(p: int, s: int) -> Any:
     return dt.Decimal(precision=min(p, 38), scale=s)
 
 
-def _digits(t: dt.DataType) -> tuple[int, int]:
+def _digits(t: Any) -> tuple[int, int]:
     """`(precision, scale)` of a decimal or an integer, as DuckDB widens it."""
     if t.is_decimal():
         return t.precision, t.scale
     return _INT_DIGITS[t.nbytes * 8], 0
 
 
-def _numeric(t: dt.DataType) -> bool:
+def _numeric(t: Any) -> bool:
     return t.is_integer() or t.is_float64() or t.is_decimal()
 
 
-def _same(a: dt.DataType, b: dt.DataType) -> bool:
+def _same(a: Any, b: Any) -> bool:
     return a.copy(nullable=True) == b.copy(nullable=True)
 
 
@@ -485,7 +484,7 @@ class _Lift:
         cols = [Column(None, f"_{i}", t) for i, t in enumerate(types)]
         return {"aggregate": body}, cols, bound
 
-    def measure(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, dt.DataType]:
+    def measure(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, Any]:
         name = _AGGREGATES[type(node)]
         arg = node.this
         distinct = isinstance(arg, sge.Distinct)
@@ -495,7 +494,7 @@ class _Lift:
             arg = arg.expressions[0]
         if isinstance(node, sge.Count) and (arg is None or isinstance(arg, sge.Star)):
             args: list[E] = []
-            out: dt.DataType = dt.int64
+            out: Any = dt.int64
         else:
             if not isinstance(node, sge.Count) and node.expressions:
                 raise Unsupported(f"{_shown(node)} takes one argument")
@@ -577,7 +576,7 @@ class _Lift:
             raise Unsupported(f"{what} column {_shown(node)}")
         return E(field_ref(found[0]), scope[found[0]].type)
 
-    def to(self, e: E, t: dt.DataType) -> E:
+    def to(self, e: E, t: Any) -> E:
         """`e` as a `t`: a constant as a literal of `t`, else a cast."""
         if _same(e.type, t):
             return e
@@ -596,7 +595,7 @@ class _Lift:
             return E(literal(None, t), t, None)
         return E(cast_json(e.json, t), t)
 
-    def common(self, es: list[E], what: str, sum_digits: bool = False) -> dt.DataType:
+    def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:
         """The type DuckDB brings `es` to as one value: the widest integer;
         a double if one is; else a decimal with the most integer digits and
         the largest scale (plus a digit for `+` and `-`)."""
@@ -661,7 +660,8 @@ def _boolean(lf: _Lift, node: sge.Boolean, sub: Sub, scope: list[Column]) -> E:
 
 
 def _null(lf: _Lift, node: sge.Null, sub: Sub, scope: list[Column]) -> E:
-    return E(literal(None, dt.int64), dt.null, None)
+    # Typed where it is used (`to`); alone, an INTEGER NULL.
+    return E(literal(None, dt.int32), dt.null, None)
 
 
 def _paren(lf: _Lift, node: sge.Paren, sub: Sub, scope: list[Column]) -> E:
@@ -769,7 +769,7 @@ def _temporal_literals(es: list[E]) -> list[E]:
     return [_temporal(e, temporal[0]) if e.type.is_string() and e.constant else e for e in es]
 
 
-def _temporal(e: E, t: dt.DataType) -> E:
+def _temporal(e: E, t: Any) -> E:
     text = e.value
     try:
         if t.is_date():
@@ -844,7 +844,7 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
     base = node.this
     results = [sub(i.args["true"]) for i in ifs]
     default = node.args.get("default")
-    dflt = sub(default) if default is not None else E(literal(None, dt.int64), dt.null, None)
+    dflt = sub(default) if default is not None else E(literal(None, dt.int32), dt.null, None)
     t = lf.common([*results, dflt], "CASE")
     if t.is_null():
         t = dt.int32
@@ -875,7 +875,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("format"):
         raise Unsupported("CAST … FORMAT is not supported")
     try:
-        t = DuckDBType.to_ibis(node.to).copy(nullable=True)
+        t: Any = DuckDBType.to_ibis(node.to).copy(nullable=True)
     except Exception as e:  # noqa: BLE001 - Ibis raises a variety
         raise Unsupported(f"CAST to {node.to.sql(DIALECT)} is not supported") from e
     type_json(t)  # refuses the types outside the model
@@ -999,5 +999,9 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
         raise Unsupported(f"the query has two output columns named {dup}; alias one of them")
-    schema = ibis.schema({c.name: (dt.int32 if c.type.is_null() else c.type) for c in cols})
+    # Every output column may be NULL, as the plan's computed values are
+    # (a LEFT JOIN's right side, an aggregate of no rows, …).
+    schema = ibis.schema(
+        {c.name: (dt.int32 if c.type.is_null() else c.type.copy(nullable=True)) for c in cols}
+    )
     return Lifted(out, schema)
