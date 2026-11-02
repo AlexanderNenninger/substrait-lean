@@ -42,7 +42,7 @@ updated from the changes alone, by a plan proved equal to a full recompute.
 
 ## Where it stands
 
-Sverify is an assistant that makes data engineering more joyful: fewer
+We aim to make sverify an assistant that makes data engineering more joyful: fewer
 3 a.m. pages over an unexpected NULL, fewer afternoons spent finding out why
 two engines disagree, and more trust in the tables you hand to the next team.
 
@@ -50,9 +50,9 @@ Sverify is young, independent and purely observational. It reports what it
 can and can't prove about your transformations, and describes each engine as
 observed at pinned versions, from its documentation, its own tests and our
 differential tests. These findings don't certify or rank engines, and sverify
-isn't affiliated with any engine's project or vendor. It works as a second
-pair of eyes on your pipelines, not a gate production depends on, and the API
-will change between minor releases.
+isn't affiliated with any engine's project or vendor. Sverify is a second
+pair of eyes on your pipelines. Production shouldn't depend on it yet, and
+the API will change between minor releases.
 
 What `Rel.eval` means, row by row (integers, NaN, decimals, casts, NULL,
 text, time, ties) and what is still pending, is in
@@ -86,7 +86,7 @@ In order of what it is worth in day-to-day data engineering:
 1. Contracts proved before the pipeline runs. The checks you would
    write as dbt tests or data expectations (`not_null`, `unique`, accepted
    ranges, relations between columns) hold on every input that meets the
-   preconditions, not just on the data you tested with. A test finds a
+   preconditions, including data you never tested with. A test finds a
    NULL city after a left join when one shows up in production; the checker
    refuses `not_null(city)` when you write the model. Runtime errors
    (division by zero, integer overflow, bad casts, regular expressions that
@@ -386,7 +386,7 @@ understood where the engine respects them: in a `CASE` branch or
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream
-precondition is proved from the upstream contract, not checked on the
+precondition is proved from the upstream contract without checking the
 data:
 
 ```python

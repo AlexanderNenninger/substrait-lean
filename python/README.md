@@ -12,7 +12,7 @@ inputs (`requires`) and what it guarantees about its output (`ensures`). A
 checker written in [Lean](https://lean-lang.org) proves the guarantees for
 every possible input, or says why it can't. Then:
 
-* Contracts are proved, not tested. `not_null`, `unique`, ranges and
+* Contracts are proved before the job runs. `not_null`, `unique`, ranges and
   relations between columns hold on every input that meets the
   preconditions, and division by zero, overflow and bad casts are ruled out
   before the job runs. Preconditions are checked on the data, or proved from
@@ -25,13 +25,13 @@ every possible input, or says why it can't. Then:
   equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-Sverify is an assistant that makes data engineering more joyful: fewer
+We aim to make sverify an assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
 hand on. It is young, independent and purely observational: it reports what
 it can and can't prove and describes each engine as observed at pinned
-versions, without certifying or ranking it. It works as a second pair of
-eyes, not a gate production depends on, and the API will change between
-minor releases.
+versions, without certifying or ranking it, and isn't affiliated with any
+engine's project or vendor. Sverify is a second pair of eyes on your pipelines. Production shouldn't depend on it yet, and the API will
+change between minor releases.
 
 The reference's meaning is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
 
