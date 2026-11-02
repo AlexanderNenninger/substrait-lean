@@ -136,9 +136,11 @@ def test_the_frontends_write_sverify_fmod():
 
 def test_sverify_fmod_takes_doubles(con):
     plan = json.loads(written_plan(substrait_json(con, "SELECT x % 2.0 AS m FROM f")))
-    for e in plan["extensions"]:
-        if e["extensionFunction"]["name"] == "sverify_fmod":
-            fmod = e["extensionFunction"]["functionAnchor"]
+    (fmod,) = (
+        e["extensionFunction"]["functionAnchor"]
+        for e in plan["extensions"]
+        if e["extensionFunction"]["name"] == "sverify_fmod"
+    )
     project = plan["relations"][0]["root"]["input"]["project"]
     call = project["expressions"][0]
     while "scalarFunction" in call and call["scalarFunction"]["functionReference"] != fmod:
