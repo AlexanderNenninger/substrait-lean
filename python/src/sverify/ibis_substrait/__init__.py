@@ -1628,24 +1628,10 @@ def _dummy_table(op: Any) -> Json:
     return project_rel(values_rel(ibis.schema({}), [[]]), 0, exprs)
 
 
-# SQL strings (`Table.sql`, `Backend.sql`) are compiled by DataFusion's
-# Substrait producer, over empty tables of the right schemas, and its plan is
-# spliced in: reads of the view's alias become the aliased relation's plan,
-# and function anchors are renumbered into this plan's.
-
-
-def _sql_context(tables: Mapping[str, Any]) -> Any:
-    try:
-        import datafusion
-    except ImportError as e:
-        raise Unsupported("SQL strings need DataFusion: pip install 'sverify[datafusion]'") from e
-    import pyarrow as pa
-
-    ctx = datafusion.SessionContext()
-    for name, schema in tables.items():
-        empty = pa.RecordBatch.from_pylist([], schema=schema.to_pyarrow())
-        ctx.register_record_batches(name, [[empty]])
-    return ctx
+# SQL strings (`sv.sql`, `Table.sql`, `Backend.sql`) are DuckDB's SQL, lifted
+# by `sverify.sql_lift` over tables of the right schemas, and the lifted plan
+# is spliced in: reads of the inputs (a view's alias) become their plans, and
+# function anchors are renumbered into this plan's.
 
 
 def _physical_tables(op: Any) -> dict[str, Any]:
@@ -1658,31 +1644,21 @@ def _physical_tables(op: Any) -> dict[str, Any]:
     return found
 
 
-def _sql_plan(query: str, tables: Mapping[str, Any]) -> Json:
-    from datafusion import substrait as ss
-    from google.protobuf import json_format
-    from substrait.plan_pb2 import Plan
+def _lift(query: str, tables: Mapping[str, Any], semantics: str = "duckdb") -> Any:
+    from sverify.sql_lift import lift
 
-    ctx = _sql_context(tables)
-    try:
-        logical = ctx.sql(query).logical_plan()
-    except Exception as e:  # noqa: BLE001 - DataFusion raises plain exceptions
-        raise Unsupported(f"DataFusion cannot plan the SQL: {str(e).splitlines()[0]}") from e
-    proto = Plan()
-    proto.ParseFromString(ss.Producer.to_substrait_plan(logical, ctx).encode())
-    return json_format.MessageToDict(proto)
+    return lift(query, tables, semantics)
 
 
 def sql_view_schema(parent: Any, query: str) -> Any:
-    """The schema DataFusion gives `query` over `parent` (an aliased relation)."""
+    """The schema of `query` over `parent` (an aliased relation)."""
     tables = {**_physical_tables(parent), parent.name: parent.schema}
-    ctx = _sql_context(tables)
-    return ibis.Schema.from_pyarrow(ctx.sql(query).schema())
+    return _lift(query, tables).schema
 
 
 def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
-    """The root relation of a DataFusion plan, with its function anchors in
-    this plan's numbering and reads of `views` replaced by their plans."""
+    """The root relation of a lifted plan, with its function anchors in this
+    plan's numbering and reads of `views` replaced by their plans."""
     names = {
         e["extensionFunction"].get("functionAnchor", 0): e["extensionFunction"]["name"]
         for e in plan.get("extensions", [])
@@ -1729,9 +1705,9 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
 
 class SQLModel(ops.Relation):
     """A SQL query over named input relations (`sverify.sql`): the query reads
-    each input by its name in `names`. Without a `dialect`, DataFusion's SQL
-    producer plans it; with `dialect="duckdb"`, the SQLGlot lift
-    (`sverify.sql_lift`) does, with the `semantics` profile."""
+    each input by its name in `names`. The SQLGlot lift (`sverify.sql_lift`)
+    plans it, as DuckDB's SQL (`dialect`, None meaning DuckDB), with the
+    `semantics` profile (None meaning `"duckdb"`)."""
 
     query: str
     inputs: VarTuple[ops.Relation]
@@ -1742,41 +1718,14 @@ class SQLModel(ops.Relation):
     values = FrozenOrderedDict()
 
 
-def _needs_sql_producer() -> None:
-    from sverify.engine import default_sql_producer
-
-    try:
-        default_sql_producer()
-    except ImportError as e:
-        raise ImportError(
-            "sverify.sql needs a SQL producer: pip install 'sverify[datafusion]'"
-        ) from e
-
-
-def sql_model_plan(query: str, tables: Mapping[str, Any]) -> Json:
-    """The plan of `query` over tables of these (Ibis) schemas, from
-    DataFusion's SQL producer."""
-    _needs_sql_producer()
-    return _sql_plan(query, tables)
-
-
-def sql_model_schema(query: str, tables: Mapping[str, Any]) -> Any:
+def sql_model_schema(query: str, tables: Mapping[str, Any], semantics: str = "duckdb") -> Any:
     """The schema of `query` over tables of these (Ibis) schemas."""
-    _needs_sql_producer()
-    try:
-        return ibis.Schema.from_pyarrow(_sql_context(tables).sql(query).schema())
-    except Exception as e:  # noqa: BLE001 - DataFusion raises plain exceptions
-        raise Unsupported(f"DataFusion cannot plan the SQL: {str(e).splitlines()[0]}") from e
+    return _lift(query, tables, semantics).schema
 
 
 def _sql_model(op: Any) -> Json:
     tables = {n: i.schema for n, i in zip(op.names, op.inputs, strict=True)}
-    if op.dialect is not None:
-        from sverify.sql_lift import lift
-
-        plan = lift(op.query, tables, op.semantics or op.dialect).plan
-    else:
-        plan = sql_model_plan(op.query, tables)
+    plan = _lift(op.query, tables, op.semantics or "duckdb").plan
     return _splice(plan, dict(zip(op.names, op.inputs, strict=True)))
 
 
@@ -1785,7 +1734,7 @@ def _sql_string_view(op: Any) -> Json:
         raise Unsupported("SQL over a table needs an alias to refer to it: use t.alias(name).sql")
     parent = op.parent
     tables = {**_physical_tables(parent), parent.name: parent.schema}
-    return _splice(_sql_plan(op.query, tables), {parent.name: parent.parent})
+    return _splice(_lift(op.query, tables).plan, {parent.name: parent.parent})
 
 
 def _sql_query_result(op: Any) -> Json:
@@ -1793,12 +1742,12 @@ def _sql_query_result(op: Any) -> Json:
     import sqlglot.expressions as sge
 
     tables = {}
-    for t in sg.parse_one(op.query, read="datafusion").find_all(sge.Table):
+    for t in sg.parse_one(op.query, read="duckdb").find_all(sge.Table):
         try:
             tables[t.name] = op.source.get_schema(t.name)
         except Exception:  # noqa: BLE001 - a CTE's name, say
             continue
-    return _splice(_sql_plan(op.query, tables), {})
+    return _splice(_lift(op.query, tables).plan, {})
 
 
 def _table_unnest(op: Any) -> Json:

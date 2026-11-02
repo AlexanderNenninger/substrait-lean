@@ -9,7 +9,7 @@ from hypothesis import given, settings
 from sverify_dev import duckdb_fuzz, fuzz
 from sverify_dev.fuzz import INT
 
-pytestmark = pytest.mark.backend("duckdb")
+pytestmark = [pytest.mark.backend("duckdb"), pytest.mark.lift_backlog]
 
 T_ROW = (None, None, None, None, None, None)
 
@@ -19,8 +19,8 @@ def _check(sql: str, t: list[tuple], ordered: bool = False) -> duckdb_fuzz.Outco
 
 
 def test_agree():
-    out = _check("SELECT (i / j) AS c0 FROM t AS q", [(-7, 2, *T_ROW[2:])])
-    # DuckDB's `/` truncates under `integer_division`, as DataFusion's does.
+    out = _check("SELECT (i // j) AS c0 FROM t AS q", [(-7, 2, *T_ROW[2:])])
+    # DuckDB's `//` on integers truncates, as Substrait's `divide` does.
     assert out.agree and out.duckdb == '[["-3"]]'
 
 

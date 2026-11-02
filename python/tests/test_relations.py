@@ -18,9 +18,11 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, run_sql, substrait_json
+from sverify.engine import connect, create_table, substrait_json
 from sverify.incremental import IncrementalView
-from sverify.testing import canonical, inline_tables, lean_values
+from sverify.testing import canonical, duckdb_sql, inline_tables, lean_values
+
+pytestmark = pytest.mark.lift_backlog
 
 T = ibis.schema({"a": "int64", "b": "int64"})
 U = ibis.schema({"a": "int64", "s": "string"})
@@ -30,10 +32,10 @@ t_rows = st.lists(st.tuples(small, small), max_size=7)
 u_rows = st.lists(st.tuples(small, st.sampled_from(["x", "y", None])), max_size=5)
 
 BAGS = [
-    "SELECT * FROM t LEFT SEMI JOIN u ON t.a = u.a",
-    "SELECT * FROM t LEFT ANTI JOIN u ON t.a = u.a",
-    "SELECT * FROM t LEFT SEMI JOIN u ON t.b < u.a",
-    "SELECT * FROM t RIGHT SEMI JOIN u ON t.a = u.a",
+    "SELECT * FROM t SEMI JOIN u ON t.a = u.a",
+    "SELECT * FROM t ANTI JOIN u ON t.a = u.a",
+    "SELECT * FROM t SEMI JOIN u ON t.b < u.a",
+    "SELECT * FROM u SEMI JOIN t ON t.a = u.a",
     "SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a",
     "SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a AND t.b > 0",
     "SELECT * FROM t WHERE a IN (SELECT a FROM u) AND b > 0",
@@ -52,7 +54,7 @@ def both(sql: str, t: list, u: list) -> tuple[list, list]:
     create_table(con, "t", T, t)
     create_table(con, "u", U, u)
     # Column-wise: `SELECT *` over both tables has two columns named `a`.
-    out = run_sql(con, sql)
+    out = duckdb_sql(con, sql)
     expected = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"t": t, "u": u})
     return lean_values(json.dumps(plan)), expected

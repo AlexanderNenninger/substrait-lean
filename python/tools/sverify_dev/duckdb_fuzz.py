@@ -6,11 +6,9 @@ API.
 
 `sverify_dev.fuzz` checks the engines on the plans Lean writes, guards
 included. Characterizing DuckDB needs DuckDB's semantics instead: here each
-random query of `sverify_dev.fuzz` runs on DuckDB as SQL, natively, and its rows
-(or its error) are compared with `Rel.eval`'s on the plan DataFusion's
-producer writes for it. The query is DataFusion SQL; two settings make
-DuckDB read it the same way: `integer_division` (`/` on integers truncates)
-and `default_null_order` (NULLs sort last ascending, first descending).
+random query of `sverify_dev.fuzz` (DuckDB's SQL) runs on DuckDB, natively,
+and its rows (or its error) are compared with `Rel.eval`'s on the plan
+sverify's lift (`sverify.sql_lift`) writes for it, with DuckDB's semantics.
 
 A `Target` aims the fuzzer at one area of the replay's disagreements: the
 integer values the tables hold (boundaries, zero), the integer literals,
@@ -37,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import ibis
 from hypothesis import HealthCheck, find, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
@@ -147,8 +146,6 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     except subprocess.CalledProcessError as e:
         lean = "error: " + slt._clip(((e.stderr or "") + (e.output or "")).strip()[-200:], 200)
     db = duckdb.connect()
-    db.sql("SET integer_division = true")
-    db.sql("SET default_null_order = 'nulls_last_on_asc_first_on_desc'")
     for name, table in s.con.arrow.items():
         db.register(name, table)
     duck_rows: list[tuple] | None = None
@@ -165,7 +162,8 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
         agree = lean_rows is None and duck_rows is None
     else:
         agree = _same_rows(lean_rows, duck_rows, query.ordered)
-    issues = [] if agree else slt._issues(query.sql, s.con)
+    schemas = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in s.con.arrow.items()}
+    issues = [] if agree else slt._lift_issues(query.sql, schemas)
     return Outcome(query.sql, s.tables, lean, duck, agree, issues)
 
 

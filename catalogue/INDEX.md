@@ -92,8 +92,8 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | dbt-surrogate-key | [Surrogate key from several columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/generate_surrogate_key.sql) | ✗ | — | `hash` |
 | dbt-union-sources | [Union of sources with aligned columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/union.sql) | ✓ | FPDS |  |
 | dbt-mrr-movements | [MRR movements per customer and month](https://github.com/dbt-labs/mrr-playbook) | ✓ | FPDS |  |
-| dbt-org-hierarchy | [Reporting chain depth (recursive hierarchy)](https://www.postgresql.org/docs/current/queries-with.html) | – | F | `recursive_cte` |
-| dbt-generate-date-spine | [Generate a daily date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | – | F | `generate_series` |
+| dbt-org-hierarchy | [Reporting chain depth (recursive hierarchy)](https://www.postgresql.org/docs/current/queries-with.html) | ✗ | F | `recursive_cte` |
+| dbt-generate-date-spine | [Generate a daily date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | ✗ | F | `generate_series` |
 | dbt-accepted-values-test | [Data test: accepted values](https://docs.getdbt.com/docs/build/data-tests) | ✓ | FPDS |  |
 | dbt-unique-test | [Data test: uniqueness](https://docs.getdbt.com/docs/build/data-tests) | ✓ | FPDS |  |
 | dbt-relationships-test | [Data test: referential integrity](https://docs.getdbt.com/docs/build/data-tests) | ✓ | FPDS |  |
@@ -143,7 +143,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | ts-session-starts | [Session starts (without numbering)](https://github.com/dbt-labs/segment/blob/main/models/sessionization/segment_web_page_views__sessionized.sql) | ✓ | FPDS |  |
 | ts-local-day-revenue | [Daily revenue in a local time zone](https://www.postgresql.org/docs/current/functions-datetime.html) | ✗ | F | `timezone` |
 | ts-overlapping-bookings | [Overlapping bookings of a resource](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✓ | FPDS |  |
-| ts-pack-intervals | [Merge overlapping bookings (packing intervals)](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✗ | F | `running_agg`, `rows_frame` |
+| ts-pack-intervals | [Merge overlapping bookings (packing intervals)](https://explainextended.com/2009/06/13/flattening-timespans-mysql/) | ✗ | F | `cte` |
 
 ## tpcds
 

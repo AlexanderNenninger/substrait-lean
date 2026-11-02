@@ -117,24 +117,14 @@ def test_engines_give_the_rows_of_run(engine):
     assert rows(node) == want == [("ada", 5), ("bob", 7)]
 
 
-def test_without_a_sql_producer_the_error_names_the_extra(monkeypatch):
-    def none():
-        raise ImportError("no producer")
-
-    monkeypatch.setattr("sverify.engine.default_sql_producer", none)
-    orders, _customers = sources()
-    with pytest.raises(ImportError, match=r"sverify\[datafusion\]"):
-        per_customer(orders)
-
-
 def test_refused_sql_says_what_is_refused():
     orders, _customers = sources()
 
     @sv.transform()
     def money(orders):
-        return sv.sql("SELECT CAST(amount AS DECIMAL(10, 2)) / 3 AS d FROM orders", orders=orders)
+        return sv.sql("SELECT min(CAST(amount AS DOUBLE)) AS m FROM orders", orders=orders)
 
-    with pytest.raises(Unsupported, match="Lean refuses the SQL: divide of DECIMAL"):
+    with pytest.raises(Unsupported, match="Lean refuses the SQL: min of doubles"):
         money(orders)
 
     @sv.transform()

@@ -53,7 +53,12 @@ def _(mo):
     pins. The "SQL standard" column is prose. The Lean column is one of:
 
     * *rows*: what `Rel.eval` gives on the same data. The plan is the one
-      DataFusion produced, with the tables inlined, run through `substrait-check`.
+      sverify's lift writes for the same text, read as **DuckDB's** SQL (since
+      #211, sverify plans SQL strings itself), with the tables inlined, run
+      through `substrait-check`. Where DuckDB's SQL reads the text otherwise
+      (`/` on integers divides as doubles there) the rows differ for that
+      reason, and where the lift does not read the SQL yet (#240) the column
+      says "no plan". The tags below were set against DataFusion's own plans.
     * *refused*: the checker rejects the plan, so nothing is proved about it.
     * *verify*: what `sverify.verify` claims, such as "proved", the runtime
       issues it found, or warnings.
@@ -267,8 +272,9 @@ def _(dt, pa, tables):
         )
 
     def lean_rows(sql: str) -> str:
-        """`Rel.eval` of DataFusion's plan for `sql`, on the same rows. Lean
-        prints doubles with a `d`, and ±0.0 as their raw codes ±1."""
+        """`Rel.eval` of the plan sverify's lift writes for `sql` (as DuckDB's
+        SQL), on the same rows. Lean prints doubles with a `d`, and ±0.0 as
+        their raw codes ±1."""
         try:
             plan = json.loads(substrait_json(con, sql))
         except Exception as e:

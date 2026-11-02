@@ -57,10 +57,9 @@ From [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211):
 | **3** | Snowflake | Aspirational: sverify writes the SQL and checks it on an emulator (fakesnow), never on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
 SQL strings go through SQLGlot and sverify's own lift (#231): DuckDB's SQL
-with `sv.sql(query, dialect="duckdb", semantics="duckdb" | "reference")`
-(`sverify.sql_lift`, #239), whose two profiles are Python data for now. The
-DataFusion SQL producer stays the default until the lift covers as much
-(#211), and DataFusion stays an execution backend.
+with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`,
+#239), whose two profiles are Python data for now. DataFusion's SQL planner
+is no longer a frontend (#211); DataFusion stays an execution backend.
 
 ## Profiles and shims in Lean (#185, first slice)
 

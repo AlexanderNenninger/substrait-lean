@@ -1,7 +1,7 @@
 """The sqllogictest replay harness (`sverify_dev.slt`): parsing DuckDB's `.test`
-format, comparing results as DuckDB's runner does, translating DuckDB SQL,
-and replaying a small test file end to end. No network: the files are
-written here, in DuckDB's format."""
+format, comparing results as DuckDB's runner does, and replaying a small
+test file end to end. No network: the files are written here, in DuckDB's
+format."""
 
 import hashlib
 import json
@@ -117,28 +117,6 @@ def test_matches_hash():
     assert not slt.matches(rec, [["2", "c"], ["1", "a"]], ordered=False)
 
 
-def test_translate():
-    sql, back, tables, ordered = slt.translate("SELECT i // 2, 7 / 2, x::TINYINT FROM t ORDER BY i")
-    assert sql == ("SELECT (i / 2), CAST(7 AS DOUBLE) / 2, CAST(x AS TINYINT) FROM t ORDER BY i")
-    assert (tables, ordered) == (["t"], True)
-    assert "//" in back  # DuckDB's own reading, for the check against DuckDB
-    sql, _, tables, ordered = slt.translate("SELECT 1 UNION ALL SELECT 2")
-    assert sql == f"SELECT 1 FROM {slt.ONE} UNION ALL SELECT 2 FROM {slt.ONE}"
-    assert not ordered
-    # sqlglot would drop TRY: refused rather than translated wrongly.
-    with pytest.raises(ValueError, match="TRY"):
-        slt.translate("SELECT TRY(1 // 0)")
-    with pytest.raises(ValueError, match="not a query"):
-        slt.translate("CREATE TABLE t(i INT)")
-
-
-def test_translate_null_order():
-    q = "SELECT i FROM t ORDER BY i, j DESC, k NULLS LAST"
-    assert slt.translate(q)[0].endswith("ORDER BY i, j DESC NULLS LAST, k")
-    first = slt.translate(q, "nulls_first")[0]
-    assert first.endswith("ORDER BY i NULLS FIRST, j DESC, k")
-
-
 TEST_FILE = """\
 statement ok
 CREATE TABLE t(i BIGINT, d DOUBLE);
@@ -203,8 +181,10 @@ def _result(results, prefix):
 
 
 def test_replay(replayed):
+    # DuckDB's SQL as it is, through `sverify.sql_lift`.
     assert _result(replayed, "SELECT i + 1").cls == "agree"
-    # DuckDB raises on 64-bit overflow; `Rel.eval`'s integers are unbounded.
+    # DuckDB raises on 64-bit overflow; `Rel.eval`'s integers are unbounded,
+    # and the verifier warns.
     overflow = _result(replayed, "SELECT 9223372036854775807")
     assert (overflow.cls, overflow.side) == ("disagree", "lean")
     assert overflow.lean == '[["9223372036854775808"]]'
@@ -214,29 +194,13 @@ def test_replay(replayed):
     div = _result(replayed, "SELECT i // 0")
     assert (div.cls, div.side) == ("disagree", "lean")
     assert div.reason.startswith("verify: division by zero")
-    assert _result(replayed, "SELECT list_value").cls == "refused"
-    # Followed: DuckDB's NULL order setting.
+    assert _result(replayed, "SELECT list_value").reason.startswith("lift: ")
+    # The lift reads DuckDB's default NULL order only.
     nulls = _result(replayed, "SELECT i FROM t ORDER BY i")
-    assert nulls.cls == "agree"
-    assert "NULLS FIRST" in nulls.translated
+    assert (nulls.cls, nulls.reason) == ("skipped", "setting default_null_order")
     # Not followed: a setting that changes what `/` means.
     last = _result(replayed, "SELECT 1")
     assert (last.cls, last.reason) == ("skipped", "setting integer_division")
-
-
-def test_replay_through_the_lift(tmp_path):
-    # `--frontend lift`: DuckDB's SQL as it is, through `sverify.sql_lift`.
-    path = tmp_path / "x.test"
-    path.write_text(TEST_FILE)
-    results, skip = slt.replay_file(path, "area/x.test", "lift")
-    assert skip is None
-    assert _result(results, "SELECT i + 1").cls == "agree"
-    div = _result(results, "SELECT i // 0")
-    assert (div.cls, div.side) == ("disagree", "lean")
-    assert div.reason.startswith("verify: division by zero")
-    assert _result(results, "SELECT list_value").reason.startswith("lift: ")
-    # The lift reads DuckDB's default NULL order only.
-    assert _result(results, "SELECT i FROM t ORDER BY i").reason == "setting default_null_order"
 
 
 def test_ledger(replayed, tmp_path):
@@ -244,11 +208,11 @@ def test_ledger(replayed, tmp_path):
     path = slt.write_ledger("area", "2.0.0", rows, {"area/y.test": "require json"}, tmp_path)
     assert path.name == "area.json"
     led = json.loads(path.read_text())
-    assert led["summary"] == {"agree": 2, "disagree": 2, "refused": 1, "skipped": 1}
+    assert led["summary"] == {"agree": 1, "disagree": 2, "refused": 1, "skipped": 2}
     assert led["disagree_sides"] == {"lean": 2}
     assert len(led["results"]) == len(rows)
     summary = slt.write_summary(tmp_path).read_text()
-    assert "| [area](area.json) | 2 | 2 | lean 2 | 1 | 1 | 1 |" in summary
+    assert "| [area](area.json) | 1 | 2 | lean 2 | 1 | 2 | 1 |" in summary
     # Rewriting keeps one table.
     assert slt.write_summary(tmp_path).read_text().count("<!-- slt:start -->") == 1
 

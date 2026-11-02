@@ -26,7 +26,16 @@ from sverify.engine import (
 from sverify.errors import NotIncremental
 from sverify.ibis_substrait import Unsupported, to_substrait
 from sverify.incremental import IncrementalView
-from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows, lean_values
+from sverify.testing import (
+    canonical,
+    duckdb_rows,
+    duckdb_sql,
+    inline_tables,
+    lean_rows,
+    lean_values,
+)
+
+pytestmark = pytest.mark.lift_backlog
 
 SCHEMA = ibis.schema({"s": "int64", "t": "int64", "v": "int64"})
 
@@ -61,7 +70,7 @@ keyed_tables = st.lists(
 def test_lean_semantics_match_datafusion(sql, rows):
     con = connect()
     create_table(con, "r", SCHEMA, rows)
-    expected = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
+    expected = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"r": rows})
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)
@@ -76,7 +85,7 @@ def test_written_window_plans_run_on_datafusion():
         code, written, err = run_checker(("--write",), substrait_json(con, sql))
         assert code == 0, err
         got = [tuple(r.values()) for r in run_substrait_json(con, written).to_pylist()]
-        want = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
+        want = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
         assert canonical(got) == canonical(want), sql
 
 
@@ -227,7 +236,7 @@ any_tables = st.lists(
 def lean_and_datafusion(sql: str, rows: list[tuple]) -> tuple[list, list]:
     con = connect()
     create_table(con, "r", SCHEMA, rows)
-    out = run_sql(con, sql)
+    out = duckdb_sql(con, sql)
     expected = [
         tuple((round(v, 6) if v != 0 else 0.0) if isinstance(v, float) else v for v in r.values())
         for r in out.to_pylist()

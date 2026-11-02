@@ -14,6 +14,8 @@ import sverify as sv
 from sverify.engines import ENGINES, create_table, table_rows
 from sverify.incremental import IncrementalView
 
+pytestmark = pytest.mark.lift_backlog
+
 ERR = -9999.0
 s1 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s1")
 s2 = ibis.table({"ts": "timestamp", "value": "float64"}, name="s2")

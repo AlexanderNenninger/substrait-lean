@@ -46,8 +46,8 @@ def _(mo):
     model says is a separate question, and engines disagree with each other
     more than you'd think: about NULL join keys, NaN, integer overflow, the
     rounding of integer division, the order of ties. So plans in `sverify`
-    come from one producer (the vendored Ibis producer, or DataFusion's for
-    SQL strings), but they can **run** on three engines in process
+    come from one producer (the vendored Ibis producer, or sverify's own lift
+    of DuckDB's SQL for SQL strings), but they can **run** on three engines in process
     (`sverify.engines.ENGINES`), and on Spark:
 
     | engine | how the plan runs |
@@ -121,7 +121,7 @@ def _(mo):
     query = mo.ui.dropdown(
         {
             "join on a key that can be NULL": "select t.k, t.qty, u.label from t join u on t.k = u.k",
-            "integer division (truncates)": "select qty, qty / 2 as half, qty % 2 as rest from t where qty < 100",
+            "integer division (truncates)": "select qty, qty // 2 as half, qty % 2 as rest from t where qty < 100",
             "doubles: NaN": "select v, v > 0 as positive, v = 0.0 as is_zero from t",
             "qty + 1 (MAX overflows)": "select qty + 1 as next from t",
         },
@@ -186,8 +186,8 @@ def _(mo):
 
     * **NULL join keys** never match (`NULL = NULL` is not TRUE), on every
       engine, because each translator says so explicitly.
-    * **Integer division truncates** toward zero, as in DataFusion and Lean
-      (`-7 / 2 = -3`). Polars' own `//` floors (`-4`); the translator uses
+    * **Integer division truncates** toward zero, as in DuckDB's `//` and Lean
+      (`-7 // 2 = -3`). Polars' own `//` floors (`-4`); the translator uses
       truncation instead.
     * **NaN** is one value, equal to itself and above every number, so
       `NaN > 0` is TRUE; and −0.0 is 0.0 (chapter 12), on every engine.
@@ -306,9 +306,10 @@ def _(con, dialect, json, mo, sql_query, sqlglot, substrait_json):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Long, but every line is there for a reason. Try
-    `select k, row_number() over (partition by k order by qty) as rn from t`
-    in each dialect: DuckDB gets an ordinal column so ties break the way
+    Long, but every line is there for a reason. A window shows why: for
+    `t.mutate(rn=ibis.row_number().over(group_by="k", order_by="qty"))`
+    (the SQL lift does not read window functions yet, #240), DuckDB gets an
+    ordinal column so ties break the way
     Lean's stable sort breaks them, while **Snowflake and Spark refuse**,
     because their tables have no row order to break ties with. If a
     contract report says `deterministic` (chapter 7), pass `tie_free=True`
