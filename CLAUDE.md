@@ -159,3 +159,11 @@ sensor alerts, where ties and NaN get involved."
 Don't edit `CHANGELOG.md` in a feature PR: parallel PRs all conflict at its top.
 Add one file to `changelog.d/` instead (see its README). The release folds the
 fragments into `CHANGELOG.md`.
+
+## Upstream bugs
+
+When you find a bug in SQLGlot, an engine, Ibis or Substrait's tooling, add
+an entry to `upstream/LEDGER.md` in the same PR as the workaround: the
+version, a minimal reproduction, and how sverify handles it. We file them
+upstream in batches. Documented engine behaviour that only differs from the
+reference model goes into the engine's characterization, not the ledger.
