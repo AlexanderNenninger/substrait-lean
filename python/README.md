@@ -27,11 +27,11 @@ every possible input, or says why it can't. Then:
 
 Sverify is an assistant that makes data engineering more joyful: fewer
 3 a.m. pages, fewer surprises between engines, more trust in the tables you
-hand on. It is young and independent, and for now purely observational: it
-reports what it can and can't prove, and describes each engine as observed at
-pinned versions, without certifying or ranking them. It isn't affiliated with
-any engine's project or vendor. It works as a second pair of eyes, not as a
-gate production depends on, and the API will change between minor releases.
+hand on. It is young, independent and purely observational: it reports what
+it can and can't prove and describes each engine as observed at pinned
+versions, without certifying or ranking it. It works as a second pair of
+eyes, not a gate production depends on, and the API will change between
+minor releases.
 
 The reference's meaning is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
 
@@ -53,11 +53,10 @@ pip install 'sverify[all]'         # with every engine and table format
 ```
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`datafusion` (an engine to run plans on), `polars`, `spark` (needs Java 17 or
-21), `delta`, `iceberg`, or `all`. Wheels bundle the checker as a small
-native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
-3.12 and later; elsewhere pip builds from the sdist, which needs
-[elan](https://github.com/leanprover/elan).
+`datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`, or
+`all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
+aarch64) and macOS (arm64, x86_64), Python 3.12 and later; elsewhere pip
+builds from the sdist, which needs [elan](https://github.com/leanprover/elan).
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents every public function and class of the released version. For
@@ -139,8 +138,8 @@ def test_big_orders():
 test_big_orders()
 ```
 
-A failure lists the rows: those of the test data that break a precondition,
-or the expected rows that are missing and the ones that were not expected.
+A failure lists the offending rows: those that break a precondition, or the
+expected rows that are missing or unexpected.
 `sverify.testing.cases(node)` is a Hypothesis strategy of inputs that meet
 the preconditions, for property tests of the code around a node
 (`pip install 'sverify[testing]'`).
@@ -180,8 +179,7 @@ SQL so far ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/2
 ## Workflows
 
 Three complete jobs from a catalogue of 139 real analytical queries, each
-from source tables to a sink, with what goes wrong without the checker. Open
-them in the browser:
+from source tables to a sink, with what goes wrong without the checker:
 
 * [Duplicate card payments](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/01_duplicate_payments.py):
   a self-join over a Delta table, refreshed from its Change Data Feed, where
@@ -265,7 +263,7 @@ uv sync                          # builds substrait-check with lake (needs elan)
 uv run poe qa                    # proofs, lint, typecheck, golden, Python tests, notebooks
 ```
 
-See the [repository](https://github.com/AlexanderNenninger/substrait-lean) for setup details.
+The [repository](https://github.com/AlexanderNenninger/substrait-lean) has setup details.
 
 ## License
 

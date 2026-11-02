@@ -46,14 +46,13 @@ Sverify is an assistant that makes data engineering more joyful: fewer
 3 a.m. pages over an unexpected NULL, fewer afternoons spent finding out why
 two engines disagree, and more trust in the tables you hand to the next team.
 
-Sverify is young and independent, and for now purely observational. It
-reports what it can and can't prove about your transformations, and
-describes each engine as observed at pinned versions: from its
-documentation, its own tests and our differential tests. These findings
-describe engines; they don't certify or rank them. Sverify isn't affiliated
-with any engine's project or vendor. Sverify works as a second pair of eyes on your
-pipelines, not as a gate production depends on. The API will change between
-minor releases.
+Sverify is young, independent and purely observational. It reports what it
+can and can't prove about your transformations, and describes each engine as
+observed at pinned versions, from its documentation, its own tests and our
+differential tests. These findings don't certify or rank engines, and sverify
+isn't affiliated with any engine's project or vendor. It works as a second
+pair of eyes on your pipelines, not a gate production depends on, and the API
+will change between minor releases.
 
 What `Rel.eval` means, row by row (integers, NaN, decimals, casts, NULL,
 text, time, ties) and what is still pending, is in
@@ -252,13 +251,11 @@ pip install sverify                 # or: uv add sverify
 pip install 'sverify[delta,iceberg,polars,datafusion,spark]'   # or 'sverify[all]'
 ```
 
-The core runs on DuckDB: contracts, incremental maintenance, and the
-SQL for DuckDB, Snowflake and Spark. The extras add `datafusion` (an engine,
-and the default compiler for SQL strings), `polars`, `spark` (runs plans on
-a Spark session; needs Java 17 or 21), `delta` and `iceberg`. Wheels bundle
-the Lean checker as a small native binary, so you need no Lean toolchain;
-they exist for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
-3.12 and later.
+The core runs on DuckDB: contracts, incremental maintenance, and SQL for
+DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
+(needs Java 17 or 21), `delta` and `iceberg`. Wheels bundle the Lean checker
+as a small native binary, so you need no Lean toolchain; they exist for Linux
+(x86_64, aarch64) and macOS (arm64, x86_64), Python 3.12 and later.
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents every public function and class, for the released version (built
@@ -296,9 +293,9 @@ print(doubled.last_report)
 #   doubled: an integer in [22, 1999999998]
 ```
 
-Lean worked out that `doubled` is at least 22 (and fits in 64 bits): the filter keeps only
-`amount > 10`, and doubling preserves that. A postcondition that doesn't
-follow is refused, with what *is* known:
+Lean worked out that `doubled` is at least 22 and fits in 64 bits: the filter
+keeps only `amount > 10`, and doubling preserves that. A postcondition that
+doesn't follow is refused, with what *is* known:
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
