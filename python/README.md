@@ -10,19 +10,20 @@ In sverify you write a data transformation as usual, in
 [Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
 inputs (`requires`) and what it guarantees about its output (`ensures`). A
 checker written in [Lean](https://lean-lang.org) proves the guarantees for
-every possible input, or says why it can't. Then:
+every possible input, or says why it can't ([what is proved](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#what-is-proved)). Then:
 
 * Contracts are proved before the job runs. `not_null`, `unique`, ranges and
   relations between columns hold on every input that meets the
   preconditions, and division by zero, overflow and bad casts are ruled out
   before the job runs. Preconditions are checked on the data, or proved from
-  Delta and Iceberg metadata.
+  Delta and Iceberg metadata. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#runtime-errors) list what is ruled out.
 * One plan gives the same answer on every engine. The checked plan runs
   on DuckDB, Polars or DataFusion, or is written as Spark SQL, with NULLs,
   integer division, NaN, ties and overflow spelled out. Where an engine can't
-  match, sverify refuses the plan.
+  match, sverify refuses the plan. Differential tests against the Lean model
+  run in CI ([engine profiles](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md)).
 * Results are kept up to date from the changes, by delta plans proved
-  equal to a full recompute, read from Delta's Change Data Feed or Iceberg's
+  equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
 We aim to make sverify an assistant that makes data engineering more joyful: fewer
