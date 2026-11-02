@@ -242,9 +242,9 @@ _TABLE_TYPES: dict[str, Any] = {
 }
 
 
-def _instantiate(template: Json, args: Sequence[Json]) -> Json:
-    """A template with its field references `i` replaced by `args[i]`, and
-    its functions anchored in the plan being built."""
+def _instantiate(template: Any, args: Sequence[Json]) -> Any:
+    """A template (or a part of one) with its field references `i` replaced
+    by `args[i]`, and its functions anchored in the plan being built."""
     if isinstance(template, list):
         return [_instantiate(t, args) for t in template]
     if not isinstance(template, dict):
@@ -252,9 +252,10 @@ def _instantiate(template: Json, args: Sequence[Json]) -> Json:
     sel = template.get("selection")
     if isinstance(sel, dict) and "rootReference" in sel:
         return copy.deepcopy(args[sel["directReference"]["structField"].get("field", 0)])
-    out = {k: _instantiate(v, args) for k, v in template.items()}
+    out: dict[str, Any] = {k: _instantiate(v, args) for k, v in template.items()}
     if "functionReference" in out:
-        out["functionReference"] = anchor(lift_table().functions[out["functionReference"]])
+        functions: Mapping[int, str] = lift_table().functions
+        out["functionReference"] = anchor(functions[out["functionReference"]])
     return out
 
 
