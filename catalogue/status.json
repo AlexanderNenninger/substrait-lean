@@ -367,10 +367,14 @@
   }
  },
  "h2o-groupby-q9": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "aggregate Correlation is not supported",
-  "native": "error: <class 'sqlglot.dialects.duckdb.DuckDB'> only implements `pop` correlation coefficient"
+  "checker": "verified",
+  "incremental": false,
+  "native": "error: <class 'sqlglot.dialects.duckdb.DuckDB'> only implements `pop` correlation coefficient",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: corr is not yet supported on Polars; see #271",
+   "snowflake": "refused: covariance and correlation are not yet supported on snowflake; see #271"
+  }
  },
  "h2o-groupby-q10": {
   "checker": "verified",
