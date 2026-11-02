@@ -54,7 +54,7 @@ avg = { lean = "yes", description = "AVG" }
 min_max = { lean = "partial", description = "MIN / MAX", note = "integers, strings, dates and timestamps; MIN/MAX of doubles and DECIMAL are refused" }
 count_distinct = { lean = "yes", description = "COUNT(DISTINCT x)" }
 agg_filter = { lean = "yes", description = "conditional aggregate: FILTER (WHERE …) or SUM(CASE …)" }
-agg_arithmetic = { lean = "no", description = "arithmetic on aggregate results inside one aggregation (SUM(a) / SUM(b), MAX - MIN, 100 * SUM(x))", note = "the Ibis producer refuses it (\"aggregate Divide is not supported\"); DataFusion's SQL path, which projects after the aggregate, verified it" }
+agg_arithmetic = { lean = "yes", description = "arithmetic on aggregate results inside one aggregation (SUM(a) / SUM(b), MAX - MIN, 100 * SUM(x))", note = "the Ibis producer computes each reduction as a measure and the arithmetic in a projection over the aggregate (#67)" }
 having = { lean = "yes", description = "HAVING" }
 grouping_sets = { lean = "no", description = "ROLLUP / CUBE / GROUPING SETS" }
 stddev_var = { lean = "no", description = "STDDEV / VARIANCE" }
@@ -83,7 +83,7 @@ dedup_latest = { lean = "yes", description = "keep one row per key, the latest (
 arithmetic_int = { lean = "yes", description = "+ - * on integers" }
 arithmetic_float = { lean = "yes", description = "+ - * / on doubles" }
 integer_division = { lean = "yes", description = "integer / or % (truncating), or Ibis floor //" }
-decimal = { lean = "no", description = "DECIMAL(p, s) columns and arithmetic", note = "sverify's Ibis producer refuses any DECIMAL column (\"type decimal(15, 2) is not supported\"); through DataFusion's SQL producer, columns pass through and compare but SUM/AVG/MIN/MAX and literals are refused. The catalogue also probes each failing query with DOUBLE in their place" }
+decimal = { lean = "partial", description = "DECIMAL(p, s) columns and arithmetic", note = "modelled exactly, as SQL computes decimals (#27); the Ibis producer follows the SQL, not Ibis's own decimal types (#67). No engine runs decimal plans yet (#27, stage 2), so the catalogue also probes each such query with DOUBLE in their place. AVG of a decimal over a window is not modelled yet" }
 case_when = { lean = "yes", description = "CASE WHEN / ifelse" }
 coalesce_nullif = { lean = "yes", description = "COALESCE / NULLIF / fill_null" }
 in_list = { lean = "yes", description = "x IN (literal list)" }
