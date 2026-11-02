@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
-from sverify._weighted import consolidated, expanded, negated, positive
+from sverify._state import State, arrow_of
+from sverify._weighted import expanded, negated, positive
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
 from sverify.io._common import (
     Contract,
@@ -58,23 +59,25 @@ class SinkChange:
         view: IncrementalView,
         contract: Contract,
         schema: pa.Schema,
-        old: pa.Table | None,
+        old: State | None,
     ):
         self.contract, self.schema = contract, schema
         self.replace = old is None
-        self._old, self._new = old, view.state
+        self._view, self._old, self._new = view, old, view.state
 
     @cached_property
     def table(self) -> pa.Table:
         """The node's whole state."""
-        return expanded(self._new).cast(self.schema)
+        return expanded(arrow_of(self._new)).cast(self.schema)
 
     @cached_property
     def change(self) -> pa.Table:
         """The weighted change from the state written last to this one
-        (`sverify._weighted`): the copies each row gains or loses."""
+        (`sverify._weighted`): the copies each row gains or loses. The
+        view's merge plan computes it where the states are."""
         assert self._old is not None
-        return consolidated(self._new, negated(self._old))
+        view = self._view
+        return arrow_of(view._merge(self._new, view.store.negated(self._old)))
 
     @cached_property
     def inserts(self) -> pa.Table:
@@ -165,7 +168,7 @@ class Sink:
     app_id: str
     location: str
     view: IncrementalView | None = None
-    _written: pa.Table | None = None
+    _written: State | None = None
     """The state written last, as a weighted table."""
     _last: Contract | None = None
     _kept: _Kept | None = None

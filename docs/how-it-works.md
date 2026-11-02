@@ -169,6 +169,19 @@ the old files. If those files were vacuumed, the views reading the table are
 recomputed on the new snapshot. `python/tests/test_io_native.py` compares
 both paths at every version and through refreshes.
 
+An incremental view's state is a weighted table: its rows, each once, with
+their number of copies (`sverify._weighted`). On DuckDB, DuckDB holds it
+between refreshes (`sverify._state.DuckDBStore`, a `Resident` table in the
+process's one DuckDB database, which the engine and every connection's Ibis
+backend share), and the view's rows are a DuckDB view of it. On the other
+engines it is an Arrow table. Either way, states and changes are added up by
+one plan Lean checks: the union of two weighted tables, grouped by every
+column, with the weights summed and the groups of weight 0 left out
+(`sverify._state.Merger`). Each engine's lowering groups rows as the model
+compares them, so the merge gives the same state on every engine
+(`python/tests/test_state.py` runs it on each). A sink's change between two
+states is the same plan on the new state and the negated old one.
+
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it runs plans
 with `engine="datafusion"`, and nothing else needs it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
