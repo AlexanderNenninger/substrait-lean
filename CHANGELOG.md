@@ -22,6 +22,12 @@ and cross joins, subqueries in FROM, GROUP BY with `count`, `sum`, `avg`,
 `date_trunc` and arithmetic. Anything else is refused, saying what; the
 rest follows in M2 (#240). Write those queries in Ibis meanwhile.
 
+### `division_type: TRUNCATE` is accepted
+
+A plan whose `modulus` states `division_type: TRUNCATE` was refused,
+although the remainder already takes the dividend's sign. It is now
+accepted; `FLOOR` is still refused, as the model does not compute it.
+
 ### Isthmus support removed
 
 sverify no longer compiles SQL strings with Isthmus (substrait-java's

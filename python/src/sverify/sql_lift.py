@@ -786,9 +786,12 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     elif not t.is_integer():
         raise Unsupported(f"% of {a.type} and {b.type} is not supported yet")
     # The remainder takes the dividend's sign (`division_type` TRUNCATE, #209
-    # R3), which is what the model does; Lean reads no `division_type` yet.
-    opt = _option("on_division_by_zero", lf.profile.on_division_by_zero)
-    return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, [opt]), t)
+    # R3), in DuckDB and the model.
+    opts = [
+        _option("on_division_by_zero", lf.profile.on_division_by_zero),
+        _option("division_type", "TRUNCATE"),
+    ]
+    return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
 
 
 def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
