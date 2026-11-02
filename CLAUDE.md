@@ -139,3 +139,9 @@ An ending: "You now have a refund queue you can trust. Its assumptions were
 proved before a single row ran, it stays right as charges arrive and get
 reversed, and the next job can build on it without checking again. Next up:
 sensor alerts, where ties and NaN get involved."
+
+## Changelog
+
+Don't edit `CHANGELOG.md` in a feature PR: parallel PRs all conflict at its top.
+Add one file to `changelog.d/` instead (see its README). The release folds the
+fragments into `CHANGELOG.md`.
