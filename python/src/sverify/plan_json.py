@@ -255,6 +255,18 @@ def call(name: str, args: Iterable[Json]) -> Json:
     }
 
 
+def substring_left(args: list[Json]) -> Json:
+    """`substring` whose start may be below 1, which then lies left of the
+    first character (`negative_start` = `LEFT_OF_BEGINNING`): the rules below
+    compute such starts. A plan that omits the option counts a negative start
+    from the end instead (`Text.substrWrap`, #209)."""
+    j = call("substring", args)
+    j["scalarFunction"]["options"] = [
+        {"name": "negative_start", "preference": ["LEFT_OF_BEGINNING"]}
+    ]
+    return j
+
+
 def ieee_divide(a: Json, b: Json) -> Json:
     """`a / b` with `on_division_by_zero` = IEEE: `±inf` or NaN by zero rather
     than an error (#204)."""

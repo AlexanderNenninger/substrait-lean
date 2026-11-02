@@ -98,7 +98,7 @@ example : areas.all fun (fs, lo) => fs.all fun (a, _) => a < 100 || (lo ≤ a &&
   decide
 
 def AggFn.anchor : AggFn → Nat
-  | .count => 36 | .sum | .fsum => 37 | .avg => 38 | .min => 39 | .max => 40 | .collect => 42
+  | .count => 36 | .sum | .fsum => 37 | .avg | .iavg => 38 | .min => 39 | .max => 40 | .collect => 42
 
 def UnFn.anchor : UnFn → Nat
   -- Core
@@ -134,7 +134,7 @@ def BinFn.anchor : BinFn → Nat
     | .and => 113 | .or => 114 | .xor => 115 | .shl => 116 | .shr => 117
   -- Strings
   | .concat => 27 | .strpos => 28 | .startsWith => 29 | .endsWith => 30 | .like => 31
-  | .substr _ => 32 | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
+  | .substr _ _ => 32 | .trim true true => 33 | .trim true false => 34 | .trim false _ => 35
   | .strRepeat => 203 | .ilike => 204 | .levenshtein => 205
   -- Dates and times
   | .dateAdd => 4 | .dateDiff => 60
@@ -181,6 +181,13 @@ def call (anchor : Nat) (args : List Json) : Json :=
   obj [("scalarFunction", obj [
     ("functionReference", toJson anchor),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray)])]
+
+/-- A call with one option of one preference. -/
+def callOpt (anchor : Nat) (args : List Json) (opt pref : String) : Json :=
+  obj [("scalarFunction", obj [
+    ("functionReference", toJson anchor),
+    ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
+    ("options", Json.arr #[obj [("name", toJson opt), ("preference", Json.arr #[toJson pref])]])])]
 
 /-- The (nullable) Substrait type of a kind, `i64` where it is unknown. -/
 def kindType : Parse.Kind → Json
@@ -572,9 +579,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       | .lit (.int k) => call 4 [writeExpr cols .date a, writeInterval (k * Time.usPerDay)]
       | _ => call 4 [writeExpr cols .date a, call 6 [writeExpr cols .int b, writeInterval Time.usPerDay]]
     | .dateDiff => call 60 [writeExpr cols .date a, writeExpr cols .date b]
-    | .substr (some n) =>
-      call 32 [writeExpr cols .str a, writeExpr cols .int b, obj [("literal", writeValue (.int n))]]
-    | .substr none => call 32 [writeExpr cols .str a, writeExpr cols .int b]
+    -- `WRAP_FROM_END` is what a plan without the option means.
+    | .substr n wrap =>
+      let args := [writeExpr cols .str a, writeExpr cols .int b] ++
+        (n.map fun n => obj [("literal", writeValue (.int n))]).toList
+      if wrap then call 32 args else callOpt 32 args "negative_start" "LEFT_OF_BEGINNING"
     | .strRepeat => call 203 [writeExpr cols .str a, writeExpr cols .int b]
     | .lt => match ka, kb with
       | .list _, _ | _, .list _ => call 400 [writeExpr cols ka a, writeExpr cols kb b]
@@ -692,7 +701,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           ks.getD c .other
         | .agg m _ _ => match m.fn with
-          | .count => .int
+          | .count | .iavg => .int
           | .sum => sumKind (wkind ks m.arg)
           | .fsum | .avg => .float
           | .min | .max => wkind ks m.arg
@@ -700,7 +709,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .aggregate r gs ms =>
       let ks := relKinds schemas cat r
       gs.map (wkind ks) ++ ms.map fun m => match m.fn with
-        | .count => .int
+        | .count | .iavg => .int
         | .sum => sumKind (wkind ks m.arg)
         | .fsum | .avg => .float
         | .min | .max => wkind ks m.arg
@@ -750,13 +759,15 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     | .firstValue c _ fr => (75, [col c], fr)
     | .lastValue c _ fr => (76, [col c], fr)
     | .nthValue c n _ fr => (77, [col c, writeLit .int (.int n)], fr)
-  obj [("windowFunction", obj [
+  obj [("windowFunction", obj ([
     ("functionReference", toJson anchor),
     ("partitions", Json.arr (part.map col).toArray),
     ("sorts", Json.arr (sort.map (writeSortKey cols)).toArray),
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
     ("lowerBound", writeBound fr.lo), ("upperBound", writeBound fr.hi),
-    ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")])]
+    ("boundsType", if fr.range then "BOUNDS_TYPE_RANGE" else "BOUNDS_TYPE_ROWS")] ++
+    -- An integer `AVG` says so by its output type (`AggFn.iavg`).
+    (match f with | .agg m _ _ => if m.fn matches .iavg then [("outputType", i64Type)] else [] | _ => [])))]
 
 /-- An `AggregateRel` measure over input columns of kinds `cols`. -/
 def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
@@ -770,6 +781,8 @@ def writeMeasure (df : Bool) (cols : List WKind) (m : Measure) : Json :=
     ("invocation", if m.distinct then "AGGREGATION_INVOCATION_DISTINCT" else "AGGREGATION_INVOCATION_ALL"),
     ("arguments", Json.arr #[obj [("value", arg)]]),
     ("sorts", Json.arr (m.sort.map (writeSortKey cols)).toArray)]
+  -- An integer `AVG` says so by its output type (`AggFn.iavg`).
+  let measure := if m.fn matches .iavg then measure.setObjVal! "outputType" i64Type else measure
   obj ([("measure", measure)] ++
     (m.filter.map fun c => [("filter", writeExpr cols .bool c)]).getD [])
 

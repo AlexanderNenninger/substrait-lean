@@ -5,7 +5,6 @@ the repository's static sources don't settle a question.
 Frontends (query -> Substrait):
   datafusion   DataFusion's SQL producer (SQL strings)
   ibis         sverify's vendored Ibis producer (`--ibis`)
-  isthmus      Isthmus, where this checkout has it and finds the binary
 Each plan goes through `substrait-check`: verified (with Lean's `Rel` and
 `Rel.eval` rows on the given tables) or the parser's refusal.
 
@@ -182,16 +181,6 @@ def frontends(con: eng.Connection, sql: str | None, expr: Any) -> dict[str, tupl
             out["datafusion"] = (eng.substrait_json(con, sql), "plan")
         except Exception as e:  # noqa: BLE001
             out["datafusion"] = ("", f"no plan: {short(e)}")
-        isthmus = getattr(eng, "isthmus_json", None)
-        if isthmus is not None and eng.isthmus_path() is not None:
-            try:
-                out["isthmus"] = (isthmus(con, sql), "plan")
-            except Exception as e:  # noqa: BLE001
-                out["isthmus"] = ("", f"no plan: {short(e)}")
-        elif isthmus is None:
-            out["isthmus"] = ("", "not in this checkout (PR #92)")
-        else:
-            out["isthmus"] = ("", "no binary ($SVERIFY_ISTHMUS or isthmus on PATH)")
     if expr is not None:
         from sverify.ibis_substrait import to_substrait_json
 

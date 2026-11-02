@@ -1,2 +1,0 @@
-error: CHAR literals with trailing blanks are not supported (blank padding)
-[exit 1]

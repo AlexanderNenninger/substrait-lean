@@ -64,12 +64,12 @@ refused.
 | R6 | integer `sum` overflow | deviation: unbounded, and reported as a warning | 5 |
 | R7 | `sum`/`avg` of an `fp64` constant | fixed (#205) | 3 |
 | R8 | `cast` to a narrower integer that does not fit | no finding (`verify`: cast out of range error) | 10 |
-| R9 | `cast` of a double or decimal to an integer: rounding | open (truncate in Lean, round in DuckDB) | 28 |
+| R9 | `cast` of a double or decimal to an integer: rounding | decided: truncate; DuckDB shim | 28 |
 | R10 | `cast` between `date` and `timestamp` literals | fixed (#206) | 60 |
 | R11 | `lt`/`gt`/… on lists | fixed (#207): lexicographic; DuckDB shim | 22 |
 | R12 | `fp32` computed as `fp64` | deviation (width) | 5 |
-| R13 | `substring` with a negative start | open (`negative_start`) | 10 |
-| R14 | `-0.0` and `0.0` | open (#89) | 2 |
+| R13 | `substring` with a negative start | fixed (#209): `WRAP_FROM_END` | 10 |
+| R14 | `-0.0` and `0.0` | decided: one zero; DuckDB shim | 2 |
 | F1–F4 | frontends: DuckDB's SQL vs DataFusion's | not plan semantics | |
 | S1–S6 | sverify: written plans, producer, harness | sverify | 57 |
 
@@ -216,8 +216,12 @@ fuzz: `fuzz__float_arith.json` (`d / d` with `d = 0.0`).
   64 bits, so DuckDB alone answers where the reference raises.
   `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan
   already guards this and raises (`test_sum.test:68`).
-- **Open:** Substrait's `avg` of `i64` returns `i64?`, while DataFusion
-  writes `avg` with an `fp64` output, which matches no impl.
+- **`avg` of integers (decided on #209, fixed):** it follows the plan's
+  declared output type. With `fp64` (DataFusion's plans), it is the mean as
+  a double; with `i64` (Substrait's own impl), it is the exact mean
+  truncated toward zero (`AggFn.iavg`), which always fits. DuckDB: the
+  exact `HUGEINT` sum `//` the count. DataFusion's `avg` is a double, so it
+  refuses an integer one.
 
 ## R7. `sum`/`avg` of a double constant
 
@@ -248,12 +252,12 @@ Evidence: `overflow/test_overflow.test:31,36,54`, `overflow/table_overflow.test:
 ## R9. Casts of doubles and decimals to integers: rounding
 
 - **Substrait:** the cast's rounding is not specified.
-- **Lean:** truncates (`ftoi`), as DataFusion does. **Open**: not covered
-  by the decisions.
-- **DuckDB (native):** rounds half away from zero:
+- **Lean:** truncates (`ftoi`), as DataFusion does. **Decided** on #209:
+  the reference truncates toward zero, so no Lean change.
+- **DuckDB (shim):** rounds half away from zero natively:
   `CAST(0.55 AS INTEGER) = 1`, `CAST(-0.55 AS BIGINT) = -1`, and
-  `avg(d)::INTEGER` rounds too. Truncation needs a shim,
-  `CAST(trunc(x) AS INTEGER)`.
+  `avg(d)::INTEGER` rounds too. sverify's SQL writes
+  `CAST(trunc(x) AS BIGINT)` (`DuckDBDialect.float_to_int`).
 
 Evidence: `cast/decimal_integer_cast.test`, `cast/float_integer_cast.test`,
 `function/numeric/test_floor_ceil.test`,
@@ -317,12 +321,18 @@ Evidence: `overflow/double_float_overflow.test:43`, `cast/double_float_cast.test
 ## R13. `substring` with a negative start
 
 - **Substrait:** `negative_start: [WRAP_FROM_END, LEFT_OF_BEGINNING, ERROR]`.
-- **Lean:** `LEFT_OF_BEGINNING`, as DataFusion does
-  (`substring('hello' FROM -2 FOR 2) = ''`). **Open**: not covered by the
-  decisions.
-- **DuckDB (native):** `WRAP_FROM_END` (`'lo'`). `LEFT_OF_BEGINNING` needs a
-  shim, `CASE WHEN start < 1 THEN substring(s, 1, GREATEST(start + len - 1, 0)) ELSE substring(s, start, len) END`.
-  `ERROR` needs a guard.
+- **Lean:** was `LEFT_OF_BEGINNING`, as DataFusion does
+  (`substring('hello' FROM -2 FOR 2) = ''`). **Fixed (#209):** the reference
+  is `WRAP_FROM_END` when the plan omits the option (`Text.substrWrap`:
+  `'lo'`; a start that wraps past the beginning, or 0, is left of it, so
+  `substring('hello', -10, 7) = 'he'`, as in DuckDB). A plan that sets
+  `LEFT_OF_BEGINNING` gets that (sverify's Ibis producer sets it for the
+  starts it computes); `ERROR` is refused.
+- **DuckDB:** `WRAP_FROM_END` is native, but sverify's SQL normalizes the
+  start for every engine (`CASE WHEN a < 0 THEN a + length + 1`, then the
+  `LEFT_OF_BEGINNING` normalization it already had). DataFusion's own
+  `substring` is `LEFT_OF_BEGINNING`, so a wrapping one whose start is not a
+  constant ≥ 0 is refused there.
 
 Evidence: `function/string/test_substring.test:129,207`, `types/string/test_unicode.test:31-41`.
 
@@ -331,8 +341,10 @@ Evidence: `function/string/test_substring.test:129,207`, `types/string/test_unic
 - **Substrait:** `fp64` is IEEE. The spec says nothing about grouping or
   ordering `-0.0`.
 - **Lean:** one zero (#89), so `1.0 / -0.0` is `inf`, not IEEE's `-inf`.
-  **Open**, with #89.
-- **DuckDB (native):** `-0.0` sorts before `0.0`, and `1.0 / -0.0 = -inf`.
+  **Decided** on #209: one zero, so no Lean change.
+- **DuckDB (shim):** `-0.0` sorts before `0.0`, and `1.0 / -0.0 = -inf`
+  natively. sverify's SQL normalizes `-0.0` to `0.0` on every read and after
+  every operation that can make it (`Dialect.canon`).
 
 Evidence: `order/…:28` (`SELECT v, 1.0 / v FROM zero_probe`).
 
@@ -361,8 +373,9 @@ means DuckDB's own operator, under its default settings.
 | | | `SILENT`, `SATURATE` | shim on the `HUGEINT` sum |
 | `cast` to `i8`…`i32` | `failureBehavior` | `THROW_EXCEPTION` | native |
 | | | `RETURN_NULL` | native (`TRY_CAST`) |
-| `cast` `fp64` → integer | rounding | open | round native; truncate shim (`trunc` first) |
-| `substring` | `negative_start` | open | `WRAP_FROM_END` native; `LEFT_OF_BEGINNING` shim |
+| `cast` `fp64` → integer | rounding | truncate | shim (`trunc` first) |
+| `substring` | `negative_start` | `WRAP_FROM_END` (default) | native; the SQL normalizes the start |
+| | | `LEFT_OF_BEGINNING` | shim |
 | `lt` … on lists | | lexicographic | shim (`list_lt`: NULL where a NULL element decides) |
 
 The guard for `error_on_division_by_zero = false` is

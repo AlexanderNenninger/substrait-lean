@@ -67,7 +67,7 @@ Not every engine is held to the same standard yet ([#211](https://github.com/Ale
 | **3** | Snowflake | Aspirational: sverify writes Snowflake SQL and checks it on an emulator, [fakesnow](https://github.com/tekumara/fakesnow), but not yet on a real account ([#63](https://github.com/AlexanderNenninger/substrait-lean/issues/63)). |
 
 SQL strings are compiled to Substrait by DataFusion today. That is planned to
-change: SQL will need [Isthmus](https://github.com/substrait-io/substrait-java/releases),
+change: SQL will go through sverify's own SQLGlot frontend ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231)),
 and DataFusion will be an execution backend only ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)).
 
 ## What it does for you
@@ -826,11 +826,6 @@ uv run --project python python my_pipeline.py
 
 * `SVERIFY_CHECK`: path to a `substrait-check` binary to use instead of the
   bundled one, for example your own `lake build`.
-* `SVERIFY_ISTHMUS`: path to an [Isthmus](https://github.com/substrait-io/substrait-java/releases)
-  binary (otherwise `isthmus` on `PATH`), for compiling SQL strings without
-  DataFusion: `sv.connect(sql_producer="isthmus")`, the default when
-  DataFusion is not installed. sverify doesn't ship it (~120 MB);
-  `python/scripts/fetch_isthmus.sh <dir>` downloads the pinned release.
 * DataFusion is pinned to 51, because Ibis 12's DataFusion backend fails to
   connect with 52 and later.
 
@@ -957,8 +952,8 @@ sources, or the stored nodes it reads, as the view's base tables.
 How it works:
 
 1. The query becomes a Substrait plan: an Ibis expression through the vendored
-   Ibis producer (below), a SQL string through the connection's SQL producer
-   (DataFusion's, or Isthmus: see "SQL producers" below).
+   Ibis producer (below), a SQL string through DataFusion's Substrait
+   producer (see "SQL producers" below).
 2. `substrait-check --delta` compiles the plan with `Rel.delta`, splits it into
    union-free terms (`Rel.terms`) and applies the weight-column encoding
    (`Rel.weighted`). It prints one Substrait plan per term, after checking each
@@ -986,8 +981,8 @@ the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
 **DataFusion is optional** (`pip install 'sverify[datafusion]'`): it runs plans
-with `engine="datafusion"` and compiles SQL strings unless Isthmus does, and
-nothing else needs it
+with `engine="datafusion"` and compiles SQL strings, and nothing else needs
+it
 (`python/tests/test_without_datafusion.py` blocks its import). It is pinned to
 51: Ibis 12's DataFusion backend can't connect to 52 and later. Tables are
 registered there as record batches, not datasets: DataFusion pushes filters
@@ -1064,25 +1059,13 @@ compared with DuckDB running Ibis's SQL (`coverage.DATAFUSION_SQL`).
 
 #### SQL producers
 
-SQL strings go through DataFusion's Substrait producer, or through
-[Isthmus](https://github.com/substrait-io/substrait-java) (substrait-java's
-Calcite-based compiler) as its native release binary, with no JVM:
-`sv.connect(sql_producer="isthmus")`, and the default when DataFusion is not
-installed. sverify finds the binary through `$SVERIFY_ISTHMUS` or `isthmus` on
-`PATH` and doesn't ship it (~120 MB; `python/scripts/fetch_isthmus.sh`
-downloads the pinned release). It writes a `CREATE TABLE` per connection table
-from its Arrow schema, with quoted identifiers, and keeps unquoted identifiers'
-case (`--unquotedcasing=UNCHANGED`). Isthmus reads standard SQL in Calcite's
-default conformance, not DataFusion's or Postgres's dialect: `FLOOR(ts TO DAY)`
-rather than `DATE_TRUNC`, no `GROUP BY` ordinals, `POSITION(a IN b)`.
+SQL strings go through DataFusion's Substrait producer. sverify's own SQLGlot
+frontend is to replace it ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231)).
 
-Isthmus writes typed function names (`add:date_iday`), CHAR and VARCHAR
-literals, window functions inside expressions (`ROW_NUMBER() OVER (…) - 1`),
-`is_true` and timestamps at precision 0; the parser reads these (hoisting the
-windows into `Rel.window`) and checks the argument kinds a signature names.
-`poe compare-sql` compiles every SQL string the tests compile with DataFusion
-with Isthmus too, and fails if both plans verify but give different rows;
-`python/scripts/isthmus_catalogue.py` does the same for the query catalogue.
+The parser also reads encodings other producers write: typed function names
+(`add:date_iday`), CHAR and VARCHAR literals, window functions inside
+expressions (`ROW_NUMBER() OVER (…) - 1`, hoisted into `Rel.window`), `is_true`
+and timestamps at precision 0. It checks the argument kinds a signature names.
 
 #### Engines
 
@@ -1203,9 +1186,10 @@ the engine:
   counts the first row of each value, integer `SUM` raises outside 64 bits,
   and doubles are added in Lean's order (`list_reduce` over a list ordered
   by the ordinal), so the result has Lean's bits, not DataFusion's;
-* strings: lengths and positions count characters, a `substring` start below
-  1 is handled before it reaches the engine (which would count it from the
-  end), and `LIKE` names its escape character;
+* strings: lengths and positions count characters, a negative `substring`
+  start counts from the end unless the plan asks for `LEFT_OF_BEGINNING`
+  (either way the start is normalized before it reaches the engine), and
+  `LIKE` names its escape character;
 * `date_part` and `date_trunc` use the engine's calendar functions where they
   agree with `SubstraitLean/Time.lean` (ISO weeks, `dow` from Sunday,
   milliseconds within the minute), and the SQL raises where DataFusion's

@@ -914,11 +914,19 @@ class Exprs:
                 if a.dtype != pl.Date or b.dtype not in (pl.Date, pl.Null):
                     raise Unsupported(f"date_diff of {a.dtype} and {b.dtype}")
                 return Val(_days(a) - _days(b), pl.Int64, issues(a, b))
-            if name == "substring" and len(arg_js) == 3:
-                n = self.constant(arg_js[2], "substring length")
-                if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            if name == "substring" and len(arg_js) in (2, 3):
+                n = self.constant(arg_js[2], "substring length") if len(arg_js) == 3 else None
+                if len(arg_js) == 3 and (not isinstance(n, int) or isinstance(n, bool) or n < 0):
                     raise Unsupported("substring lengths must be integer literals ≥ 0")
-                return self.substring(self(arg_js[0]), self(arg_js[1]), n)
+                start = next(
+                    (o["preference"][0] for o in f.get("options", [])
+                     if o.get("name") == "negative_start" and o.get("preference")),
+                    "WRAP_FROM_END",
+                )  # fmt: skip
+                if start not in ("WRAP_FROM_END", "LEFT_OF_BEGINNING"):
+                    raise Unsupported(f"substring with negative_start = {start}")
+                wrap = start == "WRAP_FROM_END"
+                return self.substring(self(arg_js[0]), self(arg_js[1]), n, wrap)
             return self.call(name, [self(a) for a in arg_js])
         raise Unsupported(f"unsupported expression {json.dumps(j)[:80]}")
 
@@ -960,9 +968,14 @@ class Exprs:
         found = s.expr.str.contains(p)
         return Val(pl.when(found).then(pl.lit(groups, pl.Int64)), pl.Int64, s.issues)
 
-    def substring(self, s: Val, a: Val, n: int | None) -> Val:
+    def substring(self, s: Val, a: Val, n: int | None, wrap: bool = True) -> Val:
         if s.dtype not in (pl.String, pl.Null) or a.dtype not in (pl.Int64, pl.Null):
             raise Unsupported(f"substring of {s.dtype} from {a.dtype}")
+        if wrap:
+            # `Text.substrWrap`: a negative start counts from the end (#209).
+            length = s.expr.str.len_chars().cast(pl.Int64)
+            shifted = pl.when(a.expr < 0).then(a.expr + length + 1).otherwise(a.expr)
+            a = Val(shifted, pl.Int64, a.issues)
         return Val(substr(s, a, n), pl.String, issues(s, a))
 
     def cast(self, c: dict) -> Val:
@@ -1398,6 +1411,11 @@ def _dedup_key(v: Any) -> Any:
     return v
 
 
+def _int_output(f: dict) -> bool:
+    """Does an `avg` declare an integer output type (`AggFn.iavg`)?"""
+    return any(k in f.get("outputType", {}) for k in ("i8", "i16", "i32", "i64"))
+
+
 def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
     """`Measure.eval` on the values a measure aggregates (NULLs dropped)."""
     if distinct:
@@ -1415,6 +1433,10 @@ def _aggregate(fn: str, distinct: bool, vs: list) -> Any:
         return total
     if fn == "collect":
         return list(vs)
+    if fn == "iavg":
+        # `AggFn.iavg`: the exact mean, truncated toward zero (#209).
+        q = abs(sum(vs)) // len(vs)
+        return q if sum(vs) >= 0 else -q
     if fn in ("fsum", "avg"):
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
@@ -1449,7 +1471,7 @@ class Measure:
 
     @property
     def dtype(self) -> DType:
-        if self.fn in ("count", "sum"):
+        if self.fn in ("count", "sum", "iavg"):
             return pl.Int64
         if self.fn == "collect":
             return pl.List(materialize(self.arg.dtype))
@@ -1887,9 +1909,12 @@ class Translator:
             idx = ex.field(sel["selection"])
             t = dtypes[idx]
             fn = {"sum": "fsum" if t == pl.Float64 or itof else "sum"}.get(name, name)
+            if name == "avg" and not itof and t == pl.Int64 and _int_output(w):
+                fn = "iavg"
             if name in ("min", "max") and t == pl.Float64:
                 raise Unsupported(f"{name} of doubles is not supported")
-            out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64}
+            out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
+                   "iavg": pl.Int64}  # fmt: skip
             return WindowSpec("agg", out.get(fn, materialize(t)), agg=fn, col=idx, frame=frame)
         raise Unsupported(f"unsupported window function {name}/{len(args)}")
 
@@ -2022,6 +2047,8 @@ class Translator:
             fn = "sum" if t == pl.Int64 else "fsum"
         elif name == "avg" and t == pl.Float64:
             fn = "avg"
+        elif name == "avg" and t == pl.Int64 and _int_output(m):
+            fn = "iavg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
             fn = name
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):

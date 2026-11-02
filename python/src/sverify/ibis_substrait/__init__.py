@@ -64,6 +64,7 @@ from sverify.plan_json import (
     project_rel,
     read_rel,
     select,
+    substring_left,
     type_json,
     values_rel,
 )
@@ -518,7 +519,7 @@ def _substring(x: Exprs, op: Any) -> Json:
         call("add", [start, call("character_length", [x(op.arg)])]),
     )
     args = [x(op.arg), start] + ([] if op.length is None else [x(op.length, dt.int64)])
-    return call("substring", args)
+    return substring_left(args)
 
 
 def _string_slice(x: Exprs, op: Any) -> Json:
@@ -561,7 +562,7 @@ def _str_right(x: Exprs, op: Any) -> Json:
     arg, n, one = x(op.arg), x(op.nchars, dt.int64), literal(1, dt.int64)
     last = call("add", [call("subtract", [call("character_length", [arg]), n]), one])
     start = if_then([(call("lt", [n, literal(0, dt.int64)]), call("subtract", [one, n]))], last)
-    return call("substring", [arg, start])
+    return substring_left([arg, start])
 
 
 def _replace(x: Exprs, op: Any) -> Json:
@@ -913,7 +914,7 @@ def _string_find(x: Exprs, op: Any) -> Json:
     # Ibis's DataFusion SQL: from `start`, as
     # `COALESCE(NULLIF(strpos(substring(s, start + 1), t) + start, start), 0) - 1`.
     start = x(op.start, dt.int64)
-    rest = call("substring", [arg, call("add", [start, one])])
+    rest = substring_left([arg, call("add", [start, one])])
     pos = call("add", [call("strpos", [rest, sub]), start])
     found = call("coalesce", [call("nullif", [pos, start]), literal(0, dt.int64)])
     return call("subtract", [found, one])
@@ -1687,7 +1688,7 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
             items = read["projection"]["select"].get("structItems", [])
             out = emit_rel(out, [i.get("field", 0) for i in items])
         if "emit" in common:
-            # Isthmus maps a read's output columns with an emit.
+            # A read may map its output columns with an emit.
             out = emit_rel(out, list(common["emit"].get("outputMapping", [])))
         return out
 
@@ -1697,9 +1698,9 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
 
 class SQLModel(ops.Relation):
     """A SQL query over named input relations (`sverify.sql`): the query reads
-    each input by its name in `names`. Without a `dialect`, DataFusion's (or
-    Isthmus's) SQL producer plans it; with `dialect="duckdb"`, the SQLGlot
-    lift (`sverify.sql_lift`) does, with the `semantics` profile."""
+    each input by its name in `names`. Without a `dialect`, DataFusion's SQL
+    producer plans it; with `dialect="duckdb"`, the SQLGlot lift
+    (`sverify.sql_lift`) does, with the `semantics` profile."""
 
     query: str
     inputs: VarTuple[ops.Relation]
@@ -1710,63 +1711,31 @@ class SQLModel(ops.Relation):
     values = FrozenOrderedDict()
 
 
-def _isthmus_plan(query: str, tables: Mapping[str, Any]) -> Json:
-    """Isthmus's plan of `query` over empty tables with these schemas."""
-    import pyarrow as pa
+def _needs_sql_producer() -> None:
+    from sverify.engine import default_sql_producer
 
-    from sverify.engine import SqlError, connect, isthmus_json
-
-    con = connect(sql_producer="isthmus")
-    for name, schema in tables.items():
-        con.put(name, pa.schema(schema.to_pyarrow()).empty_table())
     try:
-        return json.loads(isthmus_json(con, query))
-    except SqlError as e:
-        raise Unsupported(f"Isthmus cannot plan the SQL: {e}") from e
+        default_sql_producer()
+    except ImportError as e:
+        raise ImportError(
+            "sverify.sql needs a SQL producer: pip install 'sverify[datafusion]'"
+        ) from e
 
 
 def sql_model_plan(query: str, tables: Mapping[str, Any]) -> Json:
     """The plan of `query` over tables of these (Ibis) schemas, from
-    DataFusion's SQL producer, or Isthmus's where DataFusion is not installed."""
-    from sverify.engine import default_sql_producer
-
-    try:
-        producer = default_sql_producer()
-    except ImportError as e:
-        raise ImportError(
-            "sverify.sql needs a SQL producer: pip install 'sverify[datafusion]' "
-            "(or put an Isthmus binary on PATH as `isthmus` or in $SVERIFY_ISTHMUS)"
-        ) from e
-    if producer == "isthmus":
-        return _isthmus_plan(query, tables)
+    DataFusion's SQL producer."""
+    _needs_sql_producer()
     return _sql_plan(query, tables)
 
 
 def sql_model_schema(query: str, tables: Mapping[str, Any]) -> Any:
     """The schema of `query` over tables of these (Ibis) schemas."""
-    from sverify.engine import default_sql_producer
-
+    _needs_sql_producer()
     try:
-        producer = default_sql_producer()
-    except ImportError:
-        producer = None
-    if producer == "datafusion":
-        try:
-            return ibis.Schema.from_pyarrow(_sql_context(tables).sql(query).schema())
-        except Exception as e:  # noqa: BLE001 - DataFusion raises plain exceptions
-            raise Unsupported(f"DataFusion cannot plan the SQL: {str(e).splitlines()[0]}") from e
-    # Isthmus gives types only in the plan: run it, as Lean writes it, on
-    # empty tables.
-    import pyarrow as pa
-
-    from sverify.engine import connect, run_plan, written_plan
-
-    plan = sql_model_plan(query, tables)
-    con = connect()
-    for name, schema in tables.items():
-        con.put(name, pa.schema(schema.to_pyarrow()).empty_table())
-    result = run_plan(con, written_plan(json.dumps(plan)), "duckdb")
-    return ibis.Schema.from_pyarrow(result.schema)
+        return ibis.Schema.from_pyarrow(_sql_context(tables).sql(query).schema())
+    except Exception as e:  # noqa: BLE001 - DataFusion raises plain exceptions
+        raise Unsupported(f"DataFusion cannot plan the SQL: {str(e).splitlines()[0]}") from e
 
 
 def _sql_model(op: Any) -> Json:

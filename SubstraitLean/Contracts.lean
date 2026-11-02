@@ -677,7 +677,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
       ⟨a.nonStr || b.nonStr, if a.str && b.str then some (.ge 0) else none, false, false, false⟩
   | .startsWith, a, b | .endsWith, a, b | .like, a, b | .ilike, a, b =>
       ⟨a.nonStr || b.nonStr, none, a.str && b.str, a.str && b.str, false⟩
-  | .substr _, a, b | .strRepeat, a, b =>
+  | .substr _ _, a, b | .strRepeat, a, b =>
       ⟨a.nonStr || b.nonInt, none, false, false, a.str && b.int.isSome⟩
   | .eq, a, b =>
       let mismatch := a.null || b.null || (a.int.isSome && (b.tt || b.ff || b.str)) ||
@@ -3048,6 +3048,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
   | .fsum | .avg => AVal.double
+  | .iavg => ⟨true, some Bound.top, false, false, false⟩
   | .min | .max => a.nullable
   | .collect => AVal.top
 
@@ -3323,7 +3324,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have := hin (.int i) (hvs ▸ hi)
           obtain ⟨b', hb', hm⟩ := this
           rw [ha] at hb'; cases hb'; exact hm
-  case fsum | avg =>
+  case fsum | avg | iavg =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case min | max =>
     have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)

@@ -7,16 +7,12 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 plans over them (DuckDB by default), and Ibis tables bound to them
 (`con.table(name)`). `plan_json` compiles Ibis expressions with the vendored
 producer (`sverify.ibis_substrait`, typed and engine-neutral) and SQL strings
-with the connection's SQL producer: DataFusion's, or Isthmus (substrait-java's
-Calcite-based compiler, as its native binary). `run_plan` runs a plan in Lean's
+with DataFusion's SQL producer. `run_plan` runs a plan in Lean's
 written form (`substrait-check --write`, `--delta`) on the connection's engine
 or the one a call names.
 
 DataFusion is optional (`pip install 'sverify[datafusion]'`): it is needed
-only to run plans with `engine="datafusion"` and, unless Isthmus compiles them,
-SQL strings. sverify does not ship Isthmus: it runs the binary named by
-`$SVERIFY_ISTHMUS`, or `isthmus` on `PATH` (`isthmus-<os>-<version>` from
-https://github.com/substrait-io/substrait-java/releases).
+only to run plans with `engine="datafusion"` and to compile SQL strings.
 """
 
 from __future__ import annotations
@@ -26,7 +22,6 @@ import functools
 import json
 import os
 import re
-import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -43,17 +38,13 @@ from ibis.backends.sql.compilers.datafusion import DataFusionCompiler
 from substrait.plan_pb2 import Plan
 
 from sverify.ibis_substrait import Unsupported, to_substrait_json
+from sverify.sql import core as sql
 
 Engine = Literal["duckdb", "polars", "datafusion"]
 ENGINES: tuple[Engine, ...] = ("duckdb", "polars", "datafusion")
 """The engines a `Connection` runs plans on: `"duckdb"` (the default),
 `"polars"` and `"datafusion"`. Loop over it to run a plan on each, as the
 tests do. `sverify.engines.run` also takes `"spark"` or a Spark session."""
-SqlProducer = Literal["datafusion", "isthmus"]
-SQL_PRODUCERS: tuple[SqlProducer, ...] = ("datafusion", "isthmus")
-"""The compilers for SQL strings: `"datafusion"` (DataFusion's Substrait
-producer, the default when DataFusion is installed) and `"isthmus"`
-(substrait-java's, as a native binary)."""
 
 _literal = DataFusionCompiler.visit_NonNullLiteral
 
@@ -117,21 +108,12 @@ def has_datafusion() -> bool:
     return True
 
 
-def isthmus_path() -> str | None:
-    """The Isthmus binary: `$SVERIFY_ISTHMUS`, or `isthmus` on `PATH`."""
-    return os.environ.get("SVERIFY_ISTHMUS") or shutil.which("isthmus")
-
-
-def default_sql_producer() -> SqlProducer:
-    """DataFusion's producer if DataFusion is installed, else Isthmus."""
+def default_sql_producer() -> Literal["datafusion"]:
+    """The SQL producer: DataFusion's, if DataFusion is installed."""
     if has_datafusion():
         return "datafusion"
-    if isthmus_path() is not None:
-        return "isthmus"
     raise ImportError(
-        "compiling SQL strings needs a SQL producer: pip install 'sverify[datafusion]', "
-        "or put an Isthmus binary (https://github.com/substrait-io/substrait-java/releases) "
-        "on PATH as `isthmus` or in $SVERIFY_ISTHMUS"
+        "compiling SQL strings needs a SQL producer: pip install 'sverify[datafusion]'"
     )
 
 
@@ -176,8 +158,6 @@ class Connection:
       data and metadata through it, and Ibis's own `execute` works on it.
     * `engine` runs plans (`sverify.engines.run`) unless a call names
       another.
-    * `sql_producer` compiles SQL strings: `"datafusion"` or `"isthmus"`;
-      `None` picks DataFusion if it is installed, else Isthmus.
     * `datafusion` is a DataFusion session holding the same tables (with the
       functions Ibis's DataFusion SQL calls), created on first use; only the
       DataFusion engine and DataFusion's SQL producer need it.
@@ -187,28 +167,20 @@ class Connection:
     Args:
         engine: `"duckdb"`, `"polars"` or `"datafusion"`. Default:
             `"duckdb"`.
-        sql_producer: `"datafusion"`, `"isthmus"`, or None (the default) to
-            pick one when a SQL string is first compiled.
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
-        sql_producer: The SQL producer, or None for the default.
         arrow: The tables by name, as Arrow tables.
         ibis: The Ibis DuckDB backend the bound tables read through.
 
     Raises:
-        ValueError: `engine` or `sql_producer` is unknown.
+        ValueError: `engine` is unknown.
     """
 
-    def __init__(self, engine: Engine = "duckdb", sql_producer: SqlProducer | None = None):
+    def __init__(self, engine: Engine = "duckdb"):
         if engine not in ENGINES:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
-        if sql_producer is not None and sql_producer not in SQL_PRODUCERS:
-            raise ValueError(
-                f"unknown SQL producer {sql_producer!r}; expected one of {SQL_PRODUCERS}"
-            )
         self.engine: Engine = engine
-        self.sql_producer: SqlProducer | None = sql_producer
         self.arrow: dict[str, pa.Table] = {}
         self.ibis: Any = _ibis_backend()
         # A bound table keeps its backend alive, and the backend its connection.
@@ -282,26 +254,21 @@ class Connection:
         return self._datafusion
 
 
-def connect(engine: Engine = "duckdb", sql_producer: SqlProducer | None = None) -> Connection:
-    """A new, empty connection whose plans run on `engine` and whose SQL
-    strings `sql_producer` compiles (default: DataFusion if installed, else
-    Isthmus).
+def connect(engine: Engine = "duckdb") -> Connection:
+    """A new, empty connection whose plans run on `engine`.
 
     Args:
         engine: `"duckdb"`, `"polars"` or `"datafusion"` (see
             `sverify.engines.ENGINES`). Default: `"duckdb"`.
-        sql_producer: `"datafusion"` or `"isthmus"` (see
-            `sverify.engines.SQL_PRODUCERS`). Default: None, DataFusion if
-            installed, else Isthmus.
 
     Returns:
         A connection with no tables. Add them with
         `sverify.engines.create_table` or `Connection.put`.
 
     Raises:
-        ValueError: `engine` or `sql_producer` is unknown.
+        ValueError: `engine` is unknown.
     """
-    return Connection(engine, sql_producer)
+    return Connection(engine)
 
 
 def connection_of(table: ir.Table) -> Connection | None:
@@ -320,11 +287,8 @@ def to_sql(expr: ir.Table) -> str:
 
 def plan_json(con: Connection, query: ir.Table | str) -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
-    through the vendored producer, SQL through the connection's SQL producer
-    (`substrait_json` or `isthmus_json`)."""
+    through the vendored producer, SQL through DataFusion's (`substrait_json`)."""
     if isinstance(query, str):
-        if (con.sql_producer or default_sql_producer()) == "isthmus":
-            return isthmus_json(con, query)
         return substrait_json(con, query)
     return to_substrait_json(query)
 
@@ -390,97 +354,8 @@ def quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _sql_type(t: pa.DataType) -> str | None:
-    """The SQL type Isthmus should see for an Arrow type; `None` if it has none
-    (the plan could not be checked anyway). Timestamps are microseconds, as in
-    the Lean model; the engines read any unit."""
-    if pa.types.is_timestamp(t):
-        return None if t.tz is not None else "TIMESTAMP(6)"
-    if pa.types.is_decimal(t):
-        return f"DECIMAL({t.precision}, {t.scale})"
-    simple = {
-        pa.int8(): "TINYINT", pa.int16(): "SMALLINT", pa.int32(): "INTEGER",
-        pa.int64(): "BIGINT", pa.float32(): "REAL", pa.float64(): "DOUBLE",
-        pa.string(): "VARCHAR", pa.bool_(): "BOOLEAN", pa.date32(): "DATE",
-    }  # fmt: skip
-    return simple.get(t)
-
-
-def create_statements(con: Connection) -> tuple[list[str], list[str]]:
-    """`CREATE TABLE` statements for the connection's tables, with quoted
-    identifiers, and the tables left out for a column type SQL can't name."""
-    ddl, skipped = [], []
-    for name, table in con.arrow.items():
-        cols = []
-        for f in table.schema:
-            ty = _sql_type(f.type)
-            if ty is None:
-                skipped.append(f"{name} ({f.name}: {f.type})")
-                break
-            cols.append(f"{quote(f.name)} {ty}{'' if f.nullable else ' NOT NULL'}")
-        else:
-            ddl.append(f"CREATE TABLE {quote(name)} ({', '.join(cols)})")
-    return ddl, skipped
-
-
 class SqlError(ValueError):
-    """A SQL producer refused a query.
-
-    Raised by `sverify.engines.isthmus_json` with Isthmus's message, and the
-    tables Isthmus could not see if a column type has no SQL name.
-    """
-
-
-@functools.lru_cache(maxsize=256)
-def _isthmus(binary: str, ddl: tuple[str, ...], sql: str) -> str:
-    # Calcite's default conformance; unquoted identifiers keep their case.
-    args = [binary, "--unquotedcasing=UNCHANGED"]
-    for c in ddl:
-        args += ["-c", c]
-    p = subprocess.run([*args, sql], capture_output=True, text=True, timeout=120)
-    if p.returncode != 0:
-        lines = [ln.strip() for ln in (p.stderr + p.stdout).splitlines() if ln.strip()]
-        msg = next((ln for ln in lines if not ln.startswith("at ")), "Isthmus failed")
-        raise SqlError(f"Isthmus: {msg.removeprefix('Error: ')}")
-    return p.stdout
-
-
-def isthmus_json(con: Connection, sql: str) -> str:
-    """Compile SQL to a Substrait plan with Isthmus, as protobuf JSON. Isthmus
-    reads standard SQL (Calcite's default conformance), not DataFusion's or
-    Postgres's dialect: `FLOOR(ts TO DAY)` rather than `DATE_TRUNC`, no
-    `GROUP BY` ordinals.
-
-    The connection's tables are declared to Isthmus as `CREATE TABLE`
-    statements; a table with a column type SQL cannot name (a timestamp
-    with a time zone, for one) is left out.
-
-    Args:
-        con: The connection whose tables the SQL reads.
-        sql: A query in standard SQL.
-
-    Returns:
-        The Substrait plan as protobuf JSON.
-
-    Raises:
-        ImportError: There is no Isthmus binary (`$SVERIFY_ISTHMUS`, or
-            `isthmus` on `PATH`).
-        sverify.errors.SqlError: Isthmus refuses the query.
-    """
-    binary = isthmus_path()
-    if binary is None:
-        raise ImportError(
-            "sql_producer='isthmus' needs the Isthmus binary "
-            "(https://github.com/substrait-io/substrait-java/releases) "
-            "on PATH as `isthmus` or in $SVERIFY_ISTHMUS"
-        )
-    ddl, skipped = create_statements(con)
-    try:
-        return _isthmus(binary, tuple(ddl), sql)
-    except SqlError as e:
-        if skipped:
-            raise SqlError(f"{e} (tables Isthmus can't see: {', '.join(skipped)})") from None
-        raise
+    """A SQL producer refused a query."""
 
 
 def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
@@ -679,7 +554,51 @@ def datafusion_plan(plan_json: str) -> str:
     if code != 0:
         msg = (err or out).strip().splitlines()[-1:]
         raise ValueError(f"substrait-check --write-datafusion rejects the plan: {msg}")
+    _check_datafusion_plan(json.loads(out))
     return out
+
+
+def _check_datafusion_plan(plan: dict) -> None:
+    """Refuse what DataFusion computes differently from the reference (#209):
+    a `substring` whose start may be negative (DataFusion puts it left of the
+    beginning, the reference counts it from the end, `Text.substrWrap`) unless
+    the plan asks for `LEFT_OF_BEGINNING`; and an `avg` with an integer result
+    (`AggFn.iavg`), which DataFusion computes as a double."""
+    names = {
+        e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"].split(":")[0]
+        for e in plan.get("extensions", [])
+        if "extensionFunction" in e
+    }
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key in ("measure", "windowFunction"):
+                a = node.get(key)
+                is_avg = isinstance(a, dict) and names.get(a.get("functionReference")) == "avg"
+                ints = ("i8", "i16", "i32", "i64")
+                if is_avg and any(k in a.get("outputType", {}) for k in ints):
+                    raise sql.Unsupported("DataFusion's AVG has no integer result")
+            f = node.get("scalarFunction")
+            if isinstance(f, dict) and names.get(f.get("functionReference")) == "substring":
+                left = any(
+                    o.get("name") == "negative_start"
+                    and o.get("preference", [])[:1] == ["LEFT_OF_BEGINNING"]
+                    for o in f.get("options", [])
+                )
+                args = f.get("arguments", [])
+                lit = args[1].get("value", {}).get("literal", {}) if len(args) > 1 else {}
+                start = next((v for k, v in lit.items() if k in ("i8", "i16", "i32", "i64")), None)
+                if not left and (start is None or int(start) < 0):
+                    raise sql.Unsupported(
+                        "DataFusion's substring does not count a negative start from the end"
+                    )
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan)
 
 
 def run_plan(con: Connection, plan_json: str, engine: Engine | Any = None) -> pa.Table:

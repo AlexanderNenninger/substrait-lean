@@ -297,7 +297,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .idiv _ _ | .bin .imod _ _ | .bin .ipow _ _ | .bin .strpos _ _ | .bin .dateDiff _ _
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
-  | .bin .concat _ _ | .bin (.substr _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
+  | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
   | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
   | .bin _ _ _ => .bool
   -- A literal branch (`NULLIF`'s `NULL`, `GREATEST(x, 0)`'s `0`) says less
@@ -329,6 +329,7 @@ def _root_.Substrait.Measure.kind (cols : List Kind) (m : Measure) : Kind :=
     | .dec p s => .dec (min 38 (p + 10)) s
     | _ => .int
   | .fsum | .avg => .float
+  | .iavg => .int
   | .min | .max => m.arg.kind cols
   | .collect => .list (m.arg.kind cols)
 
@@ -713,7 +714,7 @@ def parseConstLiteral (j : Json) : J Const := do
     if p ≤ 6 then return .int (v * 10 ^ (6 - p))
     else if v % 10 ^ (p - 6) == 0 then return .int (v / 10 ^ (p - 6))
     else throw "times finer than microseconds are not supported"
-  -- Precision `p` counts units of 10⁻ᵖ s (Isthmus writes `TIMESTAMP '…'` at 0).
+  -- Precision `p` counts units of 10⁻ᵖ s (a `TIMESTAMP '…'` literal may be at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
@@ -786,7 +787,7 @@ The parser dispatches on a function's base name, and the model has one
 integer type for integers, doubles (as codes), timestamps (µs), dates (days)
 and intervals (µs). So the arguments' kinds must be checked: `add:date_iday`
 would otherwise add days and microseconds. A signature suffix (`date_iday`, as
-Isthmus writes) is checked against the arguments the parser sees; a literal
+in the extension's signatures) is checked against the arguments the parser sees; a literal
 argument (or one built only from literals) has no kind of its own (a
 timestamp literal is an integer), so only the signature speaks for it. -/
 
@@ -967,6 +968,9 @@ def optionAccepts (base : String) (float : Bool) : String → Option (Option (Li
     else none
   -- `UPPER` and `LOWER` map Unicode case (`SubstraitLean/Text.lean`).
   | "char_set" => if base == "upper" || base == "lower" then some (some ["UTF8"]) else none
+  -- `Text.substrWrap` and `Text.substr`; `ERROR` is not modelled.
+  | "negative_start" =>
+    if base == "substring" then some (some ["WRAP_FROM_END", "LEFT_OF_BEGINNING"]) else none
   | _ => none
 
 def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := do
@@ -1078,14 +1082,17 @@ def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (
     | e => .un .neg e
   return some (.bin .dateAdd x days)
 
-/-- The preference of `on_division_by_zero` that applies: the first one, or
-`ERROR` when the plan omits it (#185). `checkOptions` has checked them. -/
-def divByZeroMode (opts : List Json) : String := Id.run do
+/-- The preference of option `name` that applies: the first one, or `dflt`
+when the plan omits it. `checkOptions` has checked them. -/
+def optionPref (name dflt : String) (opts : List Json) : String := Id.run do
   for o in opts do
-    if (field? o "name") == some (.str "on_division_by_zero") then
+    if (field? o "name") == some (.str name) then
       if let some (Json.str m) := ((field? o "preference").bind (·.getArr? |>.toOption)).bind (·[0]?) then
         return m
-  return "ERROR"
+  return dflt
+
+/-- `on_division_by_zero`; `ERROR` when the plan omits it (#185). -/
+def divByZeroMode : List Json → String := optionPref "on_division_by_zero" "ERROR"
 
 /-- `a / b` (`div`, which raises on a zero divisor) under `on_division_by_zero`
 = `mode`. Other than `ERROR`, the mode is a `CASE` on the divisor:
@@ -1184,10 +1191,10 @@ def mkCall : String → List Expr → J Expr
   -- The third argument is the escape character; `NULL` means a backslash.
   | "like", [a, b] | "like", [a, b, .lit .null] => pure (.bin .like a b)
   | "like", [_, _, _] => throw "LIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
-  | "substring", [s, a] => pure (.bin (.substr none) s a)
+  | "substring", [s, a] => pure (.bin (.substr none true) s a)
   | "substring", [s, a, .lit (.int n)] =>
     if n < 0 then throw "a negative substring length always fails"
-    else pure (.bin (.substr (some n.toNat)) s a)
+    else pure (.bin (.substr (some n.toNat) true) s a)
   | "substring", [_, _, _] => throw "substring lengths must be constants"
   | "btrim", [a] => pure (.bin (.trim true true) a (.lit (.str " ")))
   | "ltrim", [a] => pure (.bin (.trim true false) a (.lit (.str " ")))
@@ -1255,7 +1262,7 @@ partial def declaredKind (fns : List (Nat × String)) (j : Json) : Kind :=
     | none =>
       if (field? l "boolean").isSome then .bool
       else if (field? l "varChar").isSome then .str
-      -- Read as microseconds whatever their precision (Isthmus: seconds).
+      -- Read as microseconds whatever their precision (0 counts seconds).
       else if (field? l "precisionTimestamp").isSome then .time
       else if (field? l "precisionTime").isSome then .tod
       else typeKind l
@@ -1604,7 +1611,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       | _ => throw s!"{baseName name} is only supported on timestamps and dates"
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
-    -- (Isthmus types `POWER` of integers as a double).
+    -- (a plan may type `POWER` of integers as a double).
     let outTy := (field? f "outputType").getD .null
     let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
       "floor", "ceil", "round"] ++ doubleFns
@@ -1651,6 +1658,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         | "divide", [a, b] => pure (divByZero mode false (.bin .idiv) a b)
         | "modulus", [a, b] => pure (divByZero mode false (.bin .imod) a b)
         | _, _ => mkCall (baseName name) args
+      -- A negative start wraps from the end unless the plan says otherwise (#209).
+      let call := match call with
+        | .bin (.substr n _) x a =>
+          let opts := (field? f "options").bind (·.getArr? |>.toOption) |>.getD #[]
+          .bin (.substr n (optionPref "negative_start" "WRAP_FROM_END" opts.toList != "LEFT_OF_BEGINNING")) x a
+        | c => c
       -- Arithmetic on integers narrower than 64 bits wraps at their width.
       let w := ((argJs.zip parsed).map fun (j, e) => argBits bits j e).foldl max 8
       if ["add", "subtract", "multiply", "negate"].contains (baseName name) && w < 64 &&
@@ -1792,9 +1805,10 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | _, _ => none
   if let some (_, s) := decAvg then
     if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
-  -- `AVG` is modelled as a double; Calcite's `AVG` of integers is an integer
-  -- (`avg:i64` with an `i64` result), which it is not.
-  if name == "avg" && decAvg.isNone then
+  -- `AVG` of integers follows the plan's declared output type (#209): a
+  -- double (the mean of their conversions), or an integer (`AggFn.iavg`).
+  let intOut := name == "avg" && k == .int && (field? m "outputType").any (typeKind · == .int)
+  if name == "avg" && decAvg.isNone && !intOut then
     if let some ty := field? m "outputType" then
       if typeKind ty != .float then throw "avg with a non-double result is not supported"
   let minMax (k : Kind) :=
@@ -1805,7 +1819,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "sum", .float => pure (.fsum, arg)
     -- Marked as a decimal, which does not wrap at 64 bits (`Safety.lean`).
     | "sum", .dec p s => pure (.sum, .un (.decimal p s) arg)
-    | "avg", .int => pure (.avg, .un .itof arg)
+    | "avg", .int => pure (if intOut then (.iavg, arg) else (.avg, .un .itof arg))
     | "avg", .float => pure (.avg, arg)
     | "avg", .dec p s => pure (.sum, .un (.decimal p s) arg)
     -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
@@ -1963,7 +1977,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- sum of doubles then rounds differently from adding up the frame, an
       -- average of a frame that has become empty is NaN, and a `MIN` of one
       -- with only NULLs left is the last minimum.
-      if (m.fn == .fsum || m.fn == .avg || m.fn == .min) && fr.lo != .unboundedPreceding then
+      if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
         throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).

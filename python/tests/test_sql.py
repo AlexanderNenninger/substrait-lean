@@ -68,13 +68,8 @@ needs_fixtures = pytest.mark.skipif(
 
 
 def fixture(name: str) -> dict:
-    """A fixture's plan. Isthmus's plans use encodings only Lean reads
-    (`varChar`, nested windows, `is_true`); the engines get what Lean writes
-    of them, so the accepted ones are given in that form."""
-    plan = (FIXTURES / f"{name}.json").read_text()
-    if name.startswith("isthmus_") and name in ACCEPTED:
-        plan = written(plan)
-    return json.loads(plan)
+    """A fixture's plan."""
+    return json.loads((FIXTURES / f"{name}.json").read_text())
 
 
 def golden(name: str) -> str:
@@ -181,6 +176,17 @@ def both(plan_json: str, tables: dict[str, pa.Table]) -> tuple[list[tuple], list
     return df, duckdb_rows(plan_json, tables)
 
 
+def both_or_duckdb(
+    plan_json: str, tables: dict[str, pa.Table]
+) -> tuple[list[tuple] | None, list[tuple]]:
+    """`both`, with no DataFusion rows where DataFusion cannot be made to give
+    the reference result (a `substring` from a negative start, #209)."""
+    try:
+        return both(plan_json, tables)
+    except Unsupported:
+        return None, duckdb_rows(plan_json, tables)
+
+
 def lean_printable(plan: dict) -> bool:
     """Can Lean's output be compared value by value (no doubles in or out)?"""
     tables_ok = all("fp64" not in type_names(s) for s in schemas(plan).values())
@@ -236,13 +242,7 @@ def agree(plan: dict, df: list[tuple] | None, duck: list[tuple], lean: list[tupl
 @needs_fixtures
 def test_fixture_lists_are_complete():
     assert {"filter_project", "virtual_left_join", "union_fetch", "df_window"} <= set(ACCEPTED)
-    assert set(REFUSED) == {
-        "bad_field_ref",
-        "isthmus_avg_integer",
-        "isthmus_char_padding",
-        "isthmus_timestamp_seconds",
-        "option_overflow_saturate",
-    }
+    assert set(REFUSED) == {"bad_field_ref", "option_overflow_saturate"}
 
 
 @pytest.mark.parametrize("name", REFUSED)
@@ -272,7 +272,7 @@ def test_virtual_fixtures_match_the_golden_rows(name):
 def test_fixtures_agree_on_random_tables(name, data):
     plan = fixture(name)
     tables = {t: data.draw(table_for(s)) for t, s in schemas(plan).items()}
-    df, duck = both(json.dumps(plan), tables)
+    df, duck = both_or_duckdb(json.dumps(plan), tables)
     agree(plan, df, duck, lean_on(plan, tables) if lean_printable(plan) else None)
 
 
@@ -326,7 +326,7 @@ def test_delta_plans_agree(name, data):
     for d in deltas:
         plan = json.loads(d)
         needed = {t: tables[t] for t in read_tables(plan)}
-        df, duck = both(d, needed)
+        df, duck = both_or_duckdb(d, needed)
         agree(plan, df, duck, lean_on(plan, needed) if lean_printable(plan) else None)
 
 

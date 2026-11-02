@@ -635,6 +635,12 @@ class Dialect:
         raises (DataFusion wraps around, Lean's sum is the true one)."""
         raise Unsupported(f"{self.name}: integer SUM is not implemented")
 
+    def int_avg(self, v: str, over: str) -> str:
+        """`AggFn.iavg` of the BIGINT column `v` (over the window `over`, or
+        grouped for `''`): the exact mean, truncated toward zero; NULL without
+        values (#209)."""
+        raise Unsupported(f"{self.name}: AVG with an integer result is not implemented")
+
     def float_sum(self, v: str, o: str) -> str:
         """`floatSum`: the doubles of `v` added one by one in the order of the
         ordinal `o`, from +0.0 (rounding depends on the order)."""
@@ -813,7 +819,8 @@ class Bin:
     sides: tuple[bool, bool] = (True, True)
     """`left` and `right` of `trim`."""
     param: str = ""
-    """The operation of `bit` (`BitOp.name`)."""
+    """The operation of `bit` (`BitOp.name`); `LEFT_OF_BEGINNING` for a
+    `substr` whose negative start does not wrap from the end."""
 
 
 #: `FMath.name`: elementary functions of a double (`SubstraitLean/Numeric.lean`).
@@ -991,7 +998,7 @@ class Distinct:
 class Measure:
     """`fn` of `arg` over the rows `filter` keeps (`SubstraitLean/Aggregate.lean`)."""
 
-    fn: Literal["count", "sum", "fsum", "avg", "min", "max", "dsum", "davg"]
+    fn: Literal["count", "sum", "fsum", "avg", "iavg", "min", "max", "dsum", "davg"]
     """`dsum` and `davg` are `SUM` and `AVG` of decimals (#27)."""
     arg: Expr
     distinct: bool = False
@@ -1086,7 +1093,7 @@ def _win_kind[K](f: WinFn, cols: list[K], unknown: K) -> Any:
             # A decimal column's sum is a decimal (#27).
             a = cols[m.arg.index] if isinstance(m.arg, Field) and m.arg.index < len(cols) else None
             return dsum_kind(a) if isinstance(a, Dec) else "int"
-        if m.fn == "count":
+        if m.fn in ("count", "iavg"):
             return "int"
         if m.fn in ("fsum", "avg"):
             return "float"
@@ -1103,7 +1110,7 @@ def _measure_kind[K](m: Measure, cols: list[K], kind: Callable[[Expr, list[K]], 
         if not isinstance(a, Dec):
             raise Unsupported(f"{m.fn} of a non-decimal")
         return dsum_kind(a) if m.fn == "dsum" else davg_kind(a)
-    if m.fn in ("count", "sum"):
+    if m.fn in ("count", "sum", "iavg"):
         return "int"
     return "float" if m.fn in ("fsum", "avg") else kind(m.arg, cols)
 
@@ -1948,7 +1955,16 @@ class _Parser:
                 if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                     op = "idiv" if name == "divide" else "imod"
                     return _div_by_zero(mode, False, op, *parsed)
-                return _call(name, parsed)
+                out_e = _call(name, parsed)
+                if isinstance(out_e, Bin) and out_e.op == "substr":
+                    # A negative start wraps from the end unless the plan says
+                    # otherwise (`Text.substrWrap`, #209).
+                    start = _option(v, "negative_start", "WRAP_FROM_END")
+                    if start not in ("WRAP_FROM_END", "LEFT_OF_BEGINNING"):
+                        raise Unsupported(f"substring with negative_start = {start}")
+                    if start == "LEFT_OF_BEGINNING":
+                        out_e = replace(out_e, param=start)
+                return out_e
             case "ifThen":
                 # A `CASE` without `ELSE` is `ELSE NULL`.
                 orelse = _field(v, "else")
@@ -2570,16 +2586,19 @@ class _Parser:
         else:
             raise Unsupported(f"{name} takes one argument")
         k = lean_expr_kind(arg, cols.lean)
-        # `AVG` is a double; Calcite's `AVG` of integers (`avg:i64`) is not.
+        # `AVG` of integers follows the declared output type (#209): a
+        # double, or an integer (`AggFn.iavg`).
         decimal = isinstance(k, Dec)
+        int_out = name == "avg" and k == "int" and _lean_type_kind(m.get("outputType")) == "int"
         if (
             name == "avg"
             and not decimal
+            and not int_out
             and "outputType" in m
             and _lean_type_kind(m["outputType"]) != "float"
         ):
             raise Unsupported("avg with a non-double result is not supported")
-        fn: Literal["count", "sum", "fsum", "avg", "min", "max", "dsum", "davg"]
+        fn: Literal["count", "sum", "fsum", "avg", "iavg", "min", "max", "dsum", "davg"]
         match name, k:
             case "count", _:
                 fn = "count"
@@ -2597,6 +2616,8 @@ class _Parser:
                 fn = "sum"
             case "sum", "float":
                 fn = "fsum"
+            case "avg", "int" if int_out:
+                fn = "iavg"
             case "avg", "int":
                 fn, arg = "avg", Un("itof", arg)
             case "avg", "float":
@@ -2885,13 +2906,18 @@ def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
     return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
 
 
-def _div_by_zero_mode(f: dict) -> str:
-    """`Parse.divByZeroMode`: the first preference of `on_division_by_zero`,
-    or ERROR when the plan omits it."""
+def _option(f: dict, name: str, default: str) -> str:
+    """`Parse.optionPref`: the first preference of option `name`, or `default`
+    when the plan omits it."""
     for o in _arr(f, "options"):
-        if o.get("name") == "on_division_by_zero" and o.get("preference"):
+        if o.get("name") == name and o.get("preference"):
             return o["preference"][0]
-    return "ERROR"
+    return default
+
+
+def _div_by_zero_mode(f: dict) -> str:
+    """`Parse.divByZeroMode`: `on_division_by_zero`, ERROR when omitted."""
+    return _option(f, "on_division_by_zero", "ERROR")
 
 
 def _div_by_zero(
@@ -3312,6 +3338,8 @@ class _Writer:
                 return d.decimal_avg(v, kind, davg_kind(kind))
             case "sum":
                 return d.int_sum(v)
+            case "iavg":
+                return d.int_avg(v, "")
             case "fsum" | "avg":
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
@@ -3499,6 +3527,8 @@ class _Writer:
                 return f"COUNT({v}) {w}"
             case "sum":
                 return d.window_int_sum(v, w)
+            case "iavg":
+                return d.int_avg(v, w)
             case "dsum":
                 a = expr_kind(m.arg, ks)
                 if not isinstance(a, Dec):
@@ -3843,9 +3873,15 @@ class _Writer:
                 return self.ascii_only(
                     d.concat(sa, sb), d.levenshtein(sa, sb), "levenshtein", "int"
                 )
-            case Bin(op="substr", left=a, right=b, length=length):
+            case Bin(op="substr", left=a, right=b, length=length, param=start):
                 sa = self.operand(a, "str", ref, cols, "substring")
                 sb = self.int_operand(b, ref, cols, "substring")
+                if start != "LEFT_OF_BEGINNING" and not (
+                    isinstance(b, Lit) and isinstance(b.value, int) and b.value >= 0
+                ):
+                    # `Text.substrWrap`: a negative start counts from the end.
+                    shifted = d.int_add(d.int_add(sb, d.char_length(sa)), d.int_lit(1))
+                    sb = f"(CASE WHEN {sb} < {d.int_lit(0)} THEN {shifted} ELSE {sb} END)"
                 return self.substring(sa, sb, length)
             case Bin(op="trim", left=a, right=b, sides=sides):
                 sa, sb = (self.operand(x, "str", ref, cols, "trim") for x in (a, b))

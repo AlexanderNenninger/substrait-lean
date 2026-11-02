@@ -275,6 +275,11 @@ class SparkDialect(Dialect):
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return f"(CASE WHEN {inside} THEN CAST({total} AS BIGINT) ELSE {fail} END)"
 
+    def int_avg(self, v: str, over: str) -> str:
+        # An exact DECIMAL(38,0) sum; `div` truncates toward zero.
+        total = f"SUM(CAST({v} AS DECIMAL(38,0))) {over}"
+        return f"CAST({total} div COUNT({v}) {over} AS BIGINT)"
+
     def window_int_sum(self, v: str, over: str) -> str:
         total = f"SUM(CAST({v} AS DECIMAL(38,0))) {over}"
         fail = self.raise_("integer overflow in SUM", total, "int")

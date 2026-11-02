@@ -127,8 +127,7 @@ def delta_plans(plan_json: str) -> list[str]:
 
     Args:
         plan_json: A Substrait plan as protobuf JSON, as
-            `sverify.engines.substrait_json`, `sverify.engines.isthmus_json`
-            or a node's `plan` write it.
+            `sverify.engines.substrait_json` or a node's `plan` write it.
 
     Returns:
         The delta plans, each a Substrait JSON plan in Lean's written form.
