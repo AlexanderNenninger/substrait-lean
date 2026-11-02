@@ -1,8 +1,8 @@
 """`date_part` and `date_trunc`.
 
-* Lean's semantics (`SubstraitLean/Time.lean`) agrees with DataFusion, also
-  for timestamps before 1970, at the ends of the years `chrono` represents
-  (where `date_part` becomes NULL) and of DataFusion's nanosecond range.
+* Lean's semantics (`SubstraitLean/Time.lean`) agrees with DuckDB, also for
+  timestamps before 1970, at the ends of the years `chrono` represents (where
+  `date_part` becomes NULL) and of DataFusion's nanosecond range.
 * Truncating to a week, month, quarter or year outside that range is reported
   as an error, and DataFusion running the plan fails only where an error was
   reported.
@@ -11,8 +11,8 @@
 * Contracts use that years and truncations grow with the timestamp.
 * Dates: adding days and months (clamped to the end of a shorter month),
   parts and truncation agree with DataFusion running the plan within the
-  dates it computes, and fail where it does; Ibis's date operations its DataFusion SQL cannot
-  run agree with Python's calendar.
+  dates it computes, and fail where it does; Ibis's date operations that
+  DataFusion's own SQL cannot run agree with Python's calendar.
 * Times of day (`CAST(ts AS TIME)`, clock parts) and `strftime` agree with
   DataFusion's own SQL (chrono's formats, which no other engine has) within
   the years chrono represents, and fail outside them.
@@ -101,7 +101,7 @@ def engines(sql: str, values: list[int | None]) -> dict[str, list[tuple]]:
     return out
 
 
-def lean_and_datafusion(sql: str, values: list[int | None]) -> tuple[list, list]:
+def lean_and_duckdb(sql: str, values: list[int | None]) -> tuple[list, list]:
     """Rows from both; timestamps as microseconds."""
     con = connect()
     put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
@@ -136,12 +136,12 @@ anywhere = st.one_of(edges, st.integers(MIN, MAX), st.integers(-400 * 365 * DAY,
 
 @settings(max_examples=40, deadline=None)
 @given(values=st.lists(st.one_of(st.none(), anywhere), max_size=8))
-def test_date_part_matches_datafusion(values):
+def test_date_part_matches_duckdb(values):
     # Outside chrono's years, Lean reports an overflow (`test_times_outside_chrono_fail`);
     # DuckDB computes there.
     values = [v for v in values if v is None or PART_MIN <= v <= PART_MAX]
     sql = "SELECT " + ", ".join(f"date_part('{p}', ts) AS {p}" for p in PARTS) + " FROM r"
-    got, expected = lean_and_datafusion(sql, values)
+    got, expected = lean_and_duckdb(sql, values)
     assert canonical(got) == canonical(expected)
     for engine, rows in engines(sql, values).items():
         assert canonical(rows) == canonical(expected), engine
@@ -152,7 +152,7 @@ def test_date_part_matches_datafusion(values):
     max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(values=st.lists(st.one_of(st.none(), anywhere), max_size=8))
-def test_date_trunc_matches_datafusion_where_no_issue(unit, values):
+def test_date_trunc_matches_duckdb_where_no_issue(unit, values):
     sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
     # Only where there is no issue: DataFusion fails or wraps elsewhere.
     # DuckDB reads ±(2⁶³ - 1) as the timestamps ±infinity, which it does not
@@ -160,7 +160,7 @@ def test_date_trunc_matches_datafusion_where_no_issue(unit, values):
     calendar = unit in ("week", "month", "quarter", "year")
     lo, hi = (NS_MIN + 400 * DAY, NS_MAX) if calendar else (MIN + DAY, MAX - 1)
     values = [v for v in values if v is None or lo <= v <= hi]
-    got, expected = lean_and_datafusion(sql, values)
+    got, expected = lean_and_duckdb(sql, values)
     assert canonical(got) == canonical(expected)
     for engine, rows in engines(sql, values).items():
         assert canonical(rows) == canonical(expected), engine
@@ -416,8 +416,8 @@ def reference(d: int | None, ts: int | None, n: int | None) -> tuple:
 @settings(max_examples=40, deadline=None)
 @given(rows=d_rows())
 def test_ibis_temporal_ops_match_python(rows):
-    """The operations Ibis's DataFusion SQL does not run
-    (`coverage.NO_DATAFUSION_SQL`), against Python's calendar."""
+    """Ibis's temporal operations that DataFusion's own SQL does not run
+    (`epoch_seconds`, `iso_year`, …), against Python's calendar."""
     expr = D.select(
         e=D.ts.epoch_seconds(),
         ms=D.ts.millisecond(),

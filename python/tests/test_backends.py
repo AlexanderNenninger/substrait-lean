@@ -1,14 +1,15 @@
 """Every Ibis operation the checker verifies runs on every engine.
 
 Each `verified` case of the coverage harness (`sverify_dev.coverage`) runs on
-random tables: on DataFusion as Ibis compiles it to SQL, and on Polars and
-DuckDB as the plan Lean writes back out (`written_plan`) from the Ibis
-producer's plan. The results agree as bags with
-DataFusion's, and Polars and DuckDB, which both follow `Rel.eval`'s list
-order, agree row for row where the order is part of the result (below a
-FETCH, a window or a sort). Where a FETCH takes "the first rows" of an unsorted
-input DataFusion may take others, and it adds the doubles of a SUM or AVG in
-an order of its own, so there only Polars and DuckDB are compared. The
+random tables: on DuckDB as Ibis compiles it to DuckDB's SQL, and on Polars
+and DuckDB as the plan Lean writes back out (`written_plan`) from the Ibis
+producer's plan. The results agree as bags with DuckDB's own (except for the
+cases of `coverage.NO_DUCKDB_SQL`), and Polars and DuckDB running the plan,
+which both follow `Rel.eval`'s list order, agree row for row where the order
+is part of the result (below a FETCH, a window or a sort). Where a FETCH takes
+"the first rows" of an unsorted input DuckDB's own SQL may take others, and it
+adds the doubles of a SUM or AVG in an order of its own, so there only the
+plans' results are compared. The
 Snowflake SQL is generated for every case too (and parsed).
 
 The Spark SQL of every case runs on a local Spark session (`spark_session`,
@@ -24,7 +25,6 @@ import math
 from decimal import Decimal
 
 import duckdb
-import ibis
 import pyarrow as pa
 import pytest
 import sqlglot
@@ -32,7 +32,6 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from sverify import polars_engine
-from sverify.engine import canonical as canonical_table
 from sverify.engine import (
     connect,
     create_table,
@@ -46,7 +45,7 @@ from sverify.sql import to_sql as plan_sql
 from sverify.sql.core import Aggregate, Fetch, Rel, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.sql.spark import SPARK
-from sverify.testing import canonical
+from sverify.testing import canonical, duckdb_ibis
 from sverify_dev import coverage
 
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
@@ -102,7 +101,7 @@ def tables(draw) -> dict[str, pa.Table]:
 
 
 def rows(table: pa.Table) -> list[tuple]:
-    """DataFusion types `ROW_NUMBER()` as a decimal; the model has one integer type."""
+    """An engine may type `ROW_NUMBER()` as a decimal; the model has one integer type."""
     return [
         tuple(int(v) if isinstance(v, Decimal) else v for v in r.values())
         for r in table.to_pylist()
@@ -121,8 +120,8 @@ def same(a: list[tuple], b: list[tuple]) -> bool:
 
 def order_dependent(r: Rel) -> bool:
     """A FETCH of "the first rows", or a SUM or AVG of doubles, whose rounding
-    depends on the order of the additions: there DataFusion, with an order of
-    its own, may give other values."""
+    depends on the order of the additions: there DuckDB's own SQL, with an
+    order of its own, may give other values."""
     if isinstance(r, Fetch):
         return True
     if isinstance(r, Aggregate) and any(m.fn in ("fsum", "avg") for m in r.measures):
@@ -184,19 +183,17 @@ def test_engines_agree(con, case, data):
         assert root is not None
         pl_rows, duck = results["polars"], results["duckdb"]
         assert same(pl_rows, duck) if order_matters(root) else canonical(pl_rows) == canonical(duck)
-    no_reference = False  # PROBE
+    no_reference = case.label in coverage.NO_DUCKDB_SQL
     if (root is None or not order_dependent(root)) and not no_reference:
-        # As Ibis returns it: DataFusion's SQL result in the expression's
-        # types (`POW` of integers is an integer there, a double in Ibis),
-        # or DuckDB's where DataFusion means something else.
-        duck_sql = ibis.to_sql(expr, dialect="duckdb")
-        out = canonical_table(con.ibis.con.sql(duck_sql).to_arrow_table())
+        # As Ibis returns it: DuckDB's result of Ibis's own SQL, in the
+        # expression's types.
+        out = duckdb_ibis(con, expr)
         expected = rows(out.cast(expr.schema().to_pyarrow()))
         if case.label in coverage.UNORDERED_LISTS:
             expected = bags(expected)
-        df = canonical(expected)
+        duck = canonical(expected)
         for got in results.values():
-            assert canonical(got) == df
+            assert canonical(got) == duck
 
 
 def engine_sql(case, engine: str, dialect, read: str) -> str | None:

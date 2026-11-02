@@ -49,7 +49,7 @@ pip install 'sverify[all]'         # with every engine and table format
 ```
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`datafusion` (also compiles SQL strings), `polars`, `spark` (needs Java 17 or
+`datafusion` (an engine to run plans on), `polars`, `spark` (needs Java 17 or
 21), `delta`, `iceberg`, or `all`. Wheels bundle the checker as a small
 native binary, for Linux (x86_64, aarch64) and macOS (arm64, x86_64), Python
 3.12 and later; elsewhere pip builds from the sdist, which needs

@@ -155,7 +155,7 @@ def table(rs: list[Result]) -> str:
     n = sum(r.status == "verified" for r in rs)
     lines = [
         f"{n} of {len(rs)} probed Ibis operations reach the checker "
-        "(✓ verified, ✗ rejected by the checker, – fails in Ibis or DataFusion; "
+        "(✓ verified, ✗ rejected by the checker, – fails in Ibis; "
         "*inc.* marks incremental maintenance).",
         "",
         "| Area | Operations |",

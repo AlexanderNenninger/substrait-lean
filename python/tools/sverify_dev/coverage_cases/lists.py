@@ -30,4 +30,3 @@ REFUSED: dict[str, dict[str, str]] = {
     "unnest column": NO_LISTS,
     "list literal": NO_LISTS,
 }
-

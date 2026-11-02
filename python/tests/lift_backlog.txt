@@ -9,16 +9,16 @@ tests/test_backend_semantics.py::test_translators_agree[SELECT s, s LIKE 'a\\b',
 tests/test_backend_semantics.py::test_translators_agree_or_refuse_on_opaque_functions[SELECT array_length(regexp_match(s, '\\d')) FROM u-u-rows2]
 tests/test_backend_semantics.py::test_translators_agree_or_refuse_on_opaque_functions[SELECT array_length(regexp_match(s, '\\s')) FROM u-u-rows3]
 tests/test_datafusion_quirks.py::test_union_batches_differ_in_nullability[SELECT 'x' AS c FROM s UNION ALL SELECT CAST(NULL AS VARCHAR) FROM s-expected0]
-tests/test_relations.py::test_bags_match_datafusion[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a AND t.b > 0]
-tests/test_relations.py::test_bags_match_datafusion[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a]
-tests/test_relations.py::test_bags_match_datafusion[SELECT a FROM t EXCEPT SELECT a FROM u]
-tests/test_relations.py::test_bags_match_datafusion[SELECT a FROM t INTERSECT SELECT a FROM u]
-tests/test_relations.py::test_bags_match_datafusion[SELECT a FROM t UNION SELECT a FROM u]
+tests/test_relations.py::test_bags_match_duckdb[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a AND t.b > 0]
+tests/test_relations.py::test_bags_match_duckdb[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a]
+tests/test_relations.py::test_bags_match_duckdb[SELECT a FROM t EXCEPT SELECT a FROM u]
+tests/test_relations.py::test_bags_match_duckdb[SELECT a FROM t INTERSECT SELECT a FROM u]
+tests/test_relations.py::test_bags_match_duckdb[SELECT a FROM t UNION SELECT a FROM u]
 tests/test_sql_spark.py::test_date_trunc_matches_lean
 tests/test_time.py::test_comparing_durations_with_days_is_refused
 tests/test_time.py::test_date_differences_are_refused
-tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[microsecond]
-tests/test_time.py::test_date_trunc_matches_datafusion_where_no_issue[millisecond]
+tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[microsecond]
+tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[millisecond]
 
 # Tests of other features whose SQL waits on the numeric scalars and the
 # aggregates the lift reads next (#240): power, abs, round, nullif, greatest,
@@ -56,10 +56,10 @@ tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT power(x, 0.5
 tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT power(x, 2.0) AS v FROM f-requires8-errors8]
 tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT sin(x) AS v FROM f-requires10-errors10]
 tests/test_reference.py::test_nan_creation_is_a_domain_error[SELECT sin(x) AS v FROM f-requires9-errors9]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT GREATEST(a, b, c) AS x, LEAST(a, b) AS y FROM r]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT a, ABS(a) AS x FROM r]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT a, b FROM r WHERE COALESCE(a, 0) > LEAST(b, 1)]
-tests/test_rewrites.py::test_lean_semantics_match_datafusion[SELECT a, b, NULLIF(a, b) AS x FROM r]
+tests/test_rewrites.py::test_lean_semantics_match_duckdb[SELECT GREATEST(a, b, c) AS x, LEAST(a, b) AS y FROM r]
+tests/test_rewrites.py::test_lean_semantics_match_duckdb[SELECT a, ABS(a) AS x FROM r]
+tests/test_rewrites.py::test_lean_semantics_match_duckdb[SELECT a, b FROM r WHERE COALESCE(a, 0) > LEAST(b, 1)]
+tests/test_rewrites.py::test_lean_semantics_match_duckdb[SELECT a, b, NULLIF(a, b) AS x FROM r]
 tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT name, COALESCE(name, 'none') AS x, NULLIF(name, '') AS y FROM f]
 tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT v, ABS(v) AS x FROM f]
 tests/test_rewrites.py::test_written_plans_run_on_datafusion[SELECT v, COALESCE(v, w, 0) AS x, NULLIF(v, w) AS y FROM f]

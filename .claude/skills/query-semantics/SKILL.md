@@ -1,6 +1,6 @@
 ---
 name: query-semantics
-description: Answer how sverify's frontends (DataFusion's SQL producer, the vendored Ibis producer) and backends (DuckDB, Polars, DataFusion, Spark, Snowflake) handle an example SQL query or Ibis expression, compared with the Lean model (Rel.eval). Use when asked "what does engine X do with this query", "does Lean accept/model this", "do the engines agree on …", "is this query portable", or to probe or compare a query across backends.
+description: Answer how sverify's frontends (the SQLGlot lift of DuckDB's SQL, the vendored Ibis producer) and backends (DuckDB, Polars, DataFusion, Spark, Snowflake) handle an example SQL query or Ibis expression, compared with the Lean model (Rel.eval). Use when asked "what does engine X do with this query", "does Lean accept/model this", "do the engines agree on …", "is this query portable", or to probe or compare a query across backends.
 ---
 
 Answer from the repository's static sources first:
@@ -40,7 +40,7 @@ It prints, per source:
 | section | source | answers |
 |---|---|---|
 | features | `catalogue/features.toml` | is the construct in the Lean model (`yes`/`partial`/`no`) |
-| pitfalls | `catalogue/pitfalls.toml` | what each engine does, plus DataFusion quirk ids |
+| pitfalls | `catalogue/pitfalls.toml` | what each engine does, plus the ids of chapter 17's entries |
 | nb17 | `notebooks/17_backend_semantics.py` (`E(...)` entries) | per engine, Ibis backend, standard SQL and Snowflake; `picks` is the Lean model's answer |
 | nb17 §8 | `notebooks/17_backend_semantics.py` (`B(...)` entries) | DataFusion running checked plans, tagged agree/handled/GAP when the notebook runs |
 | parser | `SubstraitLean/Parse.lean` | how Lean reads the Substrait function, or that it refuses it |
@@ -100,9 +100,9 @@ Rows compare as bags, or in order when an ORDER BY reaches the result. Doubles c
 - **A difference under a window or FETCH may be legitimate.** Where sort keys tie, engines may number, pair or pick rows differently from `Rel.eval`'s stable order. The probe prints a note; check whether the differing rows tie (pitfall `tie_order`). In `win-top-n-per-group`, DataFusion "differs" only on two products tied at 85.
 - **`raises` on a backend is by design, not a bug.** For division by zero, i64 overflow or a bad cast, Lean's `Rel.eval` value is NULL. The engines running Lean's plan raise instead (`sverify: division by zero`); `SubstraitLean/Safety.lean` and the contract checks say when that can happen. Natively, DuckDB and Polars SQL give `inf`, and DataFusion and Spark raise.
 - **Polars SQL and the Polars expression API differ.** `x IN (1, NULL)` follows SQL in `pl.SQLContext`, but chapter 17's N2 shows `pl.col('x').is_in([1, None])` ignoring the NULL. The probe runs Polars SQL; for the expression API, read the `polars:` field of the chapter 17 entry.
-- **Ibis is not SQL.** Notebook 15's "leaky" entries mean different things per Ibis backend: `row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`, and the default window frame is the whole partition. Give both `--sql` and `--ibis` when the question is about Ibis.
+- **Ibis is not SQL.** Chapter 17's "leaky" entries mean different things per Ibis backend: `row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`, and the default window frame is the whole partition. Give both `--sql` and `--ibis` when the question is about Ibis.
 - **Snowflake is never executed.** Its SQL is generated and (in the catalogue) parsed with sqlglot only. It refuses sorts, FETCH and windows over named tables (no row order) unless `tie_free=True`, and so does Spark for windows.
-- **Native DataFusion can be wrong** where Lean refuses. For example, `NOT IN (subquery)` with a NULL returns rows (quirk N3); the parser refuses that plan, so nothing is proved.
+- **Native DataFusion can be wrong** where Lean refuses. For example, `NOT IN (subquery)` with a NULL returns rows in DataFusion 51's own SQL; the parser refuses that plan, so nothing is proved.
 - **`catalogue/status.json` is a snapshot.** If the checker or producers changed on your branch, re-probe the query from `python/` with `uv run python -m sverify_dev.catalogue <query-id>`; `--write` re-probes everything and rewrites `status.json`.
 - **Notebook entries are static prose plus code.** The `why`, `std`, `snowflake` and `picks` fields are written answers. The row tables in the notebook are computed when it runs, so for actual rows, run the probe (or the notebook).
 

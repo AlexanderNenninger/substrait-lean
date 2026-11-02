@@ -53,7 +53,7 @@ tables = st.tuples(
     max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=tables)
-def test_lean_semantics_match_datafusion(sql, rows):
+def test_lean_semantics_match_duckdb(sql, rows):
     r, s = rows
     con = connect()
     create_table(con, "r", R, r)

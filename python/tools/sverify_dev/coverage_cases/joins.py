@@ -89,4 +89,3 @@ REFUSED: dict[str, dict[str, str]] = {
     },
     "scalar subquery, one row": NO_ROW_ORDER,
 }
-
