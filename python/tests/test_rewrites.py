@@ -1,8 +1,7 @@
 """Operations the parser rewrites into modelled ones (`IN` lists, `COALESCE`,
 `NULLIF`, `GREATEST`/`LEAST`, `ABS`, `RIGHT JOIN`, `LIMIT … OFFSET`) mean what
-DataFusion means by them: Lean's semantics of the rewrite agrees with
-DataFusion, and the rewritten plan, written back out, runs on DataFusion with
-the same result."""
+SQL means by them: Lean's semantics of the rewrite agrees with DuckDB, and the
+rewritten plan, written back out, runs on DataFusion with the same result."""
 
 import json
 import math

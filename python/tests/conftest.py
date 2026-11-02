@@ -4,10 +4,10 @@ Every test runs under one backend, which is also a marker: `poe test-polars`
 (`pytest -m polars`) runs the Polars tests, and CI runs one job per backend.
 A test's backend is its `engine` parameter (or `sv_engine`, from sverify's
 pytest plugin), else its `backend` mark (on the test or as the module's
-`pytestmark`), else `core`: Lean, the producers, and DataFusion as the
-reference. Tests comparing two engines with each other stay
-in `core`. DataFusion is an optional extra of `sverify`, but the tests need it
-(it is in the `dev` group); `test_without_datafusion.py` blocks it.
+`pytestmark`), else `core`: Lean, the producers, and DuckDB as the oracle.
+Tests comparing two engines with each other stay in `core`. DataFusion is an
+optional extra of `sverify`, but the tests need it (it is in the `dev`
+group); `test_without_datafusion.py` blocks it.
 
 `tests/lift_backlog.txt` lists the tests that wait on SQL the lift
 (`sverify.sql_lift`) does not read yet: the backlog of M2 (#240). A listed

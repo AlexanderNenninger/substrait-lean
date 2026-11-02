@@ -27,8 +27,6 @@ from sverify.incremental import arrow_rows
 from sverify.sql_lift import lift
 from sverify.testing import duckdb_sql, inline_tables, lean_values
 
-pytestmark = pytest.mark.backend("datafusion")
-
 DAY = 86_400_000_000
 NAN = float("nan")
 
@@ -103,8 +101,8 @@ NAN = float("nan")
 )
 def test_modulus_of_doubles_is_fmod(con, sql, expected):
     assert nan_equal(lean(con, sql)) == nan_equal(expected)
-    by_datafusion = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
-    assert nan_equal(by_datafusion) == nan_equal(expected)
+    by_duckdb = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
+    assert nan_equal(by_duckdb) == nan_equal(expected)
 
 
 @pytest.mark.parametrize(
@@ -118,7 +116,7 @@ def test_modulus_of_doubles_is_fmod(con, sql, expected):
 )
 def test_modulus_of_doubles_by_zero_is_an_error(sql, errors):
     """As on integers; `verify` proves it absent where the plan rules a zero
-    divisor out (DataFusion gives NaN)."""
+    divisor out (IEEE gives NaN)."""
     assert [i.kind for i in verify(sql, {"f": {"x": "float64"}}).errors] == errors
 
 
