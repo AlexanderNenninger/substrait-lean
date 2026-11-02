@@ -11,8 +11,10 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, run_sql, substrait_json, to_sql
-from sverify.testing import canonical, duckdb_rows, inline_tables, lean_rows
+from sverify.engine import connect, create_table, substrait_json, to_sql
+from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
+
+pytestmark = pytest.mark.lift_backlog
 
 INT_SCHEMA = {"device": "int64", "ts": "int64"}
 T0 = dt.datetime(2024, 5, 1, 7, 0)
@@ -78,7 +80,7 @@ def test_lean_semantics_of_asof_match_datafusion(how, left, right):
     con = connect()
     acc, gyr = tables(con, left, right)
     sql = to_sql(sv.asof_join(acc, gyr, on="ts", by="device", tolerance=3, how=how))
-    expected = [tuple(r.values()) for r in run_sql(con, sql).to_pylist()]
+    expected = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
     plan = inline_tables(json.loads(substrait_json(con, sql)), {"acc": left, "gyr": right})
     lean = lean_rows(json.dumps(plan))
     assert canonical(lean) == canonical(expected)

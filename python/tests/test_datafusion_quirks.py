@@ -1,5 +1,11 @@
 """DataFusion's surprising semantics, pinned (`notebooks/16_datafusion_semantics.py`).
 
+DataFusion is an engine here, not a SQL frontend: the plans come from
+sverify's lift of DuckDB's SQL (`sverify.sql_lift`), and the pins are of
+DataFusion running SQL and plans. Its SQL frontend's quirks (the analysed
+plan's casts, DISTINCT plans, its simplifier making a CASE eager) went with
+the frontend (#211).
+
 The first half pins what DataFusion does where the Lean model relies on it
 (the total order on doubles, truncating division, which operations fail and
 which wrap around), so an upgrade that changes one of them fails here.
@@ -33,7 +39,7 @@ from sverify.engines import written_plan
 from sverify.incremental import arrow_rows
 from sverify.testing import inline_tables, lean_rows, lean_values
 
-pytestmark = pytest.mark.backend("datafusion")
+pytestmark = [pytest.mark.backend("datafusion"), pytest.mark.lift_backlog]
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
@@ -179,30 +185,6 @@ def test_datafusion_fails(con, sql, error):
         rows(con, sql)
 
 
-def test_plan_has_coercion_casts(con):
-    """`substrait_json` writes the analysed plan, with DataFusion's implicit
-    casts explicit (`CAST(a AS DOUBLE) > f`), and leaves the session's
-    optimizer settings as they were."""
-    passes = rows(con, "SHOW datafusion.optimizer.max_passes")
-    plan = substrait_json(con, "SELECT a > f AS gt FROM mixed")
-    assert '"cast"' in plan
-    assert arrow_rows(run_substrait_json(con, plan)) == [(True,)]
-    assert rows(con, "SHOW datafusion.optimizer.max_passes") == passes
-
-
-def test_distinct_plan_is_not_readable_by_datafusion(con):
-    """DataFusion writes DISTINCT as one empty grouping and rejects it; Lean's
-    rewrite runs."""
-    plan = substrait_json(con, "SELECT DISTINCT x FROM n")
-    with pytest.raises(Exception, match="Aggregate requires at least one grouping"):
-        run_substrait_json(con, plan)
-    assert sorted(arrow_rows(run_substrait_json(con, written_plan(plan))), key=str) == [
-        (1,),
-        (2,),
-        (None,),
-    ]
-
-
 def test_lean_writes_the_current_fetch_fields(con):
     """R2: DataFusion's protobuf no longer has the deprecated
     `FetchRel.offset`/`count`; Lean writes `offsetExpr`/`countExpr`."""
@@ -322,7 +304,7 @@ I64 = {"a": "int64", "b": "int64"}
 
 
 def test_reported_runtime_errors():
-    assert [i.kind for i in verify("SELECT a / b AS q FROM t", "t", I64, ["a >= 0"]).errors] == [
+    assert [i.kind for i in verify("SELECT a // b AS q FROM t", "t", I64, ["a >= 0"]).errors] == [
         "division by zero"
     ]
     # An overflow at the declared width raises in the reference (#202).
@@ -406,21 +388,6 @@ def test_int32_wraps_at_32_bits():
     assert not report.ensures[0].proved or report.errors
 
 
-def test_int32_wrap_in_lean_and_datafusion(con):
-    """`Rel.eval` computes `INT + INT` unbounded, warning that DataFusion wraps;
-    `INT + 1` is a `BIGINT` in DataFusion and does not wrap. Lean's written
-    plan computes at the same widths."""
-    sql = "SELECT a + b AS s, a + 1 AS t FROM i32"
-    plan = substrait_json(con, sql)
-    assert lean_rows(json.dumps(inline_tables(json.loads(plan), {"i32": [(2**31 - 1, 1)]}))) == [
-        (2**31, 2**31)
-    ]
-    assert arrow_rows(run_substrait_json(con, written_plan(plan))) == rows(con, sql)
-    report = verify(sql.replace("i32", "t"), "t", {"a": "int32", "b": "int32"})
-    assert ("overflow", "WRAP32(($0 + $1))") in [(i.kind, i.expr) for i in report.errors]
-    assert not any(i.expr.startswith("WRAP32(($0 + 1") for i in report.errors)
-
-
 def test_uint8_is_refused():
     """I7: 0 - 1 is 255 for UINT8; unsigned integers are not modelled."""
     with pytest.raises(ValueError, match="unsigned"):
@@ -442,25 +409,20 @@ def test_abs_of_min_fails():
     assert verify("SELECT abs(a) AS x FROM t", "t", I64).errors
 
 
-def test_boolean_case_is_not_lazy():
-    """E4: the simplifier turns the CASE into `b <> 0 AND a / b > 1`."""
-    sql = "SELECT a FROM t WHERE CASE WHEN b <> 0 THEN a / b > 1 ELSE false END"
-    assert verify(sql, "t", I64, ["a >= 0"]).errors
-
-
 def test_lazy_and_eager_conditionals_that_are_safe():
     """A numeric `CASE` stays lazy; `ABS` is safe above the smallest integer
     and keeps its sign."""
-    sql = "SELECT CASE WHEN b <> 0 THEN a / b END AS q FROM t"
+    sql = "SELECT CASE WHEN b <> 0 THEN a // b END AS q FROM t"
     assert verify(sql, "t", I64, ["a >= 0"]).errors == []
-    assert verify("SELECT coalesce(b, a / 2) AS c FROM t", "t", I64).errors == []
+    assert verify("SELECT coalesce(b, a // 2) AS c FROM t", "t", I64).errors == []
     report = verify("SELECT abs(a) AS x FROM t", "t", I64, ["a > -10"], ["x >= 0"])
     assert report.proved and report.issues == []
 
 
 def test_coalesce_is_eager():
-    """E5: DataFusion evaluates `a / b` even where b is not NULL."""
-    assert verify("SELECT coalesce(b, a / b) AS c FROM t", "t", I64, ["b IS NOT NULL"]).errors
+    """E5: DataFusion evaluates `a // b` even where b is not NULL, and so
+    does the model."""
+    assert verify("SELECT coalesce(b, a // b) AS c FROM t", "t", I64, ["b IS NOT NULL"]).errors
 
 
 def test_power_of_null_to_zero(con):

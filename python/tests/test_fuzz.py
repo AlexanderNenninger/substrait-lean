@@ -15,6 +15,8 @@ from hypothesis import HealthCheck, given, settings
 from sverify_dev import fuzz
 from sverify_dev.fuzz import Finding, Query, Refused, check, check_contract, known, same_rows
 
+pytestmark = pytest.mark.lift_backlog
+
 # The same examples on every run, so that CI is not flaky; `poe fuzz` explores.
 CHEAP = settings(
     max_examples=60,
@@ -69,16 +71,17 @@ def finding(sql: str, oracle: str, tables: dict) -> list[Finding]:
     return check(Query(sql, {}), tables, oracles=(oracle,))
 
 
-@pytest.mark.parametrize("value", ["1.5", "-2.0", "0.25"])
+@pytest.mark.parametrize("value", ["1.5::DOUBLE", "-2.0::DOUBLE", "0.25::DOUBLE"])
 def test_written_bare_double_literal(value):
-    """#96: a bare double is written as an `fp64` literal, not its code."""
+    """#96: a bare double is written as an `fp64` literal, not its code. (In
+    DuckDB's SQL, `1.5` alone is a DECIMAL.)"""
     assert not finding(f"SELECT {value} AS c0 FROM t AS q", "engines", {"t": [T_ROW]})
 
 
 @pytest.mark.parametrize(
     "value",
     [
-        "0.0",
+        "0.0::DOUBLE",
         "CAST(NULL AS DOUBLE)",
         "- CAST(NULL AS DOUBLE)",
         "TIMESTAMP '2024-01-01 00:00:00'",
@@ -86,7 +89,7 @@ def test_written_bare_double_literal(value):
         "DATE '2024-01-01'",
         "CAST(NULL AS BOOLEAN)",
         "CAST(NULL AS VARCHAR)",
-        "CASE WHEN b THEN 0.0 ELSE 1.5 END",
+        "CASE WHEN b THEN 0.0::DOUBLE ELSE 1.5::DOUBLE END",
         "CASE WHEN b THEN TIMESTAMP '2024-01-01 00:00:00' ELSE TIMESTAMP '2024-01-02 00:00:00' END",
     ],
 )
@@ -99,7 +102,7 @@ def test_written_projected_literal(value):
 
 def test_written_projected_literal_read_by_a_filter():
     """#96: the declared kind carries through to the relation reading it."""
-    sql = "SELECT c0 FROM (SELECT 0.0 AS c0 FROM t) AS q WHERE c0 = 0.0"
+    sql = "SELECT c0 FROM (SELECT 0.0::DOUBLE AS c0 FROM t) AS q WHERE c0 = 0.0::DOUBLE"
     assert not finding(sql, "engines", {"t": [T_ROW]})
 
 

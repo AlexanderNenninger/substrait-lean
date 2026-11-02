@@ -6,18 +6,18 @@ API.
 A Hypothesis strategy draws well-typed SQL queries over two small tables (`t`
 with integer, double, string, boolean and timestamp columns, `u` with an
 integer and a string) and random rows for them, NULLs included. Each query
-goes through the real producer (DataFusion's SQL to Substrait), and `check`
-compares:
+is DuckDB's SQL and goes through the real producer (sverify's lift,
+`sverify.sql_lift`), and `check` compares:
 
 1. `rows`: if the checker accepts the plan, Lean's rows (`Rel.eval` on the
-   plan with the tables inlined) equal DataFusion's as bags, and those of the
+   plan with the tables inlined) equal DuckDB's on the SQL as bags, and those of the
    engines (`ENGINES`) on the plan Lean writes back out; doubles
    approximately (Lean prints six decimals). An `ORDER BY` over every output
    column also fixes the order.
-2. `runtime`: if `verify` reports no possible runtime error, DataFusion does
+2. `runtime`: if `verify` reports no possible runtime error, DuckDB does
    not raise.
 3. `ensures`: a postcondition `verify` proves (from a precondition the
-   generated input meets) holds on every output row of DataFusion.
+   generated input meets) holds on every output row of DuckDB.
 4. `tlp`: ternary logic partitioning against Lean: the rows of a query are
    those where a predicate is TRUE, FALSE and NULL, together.
 
@@ -55,12 +55,11 @@ from sverify.engine import (
     plain_schema,
     run_checker,
     run_plan,
-    run_sql,
     substrait_json,
     written_plan,
 )
 from sverify.sql import core as sql_core
-from sverify.testing import EPOCH, inline_tables, lean_values
+from sverify.testing import EPOCH, duckdb_sql, inline_tables, lean_values
 
 INT, DOUBLE, STRING, BOOL, TS = "int", "double", "string", "bool", "ts"
 SQL_TYPES = {INT: "BIGINT", DOUBLE: "DOUBLE", STRING: "VARCHAR", BOOL: "BOOLEAN", TS: "TIMESTAMP"}
@@ -103,7 +102,10 @@ def rows_of(name: str) -> st.SearchStrategy[list[tuple]]:
 
 LITERALS: dict[str, st.SearchStrategy[str]] = {
     INT: st.sampled_from(["0", "1", "2", "-1", "3", "CAST(NULL AS BIGINT)"]),
-    DOUBLE: st.sampled_from(["0.0", "1.5", "-2.0", "0.25", "CAST(NULL AS DOUBLE)"]),
+    # DuckDB reads `1.5` as a DECIMAL.
+    DOUBLE: st.sampled_from(
+        ["0.0::DOUBLE", "1.5::DOUBLE", "-2.0::DOUBLE", "0.25::DOUBLE", "CAST(NULL AS DOUBLE)"]
+    ),
     STRING: st.sampled_from(["''", "'a'", "'b'", "'ab'", "CAST(NULL AS VARCHAR)"]),
     BOOL: st.sampled_from(["TRUE", "FALSE", "CAST(NULL AS BOOLEAN)"]),
     TS: st.sampled_from(["TIMESTAMP '2024-01-01 00:00:00'", "TIMESTAMP '2024-01-01 06:00:00'"]),
@@ -125,7 +127,10 @@ def expr(draw: st.DrawFn, scope: Scope, ty: str, depth: int = 2) -> str:
     kind = draw(st.sampled_from(_KINDS[ty]))
     match kind:
         case "arith":
-            return f"({sub()} {draw(st.sampled_from(['+', '-', '*', '/', '%']))} {sub()})"
+            # DuckDB's `/` divides as doubles; `//` divides integers.
+            op = draw(st.sampled_from(["+", "-", "*", "/", "%"]))
+            op = "//" if op == "/" and ty == INT else op
+            return f"({sub()} {op} {sub()})"
         case "neg":
             return f"(- {sub()})"
         case "abs":
@@ -433,8 +438,8 @@ class Session:
         inlined = inline_tables(json.loads(plan), self.tables)
         return lean_values(json.dumps(inlined))
 
-    def datafusion(self, sql: str) -> list[tuple]:
-        return _arrow_rows(run_sql(self.con, sql))
+    def duckdb(self, sql: str) -> list[tuple]:
+        return _arrow_rows(duckdb_sql(self.con, sql))
 
 
 def check(
@@ -455,7 +460,7 @@ def check(
 
     lean = s.lean(plan)
     try:
-        df_table = run_sql(s.con, query.sql)
+        df_table = duckdb_sql(s.con, query.sql)
         df, df_error = _arrow_rows(df_table), None
     except Exception as e:  # noqa: BLE001 - recorded below
         df_table, df, df_error = None, None, e
@@ -463,9 +468,9 @@ def check(
     if "runtime" in oracles and df_error is not None:
         report = verify(query.sql, tables=SCHEMAS)
         if not report.errors:
-            found("runtime", f"DataFusion raises {df_error!r}; verify reports no runtime error")
+            found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
     if "rows" in oracles and df is not None and not same_rows(lean, df, query.ordered):
-        found("rows", f"Lean:       {lean!r}\nDataFusion: {df!r}")
+        found("rows", f"Lean:   {lean!r}\nDuckDB: {df!r}")
     if "engines" in oracles and df_error is None:
         written = written_plan(plan)
         for engine in ENGINES:
@@ -480,7 +485,7 @@ def check(
             if not same_rows(lean, got, query.ordered):
                 found(f"rows:{engine}", f"Lean: {lean!r}\n{engine}: {got!r}")
             elif (types := _types(out)) != (expected := _types(df_table)):
-                found(f"types:{engine}", f"DataFusion's SQL: {expected}\n{engine}: {types}")
+                found(f"types:{engine}", f"DuckDB's SQL: {expected}\n{engine}: {types}")
     if "tlp" in oracles and query.base and query.tlp_pred:
         p = query.tlp_pred
         parts = [
@@ -502,7 +507,7 @@ def check(
 def check_contract(
     query: Query, tables: Mapping[str, list[tuple]], pre: str | None, post: str
 ) -> list[Finding]:
-    """If `verify` proves `post` from `pre` (on `t`), it holds on DataFusion's
+    """If `verify` proves `post` from `pre` (on `t`), it holds on DuckDB's
     output for `tables`, whose `t` must meet `pre`."""
     s = Session(tables)
     s.plan(query.sql)
@@ -515,7 +520,7 @@ def check_contract(
         return []
     check_sql = f"SELECT * FROM ({query.sql}) AS r WHERE NOT COALESCE(({post}), FALSE)"
     try:
-        bad = s.datafusion(check_sql)
+        bad = s.duckdb(check_sql)
     except Exception:  # noqa: BLE001 - a runtime error is the `runtime` oracle's business
         return []
     if not bad:
@@ -525,7 +530,7 @@ def check_contract(
             "ensures",
             query.sql,
             s.tables,
-            f"proved {post!r} from {pre!r}, but DataFusion gives violating rows {bad!r}",
+            f"proved {post!r} from {pre!r}, but DuckDB gives violating rows {bad!r}",
             {"requires": pre, "ensures": post},
         )
     ]

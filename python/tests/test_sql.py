@@ -36,6 +36,7 @@ from sverify.engine import (
 )
 from sverify.engines import table_rows, written_plan
 from sverify.errors import PostconditionError, PreconditionError
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.sql import Unsupported, parse_plan, to_sql
 from sverify.sql.core import Fetch, kinds, order_matters
@@ -45,7 +46,7 @@ from sverify.testing import EPOCH, canonical, duckdb_rows, inline_tables, lean_r
 from sverify_dev import examples
 from sverify_dev.examples import PIPELINES
 
-pytestmark = pytest.mark.backend("duckdb")
+pytestmark = [pytest.mark.backend("duckdb"), pytest.mark.lift_backlog]
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -303,7 +304,7 @@ def incremental_plans() -> dict[str, str]:
     con = connect()
     examples.create_tables(con)
     for name, expr in PIPELINES.items():
-        plans[f"pipeline_{name}"] = substrait_json(con, ibis.to_sql(expr, dialect="datafusion"))
+        plans[f"pipeline_{name}"] = to_substrait_json(expr)
     return plans
 
 
@@ -334,11 +335,11 @@ def test_delta_plans_agree(name, data):
 # Semantic traps
 
 
-def plan_of(sql: str, tables: dict[str, pa.Table]) -> str:
+def plan_of(sql: str, tables: dict[str, pa.Table], semantics: str = "duckdb") -> str:
     con = connect()
     for name, t in tables.items():
         put_table(con, name, t)
-    return substrait_json(con, sql)
+    return substrait_json(con, sql, semantics)
 
 
 def ints(**cols: list) -> pa.Table:
@@ -406,19 +407,20 @@ def test_null_ordering_in_windows(order):
 
 
 def test_integer_division_truncates():
-    """DuckDB's `//` floors; Lean's (and DataFusion's) `/` truncates."""
+    """DuckDB's `//` on integers truncates, as Substrait's integer `divide`
+    does, and so does every engine running the plan."""
     # (Lean prints -2^63 as a double code, so the extremes stop one short.)
     r = ints(a=[7, -7, 7, -7, 0, 2**63 - 1, -(2**63) + 1], b=[2, 2, -2, -2, 5, -1, 2])
-    rows = check_three_ways("SELECT a, b, a / b AS q, a % b AS m FROM r", {"r": r})
+    rows = check_three_ways("SELECT a, b, a // b AS q, a % b AS m FROM r", {"r": r})
     assert [(q, m) for _, _, q, m in rows[:4]] == [(3, 1), (-3, -1), (-3, 1), (3, -1)]
 
 
 @pytest.mark.parametrize(
     ("sql", "a", "b"),
     [
-        ("SELECT a / b AS q FROM r", 7, 0),
+        ("SELECT a // b AS q FROM r", 7, 0),
         ("SELECT a % b AS q FROM r", 7, 0),
-        ("SELECT a / b AS q FROM r", -(2**63), -1),
+        ("SELECT a // b AS q FROM r", -(2**63), -1),
         ("SELECT power(a, 3) AS q FROM r", 2**22, 0),
         ("SELECT power(a, -1) AS q FROM r", 2, 0),
         ("SELECT CAST(f AS BIGINT) AS q FROM r", None, None),
@@ -490,11 +492,12 @@ def test_rounding_and_casts_match_datafusion(sql):
 
 
 def test_double_division_by_zero_raises_unless_ieee():
-    """`on_division_by_zero` omitted is ERROR (#204); a plan asking for IEEE
-    gets ±inf and NaN, written as a `CASE` every engine runs."""
+    """`on_division_by_zero` ERROR (the reference's, #204) raises; a plan
+    asking for IEEE (DuckDB's `/`) gets ±inf and NaN, written as a `CASE`
+    every engine runs."""
     r = ints(a=[7, -7, 0, 1], b=[2, 0, 0, 3])
     sql = "SELECT CAST(a AS DOUBLE) / CAST(b AS DOUBLE) AS q FROM r"
-    plan_json = plan_of(sql, {"r": r})
+    plan_json = plan_of(sql, {"r": r}, "reference")
     with pytest.raises(duckdb.Error, match="division by zero"):
         duckdb_rows(plan_json, {"r": r})
     plan = json.loads(plan_json)
