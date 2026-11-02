@@ -559,6 +559,8 @@ def _check_datafusion_plan(plan: dict) -> None:
                 raise sql.Unsupported(
                     "first and last are not yet supported on DataFusion; see #271"
                 )
+            if isinstance(m, dict) and names.get(m.get("functionReference")) == "string_agg":
+                raise sql.Unsupported("string_agg is not yet supported on DataFusion; see #271")
             if isinstance(m, dict) and names.get(m.get("functionReference")) in (
                 "covar_samp",
                 "covar_pop",

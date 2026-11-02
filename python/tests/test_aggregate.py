@@ -542,3 +542,59 @@ def test_covariance_of_an_infinity_raises():
     create_table(con, "t", C.schema(), [(1, math.inf, 1.0), (1, 2.0, 3.0)])
     with pytest.raises(Exception, match="(?i)domain"):
         run_plan(con, written_plan(to_substrait_json(cov_expr())), "duckdb")
+
+
+# #55: STRING_AGG (Ibis's group_concat) in a given order, NULLs skipped.
+def joined(rows: list, sep: str, desc: bool) -> dict:
+    """Python's reference: per group, the non-NULL `x` after a stable sort by
+    `o` (NULLs last, as Ibis orders), joined by `sep`; None without values."""
+    out: dict = {}
+    for k in {r[0] for r in rows}:
+        grp = [r for r in rows if r[0] == k and r[1] is not None]
+        nulls = [r for r in grp if r[2] is None]
+        vals = sorted((r for r in grp if r[2] is not None), key=lambda r: r[2], reverse=desc)
+        out[k] = sep.join(r[1] for r in vals + nulls) if grp else None
+    return out
+
+
+@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.sampled_from(["a", "b", "", "é"])),
+            st.one_of(st.none(), st.integers(0, 3)),
+        ),
+        max_size=8,
+    )
+)
+def test_group_concat_follows_its_order(rows):
+    expr = P.group_by("k").aggregate(
+        s=P.x.group_concat(",", order_by=P.o), d=P.x.group_concat("--", order_by=ibis.desc(P.o))
+    )
+    plan = to_substrait_json(expr)
+    up, down = joined(rows, ",", False), joined(rows, "--", True)
+    expected = sorted(((k, up[k], down[k]) for k in up), key=repr)
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    assert lean == expected
+    con = connect()
+    create_table(con, "t", P.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert sorted((tuple(r.values()) for r in got), key=repr) == expected
+
+
+def test_group_concat_is_determined_by_a_key():
+    """Ties make the order the engine's, unless the group and order columns
+    contain a key (`Rel.windowsTotal`); without `order_by` it is refused, and
+    other engines refuse it for now (#271)."""
+    expr = P.group_by("k").aggregate(s=P.x.group_concat(",", order_by=P.o))
+    assert not sv.verify(expr).deterministic
+    assert sv.verify(expr, requires={"t": [sv.unique("k", "o")]}).deterministic
+    con = connect()
+    create_table(con, "t", P.schema(), [(1, "a", 1)])
+    written = written_plan(to_substrait_json(expr))
+    for engine in ("polars", "datafusion"):
+        with pytest.raises(Exception, match="see #271"):
+            run_plan(con, written, engine)
+    with pytest.raises(Exception, match="engine's order"):
+        to_substrait_json(P.group_by("k").aggregate(s=P.x.group_concat(",")))

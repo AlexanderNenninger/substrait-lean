@@ -1180,6 +1180,8 @@ def measure(x: Exprs, op: Any) -> Json:
         return collect(x, op)
     elif isinstance(op, ops.First | ops.Last):
         return first_last(x, op)
+    elif isinstance(op, ops.GroupConcat):
+        return group_concat(x, op)
     else:
         raise Unsupported(f"aggregate {type(op).__name__} is not supported")
     agg: Json = {
@@ -1222,6 +1224,35 @@ def collect(x: Exprs, op: Any) -> Json:
     if op.where is not None:
         keep = call("and", [x(op.where), keep])
     return {"measure": agg, "filter": keep}
+
+
+def group_concat(x: Exprs, op: Any) -> Json:
+    """`STRING_AGG(x, sep ORDER BY …)` of the non-NULL strings (#55), as Ibis's
+    `LISTAGG`. Without `order_by` the order is the engine's, which is refused."""
+    if not op.order_by:
+        raise Unsupported(
+            "group_concat() without order_by joins in the engine's order; give it an order_by"
+        )
+    if not isinstance(op.sep, ops.Literal):
+        raise Unsupported("group_concat needs a constant separator")
+    if not op.arg.dtype.is_string():
+        raise Unsupported(f"group_concat of {op.arg.dtype} is not supported; cast it to string")
+    sorts = []
+    for k in op.order_by:
+        key = _sort_key(x, k)
+        if "selection" not in key["expr"]:
+            raise Unsupported("group_concat(order_by=) must order by columns")
+        sorts.append(key)
+    agg: Json = {
+        "functionReference": _anchor("string_agg"),
+        "arguments": [{"value": x(op.arg)}, {"value": x(op.sep)}],
+        "sorts": sorts,
+        "invocation": "AGGREGATION_INVOCATION_ALL",
+    }
+    out: Json = {"measure": agg}
+    if op.where is not None:
+        out["filter"] = x(op.where)
+    return out
 
 
 def first_last(x: Exprs, op: Any) -> Json:

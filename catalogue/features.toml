@@ -61,7 +61,7 @@ stddev_var = { lean = "partial", description = "STDDEV / VARIANCE", note = "grou
 corr = { lean = "partial", description = "CORR / COVAR / REGR_*", note = "COVAR_SAMP, COVAR_POP and CORR, grouped, on DuckDB, with its own algorithm (#54); not REGR_*, not over windows" }
 percentile = { lean = "no", description = "MEDIAN / PERCENTILE_CONT / quantile", note = "refused by the Ibis producer (aggregate Median/Quantile) and by the checker for SQL; Ibis cannot even compile quantile to DataFusion SQL" }
 approx_distinct = { lean = "no", description = "APPROX_COUNT_DISTINCT / HyperLogLog" }
-string_agg = { lean = "no", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect" }
+string_agg = { lean = "partial", description = "STRING_AGG / LISTAGG / ARRAY_AGG / collect", note = "STRING_AGG with an ORDER BY of columns (DuckDB only so far, #271); without one the order is the engine's, which is refused" }
 arg_max = { lean = "no", description = "ARG_MAX / first or last value of a group, ordered aggregates", note = "first_value aggregates are refused" }
 bool_agg = { lean = "no", description = "BOOL_AND / BOOL_OR / EVERY" }
 
