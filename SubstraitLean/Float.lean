@@ -88,7 +88,11 @@ def finite (c : Int) : Int :=
 `2¹⁰²⁴` on, so for every integer the model holds (64 bits at most) `finite`
 changes nothing; it lets the checker know the double is finite, so that no
 `SUM` or `AVG` of converted integers can add `+∞` and `-∞` (#257). -/
-def ofInt (i : Int) : Int := finite (ofFloat (Float.ofInt i))
+def ofInt (i : Int) : Int :=
+  let c := finite (ofFloat (Float.ofInt i))
+  -- A non-zero integer is a non-zero double; this, too, changes nothing, and
+  -- lets the checker see that `CAST(n AS DOUBLE)` of a non-zero `n` is not 0.
+  if i ≠ 0 ∧ c = 0 then (if 0 < i then ofMag false 1 else ofMag true 1) else c
 
 theorem posInf_eq : posInf = 2 * maxMag + 3 := by
   simp only [posInf, ofMag, infMag, Nat.add_one_ne_zero, ite_false, Bool.false_eq_true,
@@ -112,6 +116,23 @@ theorem finite_bounds (c : Int) : negInf < finite c ∧ finite c < posInf := by
   simp only [finite, ofMag, posInf_eq, negInf_eq, Nat.pos_iff_ne_zero.1 hM, ite_false, hn,
     Bool.false_eq_true, false_and, true_and, ne_eq, not_false_eq_true, ite_true]
   split <;> (try split) <;> omega
+
+theorem ofInt_bounds (i : Int) : negInf < ofInt i ∧ ofInt i < posInf := by
+  have hM := maxMag_pos
+  have hf := finite_bounds (ofFloat (Float.ofInt i))
+  simp only [ofInt]
+  split
+  · simp only [ofMag, posInf_eq, negInf_eq] at hf ⊢
+    have : (1 : Nat) ≠ nanMag := by simp [nanMag]
+    split <;> simp [this] <;> omega
+  · exact hf
+
+theorem ofInt_ne_zero {i : Int} (h : i ≠ 0) : ofInt i ≠ 0 := by
+  simp only [ofInt]
+  split
+  · have : (1 : Nat) ≠ nanMag := by simp [nanMag]
+    split <;> simp [ofMag, this]
+  · rename_i hc; intro h0; exact hc ⟨h, h0⟩
 
 def isNan (c : Int) : Bool := c == nan
 

@@ -51,6 +51,9 @@ SCHEMAS = {n: ibis.Schema.from_pyarrow(t.schema) for n, t in TABLES.items()}
 
 #: Queries of the subset, each through oracles A and C.
 QUERIES = [
+    # DuckDB's AVG of a DECIMAL is a DOUBLE: the exact sum by the count.
+    "SELECT customer, avg(cost) AS a FROM orders GROUP BY customer",
+    "SELECT avg(cost) AS a FROM orders WHERE id > 100",
     "SELECT id, amount * 2 AS a2, qty + 1 AS q1, -amount AS neg FROM orders WHERE amount > 1",
     "SELECT id, amount / 2 AS half, amount // 2 AS q, amount % 3 AS m FROM orders",
     "SELECT id, amount / qty AS r, price / 2 AS p FROM orders",
@@ -261,7 +264,6 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT id FROM elsewhere", "cannot resolve"),
         ("SELECT id, customer FROM orders GROUP BY id", "GROUP BY"),
-        ("SELECT avg(cost) FROM orders", "avg of a DECIMAL"),
         ("SELECT * FROM orders o JOIN orders p ON o.id = p.id", "two output columns named id"),
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT id FROM orders LIMIT qty", "LIMIT"),
