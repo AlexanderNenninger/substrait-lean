@@ -779,6 +779,10 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
                 "% of doubles is not supported with DuckDB's semantics: by zero DuckDB "
                 "gives NaN, which the model's modulus cannot state"
             )
+        # sverify's own remainder of doubles, C's `fmod` (#256): Substrait's
+        # `modulus` has no double impl.
+        opt = _option("on_division_by_zero", "ERROR")
+        return E(_fn("sverify_fmod", [lf.to(a, t).json, lf.to(b, t).json], t, [opt]), t)
     elif not t.is_integer():
         raise Unsupported(f"% of {a.type} and {b.type} is not supported yet")
     # The remainder takes the dividend's sign (`division_type` TRUNCATE, #209

@@ -102,6 +102,11 @@ unless the plan rules it out (`WHERE y <> 0.0`). The Polars translation gives
 the same results, although Polars' own `%` takes the divisor's sign.
 Substrait itself defines no `modulus` of doubles (#203).
 
+Substrait defines no `modulus` of doubles, so plans now call sverify's own
+`sverify_fmod` for it, which the Ibis producer and the SQL lift emit for `%`
+of doubles and which DataFusion runs as its own `%`. sverify still reads the
+`modulus` of doubles that DataFusion's producer writes (#256).
+
 ## 0.3.0 (2026-11-01)
 
 ### Licensed under the MPL-2.0
