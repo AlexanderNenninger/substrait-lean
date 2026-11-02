@@ -406,7 +406,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
     ⟨fun f => match f with $unAlts:matchAlt*, fun f => match f with $binAlts:matchAlt*⟩))
   -- The coverage report.
   -- In the constructors' order.
-  let rows := ctors.map fun (c, _) => match found.find? (·.ctor == c) with
+  let rows := ctors.map fun (c, _) => match found.find? (fun (f : Found) => f.ctor == c) with
     | some f => (c, f.how, f.ms)
     | none => (c, "missing", 0)
   let rows ← rows.mapM fun (c, how, ms) =>
