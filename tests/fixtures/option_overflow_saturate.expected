@@ -1,2 +1,2 @@
-error: subtract:i64_i64: option overflow = [SATURATE] is not supported (the model does [SILENT])
+error: subtract:i64_i64: option overflow = [SATURATE] is not supported (the model does [ERROR])
 [exit 1]

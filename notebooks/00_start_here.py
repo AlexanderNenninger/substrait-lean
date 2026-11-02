@@ -85,8 +85,10 @@ def _(mo):
 
     A transformation with a contract: the input has no negative amounts
     (`requires`), so the output has no negative and no NULL `doubled`
-    (`ensures`). Calling the function asks Lean for a proof before the
-    expression is handed back:
+    (`ensures`). The input's amounts are also below a billion, which is
+    what tells Lean that doubling one can't overflow a 64-bit integer.
+    Calling the function asks Lean for a proof before the expression is
+    handed back:
     """)
     return
 
@@ -100,7 +102,7 @@ def _():
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0]},
+        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
         ensures=[_.doubled >= 0, _.doubled.notnull()],
     )
     def doubled(orders):

@@ -534,6 +534,16 @@ def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
         | .min | .max => m.arg.bits bs
         | _ => 64
 
+/-- Does the expression read a column? One that doesn't is built from
+literals, whose kinds say nothing (a timestamp literal is an integer). -/
+def _root_.Substrait.Expr.readsField : Expr → Bool
+  | .lit _ => false
+  | .field _ => true
+  | .un _ a => a.readsField
+  | .bin _ a b => a.readsField || b.readsField
+  | .ifThen c t e => c.readsField || t.readsField || e.readsField
+  | .hof _ l _ => l.readsField
+
 /-- The width of an argument: a literal's own type, or the expression's. -/
 def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   match field? j "literal", field? j "cast" with
@@ -542,7 +552,8 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   | none, some c => match field? c "type" with
     | some ty => if typeKind ty == .float then intBits ty else e.bits cols
     | none => e.bits cols
-  | none, none => e.bits cols
+  -- Arithmetic on constants alone is 64-bit, as their own types are.
+  | none, none => if e.readsField then e.bits cols else 64
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -830,16 +841,6 @@ def stringFns : List (String × List Nat) :=
 /-- Functions on booleans. -/
 def booleanFns : List String := ["and", "or", "not", "xor"]
 
-/-- Does the expression read a column? One that doesn't is built from
-literals, whose kinds say nothing (a timestamp literal is an integer). -/
-def _root_.Substrait.Expr.readsField : Expr → Bool
-  | .lit _ => false
-  | .field _ => true
-  | .un _ a => a.readsField
-  | .bin _ a b => a.readsField || b.readsField
-  | .ifThen c t e => c.readsField || t.readsField || e.readsField
-  | .hof _ l _ => l.readsField
-
 def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
   let base := baseName name
   let sigs := (sigTokens name).map argSig
@@ -943,11 +944,12 @@ only on rows where `SubstraitLean/Safety.lean` reports an error anyway (what
 /-- The preferences an option of `base` may list (`none`: any), and whether
 the option is known at all. `float` says the call is on doubles. -/
 def optionAccepts (base : String) (float : Bool) : String → Option (Option (List String))
-  -- Integer `+`, `-`, `*` and `SUM` wrap around silently (a `wraps` warning).
+  -- Integer overflow raises at the declared width (#202); `SILENT` and
+  -- `SATURATE` are not modelled yet (options as profile parameters, #241).
   | "overflow" =>
     if float then none
-    else if ["add", "subtract", "multiply", "negate", "sum"].contains base then some (some ["SILENT"])
-    else if ["divide", "modulus", "abs", "power"].contains base then some none
+    else if ["add", "subtract", "multiply", "negate", "sum", "divide", "modulus", "abs",
+      "power"].contains base then some (some ["ERROR"])
     else none
   | "rounding" =>
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
@@ -1004,7 +1006,9 @@ def checkOptions (name : String) (float : Bool) (opts : List Json) : J Unit := d
 #guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
   ("preference", Json.arr #["SATURATE"])]]).toBool == false
 #guard (checkOptions "divide" false [Json.mkObj [("name", "overflow"),
-  ("preference", Json.arr #["SATURATE"])]]).toBool
+  ("preference", Json.arr #["SATURATE"])]]).toBool == false
+#guard (checkOptions "add" false [Json.mkObj [("name", "overflow"),
+  ("preference", Json.arr #["SILENT"])]]).toBool == false
 #guard (checkOptions "divide" true [Json.mkObj [("name", "on_division_by_zero"),
   ("preference", Json.arr #["LIMIT"])]]).toBool
 #guard (checkOptions "divide" false [Json.mkObj [("name", "on_division_by_zero"),
@@ -1766,6 +1770,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Fails where the value does not fit (`SubstraitLean/Safety.lean`).
     if target == .int && k == .int then
       let bits := intBits (← field c "type")
+      -- Arithmetic already checked at a width that fits (the writer's
+      -- `checkedNarrow`): the cast changes nothing.
+      if let .un (.wrap n) _ := e then
+        if n ≤ bits then return e
       return if bits < 64 then .un (.narrow bits) e else e
     if target == k && target != .other then return e
     throw s!"unsupported cast from {repr k} to {repr target}"
@@ -2254,9 +2262,11 @@ def kindSchemaType : Kind → Json
   | .tod => Json.mkObj [("precisionTime", Json.mkObj [("precision", 6)])]
   | .str => Json.mkObj [("string", Json.mkObj [])]
   | .bool => Json.mkObj [("bool", Json.mkObj [])]
+  | .int => Json.mkObj [("i64", Json.mkObj [])]
   | _ => Json.mkObj []
 
-#guard [Kind.float, .time, .date, .tod, .str, .bool].all fun k => typeKind (kindSchemaType k) == k
+#guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
+  typeKind (kindSchemaType k) == k
 
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
@@ -2269,7 +2279,11 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
   let refined : List Kind := (ejs.zip es).map fun (j, e) =>
     let k := declaredKind fns j
     if [Kind.int, .other].contains (e.kind cols) &&
-        [Kind.float, .time, .date, .tod, .str, .bool].contains k then k else Kind.other
+        [Kind.float, .time, .date, .tod, .str, .bool].contains k then k
+    -- A typed `NULL` of an integer type, which engines otherwise read as
+    -- untyped (`CAST(NULL AS BIGINT)` under `DISTINCT`).
+    else if e.kind cols == .other && k == .int then k
+    else Kind.other
   if prev.isNone && refined.all (· == .other) then return
   let refined := match prev with
     | some (_, s) =>

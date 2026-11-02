@@ -11,14 +11,17 @@ from sverify.errors import CompositionError, PreconditionError
 from sverify_dev.examples import orders
 
 
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount >= 0, _.amount.notnull()])
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
+    ensures=[_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()],
+)
 def paid(orders):
     return orders.filter(orders.amount.notnull())
 
 
 @sv.transform(
-    requires={"t": [_.amount >= 0, _.amount.notnull()]},
-    ensures=[_.doubled >= 0, _.doubled.notnull()],
+    requires={"t": [_.amount >= 0, _.amount < 1_000_000_000, _.amount.notnull()]},
+    ensures=[_.doubled >= 0, _.doubled < 2_000_000_000, _.doubled.notnull()],
 )
 def doubled(t):
     return t.select(t.id, doubled=t.amount * 2)
@@ -34,11 +37,13 @@ def test_composed_contracts_connect():
     report = doubled.last_report
     assert report is not None and report.proved
     # `doubled` was proved against `paid`'s guarantees, not against `orders`.
-    assert report.requires == {"paid": ["(_.amount >= 0)", "_.amount.notnull()"]}
+    assert report.requires == {
+        "paid": ["(_.amount >= 0)", "(_.amount < 1000000000)", "_.amount.notnull()"]
+    }
     prov = provenance(result)
     assert prov is not None and prov.transform is doubled
     assert {t: [label(c) for c in cs] for t, cs in prov.external.items()} == {
-        "orders": ["(_.amount >= 0)"]
+        "orders": ["(_.amount >= 0)", "(_.amount < 1000000000)"]
     }
     assert not prov.unproved_links
 
@@ -51,14 +56,17 @@ def test_broken_link_names_both_sides():
     with pytest.raises(CompositionError) as e:
         doubled(not_null(orders))
     msg = str(e.value)
-    assert msg.startswith("doubled needs (_.amount >= 0) (it is TRUE or FALSE) on 't'")
+    assert msg.startswith("doubled needs (_.amount >= 0) (it is TRUE or FALSE), ")
     assert msg.endswith("not_null only guarantees _.amount.notnull()")
 
 
 def test_obligation_may_follow_from_more_than_the_ensures():
     # `positive` needs `doubled > 0`, which `doubled` does not promise but
     # establishes from what `strictly_paid` guarantees.
-    @sv.transform(requires={"orders": [_.amount > 0]}, ensures=[_.amount > 0])
+    @sv.transform(
+        requires={"orders": [_.amount > 0, _.amount < 1_000_000_000]},
+        ensures=[_.amount > 0, _.amount < 1_000_000_000],
+    )
     def strictly_paid(orders):
         return orders.filter(orders.amount.notnull())
 
@@ -72,7 +80,7 @@ def test_links_are_not_checked_on_data(monkeypatch):
     data = bound_orders([(1, "ada", 5), (2, "bob", 7)])
     result = doubled(paid(data))
     # Only the base table's precondition is checked on the data.
-    assert checked == ["(_.amount >= 0)"]
+    assert checked == ["(_.amount >= 0)", "(_.amount < 1000000000)"]
     assert sorted(result.execute()["doubled"]) == [10, 14]
 
 
@@ -89,24 +97,32 @@ def test_plain_ibis_in_the_chain():
 
 
 def test_keys_propagate_through_links():
-    @sv.transform(requires={"orders": [sv.unique("id")]}, ensures=[sv.unique("id")])
+    @sv.transform(
+        requires={"orders": [sv.unique("id"), _.amount < 1_000_000_000]},
+        ensures=[sv.unique("id"), _.amount < 1_000_000_000],
+    )
     def big(orders):
         return orders.filter(orders.amount > 10)
 
-    @sv.transform(requires={"t": [sv.unique("id")]}, ensures=[sv.unique("id")])
+    @sv.transform(
+        requires={"t": [sv.unique("id"), _.amount < 1_000_000_000]}, ensures=[sv.unique("id")]
+    )
     def tagged(t):
         return t.mutate(tag=t.amount + 1)
 
     tagged(big(orders))
     assert tagged.last_report is not None
-    assert tagged.last_report.requires == {"big": ["unique(id)"]}
+    assert tagged.last_report.requires == {"big": ["unique(id)", "(_.amount < 1000000000)"]}
     with pytest.raises(CompositionError, match=r"tagged needs unique\(id\)"):
         tagged(paid(orders))
 
 
 def test_two_contracted_inputs():
     @sv.transform(
-        requires={"a": [_.doubled.notnull()], "b": [_.amount.notnull()]},
+        requires={
+            "a": [_.doubled.notnull(), _.doubled < 2_000_000_000],
+            "b": [_.amount.notnull(), _.amount < 1_000_000_000],
+        },
         ensures=[_.total.notnull()],
     )
     def combine(a, b):

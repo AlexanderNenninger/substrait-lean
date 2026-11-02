@@ -47,7 +47,7 @@ orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, sv.unique("id")]},
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
     ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
 )
 def big_orders(orders):
@@ -96,7 +96,8 @@ postcondition. Here a filter makes it hold:
 
 ```python
 fixed = orders_t.filter(orders_t.amount > 4).select(orders_t.id, total=orders_t.amount + 1)
-assert sv.verify(fixed, requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5]).proved
+bounded = {"orders": [_.amount >= 0, _.amount < 1_000_000_000]}
+assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).proved
 ```
 
 `report.issues` lists runtime errors that may happen (division by zero,

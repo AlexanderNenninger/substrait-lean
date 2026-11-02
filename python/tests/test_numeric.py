@@ -167,10 +167,11 @@ def test_contracts_fail_on_possible_errors():
         ratio(T)
 
 
-def test_wrapping_is_only_a_warning():
+def test_overflow_is_an_error():
+    """An integer result that does not fit its declared width raises (#202)."""
     report = sv.verify(T.select(x=T.qty + 1))
-    assert report.proved
-    assert [i.kind for i in report.warnings] == ["may wrap around"]
+    assert not report.proved
+    assert [i.kind for i in report.errors] == ["overflow"]
 
 
 #: Pipelines over `t(qty, n)`; small values plus the extremes where division
