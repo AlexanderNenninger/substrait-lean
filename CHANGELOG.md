@@ -8,11 +8,12 @@ A plan whose `modulus` states `division_type: TRUNCATE` was refused,
 although the remainder already takes the dividend's sign. It is now
 accepted; `FLOOR` is still refused, as the model does not compute it.
 
-### More divisors proved non-zero
+### `approx_nunique` is refused
 
-`verify` now proves a divisor non-zero from more preconditions:
-`(b < 0) | (b > 0)`, `(b != 0) | b.isnull()`, and a product `b * c` of
-factors each known to be non-zero. Each needed a guard before.
+Ibis's `approx_nunique()` was translated as the exact `nunique()`. Each
+engine computes its own estimate, so no plan gives the same answer
+everywhere; it is now refused, with a hint to use `nunique()` for the exact
+count.
 
 ### Isthmus support removed
 

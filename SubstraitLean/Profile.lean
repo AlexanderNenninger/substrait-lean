@@ -20,7 +20,7 @@ like any other. Shims are generated: `SubstraitLean/LoweringSearch.lean`
 searches, for each function, for a template the engine evaluates to the
 reference's outcome, and proves it (#241). `SubstraitLean/Lowering.lean` proves
 lowering with such a table correct, and `SubstraitLean/LoweringDuckDB.lean`
-holds DuckDB's tables, with `shimDuckDB_correct` and `Rel.duckdb_shim_sound`.
+holds DuckDB's tables, with `Rel.duckdb_shim_sound`.
 
 Trusted, and tested rather than proved: that the profile matches the engine
 (the fuzzer, #185), and that the SQL printer prints the plan faithfully,
@@ -234,25 +234,6 @@ def Profile.duckdb (s : DuckDBSettings) : Profile where
     | .int x, .int 0 =>
       if f.divides && !s.errorOnDivZero then .ok (duckDivZero f x) else Profile.reference.bin f v w
     | _, _ => Profile.reference.bin f v w
-
-/-- **DuckDB's shim,** written by hand: with `error_on_division_by_zero` off,
-a division or modulus raises on a zero divisor, `CASE WHEN x IS NOT NULL AND y
-= 0 THEN error() ELSE x / y END` (a NULL dividend gives NULL, as in the
-reference). Everything else is written as it is. The generated lowering is this
-shim (`duckdb_lower_eq_shim` in `SubstraitLean/LoweringDuckDB.lean`). -/
-def shimDuckDB (s : DuckDBSettings) : Expr → Option Expr
-  | .lit v => some (.lit v)
-  | .field i => some (.field i)
-  | .un f a => (shimDuckDB s a).map (.un f)
-  | .bin f a b => do
-    let a' ← shimDuckDB s a
-    let b' ← shimDuckDB s b
-    if f.divides && !s.errorOnDivZero then
-      some (.ifThen (.bin .and (.un .isNum a') (.bin .eq b' (.lit (.int 0))))
-        (.un (.raise "division by zero") b') (.bin f a' b'))
-    else some (.bin f a' b')
-  | .ifThen c t e => do some (.ifThen (← shimDuckDB s c) (← shimDuckDB s t) (← shimDuckDB s e))
-  | .hof f l b => do some (.hof f (← shimDuckDB s l) (← shimDuckDB s b))
 
 /-! ## Agreeing outcomes -/
 
