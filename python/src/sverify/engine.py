@@ -622,6 +622,9 @@ def _check_datafusion_plan(plan: dict) -> None:
                 raise sql.Unsupported(
                     "covariance and correlation are not yet supported on DataFusion; see #271"
                 )
+            c = node.get("cast")
+            if isinstance(c, dict) and c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
+                raise sql.Unsupported("TRY_CAST is not yet supported on DataFusion; see #271")
             w = node.get("windowFunction")
             if isinstance(w, dict) and names.get(w.get("functionReference")) == "ntile":
                 # DataFusion spreads the larger buckets out (upstream/LEDGER.md).

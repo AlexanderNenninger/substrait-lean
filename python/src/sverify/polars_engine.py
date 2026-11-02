@@ -1015,6 +1015,8 @@ class Exprs:
         return Val(substr(s, a, n), pl.String, issues(s, a))
 
     def cast(self, c: dict) -> Val:
+        if c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
+            raise Unsupported("TRY_CAST is not yet supported on Polars; see #271")
         v = self(c["input"])
         target = c.get("type", {})
         if ("fp64" in target or "fp32" in target) and v.dtype in (pl.Int64, pl.Null):

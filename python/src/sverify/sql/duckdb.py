@@ -82,6 +82,14 @@ class DuckDBDialect(Dialect):
         # The cast raises on NaN, ±inf and values outside 64 bits.
         return f"CAST(trunc({x}) AS BIGINT)"
 
+    def float_to_int_or_null(self, x: str) -> str:
+        # NULL where `float_to_int` raises.
+        return f"TRY_CAST(trunc({x}) AS BIGINT)"
+
+    def narrow_or_null(self, x: str, bits: int) -> str:
+        lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
+        return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
+
     def float_fn(self, name: str, x: str) -> str:
         # C's libm, but `sin`, `cos` and `tan` raise on ±inf, where libm gives NaN.
         sql = super().float_fn(name, x)
