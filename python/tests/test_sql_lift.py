@@ -115,6 +115,20 @@ QUERIES = [
     "SELECT id, customer || '!' AS a, concat(customer, '-', customer) AS b,"
     " replace(customer, 'a', 'A') AS r, repeat(customer, qty) AS t, left(customer, 2) AS f,"
     " upper(customer) AS u, lower(customer) AS lo FROM orders",
+    # CTEs, inlined; uncorrelated subqueries, with SQL's NULLs for IN; semi,
+    # anti, right and full joins.
+    "WITH big AS (SELECT id, amount * 2 AS a2 FROM orders WHERE amount > 2), eu(n) AS"
+    " (SELECT name FROM customers WHERE region = 'eu') SELECT big.id, big.a2 FROM big"
+    " JOIN orders o ON o.id = big.id JOIN eu ON eu.n = o.customer",
+    "SELECT id FROM orders WHERE customer IN (SELECT name FROM customers WHERE region = 'eu')",
+    "SELECT id, customer NOT IN (SELECT name FROM customers) AS stranger FROM orders",
+    "SELECT id FROM orders WHERE amount > (SELECT avg(amount) FROM orders)",
+    "SELECT id, (SELECT count(*) FROM customers) AS n FROM orders"
+    " WHERE EXISTS (SELECT 1 FROM customers WHERE region = 'us')",
+    "SELECT * FROM orders SEMI JOIN customers ON customers.name = orders.customer",
+    "SELECT * FROM orders ANTI JOIN customers ON customers.name = orders.customer",
+    "SELECT o.id, c.name FROM orders o RIGHT JOIN customers c ON c.name = o.customer",
+    "SELECT o.id, c.name FROM orders o FULL JOIN customers c ON c.name = o.customer",
     "SELECT id, placed + INTERVAL '1 month 2 days 3 hours' AS later FROM orders"
     " WHERE day >= ' 2024-01-01'",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
@@ -234,14 +248,21 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     [
         ("SELECT my_udf(id) FROM orders", "unknown function my_udf"),
         ("SELECT id FROM orders UNION ALL SELECT id FROM orders", "Union is not supported"),
-        ("WITH t AS (SELECT id FROM orders) SELECT id FROM t", "CTEs"),
+        (
+            "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t",
+            "RECURSIVE",
+        ),
+        (
+            "SELECT id FROM orders o"
+            " WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer)",
+            "correlated",
+        ),
         ("SELECT sum(id) OVER () FROM orders", "window functions"),
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT id FROM elsewhere", "cannot resolve"),
         ("SELECT id, customer FROM orders GROUP BY id", "GROUP BY"),
         ("SELECT avg(cost) FROM orders", "avg of a DECIMAL"),
         ("SELECT * FROM orders o JOIN orders p ON o.id = p.id", "two output columns named id"),
-        ("SELECT id FROM orders o FULL JOIN customers c ON o.customer = c.name", "FULL"),
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT id FROM orders LIMIT qty", "LIMIT"),
         ("SELECT 170141183460469231731687303715884105727 AS h", "HUGEINT"),

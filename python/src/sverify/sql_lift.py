@@ -38,9 +38,9 @@ IS NULL, BETWEEN, IN lists, CASE, CAST, COALESCE; dates and timestamps
 timestamp plus or minus a constant interval, `DATE - DATE`, `datediff`);
 strings (`length`, `substring`, `trim`, `strpos`, `contains`, `starts_with`,
 LIKE and ILIKE, `||`, `concat`, `replace`, `repeat`, `left`, `upper`,
-`lower`); inner, left and
-cross joins
-and subqueries in FROM; GROUP BY with `count`, `sum`, `avg`, `min` and
+`lower`); inner, left, right, full, semi, anti and cross joins; subqueries
+in FROM, uncorrelated scalar, IN and EXISTS subqueries, and non-recursive
+CTEs; GROUP BY with `count`, `sum`, `avg`, `min` and
 `max`, HAVING; DISTINCT, ORDER BY, LIMIT and OFFSET. Anything else, unknown
 functions (`Anonymous`) included, raises `Unsupported` saying what.
 """
@@ -286,6 +286,22 @@ _AGGREGATES: dict[type, str] = {
     sge.Max: "max",
 }
 
+#: Joins with a condition, by SQLGlot's (side, kind).
+_JOIN_TYPES = {
+    ("", ""): "JOIN_TYPE_INNER",
+    ("", "INNER"): "JOIN_TYPE_INNER",
+    ("LEFT", ""): "JOIN_TYPE_LEFT",
+    ("LEFT", "OUTER"): "JOIN_TYPE_LEFT",
+    ("RIGHT", ""): "JOIN_TYPE_RIGHT",
+    ("RIGHT", "OUTER"): "JOIN_TYPE_RIGHT",
+    ("FULL", ""): "JOIN_TYPE_OUTER",
+    ("FULL", "OUTER"): "JOIN_TYPE_OUTER",
+    ("", "SEMI"): "JOIN_TYPE_LEFT_SEMI",
+    ("LEFT", "SEMI"): "JOIN_TYPE_LEFT_SEMI",
+    ("", "ANTI"): "JOIN_TYPE_LEFT_ANTI",
+    ("LEFT", "ANTI"): "JOIN_TYPE_LEFT_ANTI",
+}
+
 _COMPARISONS: dict[type, str] = {
     sge.EQ: "equal",
     sge.NEQ: "not_equal",
@@ -299,6 +315,7 @@ _ARITHMETIC: dict[type, str] = {sge.Add: "add", sge.Sub: "subtract", sge.Mul: "m
 
 #: The arguments of a SELECT the lift reads; any other one set is refused.
 _SELECT_ARGS = {
+    "with_",
     "expressions",
     "from_",
     "joins",
@@ -313,7 +330,6 @@ _SELECT_ARGS = {
 
 #: The clauses of the queries SQLGlot reads that the subset lacks, by name.
 _CLAUSES = {
-    "with_": "CTEs (WITH)",
     "qualify": "QUALIFY",
     "windows": "WINDOW",
     "laterals": "LATERAL",
@@ -366,6 +382,10 @@ class _Lift:
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
+        # The CTEs in scope, by name, and the scopes of the queries a
+        # subquery is in (which it may not read: no correlated subqueries).
+        self.ctes: dict[str, sge.Expression] = {}
+        self.outer: list[list[Column]] = []
 
     # -- relations ---------------------------------------------------------
 
@@ -375,6 +395,20 @@ class _Lift:
             return self.query(node.this)
         if not isinstance(node, sge.Select):
             raise Unsupported(f"{type(node).__name__} is not supported; only SELECT queries are")
+        if (with_ := node.args.get("with_")) is not None:
+            # CTEs are inlined where they are read; each sees the ones before.
+            if with_.args.get("recursive"):
+                raise Unsupported("WITH RECURSIVE is not supported")
+            saved = self.ctes
+            self.ctes = dict(saved)
+            for cte in with_.expressions:
+                self.ctes[_normalized(cte.alias)] = cte.this
+            body = node.copy()
+            body.set("with_", None)
+            try:
+                return self.query(body)
+            finally:
+                self.ctes = saved
         for arg, what in _CLAUSES.items():
             if node.args.get(arg):
                 raise Unsupported(f"{what} is not supported yet")
@@ -483,21 +517,25 @@ class _Lift:
                 raise Unsupported("JOIN … USING is not supported")
             if kind == "CROSS" or (not side and not kind and on is None):
                 rel = {"cross": {"left": rel, "right": right}}
-            elif side in ("", "LEFT") and kind in ("", "INNER", "OUTER") and on is not None:
-                if side == "" and kind == "OUTER":
-                    raise Unsupported("FULL OUTER JOIN is not supported yet")
-                cond = self.condition(on, scope + cols)
-                how = "JOIN_TYPE_LEFT" if side == "LEFT" else "JOIN_TYPE_INNER"
-                rel = {"join": {"left": rel, "right": right, "expression": cond, "type": how}}
-            else:
+                scope = scope + cols
+                continue
+            how = _JOIN_TYPES.get((side, kind))
+            if how is None or on is None:
                 what = " ".join(w for w in (side, kind) if w) or "this"
                 raise Unsupported(f"{what} JOIN is not supported yet")
-            scope = scope + cols
+            cond = self.condition(on, scope + cols)
+            rel = {"join": {"left": rel, "right": right, "expression": cond, "type": how}}
+            # A semi or anti join keeps the left side's columns only.
+            if kind not in ("SEMI", "ANTI"):
+                scope = scope + cols
         return rel, scope
 
     def source(self, node: sge.Expression) -> tuple[Json, list[Column]]:
         """A relation in FROM or JOIN, and its columns under its alias."""
         alias = node.alias_or_name
+        if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
+            rel, cols = self.query(self.ctes[node.name])
+            return rel, [Column(alias, c.name, c.type) for c in cols]
         if isinstance(node, sge.Table):
             if (
                 node.args.get("db")
@@ -515,6 +553,14 @@ class _Lift:
             rel, cols = self.query(node.this)
             return rel, [Column(alias, c.name, c.type) for c in cols]
         raise Unsupported(f"FROM {_shown(node)} is not supported")
+
+    def nested(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, list[Column]]:
+        """A subquery inside an expression over `scope`."""
+        self.outer.append(scope)
+        try:
+            return self.query(node)
+        finally:
+            self.outer.pop()
 
     def aggregate(
         self,
@@ -647,6 +693,12 @@ class _Lift:
             i for i, c in enumerate(scope) if c.name == name and (not table or c.table == table)
         ]
         if len(found) != 1:
+            if not found and any(
+                c.name == name and (not table or c.table == table) for o in self.outer for c in o
+            ):
+                raise Unsupported(
+                    f"correlated subqueries are not supported yet (it reads {_shown(node)})"
+                )
             what = "unknown" if not found else "ambiguous"
             raise Unsupported(f"{what} column {_shown(node)}")
         return E(field_ref(found[0]), scope[found[0]].type)
@@ -955,8 +1007,20 @@ def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
 
 
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
-    if node.args.get("query") is not None or node.args.get("unnest") is not None:
-        raise Unsupported("IN with a subquery is not supported yet")
+    if node.args.get("unnest") is not None:
+        raise Unsupported("IN UNNEST is not supported yet")
+    if (query := node.args.get("query")) is not None:
+        # SQL's NULLs: NULL when no value matches and the needle or a value
+        # is NULL (the model lifts it so, `Parse.liftSubquery`).
+        needle = sub(node.this)
+        rel, cols = lf.nested(query, scope)
+        if len(cols) != 1:
+            raise Unsupported("an IN subquery must return one column")
+        t = cols[0].type
+        if not needle.type.is_null() and not _same(lf.common([needle, E({}, t)], "IN"), t):
+            raise Unsupported(f"IN of a {needle.type} in a subquery of {t} is not supported yet")
+        x = lf.to(needle, t).json
+        return E({"subquery": {"inPredicate": {"needles": [x], "haystack": rel}}}, dt.boolean)
     es = [sub(node.this), *(sub(o) for o in node.expressions)]
     es = _temporal_literals(es)
     t = lf.common(es, "IN")
@@ -1389,6 +1453,21 @@ def _affix(name: str) -> Callable[[_Lift, list[E]], E]:
 _ANONYMOUS_STRINGS = {"prefix": _affix("starts_with"), "suffix": _affix("ends_with")}
 
 
+def _scalar_subquery(lf: _Lift, node: sge.Subquery, sub: Sub, scope: list[Column]) -> E:
+    # At most one row, which the checker must prove (an aggregate without
+    # groups, LIMIT 1); no row is NULL.
+    rel, cols = lf.nested(node.this, scope)
+    if len(cols) != 1:
+        raise Unsupported("a scalar subquery must return one column")
+    return E({"subquery": {"scalar": {"input": rel}}}, cols[0].type.copy(nullable=True))
+
+
+def _exists(lf: _Lift, node: sge.Exists, sub: Sub, scope: list[Column]) -> E:
+    rel, _ = lf.nested(node.this, scope)
+    exists_ = {"predicateOp": "PREDICATE_OP_EXISTS", "tuples": rel}
+    return E({"subquery": {"setPredicate": exists_}}, dt.boolean)
+
+
 _RULES: dict[type, Callable[..., E]] = {
     sge.Column: _column,
     sge.Literal: _literal,
@@ -1422,6 +1501,8 @@ _RULES: dict[type, Callable[..., E]] = {
     sge.Extract: _extract,
     sge.Anonymous: _anonymous,
     sge.DateDiff: _date_diff,
+    sge.Subquery: _scalar_subquery,
+    sge.Exists: _exists,
     sge.Length: _length,
     sge.Upper: _string_fn("upper"),
     sge.Lower: _string_fn("lower"),
