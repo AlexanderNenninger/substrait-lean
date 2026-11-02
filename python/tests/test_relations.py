@@ -1,6 +1,6 @@
 """Sorts, semi/anti/outer joins, `IN` subqueries and `DISTINCT` set operations.
 
-* Lean's semantics (`Rel.eval`) agrees with DataFusion on random tables,
+* Lean's semantics (`Rel.eval`) agrees with DuckDB on random tables,
   including NULLs: as bags, and for sorts also in the order of the sort keys
   (ties may come out either way).
 * `FULL OUTER JOIN`, `IN (subquery)` and `IS NOT DISTINCT FROM` are parser

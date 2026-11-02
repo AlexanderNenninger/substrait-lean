@@ -255,8 +255,8 @@ def test_datafusion_fails_only_where_reported(i, rows):
 )
 @given(rows=st.lists(st.tuples(values, values), max_size=6))
 def test_duckdb_fails_only_where_reported(i, rows):
-    """The generated SQL raises where DataFusion fails, and also where
-    DataFusion wraps around; both are reported."""
+    """The generated SQL raises where the reference raises (a reported
+    error) or an engine would wrap around (a warning)."""
     expr = PIPELINES[i]
     report = sv.verify(expr)
     reported = report.errors + report.warnings

@@ -4,8 +4,8 @@ The expected values follow the reference's rules (decided on #27, from how
 DuckDB, Polars, Spark and DataFusion compute decimals): `+`, `-` and `×` are
 exact; a smaller scale rounds half away from zero; to an integer truncates
 toward zero; `AVG` is a `DECIMAL(p + 4, s + 4)` rounded half away from zero;
-a double becomes `round(x · 10ˢ)` computed in doubles. DataFusion only writes
-the plans.
+a double becomes `round(x · 10ˢ)` computed in doubles. The lift writes the
+plans of the SQL here.
 """
 
 import json
@@ -19,8 +19,6 @@ import sverify as sv
 from sverify.engine import connect, put_table, run_checker, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
-
-pytestmark = pytest.mark.backend("datafusion")
 
 TABLES = {
     "t": pa.table(

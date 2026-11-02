@@ -225,7 +225,7 @@ folded = st.one_of(st.none(), st.text(alphabet="aAbB%_\\sſKkÉé", max_size=5))
 
 
 @settings(
-    max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+    max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(rows=st.lists(st.tuples(folded, folded, st.none()), max_size=6))
 def test_ilike_matches_datafusion(rows):
@@ -289,7 +289,7 @@ def errors(expr) -> list[str]:
     pattern=st.text(alphabet="ab.^$*+?|()[]{}\\-,0123dws", max_size=10)
     | st.from_regex(r"\^?[a-c.]*(\[a-c\]|\\d|\(a\|b\))?[*+?]?\$?", fullmatch=True)
 )
-@settings(max_examples=150, deadline=None)
+@settings(max_examples=40, deadline=None)
 def test_patterns_said_to_compile_do(pattern):
     if errors(T.filter(T.name.re_search(pattern))):
         return

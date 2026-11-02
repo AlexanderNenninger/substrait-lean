@@ -53,8 +53,8 @@ def test_float_ranges_are_exact_at_the_boundary():
     assert report.facts["value"] == "a double > 0.5"
 
 
-def test_nan_is_largest_like_datafusion():
-    # DataFusion orders NaN above every number, so `value > 0` keeps NaN rows.
+def test_nan_is_largest():
+    # NaN is above every number (as in SQL engines), so `value > 0` keeps NaN rows.
     report = sv.verify(s1.filter(s1.value > 0).select("value"), ensures=[~_.value.isnan()])
     assert not report.proved
 
