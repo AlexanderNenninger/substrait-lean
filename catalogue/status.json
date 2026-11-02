@@ -7,6 +7,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "clickbench-q09": {
@@ -17,6 +24,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "clickbench-q13": {
@@ -27,6 +41,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "clickbench-q21": {
@@ -37,6 +58,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "clickbench-q28": {
@@ -53,6 +81,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "clickbench-q42": {
@@ -63,6 +98,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "fin-running-balance": {
@@ -323,6 +365,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-groupby-q3": {
@@ -333,6 +382,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-groupby-q6": {
@@ -349,6 +405,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-groupby-q8": {
@@ -359,6 +422,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": false
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "h2o-groupby-q9": {
@@ -375,6 +445,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-join-q1": {
@@ -385,6 +462,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-join-q3": {
@@ -395,6 +479,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-join-q5": {
@@ -405,6 +496,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "iot-time-weighted-average": {
@@ -523,6 +621,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "job-2a": {
@@ -533,6 +638,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "job-6a": {
@@ -543,6 +655,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "dbt-pivot-conditional": {
@@ -795,6 +914,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "ssb-q2.1": {
@@ -805,6 +931,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "ssb-q3.1": {
@@ -815,6 +948,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "ssb-q4.1": {
@@ -825,6 +965,13 @@
    "duckdb": "runs",
    "polars": "runs",
    "snowflake": "sql (tie_free)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "ts-asof-trades-quotes": {

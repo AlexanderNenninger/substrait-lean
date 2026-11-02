@@ -13,6 +13,17 @@ features = ["group_by", "sum"]
 ibis = '''
 q = x.group_by("id1").aggregate(v1=_.v1.sum())
 '''
+requires = '''
+{
+    'x': [_.v1.between(1, 5)],
+}
+'''
+ensures = '''
+[
+    _.v1 >= 1,
+    sv.unique('id1'),
+]
+'''
 
 [[query]]
 id = "h2o-groupby-q3"
@@ -24,6 +35,17 @@ features = ["group_by", "sum", "avg"]
 pitfalls = ["float_sum_order: the mean of doubles depends on the summation order"]
 ibis = '''
 q = x.group_by("id3").aggregate(v1=_.v1.sum(), v3=_.v3.mean())
+'''
+requires = '''
+{
+    'x': [_.v1.between(1, 5), _.v3.between(0, 100)],
+}
+'''
+ensures = '''
+[
+    _.v1 >= 1,
+    sv.unique('id3'),
+]
 '''
 
 [[query]]
@@ -48,6 +70,17 @@ features = ["group_by", "min_max", "project", "arithmetic_int"]
 ibis = '''
 q = x.group_by("id3").aggregate(mx=_.v1.max(), mn=_.v2.min()).select("id3", range_v1_v2=_.mx - _.mn)
 '''
+requires = '''
+{
+    'x': [_.v1.between(1, 5), _.v2.between(1, 15)],
+}
+'''
+ensures = '''
+[
+    _.range_v1_v2.isnull() | _.range_v1_v2.between(-14, 4),
+    sv.unique('id3'),
+]
+'''
 
 [[query]]
 id = "h2o-groupby-q8"
@@ -65,6 +98,14 @@ q = (
     .filter(_.rn < 2)
     .select("id6", largest2_v3=_.v3)
 )
+'''
+requires = '''
+{
+    'x': [_.v3.between(0, 100)],
+}
+'''
+ensures = '''
+[]
 '''
 
 [[query]]
@@ -90,6 +131,17 @@ pitfalls = ["null_join_keys: NULL keys form their own group in GROUP BY"]
 ibis = '''
 q = x.group_by(["id1", "id2", "id3", "id4", "id5", "id6"]).aggregate(v3=_.v3.sum(), count=_.count())
 '''
+requires = '''
+{
+    'x': [_.v3.between(0, 100)],
+}
+'''
+ensures = '''
+[
+    _['count'] >= 1,
+    sv.unique('id1', 'id2', 'id3', 'id4', 'id5', 'id6'),
+]
+'''
 
 [[query]]
 id = "h2o-join-q1"
@@ -101,6 +153,15 @@ features = ["inner_join"]
 pitfalls = ["null_join_keys: NULL keys never match"]
 ibis = '''
 q = xj.join(small, "id1")
+'''
+requires = '''
+{
+    'xj': [],
+    'small': [sv.unique('id1')],
+}
+'''
+ensures = '''
+[]
 '''
 
 [[query]]
@@ -114,6 +175,15 @@ pitfalls = ["null_join_keys: Polars matches NULL keys only with nulls_equal=True
 ibis = '''
 q = xj.left_join(medium, "id2")
 '''
+requires = '''
+{
+    'xj': [],
+    'medium': [sv.unique('id2')],
+}
+'''
+ensures = '''
+[]
+'''
 
 [[query]]
 id = "h2o-join-q5"
@@ -124,4 +194,13 @@ source = { name = "db-benchmark join q5", url = "https://github.com/duckdblabs/d
 features = ["inner_join"]
 ibis = '''
 q = xj.join(medium, xj.id5 == medium.id5)
+'''
+requires = '''
+{
+    'xj': [],
+    'medium': [],
+}
+'''
+ensures = '''
+[]
 '''

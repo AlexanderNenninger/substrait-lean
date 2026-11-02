@@ -15,6 +15,17 @@ pitfalls = ["empty_aggregate: NULL, NULL on an empty table"]
 ibis = '''
 q = hits.aggregate(first=hits.EventDate.min(), last=hits.EventDate.max())
 '''
+requires = '''
+{
+    'hits': [_.EventDate.between(D('2013-01-01'), D('2014-12-31'))],
+}
+'''
+ensures = '''
+[
+    _.first.isnull() | _.first.between(D('2013-01-01'), D('2014-12-31')),
+    _.last.isnull() | _.last.between(D('2013-01-01'), D('2014-12-31')),
+]
+'''
 
 [[query]]
 id = "clickbench-q09"
@@ -31,6 +42,18 @@ q = (
     .order_by(ibis.desc("u"))
     .limit(10)
 )
+'''
+requires = '''
+{
+    'hits': [],
+}
+'''
+ensures = '''
+[
+    _.c >= 1,
+    _.u >= 0,
+    sv.unique('RegionID'),
+]
 '''
 
 [[query]]
@@ -50,6 +73,17 @@ q = (
     .limit(10)
 )
 '''
+requires = '''
+{
+    'hits': [],
+}
+'''
+ensures = '''
+[
+    _.c >= 1,
+    sv.unique('SearchPhrase'),
+]
+'''
 
 [[query]]
 id = "clickbench-q21"
@@ -67,6 +101,17 @@ q = (
     .order_by(ibis.desc("c"))
     .limit(10)
 )
+'''
+requires = '''
+{
+    'hits': [],
+}
+'''
+ensures = '''
+[
+    _.c >= 1,
+    sv.unique('SearchPhrase'),
+]
 '''
 
 [[query]]
@@ -112,6 +157,17 @@ q = (
     .limit(10)
 )
 '''
+requires = '''
+{
+    'hits': [_.IsRefresh.between(0, 1), _.DontCountHits.between(0, 1)],
+}
+'''
+ensures = '''
+[
+    _.pageviews >= 1,
+    sv.unique('URL'),
+]
+'''
 
 [[query]]
 id = "clickbench-q42"
@@ -134,4 +190,15 @@ q = (
     .order_by("m")
     .limit(10, offset=1)
 )
+'''
+requires = '''
+{
+    'hits': [_.IsRefresh.between(0, 1), _.DontCountHits.between(0, 1), _.EventTime.between(ibis.timestamp('2013-01-01 00:00:00'), ibis.timestamp('2014-12-31 23:59:59'))],
+}
+'''
+ensures = '''
+[
+    _.pageviews >= 1,
+    sv.unique('m'),
+]
 '''

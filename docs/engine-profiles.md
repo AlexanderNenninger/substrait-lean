@@ -92,6 +92,14 @@ execution backend (#211).
   expression, under DuckDB's profile, has the reference's outcome: the same
   value, or an error.
 
+For a plan `verify` proves error-free from its contract, no shim is needed:
+`Profile.duckdb_faithful` shows that DuckDB's profile agrees with the
+reference wherever the reference does not raise, so guard elimination
+(`Rel.guardFree_sound`) gives **`Rel.duckdb_sound`**: on every catalog that
+meets the preconditions, the plan evaluated with DuckDB's functions gives
+`Rel.eval`'s rows. The catalogue's benchmark queries are checked this way
+(`verified_sql`, #229).
+
 Trusted: that `Profile.duckdb` matches DuckDB (to be checked by the fuzzer),
 and that the SQL printer prints the shimmed plan faithfully (`isNum` as `IS
 NOT NULL` included). Next: relations, the

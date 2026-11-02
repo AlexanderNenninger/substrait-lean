@@ -46,6 +46,27 @@ q = customer_updates.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop
   the original query the formulation rewrote away (`"correlated_subquery ->
   join with the average per part"`), so the frequency counts see the original.
 * `pitfalls` are `tag: what it means here`, with tags from `pitfalls.toml`.
+* `requires` and `ensures` are the query's **contract**: Python expressions in
+  `ibis`'s scope for `sv.verify`'s preconditions (a mapping from table name to
+  conditions) and postconditions (a list). Where the benchmark's
+  specification gives ranges, keys and NOT NULL columns, the preconditions
+  state them; otherwise they are plausible choices, written down. A query
+  has both or neither.
+
+A dataset in `schemas.toml` can list `keys` (columns of distinct values in
+the synthetic data, never NULL) and `not_null`, so that the synthetic tables
+meet the contracts' preconditions.
+
+### Verified SQL on DuckDB (#229)
+
+For a query with a contract, the probe records `contract` (whether `verify`
+proves it, whether the plan is `guard_free`, and whether the synthetic tables
+meet the preconditions) and `verified_sql.duckdb`. It is `yes` when all three
+hold and DuckDB gives the reference's rows. Then `Rel.duckdb_sound`
+(`SubstraitLean/Profile.lean`) proves that on every database meeting the
+preconditions, DuckDB's profile gives `Rel.eval`'s rows. Trusted: that the
+profile is DuckDB's, the SQL printer, and the runtime check of an integer
+`SUM` (which `guard_free` allows: bounding sums needs row counts, #219).
 
 ## Sources and licences
 

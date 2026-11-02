@@ -19,6 +19,17 @@ q = (
     .aggregate(revenue=(_.lo_extendedprice * _.lo_discount).sum())
 )
 '''
+requires = '''
+{
+    'lineorder': [_.lo_quantity.between(1, 50), _.lo_discount.between(0, 10), _.lo_extendedprice.between(0, 10_000_000)],
+    'dwdate': [sv.unique('d_datekey')],
+}
+'''
+ensures = '''
+[
+    (_.revenue >= 0) | _.revenue.isnull(),
+]
+'''
 
 [[query]]
 id = "ssb-q2.1"
@@ -37,6 +48,20 @@ q = (
     .aggregate(revenue=_.lo_revenue.sum())
     .order_by(["d_year", "p_brand1"])
 )
+'''
+requires = '''
+{
+    'lineorder': [_.lo_revenue.between(0, 10_000_000)],
+    'dwdate': [sv.unique('d_datekey')],
+    'part': [sv.unique('p_partkey')],
+    'supplier': [sv.unique('s_suppkey')],
+}
+'''
+ensures = '''
+[
+    (_.revenue >= 0) | _.revenue.isnull(),
+    sv.unique('d_year', 'p_brand1'),
+]
 '''
 
 [[query]]
@@ -57,6 +82,21 @@ q = (
     .order_by(["d_year", ibis.desc("revenue")])
 )
 '''
+requires = '''
+{
+    'lineorder': [_.lo_revenue.between(0, 10_000_000)],
+    'customer': [sv.unique('c_custkey')],
+    'supplier': [sv.unique('s_suppkey')],
+    'dwdate': [sv.unique('d_datekey')],
+}
+'''
+ensures = '''
+[
+    (_.revenue >= 0) | _.revenue.isnull(),
+    _.d_year.between(1992, 1997),
+    sv.unique('c_nation', 's_nation', 'd_year'),
+]
+'''
 
 [[query]]
 id = "ssb-q4.1"
@@ -76,4 +116,18 @@ q = (
     .aggregate(profit=(_.lo_revenue - _.lo_supplycost).sum())
     .order_by(["d_year", "c_nation"])
 )
+'''
+requires = '''
+{
+    'lineorder': [_.lo_revenue.between(0, 10_000_000), _.lo_supplycost.between(0, 10_000_000)],
+    'dwdate': [sv.unique('d_datekey')],
+    'customer': [sv.unique('c_custkey')],
+    'supplier': [sv.unique('s_suppkey')],
+    'part': [sv.unique('p_partkey')],
+}
+'''
+ensures = '''
+[
+    sv.unique('d_year', 'c_nation'),
+]
 '''

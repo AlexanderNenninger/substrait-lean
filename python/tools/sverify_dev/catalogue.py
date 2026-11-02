@@ -114,6 +114,12 @@ class Query:
     """Features of the original query that this formulation rewrote away, as
     `feature -> how` (an Ibis user would write it so)."""
     notes: str = ""
+    requires: str | None = None
+    """The contract's preconditions: a Python expression for a mapping from
+    table name to conditions (`sv.verify`'s `requires`), in `ibis`'s scope."""
+    ensures: str | None = None
+    """The contract's postconditions: a Python expression for a list of
+    conditions on the result (`sv.verify`'s `ensures`), in `ibis`'s scope."""
 
     @property
     def needs(self) -> list[str]:
@@ -164,6 +170,8 @@ def load_queries(root: Path = ROOT) -> list[Query]:
                     not_expressible=q.get("not_expressible"),
                     rewrites=q.get("rewrites", []),
                     notes=q.get("notes", ""),
+                    requires=q.get("requires"),
+                    ensures=q.get("ensures"),
                 )
             )
     return queries
@@ -207,6 +215,8 @@ def validate(
                 problems.append(f"{where}: rewrite {r!r} is not 'feature -> how'")
         if not q.intent.endswith("."):
             problems.append(f"{where}: intent should be one sentence ending in '.'")
+        if (q.requires is None) != (q.ensures is None):
+            problems.append(f"{where}: a contract needs both requires and ensures")
     return problems
 
 
@@ -263,16 +273,23 @@ def synthetic(
     """Small random tables for `dataset`. Columns draw from `values` pools
     where the schema gives one (so filters on literals match), integer
     columns from 0..5 (so joins on keys match), and are NULL one time in ten
-    unless listed in `not_null`."""
+    unless listed in `not_null`. A column listed in `keys` holds distinct
+    integers instead, and is never NULL."""
     ds = schemas["datasets"][dataset]
     pools = ds.get("values", {})
-    not_null = set(ds.get("not_null", []))
+    keys = set(ds.get("keys", []))
+    not_null = set(ds.get("not_null", [])) | keys
     out = {}
     for name, cols in ds["tables"].items():
         rng = random.Random(f"{seed}/{dataset}/{name}")
         arrow = tables(schemas, dataset, profile)[name].schema().to_pyarrow()
         data: dict[str, list] = {}
         for c, t in cols.items():
+            if f"{name}.{c}" in keys:
+                # A key: distinct integers 0…rows-1, so foreign keys drawn
+                # from 0..5 still join.
+                data[c] = rng.sample(range(rows), rows)
+                continue
             nullable = f"{name}.{c}" not in not_null
             vals = [_value(rng, t, pools.get(f"{name}.{c}"), nullable) for _ in range(rows)]
             if profile == "double" and t.startswith("decimal"):
@@ -291,17 +308,69 @@ def date_literal(s: str) -> ir.DateValue:
     return ibis.literal(s).cast("date")  # pyrefly: ignore
 
 
+def scope(q: Query, schemas: dict[str, Any], profile: Profile) -> dict[str, Any]:
+    """What a query's `ibis`, `requires` and `ensures` see."""
+    import sverify
+
+    ns: dict[str, Any] = {"ibis": ibis, "_": _, "sv": sverify, "D": date_literal}
+    ns.update(tables(schemas, q.dataset, profile))
+    return ns
+
+
 def build(q: Query, schemas: dict[str, Any], profile: Profile) -> ir.Table | str:
     """The query: an Ibis expression, or its DataFusion SQL."""
     if q.sql is not None:
         return q.sql
     assert q.ibis is not None
-    import sverify
-
-    ns: dict[str, Any] = {"ibis": ibis, "_": _, "sv": sverify, "D": date_literal}
-    ns.update(tables(schemas, q.dataset, profile))
+    ns = scope(q, schemas, profile)
     exec(q.ibis, ns)  # noqa: S102 - the catalogue's own code
     return ns["q"]
+
+
+def contract(q: Query, schemas: dict[str, Any], profile: Profile) -> tuple[dict, list]:
+    """The query's `requires` and `ensures`."""
+    assert q.requires is not None and q.ensures is not None
+    ns = scope(q, schemas, profile)
+    return eval(q.requires, ns), eval(q.ensures, ns)  # noqa: S307 - the catalogue's own code
+
+
+def requires_hold(con: Connection, requires: dict) -> str | None:
+    """None if the synthetic tables meet the preconditions, else the first
+    that fails."""
+    from sverify._weighted import duplicate_keys
+    from sverify.contracts import Unique, discharge
+
+    for t, conds in requires.items():
+        for c in conds:
+            if isinstance(c, Unique) and (dup := duplicate_keys(con.arrow[t], c.cols)):
+                return f"{t}: {dup} duplicate(s) of key {c.cols}"
+        rowwise = [c for c in conds if not isinstance(c, Unique)]
+        try:
+            discharge(con.table(t), t, rowwise, None, None, f"row(s) of {t}")
+        except Exception as e:  # noqa: BLE001 - a precondition that fails on the data
+            return _first_line(e)
+    return None
+
+
+def probe_contract(
+    con: Connection, q: Query, schemas: dict[str, Any], profile: Profile, query: ir.Table | str
+) -> dict[str, Any]:
+    """Whether `verify` proves the query's contract, whether the plan cannot
+    raise (`guard_free`: `Rel.duckdb_sound` then gives `Rel.eval`'s rows on
+    DuckDB's profile), and whether the synthetic tables meet the
+    preconditions."""
+    import sverify
+
+    requires, ensures = contract(q, schemas, profile)
+    report = sverify.verify(query, requires=requires, ensures=ensures)
+    out: dict[str, Any] = {"proved": report.proved, "guard_free": report.guard_free}
+    if unproved := [c.label for c in report.unproved]:
+        out["unproved"] = unproved
+    if errors := [str(i) for i in report.errors]:
+        out["may_fail"] = errors
+    if (bad := requires_hold(con, requires)) is not None:
+        out["data"] = f"violates the preconditions: {bad}"
+    return out
 
 
 def _value_of(v: object) -> object:
@@ -464,7 +533,7 @@ def probe_profile(
         lines = [ln for ln in out.splitlines() if ln.startswith(("error:", "well-formed: no"))]
         detail = _first_line((lines or [out])[-1])
         return {"checker": "rejected", "detail": detail, "datafusion": ran}
-    return {
+    result: dict[str, Any] = {
         "checker": "verified",
         "incremental": "incremental: yes" in out,
         "datafusion": ran,
@@ -472,6 +541,15 @@ def probe_profile(
             con, written_plan(plan), reference, lambda: duckdb_rows(con, query)
         ),
     }
+    if q.requires is not None:
+        c = result["contract"] = probe_contract(con, q, schemas, profile, query)
+        # Verified SQL (#229): the contract is proved, nothing may raise, the
+        # data meets the preconditions, and DuckDB gives the rows.
+        ok = c["proved"] and c["guard_free"] and "data" not in c
+        result["verified_sql"] = {
+            "duckdb": "yes" if ok and result["engines"].get("duckdb") == "runs" else "no"
+        }
+    return result
 
 
 def duckdb_rows(con: Connection, query: ir.Table | str) -> list[tuple] | None:
