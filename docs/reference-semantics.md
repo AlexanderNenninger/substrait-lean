@@ -42,7 +42,7 @@ to the engine:
   (`FloatSums`), each result within the error bound of
   [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85);
 * a statistical aggregate's value (`VARIANCE`, `STDDEV`, `COVAR_*`, `CORR`),
-  within its generic properties (`AggFn.StatAllowed`, with #85).
+  within its generic properties (`StatProps`, with #85).
 
 A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds

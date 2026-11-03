@@ -1,5 +1,6 @@
 import SubstraitLean.Partition
 import SubstraitLean.LoweringDuckDB
+import SubstraitLean.StatProps
 
 /-!
 # What the reference allows
@@ -20,7 +21,7 @@ The reference leaves these choices to the engine:
   (`FloatSums`); the error bound of #85 (`float-bounds/`) is a theorem about
   this set;
 * the value of a statistical aggregate, within its generic properties
-  (`AggFn.StatAllowed`).
+  (`StatProps`, `SubstraitLean/StatProps.lean`).
 
 For a plan without these choices (`Rel.detPlan`), every allowed result is
 `Rel.eval`'s up to the order of rows (`Rel.allowed_perm_eval`), so whatever
@@ -42,18 +43,13 @@ inductive FloatSums : List Value → Int → Prop
   | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSums xs a →
       FloatSums ys b → FloatSums vs (FloatCode.lift₂ (· + ·) a b)
 
-/-- What a statistical aggregate (`VARIANCE`, `STDDEV`, `COVAR_*`, `CORR`)
-of `vs` may give. For now the reference's own formula; their generic
-properties come with #85. -/
-def AggFn.StatAllowed (f : AggFn) (vs : List Value) (v : Value) : Prop := v = f.apply vs
-
 /-- What an aggregate of the values `vs`, taken in this order, may give. -/
 def AggFn.Allowed (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
   | .fsum => if vs = [] then v = .null else ∃ c, FloatSums vs c ∧ v = .int c
   | .avg => if vs = [] then v = .null else
       ∃ c, FloatSums vs c ∧ v = .int (FloatCode.lift₂ (· / ·) c (FloatCode.ofInt vs.length))
-  | .var _ _ | .cov _ | .corr => f.StatAllowed vs v
+  | .var _ _ | .cov _ | .corr => StatProps f vs v
   | _ => v = f.apply vs
 
 theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.apply vs) := by
