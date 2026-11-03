@@ -1,0 +1,91 @@
+"""Aggregates and GROUPING SETS in DuckDB SQL through sverify's own lift
+(`sverify.sql_lift`): oracles A and C, and the refusals."""
+
+import json
+
+import pytest
+
+from _sql_lift import SCHEMAS, TABLES
+from sverify.engine import run_checker
+from sverify.plan_json import Unsupported as Refused
+from sverify.sql_lift import lift
+from sverify_dev.lift import check
+
+pytestmark = pytest.mark.backend("duckdb")
+
+#: Queries of the subset, each through oracles A and C.
+QUERIES = [
+    # DuckDB's AVG of a DECIMAL is a DOUBLE: the exact sum by the count.
+    "SELECT customer, avg(cost) AS a FROM orders GROUP BY customer",
+    "SELECT avg(cost) AS a FROM orders WHERE id > 100",
+    "SELECT customer, count(*) AS n, sum(amount) AS total, avg(qty) AS a, min(amount) AS lo,"
+    " max(day) AS last, sum(cost) AS c, count(DISTINCT qty) AS dq"
+    " FROM orders GROUP BY customer HAVING count(*) >= 1 ORDER BY total DESC",
+    "SELECT qty, count(*) FROM orders GROUP BY 1 ORDER BY 2 DESC, 1",
+    "SELECT count(*) AS n, sum(qty) AS s FROM orders WHERE amount > 100",
+    # DISTINCT and FILTER in aggregates.
+    "SELECT customer, count(DISTINCT qty) AS n, sum(DISTINCT amount) AS s,"
+    " sum(amount) FILTER (WHERE amount > 2) AS big, count(*) FILTER (WHERE qty IS NULL) AS nq"
+    " FROM orders GROUP BY customer",
+    # Grouping sets: one aggregate per set, UNION ALL'd; GROUPING() is a
+    # constant of each.
+    "SELECT customer, qty, sum(amount) AS s, count(*) AS n FROM orders"
+    " GROUP BY ROLLUP (customer, qty)",
+    "SELECT customer, qty, GROUPING(customer) AS g, GROUPING(customer, qty) AS gg, avg(price) AS p"
+    " FROM orders GROUP BY CUBE (customer, qty)",
+    "SELECT customer, day, count(*) AS n FROM orders"
+    " GROUP BY GROUPING SETS ((customer, day), (customer), ())",
+    "SELECT customer, qty, sum(amount) AS s FROM orders GROUP BY customer, ROLLUP (qty)"
+    " HAVING GROUPING(qty) = 1 OR sum(amount) > 4",
+    "SELECT customer, GROUPING(customer) AS g,"
+    " rank() OVER (PARTITION BY GROUPING(customer) ORDER BY sum(amount)) AS r"
+    " FROM orders GROUP BY ROLLUP (customer) ORDER BY g DESC, customer",
+    "SELECT customer, sum(amount) AS s FROM orders WHERE id > 99 GROUP BY ROLLUP (customer)",
+]
+
+
+@pytest.mark.parametrize("query", QUERIES)
+def test_oracles_a_and_c(query):
+    # A: DuckDB on the SQL, and Lean on the lifted plan. C: DuckDB on the
+    # plan Lean writes back.
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
+def test_the_reference_lift_is_checked_too(query):
+    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    code, out, err = run_checker((), plan)
+    assert code == 0, err or out
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("SELECT GROUPING(id) FROM orders GROUP BY ROLLUP (customer)", "GROUPING of"),
+        ("SELECT id, customer FROM orders GROUP BY id", "GROUP BY"),
+        # DuckDB reads `amount` in HAVING as the column, SQLGlot as the alias.
+        (
+            "SELECT amount + 1 AS amount FROM orders GROUP BY amount HAVING amount = 5",
+            "both an input column and an output alias",
+        ),
+    ],
+)
+def test_refusals_say_what(query, message):
+    with pytest.raises(Refused, match=message):
+        lift(query, SCHEMAS)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # `avg` of integers: the exact sum by the count, in doubles.
+        "SELECT customer, avg(amount) AS a, avg(qty) AS q, avg(DISTINCT qty) AS d"
+        " FROM orders GROUP BY customer",
+    ],
+)
+def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):
+    # With DuckDB's semantics, these come from Lean's generated lift table
+    # (#268), which states NaN and ±inf exactly instead of refusing them.
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
