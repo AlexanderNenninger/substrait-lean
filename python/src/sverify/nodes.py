@@ -601,7 +601,8 @@ class StageRefresh:
         if "snapshot diff" in modes:
             parts.append("Δ exact (snapshot diff)")
         pre = self.report.preconditions
-        meta = sum(p.source != ON_DATA for p in pre)
+        # "checked on data, watermark …" (#294) is checked on data too.
+        meta = sum(not p.source.startswith(ON_DATA) for p in pre)
         if meta < len(pre):
             text = f"requires checked on {sum(s.inserts for s in sources)} row(s)"
             parts.append(text + (f" ({meta} proved from metadata)" if meta else ""))
