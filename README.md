@@ -36,6 +36,8 @@ decide what the reference does ([#185](https://github.com/AlexanderNenninger/sub
 Engine quirks belong in the engine profiles ([engine-profiles.md](docs/engine-profiles.md)).
 Changing the reference is a breaking change.
 
+Sverify builds on a lot of prior work, from Substrait, Lean and DuckDB to research on SQL semantics, incremental views and floating point. [prior-work.md](docs/prior-work.md) credits it and places sverify next to related tools.
+
 ## How the parts fit
 
 ```text
@@ -89,6 +91,8 @@ SQL string ─► SQLGlot lift ────────────────�
   proved optimizations, nested values and doubles.
 * [python/README.md](python/README.md): install, quick example, API overview and
   the engine tiers (DuckDB is Tier 1).
+* [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
+  citations, and related tools.
 
 ## The Lean project
 

@@ -870,6 +870,8 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
 
 ## Prior work to build on
 
+The full credits and a comparison with related tools are in [prior-work.md](prior-work.md).
+
 We found no formal semantics for Substrait. The closest work formalizes SQL or relational algebra:
 
 Coq (most mature)
