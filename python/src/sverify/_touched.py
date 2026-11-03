@@ -180,10 +180,10 @@ def _frame(proj: Any) -> tuple[ops.Field, timedelta, timedelta] | None:
         if not isinstance(w.func, ops.Reduction) or w.how != "range" or len(w.order_by) != 1:
             return None
         key = w.order_by[0]
-        if not key.ascending or not isinstance(key.expr, ops.Field):
+        if not key.ascending or not isinstance(key.arg, ops.Field):
             return None
-        dtype: Any = key.expr.dtype
-        if key.expr.rel != proj.parent or not dtype.is_timestamp():
+        dtype: Any = key.arg.dtype
+        if key.arg.rel != proj.parent or not dtype.is_timestamp():
             return None
         if w.start is None or w.end is None:
             return None
@@ -193,7 +193,7 @@ def _frame(proj: Any) -> tuple[ops.Field, timedelta, timedelta] | None:
             return None
         starts.append(timedelta(microseconds=-s if w.start.preceding else s))
         ends.append(timedelta(microseconds=-e if w.end.preceding else e))
-        fields.add(key.expr)
+        fields.add(key.arg)
     if len(fields) != 1:
         return None
     return fields.pop(), min(starts), max(ends)
