@@ -424,9 +424,11 @@ jobs:
             commit -q -m "Notebooks of sverify $VERSION"
           git -c http.extraheader="$auth" push origin published
 
-  # The rolling nightly pre-release: the tag moves to the built commit, the new
-  # wheels go up, then the previous ones go. It is never marked latest, and its
-  # tag never starts with `v`, so `publish` never sees it.
+  # The rolling nightly pre-release: the tag moves to the built commit and the
+  # new wheels go up next to the earlier builds' (their names differ by
+  # version), so a pinned wheel URL keeps working. Wheels older than
+  # `KEEP_DAYS` go. It is never marked latest, and its tag never starts with
+  # `v`, so `publish` never sees it.
   publish-nightly:
     if: needs.nightly.outputs.version
     needs: [nightly, build, test-pythons]
@@ -439,6 +441,7 @@ jobs:
       DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      KEEP_DAYS: 30
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -451,7 +454,8 @@ jobs:
           page="https://github.com/$GH_REPO/releases/expanded_assets/$TAG"
           cat > notes.md <<NOTES
           Wheels of \`main\` at $GITHUB_SHA, built $(date -u +%Y-%m-%d), version \`$VERSION\`.
-          The nightly run replaces them when \`main\` changes. They are not on PyPI.
+          The nightly run adds newer ones when \`main\` changes, and each build's wheels
+          stay here for $KEEP_DAYS days, so a pinned wheel URL works that long. They are not on PyPI.
 
           \`\`\`bash
           uv add "sverify>=${VERSION%%.dev*}.dev0" --find-links $page
@@ -481,8 +485,11 @@ jobs:
           else
             gh release create "$TAG" --verify-tag --prerelease --latest=false --title "Nightly wheels" --notes-file notes.md
           fi
-          old=$(gh release view "$TAG" --json assets -q '.assets[].name')
           gh release upload "$TAG" dist/*.whl --clobber
-          for name in $old; do
-            [ -e "dist/$name" ] || gh release delete-asset "$TAG" "$name" --yes
-          done
+          cutoff=$(date -u -d "$KEEP_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+          release=$(gh api "repos/$GH_REPO/releases/tags/$TAG" -q .id)
+          gh api --paginate "repos/$GH_REPO/releases/$release/assets?per_page=100" \
+            -q ".[] | select(.created_at < \"$cutoff\") | .name" |
+            while read -r name; do
+              [ -e "dist/$name" ] || gh release delete-asset "$TAG" "$name" --yes
+            done
