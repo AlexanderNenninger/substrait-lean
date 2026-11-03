@@ -25,11 +25,12 @@ plan.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 import ibis
 import ibis.expr.types as ir
 
-from sverify._retention import _aggregate, _row_local
+from sverify._retention import _aggregate, _bucket, _row_local
 
 SQL = "the view is SQL; touched groups need an Ibis expression"
 NOT_AGGREGATE = "not an aggregate under filters and projections of its rows"
@@ -50,6 +51,25 @@ class Touched:
     (the input's columns)."""
     recompute: str
     """The view over the input rows whose keys are rows of `<view>$keys`."""
+    ranged: Ranged | None = None
+    """With a time bucket among the keys: `recompute` that reads only the
+    input rows in the touched buckets' time range."""
+
+
+@dataclass(frozen=True)
+class Ranged:
+    """`Touched.recompute` over the input rows whose time column lies in the
+    range of the one-row table `<view>$range` (`__lo`, `__hi`): the rows of the
+    buckets from `lo` up to `hi`, a superset of the touched buckets' rows,
+    since a bucket starting at `b` holds the times in `[b, b + width)`
+    (`Retention.bucket_le`, `Retention.lt_bucket_add`). The semi-join on the
+    keys still picks the exact rows; the range lets the engine skip the
+    others while it scans."""
+
+    key: int
+    """Which key is the bucket."""
+    width: timedelta
+    plan: str
 
 
 def plan(name: str, query: ir.Table | str) -> Touched | str:
@@ -82,14 +102,40 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
     ).distinct()
     touched = ibis.table(keys.schema(), name=f"{name}$keys")
     on = [g.to_expr().identical_to(touched[f"k{i}"]) for i, g in enumerate(groups)]  # type: ignore[union-attr]
-    narrowed = parent.semi_join(touched, on)
-    # Through a placeholder: `narrowed` holds the input itself.
     hole = ibis.table(parent.schema(), name=f"{name}$hole").op()
-    recompute = query.op().replace({agg.parent: hole}).replace({hole: narrowed.op()})
+
+    def over(narrowed: ir.Table) -> str:
+        # Through a placeholder: `narrowed` holds the input itself.
+        q = query.op().replace({agg.parent: hole}).replace({hole: narrowed.op()})
+        return written_plan(plan_json(None, q.to_expr()))  # type: ignore[arg-type,attr-defined]
+
     return Touched(
         columns=[names[g] for g in agg.groups],
         deltas=deltas,
         input_names=list(parent.columns),
         keys=written_plan(plan_json(None, keys)),  # type: ignore[arg-type]
-        recompute=written_plan(plan_json(None, recompute.to_expr())),  # type: ignore[arg-type,attr-defined]
+        recompute=over(parent.semi_join(touched, on)),
+        ranged=_ranged(name, agg, groups, touched, over),
     )
+
+
+def _ranged(name, agg, groups, touched, over) -> Ranged | None:
+    """`Ranged` for the first key that is a fixed-width time bucket of an
+    input column, if one is."""
+    for i, g in enumerate(groups):
+        b = _bucket(g)
+        if isinstance(b, str) or b[0].rel != agg.parent:
+            continue
+        f, width, _origin = b
+        parent = agg.parent.to_expr()
+        dtype = touched[f"k{i}"].type()
+        bounds = ibis.table({"__lo": dtype, "__hi": dtype}, name=f"{name}$range")
+        joined = parent.cross_join(bounds)
+        col = joined[f.name]
+        inside = joined.filter(col >= joined["__lo"], col < joined["__hi"]).select(*parent.columns)
+        on = [
+            g.replace({agg.parent: inside.op()}).to_expr().identical_to(touched[f"k{j}"])  # type: ignore[union-attr]
+            for j, g in enumerate(groups)
+        ]
+        return Ranged(i, width, over(inside.semi_join(touched, on)))
+    return None

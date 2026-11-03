@@ -70,6 +70,7 @@ from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, store_for
 from sverify._weighted import (
     WEIGHT,
+    _call,
     concat,
     consolidated,
     deleted_count,
@@ -83,6 +84,7 @@ from sverify._weighted import (
     positive,
     row_count,
     rows_of,
+    split_matching,
     weighted,
 )
 from sverify.contracts import (
@@ -1107,12 +1109,20 @@ class IncrementalView:
         rows = pa.concat_tables(
             [r.drop_columns([r.column_names[-1]]).rename_columns(spec.input_names) for r in parts]
         )
-        names = (self.name + "$in", self.name + "$keys")
+        names = (self.name + "$in", self.name + "$keys", self.name + "$range")
         try:
             put_table(con, names[0], rows)
             keys = run_plan(con, spec.keys, self.engine)
             put_table(con, names[1], keys)
-            new = run_plan_on(con, spec.recompute, self.engine, new_tables, self.tables)
+            plan = spec.recompute
+            # With a time bucket among the keys, read only the touched range.
+            if (r := spec.ranged) is not None and not keys.column(r.key).null_count:
+                b = keys.column(r.key)
+                lo, hi = _call("min", b).as_py(), _call("max", b).as_py() + r.width
+                bounds = {"__lo": pa.array([lo], b.type), "__hi": pa.array([hi], b.type)}
+                put_table(con, names[2], pa.table(bounds))
+                plan = r.plan
+            new = run_plan_on(con, plan, self.engine, new_tables, self.tables)
         finally:
             for n in names:
                 con.drop(n)
@@ -1916,12 +1926,14 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
     occurrence each) and inserted. Raises `ValueError`, naming a row, if a
     delete is not in `current`, even where the change also inserts it."""
     deletes = negative(change)
-    kept = consolidated(weighted(current, 1), deletes)
+    inserts = positive(change)
+    if not deletes.num_rows:
+        return concat([current, expanded(inserts)])
+    # Only the rows equal to a deleted row change, at the cost of the change.
+    hit, rest = split_matching(current, deletes)
+    kept = consolidated(weighted(hit, 1), deletes)
     missing = negative(kept)
     if missing.num_rows:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
-    inserts = positive(change)
-    if not deletes.num_rows:
-        return concat([current, expanded(inserts)])
-    return expanded(consolidated(kept, inserts))
+    return concat([rest, expanded(consolidated(kept, inserts))])

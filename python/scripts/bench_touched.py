@@ -1,7 +1,7 @@
 """Touched-group recompute against recompute-and-diff, on the metrics shape.
 
     uv run python scripts/bench_touched.py [--hosts n] [--days d] [--refreshes r]
-        [--engines duckdb] [--timeout seconds]
+        [--engines duckdb] [--timeout seconds] [--profile]
 
 A view of per-minute groups (count, mean and max of a sample) over samples
 taken every 5 seconds per host for `--days` days (default 14, 10 hosts:
@@ -9,12 +9,15 @@ taken every 5 seconds per host for `--days` days (default 14, 10 hosts:
 5), each inserting the next minute of samples of every host. Per engine and
 strategy: the build time and the median refresh time. Each case runs in a
 process of its own, so the peak memory (`ru_maxrss`) is that case's.
+`--profile` prints where the refreshes spent their time.
 
 * `touched`: the groups each batch touches, recomputed (`sverify._touched`).
 * `diff`: the whole view recomputed and diffed, as before.
 """
 
+import cProfile
 import multiprocessing as mp
+import pstats
 import resource
 import statistics
 import sys
@@ -49,7 +52,9 @@ def rows(table: pa.Table) -> list[tuple]:
     return list(zip(*table.to_pydict().values(), strict=True))
 
 
-def case(strategy: str, engine: str, hosts: int, days: int, refreshes: int, out: mp.Queue):
+def case(
+    strategy: str, engine: str, hosts: int, days: int, refreshes: int, profile: bool, out: mp.Queue
+):
     n = days * 24 * 3600 // STEP
     con = sv.connect()
     put_table(con, "samples", samples(hosts, 0, n, seed=0))
@@ -65,11 +70,19 @@ def case(strategy: str, engine: str, hosts: int, days: int, refreshes: int, out:
         view.touched = None
     times = []
     per_minute = 60 // STEP
+    profiler = cProfile.Profile() if profile else None
     for k in range(refreshes):
         batch = samples(hosts, n + k * per_minute, per_minute, seed=k + 1)
         t = time.perf_counter()
+        if profiler is not None:
+            profiler.enable()
         pipe.apply({"samples": sv.Changes(inserts=rows(batch))})
+        if profiler is not None:
+            profiler.disable()
         times.append(time.perf_counter() - t)
+    if profiler is not None:
+        print(f"-- {strategy} {engine}: where the refreshes spent their time", flush=True)
+        pstats.Stats(profiler).sort_stats("cumulative").print_stats(35)
     out.put((build, statistics.median(times), resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
 
 
@@ -85,13 +98,14 @@ def main(argv: list[str]) -> None:
     hosts, argv = option(argv, "--hosts", "10")
     days, argv = option(argv, "--days", "14")
     refreshes, argv = option(argv, "--refreshes", "5")
+    profile = "--profile" in argv
     timeout, argv = option(argv, "--timeout", "900")
     ctx = mp.get_context("spawn")
     print(f"{hosts} hosts, {days} days of 5 s samples, one minute per refresh", flush=True)
     for engine in engines.split(","):
         for strategy in ("touched", "diff"):
             q = ctx.Queue()
-            args = (strategy, engine, int(hosts), int(days), int(refreshes), q)
+            args = (strategy, engine, int(hosts), int(days), int(refreshes), profile, q)
             p = ctx.Process(target=case, args=args)
             p.start()
             p.join(float(timeout))
