@@ -364,6 +364,22 @@ build on it like on any other precondition of a source.
   nothing: each overflow fails the proof, and its hint names the bound to
   state.
 
+For what it does not infer, the report's `hint:` lines (`Report.hints`) name
+the bound to add. An integer `SUM` gets the range Lean knows for the column it
+adds up and the largest group whose sum then fits 64 bits, or a bound to add
+when the column has none:
+
+```python
+samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name="samples")
+per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
+    cpu=samples.cpu.sum()
+)
+print(sv.verify(per_minute))
+# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred)
+# ...
+# hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
+```
+
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream

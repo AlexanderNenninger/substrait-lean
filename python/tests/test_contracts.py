@@ -1,5 +1,7 @@
 """Contracts: postconditions are proved from preconditions, or refused."""
 
+from datetime import date, datetime
+
 import ibis
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -8,7 +10,7 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import bound_orders
-from sverify.contracts import violations
+from sverify.contracts import OVERFLOW_HINT, violations
 from sverify.engines import create_table
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
 from sverify_dev.examples import customers, orders
@@ -245,3 +247,50 @@ def test_proved_keys_hold_on_data(data):
         create_table(db, name, sensor1.schema(), data.draw(readings))
     result = iot_windows(db.table("sensor1"), db.table("sensor2"))
     assert violations(result, sv.unique("t0")) == 0
+
+
+# -- hints that name the bound to add (#379) ------------------------------------
+
+
+SAMPLES = ibis.table(
+    {"host": "string", "ts": "timestamp", "day": "date", "cpu": "int64"}, name="samples"
+)
+
+
+@pytest.mark.parametrize(
+    ("expr", "col", "low", "high"),
+    [
+        (
+            SAMPLES.select(m=SAMPLES.ts.truncate("m")),
+            "ts",
+            datetime(2000, 1, 1),
+            datetime(2100, 1, 1),
+        ),
+        (SAMPLES.select(m=SAMPLES.day.truncate("M")), "day", date(2000, 1, 1), date(2100, 1, 1)),
+    ],
+)
+def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
+    report = sv.verify(expr)
+    assert [i.kind for i in report.errors] == ["overflow"]
+    [hint] = report.hints
+    assert f"`_.{col} >= " in hint and f"`_.{col} < " in hint and "of samples" in hint
+    assert OVERFLOW_HINT not in str(report)  # the hint covers the overflow
+    bounded = sv.verify(expr, requires={"samples": [_[col] >= low, _[col] < high]})
+    assert not bounded.issues
+
+
+def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
+    expr = SAMPLES.group_by("host").aggregate(total=_.cpu.sum())
+    [hint] = sv.verify(expr).hints
+    assert hint.startswith("SUM of `cpu`: bound it in `requires` of samples")
+    assert "`_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`" in hint
+    assert "up to 9,223,372,036 rows" in hint
+    [hint] = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100]}).hints
+    assert "it is in [0, 100]" in hint and "up to 92,233,720,368,547,758 rows" in hint
+    assert "no contract states how many rows a group has" in hint
+
+
+def test_an_overflow_without_a_named_bound_keeps_the_general_hint():
+    report = sv.verify(SAMPLES.select(d=SAMPLES.cpu * SAMPLES.cpu))
+    assert report.errors and not report.hints
+    assert f"hint: {OVERFLOW_HINT}" in str(report)
