@@ -160,11 +160,30 @@ digit that matters. For values near `10⁶` that vary by about `1` (timestamps i
 seconds, say), it is `1.4 · 10⁴` at `10⁶` rows, against a variance of about
 `1`: no useful bound.
 
-The expected first-order behaviour of Welford's algorithm and of two-pass is
-`|Ŝ − S| ≲ c · n · u · √(S · Σx²)` (Chan, Golub and LeVeque, 1983), which
-scales with the spread and stays useful there; its proof is in progress. A
-tighter proved bound only narrows the allowed set, so it replaces this one
-without changing the interface.
+Bounds that scale with the spread are proved for two of the algorithms:
+
+- Two-pass ([`TwoPassRel.lean`](../float-bounds/FloatBounds/TwoPassRel.lean),
+  `twoPass_var_rel`): `|Ŝ − S| ≤ 8 n u S + 80 n² u² Σx² + 8 n² u · tiny`.
+  The error of the mean adds `n ε²` to the sum of squares, because the
+  deviations from the exact mean sum to `0`, so the bound is first order in
+  `u` relative to `S` itself.
+- Welford's update within one thread
+  ([`WelfordRel.lean`](../float-bounds/FloatBounds/WelfordRel.lean),
+  `welfordVar_rel`): `|Ŝ − S| ≤ 32 n u √(Q' S) + 104 n² u² Q' + 4 n u · tiny`,
+  `Q' = Σ (|x| + tiny)²`. This is the first-order behaviour Chan, Golub and
+  LeVeque (1983) describe. It needs the model to know that a double rounds
+  to itself (`StdModel.idem`, `StdModel.zero`), which makes Welford's first
+  step exact.
+
+For the timestamps above (`10⁶` rows near `10⁶`, spread `1`), Welford's bound
+on the variance is about `32 · 10⁶ · 1.1 · 10⁻¹⁶ · 10⁶ ≈ 3.6 · 10⁻³`, and
+two-pass's about `10⁻⁶`, against a variance of `1`.
+
+Chan's merge of the states of several threads (DuckDB's parallel
+aggregation) is the remaining step. Until it is proved, the generic
+properties keep the bound above, which holds for every algorithm. A
+tighter one only narrows the allowed set, so it replaces this one without
+changing the interface.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of

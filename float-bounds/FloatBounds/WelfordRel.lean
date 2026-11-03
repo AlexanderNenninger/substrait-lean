@@ -10,13 +10,17 @@ the values sit far from zero relative to their spread. This file proves the
 first-order behaviour (Chan, Golub and LeVeque, 1983): for `n ≤ 2³²` doubles
 at most `2³⁹⁹`,
 
-  `|Ŝ − S| ≤ 36 n u √(S Q') + 111 n² u² Q' + 4 n u · tiny`,
+  `|Ŝ − S| ≤ 32 n u √(Q' S) + 104 n² u² Q' + 4 n u · tiny`,
 
-with `Q' = Σ (|xᵢ| + tiny)²` (`welfordVar_rel`). The invariant carries the
-error of the mean, at most `6 u A` with `A = Σ (|xᵢ| + tiny)`, and of the
-co-moment, which grows by `14 u A |D| + 7 u S` per value (`D = x − x̄`, the
-deviation from the mean before it). At the end `Σ |D| ≤ √(2 n S)` and
-`A ≤ √(n Q')`.
+with `Q' = Σ (|xᵢ| + tiny)²` (`welfordVar_rel`). The invariant (`WInv`)
+carries the error of the mean, at most `6 u A` with `A = Σ (|xᵢ| + tiny)`
+(`wmean_step`), and of the co-moment, which grows by
+`17 u A |D| + 7 u S + 103 u² A² + 3 u·tiny` per value (`wvar_step`;
+`D = x − x̄`, the deviation from the mean before it). At the end
+`Σ |D| ≤ √(2 n S)` (`dsum_step`) and `A ≤ √(n Q')`.
+
+This is the update within one thread. Chan's merge of states from several
+threads is not covered yet.
 
 The update is DuckDB's (`welfordStep` with `y = x`): `d = x − x̄`,
 `x̄' = x̄ + d / k`, `S' = S + d · (x − x̄')`. The first value is exact
