@@ -16,12 +16,11 @@ The protocol, which any Flight server can implement:
 * The server drops only whole batches, and only below its floor: the
   batches past its retention.
 
-`FlightSource`'s cursor is the number of the last batch read; a sink records
-it, and a restarted job resumes there (`FlightSource.restore`). A refresh asks
-for the batches after it and appends them; the batches it holds that are now
-below the floor come back as deletes, so the source holds the server's
-window of rows. The batches are registered with the engine as they arrived,
-without a copy.
+`FlightSource`'s cursor is `{"seq": n, "floor": f}`: the number of the last
+batch read and the floor it was read at. A refresh asks for the batches after
+`n` and appends them; the batches it holds that are now below the floor come
+back as deletes, so the source holds the server's window of rows. The
+batches are registered with the engine as they arrived, without a copy.
 
 Needs `pyarrow` built with Flight, as the PyPI wheels are:
 `pip install 'sverify[flight]'`.
@@ -59,12 +58,16 @@ class FlightSource(Source):
     """A table of a numbered batch log on an Arrow Flight server, such as
     `FlightLog` (the module's docstring has the protocol).
 
-    The cursor is the number of the last batch read, an integer. Each
-    refresh streams the batches after it (`do_get`) and appends them; the
-    batches below the server's floor, dropped past its retention, come back
-    as deletes. The refresh report states what this rests on: the server
-    numbers batches in order of arrival, never changes one, and drops only
-    whole batches below its floor. `refresh(audit=True)` reads the batches
+    The cursor is `{"seq": n, "floor": f}`, the number of the last batch
+    read and the server's floor at that read. Each refresh streams the
+    batches after `n` (`do_get`) and appends them; the batches below the
+    server's floor, dropped past its retention, come back as deletes. A
+    restarted job resumes at a cursor its sink recorded (`restore`) unless
+    the server dropped batches since: their rows can't be read as deletes
+    any more, so the job reads the whole log again. The refresh report
+    states what this rests on: the server numbers batches in order of
+    arrival, never changes one, and drops only whole batches below its
+    floor. `refresh(audit=True)` reads the batches
     up to the cursor again and compares.
 
     Args:
@@ -121,8 +124,6 @@ class FlightSource(Source):
         self._client: fl.FlightClient | None = None
         self._held: dict[int, pa.RecordBatch] = {}
         """The batches read and not dropped yet, by number, in order."""
-        self._synced = False
-        """Whether `_held` is the window up to the cursor."""
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -168,18 +169,14 @@ class FlightSource(Source):
     def read(self, since: Any) -> Batch | None:
         if since is None:
             self._held.clear()
-        elif not self._synced:
-            # Resumed at a cursor: hold the batches up to it, without reporting
-            # them, so the ones the server drops later come back as deletes.
-            self._held = dict(self._get(None, until=since)[0])
-        self._synced = True
-        got, floor = self._get(since)
+        after = None if since is None else since["seq"]
+        got, floor = self._get(after)
         deletes = [self._held.pop(s) for s in [s for s in self._held if s < floor]]
         self._held.update(got)
         if not got and not deletes:
             return None
         table = pa.Table.from_batches([b for _, b in got]) if got else None
-        cursor = got[-1][0] if got else since
+        cursor = {"seq": got[-1][0] if got else after, "floor": floor}
         if not deletes:
             return Batch(table, cursor=cursor)
         empty = pa.Table.from_batches([], schema=deletes[0].schema)
@@ -190,38 +187,27 @@ class FlightSource(Source):
             deletes=pa.Table.from_batches(deletes),
         )
 
-    def restore(self, cursor: Any) -> Any:
-        """The server's batches up to `cursor`, a batch number a sink
-        recorded in an earlier process: a restarted job resumes there, and
-        its first refresh reads the batches after it. The batches are held,
-        so the ones the server drops later come back as deletes. Batches it
-        dropped while the job was down are not reported: the stored nodes
-        keep their rows until a refresh computes them again.
-
-        Args:
-            cursor: The number of the last batch read.
-
-        Returns:
-            The batches up to `cursor`, or None if there are none and the
-            source has no `schema=`: then the job reads the server's window.
-        """
-        if cursor is None:
-            return None
-        got, _ = self._get(None, until=cursor)
-        if not got and self._declared is None:
-            return None
-        self._held, self._synced = dict(got), True
-        if not got:
-            return self._declared.empty_table()
-        return pa.Table.from_batches([b for _, b in got])
-
     def reread(self, cursor: Any) -> Any:
         """The server's batches up to `cursor`, for `refresh(audit=True)`."""
         if cursor is None:
             return self._st().table.schema.empty_table()
-        got, _ = self._get(None, until=cursor)
+        got, _ = self._get(None, until=cursor["seq"])
         schema = self._st().table.schema
         return pa.Table.from_batches([b for _, b in got]) if got else schema.empty_table()
+
+    def restore(self, cursor: Any) -> Any:
+        """The table as of `cursor`, a cursor a sink recorded in an earlier
+        process: the batches up to it, or None if the server dropped
+        batches since (their rows would never come back as deletes)."""
+        if not isinstance(cursor, dict) or not {"seq", "floor"} <= cursor.keys():
+            return None
+        got, floor = self._get(None, until=cursor["seq"])
+        if cursor["floor"] <= cursor["seq"] and floor > cursor["floor"]:
+            return None  # the lowest batch held at the cursor is gone
+        self._held = dict(got)
+        if not got:
+            return None if self._declared is None else self._declared.empty_table()
+        return pa.Table.from_batches([b for _, b in got])
 
 
 class FlightLog(fl.FlightServerBase):
