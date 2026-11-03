@@ -269,7 +269,7 @@ def Lowering.shlTemplate : Expr :=
       (.lit (.int m))) (.lit (.int m))) (.lit (.int h))
   .ifThen (.bin .and (.un .isNum (.field 0))
       (.bin .or (.bin .lt (.field 1) (.lit (.int 0))) (.un .not (.bin .lt (.field 1) (.lit (.int 64))))))
-    (.un (.raise "domain") (.field 1))
+    (.un (.raise "domain error") (.field 1))
     (wrap (.bin .dmul (.field 0) (Lowering.pow2Chain (List.range 64))))
 
 theorem Lowering.bit_shl_agree (s : DuckDBSettings) (x y : Value) :

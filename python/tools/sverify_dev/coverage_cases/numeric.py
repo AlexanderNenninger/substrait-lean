@@ -64,5 +64,4 @@ REFUSED: dict[str, dict[str, str]] = {
 
 NO_DUCKDB_SQL = {
     "sign": "DuckDB's sign of NaN is 0, the plan's NaN",
-    "shifts": "DuckDB raises on a left shift of a negative number",
 }

@@ -311,7 +311,7 @@ def schema? : UnFn → Option Tm
       | some a, none => some a
       | none, some b => some b
       | none, none => none
-    g.map fun g => .ite g (.raise "domain" x) (.self [x])
+    g.map fun g => .ite g (.raise "domain error" x) (.self [x])
   | _ => none
 
 /-- Hand-written schemas of binary constructs (#242), for DuckDB's IEEE
@@ -324,7 +324,7 @@ operations:
 * `>>` raises on a shift outside `0`–`63`, where DuckDB gives `0`. -/
 def schemaBin? (f : BinFn) : Option Tm :=
   let self := Tm.self [.field 0, .field 1]
-  let nan (e : Tm) : Option Tm := (nanGuard f).map fun g => .ite g (.raise "domain" (.field 1)) e
+  let nan (e : Tm) : Option Tm := (nanGuard f).map fun g => .ite g (.raise "domain error" (.field 1)) e
   match f with
   | .fdiv | .fmod => (nan self).map zeroGuard
   | .imod => some (zeroGuard
@@ -335,7 +335,7 @@ def schemaBin? (f : BinFn) : Option Tm :=
       "shl: error outside 0-63, else wrap64(#0 * 2^#1)")
   | .bit .shr => some (.ite (andFn (isNumFn (.field 0))
       (orFn (ltFn (.field 1) (.lit (.int 0))) (notFn (ltFn (.field 1) (.lit (.int 64))))))
-      (.raise "domain" (.field 1)) self)
+      (.raise "domain error" (.field 1)) self)
   | _ => nan self
 
 partial def Tm.hasSelf : Tm → Bool
