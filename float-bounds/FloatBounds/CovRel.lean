@@ -1102,3 +1102,115 @@ theorem cmerge_com {Ca Cb ΔC Sha Shb Sh1 T Sh Ea Eb P Y R A h : ℝ} (hP : 0 �
   have e9 : 9.2 * u * R = 9.2 * (u * R) := by ring
   rw [e6, e7, e8, e9]
   linarith
+
+/-- The terms of `cmerge_fold`. -/
+theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L : ℝ}
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hh : 0 ≤ h) (hhm : h ≤ m)
+    (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
+    (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb) (hXx : 0 ≤ Xx)
+    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
+    (hL : La + Lb + 2 * m ≤ L) :
+    (8.5 * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra + 60 * u ^ 2 * La * (Axa * Aya)
+        + 12 * u * tiny * La)
+      + (8.5 * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb + 60 * u ^ 2 * Lb * (Axb * Ayb)
+        + 12 * u * tiny * Lb)
+      + (7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+        + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny)
+      ≤ 8.5 * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
+        + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb))
+        + 12 * u * tiny * L := by
+  have hu := u_pos
+  have ht := tiny_pos
+  have a1 : Axa * Dya ≤ (Axa + Axb) * Dya := mul_le_mul_of_nonneg_right (by linarith) hDya
+  have a2 : Aya * Dxa ≤ (Aya + Ayb) * Dxa := mul_le_mul_of_nonneg_right (by linarith) hDxa
+  have a3 : Axb * Dyb ≤ (Axa + Axb) * Dyb := mul_le_mul_of_nonneg_right (by linarith) hDyb
+  have a4 : Ayb * Dxb ≤ (Aya + Ayb) * Dxb := mul_le_mul_of_nonneg_right (by linarith) hDxb
+  have a5 : 0 ≤ u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) := by positivity
+  have hu8 : 0 ≤ 8.5 * u := by positivity
+  have a6 := mul_le_mul_of_nonneg_left (by linarith : Axa * Dya + Aya * Dxa + (Axb * Dyb + Ayb * Dxb)
+    ≤ (Axa + Axb) * (Dya + Dyb) + (Aya + Ayb) * (Dxa + Dxb)) hu8
+  have b1 : u * (na * Ra) ≤ u * ((na + nb - 1) * Ra) :=
+    mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hRa) hu.le
+  have b2 : u * (nb * Rb) ≤ u * ((na + nb - 1) * Rb) :=
+    mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hRb) hu.le
+  have b3 : u * ((na + nb - 1) * (Ra + Rb)) ≤ u * ((na + nb - 1) * R) :=
+    mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_left hR (by linarith)) hu.le
+  have b4 : 0 ≤ u * R := mul_nonneg hu.le (by linarith)
+  have hAA : 0 ≤ (Axa + Axb) * (Aya + Ayb) := by positivity
+  have c1 : Axa * Aya ≤ (Axa + Axb) * (Aya + Ayb) := mul_le_mul (by linarith) (by linarith) hAya (by linarith)
+  have c2 : Axb * Ayb ≤ (Axa + Axb) * (Aya + Ayb) := mul_le_mul (by linarith) (by linarith) hAyb (by linarith)
+  have c3 : u ^ 2 * La * (Axa * Aya) ≤ u ^ 2 * La * ((Axa + Axb) * (Aya + Ayb)) :=
+    mul_le_mul_of_nonneg_left c1 (by positivity)
+  have c4 : u ^ 2 * Lb * (Axb * Ayb) ≤ u ^ 2 * Lb * ((Axa + Axb) * (Aya + Ayb)) :=
+    mul_le_mul_of_nonneg_left c2 (by positivity)
+  have c5 : u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) ≤ u ^ 2 * m * ((Axa + Axb) * (Aya + Ayb)) :=
+    mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_left hhm (by positivity)) hAA
+  have c6 : u ^ 2 * (La + Lb + 2 * m) * ((Axa + Axb) * (Aya + Ayb))
+      ≤ u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb)) :=
+    mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_left hL (by positivity)) hAA
+  have c7 : 0 ≤ u ^ 2 * m * ((Axa + Axb) * (Aya + Ayb)) := by
+    have : 0 ≤ m := by linarith
+    positivity
+  have f1 : u * tiny * (7.1 + 5.1 * h) ≤ u * tiny * (24 * m) :=
+    mul_le_mul_of_nonneg_left (by linarith) (by positivity)
+  have f2 : u * tiny * (La + Lb + 2 * m) ≤ u * tiny * L := mul_le_mul_of_nonneg_left hL (by positivity)
+  linarith
+
+/-- **A merge of pairs keeps the invariant's bound**, with `m = min(n_a, n_b)`,
+`h = n_a n_b / n ≤ m`, `X_x = h |Δx|` and `X_y = h |Δy|`. -/
+theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Ea Eb : ℝ}
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hma : m ≤ na) (_hmb : m ≤ nb) (hh : 0 ≤ h)
+    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21)
+    (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
+    (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb) (hXx : 0 ≤ Xx)
+    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
+    (hL : La + Lb + 2 * m ≤ L)
+    (hEa : Ea ≤ cBound na Axa Aya Dxa Dya Ra La) (hEb : Eb ≤ cBound nb Axb Ayb Dxb Dyb Rb Lb) :
+    (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+        + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      ≤ cBound (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + Xx) (Dya + Dyb + Xy) R L := by
+  have hu := u_pos
+  have ht := tiny_pos
+  unfold cBound at hEa hEb ⊢
+  obtain ⟨Ta, hTa⟩ : ∃ T, T = 8.5 * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra
+      + 60 * u ^ 2 * La * (Axa * Aya) + 12 * u * tiny * La := ⟨_, rfl⟩
+  obtain ⟨Tb, hTb⟩ : ∃ T, T = 8.5 * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb
+      + 60 * u ^ 2 * Lb * (Axb * Ayb) + 12 * u * tiny * Lb := ⟨_, rfl⟩
+  rw [← hTa] at hEa
+  rw [← hTb] at hEb
+  have hTa0 : 0 ≤ Ta := by rw [hTa]; positivity
+  have hTb0 : 0 ≤ Tb := by rw [hTb]; positivity
+  have fa := fac_merge (by linarith) (by linarith : na + 1 ≤ na + nb) hn
+  have fb := fac_merge (by linarith) (by linarith : nb + 1 ≤ na + nb) hn
+  have k1 : (1 + u) ^ 2 * (Ea + Eb) ≤ (1 + 3 * (na + nb) * u) * (Ta + Tb) := by
+    have g1 : (1 + u) ^ 2 * Ea ≤ (1 + 3 * (na + nb) * u) * Ta := by
+      calc (1 + u) ^ 2 * Ea ≤ (1 + u) ^ 2 * ((1 + 3 * na * u) * Ta) := by gcongr
+        _ = ((1 + u) ^ 2 * (1 + 3 * na * u)) * Ta := by ring
+        _ ≤ _ := by gcongr
+    have g2 : (1 + u) ^ 2 * Eb ≤ (1 + 3 * (na + nb) * u) * Tb := by
+      calc (1 + u) ^ 2 * Eb ≤ (1 + u) ^ 2 * ((1 + 3 * nb * u) * Tb) := by gcongr
+        _ = ((1 + u) ^ 2 * (1 + 3 * nb * u)) * Tb := by ring
+        _ ≤ _ := by gcongr
+    linarith
+  have k2 := cfold_terms hna hnb hm1 hh hhm hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb hXx hXy hRa
+    hRb hR hLa hLb hL
+  rw [← hTa, ← hTb] at k2
+  obtain ⟨N, hN⟩ : ∃ N, N = 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+      + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny := ⟨_, rfl⟩
+  have hR0 : 0 ≤ R := by linarith
+  have hN0 : 0 ≤ N := by rw [hN]; positivity
+  have k3 : N ≤ (1 + 3 * (na + nb) * u) * N := le_mul_of_one_le_left hN0 (by nlinarith)
+  rw [← hN] at k2
+  obtain ⟨Tn, hTn⟩ : ∃ T, T = 8.5 * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
+      + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb)) + 12 * u * tiny * L :=
+    ⟨_, rfl⟩
+  rw [← hTn] at k2 ⊢
+  have hfac : 0 ≤ 1 + 3 * (na + nb) * u := by positivity
+  have k4 := mul_le_mul_of_nonneg_left k2 hfac
+  have e : (1 + 3 * (na + nb) * u) * (Ta + Tb + N)
+      = (1 + 3 * (na + nb) * u) * (Ta + Tb) + (1 + 3 * (na + nb) * u) * N := by ring
+  have e2 : (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+      + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      = (1 + u) ^ 2 * (Ea + Eb) + N := by rw [hN]; ring
+  rw [e2]
+  linarith
