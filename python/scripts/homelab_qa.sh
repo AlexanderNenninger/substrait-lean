@@ -101,7 +101,7 @@ main() {
   fi
 
   peak=/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)/memory.peak
-  [ -r "$peak" ] && echo "homelab_qa: peak memory $(numfmt --to=iec < "$peak")"
+  [ -r "$peak" ] && echo "homelab_qa: peak memory, page cache included, $(numfmt --to=iec < "$peak")"
   exit $status
 }
 
