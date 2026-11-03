@@ -791,7 +791,7 @@ def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOp
 /-- Does the plan take a `MIN` or `MAX` of doubles (#371)? DataFusion's
 grouped ones compare like IEEE 754 from `±f64::MAX` (a group of `+∞` has
 `MIN` `f64::MAX`, and NaN is skipped). -/
-def _root_.Substrait.Rel.floatExtremes (tables : Tables) : Rel → Bool
+def _root_.Substrait.Rel.floatExtremes (tables : Parse.Tables) : Rel → Bool
   | .read _ | .values _ _ => false
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ => r.floatExtremes tables
