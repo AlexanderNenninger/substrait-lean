@@ -169,6 +169,53 @@ def test_a_source_resumed_at_a_cursor_deletes_what_the_server_drops(server):
     assert batch.deletes.to_pylist() == [sample("a", 1, 0.5)]
 
 
+def test_a_restart_resumes_from_the_batch_number_its_sink_recorded(server, tmp_path):
+    from deltalake import DeltaTable
+
+    from sverify.io import DeltaSink, DeltaSource
+
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("b", 1, 0.1)], [sample("a", 2, 0.6)])
+    uri = str(tmp_path / "busy")
+
+    def job():
+        src = FlightSource(location(server), "samples", schema=SAMPLES)
+        return src, busy(src).write(DeltaSink(uri))
+
+    _, node = job()
+    node.refresh()
+    contract = DeltaSource(uri).contract()
+    assert contract is not None and contract.cursors == {"samples": 3}
+    put(server, "samples", [sample("a", 3, 0.7)])
+    src, again = job()
+    entry = again.refresh()["busy"]
+    assert entry.started is not None and entry.started.startswith("resumed from")
+    w = entry.write
+    assert w is not None and (w.mode, w.inserted, w.contract.cursors) == (
+        "merge",
+        1,
+        {"samples": 4},
+    )
+    assert sorted(DeltaTable(uri).to_pyarrow_table()["ts"].to_pylist()) == [1, 2, 3]
+    # The batches held since the restore come back as deletes when dropped.
+    server.drop("samples", below=2)
+    w = again.refresh()["busy"].write
+    assert w is not None and (w.mode, w.deleted) == ("merge", 1)
+    assert rows(again) == [("a", 2, 0.6), ("a", 3, 0.7)]
+
+
+def test_a_restart_with_nothing_held_and_no_schema_reads_the_window(server, tmp_path):
+    from sverify.io import DeltaSink
+
+    put(server, "samples", [sample("a", 1, 0.5)])
+    uri = str(tmp_path / "busy")
+    busy(FlightSource(location(server), "samples")).write(DeltaSink(uri)).refresh()
+    put(server, "samples", [sample("a", 2, 0.6)])
+    server.drop("samples", below=2)  # batch 1, the cursor's, is gone
+    src = FlightSource(location(server), "samples")
+    w = busy(src).write(DeltaSink(uri)).refresh().writes[0]
+    assert (w.mode, w.inserted) == ("overwrite", 1)
+
+
 def test_a_bearer_token():
     class Token(fl.ServerMiddlewareFactory):
         def start_call(self, info, headers):

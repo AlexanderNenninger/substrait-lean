@@ -16,7 +16,8 @@ The protocol, which any Flight server can implement:
 * The server drops only whole batches, and only below its floor: the
   batches past its retention.
 
-`FlightSource`'s cursor is the number of the last batch read. A refresh asks
+`FlightSource`'s cursor is the number of the last batch read; a sink records
+it, and a restarted job resumes there (`FlightSource.restore`). A refresh asks
 for the batches after it and appends them; the batches it holds that are now
 below the floor come back as deletes, so the source holds the server's
 window of rows. The batches are registered with the engine as they arrived,
@@ -188,6 +189,31 @@ class FlightSource(Source):
             kind="changes",
             deletes=pa.Table.from_batches(deletes),
         )
+
+    def restore(self, cursor: Any) -> Any:
+        """The server's batches up to `cursor`, a batch number a sink
+        recorded in an earlier process: a restarted job resumes there, and
+        its first refresh reads the batches after it. The batches are held,
+        so the ones the server drops later come back as deletes. Batches it
+        dropped while the job was down are not reported: the stored nodes
+        keep their rows until a refresh computes them again.
+
+        Args:
+            cursor: The number of the last batch read.
+
+        Returns:
+            The batches up to `cursor`, or None if there are none and the
+            source has no `schema=`: then the job reads the server's window.
+        """
+        if cursor is None:
+            return None
+        got, _ = self._get(None, until=cursor)
+        if not got and self._declared is None:
+            return None
+        self._held, self._synced = dict(got), True
+        if not got:
+            return self._declared.empty_table()
+        return pa.Table.from_batches([b for _, b in got])
 
     def reread(self, cursor: Any) -> Any:
         """The server's batches up to `cursor`, for `refresh(audit=True)`."""
