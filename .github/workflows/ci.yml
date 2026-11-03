@@ -143,6 +143,12 @@ jobs:
   oracle-a:
     needs: changes
     if: needs.changes.outputs.code == 'true'
+    name: oracle-a (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The files split four ways (`--shard`); the benchmarks run in the first.
+        shard: [1/4, 2/4, 3/4, 4/4]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -159,7 +165,10 @@ jobs:
         with:
           path: ~/.cache/sverify/duckdb-slt
           key: duckdb-slt-${{ hashFiles('python/uv.lock') }}
-      - run: uv run --locked --project python poe -C python oracle-a
+      - run: uv run --locked --project python poe -C python oracle-a --shard ${{ matrix.shard }}
+        env:
+          # Name the file each worker starts, so a replay that hangs shows where.
+          SVERIFY_SLT_PROGRESS: "1"
 
   notebooks:
     needs: changes
