@@ -7,7 +7,7 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
     import sverify as sv
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
     )
     def doubled(orders):
@@ -1894,7 +1894,7 @@ def transform(
         )
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+            requires={"orders": [_.amount >= 0, _.id.notnull()]},
             ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
         )
         def doubled(orders):

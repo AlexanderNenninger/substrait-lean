@@ -569,7 +569,7 @@ def assert_contract(
         from sverify.testing import assert_contract, source
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
+            requires={"orders": [_.amount >= 0]},
             ensures=[_.doubled >= 0],
         )
         def doubled(orders):

@@ -90,7 +90,7 @@ def test_a_failing_assertion_reads_well(pytester):
         from sverify.testing import assert_contract
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000]},
+            requires={"orders": [_.amount >= 0]},
             ensures=[_.doubled >= 0],
         )
         def doubled(orders):
@@ -200,11 +200,10 @@ def test_an_unproved_contract_fails():
     with pytest.raises(AssertionError) as e:
         assert_contract(node)
     lines = str(e.value).splitlines()
-    assert lines[:3] == [
-        "the contract of loose is not proved:",
-        "  loose:",
-        "    ensures (_.doubled >= 0): NOT proved (it is TRUE or FALSE)",
-    ]
+    assert lines[:2] == ["the contract of loose is not proved:", "  loose:"]
+    # After the bounds inferred against overflow (#244).
+    assert "    requires orders: (_.amount < 2**62) (inferred)" in lines
+    assert "    ensures (_.doubled >= 0): NOT proved (it is TRUE or FALSE)" in lines
 
 
 def test_an_unproved_link_fails():
