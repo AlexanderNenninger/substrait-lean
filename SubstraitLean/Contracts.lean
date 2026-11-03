@@ -523,6 +523,94 @@ theorem roundDiv_between {a b : Int} (hb : 0 < b) :
     have h1 : (a.natAbs : Int) = -a := Int.ofNat_natAbs_of_nonpos (by omega)
     omega
 
+theorem nat_roundDiv_le_of {A N M : Nat} (hN : 0 < N) (h : A ≤ N * M) :
+    (2 * A + N) / (2 * N) ≤ M := by
+  apply Nat.le_of_lt_succ
+  rw [Nat.div_lt_iff_lt_mul (by omega)]
+  have e1 : M * (2 * N) = 2 * (N * M) := by rw [Nat.mul_left_comm, Nat.mul_comm M N]
+  have e2 : (M + 1) * (2 * N) = M * (2 * N) + 2 * N := Nat.succ_mul M (2 * N)
+  show 2 * A + N < (M + 1) * (2 * N)
+  omega
+
+theorem nat_le_roundDiv_of {A N M : Nat} (hN : 0 < N) (h : N * M ≤ A) :
+    M ≤ (2 * A + N) / (2 * N) := by
+  rw [Nat.le_div_iff_mul_le (by omega)]
+  have e : M * (2 * N) = 2 * (N * M) := by rw [Nat.mul_left_comm, Nat.mul_comm M N]
+  omega
+
+/-- A rounded quotient by a positive divisor stays within integer bounds of
+the exact one (a decimal `AVG` within its values, #237). -/
+theorem roundDiv_bounds {a n : Int} (hn : 0 < n) :
+    (∀ L, n * L ≤ a → L ≤ roundDiv a n) ∧ (∀ H, a ≤ n * H → roundDiv a n ≤ H) := by
+  have hn0 : n ≠ 0 := by omega
+  have hN : 0 < n.natAbs := Int.natAbs_pos.mpr hn0
+  have hnN : (n.natAbs : Int) = n := Int.natAbs_of_nonneg (by omega)
+  unfold roundDiv roundDivInt?
+  simp only [hn0, ↓reduceIte, Option.getD_some]
+  have hbn : ¬n < 0 := by omega
+  by_cases ha : a < 0
+  · have hs : ¬((a < 0) = (n < 0)) := by simp [ha, hbn]
+    simp only [hs, ↓reduceIte]
+    have haN : (a.natAbs : Int) = -a := Int.ofNat_natAbs_of_nonpos (by omega)
+    constructor
+    · intro L hL
+      -- `|a| ≤ n · (-L)`
+      have hL' : 0 ≤ -L := by
+        rcases Int.lt_or_le L 0 with h | h
+        · omega
+        · have : 0 ≤ n * L := Int.mul_nonneg (by omega) h; omega
+      have hm : a.natAbs ≤ n.natAbs * (-L).toNat := by
+        have : (a.natAbs : Int) ≤ (n.natAbs : Int) * ((-L).toNat : Int) := by
+          rw [Int.toNat_of_nonneg hL', hnN, haN, Int.mul_neg]; omega
+        exact_mod_cast this
+      have := nat_roundDiv_le_of hN hm
+      have : (((2 * a.natAbs + n.natAbs) / (2 * n.natAbs) : Nat) : Int) ≤ (-L).toNat :=
+        by exact_mod_cast this
+      rw [Int.toNat_of_nonneg hL'] at this; omega
+    · intro H hH
+      have hq : (0 : Int) ≤ (((2 * a.natAbs + n.natAbs) / (2 * n.natAbs) : Nat) : Int) :=
+        Int.natCast_nonneg _
+      rcases Int.lt_or_le H 0 with hH0 | hH0
+      · have hm : n.natAbs * (-H).toNat ≤ a.natAbs := by
+          have : (n.natAbs : Int) * ((-H).toNat : Int) ≤ (a.natAbs : Int) := by
+            rw [Int.toNat_of_nonneg (by omega), hnN, haN, Int.mul_neg]; omega
+          exact_mod_cast this
+        have := nat_le_roundDiv_of hN hm
+        have : ((-H).toNat : Int) ≤ (((2 * a.natAbs + n.natAbs) / (2 * n.natAbs) : Nat) : Int) :=
+          by exact_mod_cast this
+        rw [Int.toNat_of_nonneg (by omega)] at this; omega
+      · omega
+  · have hs : (a < 0) = (n < 0) := by simp [ha, hbn]
+    simp only [hs, ↓reduceIte]
+    have haN : (a.natAbs : Int) = a := Int.natAbs_of_nonneg (by omega)
+    constructor
+    · intro L hL
+      rcases Int.lt_or_le L 0 with hL0 | hL0
+      · have : (0 : Int) ≤ (((2 * a.natAbs + n.natAbs) / (2 * n.natAbs) : Nat) : Int) :=
+          Int.natCast_nonneg _
+        omega
+      · have hm : n.natAbs * L.toNat ≤ a.natAbs := by
+          have : (n.natAbs : Int) * (L.toNat : Int) ≤ (a.natAbs : Int) := by
+            rw [Int.toNat_of_nonneg hL0, hnN, haN]; exact hL
+          exact_mod_cast this
+        have := nat_le_roundDiv_of hN hm
+        have : (L.toNat : Int) ≤ (((2 * a.natAbs + n.natAbs) / (2 * n.natAbs) : Nat) : Int) :=
+          by exact_mod_cast this
+        rw [Int.toNat_of_nonneg hL0] at this; exact this
+    · intro H hH
+      have hH0 : 0 ≤ H := by
+        rcases Int.lt_or_le H 0 with h | h
+        · have : n * H < 0 := Int.mul_neg_of_pos_of_neg hn h; omega
+        · exact h
+      have hm : a.natAbs ≤ n.natAbs * H.toNat := by
+        have : (a.natAbs : Int) ≤ (n.natAbs : Int) * (H.toNat : Int) := by
+          rw [Int.toNat_of_nonneg hH0, hnN, haN]; exact hH
+        exact_mod_cast this
+      have := nat_roundDiv_le_of hN hm
+      have : (((2 * a.natAbs + n.natAbs) / (2 * n.natAbs) : Nat) : Int) ≤ (H.toNat : Int) :=
+        by exact_mod_cast this
+      rw [Int.toNat_of_nonneg hH0] at this; exact this
+
 /-- Decimal division (`AVG`): between 0 and the dividend for a divisor that is
 not negative (a zero divisor gives NULL), no larger than it in absolute value
 otherwise. -/
@@ -635,10 +723,10 @@ def UnFn.abs : UnFn → AVal → AVal
   -- Double negation is code negation too (zero is `0`).
   | .neg, a | .fneg, a => ⟨a.nonInt, a.int.map Bound.neg, false, false, false⟩
   -- Float results: some double (any code), or NULL.
-  -- An integer converts to a finite double (`FloatCode.finite`).
+  -- An integer converts to a finite double, monotonically (`FloatCode.ofInt_mono`).
   | .itof, a =>
-      ⟨a.nonInt, a.int.map fun _ => ⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩,
-        false, false, false⟩
+      ⟨a.nonInt, a.int.map fun b => ⟨some (b.lo.elim (FloatCode.negInf + 1) FloatCode.ofInt),
+        some (b.hi.elim (FloatCode.posInf - 1) FloatCode.ofInt)⟩, false, false, false⟩
   | .froundTo _, a => ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
   | .ffloor, a => monoAbs FloatCode.floor a
   | .fceil, a => monoAbs FloatCode.ceil a
@@ -1094,9 +1182,16 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
     · have := FloatCode.ofInt_bounds i
-      refine ⟨⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩, by simp [UnFn.abs, hb],
-        ?_, ?_⟩ <;> intro x hx <;> simp only [Option.some.injEq] at hx <;> subst hx <;>
-        omega
+      refine ⟨⟨some (b.lo.elim (FloatCode.negInf + 1) FloatCode.ofInt),
+        some (b.hi.elim (FloatCode.posInf - 1) FloatCode.ofInt)⟩, by simp [UnFn.abs, hb], ?_, ?_⟩ <;>
+        intro x hx <;>
+        simp only [Option.some.injEq] at hx <;> subst hx
+      · cases hl : b.lo with
+        | none => simp only [Option.elim]; omega
+        | some l => exact FloatCode.ofInt_mono (hi.1 l hl)
+      · cases hh : b.hi with
+        | none => simp only [Option.elim]; omega
+        | some h => exact FloatCode.ofInt_mono (hi.2 h hh)
     all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case froundTo d => exact topAbs_sound (fun v => by cases v <;> rfl) h
   case fmath f =>
@@ -2052,11 +2147,17 @@ inductive Fact where
   | diff (i j : Nat) (b : Bound)
   /-- Column `i` does not hold the integer `k`. -/
   | ne (i : Nat) (k : Int)
+  /-- If columns `s` and `c` hold integers `x` and `n`, then `n` is positive
+  and `x` is a sum of `n` integers in `b`: the `SUM` and `COUNT` of a decimal
+  `AVG` (`Parse.decimalAvgs`, #237). -/
+  | ratio (s c : Nat) (b : Bound)
   deriving Repr, DecidableEq
 
 def Fact.Holds (row : Row) : Fact → Prop
   | .diff i j b => ∀ x y, row.getD i .null = .int x → row.getD j .null = .int y → b.Mem (x - y)
   | .ne i k => row.getD i .null ≠ .int k
+  | .ratio s c b => ∀ x n, row.getD s .null = .int x → row.getD c .null = .int n →
+      0 < n ∧ (∀ l, b.lo = some l → n * l ≤ x) ∧ (∀ h, b.hi = some h → x ≤ n * h)
 
 def FactsHold (fs : List Fact) (row : Row) : Prop := ∀ f ∈ fs, f.Holds row
 
@@ -2112,7 +2213,7 @@ def diffFact (t₁ t₂ : Expr) (mk : Int → Int → Bound) : List Fact :=
 
 /-- Facts that hold on every row where `e` is TRUE. -/
 def Fact.mentions (i : Nat) : Fact → Bool
-  | .diff a b _ => a == i || b == i
+  | .diff a b _ | .ratio a b _ => a == i || b == i
   | .ne a _ => a == i
 
 /-- Facts that hold where `x IS NULL` (`q`), from the facts `fs` of the
@@ -2220,6 +2321,12 @@ theorem Fact.holds_of_null {f : Fact} {row : Row} {i : Nat} (hm : f.mentions i =
   | ne a k =>
     simp only [Fact.mentions, beq_iff_eq] at hm
     subst hm; intro h; rw [hn] at h; cases h
+  | ratio a b _ =>
+    simp only [Fact.mentions, Bool.or_eq_true, beq_iff_eq] at hm
+    intro x y hx hy
+    rcases hm with rfl | rfl
+    · rw [hn] at hx; cases hx
+    · rw [hn] at hy; cases hy
 
 theorem orNullFacts_sound {fs : List Fact} {p q : Expr} {row : Row}
     (hp : (p.eval row).isTrue = true → FactsHold fs row)
@@ -2331,17 +2438,19 @@ theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = tr
 /-! ### Facts through a plan -/
 
 def Fact.inRange (n : Nat) : Fact → Bool
-  | .diff i j _ => i < n && j < n
+  | .diff i j _ | .ratio i j _ => i < n && j < n
   | .ne i _ => i < n
 
 def Fact.shift (n : Nat) : Fact → Fact
   | .diff i j b => .diff (n + i) (n + j) b
   | .ne i k => .ne (n + i) k
+  | .ratio i j b => .ratio (n + i) (n + j) b
 
 /-- Re-index a fact: column `i` of the input appears at every position in `σ i`. -/
 def Fact.rename (σ : Nat → List Nat) : Fact → List Fact
   | .diff i j b => (σ i).flatMap fun p => (σ j).map fun q => .diff p q b
   | .ne i k => (σ i).map fun p => .ne p k
+  | .ratio i j b => (σ i).flatMap fun p => (σ j).map fun q => .ratio p q b
 
 /-- Positions of input column `i` in an emit mapping. -/
 def positions (m : List Nat) (i : Nat) : List Nat :=
@@ -2401,9 +2510,30 @@ def winFacts (part : List Nat) (sort : List SortKey) (strict : Bool) (n : Nat) (
     List Fact :=
   fns.zipIdx.flatMap fun (f, t) => winFact part sort strict (n + t) f
 
+/-! ### Facts about the measures of one group
+
+Measures of the same values on one group are related (#372): `MIN ≤ MAX`, and
+an integer `AVG` with an integer result lies between them (`AggFn.iavg`). An
+`AVG` of doubles rounds, and may step past them, so it has no such fact. -/
+
+/-- Facts relating measure `mi` (column `ci`) to measure `mj` (column `cj`). -/
+def pairFacts (ci cj : Nat) (mi mj : Measure) : List Fact :=
+  if mi.filter ≠ mj.filter ∨ mj.arg ≠ mi.arg then [] else
+  if mi.fn = .min ∧ mj.fn = .max then [.diff cj ci ⟨some 0, none⟩]
+  else if mi.fn = .min ∧ mj.fn = .iavg then [.diff cj ci ⟨some 0, none⟩]
+  else if mi.fn = .max ∧ mj.fn = .iavg then [.diff ci cj ⟨some 0, none⟩]
+  else []
+
+/-- Facts relating the measures `ms`, which follow `g` grouping columns. -/
+def aggFacts (g : Nat) (ms : List Measure) : List Fact :=
+  (List.range ms.length).flatMap fun i => (List.range ms.length).flatMap fun j =>
+    match ms[i]?, ms[j]? with
+    | some mi, some mj => pairFacts (g + i) (g + j) mi mj
+    | _, _ => []
+
 /-- Does the fact mention a column at or after `n`? -/
 def Fact.rightOf (n : Nat) : Fact → Bool
-  | .diff i j _ => decide (n ≤ i) || decide (n ≤ j)
+  | .diff i j _ | .ratio i j _ => decide (n ≤ i) || decide (n ≤ j)
   | .ne i _ => decide (n ≤ i)
 
 /-- Facts that hold on every output row of a plan, given facts `F t` about
@@ -2434,7 +2564,8 @@ def Rel.facts (cat : Catalog) (F : String → List Fact) (T : WindowKeys) : Rel 
   -- Some of the left rows, or all of the rows in another order or once each.
   | .semi a _ _ _ => a.facts cat F T
   | .orderBy r _ | .distinct r => r.facts cat F T
-  | .aggregate _ _ _ | .unnest _ _ => []
+  | .aggregate _ gs ms => aggFacts gs.length ms
+  | .unnest _ _ => []
 
 theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
     (hσ : ∀ i, ∀ p ∈ σ i, row'.getD p .null = row.getD i .null) :
@@ -2449,6 +2580,11 @@ theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
       obtain ⟨p, hp, rfl⟩ := hg
       intro hx
       exact h (hσ i p hp ▸ hx)
+  | .ratio i j _, h, g, hg => by
+      simp only [Fact.rename, List.mem_flatMap, List.mem_map] at hg
+      obtain ⟨p, hp, q, hq, rfl⟩ := hg
+      intro x y hx hy
+      exact h x y (hσ i p hp ▸ hx) (hσ j q hq ▸ hy)
 
 theorem FactsHold.rename {σ : Nat → List Nat} {fs : List Fact} {row row' : Row}
     (h : FactsHold fs row) (hσ : ∀ i, ∀ p ∈ σ i, row'.getD p .null = row.getD i .null) :
@@ -2469,6 +2605,10 @@ theorem Fact.holds_prefix {n : Nat} {row row' : Row}
   | .ne i k, hr, h => by
       simp only [Fact.inRange, decide_eq_true_eq] at hr
       intro hx; exact h (hpre i hr ▸ hx)
+  | .ratio i j _, hr, h => by
+      simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
+      intro x y hx hy
+      exact h x y (hpre i hr.1 ▸ hx) (hpre j hr.2 ▸ hy)
 
 theorem FactsHold.prefix {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHold fs row)
     (hpre : ∀ i < n, row'.getD i .null = row.getD i .null) :
@@ -2487,6 +2627,7 @@ theorem FactsHold.shift {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHo
   cases f with
   | diff i j b => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
   | ne i k => intro hx; exact this (hsh i ▸ hx)
+  | ratio i j _ => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
 
 theorem getD_append_left' {x y : Row} {i : Nat} (h : i < x.length) :
     (x ++ y).getD i .null = x.getD i .null := by
@@ -2510,6 +2651,12 @@ theorem Fact.rename_holds_inRange {σ : Nat → List Nat} {row row' : Row} {n : 
       simp only [Fact.rename, List.mem_map] at hg
       obtain ⟨p, hp, rfl⟩ := hg
       intro hx; exact h (hσ i hr p hp ▸ hx)
+  | .ratio i j _, hr, h, g, hg => by
+      simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
+      simp only [Fact.rename, List.mem_flatMap, List.mem_map] at hg
+      obtain ⟨p, hp, q, hq, rfl⟩ := hg
+      intro x y hx hy
+      exact h x y (hσ i hr.1 p hp ▸ hx) (hσ j hr.2 q hq ▸ hy)
 
 theorem copyCols_getD {n : Nat} {es : List Expr} {row : Row} {i p : Nat}
     (hlen : row.length = n) (hi : i < n) (hp : p ∈ copyCols n es i) :
@@ -2559,6 +2706,7 @@ theorem FactsHold.shift_nulls {n : Nat} {fs : List Fact} {row : Row}
   cases f with
   | diff i j b => intro x y hx _; rw [hnull i] at hx; cases hx
   | ne i k => intro hx; rw [hnull i] at hx; cases hx
+  | ratio i j _ => intro x y hx _; rw [hnull i] at hx; cases hx
 
 theorem positions_getD {m : List Nat} {row : Row} {i p : Nat} (hp : p ∈ positions m i) :
     (m.map (row.getD · .null)).getD p .null = row.getD i .null := by
@@ -2580,6 +2728,11 @@ theorem FactsHold.rightOf_nulls {n : Nat} {fs : List Fact} {row : Row}
   | ne i k =>
     simp only [Fact.rightOf, decide_eq_true_eq] at hf
     exact Fact.holds_of_null (i := i) (by simp [Fact.mentions]) (hn i hf.2)
+  | ratio i j _ =>
+    simp only [Fact.rightOf, Bool.or_eq_true, decide_eq_true_eq] at hf
+    rcases hf.2 with h | h
+    · exact Fact.holds_of_null (i := i) (by simp [Fact.mentions]) (hn i h)
+    · exact Fact.holds_of_null (i := j) (by simp [Fact.mentions]) (hn j h)
 
 theorem getD_pad_null {x : Row} {m i : Nat} (h : x.length ≤ i) :
     (x ++ List.replicate m Value.null).getD i .null = .null := by
@@ -2758,6 +2911,89 @@ theorem winFacts_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {
   rw [← hx, getD_append_right']
   simp [List.getD_eq_getElem?_getD, List.getElem?_map, hget]
 
+/-- The values of `MIN`, `MAX` and integer `AVG` measures of one group: the
+bounds `pairFacts` states. -/
+theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : Row}
+    (hi : row.getD ci .null = mi.eval grp) (hj : row.getD cj .null = mj.eval grp) :
+    FactsHold (pairFacts ci cj mi mj) row := by
+  -- The measures here do not sort their rows.
+  have evi : ∀ f, mi.fn = f → f.sorts = false → mi.eval grp = f.apply (mi.inputs grp) :=
+    fun f h hs => by rw [Measure.eval_eq (h ▸ hs), h]
+  have evj : ∀ f, mj.fn = f → f.sorts = false → mj.eval grp = f.apply (mj.inputs grp) :=
+    fun f h hs => by rw [Measure.eval_eq (h ▸ hs), h]
+  -- `MIN` is one of the values and at most each integer among them; `MAX` at least.
+  have minle : mi.fn = .min → ∀ {Y}, row.getD ci .null = .int Y →
+      .int Y ∈ mi.inputs grp ∧ ∀ t, .int t ∈ mi.inputs grp → Y ≤ t := fun h Y hY => by
+    rw [hi, evi _ h rfl] at hY
+    obtain ⟨hm, hle⟩ := AggFn.apply_min hY (by simp)
+    exact ⟨hm, fun t ht => Value.le_int.1 (hle _ ht)⟩
+  have maxge : mi.fn = .max → ∀ {X}, row.getD ci .null = .int X →
+      .int X ∈ mi.inputs grp ∧ ∀ t, .int t ∈ mi.inputs grp → t ≤ X := fun h X hX => by
+    rw [hi, evi _ h rfl] at hX
+    obtain ⟨hm, hle⟩ := AggFn.apply_max hX (by simp)
+    exact ⟨hm, fun t ht => Value.le_int.1 (hle _ ht)⟩
+  -- An integer `AVG` lies between two of its integers.
+  have avg : mj.fn = .iavg → ∀ {A}, row.getD cj .null = .int A →
+      intsOf (mj.inputs grp) ≠ [] →
+      (∃ l ∈ intsOf (mj.inputs grp), l ≤ A) ∧ (∃ h ∈ intsOf (mj.inputs grp), A ≤ h) :=
+    fun hf A hA hne => by
+      obtain ⟨a, ha, hl, hh⟩ := AggFn.apply_iavg_between hne
+      rw [hj, evj _ hf rfl, ha] at hA; cases hA
+      exact ⟨hl, hh⟩
+  have ne_of : ∀ {t : Int}, .int t ∈ mj.inputs grp → intsOf (mj.inputs grp) ≠ [] :=
+    fun h => List.ne_nil_of_mem (mem_intsOf.2 h)
+  have ge0 : ∀ {d : Int}, 0 ≤ d → Bound.Mem ⟨some 0, none⟩ d :=
+    fun h => ⟨fun l hl => by cases hl; exact h, fun _ hh => by cases hh⟩
+  unfold pairFacts
+  split
+  · intro f hf; simp at hf
+  rename_i hc0
+  simp only [not_or, Decidable.not_not] at hc0
+  obtain ⟨hfil, harg⟩ := hc0
+  have hiff := Measure.mem_inputs_iff harg hfil.symm grp
+  split
+  · -- `MIN ≤ MAX`
+    rename_i hc
+    obtain ⟨hfi, hfj⟩ := hc
+    intro f hf; simp only [List.mem_singleton] at hf; subst hf
+    intro X Y hX hY
+    rw [hj, evj _ hfj rfl] at hX
+    obtain ⟨hm, -⟩ := AggFn.apply_max hX (by simp)
+    exact ge0 (by have := (minle hfi hY).2 X ((hiff _).1 hm); omega)
+  split
+  · -- `MIN ≤ AVG`
+    rename_i hc
+    obtain ⟨hfi, hfj⟩ := hc
+    intro f hf; simp only [List.mem_singleton] at hf; subst hf
+    intro A Y hA hY
+    have hY' := minle hfi hY
+    obtain ⟨⟨l, hl, hla⟩, -⟩ := avg hfj hA (ne_of ((hiff _).2 hY'.1))
+    exact ge0 (by have := hY'.2 l ((hiff _).1 (mem_intsOf.1 hl)); omega)
+  split
+  · -- `AVG ≤ MAX`
+    rename_i hc
+    obtain ⟨hfi, hfj⟩ := hc
+    intro f hf; simp only [List.mem_singleton] at hf; subst hf
+    intro X A hX hA
+    have hX' := maxge hfi hX
+    obtain ⟨-, ⟨h, hh, hah⟩⟩ := avg hfj hA (ne_of ((hiff _).2 hX'.1))
+    exact ge0 (by have := hX'.2 h ((hiff _).1 (mem_intsOf.1 hh)); omega)
+  · intro f hf; simp at hf
+
+theorem aggFacts_sound {g : Nat} {ms : List Measure} {grp : Relation} {k : Row}
+    (hk : k.length = g) : FactsHold (aggFacts g ms) (k ++ ms.map (·.eval grp)) := by
+  intro f hf
+  simp only [aggFacts, List.mem_flatMap, List.mem_range] at hf
+  obtain ⟨i, hi, j, hj, hf⟩ := hf
+  have col : ∀ i (m : Measure), ms[i]? = some m →
+      (k ++ ms.map (·.eval grp)).getD (g + i) .null = m.eval grp := fun i m h => by
+    rw [← hk, getD_append_right']
+    simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]
+  split at hf
+  · rename_i mi mj hmi hmj
+    exact pairFacts_sound (col i mi hmi) (col j mj hmj) f hf
+  · simp at hf
+
 theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fact}
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat) :
     ∀ {r : Rel}, r.WF cat → ∀ row ∈ r.eval cat, FactsHold (r.facts cat F T) row
@@ -2836,7 +3072,12 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
   | .distinct r, hwf, row, h => by
       simp only [eval, mem_dedup] at h
       exact facts_sound hcat hF hT (r := r) hwf row h
-  | .aggregate _ _ _, _, _, _ | .unnest _ _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
+  | .aggregate _ gs ms, _, row, h => by
+      obtain ⟨k, grp, rfl, -, hk⟩ := mem_aggregateEval h
+      simp only [Rel.facts]
+      refine aggFacts_sound ?_
+      rcases hk with ⟨rfl, rfl⟩ | ⟨x, _, rfl⟩ <;> simp [groupKey]
+  | .unnest _ _, _, _, _ => fun f hf => by simp [Rel.facts] at hf
   | .unionAll a b, hwf, row, h => by
       simp only [eval, List.mem_append] at h
       intro f hf
@@ -2865,7 +3106,7 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
 /-- A bound on `x - y` for columns `i` and `j`, from the facts. -/
 def Fact.diffBound (i j : Nat) : Fact → Option Bound
   | .diff i' j' b => if i' = i ∧ j' = j then some b else if i' = j ∧ j' = i then some b.neg else none
-  | .ne _ _ => none
+  | .ne _ _ | .ratio _ _ _ => none
 
 /-- What all facts together say about `$i - $j` (`ts_right <= ts` and
 `ts_right >= ts - 10` give `0 ≤ ts - ts_right ≤ 10`). -/
@@ -2902,10 +3143,27 @@ def neSharpen (fs : List Fact) (a b : Expr) (base : AVal) : AVal :=
   | some (j, c), .lit (.int k) => if fs.contains (.ne j (k - c)) then { base with tt := false } else base
   | _, _ => base
 
+/-- The bound of a `ratio` fact about columns `s` and `c`. -/
+def ratioOf (fs : List Fact) (s c : Nat) : Option Bound :=
+  fs.findSome? fun | .ratio s' c' b => if s' = s ∧ c' = c then some b else none | _ => none
+
+/-- A decimal `AVG`, `ddiv(sum · 10ᵏ, count)`, is within its values' bound,
+scaled (#237). -/
+def ratioSharpen (fs : List Fact) (a b : Expr) (base : AVal) : AVal :=
+  match a, b with
+  | .bin .dmul (.field s) (.lit (.int k)), .field c =>
+    match ratioOf fs s c with
+    | some bd =>
+      if 0 < k then { base with int := base.int.map (·.meet ⟨bd.lo.map (· * k), bd.hi.map (· * k)⟩) }
+      else base
+    | none => base
+  | _, _ => base
+
 /-- Sharpen the abstract result of `f a b` using facts about `a` and `b`
 (`aa` is the abstract value of `a`). -/
 def sharpen (fs : List Fact) (f : BinFn) (a b : Expr) (aa base : AVal) : AVal :=
   match f with
+  | .ddiv => ratioSharpen fs a b base
   | .sub => subSharpen (termDiff fs a b) base
   -- Facts are about integers; strings compare by themselves.
   | .lt => if aa.intOrNull then ltSharpen (termDiff fs a b) base else base
@@ -3009,7 +3267,7 @@ theorem Fact.diffBound_sound {f : Fact} {row : Row} {i j : Nat} {d : Bound} {x y
     (hg : f.diffBound i j = some d) (hh : f.Holds row)
     (hx : row.getD i .null = .int x) (hy : row.getD j .null = .int y) : d.Mem (x - y) := by
   cases f with
-  | ne _ _ => simp [Fact.diffBound] at hg
+  | ne _ _ | ratio _ _ _ => simp [Fact.diffBound] at hg
   | diff i' j' b =>
     simp only [Fact.diffBound] at hg
     split at hg
@@ -3140,11 +3398,66 @@ theorem neSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
     · exact hbase
   · exact hbase
 
+theorem ratioOf_mem {fs : List Fact} {s c : Nat} {b : Bound} (h : ratioOf fs s c = some b) :
+    Fact.ratio s c b ∈ fs := by
+  obtain ⟨f, hf, he⟩ := List.exists_of_findSome?_eq_some h
+  cases f <;> simp at he
+  obtain ⟨⟨rfl, rfl⟩, rfl⟩ := he
+  exact hf
+
+theorem ratioSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
+    (hfs : FactsHold fs row) (hbase : base.Mem (BinFn.apply .ddiv (a.eval row) (b.eval row))) :
+    (ratioSharpen fs a b base).Mem (BinFn.apply .ddiv (a.eval row) (b.eval row)) := by
+  unfold ratioSharpen
+  split
+  · rename_i s k c
+    split
+    · rename_i bd hbd
+      split
+      · rename_i hk
+        -- Only the integer part changes.
+        generalize hv : BinFn.apply .ddiv _ _ = v at hbase ⊢
+        cases v with
+        | int q =>
+          obtain ⟨B, hB, hq⟩ := hbase
+          refine ⟨B.meet ⟨bd.lo.map (· * k), bd.hi.map (· * k)⟩, by simp [hB], Bound.mem_meet hq ?_⟩
+          have ea : (Expr.bin .dmul (.field s) (.lit (.int k))).eval row =
+              BinFn.apply .dmul (row.getD s .null) (.int k) := rfl
+          have eb : (Expr.field c).eval row = row.getD c .null := rfl
+          rw [ea, eb] at hv
+          cases hx : row.getD s .null <;> cases hn : row.getD c .null <;> rw [hx, hn] at hv <;>
+            simp only [BinFn.apply, reduceCtorEq] at hv
+          rename_i x n
+          split at hv
+          · rename_i r hr; cases hv
+            have hn0 : n ≠ 0 := by intro h0; subst h0; simp [roundDivInt?] at hr
+            obtain ⟨hpos, hlo, hhi⟩ := hfs _ (ratioOf_mem hbd) x n hx hn
+            have hrd : roundDiv (x * k) n = q := by simp [roundDiv, hr]
+            obtain ⟨hL, hH⟩ := roundDiv_bounds (a := x * k) hpos
+            constructor
+            · intro l hl
+              obtain ⟨l0, hl0, rfl⟩ := Option.map_eq_some_iff.mp hl
+              rw [← hrd]; apply hL
+              have := Int.mul_le_mul_of_nonneg_right (hlo l0 hl0) (Int.le_of_lt hk)
+              rwa [Int.mul_assoc] at this
+            · intro h hh
+              obtain ⟨h0, hh0, rfl⟩ := Option.map_eq_some_iff.mp hh
+              rw [← hrd]; apply hH
+              have := Int.mul_le_mul_of_nonneg_right (hhi h0 hh0) (Int.le_of_lt hk)
+              rwa [Int.mul_assoc] at this
+          · cases hv
+        | null | str _ | list _ => exact hbase
+        | bool bb => cases bb <;> exact hbase
+      · exact hbase
+    · exact hbase
+  · exact hbase
+
 theorem sharpen_sound {fs : List Fact} {row : Row} (f : BinFn) (a b : Expr) {aa base : AVal}
     (hfs : FactsHold fs row) (haa : aa.Mem (a.eval row))
     (hbase : base.Mem (f.apply (a.eval row) (b.eval row))) :
     (sharpen fs f a b aa base).Mem (f.apply (a.eval row) (b.eval row)) := by
   cases f
+  case ddiv => exact ratioSharpen_sound hfs hbase
   case sub => exact subSharpen_sound hfs hbase
   case lt =>
     simp only [sharpen]
@@ -3282,28 +3595,32 @@ def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
 
 /-- A measure over rows described by `env` and `fs`: a count is a natural
-number, a sum of integers keeps their sign, `MIN` and `MAX` are among the
-argument's values, and the other measures are doubles. All but `COUNT` may
-be NULL. -/
+number, a sum of integers keeps their sign, `MIN`, `MAX` and an integer
+`AVG` are within the argument's values, and the other measures are doubles. All but
+`COUNT` may be NULL, unless a group has a value (`grouped`, #372). -/
 def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false) :
     AVal :=
   let a := m.arg.absD env fs
+  -- A group has a row (`grouped`), so a measure of a never-NULL argument
+  -- without a filter has a value: `COUNT(*)` per group is at least 1.
+  let valued := grouped && m.filter.isNone && !a.null
   match m.fn with
-  -- A group has a row (`grouped`), so a count of a never-NULL argument
-  -- without a filter is positive: `COUNT(*)` per group is at least 1.
-  | .count =>
-    ⟨false, some (Bound.ge (if grouped && m.filter.isNone && !a.null then 1 else 0)), false, false,
-      false⟩
+  | .count => ⟨false, some (Bound.ge (if valued then 1 else 0)), false, false, false⟩
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
-  | .sum => ⟨!(grouped && m.filter.isNone && !a.null), some (match a.int with
+  | .sum => ⟨!valued, some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  | .fsum | .avg | .cov _ | .corr => AVal.double
+  -- Doubles round, so some double.
+  | .fsum | .avg => ⟨!valued, some Bound.top, false, false, false⟩
+  -- Between the smallest and the largest value (`AggFn.iavg`, #237).
+  | .iavg =>
+    ⟨!valued, some (if a.intsOnly then a.int.getD Bound.top else Bound.top), false, false, false⟩
+  | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
   | .var _ _ => ⟨true, some ⟨some 0, none⟩, false, false, false⟩
-  | .iavg | .bit _ => ⟨true, some Bound.top, false, false, false⟩
-  | .min | .max => a.nullable
+  | .bit _ => ⟨true, some Bound.top, false, false, false⟩
+  | .min | .max => if valued then a else a.nullable
   -- One of the values, in the measure's order (#55).
   | .pick _ => a.nullable
   -- A string, or NULL without values.
@@ -3327,6 +3644,24 @@ def WinFn.abs (sz : Bool) (env : List AVal) : WinFn → AVal
   | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
   | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
+/-- `ratio` facts for a `SUM` and a `COUNT` of the same values, which a
+decimal `AVG` divides (`Parse.decimalAvgs`, #237): the sum is of as many
+integers as the count, each within the bound `env` and `fs` give the values. -/
+def ratioFacts (g : Nat) (env : List AVal) (fs : List Fact) (ms : List Measure) : List Fact :=
+  (List.range ms.length).flatMap fun i => (List.range ms.length).flatMap fun j =>
+    match ms[i]?, ms[j]? with
+    | some mi, some mj =>
+      let a := mi.arg.absD env fs
+      if mi.fn = .sum ∧ mj.fn = .count ∧ mj.arg = mi.arg ∧ mj.filter = mi.filter ∧
+          mj.distinct = mi.distinct ∧ a.intsOnly = true then
+        match a.int with
+        | some b => [.ratio (g + i) (g + j) b]
+        | none => []
+      else []
+    | _, _ => []
+
+
+mutual
 /-- Abstract evaluation. `A t` describes the columns of table `t`; `F t` holds
 facts about its rows. Computed columns use the facts of their input. -/
 def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
@@ -3334,7 +3669,8 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .read t => fit (cat t).arity (A t)
   | .values n _ => List.replicate n AVal.top
   | .filter r c => c.refine (r.aeval cat A F T sz)
-  | .project r es => r.aeval cat A F T sz ++ es.map (·.absD (r.aeval cat A F T sz) (r.facts cat F T))
+  | .project r es => r.aeval cat A F T sz ++
+      es.map (·.absD (r.aeval cat A F T sz) (r.facts cat F T ++ r.ratioPart cat A F T sz))
   | .emit r m => m.map ((r.aeval cat A F T sz).getD · AVal.top)
   | .cross a b => a.aeval cat A F T sz ++ b.aeval cat A F T sz
   | .join a b .inner on => on.refine (a.aeval cat A F T sz ++ b.aeval cat A F T sz)
@@ -3348,6 +3684,15 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .aggregate r gs ms =>
       gs.map (·.absD (r.aeval cat A F T sz) (r.facts cat F T)) ++
         ms.map fun m => Measure.abs (r.aeval cat A F T sz) (r.facts cat F T) m !gs.isEmpty
+
+/-- Facts about an aggregate's rows that need its input's description: the
+`ratio` facts of its sums and counts, for the decimal `AVG`s a projection
+divides (#237). -/
+def Rel.ratioPart (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (sz : Bool := false) : Rel → List Fact
+  | .aggregate r gs ms => ratioFacts gs.length (r.aeval cat A F T sz) (r.facts cat F T) ms
+  | _ => []
+end
 
 theorem Rel.aeval_length {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
     {T : WindowKeys} {sz : Bool} :
@@ -3510,6 +3855,20 @@ theorem sumBoundPos_sound {b : Bound} {v : Value} {vs : List Value}
         omega
       · cases hu
 
+theorem AVal.intsOnly_mem {a : AVal} (ho : a.intsOnly = true) {v : Value} (hm : a.Mem v)
+    (hn : v ≠ .null) : ∃ i b, v = .int i ∧ a.int = some b ∧ b.Mem i := by
+  simp only [AVal.intsOnly, Bool.and_eq_true, Bool.not_eq_true'] at ho
+  obtain ⟨⟨htt, hff⟩, hstr⟩ := ho
+  match v, hm with
+  | .null, _ => exact absurd rfl hn
+  | .int i, ⟨b, hb, hi⟩ => exact ⟨i, b, rfl, hb, hi⟩
+  | .bool true, hm | .bool false, hm | .str _, hm => simp_all [AVal.Mem]
+  | .list _, hm => simp_all [AVal.Mem]
+
+theorem Bound.mem_between {b : Bound} {l h r : Int} (hl : b.Mem l) (hh : b.Mem h) (hlr : l ≤ r)
+    (hrh : r ≤ h) : b.Mem r :=
+  ⟨fun x hx => Int.le_trans (hl.1 x hx) hlr, fun x hx => Int.le_trans hrh (hh.2 x hx)⟩
+
 /-- A measure without a filter, of an argument that is never NULL, over a
 group with a row, has an input. -/
 theorem Measure.inputs_ne_nil {env : List AVal} {fs : List Fact} {grp : Relation}
@@ -3533,6 +3892,17 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     intro v hv
     obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
     exact Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) m.arg
+  have inputs_ne_null : ∀ {v}, v ∈ m.inputs grp → v ≠ .null := fun hv => (Measure.mem_inputs hv).1
+  -- A group with a row has a value, when the argument is never NULL and nothing is filtered.
+  have valued_ne_nil : (grouped && m.filter.isNone && !(m.arg.absD env fs).null) = true →
+      m.inputs grp ≠ [] := fun hv => by
+    simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Bool.not_eq_true'] at hv
+    exact Measure.inputs_ne_nil hall (hne hv.1.1) hv.1.2 hv.2
+  have novalue : m.inputs grp = [] →
+      (!(grouped && m.filter.isNone && !(m.arg.absD env fs).null)) = true := fun hvs => by
+    cases hv : (grouped && m.filter.isNone && !(m.arg.absD env fs).null)
+    · rfl
+    · exact absurd hvs (valued_ne_nil hv)
   unfold Measure.abs Measure.eval
   cases hf : m.fn <;> dsimp only
   case collect => exact AVal.mem_top _
@@ -3594,8 +3964,30 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     | nil => rfl
     | cons v vs =>
       simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
-  case fsum | avg | iavg | bit =>
+  case bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
+  case fsum | avg =>
+    cases hvs : m.inputs grp with
+    | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
+    | cons v vs => exact ⟨_, rfl, Bound.mem_top _⟩
+  case iavg =>
+    cases hvs : m.inputs grp with
+    | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
+    | cons v vs =>
+      split
+      · rename_i honly
+        -- Every value is an integer in the argument's interval `b`.
+        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
+          fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+        obtain ⟨i₀, b, rfl, hb, -⟩ := hint v (List.mem_cons_self ..)
+        obtain ⟨r, hr, ⟨l, hl, hlr⟩, ⟨h, hh, hrh⟩⟩ := AggFn.apply_iavg_between
+          (vs := .int i₀ :: vs) (List.ne_nil_of_mem (mem_intsOf.2 (List.mem_cons_self ..)))
+        rw [hr]
+        have memb : ∀ c ∈ intsOf (.int i₀ :: vs), b.Mem c := fun c hc => by
+          obtain ⟨_, b', he, hb', hm⟩ := hint _ (mem_intsOf.1 hc)
+          cases he; rw [hb] at hb'; cases hb'; exact hm
+        refine ⟨b, by simp [hb], Bound.mem_between (memb l hl) (memb h hh) hlr hrh⟩
+      · exact ⟨_, rfl, Bound.mem_top _⟩
   case var sample sqrt =>
     cases m.inputs grp with
     | nil => rfl
@@ -3605,11 +3997,19 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       · rfl
       · exact ⟨_, rfl, fun l hl => by cases hl; omega, fun h hh => by cases hh⟩
   case min | max =>
-    have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
-    rw [hf] at hmm
-    rcases hmm with h | h
-    · rw [h]; rfl
-    · exact AVal.mem_nullable (hin _ h)
+    split
+    · -- A group with a value: one of the values.
+      rename_i hv
+      cases hvs : m.inputs grp with
+      | nil => exact absurd hvs (valued_ne_nil hv)
+      | cons v vs =>
+        simp only [AggFn.apply]
+        exact hin _ (hvs ▸ pickFold_mem _ _ _)
+    · have hmm := AggFn.apply_minmax (f := m.fn) (by simp [hf]) (vs := m.inputs grp)
+      rw [hf] at hmm
+      rcases hmm with h | h
+      · rw [h]; rfl
+      · exact AVal.mem_nullable (hin _ h)
   case pick last =>
     -- The sorted rows are the group's rows.
     have hin' : ∀ v ∈ m.inputs (grp.mergeSort (sortLe m.sort)), (m.arg.absD env fs).Mem v := by
@@ -3620,6 +4020,69 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     rcases AggFn.apply_pick last (m.inputs (grp.mergeSort (sortLe m.sort))) with h | h
     · rw [h]; rfl
     · exact AVal.mem_nullable (hin' _ h)
+
+theorem intSum_bounds {b : Bound} :
+    ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .int i ∧ b.Mem i) →
+      (∀ l, b.lo = some l → vs.length * l ≤ intSum vs) ∧
+        (∀ h, b.hi = some h → intSum vs ≤ vs.length * h)
+  | [], _ => by simp [intSum]
+  | w :: ws, hall => by
+    obtain ⟨i, rfl, hi⟩ := hall w (List.mem_cons_self ..)
+    have ih := intSum_bounds (vs := ws) fun w hw => hall w (List.mem_cons_of_mem _ hw)
+    simp only [intSum, List.length_cons]
+    constructor
+    · intro l hl
+      have := hi.1 l hl; have := ih.1 l hl
+      rw [Int.natCast_add, Int.add_mul]; omega
+    · intro h hh
+      have := hi.2 h hh; have := ih.2 h hh
+      rw [Int.natCast_add, Int.add_mul]; omega
+
+/-- The `ratio` facts hold on a group's row. -/
+theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
+    {grp : Relation} {k : Row} (hk : k.length = g)
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
+    FactsHold (ratioFacts g env fs ms) (k ++ ms.map (·.eval grp)) := by
+  intro f hf
+  simp only [ratioFacts, List.mem_flatMap, List.mem_range] at hf
+  obtain ⟨i, _, j, _, hf⟩ := hf
+  have col : ∀ i (m : Measure), ms[i]? = some m →
+      (k ++ ms.map (·.eval grp)).getD (g + i) .null = m.eval grp := fun i m h => by
+    rw [← hk, getD_append_right']
+    simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]
+  split at hf
+  · rename_i mi mj hmi hmj
+    split at hf
+    · rename_i hc
+      obtain ⟨hsum, hcount, harg, hfil, hdis, honly⟩ := hc
+      split at hf
+      · rename_i b hb
+        simp only [List.mem_singleton] at hf; subst hf
+        intro x n hx hn
+        rw [col i mi hmi, Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
+        rw [col j mj hmj, Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
+        have hsame : mj.inputs grp = mi.inputs grp := by
+          simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
+        rw [hsame] at hn
+        cases hvs : mi.inputs grp with
+        | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
+        | cons v vs =>
+          rw [hvs] at hx hn
+          simp only [AggFn.apply, Value.int.injEq] at hx hn
+          subst hx hn
+          have hint : ∀ w ∈ v :: vs, ∃ i, w = .int i ∧ b.Mem i := by
+            intro w hw
+            have hw' : w ∈ mi.inputs grp := hvs ▸ hw
+            obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
+            have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
+            obtain ⟨i, b', he, hb', hi⟩ := AVal.intsOnly_mem honly hm hnn
+            rw [hb] at hb'; cases hb'
+            exact ⟨i, he, hi⟩
+          obtain ⟨hlo, hhi⟩ := intSum_bounds hint
+          exact ⟨by simp, hlo, hhi⟩
+      · simp at hf
+    · simp at hf
+  · simp at hf
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)
@@ -3718,6 +4181,7 @@ def Rel.Small (cat : Catalog) : Rel → Prop
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => a.Small cat ∧ b.Small cat
   | .window r _ _ _ => (r.eval cat).length < 2 ^ 62 ∧ r.Small cat
 
+mutual
 theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
@@ -3734,7 +4198,8 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       simp only [eval, List.mem_map] at h
       obtain ⟨x, hx, rfl⟩ := h
       have hm := aeval_sound hcat hA hF hT hwf.1 hs x hx
-      exact hm.append (hm.mapD (Rel.facts_sound hcat hF hT hwf.1 x hx) es)
+      have hr := ratioPart_sound hcat hA hF hT hwf.1 hs x hx
+      exact hm.append (hm.mapD ((Rel.facts_sound hcat hF hT hwf.1 x hx).append hr) es)
         (by rw [aeval_length hwf.1, eval_arity hcat hwf.1 x hx])
   | .emit r m, hwf, hs, row, h => by
       simp only [eval, List.mem_map] at h
@@ -3811,6 +4276,25 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
         rw [he] at this; simp at this; have := (hs h).1; omega
       exact (hall x (.inl rfl)).append (EnvMem.window hall hn fns)
         (by rw [aeval_length hwf.1, eval_arity hcat hwf.1 x hx])
+
+theorem Rel.ratioPart_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {sz : Bool} :
+    ∀ {r : Rel}, r.WF cat → (sz = true → r.Small cat) → ∀ row ∈ r.eval cat,
+      FactsHold (r.ratioPart cat A F T sz) row
+  | .aggregate r gs ms, hwf, hs, row, h => by
+      obtain ⟨k, grp, rfl, hgrp, hk, -⟩ := mem_aggregateEval_nonempty h
+      refine ratioFacts_sound ?_ fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 hs y (hgrp y hy),
+        Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
+      rcases hk with ⟨rfl, rfl⟩ | ⟨z, _, rfl⟩ <;> simp [groupKey]
+  | .read _, _, _, _, _ | .values _ _, _, _, _, _ | .filter _ _, _, _, _, _
+  | .project _ _, _, _, _, _ | .emit _ _, _, _, _, _ | .cross _ _, _, _, _, _
+  | .join _ _ _ _, _, _, _, _ | .fetch _ _ _, _, _, _, _ | .unionAll _ _, _, _, _, _
+  | .window _ _ _ _, _, _, _, _ | .semi _ _ _ _, _, _, _, _ | .orderBy _ _, _, _, _, _
+  | .distinct _, _, _, _, _ | .unnest _ _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
+end
 
 /-! ## Contracts -/
 

@@ -797,11 +797,15 @@ All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`,
   grouping expressions, even on an empty input. Measures skip NULLs; on no
   values `COUNT` is 0 and the rest are NULL. Integer `SUM` is exact (DataFusion
   wraps around; the reference raises outside 64 bits, checked while the job runs), double `SUM`/`AVG` add with native floats
-  (DataFusion promises no order; contracts only say "a double"), and `AVG` of
-  integers is the `AVG` of their conversion to double. `MIN`/`MAX` of doubles
-  are refused: DataFusion's grouped version turns a group of +∞ into the largest
-  finite double and skips NaN next to other values. The grouping columns are a
-  key of the result.
+  (DataFusion promises no order), and `AVG` of integers is the `AVG` of their
+  conversion to double. `MIN`/`MAX` of doubles compare by the
+  codes, as DuckDB does; DataFusion's grouped version turns a group of +∞ into
+  the largest finite double and skips NaN next to other values, so it is refused
+  there. Contracts see `MIN`, `MAX`, an integer `AVG` and a decimal `AVG` within
+  the values' bounds, measures over a group of a column that is never NULL as
+  never NULL, and `MIN ≤ MAX` (#372). An `AVG` of doubles rounds, so it is some
+  double.
+  The grouping columns are a key of the result.
 * Ill-typed calls evaluate to `null`. This keeps `eval` total. `Rel.WF` rules out
   out-of-range field references.
 * Some operations are rewrites in the parser. `IN` lists become `OR`s of
