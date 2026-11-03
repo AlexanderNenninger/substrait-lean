@@ -1,0 +1,57 @@
+{
+  "id": "duckdb-R9",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Casts of doubles and decimals to integers: rounding",
+  "verdict": "decided: truncate; DuckDB shim",
+  "area": "casts",
+  "constructs": [
+    "CAST",
+    "cast"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB rounds half away from zero natively: `CAST(0.55 AS INTEGER) = 1`, `CAST(-0.55 AS BIGINT) = -1`, and `avg(d)::INTEGER` rounds too.",
+    "Shim: sverify's SQL writes `CAST(trunc(x) AS BIGINT)` (`DuckDBDialect.float_to_int`)."
+  ],
+  "reference": [
+    "Substrait: the cast's rounding is not specified.",
+    "Lean: truncates (`ftoi`), as DataFusion does. Decided on #209: the reference truncates toward zero, so no Lean change."
+  ],
+  "status": "decided",
+  "ledger_entries": 28,
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/cast/decimal_integer_cast.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/cast/float_integer_cast.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/numeric/test_floor_ceil.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/aggregate/aggregate_state_export/test_combine_aggr.test",
+          "note": "line 18"
+        },
+        {
+          "file": "characterization/duckdb/cast.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-02",
+      "method": "source-reading",
+      "checked_by": "commit 5b168e0 (#209)",
+      "notes": "Decided: the reference truncates toward zero."
+    }
+  ],
+  "issues": [
+    209
+  ]
+}

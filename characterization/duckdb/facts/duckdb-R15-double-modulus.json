@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-R15-double-modulus",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`DOUBLE % DOUBLE`",
+  "verdict": "no option matches: NaN for a zero divisor or an infinite dividend",
+  "area": "doubles",
+  "constructs": [
+    "%"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "NaN for a zero divisor or an infinite dividend (duckdb-R4).",
+  "reference": "`modulus` of doubles is `fmod` (duckdb-R4); a zero divisor and an infinite dividend raise.",
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "DOUBLE % DOUBLE"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242
+  ]
+}

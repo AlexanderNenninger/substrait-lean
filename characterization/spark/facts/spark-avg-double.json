@@ -1,0 +1,32 @@
+{
+  "id": "spark-avg-double",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`AVG` of doubles: plain sum by the count",
+  "verdict": "plain sum / n",
+  "area": "aggregates",
+  "constructs": [
+    "avg"
+  ],
+  "settings": {},
+  "description": "`AVG(DOUBLE)` keeps a sum and a count and returns `Divide(sum, count, LEGACY)`, NULL for a count of 0. The sum is spark-sum-double's.",
+  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/aggregate/Average.scala#L102-L126"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

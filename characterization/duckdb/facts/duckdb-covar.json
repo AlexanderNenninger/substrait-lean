@@ -1,0 +1,39 @@
+{
+  "id": "duckdb-covar",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`COVAR_*` of doubles: Welford co-moment, Chan merge",
+  "verdict": "Welford co-moment; Chan merge",
+  "area": "aggregates",
+  "constructs": [
+    "covar_samp",
+    "covar_pop"
+  ],
+  "settings": {},
+  "description": [
+    "The co-moment is updated online (Schubert and Gertz 2018, eq. 4.3): `C += dx * (y - meany_new)`, where `dx` uses the old mean of x. Partial states merge with means `(n_s * mean_s + n_t * mean_t) / n` and `C = C_s + C_t + dx * dy * n_s * n_t / n`.",
+    "No pairs is NULL; the sample covariance of fewer than two pairs is NULL."
+  ],
+  "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/covar.hpp#L29-L45"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/covar.hpp#L48-L71"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

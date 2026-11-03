@@ -1,0 +1,82 @@
+{
+  "id": "duckdb-R15-round-digits",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`round(DOUBLE, d)` for `d` from -1000 to 400",
+  "verdict": "the reference (DuckDB's formula since #335)",
+  "area": "doubles",
+  "constructs": [
+    "round"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "DuckDB rounds to `d` digits; below zero it computes `round(x / 10^-d) · 10^-d`, and 0 where that is not finite.",
+  "reference": "`round` with a digit count: DuckDB's formula since #335, so the outcomes match on every probed `d`.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#335, commit 4b8d8bb)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, -1000)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, -309)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, -308)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, -20)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, -1)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, 1)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, 2)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, 16)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, 308)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, 309)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "round(DOUBLE, 400)"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242,
+    335
+  ]
+}

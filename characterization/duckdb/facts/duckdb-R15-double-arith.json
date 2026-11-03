@@ -1,0 +1,60 @@
+{
+  "id": "duckdb-R15-double-arith",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`DOUBLE + - * /`",
+  "verdict": "no option matches: NaN from ±inf; `/` by zero is IEEE",
+  "area": "doubles",
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "/"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "Operations on ±inf that have no value give NaN (`inf - inf`, `0 * inf`, `inf / inf`), where the reference raises a domain error (#257); `/` by zero is IEEE (duckdb-R5).",
+    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged."
+  ],
+  "reference": "`add` … `divide`: no operation creates a NaN (#257); a zero divisor raises unless the plan asks otherwise.",
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "DOUBLE + DOUBLE"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "DOUBLE - DOUBLE"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "DOUBLE * DOUBLE"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "DOUBLE / DOUBLE"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242,
+    257
+  ]
+}

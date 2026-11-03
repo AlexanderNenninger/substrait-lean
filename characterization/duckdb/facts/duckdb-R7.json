@@ -1,0 +1,52 @@
+{
+  "id": "duckdb-R7",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`sum`/`avg` of a double constant",
+  "verdict": "fixed (#205)",
+  "area": "aggregates",
+  "constructs": [
+    "sum",
+    "avg"
+  ],
+  "settings": {},
+  "description": "DuckDB's sums of doubles are IEEE (native): `inf`, `-inf`, `nan`.",
+  "reference": [
+    "Substrait: `sum(fp64)` returns `fp64?`.",
+    "Lean: `SUM(CAST('inf' AS DOUBLE))` evaluated to a 500-digit integer, and `avg(42) OVER ()` to `inf`. The aggregate took a constant argument for an integer and added float codes; over a double column it was right. A deviation and a soundness bug. Fixed (#205): a constant argument has its declared type, so `sum(fp64)` adds doubles."
+  ],
+  "status": "fixed",
+  "ledger_entries": 3,
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/float/nan_aggregates.test",
+          "note": "line 7"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/window/test_scalar_window.test",
+          "note": "line 11"
+        },
+        {
+          "file": "characterization/duckdb/types__float.json"
+        },
+        {
+          "file": "characterization/duckdb/window.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "source-reading",
+      "checked_by": "commit f861bdd (#205)",
+      "notes": "Aggregate constants have their declared type."
+    }
+  ],
+  "issues": [
+    205
+  ]
+}

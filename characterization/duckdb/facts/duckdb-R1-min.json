@@ -1,0 +1,53 @@
+{
+  "id": "duckdb-R1-min",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`abs(MIN)` and `divide(MIN, -1)`",
+  "verdict": "no finding (`verify`: overflow error)",
+  "area": "integers",
+  "constructs": [
+    "abs",
+    "/",
+    "//",
+    "divide"
+  ],
+  "settings": {},
+  "description": "DuckDB raises `Out of Range Error: Overflow …` for `abs(-2⁶³)` and `-2⁶³ // -1` (native).",
+  "reference": [
+    "Substrait and the reference: `abs` and `divide` on `i8`…`i64` return the same type; with `overflow` omitted, `abs(MIN)` and `MIN / -1` raise.",
+    "Lean: no finding. `verify` reports `overflow` as an error for both."
+  ],
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/operator/test_division_overflow.test"
+        },
+        {
+          "file": "characterization/duckdb/function__operator.json"
+        }
+      ],
+      "notes": "Counted with duckdb-R1."
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.duckdb_fuzz on homelab (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/fuzz__int_overflow.json"
+        },
+        {
+          "file": "characterization/duckdb/fuzz__int_division.json"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    185
+  ]
+}

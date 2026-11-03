@@ -1,0 +1,45 @@
+{
+  "id": "polars-corr",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`corr`: shared state; NaN for one pair or zero variance",
+  "verdict": "dp_xy / sqrt(dp_xx · dp_yy); NaN where the reference is NULL; no clamp",
+  "area": "aggregates",
+  "constructs": [
+    "corr",
+    "pearson_corr"
+  ],
+  "settings": {},
+  "description": [
+    "`PearsonState` returns `dp_xy / sqrt(dp_xx * dp_yy)` if `dp_xx * dp_yy > 0`, else NaN: one pair or a zero variance is NaN. Not clamped to [-1, 1]. `dp_xx * dp_yy` can overflow or underflow before the square root.",
+    "No pairs: null in the streaming reducer; the in-memory path (`polars-ops` `cov.rs`) returns NaN."
+  ],
+  "reference": [
+    "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
+    "Where the reference is NULL (one pair, a constant side), Polars gives NaN."
+  ],
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs#L273-L280"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs#L297-L305"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/chunked_array/cov.rs#L28-L43"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Unverified: what the SQL layer (polars-sql) returns for no pairs; only the Rust paths were read."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

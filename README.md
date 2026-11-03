@@ -47,7 +47,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) and lowering expectations |
 | `notebooks/` | The tour, in [marimo](https://marimo.io) ([below](#the-tour)) |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O and more), probed against the checker and the engines; [findings](catalogue/FINDINGS.md) |
-| `characterization/duckdb/` | DuckDB's behaviour as a diff against the reference model ([facts](characterization/duckdb/FACTS.md)) |
+| `characterization/` | What each engine does, as a diff against the reference model: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/FACTS.md)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
 | `upstream/LEDGER.md` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream |

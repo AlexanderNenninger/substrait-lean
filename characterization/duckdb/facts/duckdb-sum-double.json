@@ -1,0 +1,35 @@
+{
+  "id": "duckdb-sum-double",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`SUM` of doubles: plain sequential",
+  "verdict": "plain recursive summation",
+  "area": "aggregates",
+  "constructs": [
+    "sum"
+  ],
+  "settings": {},
+  "description": "`SUM(DOUBLE)` adds each value to the state in turn (`state.value += input`), and partial states merge by plain addition. The order of the values depends on the parallel plan.",
+  "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L557"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L76-L82"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

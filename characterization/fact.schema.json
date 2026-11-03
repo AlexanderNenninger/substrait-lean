@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/characterization/fact.schema.json",
+  "title": "Engine fact",
+  "description": "One finding about what an engine does, with the checks that support it. Stored as characterization/<engine>/facts/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "engine", "engine_version", "title", "area", "description", "status", "provenance"],
+  "properties": {
+    "id": {
+      "description": "Stable id: the engine, a dash, then a number or slug (duckdb-R5, polars-var-algorithm). The file is named <id>.json.",
+      "type": "string",
+      "pattern": "^[a-z]+-[A-Za-z0-9][A-Za-z0-9.-]*$"
+    },
+    "engine": {"description": "The engine's folder under characterization/.", "type": "string", "pattern": "^[a-z]+$"},
+    "engine_version": {"description": "The exact version checked, or \"unknown\".", "type": "string"},
+    "title": {"description": "A short name for the finding.", "type": "string"},
+    "verdict": {"description": "One line for the summary table.", "type": "string"},
+    "area": {
+      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts"]
+    },
+    "layer": {
+      "description": "semantics (default): what a plan computes. frontend: how the engine's SQL text becomes a plan.",
+      "enum": ["semantics", "frontend"]
+    },
+    "constructs": {
+      "description": "The SQL functions, operators or plan nodes concerned.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "settings": {
+      "description": "Engine settings the fact depends on, with the value it holds under (a list when it was checked under each).",
+      "type": "object"
+    },
+    "description": {"description": "What the engine does.", "$ref": "#/$defs/prose"},
+    "reference": {"description": "What Substrait and sverify's reference semantics (Rel.eval, verify) do.", "$ref": "#/$defs/prose"},
+    "status": {
+      "description": "deviation: Lean disagrees with the reference; fixed: it did and no longer does; decided: an open choice, now decided; shimmed: the engine needs sverify's SQL to rewrite it; no-finding: the engine or Lean already gives the reference; open: undecided.",
+      "enum": ["deviation", "fixed", "decided", "shimmed", "no-finding", "open"]
+    },
+    "ledger_entries": {"description": "About how many replay ledger entries show it.", "type": "integer", "minimum": 0},
+    "provenance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},
+    "issues": {"type": "array", "items": {"type": "integer"}},
+    "prs": {"type": "array", "items": {"type": "integer"}},
+    "supersedes": {"type": "array", "items": {"type": "string"}},
+    "superseded_by": {"type": "string"}
+  },
+  "$defs": {
+    "prose": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      ]
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checked_at", "method", "checked_by"],
+      "properties": {
+        "checked_at": {"description": "A date, or \"unknown\".", "type": "string", "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}|unknown)$"},
+        "method": {"enum": ["probe", "source-reading", "docs", "replay", "fuzz", "manual-repro"]},
+        "checked_by": {"description": "The tool, session or commit that ran the check.", "type": "string"},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "notes": {"$ref": "#/$defs/prose"}
+      }
+    },
+    "evidence": {
+      "description": "A link (source at a tag or commit, docs, a test), a file of this repository (a ledger, probes.json, a test), a probe in it, or a SQL repro with what it gave.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://"},
+        "file": {"description": "A path from the repository root.", "type": "string"},
+        "probe": {"description": "A construct of the probe file named by file.", "type": "string"},
+        "test": {"description": "A test id (pytest node id).", "type": "string"},
+        "sql": {"type": "string"},
+        "observed": {"description": "What the SQL gave.", "type": "string"},
+        "note": {"type": "string"}
+      },
+      "dependentRequired": {"probe": ["file"], "observed": ["sql"]}
+    }
+  }
+}
