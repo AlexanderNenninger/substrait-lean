@@ -713,6 +713,14 @@ class SourceRefresh:
     detail: str = ""
     inserts: int = 0
     deletes: int = 0
+    schema: str = ""
+    """How the source's schema changed in this batch (`SchemaChange`), or ""."""
+
+    def span(self) -> str:
+        """The versions, as "orders@v3→v5" ("orders@v5" if unchanged)."""
+        if self.mode == "unchanged":
+            return f"{self.table}@v{self.start}"
+        return f"{self.table}@v{self.start}→v{self.end}"
 
     def __str__(self) -> str:
         if self.mode == "unchanged":
@@ -738,6 +746,14 @@ class RefreshReport:
     @property
     def recomputed(self) -> list[str]:
         return [s.table for s in self.sources if s.mode == "recomputed"]
+
+    @property
+    def notable(self) -> list[str]:
+        """What a log should show in full: sources whose change could not be
+        applied incrementally, and schema changes."""
+        out = [f"{t} recomputed" for t in self.recomputed]
+        out += [f"{s.table} schema: {s.schema}" for s in self.sources if s.schema]
+        return out
 
     def __str__(self) -> str:
         lines = [str(s) for s in self.sources]
@@ -1207,19 +1223,25 @@ class Pipeline:
                 continue
             schema = self.con.schema(t)
             evolved = SchemaChange.of(schema, batch.schema or schema)
-            note = ""
+            note = schema_note = ""
             if evolved:
                 try:
                     if not evolved.compatible:
                         raise ValueError("the old schema cannot hold the new data")
                     batch = _conform_batch(batch, schema)
                     note = f"; schema: {evolved}, read in the old schema"
+                    schema_note = str(evolved)
                 except (ValueError, pa.ArrowException) as e:
                     snap = batch.snapshot
                     if snap is None or batch.changes is not None:
                         snap = src.snapshot(batch.end).table
                     entry = SourceRefresh(
-                        t, start, batch.end, "recomputed", f"schema: {evolved} ({first_line(e)})"
+                        t,
+                        start,
+                        batch.end,
+                        "recomputed",
+                        f"schema: {evolved} ({first_line(e)})",
+                        schema=str(evolved),
                     )
                     rebuild[t] = (snap, entry)
                     versions[t] = batch.end
@@ -1281,6 +1303,7 @@ class Pipeline:
                     detail + note,
                     inserted_count(ch),
                     deleted_count(ch),
+                    schema_note,
                 )
             )
         replan = self._reading(set(rebuild))

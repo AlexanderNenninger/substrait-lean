@@ -439,6 +439,18 @@ The engine is chosen at refresh time: `"duckdb"` (the default, in memory),
 `"polars"`, `"datafusion"`, `"spark"` or a Spark session. The nodes keep their
 state while the process runs; a stored node's table is its durable state.
 
+A job that refreshes every minute logs `summary()`, one line per node, and
+`str()` keeps the full report. A node's entry is in full when its refresh did
+something notable: its first refresh, a source recomputed for want of a change
+feed, a schema change, or a sink overwriting its table. A failed check raises,
+and its message says which rows failed what:
+
+```python
+customers.apply(sv.Changes(inserts=[("dan", "Oslo")]))
+print(c.refresh().summary())
+# cities: orders@v1, customers@v1→v2, Δ trusted (change feed)
+```
+
 ### Delta Lake and Iceberg
 
 `sverify.io` reads and writes Delta Lake (delta-rs) and Iceberg (pyiceberg)
