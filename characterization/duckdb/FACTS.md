@@ -38,6 +38,7 @@ Generated from [facts/](facts/) by `uv run python -m sverify_dev.facts --write`;
 | [duckdb-covar](#duckdb-covar) | `COVAR_*` of doubles: Welford co-moment, Chan merge | aggregates | open | Welford co-moment; Chan merge |  | 2026-11-03 |
 | [duckdb-kahan-sum](#duckdb-kahan-sum) | `kahan_sum`, `fsum`, `sumkahan`, `favg`: classic Kahan | aggregates | open | classic Kahan (not Neumaier); NaN with an infinite input |  | 2026-11-03 |
 | [duckdb-nonfinite-aggregates](#duckdb-nonfinite-aggregates) | ±inf in variance, correlation and Kahan sums | aggregates | open | NaN, no error (since 2.0) |  | 2026-11-03 |
+| [duckdb-substring-range](#duckdb-substring-range) | `substring` raises for an offset or a length outside 32 bits | strings | fixed | fixed (#336): the reference raises too |  | 2026-11-03 |
 | [duckdb-sum-double](#duckdb-sum-double) | `SUM` of doubles: plain sequential | aggregates | open | plain recursive summation |  | 2026-11-03 |
 | [duckdb-var-stddev](#duckdb-var-stddev) | `VAR_*` and `STDDEV_*` of doubles: Welford, Chan merge | aggregates | open | Welford; Chan merge with fma; no clamp |  | 2026-11-03 |
 | [duckdb-F1](#duckdb-f1) | `/` and `//` on integers | integers | no-finding | frontend |  | 2026-11-01 |
@@ -624,6 +625,23 @@ Checked:
 
 - 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73). Read at tag v2.0.0 (commit d54cbbe3). Why the result is NaN, read from the update.
 - 2026-11-03, manual-repro, by the coordinator's subagent, and this session again, in python/'s DuckDB 2.0.0: `SELECT var_samp(x), stddev_samp(x), corr(x, x) FROM (VALUES ('inf'::DOUBLE), (1.0), (2.0)) t(x)` gives `nan, nan, nan`; `SELECT sum(x), fsum(x), favg(x), avg(x) FROM (VALUES ('inf'::DOUBLE), (1.0)) t(x)` gives `inf, nan, nan, inf`; `SELECT var_samp(x), var_pop(x), corr(x, x) FROM (VALUES (1.0::DOUBLE)) t(x)` gives `NULL, 0.0, nan`.
+
+## <a id="duckdb-substring-range"></a>duckdb-substring-range. `substring` raises for an offset or a length outside 32 bits
+
+duckdb 2.0.0 · strings · fixed · `substring` · #336
+
+DuckDB's `substring(s, start, length)` raises "Substring offset outside of supported range" for a `start` outside `[-2³², 2³²)`, and "Substring length outside of supported range" for a `length` of `2³²` or more. With a NULL string, offset or length it gives NULL.
+
+Reference:
+
+Was: no such error; `Rel.eval` returned rows, and `verify` reported nothing (#336).
+
+Now: the same range is an error in the reference (`Text.substrInRange`, `Issue.domain`), reported by `verify` unless the offset's bounds rule it out. The size hypothesis for strings is 2³² characters (`Text.sizeCap`). DuckDB raises itself; the written plan guards the offset its wrap-around arithmetic shifts.
+
+Checked:
+
+- 2026-11-03, probe, by session quick-fixes (#336), duckdb 2.0.0 Python package: `SELECT substring('hello', 4294967295, 2), substring('hello', -4294967296, 2), substring('hello', 1, 4294967295)` gives `'', '', 'hello'`; `SELECT substring('hello', 4294967296, 2)` gives `Out of Range Error: Substring offset outside of supported range`; `SELECT substring('hello', -4294967297, 2)` gives `Out of Range Error: Substring offset outside of supported range`; `SELECT substring('hello', 1, 4294967296)` gives `Out of Range Error: Substring length outside of supported range`; `SELECT substring(NULL::VARCHAR, -4294967297, 2), substring('abc', NULL::BIGINT, 4294967296)` gives `NULL, NULL`.
+- 2026-11-03, replay, by sverify_dev.slt (#240), reported in #336: [function/string/test_substring.test](https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_substring.test).
 
 ## <a id="duckdb-sum-double"></a>duckdb-sum-double. `SUM` of doubles: plain sequential
 

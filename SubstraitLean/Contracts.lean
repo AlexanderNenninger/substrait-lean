@@ -712,6 +712,17 @@ def BinFn.domainSafe : BinFn → AVal → AVal → Bool
 def partialAbs (safe : Bool) (a : AVal) : AVal :=
   ⟨a.nonInt || !safe, a.int.map fun _ => Bound.top, false, false, false⟩
 
+/-- `CAST(x AS DECIMAL(_, s))`: between the casts of the double's bounds,
+where both have a decimal (`FloatCode.toDecimal?_between`, #223); else some
+integer, or `NULL`. -/
+def ftodAbs (s : Nat) (a : AVal) : AVal :=
+  match a.int with
+  | some ⟨some l, some h⟩ =>
+    match FloatCode.toDecimal? l s, FloatCode.toDecimal? h s with
+    | some x, some y => ⟨a.nonInt, some ⟨some x, some y⟩, false, false, false⟩
+    | _, _ => partialAbs false a
+  | _ => partialAbs false a
+
 /-- Some integer, or `NULL` unless the arguments are `safe`. -/
 def partialAbs₂ (safe : Bool) (a b : AVal) : AVal :=
   ⟨a.nonInt || b.nonInt || !safe,
@@ -740,11 +751,11 @@ def UnFn.abs : UnFn → AVal → AVal
   | .decimal _ _, a | .dkind _ _, a => a
   | .dround _, a | .dtrunc _, a =>
       ⟨a.nonInt, a.int.map fun _ => Bound.top, false, false, false⟩
-  -- A decimal converts to a finite double (`FloatCode.ofDecimal`).
-  | .dtof _, a =>
-      ⟨a.nonInt, a.int.map fun _ => ⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩,
-        false, false, false⟩
-  | .ftod _, a => partialAbs false a
+  -- A decimal converts to a finite double, monotonically (`FloatCode.ofDecimal_mono`).
+  | .dtof s, a =>
+      ⟨a.nonInt, a.int.map fun b => ⟨some (b.lo.elim (FloatCode.negInf + 1) (FloatCode.ofDecimal · s)),
+        some (b.hi.elim (FloatCode.posInf - 1) (FloatCode.ofDecimal · s))⟩, false, false, false⟩
+  | .ftod s, a => ftodAbs s a
   | .itos, a => ⟨a.nonInt, none, false, false, a.int.isSome⟩
   | .widen, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
@@ -1168,16 +1179,36 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case dtof s =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s', rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]
-    · have := FloatCode.finite_bounds
-        (FloatCode.ofFloat (if i < 0 then -Float.ofScientific i.natAbs true s
-          else Float.ofScientific i.natAbs true s))
-      refine ⟨⟨some (FloatCode.negInf + 1), some (FloatCode.posInf - 1)⟩, by simp [UnFn.abs, hb],
-        ?_, ?_⟩ <;> intro x hx <;> simp only [Option.some.injEq] at hx <;> subst hx <;>
-        simp only [FloatCode.ofDecimal] <;> omega
+    · have := FloatCode.ofDecimal_bounds i s
+      refine ⟨⟨some (b.lo.elim (FloatCode.negInf + 1) (FloatCode.ofDecimal · s)),
+        some (b.hi.elim (FloatCode.posInf - 1) (FloatCode.ofDecimal · s))⟩, by simp [UnFn.abs, hb],
+        ?_, ?_⟩ <;> intro x hx <;> simp only [Option.some.injEq] at hx <;> subst hx
+      · cases hl : b.lo with
+        | none => simp only [Option.elim]; omega
+        | some l => exact FloatCode.ofDecimal_mono s (hi.1 l hl)
+      · cases hh : b.hi with
+        | none => simp only [Option.elim]; omega
+        | some u => exact FloatCode.ofDecimal_mono s (hi.2 u hh)
     all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt]
   case ftod s =>
-    exact partialAbs_sound (g := fun c => FloatCode.toDecimal? c s) (fun v => by cases v <;> rfl)
-      (fun hs => by simp at hs) h
+    have hp := partialAbs_sound (g := fun c => FloatCode.toDecimal? c s) (f := .ftod s) (safe := false)
+      (fun v => by cases v <;> rfl) (fun hs => by simp at hs) h
+    simp only [UnFn.abs, ftodAbs]
+    split
+    · rename_i l u hb
+      split
+      · rename_i x y hx hy
+        rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb', hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ |
+            ⟨s', rfl, hs⟩ | ⟨_, rfl, hs⟩
+        · simp [UnFn.apply, AVal.Mem, AVal.nonInt, hn]
+        · rw [hb] at hb'; cases hb'
+          obtain ⟨q, hq, hxq, hqy⟩ :=
+            FloatCode.toDecimal?_between (hi.1 l rfl) (hi.2 u rfl) hx hy
+          simp only [UnFn.apply, hq]
+          exact ⟨_, rfl, fun z hz => by cases hz; exact hxq, fun z hz => by cases hz; exact hqy⟩
+        all_goals simp_all [UnFn.apply, AVal.Mem, AVal.nonInt]
+      · exact hp
+    · exact hp
   case itof =>
     rcases mem_cases h with ⟨rfl, hn⟩ | ⟨i, b, rfl, hb, hi⟩ | ⟨rfl, ht⟩ | ⟨rfl, hf⟩ | ⟨s, rfl, hs⟩ | ⟨_, rfl, hs⟩
     · simp [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonInt, hn]

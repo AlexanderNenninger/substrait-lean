@@ -2156,6 +2156,9 @@ class ContractedTransform:
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}
         bound_inputs: dict[str, tuple[str, ir.Table]] = {}
+        # Placeholders of plain expressions (a memtable, a filtered table):
+        # their preconditions are checked on the data like a base table's.
+        plain: dict[str, tuple[str, ir.Table]] = {}
         external: dict[str, list[Condition]] = {}
         unproved_links: list[str] = []
         taken = set(leaf_tables(result))
@@ -2181,19 +2184,25 @@ class ContractedTransform:
                 prov = _lookup(op)
                 name = _fresh(prov.transform.name if prov else param, taken)
                 placeholders[op] = (name, link.assumptions[param])
+                if prov is None:
+                    plain[name] = (param, value)
         abstraction = _abstract(result, placeholders, taken)
         assumptions = {**abstraction.assumptions}
         _merge(assumptions, base)
         report = self.last_report = self._verify(
-            abstraction.body, assumptions, self.ensures, "ensures", base, self.infer
+            abstraction.body, assumptions, self.ensures, "ensures", {*base, *plain}, self.infer
         )
         # Inferred bounds on the inputs are preconditions like the rest:
         # checked on the data (or proved from metadata) and passed on,
         # before any check on the output reads them.
         for t, conds in report.inferred.items():
-            _merge(base, {t: conds})
             _merge(assumptions, {t: conds})
-            param, value = bound_inputs[t]
+            if t in plain:
+                param, value = plain[t]
+                unproved_links += [f"{self.name}: {label(c)} on {param}" for c in conds]
+            else:
+                _merge(base, {t: conds})
+                param, value = bound_inputs[t]
             if self.check_requires:
                 self._check_on_data(value, param, conds)
         checked: list[Condition] = []
