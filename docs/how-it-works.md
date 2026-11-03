@@ -429,7 +429,7 @@ the engine:
   sorted result comes out in Lean's order.
 
 Engine differences go through the hooks of a `Dialect`
-(`sverify/sql/core.py`). DuckDB's is `sverify/sql/duckdb.py`.
+(`sverify/sql/core/_base.py`). DuckDB's is `sverify/sql/duckdb.py`.
 
 `python/tests/test_sql.py` checks the generator. Every golden fixture and every
 delta plan of the incremental fixtures and example pipelines runs on DataFusion

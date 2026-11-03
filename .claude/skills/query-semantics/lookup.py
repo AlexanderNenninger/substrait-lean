@@ -222,10 +222,10 @@ def main() -> int:
         sql = ibis.to_sql(expr, dialect="postgres")
         print("Ibis's Postgres SQL:", " ".join(sql.split()))
         boring = {"Field", "Literal", "Project", "UnboundTable", "SortKey", "Alias"}
-        producer = ROOT / "python/src/sverify/ibis_substrait/__init__.py"
+        producer = sorted((ROOT / "python/src/sverify/ibis_substrait").glob("*.py"))
         print("\n== python/src/sverify/ibis_substrait (the vendored Ibis producer)")
         for op in sorted({type(n).__name__ for n in expr.op().find(ops.Node)} - boring):
-            lines = grep(producer, rf"ops\.{op}\b", 3)
+            lines = [ln for f in producer for ln in grep(f, rf"ops\.{op}\b", 3)][:3]
             print(
                 f"  {op}: " + ("\n      ".join(lines) if lines else "no translation (Unsupported)")
             )

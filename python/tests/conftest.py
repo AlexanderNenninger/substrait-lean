@@ -56,8 +56,9 @@ def _lift_refusal(exc: BaseException | None) -> str | None:
         seen.add(id(exc))
         tb = exc.__traceback__
         while tb is not None:
-            if isinstance(exc, Unsupported) and tb.tb_frame.f_code.co_filename.endswith(
-                os.path.join("sverify", "sql_lift.py")
+            if (
+                isinstance(exc, Unsupported)
+                and os.path.join("sverify", "sql_lift", "") in tb.tb_frame.f_code.co_filename
             ):
                 return str(exc).splitlines()[0]
             tb = tb.tb_next
