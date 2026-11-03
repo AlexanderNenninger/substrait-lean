@@ -1,0 +1,43 @@
+{
+  "id": "duckdb-IO1",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "unity_catalog: the secret's ENDPOINT needs a trailing slash",
+  "verdict": "end ENDPOINT with `/`",
+  "area": "io",
+  "layer": "io",
+  "constructs": [
+    "CREATE SECRET (TYPE unity_catalog)",
+    "ATTACH ... (TYPE unity_catalog)"
+  ],
+  "description": [
+    "The `unity_catalog` extension joins the secret's `ENDPOINT` with the API path by plain concatenation. Without a trailing slash (`http://unitycatalog:8080`) the request goes to `/api/2.1/unity-catalog/...` with no host, and fails with `Could not resolve hostname`. With the API path in the endpoint, the path appears twice (404). A bare `host:port` is refused (`Unsupported URL scheme`).",
+    "Workaround: `ENDPOINT 'http://host:port/'`."
+  ],
+  "status": "workaround",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "manual-repro",
+      "checked_by": "homelab catalog session (AlexanderNenninger/homelab#9): DuckDB 2.0.0 in Python, extensions unity_catalog cc59382f52, delta 9dcfb65b99, httpfs 77392a7207, against Unity Catalog OSS 0.7.0 with unitycatalog/unitycatalog#1959 on MinIO",
+      "evidence": [
+        {
+          "sql": "CREATE SECRET (TYPE unity_catalog, TOKEN 'none', ENDPOINT 'http://unitycatalog:8080', AWS_REGION 'us-east-1'); ATTACH 'homelab' AS lake (TYPE unity_catalog)",
+          "observed": "IO Error: Could not resolve hostname error for HTTP GET to '/api/2.1/unity-catalog/schemas?catalog_name=homelab'"
+        },
+        {
+          "sql": "... ENDPOINT 'http://unitycatalog:8080/api/2.1/unity-catalog' ...",
+          "observed": "Request to 'http://unitycatalog:8080/api/2.1/unity-catalog/api/2.1/unity-catalog/schemas?catalog_name=homelab' failed (HTTP 404)"
+        },
+        {
+          "sql": "... ENDPOINT 'unitycatalog:8080' ...",
+          "observed": "Failed to initialize curl URL: Unsupported URL scheme"
+        },
+        {
+          "sql": "... ENDPOINT 'http://unitycatalog:8080/' ...",
+          "observed": "ATTACH succeeds; the catalog's schemas and tables are listed"
+        }
+      ]
+    }
+  ]
+}

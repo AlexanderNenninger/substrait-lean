@@ -22,7 +22,7 @@ Where DuckDB computes a function differently from the reference (doubles'
 NaN and ±inf, the elementary functions outside their domains, division and
 `%` by zero, `MIN % -1`, `<<`, `overflow` = `SILENT` or `SATURATE`), the SQL is
 the generated lowering's template, proved in Lean (`lowered`,
-`sverify.sql.lowering`, `characterization/duckdb/FACTS.md` R15).
+`sverify.sql.lowering`, `characterization/duckdb/facts/` R15).
 
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the

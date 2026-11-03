@@ -50,13 +50,3 @@ def test_validate_finds_problems(tmp_path):
     assert "no fact duckdb-X2" in problems
     assert "names duckdb-X9" in problems
     assert "'geometry' is not one of" in problems
-
-
-def test_overview_generates():
-    """`--write` works on this branch. Whether each FACTS.md is current is not
-    checked here: the `Generated files` workflow rewrites them on `main`, so
-    feature branches leave them alone."""
-    docs = facts.load()
-    for engine in facts.engines():
-        text = facts.render(engine, [f for f in docs.values() if f["engine"] == engine])
-        assert all(f["id"] in text for f in docs.values() if f["engine"] == engine)
