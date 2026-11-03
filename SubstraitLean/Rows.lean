@@ -15,13 +15,18 @@ caps each read of a table with a `max_rows` precondition with a `FETCH`
   the left side's rows. `Rel.capJoins` wraps such a join in a `FETCH` of
   that many, which changes no rows (`Rel.capJoins_eval`): `Rel.maxRows` then
   bounds it by the left side alone, where the product would be far too large.
+* Capped reads change neither the rows nor the loose rows of a plan, so
+  every issue of the plan is one of the plan with capped reads
+  (`Rel.hasIssue_capReads`). There a double `SUM` or `AVG` has its error
+  bound (#85), and a cast of it to an integer or a decimal can be proved to
+  fit.
 * An integer `SUM` overflows only on a group or window frame of the plan's
-  rows, which the capped plan has too (`Rel.sumWraps_capReads`,
-  `Rel.sumWraps_capJoins`). So its `SUM`s are decided on the capped plan,
-  where `Rel.mayIssues` drops a `SUM` whose rows and values keep it within
-  64 bits (`Measure.sumFits`). Every other issue is decided on the plan as
-  it is: capping changes the loose rows a filter condition is evaluated on.
-  `Rel.issuesCapped_sound` puts the two together.
+  rows, which the plan with capped joins has too (`Rel.sumWraps_capJoins`).
+  So its `SUM`s are decided on the plan with capped reads and joins, where
+  `Rel.mayIssues` drops a `SUM` whose rows and values keep it within 64 bits
+  (`Measure.sumFits`). Every other issue is decided on the plan with capped
+  reads only: capping a join changes the loose rows a filter condition is
+  evaluated on. `Rel.issuesCapped_sound` puts the two together.
 -/
 
 namespace Substrait
@@ -196,49 +201,53 @@ end
 theorem sumWraps_ne_domain {e e' : Expr} (h : ((Issue.sumWraps, e) : Issue × Expr) = (.domain, e')) :
     False := by simp only [Prod.mk.injEq, reduceCtorEq, false_and] at h
 
-/-- A `SUM` that overflows on the plan overflows on the plan with capped
-reads, on tables within their caps. -/
-theorem Rel.sumWraps_capReads {cat : Catalog} {caps : String → Option Nat}
+/-- Capping reads commutes with loosening: `FETCH` stops `Rel.loose`. -/
+theorem Rel.capReads_loose (caps : String → Option Nat) :
+    ∀ r : Rel, (r.capReads caps).loose = r.loose.capReads caps
+  | .read t => by simp only [capReads, loose]; split <;> rfl
+  | .values _ _ | .fetch _ _ _ | .window _ _ _ _ | .aggregate _ _ _ => rfl
+  | .filter r _ | .semi r _ _ _ | .orderBy r _ | .distinct r => by
+    simp only [capReads, loose]; exact capReads_loose caps r
+  | .project r _ | .emit r _ => by simp only [capReads, loose, capReads_loose caps r]
+  | .cross a b | .unionAll a b | .join a b .inner _ | .join a b .left _ => by
+    simp only [capReads, loose, capReads_loose caps a, capReads_loose caps b]
+  | .unnest r _ => by simp only [capReads, loose, capReads_loose caps r]
+
+theorem Rel.capReads_eval_ite (hcap : ∀ t n, caps t = some n → (cat t).rows.length ≤ n)
+    (u : Bool) (r : Rel) :
+    (if u then (r.capReads caps).loose else r.capReads caps).eval cat =
+      (if u then r.loose else r).eval cat := by
+  cases u <;> simp only [Bool.false_eq_true, ↓reduceIte, capReads_loose, capReads_eval hcap]
+
+/-- An issue of the plan is an issue of the plan with capped reads, on tables
+within their caps: both have the same rows and the same loose rows. -/
+theorem Rel.hasIssue_capReads {cat : Catalog} {caps : String → Option Nat}
     (hcap : ∀ t n, caps t = some n → (cat t).rows.length ≤ n) :
-    ∀ {u : Bool} {r : Rel} {e : Expr}, r.HasIssue cat u (.sumWraps, e) →
-      (r.capReads caps).HasIssue cat u (.sumWraps, e)
+    ∀ {u : Bool} {r : Rel} {p : Issue × Expr}, r.HasIssue cat u p →
+      (r.capReads caps).HasIssue cat u p
   | _, .read _, _, h | _, .values _ _, _, h => h.elim
   | _, .filter r _, _, h => by
-    simp only [HasIssue, capReads] at h ⊢
-    rcases h with h | ⟨_, _, hp⟩
-    · exact .inl (sumWraps_capReads hcap h)
-    · exact absurd rfl (Expr.issues_ne_sumWraps hp)
+    simp only [HasIssue, capReads, capReads_loose, capReads_eval hcap] at h ⊢
+    exact h.imp (hasIssue_capReads hcap) id
   | _, .project r _, _, h => by
-    simp only [HasIssue, capReads] at h ⊢
-    rcases h with h | ⟨_, _, _, _, hp⟩
-    · exact .inl (sumWraps_capReads hcap h)
-    · exact absurd rfl (Expr.issues_ne_sumWraps hp)
+    simp only [HasIssue, capReads, capReads_eval_ite hcap] at h ⊢
+    exact h.imp (hasIssue_capReads hcap) id
   | _, .emit r _, _, h | _, .fetch r _ _, _, h | _, .orderBy r _, _, h | _, .distinct r, _, h
   | _, .unnest r _, _, h => by
     simp only [HasIssue, capReads] at h ⊢
-    exact sumWraps_capReads hcap (r := r) h
+    exact hasIssue_capReads hcap (r := r) h
   | _, .window r _ _ _, _, h => by
     simp only [HasIssue, capReads, capReads_eval hcap] at h ⊢
-    rcases h with h | h | ⟨_, _, heq, _⟩
-    · exact .inl (sumWraps_capReads hcap h)
-    · exact .inr (.inl h)
-    · exact (sumWraps_ne_domain heq).elim
+    exact h.imp (hasIssue_capReads hcap) id
   | _, .cross a b, _, h | _, .unionAll a b, _, h => by
     simp only [HasIssue, capReads] at h ⊢
-    exact h.imp (sumWraps_capReads hcap) (sumWraps_capReads hcap)
+    exact h.imp (hasIssue_capReads hcap) (hasIssue_capReads hcap)
   | _, .join a b _ _, _, h | _, .semi a b _ _, _, h => by
-    simp only [HasIssue, capReads] at h ⊢
-    rcases h with h | h | ⟨_, _, _, _, hp⟩
-    · exact .inl (sumWraps_capReads hcap h)
-    · exact .inr (.inl (sumWraps_capReads hcap h))
-    · exact absurd rfl (Expr.issues_ne_sumWraps hp)
+    simp only [HasIssue, capReads, capReads_loose, capReads_eval hcap] at h ⊢
+    exact h.imp (hasIssue_capReads hcap) (Or.imp (hasIssue_capReads hcap) id)
   | _, .aggregate r _ _, _, h => by
-    simp only [HasIssue, capReads, capReads_eval hcap] at h ⊢
-    rcases h with h | ⟨_, _, _, _, hp⟩ | h | ⟨_, _, heq, _⟩
-    · exact .inl (sumWraps_capReads hcap h)
-    · exact absurd rfl (Expr.issues_ne_sumWraps hp)
-    · exact .inr (.inr (.inl h))
-    · exact (sumWraps_ne_domain heq).elim
+    simp only [HasIssue, capReads, capReads_eval hcap, capReads_eval_ite hcap] at h ⊢
+    exact h.imp (hasIssue_capReads hcap) id
 
 /-- A `SUM` that overflows on the plan overflows on the plan with capped
 joins. -/
@@ -313,11 +322,12 @@ def Rel.capped (cat : Catalog) (A : String → List AVal) (F : String → List F
     (K : String → List (List Nat)) (caps : String → Option Nat) (r : Rel) : Rel :=
   (r.capReads caps).capJoins cat A F K
 
-/-- `Rel.mayIssues`, with the integer `SUM`s decided on the capped plan. -/
+/-- `Rel.mayIssues`, decided on the plan with capped reads, and its integer
+`SUM`s on the plan with capped reads and joins. -/
 def Rel.issuesCapped (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) (K : String → List (List Nat)) (caps : String → Option Nat) (r : Rel) :
     List (Issue × Expr) :=
-  (r.mayIssues cat A F T false).filter (·.1 != .sumWraps) ++
+  ((r.capReads caps).mayIssues cat A F T false).filter (·.1 != .sumWraps) ++
     ((r.capped cat A F K caps).mayIssues cat A F T false).filter (·.1 == .sumWraps)
 
 /-- **Soundness with row caps**: every issue that can happen when running a
@@ -336,11 +346,12 @@ theorem Rel.issuesCapped_sound {cat : Catalog} (hcat : cat.WF) {A : String → L
   by_cases hi : i = .sumWraps
   · subst hi
     have hrw : (r.capReads caps).WF cat := Rel.capReads_wf hwf
-    have h' := Rel.sumWraps_capJoins hcat hA hF hK (K := K) hrw (Rel.sumWraps_capReads hcap h)
+    have h' := Rel.sumWraps_capJoins hcat hA hF hK (K := K) hrw (Rel.hasIssue_capReads hcap h)
     have hwf' := Rel.capJoins_wf (A := A) (F := F) (K := K) hrw
     have hsm' := Rel.capJoins_small (A := A) (F := F) (K := K) hcat hA hF hK hrw
       (Rel.capReads_small hcap hsm)
     exact .inr ⟨mayIssues_sound hcat hA hF hT hwf' hsm' _ h', by simp⟩
-  · exact .inl ⟨mayIssues_sound hcat hA hF hT hwf hsm _ h, by simp [hi]⟩
+  · exact .inl ⟨mayIssues_sound hcat hA hF hT (Rel.capReads_wf hwf) (Rel.capReads_small hcap hsm) _
+      (Rel.hasIssue_capReads hcap h), by simp [hi]⟩
 
 end Substrait
