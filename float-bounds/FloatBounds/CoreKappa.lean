@@ -602,3 +602,131 @@ theorem StdModel.core_var_k {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.
   have hr0 : 0 ≤ r := le_trans (by positivity) hr
   have : 0 ≤ (ps.length : ℝ) * u * r := by positivity
   nlinarith
+
+/-- The two-pass bound of one side, within `varErr`. -/
+theorem tp_var_le {n s q r Q : ℝ} (hn1 : 1 ≤ n) (hs : 0 ≤ s) (hsq : s ≤ q) (hQ : q * q = Q)
+    (hr : q * s ≤ r) :
+    7 * n * u * (s * s) + 3.2 * n * u * (q * s + q * s) + 130 * n ^ 2 * u ^ 2 * (q * q)
+        + 4 * n ^ 2 * u * tiny ≤ varErr n r Q := by
+  have hu := u_pos
+  have ht := tiny_pos
+  unfold varErr
+  have a : s * s ≤ q * s := mul_le_mul_of_nonneg_right hsq hs
+  have b : 0 ≤ n * u := by positivity
+  have c := mul_le_mul_of_nonneg_left (le_trans a hr) b
+  have d := mul_le_mul_of_nonneg_left hr b
+  have hq0 : 0 ≤ q := le_trans hs hsq
+  have hQ0 : 0 ≤ Q := by rw [← hQ]; positivity
+  have e : 0 ≤ n ^ 2 * u ^ 2 * Q := by positivity
+  have f : 0 ≤ n ^ 2 * u * tiny := by positivity
+  have g : 0 ≤ n * u * r := le_trans (by positivity) d
+  rw [hQ]
+  linarith
+
+/-- The two-pass bound of the pairs, within `covErr`. -/
+theorem tp_cov_le {n sx sy qx qy r1 r2 rs rq : ℝ} (hn1 : 1 ≤ n) (hsx : 0 ≤ sx) (hsy : 0 ≤ sy)
+    (hqx : 0 ≤ qx) (hqy : 0 ≤ qy) (h1 : qx * sy ≤ r1) (h2 : qy * sx ≤ r2) (hs : sx * sy ≤ rs)
+    (hq : qx * qy ≤ rq) :
+    7 * n * u * (sx * sy) + 3.2 * n * u * (qy * sx + qx * sy) + 130 * n ^ 2 * u ^ 2 * (qx * qy)
+        + 4 * n ^ 2 * u * tiny ≤ covErr n r1 r2 rs rq := by
+  have hu := u_pos
+  have ht := tiny_pos
+  unfold covErr
+  have b : 0 ≤ n * u := by positivity
+  have c1 := mul_le_mul_of_nonneg_left hs b
+  have c2 := mul_le_mul_of_nonneg_left (add_le_add h2 h1) b
+  have c3 := mul_le_mul_of_nonneg_left hq (by positivity : (0 : ℝ) ≤ n ^ 2 * u ^ 2)
+  have p1 : 0 ≤ n * u * (sx * sy) := by positivity
+  have p2 : 0 ≤ n * u * (qy * sx + qx * sy) := by positivity
+  have p3 : 0 ≤ n ^ 2 * u ^ 2 * (qx * qy) := by positivity
+  have p4 : 0 ≤ n ^ 2 * u * tiny := by positivity
+  have p5 : 0 ≤ n * u * (r2 + r1) := le_trans (by positivity) c2
+  have p6 : 0 ≤ n ^ 2 * u ^ 2 * rq := le_trans p3 c3
+  linarith
+
+
+/-- The error budget of `CORR`, with one `R` at least `√(Q' S)` of each side,
+`√(Q'_x S_yy)`, `√(Q'_y S_xx)` and `√(S_xx S_yy)`, and `Q = Q'_x + Q'_y`. -/
+noncomputable def corrErr (n R Q : ℝ) : ℝ :=
+  447 * n * u * R + 11883 * n ^ 2 * u ^ 2 * Q + 2379 * n ^ 2 * u * tiny
+
+theorem corrErr_ge {n R Qx Qy qx qy : ℝ} (_hn : 0 ≤ n) (hqx : 0 ≤ qx) (hqy : 0 ≤ qy)
+    (hQx : qx * qx = Qx) (hQy : qy * qy = Qy) :
+    varErr n R Qx + varErr n R Qy + covErr n R R R (qx * qy) ≤ corrErr n R (Qx + Qy) := by
+  have hu := u_pos
+  unfold varErr covErr corrErr
+  have a : qx * qy ≤ Qx + Qy := by rw [← hQx, ← hQy]; nlinarith [sq_nonneg (qx - qy)]
+  have b := mul_le_mul_of_nonneg_left a (by positivity : (0 : ℝ) ≤ 3961 * n ^ 2 * u ^ 2)
+  have c : 0 ≤ n ^ 2 * u ^ 2 * (Qx + Qy) := by rw [← hQx, ← hQy]; positivity
+  have d : 0 ≤ n ^ 2 * u * tiny := by have := tiny_pos; positivity
+  nlinarith
+
+set_option maxHeartbeats 1000000 in
+/-- **`CORR` the core trusts** (`corrOf_props`): with `E = corrErr n R Q`, for
+`R` at least the square roots above and `Q = Q'_x + Q'_y`, and both sides'
+co-moments at least `L ≥ 8E` (`L ≥ 2⁻⁵⁰⁰`, their product at most `2¹⁰⁰⁰`),
+`|Ĉ / fl(√fl(Ŝx Ŝy))| ≤ 1 + 3E/L + 8u`. -/
+theorem StdModel.core_corr_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs ≠ [])
+    (hN : qs.length ≤ 2 ^ 32) (hB : ∀ q ∈ qs, |q.2.1| ≤ 2 ^ 398 ∧ |q.2.2| ≤ 2 ^ 398)
+    (hd : ∀ q ∈ qs, |q.1.1 - q.2.1| ≤ 2 * u * |q.2.1| ∧ |q.1.2 - q.2.2| ≤ 2 * u * |q.2.2|)
+    {R L : ℝ}
+    (hR : ∀ a ∈ [(qs.map fun q => (|q.2.1| + tiny) ^ 2).sum, (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum,
+        comoment (qs.map fun q => (q.2.1, q.2.1))],
+      ∀ b ∈ [comoment (qs.map fun q => (q.2.1, q.2.1)), comoment (qs.map fun q => (q.2.2, q.2.2))],
+        √a * √b ≤ R)
+    (hL : 8 * corrErr qs.length R ((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum
+      + (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum) ≤ L)
+    (hLt : (2 : ℝ)⁻¹ ^ 500 ≤ L)
+    (hSx : L ≤ comoment (qs.map fun q => (q.2.1, q.2.1)))
+    (hSy : L ≤ comoment (qs.map fun q => (q.2.2, q.2.2)))
+    (hbig : comoment (qs.map fun q => (q.2.1, q.2.1)) * comoment (qs.map fun q => (q.2.2, q.2.2))
+      ≤ 2 ^ 1000) :
+    |M.fl (M.twoPass (qs.map (·.1)) /
+        M.fl √(M.fl (M.twoPass (qs.map fun q => (q.1.1, q.1.1))
+          * M.twoPass (qs.map fun q => (q.1.2, q.1.2)))))|
+      ≤ 1 + 3 * corrErr qs.length R ((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum
+        + (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum) / L + 8 * u := by
+  have hu := u_pos
+  have ht := tiny_pos
+  have hc := M.tp_exact hne hN hB hd
+  have hx := M.tp_exact (qs := qs.map fun q => ((q.1.1, q.1.1), (q.2.1, q.2.1)))
+    (by simpa using hne) (by simpa using hN)
+    (fun q hq => by obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hq; exact ⟨(hB r hr).1, (hB r hr).1⟩)
+    (fun q hq => by obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hq; exact ⟨(hd r hr).1, (hd r hr).1⟩)
+  have hy := M.tp_exact (qs := qs.map fun q => ((q.1.2, q.1.2), (q.2.2, q.2.2)))
+    (by simpa using hne) (by simpa using hN)
+    (fun q hq => by obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hq; exact ⟨(hB r hr).2, (hB r hr).2⟩)
+    (fun q hq => by obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hq; exact ⟨(hd r hr).2, (hd r hr).2⟩)
+  simp only [List.map_map, Function.comp_def, List.length_map] at hx hy
+  obtain ⟨hSx0, hSQx, -⟩ := SQ_facts (qs := qs) (fun q => q.2.1) hN (fun q hq => (hB q hq).1)
+  obtain ⟨hSy0, hSQy, -⟩ := SQ_facts (qs := qs) (fun q => q.2.2) hN (fun q hq => (hB q hq).2)
+  have hn1 : (1 : ℝ) ≤ qs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have r1 := hR (qs.map fun q => (|q.2.1| + tiny) ^ 2).sum (by simp)
+    (comoment (qs.map fun q => (q.2.1, q.2.1))) (by simp)
+  have r2 := hR (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum (by simp)
+    (comoment (qs.map fun q => (q.2.2, q.2.2))) (by simp)
+  have r3 := hR (qs.map fun q => (|q.2.1| + tiny) ^ 2).sum (by simp)
+    (comoment (qs.map fun q => (q.2.2, q.2.2))) (by simp)
+  have r4 := hR (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum (by simp)
+    (comoment (qs.map fun q => (q.2.1, q.2.1))) (by simp)
+  have r5 := hR (comoment (qs.map fun q => (q.2.1, q.2.1))) (by simp)
+    (comoment (qs.map fun q => (q.2.2, q.2.2))) (by simp)
+  have hQx0 := le_trans hSx0 hSQx
+  have hQy0 := le_trans hSy0 hSQy
+  have ex := tp_var_le hn1 (Real.sqrt_nonneg _) (Real.sqrt_le_sqrt hSQx)
+    (Real.mul_self_sqrt hQx0) r1
+  have ey := tp_var_le hn1 (Real.sqrt_nonneg _) (Real.sqrt_le_sqrt hSQy)
+    (Real.mul_self_sqrt hQy0) r2
+  have ec := tp_cov_le hn1 (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) (Real.sqrt_nonneg _)
+    (Real.sqrt_nonneg _) r3 r4 r5 le_rfl
+  have hE := corrErr_ge (n := qs.length) (R := R) (by positivity) (Real.sqrt_nonneg _)
+    (Real.sqrt_nonneg _) (Real.mul_self_sqrt hQx0) (Real.mul_self_sqrt hQy0)
+  have hvx0 : 0 ≤ varErr qs.length R (qs.map fun q => (|q.2.1| + tiny) ^ 2).sum :=
+    le_trans (by positivity) ex
+  have hvy0 : 0 ≤ varErr qs.length R (qs.map fun q => (|q.2.2| + tiny) ^ 2).sum :=
+    le_trans (by positivity) ey
+  have hcv0 : 0 ≤ covErr qs.length R R R (√((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum)
+      * √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum)) := le_trans (by positivity) ec
+  have hCS := sq_comoment_le (qs.map (·.2))
+  simp only [List.map_map, Function.comp_def] at hCS
+  exact M.corr_le hCS (by linarith) (by linarith) (by linarith) hL (by linarith) hSx hSy hLt hbig
