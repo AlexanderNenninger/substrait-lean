@@ -259,7 +259,9 @@ except VerificationError as e:
   tables bound to data (`sv.connect()`), at call time.
 * Unproved postconditions raise `VerificationError`. With
   `on_unproved="runtime"` they are checked on the output data instead
-  (`PostconditionError`); with `on_unproved="warn"` you get a warning.
+  (`PostconditionError`): on bound tables at call time, on a node at every
+  refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
+  `on_unproved="warn"` you get a warning.
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
@@ -407,6 +409,29 @@ A node without delta rules (left join, aggregate, window, `DISTINCT`,
 `LIMIT`) is recomputed and diffed instead, and `status()` says so. Contracted
 nodes keep their guarantees in every state: their preconditions on the
 sources are checked in full once, then only on each batch.
+
+A node whose transform has `on_unproved="runtime"` checks the postconditions
+Lean could not prove on its output at every refresh: on the full result the
+first time, then on the rows each batch inserts, before its sink commits. A
+violation raises `PostconditionError`, and the refresh writes nothing. The
+report marks those postconditions as checked on data, and transforms
+downstream may assume only the proved ones, so such a node is stored with
+`.write` before another transform reads it:
+
+```python
+@sv.transform(ensures=[_.amount < 1_000], on_unproved="runtime")
+def capped(orders):
+    return orders.select(orders.id, orders.amount)
+
+n = orders.pipe(capped)    # no VerificationError: checked at refresh
+print(capped.last_report)
+# ensures (_.amount < 1000): NOT proved (it is TRUE, FALSE or NULL); checked on the output data
+# ...
+print(n.refresh())
+# capped:
+#   computed
+#   ensures capped: (_.amount < 1000) (checked on data)
+```
 
 `.write(sink)` stores a node, as a cache in the middle of a job or as its
 output, and returns the stored node, which transforms downstream read as a
