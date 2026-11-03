@@ -94,6 +94,12 @@ conflicts with other PRs:
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`.
 
+Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/Off` and `On`
+(the DuckDB lowering, entries with their proofs) are committed, and a build only
+checks them. When a build fails there, or the lowering golden test changes,
+regenerate them with `poe regen-lowering` (homelab: about 6 minutes) and commit
+the result.
+
 If you ran one of these commands locally, `git checkout` those files again
 before you commit. Edit the sources instead: the `CASES` of
 `python/tools/sverify_dev/coverage_cases/<area>.py`, the catalogue's TOML, and
