@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import json
 import sys
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
@@ -104,13 +105,19 @@ def check_replay(files: int, jobs: int) -> tuple[list[str], list[str]]:
     base = slt.fetch() / "test" / "sql"
     now: dict[str, str] = {}
     before: dict[str, str] = {}
-    for _, results, _ in slt.replay_files([(str(base / f), f) for f in chosen], jobs):
+    skipped: Counter[str] = Counter()
+    for _, results, skip in slt.replay_files([(str(base / f), f) for f in chosen], jobs):
+        if skip:
+            # Not compared this run (a crash, a timeout): say so.
+            skipped[skip.split(":")[0]] += 1
         for r in results:
             q = f"{r['file']}:{r['line']}"
             now[q] = r["cls"]
             before[q] = known.get(_key(r), "new")
     decided = sum(c in DECIDED for c in now.values())
     print(f"replay: {len(chosen)} files, {len(now)} queries, {decided} decided by oracle A")
+    if skipped:
+        print(f"replay: {sum(skipped.values())} files not compared: {dict(skipped)}")
     return compare(before, now, sorted(now))
 
 
