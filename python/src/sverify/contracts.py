@@ -1596,11 +1596,16 @@ def discharge(
     `PreconditionError` with "<n> <what> violate <condition>"."""
     out: list[Discharged] = []
     todo = list(conds)
-    counted = [f for f in facts or [] if f.rows is not None]
-    for c in [c for c in todo if isinstance(c, RowsAtMost)]:
-        if fact := next((f for f in counted if f.rows <= c.at_most), None):  # type: ignore[operator]
-            out.append(Discharged(name, label(c), fact.source))
-            todo.remove(c)
+    counts = [(f.rows, f.source) for f in facts or [] if f.rows is not None]
+    counted = {
+        id(c): source
+        for c in todo
+        if isinstance(c, RowsAtMost)
+        for source in [next((s for n, s in counts if n <= c.at_most), None)]
+        if source is not None
+    }
+    out += [Discharged(name, label(c), counted[id(c)]) for c in todo if id(c) in counted]
+    todo = [c for c in todo if id(c) not in counted]
     if facts is not None:
         stages: dict[str, list[str]] = {SCHEMA: []}
         for f in facts:

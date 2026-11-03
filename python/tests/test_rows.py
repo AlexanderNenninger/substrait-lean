@@ -73,13 +73,14 @@ def test_the_readme_sql_model():
 
 
 def test_row_bounds_propagate():
-    rows = {"orders": [sv.rows(at_most=100)], "items": [sv.rows(at_most=7)]}
+    rows = {"orders": [sv.rows(at_most=100)]}
     assert sv.verify(ORDERS.filter(_.amount > 0), requires=rows).rows == 100
     assert sv.verify(ORDERS.limit(3), requires=rows).rows == 3
     assert sv.verify(ORDERS.union(ORDERS), requires=rows).rows == 200
     assert sv.verify(ORDERS.distinct(), requires=rows).rows == 100
     assert sv.verify(ORDERS.aggregate(n=_.count()), requires=rows).rows == 1
     assert sv.verify(per_customer(ORDERS), requires=rows).rows == 100
+    rows["items"] = [sv.rows(at_most=7)]
     assert sv.verify(ORDERS.cross_join(ITEMS), requires=rows).rows == 700
     # Without a row bound on every input, nothing bounds the rows.
     assert sv.verify(ORDERS.cross_join(ITEMS), requires={"orders": rows["orders"]}).rows is None
