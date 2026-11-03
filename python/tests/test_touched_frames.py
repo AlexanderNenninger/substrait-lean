@@ -33,8 +33,9 @@ def samples(rows) -> pa.Table:
 
 
 def frames(by):
-    """Two windows with different frames: the last 5 minutes, and from 10
-    minutes before to 3 minutes before (a frame that ends before the row)."""
+    """Three windows with different frames: the last 5 minutes, from 10
+    minutes before to 3 minutes before (a frame that ends before the row),
+    and the next 2 minutes (one that starts at the row)."""
 
     def windows(samples):
         recent = ibis.window(
@@ -45,6 +46,9 @@ def frames(by):
             order_by="ts",
             range=(-ibis.interval(minutes=10), -ibis.interval(minutes=3)),
         )
+        ahead = ibis.window(
+            group_by=by, order_by="ts", range=(ibis.interval(0), ibis.interval(minutes=2))
+        )
         return samples.select(
             "host",
             "ts",
@@ -52,6 +56,7 @@ def frames(by):
             total=samples.cpu.sum().over(recent),
             n=samples.cpu.count().over(recent),
             earlier=samples.cpu.sum().over(earlier),
+            ahead=samples.cpu.sum().over(ahead),
         )
 
     return windows
@@ -104,7 +109,7 @@ def test_framed_windows_match_a_full_recompute(seed, by):
     assert view(node).strategy == "touched frames"
     spec = view(node).touched
     assert spec is not None and spec.framed is not None
-    assert (spec.framed.start, spec.framed.end) == (-timedelta(minutes=10), timedelta(0))
+    assert (spec.framed.start, spec.framed.end) == (-timedelta(minutes=10), timedelta(minutes=2))
     for ins, dels in batches:
         src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
         node.refresh(audit=True)
@@ -118,8 +123,10 @@ def test_a_change_far_from_the_rest_recomputes_only_its_neighbourhood():
     src.apply(sv.Changes(inserts=samples([("a", 301, 5)])))
     out = node.refresh(audit=True)["windows"]
     assert out.report is not None
-    # Rows from 4:51 to 5:11 can have 5:01 in a frame: 11 of them, and 5:01.
-    assert out.report.framed == {"windows": 11}
+    # The frames reach from 10 minutes back to 2 ahead, so 5:01 is in the
+    # frames of the rows from 4:59 to 5:11: the samples at 5:00, 5:02, …,
+    # 5:10 and itself.
+    assert out.report.framed == {"windows": 7}
     assert rows(node) == recomputed(node, src)
 
 

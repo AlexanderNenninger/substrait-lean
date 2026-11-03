@@ -1172,7 +1172,7 @@ class IncrementalView:
                 _call("greater_equal", c, pa.scalar(olo, c.type)),
                 _call("less_equal", c, pa.scalar(ohi, c.type)),
             )
-            old = old.filter(_call("fill_null", inside, False))
+            old = old.filter(_call("coalesce", inside, pa.scalar(False)))
         change = self._merge(weighted(new, 1), self.store.negated(self._kept(old)))
         if fr is not None:
             return arrow_of(change), arrow_of(new).num_rows, "frames"
