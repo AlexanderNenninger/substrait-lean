@@ -730,3 +730,16 @@ theorem StdModel.core_corr_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : q
   have hCS := sq_comoment_le (qs.map (·.2))
   simp only [List.map_map, Function.comp_def] at hCS
   exact M.corr_le hCS (by linarith) (by linarith) (by linarith) hL (by linarith) hSx hSy hLt hbig
+
+/-- The `STDDEV_*` property (`core_stddev`) holds for any larger tolerance, so for
+every witness `r` above `√(Q' S)`. -/
+theorem sd_mono {σ V τ τ' : ℝ} (h : τ ≤ τ')
+    (h1 : σ ≤ u * tiny ∨ (σ - u * tiny) ^ 2 ≤ (1 + u) ^ 2 * (V + τ))
+    (h2 : (1 - u) ^ 2 * (V - τ) ≤ (σ + u * tiny) ^ 2) :
+    (σ ≤ u * tiny ∨ (σ - u * tiny) ^ 2 ≤ (1 + u) ^ 2 * (V + τ')) ∧
+      (1 - u) ^ 2 * (V - τ') ≤ (σ + u * tiny) ^ 2 := by
+  have p : 0 ≤ (1 + u) ^ 2 := sq_nonneg _
+  have q : 0 ≤ (1 - u) ^ 2 := sq_nonneg _
+  refine ⟨h1.imp id fun h1 => le_trans h1 ?_, le_trans ?_ h2⟩
+  · exact mul_le_mul_of_nonneg_left (by linarith) p
+  · exact mul_le_mul_of_nonneg_left (by linarith) q
