@@ -343,6 +343,12 @@ RUNTIME_CHECK = (
     "the column and on the rows of a group rules it out"
 )
 
+#: How a report explains an integer `SUM` it assumes fits (`Report.assumed`).
+SUM_ASSUMED = (
+    "fits 64 bits in every group (inferred; checked on the data while the job "
+    "runs, which raises if it does not)"
+)
+
 
 def _sum(issue: Issue) -> bool:
     """Whether `issue` is an integer `SUM` that may leave 64 bits."""
@@ -418,6 +424,12 @@ class Report:
     inferred: dict[str, list[Condition]] = field(default_factory=dict)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
+    assumed: list[Issue] = field(default_factory=list)
+    """The integer `SUM`s assumed to fit 64 bits in every group, inferred
+    like the bounds in `inferred`: no condition on rows bounds how many rows
+    a group has (#219), so the job checks each sum on the data while it runs
+    and raises if it does not fit. The proof holds under this assumption
+    (`Rel.noIssue_of_sumsFit`). With `infer=False` they are errors instead."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -484,6 +496,7 @@ class Report:
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
+        lines += [f"assumes: SUM of {i.expr} {SUM_ASSUMED}" for i in self.assumed]
         for i in self.errors:
             lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
             if i.hint:
@@ -517,6 +530,7 @@ class Report:
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
+        inferred += [f"SUM of `{i.expr}` {SUM_ASSUMED}" for i in self.assumed]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
@@ -1005,9 +1019,11 @@ def verify(
             is refused.
         infer: Whether to infer the bounds on input columns that rule out
             integer overflow (`infer_bounds`) and assume them with
-            `requires`. They are listed in `Report.inferred`. With False,
-            each overflow's `Issue.hint` suggests its bound instead.
-            Default True.
+            `requires`. They are listed in `Report.inferred`. An integer
+            `SUM` that may leave 64 bits is assumed to fit and checked on the
+            data while the job runs (`Report.assumed`). With False, each
+            overflow, `SUM`s included, is an error, and its `Issue.hint`
+            suggests a bound. Default True.
         semantics: What the SQL `verify` lifts means, the transformation
             if it is a SQL string and every SQL condition: `"reference"`
             (the default), sverify's reference semantics, where an
@@ -1124,6 +1140,10 @@ def infer_bounds(
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
+    # An integer SUM that may overflow is assumed to fit, and checked on the
+    # data while the job runs: nothing bounds a group's rows yet (#219).
+    report.assumed = [i for i in report.issues if _sum(i)]
+    report.issues = [i for i in report.issues if not _sum(i)]
     return report
 
 
@@ -2078,9 +2098,11 @@ def transform(
             infers the bounds it needs (`amount * 2` on BIGINT needs
             `_.amount < 2**62`) and treats them as preconditions: they are
             checked on the data or proved from table metadata, and reported
-            as inferred (`Report.inferred`). With False, every such bound
-            must be stated in `requires`: an overflow fails the proof, and
-            the report's hint names the bound to state.
+            as inferred (`Report.inferred`). An integer `SUM` that may leave
+            64 bits is assumed to fit and checked on the data while the job
+            runs (`Report.assumed`). With False, every such bound must be
+            stated in `requires`: an overflow, a `SUM`'s included, fails the
+            proof, and the report's hint names the bound to state.
         strict: Deprecated alias of `infer`, with the opposite polarity:
             `strict=True` is `infer=False`.
         semantics: What the contract's SQL conditions mean in its proofs,

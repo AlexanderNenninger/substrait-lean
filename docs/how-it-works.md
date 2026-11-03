@@ -665,9 +665,10 @@ the JSON plumbing.
 
 [Safety.lean](../SubstraitLean/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
-`may fail: …` (a `VerificationError` from `@sv.transform`). For an
-integer `SUM` it is `may fail: SUM overflow: … (the job also checks it while it
-runs …)`.
+`may fail: …` (a `VerificationError` from `@sv.transform`). An integer `SUM`
+that may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
+group (inferred; checked on the data while the job runs …)`, and is an error
+with `infer=False`.
 
 * Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
@@ -678,9 +679,11 @@ runs …)`.
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
   allows.
-* An integer `SUM` leaving 64 bits is an error, unless the plan bounds a group's
+* An integer `SUM` leaving 64 bits is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
-  bounds each value (`Measure.sumFits`). The SQL also raises while the job runs.
+  bounds each value (`Measure.sumFits`). Elsewhere it is an inferred assumption
+  (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
+  the job runs.
 * Bounds that rule out overflow are inferred
   ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,

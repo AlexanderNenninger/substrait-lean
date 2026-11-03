@@ -1402,4 +1402,26 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
           (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
       exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
 
+/-- The assumption a report makes of the integer `SUM`s it cannot bound
+(`Report.assumed` in `sverify`, inferred like #244's bounds): on this
+catalog, no group's or frame's integer sum leaves 64 bits. `Rel.HasIssue`'s
+`sumWraps` cases are exactly those sums, so this says none happens. The job
+checks it on the data: the SQL sverify writes raises where a sum does not
+fit. -/
+def Rel.SumsFit (cat : Catalog) (r : Rel) : Prop :=
+  ∀ p, r.HasIssue cat false p → p.1 ≠ .sumWraps
+
+/-- **Runs without errors under the `SUM` assumption**: when every issue
+`Rel.mayIssues` reports is an integer `SUM`, a catalog that meets the
+preconditions and on which the sums fit (`Rel.SumsFit`) runs into no issue
+at all. -/
+theorem Rel.noIssue_of_sumsFit {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat)
+    (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) (hfit : r.SumsFit cat) :
+    ∀ p, ¬r.HasIssue cat false p := fun p hp =>
+  hfit p hp (by simpa using List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp))
+
 end Substrait

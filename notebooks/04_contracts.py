@@ -482,7 +482,9 @@ def _(mo):
       `-2⁶³`), which an error allows.
     * An integer `SUM` leaving 64 bits. Sverify rules it out where the plan
       bounds a group's rows (a `FETCH` count) and `requires` bounds the
-      column; the job also checks it while it runs.
+      column. Elsewhere it assumes each sum fits, as it assumes inferred
+      bounds, and the job checks it on the data while it runs
+      (`Report.assumed`).
 
     Lean's model computes with exact integers, and `SubstraitLean/Safety.lean`
     lists, for every operation of a plan, which of these can happen. Theorem

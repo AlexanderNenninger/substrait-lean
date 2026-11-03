@@ -68,14 +68,18 @@ fires, `Rel.eval`'s value is not the answer.
   other error issues. Integer `+ - *` and negation overflow are still only a
   warning on `main` ("may wrap around"): [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202),
   [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
-* **Integer `SUM` overflow is an error too.** `verify` reports "SUM overflow"
-  where a group's sum may leave 64 bits, and the report is unproved. The sum
-  is ruled out where the plan bounds a group's rows (a `VALUES` list, a
-  `FETCH` count, an aggregate without groups: `Rel.maxRows`) and the
-  argument's range bounds each value (`Measure.sumFits`). Bounds on the rows
-  of a table are [#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219).
-  The written SQL also checks the sum while the job runs, and every engine
-  raises if it leaves 64 bits.
+* **Integer `SUM` overflow is an inferred assumption, checked on the data.**
+  A group's integer sum may leave 64 bits, and the reference raises there.
+  Where the plan bounds a group's rows (a `VALUES` list, a `FETCH` count, an
+  aggregate without groups: `Rel.maxRows`) and the argument's range bounds
+  each value (`Measure.sumFits`), it is ruled out. Elsewhere `verify` assumes
+  each sum fits, as it assumes inferred bounds (#244), and lists it in
+  `Report.assumed`; the written SQL checks it on the data while the job runs
+  and raises if a sum does not fit. The proof holds under that assumption
+  (`Rel.noIssue_of_sumsFit`). With `infer=False` it is an error that makes the
+  report unproved. Row bounds on tables
+  ([#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
+  will discharge the assumption statically.
 
 ## Core: numbers and NULLs
 

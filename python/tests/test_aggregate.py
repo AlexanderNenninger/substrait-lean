@@ -310,26 +310,35 @@ def test_avg_of_a_nullable_column_may_be_null():
     assert [c.proved for c in report.ensures] == [False, False]
 
 
-def test_integer_sum_overflow_is_an_error():
+def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     # Lean's sum is exact, so an integer SUM may leave 64 bits, and the
-    # reference raises there: the report is not proved. The job also checks it
-    # (DataFusion's wrap-around is pinned in test_datafusion_quirks.py).
+    # reference raises there. Nothing bounds a group's rows yet (#219), so
+    # `verify` assumes each sum fits, as it assumes inferred bounds, and the
+    # job checks it on the data while it runs (DataFusion's wrap-around is
+    # pinned in test_datafusion_quirks.py).
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
-    assert [str(i) for i in report.errors] == ["SUM overflow: $2"]
-    assert not report.proved
-    assert "checks it while it runs" in str(report)
+    assert report.proved
+    assert [str(i) for i in report.assumed] == ["SUM overflow: $2"]
+    assert "assumes: SUM of $2 fits 64 bits in every group" in str(report)
+    # Without inference it is an error like any other.
+    strict = sv.verify(orders.aggregate(total=orders.amount.sum()), infer=False)
+    assert [str(i) for i in strict.errors] == ["SUM overflow: $2"]
+    assert not strict.proved and not strict.assumed
+    assert "checks it while it runs" in str(strict)
 
 
-def test_a_bounded_sum_over_bounded_rows_is_proved():
-    # A FETCH bounds the rows, `requires` the values: the sum fits 64 bits.
+def test_a_bounded_sum_over_bounded_rows_is_proved_outright():
+    # A FETCH bounds the rows, `requires` the values: the sum fits 64 bits,
+    # with nothing to assume.
     first = orders.limit(1000)
     bounded = {"orders": [_.amount >= -1_000_000, _.amount <= 1_000_000]}
-    report = sv.verify(first.aggregate(total=first.amount.sum()), requires=bounded)
+    report = sv.verify(first.aggregate(total=first.amount.sum()), requires=bounded, infer=False)
     assert report.proved, str(report)
+    assert not report.assumed
     # Without the bound on the values, or on the rows, it may overflow.
-    report = sv.verify(first.aggregate(total=first.amount.sum()))
+    report = sv.verify(first.aggregate(total=first.amount.sum()), infer=False)
     assert [i.kind for i in report.errors] == ["SUM overflow"]
-    report = sv.verify(orders.aggregate(total=orders.amount.sum()), requires=bounded)
+    report = sv.verify(orders.aggregate(total=orders.amount.sum()), requires=bounded, infer=False)
     assert [i.kind for i in report.errors] == ["SUM overflow"]
 
 
@@ -351,9 +360,9 @@ def test_aggregate_postconditions_are_proved():
             sv.unique("customer"),
         ],
     )
-    assert all(c.proved for c in report.ensures), str(report)
-    # Nothing bounds a group's rows, so the SUM may overflow (#219).
-    assert [i.kind for i in report.errors] == ["SUM overflow"]
+    assert report.proved, str(report)
+    # Nothing bounds a group's rows (#219): the SUM is assumed to fit.
+    assert [i.kind for i in report.assumed] == ["SUM overflow"]
     assert report.facts["n"] == "an integer ≥ 1"
     # `amount >= 0` rules out NULL, so each group has a maximum (#372).
     assert report.facts["top"] == "an integer ≥ 0"

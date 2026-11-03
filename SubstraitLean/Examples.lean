@@ -160,6 +160,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
+#print axioms Substrait.Rel.noIssue_of_sumsFit
 #print axioms Substrait.FloatCode.round_mono
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono

@@ -328,11 +328,15 @@ def test_sliding_double_aggregates_are_refused():
 
 
 def test_window_sums_may_wrap():
-    """An integer SUM over a frame may leave 64 bits (`Issue.sumWraps`): the
-    reference raises, so the report is not proved."""
-    report = sv.verify("SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r", tables={"r": SCHEMA})
-    assert "SUM overflow" in [i.kind for i in report.errors]
-    assert not report.proved
+    """An integer SUM over a frame may leave 64 bits (`Issue.sumWraps`), where
+    the reference raises. `verify` assumes it does not and the job checks it
+    on the data; without inference it is an error."""
+    query = "SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r"
+    report = sv.verify(query, tables={"r": SCHEMA})
+    assert "SUM overflow" in [i.kind for i in report.assumed]
+    strict = sv.verify(query, tables={"r": SCHEMA}, infer=False)
+    assert "SUM overflow" in [i.kind for i in strict.errors]
+    assert not strict.proved
 
 
 @pytest.mark.parametrize("fn", ["sum", "mean"])
