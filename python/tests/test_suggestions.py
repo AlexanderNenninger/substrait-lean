@@ -17,8 +17,8 @@ def test_a_bound_on_the_input_is_suggested():
     assert [label(s) for s in c.suggested["t"]] == ["(_.x < 51)"]
     assert report.suggestions == {"(_.d <= 100)": {"t": ["(_.x < 51)"]}}
     assert "  would hold with `(_.x < 51)` in the requires of 't'" in str(report)
-    # Suggested, not assumed: the requires are as written.
-    assert report.requires == {"t": ["(_.x >= 0)"]}
+    # Suggested, not assumed (`x * 2` adds the inferred `x < 2**62`).
+    assert report.requires == {"t": ["(_.x >= 0)", "(_.x < 2**62)"]}
     assert not report.proved
 
 
