@@ -432,6 +432,10 @@ class CheckedCondition:
     """For an unproved condition with `on_unproved="runtime"`: it is checked
     on the output data instead, on a bound result when it is built, or on a
     node at every refresh before its sink commits."""
+    suggested: dict[str, list[Condition]] = field(default_factory=dict)
+    """For an unproved condition: preconditions on the inputs, per table,
+    under which Lean proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
+    Never assumed: adding them is the author's choice."""
 
     @property
     def why(self) -> str:
@@ -561,9 +565,9 @@ class Report:
     table: also in `requires`, and assumed like the rest of it."""
     assumed: list[Issue] = field(default_factory=list)
     """The integer `SUM`s assumed to fit 64 bits in every group, inferred
-    like the bounds in `inferred`: no condition on rows bounds how many rows
-    a group has (#219), so the job checks each sum on the data while it runs
-    and raises if it does not fit. The proof holds under this assumption
+    like the bounds in `inferred`: those the inputs' row caps (`max_rows`,
+    #219) and the values' range do not prove to fit. The job checks each sum
+    on the data while it runs and raises if it does not fit. The proof holds under this assumption
     (`Rel.noIssue_of_sumsFit`). With `infer=False` they are errors instead."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
@@ -603,6 +607,17 @@ class Report:
         return [i for i in self.issues if not i.error]
 
     @property
+    def suggestions(self) -> dict[str, dict[str, list[str]]]:
+        """For each unproved postcondition with one, the preconditions per
+        input table under which it would be proved, as code
+        (`{"(_.y <= 100)": {"orders": ["(_.x <= 50)"]}}`)."""
+        return {
+            c.label: {t: [label(x) for x in cs] for t, cs in c.suggested.items()}
+            for c in self.ensures
+            if c.suggested
+        }
+
+    @property
     def unproved(self) -> list[CheckedCondition]:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
@@ -634,6 +649,8 @@ class Report:
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
+            if c.suggested:
+                lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: SUM of {i.expr} {SUM_ASSUMED}" for i in self.assumed]
         for i in self.errors:
             lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
@@ -662,7 +679,11 @@ class Report:
                 return f"❌ {c.why}"
             return f"❌ {c.why}; fails on `{c.counterexample}`".replace("|", "\\|")
 
-        rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
+        rows = []
+        for c in self.ensures:
+            rows.append(f"| `{c.label}` | {status(c)} |")
+            if c.suggested:
+                rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
             note = f" ({RUNTIME_CHECK})" if _sum(i) else ""
@@ -693,6 +714,15 @@ class Report:
                 *facts,
             ]
         )
+
+
+def _would_hold(c: CheckedCondition) -> str:
+    """The suggestion line of an unproved postcondition."""
+    parts = [
+        f"{', '.join(f'`{label(x)}`' for x in cs)} in the requires of {t!r}"
+        for t, cs in c.suggested.items()
+    ]
+    return "would hold with " + " and ".join(parts)
 
 
 PARAMS_NOTE = "proved for these parameter values only"
@@ -1017,6 +1047,17 @@ def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
     else:
         return None
     return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
+
+
+def _suggested(
+    bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
+) -> dict[str, list[Condition]]:
+    """The preconditions Lean suggests for an unproved postcondition, on the
+    tables whose `requires` the caller states; none for a split or a why."""
+    if bound is None or bound["why"] is not None or bound["split"]:
+        return {}
+    conds = _render_needs(bound["needs"], schemas)
+    return {t: list[Condition](cs) for t, cs in conds.items() if t in assumable and cs}
 
 
 def _render_needs(
@@ -1354,7 +1395,7 @@ def infer_bounds(
         return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
 
     if not infer:
-        return once(requires, counterexamples)[0]
+        return _confirm_suggestions(once(requires, counterexamples)[0], requires, once)
     # Counterexamples only for the final proof.
     report, raw, schemas = once(requires, 0)
     extra = {
@@ -1367,11 +1408,29 @@ def infer_bounds(
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
+    report = _confirm_suggestions(report, requires, once)
     # An integer SUM that may overflow is assumed to fit, and checked on the
-    # data while the job runs: nothing bounds a group's rows yet (#219).
+    # data while the job runs: the row caps (#219) do not rule it out.
     report.assumed = [i for i in report.issues if _sum(i)]
     report.issues = [i for i in report.issues if not _sum(i)]
     return report
+
+
+def _confirm_suggestions(report: Report, requires, once) -> Report:
+    """`report` with only the suggestions a proof confirms: each unproved
+    postcondition's suggested preconditions are added to `requires` (and to
+    what was inferred), and kept if the postcondition is then proved."""
+    ensures = []
+    for c in report.ensures:
+        if c.suggested:
+            widened = {t: list(cs) for t, cs in requires.items()}
+            _merge(widened, report.inferred)
+            _merge(widened, c.suggested)
+            again = once(widened, 0)[0]
+            if not any(e.label == c.label and e.proved for e in again.ensures):
+                c = replace(c, suggested={})
+        ensures.append(c)
+    return replace(report, ensures=ensures)
 
 
 def _verify_once(
@@ -1464,6 +1523,7 @@ def _verify_once(
         dtype = dtypes.get(f["name"])
         return (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
 
+    assumable: Container[str] = schemas if inputs is None else inputs
     rows = iter(out["ensures"])
     key_results = iter(out["keys"])
     req_named = [(t, p) for (t, _), p in zip(req_conds, req_plans, strict=True)]
@@ -1511,8 +1571,10 @@ def _verify_once(
             e = next(rows)
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
-            checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
-    assumable: Container[str] = schemas if inputs is None else inputs
+            suggested = _suggested(e.get("suggest"), schemas, assumable)
+            checked.append(
+                CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
+            )
     report = Report(
         semantics=semantics,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},

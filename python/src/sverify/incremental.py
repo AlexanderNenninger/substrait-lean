@@ -64,7 +64,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _retention
+from sverify import _retention, _touched
 from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, store_for
@@ -760,6 +760,11 @@ class RefreshReport:
     postconditions: list[Discharged] = field(default_factory=list)
     """The unproved postconditions (`on_unproved="runtime"`) checked on the
     rows the batch inserts into each view, by view."""
+    touched: dict[str, int] = field(default_factory=dict)
+    """For each view maintained by touched groups (`sverify._touched`): how
+    many groups the batch touched, which were recomputed."""
+    diffed: list[str] = field(default_factory=list)
+    """The views the batch recomputed in full and diffed."""
 
     @property
     def recomputed(self) -> list[str]:
@@ -779,6 +784,8 @@ class RefreshReport:
         lines += [f"ensures {p}" for p in self.postconditions]
         for v, vs in self.versions.items():
             lines.append(f"view {v}: " + ", ".join(f"{t}@v{n}" for t, n in vs.items()))
+        lines += [f"view {v}: {n} touched group(s) recomputed" for v, n in self.touched.items()]
+        lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
         if self.audited:
             lines.append("audit: batch matches the new snapshots; views match recomputation")
         lines += [str(r) for r in self.retention]
@@ -894,13 +901,36 @@ class IncrementalView:
             raise ValueError(f"view name {self.name!r} is a table the view reads")
         self.fallback: str | None = None
         """Why the view has no delta plans and is recomputed, if it is."""
+        self.touched: _touched.Touched | None = None
+        """How the view is maintained by touched groups (`sverify._touched`)
+        when it has no delta plans, if it can be."""
+        self.touched_off: str | None = None
+        """Why an aggregate without delta plans is recomputed and diffed."""
         try:
             self.deltas = delta_plans(json.dumps(plan))
         except NotIncremental as e:
             if standalone:
                 raise
             self.deltas, self.fallback = [], str(e)
+            found = _touched.plan(self.name, query)
+            if isinstance(found, _touched.Touched):
+                self.touched = found
+            elif found not in (_touched.NOT_AGGREGATE, _touched.SQL):
+                self.touched_off = found
         self.plan = written_plan(json.dumps(plan))
+
+    @property
+    def strategy(self) -> str:
+        """How a batch changes the view: "delta rules", "touched groups"
+        (the groups the batch touches, recomputed) or "recompute and diff"."""
+        if self.fallback is None:
+            return "delta rules"
+        return "touched groups" if self.touched is not None else "recompute and diff"
+
+    @property
+    def recomputed(self) -> bool:
+        """The view is recomputed and diffed on every batch."""
+        return self.fallback is not None and self.touched is None
 
     def _mismatch(self, stored: Stored) -> str | None:
         """Why `stored` is not this view's state at the versions the pipeline
@@ -1041,30 +1071,60 @@ class IncrementalView:
         """The view's change, from its delta plans, as a weighted table. The
         tables hold their old contents; `t$delta` is loaded with each input's
         change."""
-        con = self.con
-        try:
-            for t in self.tables:
-                _load_delta_table(con, t, deltas.get(t))
-            parts = [self._weighted(run_plan(con, plan, self.engine)) for plan in self.deltas]
-        finally:
-            for t in self.tables:
-                con.drop(t + "$delta")
+        parts = [self._weighted(r) for r in self._run_deltas(self.deltas, deltas)]
         total = weighted(self.schema.empty_table(), 1)
         for part in parts:
             total = arrow_of(self._merge(total, part))
         return total
 
+    def _run_deltas(self, plans: Sequence[str], deltas: Mapping[str, pa.Table]) -> list[pa.Table]:
+        """The results of delta plans over the view's inputs: the tables hold
+        their old contents, and `t$delta` each input's change."""
+        con = self.con
+        try:
+            for t in self.tables:
+                _load_delta_table(con, t, deltas.get(t))
+            return [run_plan(con, plan, self.engine) for plan in plans]
+        finally:
+            for t in self.tables:
+                con.drop(t + "$delta")
+
+    def _touched_change(
+        self, deltas: Mapping[str, pa.Table], new_tables: Mapping[str, pa.Table | Native]
+    ) -> tuple[pa.Table, int]:
+        """The view's change by touched groups (`sverify._touched`), as a
+        weighted table, and how many groups the batch touched: the input's
+        change from its delta plans, its group keys, and the view over the
+        new input rows of those keys, which replace the state's rows of the
+        same keys (`TouchedGroups.touched_sound`)."""
+        spec = self.touched
+        assert spec is not None
+        con = self.con
+        empty = weighted(self.schema.empty_table(), 1)
+        parts = [r for r in self._run_deltas(spec.deltas, deltas) if r.num_rows]
+        if not parts:
+            return empty, 0
+        rows = pa.concat_tables(
+            [r.drop_columns([r.column_names[-1]]).rename_columns(spec.input_names) for r in parts]
+        )
+        names = (self.name + "$in", self.name + "$keys")
+        try:
+            put_table(con, names[0], rows)
+            keys = run_plan(con, spec.keys, self.engine)
+            put_table(con, names[1], keys)
+            new = run_plan_on(con, spec.recompute, self.engine, new_tables, self.tables)
+        finally:
+            for n in names:
+                con.drop(n)
+        # With retention, the final buckets stay as they are.
+        new = self._kept(new.cast(self.schema))
+        old = self._kept(arrow_of(self.store.with_keys(self.state, spec.columns, keys)))
+        change = self._merge(weighted(new, 1), self.store.negated(old))
+        return arrow_of(change), keys.num_rows
+
     def _result_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
-        con = self.con
-        old = {t: con.get(t) for t in self.tables if t in new_tables}
-        try:
-            for t in old:
-                put_table(con, t, new_tables[t])
-            return run_plan(con, self.plan, self.engine)
-        finally:
-            for t, table in old.items():
-                put_table(con, t, table)
+        return run_plan_on(self.con, self.plan, self.engine, new_tables, self.tables)
 
     def _diff(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view's change by recomputing it on the new inputs and diffing,
@@ -1093,6 +1153,25 @@ class IncrementalView:
         if cutoff is None:
             return result
         return _retention.after(arrow_of(result), spec.column, cutoff)
+
+
+def run_plan_on(
+    con: Connection,
+    plan: str,
+    engine: Any,
+    new_tables: Mapping[str, pa.Table | Native],
+    tables: Sequence[str],
+) -> pa.Table:
+    """`plan` run with each of `tables` that `new_tables` has at its new
+    contents; nothing is replaced."""
+    old = {t: con.get(t) for t in tables if t in new_tables}
+    try:
+        for t in old:
+            put_table(con, t, new_tables[t])
+        return run_plan(con, plan, engine)
+    finally:
+        for t, table in old.items():
+            put_table(con, t, table)
 
 
 def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:
@@ -1187,7 +1266,13 @@ class Pipeline:
     @property
     def fallbacks(self) -> dict[str, str]:
         """Views that are recomputed and diffed, with the reason."""
-        return {v.name: v.fallback for v in self._views if v.fallback is not None}
+        return {v.name: v.fallback for v in self._views if v.fallback and v.touched is None}
+
+    @property
+    def touched(self) -> dict[str, str]:
+        """Views without delta rules, maintained by touched groups
+        (`sverify._touched`), with why they have no delta rules."""
+        return {v.name: v.fallback for v in self._views if v.fallback and v.touched is not None}
 
     def lineage(self, name: str) -> dict[str, int]:
         """The version of every source table that `name` (a view or table)
@@ -1566,6 +1651,8 @@ class Pipeline:
             audited=audit,
             retention=self.retire() if retire else [],
             postconditions=pending.checked,
+            touched=pending.touched,
+            diffed=pending.diffed,
         )
 
     def _reading(self, tables: set[str]) -> list[IncrementalView]:
@@ -1676,19 +1763,29 @@ class Pipeline:
         # The tables whose new contents a recomputed view reads.
         rerun = set(stale)
         read_new: set[str] = set()
+        touched: dict[str, int] = {}
+        diffed: list[str] = []
         for v in self._views:
-            if v.fallback is not None or rerun & set(v.tables):
+            if v.recomputed or rerun & set(v.tables):
                 rerun.add(v.name)
+                read_new.update(v.tables)
+            elif v.touched is not None:
+                # It recomputes the touched groups on the new inputs.
                 read_new.update(v.tables)
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
             if not any(t in deltas and deltas[t].num_rows for t in v.tables):
                 continue
-            rerun = v.fallback is not None or any(t in stale for t in v.tables)
+            rerun = v.recomputed or any(t in stale for t in v.tables)
             if rerun:
                 stale.add(v.name)
-            delta = v._diff(new_tables) if rerun else v._delta(deltas)
+                diffed.append(v.name)
+                delta = v._diff(new_tables)
+            elif v.touched is not None:
+                delta, touched[v.name] = v._touched_change(deltas, new_tables)
+            else:
+                delta = v._delta(deltas)
             deltas[v.name] = delta
             # A checked key is checked on the whole new state.
             keyed = any(isinstance(c, Unique | MaxRows) for c in v.checked)
@@ -1717,6 +1814,8 @@ class Pipeline:
             changed,
             latest=latest,
             checked=checked,
+            touched=touched,
+            diffed=diffed,
         )
 
     def _commit(self, pending: _Commit) -> None:
@@ -1762,6 +1861,10 @@ class _Commit:
     """The largest time seen after the batch, per `arrives_within`."""
     checked: list[Discharged] = field(default_factory=list)
     """The views' runtime-checked postconditions, checked on the batch."""
+    touched: dict[str, int] = field(default_factory=dict)
+    """The groups each view maintained by touched groups recomputed."""
+    diffed: list[str] = field(default_factory=list)
+    """The views recomputed and diffed."""
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:

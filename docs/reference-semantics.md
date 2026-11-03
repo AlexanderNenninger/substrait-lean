@@ -46,7 +46,9 @@ to the engine:
 
 A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
-of every allowed result. Where a plan has them, `Report.deterministic` says so.
+of every allowed result. `Report.deterministic` is false where rows may tie in
+the order of a window or of `FIRST`, `LAST` or `STRING_AGG`
+(`Rel.windowsTotal`); it does not yet flag the other choices.
 
 The reference is not a model of any engine, DuckDB included. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which

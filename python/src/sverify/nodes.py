@@ -621,6 +621,8 @@ class StageRefresh:
             parts.append(text + (f" ({meta} proved from metadata)" if meta else ""))
         elif pre:
             parts.append("requires proved from metadata")
+        parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
+        parts += ["recomputed and diffed" for _ in self.report.diffed]
         if self.report.postconditions:
             # On the rows the batch inserts into the node (keys on its state).
             parts.append(f"{len(self.report.postconditions)} ensures checked on data")
@@ -713,6 +715,9 @@ class NodeStatus:
     recomputed: str | None = None
     """Why the node is recomputed on every refresh instead of maintained,
     or None if it is maintained from changes (or not refreshed yet)."""
+    touched: str | None = None
+    """Why the node has no delta rules, when it is maintained by
+    recomputing only the groups each batch touches (an aggregate)."""
 
     def __str__(self) -> str:
         if self.versions is None:
@@ -723,6 +728,8 @@ class NodeStatus:
             text += f"; stored in {self.stored}"
         if self.recomputed:
             text += f"; recomputed ({self.recomputed})"
+        if self.touched:
+            text += f"; touched groups recomputed (no delta rules: {self.touched})"
         return text
 
 
@@ -823,10 +830,19 @@ class Group:
                     n.name,
                     None if stage is None else stage.view.versions,
                     stored,
-                    None if stage is None else stage.view.fallback,
+                    None if stage is None else _recomputed(stage.view),
+                    None if stage is None or stage.view.touched is None else stage.view.fallback,
                 )
             )
         return out
+
+
+def _recomputed(view: IncrementalView) -> str | None:
+    """Why a view is recomputed and diffed on every batch, or None."""
+    if not view.recomputed:
+        return None
+    off = f"; no touched groups: {view.touched_off}" if view.touched_off else ""
+    return f"{view.fallback}{off}"
 
 
 def _continue_versions(node: _Stored) -> None:

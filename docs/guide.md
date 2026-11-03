@@ -472,6 +472,31 @@ print(report)
   `Report.rows` is the cap on the output, under "known about the output".
 * The SUM hint names the cap that proves a sum fits.
 
+### Suggested preconditions
+
+An unproved postcondition that compares a value with a constant gets a
+suggestion: the precondition on the inputs under which Lean proves it. It
+is never assumed, since it changes what the transformation accepts:
+
+```python
+items = ibis.table({"id": "int64", "qty": "!int64"}, name="items")
+report = sv.verify(
+    items.select(items.id, doubled=items.qty * 2),
+    requires={"items": [_.qty >= 0]},
+    ensures=[_.doubled <= 100],
+)
+print(report)
+# ...
+# ensures (_.doubled <= 100): NOT proved: it may be FALSE on some rows
+#   would hold with `(_.qty < 51)` in the requires of 'items'
+# ...
+```
+
+Sverify proves each suggestion before showing it, by proving the
+postcondition again with it added. `Report.suggestions` has them as code,
+per postcondition and table, for editors and language servers
+([test_suggestions.py](../python/tests/test_suggestions.py)).
+
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream
@@ -565,7 +590,18 @@ joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
 saying what.
 
 A node without delta rules (left join, aggregate, window, `DISTINCT`,
-`LIMIT`) is recomputed and diffed instead, and `status()` says so. Contracted
+`LIMIT`) is recomputed and diffed instead, and `status()` says so. An
+aggregate whose input has delta rules recomputes only the groups a batch
+touches: Sverify takes the group keys of the input rows the batch inserts or
+deletes, recomputes those groups from the new input (a semi-join on the
+keys), and replaces their rows. This holds for every measure, because an
+aggregate's groups are independent (`TouchedGroups.touched_sound` in
+[`SubstraitLean/TouchedGroups.lean`](../SubstraitLean/TouchedGroups.lean)).
+`status()` says "touched groups recomputed", and the refresh summary gives
+how many groups each batch touched ("12 touched group(s) recomputed") or
+"recomputed and diffed". Filters and projections over the aggregate that
+keep the group keys keep this strategy; SQL steps and aggregates over
+another aggregate or a window are recomputed and diffed. Contracted
 nodes keep their guarantees in every state: their preconditions on the
 sources are checked in full once, then only on each batch.
 
