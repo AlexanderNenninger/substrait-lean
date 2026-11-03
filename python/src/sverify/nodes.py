@@ -42,7 +42,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 
 from sverify._retention import RetentionReport
-from sverify.contracts import Discharged, _lookup, _register, label
+from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
@@ -296,6 +296,8 @@ class Node:
 
         Returns:
             A `Refresh`: what was done to each node, upstream first.
+            `print` it for the full report, or log `summary()` for one line
+            per node.
 
         Raises:
             sverify.errors.PreconditionError: A precondition on a source does
@@ -556,7 +558,8 @@ class _Stage:
 class StageRefresh:
     """What one refresh did to one node: how its state started (on the first
     refresh), what the batch was, and what its sink wrote. `str()` shows
-    them in that order."""
+    them in that order; `summary()` gives one line, unless the refresh did
+    something `notable`."""
 
     node: str
     """The node's name."""
@@ -579,6 +582,61 @@ class StageRefresh:
     prove and checks on its output (`on_unproved="runtime"`), checked on the
     full result (later batches: `report.postconditions`)."""
 
+    @property
+    def notable(self) -> list[str]:
+        """Why this entry deserves more than one line, or []: the first
+        refresh (how the state started and how the preconditions were
+        established on the full tables), a source whose change could not be
+        applied incrementally, a schema change, or a sink that replaced its
+        table's rows."""
+        out = [self.started] if self.started else []
+        if self.report is not None:
+            out += self.report.notable
+        if self.write is not None and self.write.mode == "overwrite":
+            out.append("the sink overwrote its table")
+        out += [f"retention off: {r.off}" for r in self.retention if r.off is not None]
+        return out
+
+    def summary(self) -> str:
+        """One line, for the log of a job that refreshes often:
+        "paid: orders@v3→v4, Δ trusted (change feed), requires checked on 2
+        row(s), merge v5: +2 −0". With something `notable`, the full entry
+        (`str()`) instead."""
+        if self.notable or self.report is None:
+            return str(self)
+        sources = self.report.sources
+        parts = [", ".join(s.span() for s in sources)]
+        if all(s.mode == "unchanged" for s in sources):
+            parts[0] += " unchanged"
+        modes = {s.mode for s in sources}
+        if "change feed" in modes:
+            parts.append("Δ trusted (change feed)")
+        if "snapshot diff" in modes:
+            parts.append("Δ exact (snapshot diff)")
+        pre = self.report.preconditions
+        # "checked on data, watermark …" (#294) is checked on data too.
+        meta = sum(not p.source.startswith(ON_DATA) for p in pre)
+        if meta < len(pre):
+            text = f"requires checked on {sum(s.inserts for s in sources)} row(s)"
+            parts.append(text + (f" ({meta} proved from metadata)" if meta else ""))
+        elif pre:
+            parts.append("requires proved from metadata")
+        if self.report.postconditions:
+            # On the rows the batch inserts into the node (keys on its state).
+            parts.append(f"{len(self.report.postconditions)} ensures checked on data")
+        parts += [
+            f"{r.column}: {r.open}/{r.bound} bucket(s) open, {r.retired} retired"
+            for r in self.retention
+            if r.off is None
+        ]
+        if (w := self.write) is not None:
+            if w.mode == "skipped":
+                parts.append("already committed")
+            else:
+                at = "" if w.version is None else f" v{w.version}"
+                parts.append(f"{w.mode}{at}: +{w.inserted} −{w.deleted}")
+        return f"{self.node}: " + ", ".join(parts)
+
     def __str__(self) -> str:
         lines = [f"{self.node}:"]
         if self.started:
@@ -597,6 +655,7 @@ class StageRefresh:
 class Refresh:
     """What a refresh did, node by node, upstream first: returned by
     `Node.refresh` and `Group.refresh`. `str()` shows each node's entry;
+    `summary()` one line per node, for a job that refreshes often;
     `refresh["paid"]` is the entry of the node named "paid".
 
     Attributes:
@@ -617,6 +676,22 @@ class Refresh:
         """What each stored node's sink wrote (`sverify.io.SinkWrite`),
         upstream first."""
         return [s.write for s in self.nodes if s.write is not None]
+
+    @property
+    def notable(self) -> bool:
+        """Whether any node's entry has something `StageRefresh.notable`."""
+        return any(s.notable for s in self.nodes)
+
+    def summary(self) -> str:
+        """One line per node (`StageRefresh.summary`), upstream first; a node
+        whose refresh did something notable (its first refresh, a recompute,
+        a schema change, an overwrite) gets its full entry.
+
+        Returns:
+            The summary, such as "paid: orders@v3→v4, Δ trusted (change
+            feed), requires checked on 2 row(s), merge v5: +2 −0".
+        """
+        return "\n".join(s.summary() for s in self.nodes)
 
     def __str__(self) -> str:
         return "\n".join(str(s) for s in self.nodes)

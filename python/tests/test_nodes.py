@@ -260,6 +260,42 @@ def test_a_static_source_feeds_its_changes(tmp_path):
     assert rows(node) == [(2, "bob", 14)]
 
 
+# -- refresh reports (#378) ------------------------------------------------------
+
+
+def test_a_refresh_summarizes_each_node_in_one_line(tmp_path):
+    orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
+    stored = paid(orders).write(DeltaSink(str(tmp_path / "paid")))
+    first = stored.refresh()
+    # The first refresh is notable: it shows how the state started.
+    assert first.notable
+    assert first.summary() == str(first)
+    write_deltalake(str(tmp_path / "orders"), orders_table([(2, "bob", 7)]), mode="append")
+    batch = stored.refresh()
+    assert not batch.notable
+    assert batch.summary() == (
+        "paid: orders@v1→v2, Δ trusted (change feed), requires checked on 1 row(s) "
+        "(3 proved from metadata), merge v3: +1 −0"
+    )
+    assert str(batch).count("\n") > 1  # the full report is still there
+    assert stored.refresh().summary() == "paid: orders@v2 unchanged, already committed"
+
+
+def test_a_recompute_or_a_schema_change_shows_the_full_report(tmp_path):
+    src = StaticSource(orders_table([(1, "ada", 5)]), version=1, name="orders")
+    node = big(src)
+    node.refresh()
+    src.replace(orders_table([(1, "ada", 9)]), version=2)  # no change feed
+    result = node.refresh()
+    assert result["big"].notable == ["orders recomputed"]
+    assert result.summary() == str(result)
+    wider = pa.schema([*ORDERS, pa.field("note", pa.string())])
+    src.replace(pa.table({**orders_table([(1, "ada", 9)]).to_pydict(), "note": ["x"]}, wider), 3)
+    result = node.refresh()
+    assert any("schema: added note" in n for n in result["big"].notable)
+    assert result.summary() == str(result)
+
+
 # -- engines and results ------------------------------------------------------
 
 
@@ -387,6 +423,7 @@ def test_unproved_postconditions_of_a_node_are_checked_at_refresh(tmp_path):
         "unique(customer)",
     }
     assert "ensures capped: (_.amount < 100) (checked on data)" in str(batch)
+    assert batch.summary().endswith("2 ensures checked on data, merge v2: +1 −0")
 
 
 @pytest.mark.parametrize(

@@ -118,6 +118,18 @@ def test_the_report_counts_open_and_retired_buckets():
     ] == [T0 + timedelta(hours=h) for h in (2, 3, 4)]
 
 
+def test_the_summary_shows_open_and_retired_buckets():
+    src = StaticSource(samples([("a", m, 1) for m in range(0, 300, 30)]), name="samples")
+    node = src.pipe(rollup())
+    node.refresh()
+    # 5:30 moves the watermark to 3:30: bucket 2:00 is final, 5:00 opens.
+    src.apply(sv.Changes(inserts=samples([("a", 330, 1)])))
+    line = node.refresh()["hourly"].summary()
+    assert "\n" not in line
+    assert line.endswith("bucket: 3/3 bucket(s) open, 1 retired")
+    assert "requires checked on 1 row(s)" in line
+
+
 @pytest.mark.parametrize(
     ("lateness", "bound"),
     [
