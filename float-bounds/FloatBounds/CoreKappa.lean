@@ -385,7 +385,7 @@ noncomputable def covTol (n d r1 r2 rs rq : ℝ) : ℝ :=
 
 /-- The tolerance of `VAR_*`, `S / d`. -/
 noncomputable def varTol (n d r Q : ℝ) : ℝ :=
-  (150 * n * u * r + 3970 * n ^ 2 * u ^ 2 * Q + 800 * n ^ 2 * u * tiny) / d
+  (160 * n * u * r + 3970 * n ^ 2 * u ^ 2 * Q + 800 * n ^ 2 * u * tiny) / d
 
 /-- Dividing a co-moment within `E` of `C` by `d`, rounded. -/
 theorem StdModel.div_kappa {C Ch E rs n d : ℝ} (h : |Ch - C| ≤ E) (hC : |C| ≤ rs) (hE0 : 0 ≤ E)
@@ -561,4 +561,44 @@ theorem StdModel.core_cov_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs
   have q3 : 0 ≤ n ^ 2 * u * tiny := by positivity
   have q4 : 0 ≤ n * u * (qx * sy + qy * sx) := by positivity
   rw [hE] at uE ⊢
+  nlinarith
+
+/-- **`VAR_*` the core trusts** (`varOf_props`): `fl(Ŝ / d)` is `≥ 0` and
+within `varTol` of `S / d`, for any `r ≥ √(Q' S)`. -/
+theorem StdModel.core_var_k {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.length ≤ 2 ^ 32)
+    (hB : ∀ p ∈ ps, |p.2| ≤ 2 ^ 398) (hd : ∀ p ∈ ps, |p.1 - p.2| ≤ 2 * u * |p.2|)
+    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ ps.length) {r : ℝ}
+    (hr : √((ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+      * √(comoment (ps.map fun p => (p.2, p.2))) ≤ r) :
+    0 ≤ M.fl (M.twoPass (ps.map fun p => (p.1, p.1)) / d) ∧
+      |M.fl (M.twoPass (ps.map fun p => (p.1, p.1)) / d) - comoment (ps.map fun p => (p.2, p.2)) / d|
+        ≤ varTol ps.length d r (ps.map fun p => (|p.2| + tiny) ^ 2).sum := by
+  have hu := u_pos
+  have ht := tiny_pos
+  obtain ⟨hS0, hSQ, -⟩ := SQ_facts (qs := ps) (fun p => p.2) hN hB
+  have hQ0 : 0 ≤ (ps.map fun p => (|p.2| + tiny) ^ 2).sum := le_trans hS0 hSQ
+  have hsq : √(comoment (ps.map fun p => (p.2, p.2))) ≤ √((ps.map fun p => (|p.2| + tiny) ^ 2).sum) :=
+    Real.sqrt_le_sqrt hSQ
+  have hrs : √(comoment (ps.map fun p => (p.2, p.2))) * √(comoment (ps.map fun p => (p.2, p.2))) ≤ r :=
+    le_trans (by rw [mul_comm]; exact mul_le_mul_of_nonneg_right hsq (Real.sqrt_nonneg _)) hr
+  have hrq : √((ps.map fun p => (|p.2| + tiny) ^ 2).sum) * √((ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+      ≤ (ps.map fun p => (|p.2| + tiny) ^ 2).sum := le_of_eq (Real.mul_self_sqrt hQ0)
+  have hr' : √((ps.map fun p => (|p.2| + tiny) ^ 2).sum) * √(comoment (ps.map fun p => (p.2, p.2)))
+      ≤ r := hr
+  have h := M.core_cov_k (qs := ps.map fun p => ((p.1, p.1), (p.2, p.2))) (by simpa using hne)
+    (by simpa using hN) (fun q hq => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hq; exact ⟨hB p hp, hB p hp⟩)
+    (fun q hq => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hq; exact ⟨hd p hp, hd p hp⟩)
+    hd1 (by simpa using hdn) (r1 := r) (r2 := r) (rs := r)
+    (rq := (ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+    (by simpa [List.map_map, Function.comp_def] using hr')
+    (by simpa [List.map_map, Function.comp_def] using hr')
+    (by simpa [List.map_map, Function.comp_def] using hrs)
+    (by simpa [List.map_map, Function.comp_def] using hrq)
+  simp only [List.map_map, Function.comp_def, List.length_map] at h
+  have hd' : (0 : ℝ) < d := by exact_mod_cast hd1
+  refine ⟨M.nonneg _ (div_nonneg (M.twoPass_dup_nonneg ps) hd'.le), le_trans h ?_⟩
+  unfold covTol varTol
+  apply div_le_div_of_nonneg_right _ hd'.le
+  have hr0 : 0 ≤ r := le_trans (by positivity) hr
+  have : 0 ≤ (ps.length : ℝ) * u * r := by positivity
   nlinarith
