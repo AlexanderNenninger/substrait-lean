@@ -565,7 +565,7 @@ theorem ints_map_intsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .int 
     simp only [intsOf, List.filterMap_cons, List.map_cons]
     exact congrArg _ (ints_map_intsOf fun w hw => h w (by simp [hw]))
 
-theorem Measure.inputs_length_le {m : Measure} {rows : Relation} :
+theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
     (m.inputs rows).length ≤ rows.length := by
   have hk : (m.kept rows).length ≤ rows.length := by
     unfold Measure.kept; split

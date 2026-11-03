@@ -43,7 +43,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise Unsupported(f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported")
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
-    if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp()):
+    if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp() or t.is_time()):
         return _temporal(a, t)
     if a.constant and a.type.is_string() and t.is_decimal():
         text = a.value.strip()

@@ -58,7 +58,7 @@ def con():
     c = connect()
     for name, t in TABLES.items():
         put_table(c, name, t)
-    ctx = c.datafusion
+    ctx = c._datafusion_session
     for name, t in TABLES.items():
         ctx.deregister_table(name)
         ctx.register_record_batches(name, [t.to_batches()])
@@ -167,7 +167,7 @@ def test_duckdb_overflow_raises(duck):
     ],
 )
 def test_datafusion_native(con, sql, expected):
-    assert positional(con.datafusion.sql(sql).to_arrow_table()) == expected
+    assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == expected
 
 
 # --- Ibis: one expression, a backend-dependent meaning -------------------------
@@ -358,7 +358,7 @@ def test_translators_agree_or_refuse_on_opaque_functions(con, sql, table, rows):
     (#70): Polars computes them as DataFusion does; DuckDB, whose utf8proc and
     RE2 differ on non-ASCII text, raises there; on ASCII text it agrees."""
     plan = written_plan(substrait_json(con, sql))
-    assert positional(con.datafusion.sql(sql).to_arrow_table()) == rows
+    assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == rows
     assert positional(polars_engine.run(plan, {table: TABLES[table]})) == rows
     with pytest.raises(duckdb.Error, match="non-ASCII text differs between engines"):
         duckdb_engine.run(plan, {table: TABLES[table]})
@@ -398,7 +398,10 @@ def test_constant_casts_truncate(con):
     do (truncating, as DataFusion casts), not rounded."""
     for value, truncated in [("2.7", 2), ("-2.5", -2), ("CAST(2.5 AS DOUBLE)", 2)]:
         sql = f"SELECT CAST({value} AS BIGINT) AS c FROM j"
-        assert positional(con.datafusion.sql(sql).to_arrow_table()) == [(truncated,), (truncated,)]
+        assert positional(con._datafusion_session.sql(sql).to_arrow_table()) == [
+            (truncated,),
+            (truncated,),
+        ]
         assert proves(sql, f"c = {truncated}")
         assert not proves(sql, f"c = {truncated + (1 if truncated > 0 else -1)}")
 
@@ -416,7 +419,7 @@ def test_constant_strings_datafusion_cannot_cast_are_refused(con, value, kind):
     the checker refuses them instead of reading them its own way."""
     sql = f"SELECT CAST({value} AS {kind}) AS c FROM j"
     with pytest.raises(Exception, match="Cannot cast|Error parsing|cast"):
-        con.datafusion.sql(sql).to_arrow_table()
+        con._datafusion_session.sql(sql).to_arrow_table()
     with pytest.raises(ValueError, match="cannot (cast|parse)"):
         sv.verify(sql, tables={"j": {"a": "int64"}})
 

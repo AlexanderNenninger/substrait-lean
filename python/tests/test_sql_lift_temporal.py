@@ -1,8 +1,10 @@
 """Dates, timestamps and intervals in DuckDB SQL through sverify's own lift
 (`sverify.sql_lift`): oracles A and C, and the refusals."""
 
+import datetime as dt_
 import json
 
+import pyarrow as pa
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
@@ -118,3 +120,52 @@ def test_greatest_and_least_of_times_run_on_polars_as_on_duckdb():
     )
     plan = written_plan(json.dumps(lift(sql, {"t": ibis.Schema.from_pyarrow(table.schema)}).plan))
     assert run_plan(con, plan, "polars").to_pylist() == run_plan(con, plan, "duckdb").to_pylist()
+
+
+#: A table with TIME columns (#386).
+TIMES = {
+    "t": pa.table(
+        {
+            "tm": pa.array(
+                [dt_.time(4), dt_.time(6, 30, 1, 5), None, dt_.time(23, 59, 59, 999999)],
+                pa.time64("us"),
+            ),
+            "tn": pa.array([dt_.time(1), dt_.time(7), dt_.time(2), None], pa.time64("us")),
+        }
+    )
+}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT TIME '13:45:21' AS x",
+        "SELECT CAST('13:45:21' AS TIME) AS x",
+        "SELECT TIME '1:02' AS x, TIME ' 13:45:21.5 ' AS y, TIME '00:00:00.000001' AS z",
+        "SELECT LEAST(tm, TIME '05:00:00') AS x FROM t",
+        "SELECT tm FROM t WHERE tm > TIME '05:00:00'",
+        "SELECT tm FROM t WHERE tm > '05:00' AND tm <= '23:59:59.999999'",
+        "SELECT GREATEST(tm, tn) AS x FROM t",
+    ],
+)
+def test_time_constants(query):
+    # #386: a TIME constant is a `precisionTime` literal, in microseconds
+    # since midnight; Lean has no cast of a string to a time of day.
+    result = check(query, TIMES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        # DuckDB raises on these.
+        ("SELECT TIME '25:00:00' AS x", "out of range"),
+        ("SELECT TIME '13' AS x", "HH:MM:SS"),
+        # DuckDB reads these, as values the model has no literal for.
+        ("SELECT TIME '24:00:00' AS x", "out of range"),
+        ("SELECT TIME '13:45:21+02' AS x", "HH:MM:SS"),
+    ],
+)
+def test_time_constants_outside_the_model_are_refused(query, message):
+    with pytest.raises(Refused, match=message):
+        lift(query, {})

@@ -46,7 +46,7 @@ only what the upstream one guarantees (`Triple.compose` in
     doubled(paid(orders))     # `doubled` is proved from `paid`'s guarantees
 
 A link that does not hold raises `CompositionError` naming both sides:
-"doubled needs (_.amount >= 0) (it is TRUE or FALSE) on 't'; not_null only
+"doubled needs (_.amount >= 0) (it may be FALSE on some rows) on 't'; not_null only
 guarantees _.amount.notnull()". Plain Ibis steps in between carry no
 guarantees of their own. A composed result can be maintained incrementally
 (`sverify.incremental`): its preconditions on the base tables are then
@@ -65,6 +65,7 @@ inside the Lean model. `unique` checks always run through Ibis.
 
 from __future__ import annotations
 
+import difflib
 import functools
 import inspect
 import json
@@ -147,8 +148,9 @@ class References:
     other: str
 
 
-def references(col: str, table: str, other: str) -> References:
-    """A foreign key: every non-NULL value of `col` occurs in `table.other`.
+def references(col: str, *legacy: str, to: ir.Column | tuple[str, str] | None = None) -> References:
+    """A foreign key: every non-NULL value of `col` occurs in the column `to`
+    of another table.
 
     Only for `requires`, where it is checked on the data like `unique` (the
     referenced table must be bound to the same backend). With a key on the
@@ -157,13 +159,49 @@ def references(col: str, table: str, other: str) -> References:
 
     Args:
         col: The referencing column of the input the condition is on.
-        table: The name of the referenced table, as `verify` and the backend
-            know it.
-        other: The referenced column of `table`.
+        *legacy: Deprecated: the referenced table and column as two more
+            positional strings, `references(col, table, other)`, which are
+            easy to swap. Use `to=`.
+        to: The referenced column, keyword-only: an Ibis column of a named
+            table (`customers.id`), or a `(table, column)` pair of names as
+            `verify` and the backend know them.
 
     Returns:
         A `References` condition, for `requires`.
+
+    Raises:
+        TypeError: `to` is missing, or is not a column of a named table.
+
+    Examples:
+        ```python
+        sv.references("customer_id", to=customers.id)
+        sv.references("customer_id", to=("customers", "id"))
+        ```
     """
+    if legacy:
+        if to is not None or len(legacy) != 2:
+            raise TypeError("references() takes a column and to=(table, column)")
+        warnings.warn(
+            "references(col, table, other) is deprecated; write "
+            f"references({col!r}, to=({legacy[0]!r}, {legacy[1]!r})) or to=<table>.<column>",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        table, other = legacy
+    elif to is None:
+        raise TypeError(
+            f"references({col!r}) needs the referenced column: to=customers.id or "
+            "to=('customers', 'id')"
+        )
+    elif isinstance(to, ir.Column):
+        op = to.op()
+        if not (isinstance(op, ops.Field) and isinstance(op.rel, ops.PhysicalTable)):
+            raise TypeError(
+                "references(to=...) takes a column of a named table, such as customers.id"
+            )
+        table, other = op.rel.name, op.name
+    else:
+        table, other = to
     return References(col, table, other)
 
 
@@ -342,6 +380,17 @@ def approx(cond: Any, rel: float = 1e-6) -> Approx:
     return Approx(cond, rel)
 
 
+Semantics = Literal["reference", "duckdb"]
+"""What a check's SQL means: sverify's reference semantics (the default) or
+DuckDB's (#411)."""
+
+
+def _checked_semantics(semantics: str) -> Semantics:
+    if semantics not in ("reference", "duckdb"):
+        raise ValueError(f"semantics must be 'reference' or 'duckdb', not {semantics!r}")
+    return semantics  # type: ignore[return-value]
+
+
 TableCondition = (Unique, References, ArrivesWithin, MaxRows)
 """Conditions on a whole table or its batches, not on each row."""
 
@@ -376,6 +425,25 @@ class CheckedCondition:
     on the output data instead, on a bound result when it is built, or on a
     node at every refresh before its sink commits."""
 
+    @property
+    def why(self) -> str:
+        """Why it is not proved, in words: what Lean found the condition may
+        be on a row that meets the preconditions, and, where it may be NULL,
+        how to rule that out."""
+        parts = set(self.value.replace(" or ", ", ").split(", "))
+        if "TRUE" not in parts and parts == {"FALSE"}:
+            return "it is FALSE on every row"
+        bad = [v for v in ("FALSE", "NULL") if v in parts]
+        if not bad:
+            return f"Lean only knows it is {self.value}"
+        why = f"it may be {' or '.join(bad)} on some rows"
+        if "NULL" in bad:
+            why += (
+                ", where a column it reads is NULL: declare the column NOT NULL in the schema "
+                "(`!int64`) or add `_.<column>.notnull()` to `requires`"
+            )
+        return why
+
 
 #: What a report suggests for an overflow it cannot rule out (#202).
 OVERFLOW_HINT = (
@@ -395,11 +463,23 @@ def _truncates(expr: str) -> bool:
     return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
 
 
-#: How a report explains an issue that is checked while the job runs.
+#: How a report explains an integer `SUM` that may overflow: an error like
+#: any other, which the job also checks while it runs.
 RUNTIME_CHECK = (
-    "checked while the job runs, which raises if it happens; no proof before "
-    "running can rule it out, since a group may have any number of rows"
+    "the job also checks it while it runs and raises if it happens; a bound on "
+    "the column and on the rows of a group rules it out"
 )
+
+#: How a report explains an integer `SUM` it assumes fits (`Report.assumed`).
+SUM_ASSUMED = (
+    "fits 64 bits in every group (inferred; checked on the data while the job "
+    "runs, which raises if it does not)"
+)
+
+
+def _sum(issue: Issue) -> bool:
+    """Whether `issue` is an integer `SUM` that may leave 64 bits."""
+    return issue.kind == "SUM overflow"
 
 
 @dataclass(frozen=True)
@@ -415,10 +495,9 @@ class Issue:
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
     error: bool
-    """True if a proof must rule it out. A "SUM overflow" is not one: the
-    transformation's SQL raises there too, but no contract on rows can rule
-    it out (a group may have any number of rows), so it is checked while the
-    job runs instead (#202)."""
+    """True if a proof must rule it out. Every issue is one; a "SUM overflow"
+    is also checked while the job runs, where the transformation's SQL raises
+    too."""
     hint: str | None = None
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
@@ -452,8 +531,8 @@ class Report:
     row ties): the engine then picks an order, and nothing is proved about
     the result."""
     issues: list[Issue] = field(default_factory=list)
-    """Runtime errors, and SUM overflows, Lean could not rule out; when empty,
-    the transformation provably runs without them."""
+    """Runtime errors, SUM overflows among them, Lean could not rule out; when
+    empty, the transformation provably runs without them."""
     guard_free: bool = False
     """The only issues are integer `SUM`s that may overflow: on data that meets
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
@@ -472,6 +551,12 @@ class Report:
     inferred: dict[str, list[Condition]] = field(default_factory=dict)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
+    assumed: list[Issue] = field(default_factory=list)
+    """The integer `SUM`s assumed to fit 64 bits in every group, inferred
+    like the bounds in `inferred`: no condition on rows bounds how many rows
+    a group has (#219), so the job checks each sum on the data while it runs
+    and raises if it does not fit. The proof holds under this assumption
+    (`Rel.noIssue_of_sumsFit`). With `infer=False` they are errors instead."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -483,6 +568,10 @@ class Report:
     bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    semantics: Semantics = "reference"
+    """What the SQL the report lifted means (`verify(semantics=...)`):
+    `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
+    computes (#411)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
 
@@ -498,9 +587,8 @@ class Report:
 
     @property
     def warnings(self) -> list[Issue]:
-        """The `issues` checked while the job runs rather than proved absent
-        before it: an integer `SUM` that may leave 64 bits. The job raises if
-        it does; it never gives a wrong value."""
+        """The `issues` that do not count against a proof. None do: an
+        integer `SUM` that may leave 64 bits is an error (`errors`)."""
         return [i for i in self.issues if not i.error]
 
     @property
@@ -529,22 +617,23 @@ class Report:
                 f"requires {table}: {c}" + (" (inferred)" if c in inferred else "") for c in conds
             ]
         for c in self.ensures:
-            mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
+            mark = "proved" if c.proved else f"NOT proved: {c.why}"
             if c.checked:
                 mark += f"; {DATA_CHECK}"
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
+        lines += [f"assumes: SUM of {i.expr} {SUM_ASSUMED}" for i in self.assumed]
         for i in self.errors:
-            lines.append(f"may fail: {i}")
+            lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
             if i.hint:
                 lines.append(f"  hint: {i.hint}")
-        lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
         lines += [f"hint: {h}" for h in self._hints()]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
+        lines.append(f"semantics: {self.semantics}")
         if self.facts:
             lines.append("known about the output:")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
@@ -555,22 +644,20 @@ class Report:
             if c.proved:
                 return "✅ proved"
             if c.checked:
-                return f"☑️ {c.value}; {DATA_CHECK}"
+                return f"☑️ {c.why}; {DATA_CHECK}"
             if c.counterexample is None:
-                return f"❌ {c.value}"
-            return f"❌ {c.value}; fails on `{c.counterexample}`".replace("|", "\\|")
+                return f"❌ {c.why}"
+            return f"❌ {c.why}; fails on `{c.counterexample}`".replace("|", "\\|")
 
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
-            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |")
+            note = f" ({RUNTIME_CHECK})" if _sum(i) else ""
+            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')}{note} |")
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
-        rows += [
-            f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
-            for i in self.warnings
-        ]
+        inferred += [f"SUM of `{i.expr}` {SUM_ASSUMED}" for i in self.assumed]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
@@ -578,6 +665,7 @@ class Report:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
         if inferred:
             note += [f"> ℹ️ assumed (inferred): {', '.join(inferred)}", ""]
+        note += [f"> semantics: {self.semantics}", ""]
         return "\n".join(
             [
                 *note,
@@ -617,7 +705,7 @@ class VerificationError(Exception):
 
     def __init__(self, report: Report):
         self.report = report
-        problems = [f"{c.label} (it is {c.value})" for c in report.unproved]
+        problems = [f"{c.label} ({c.why})" for c in report.unproved]
         problems += [f"no runtime error ({i})" for i in report.errors]
         super().__init__(f"could not prove: {', '.join(problems)}\n{report}")
 
@@ -953,10 +1041,11 @@ def bind_params(expr: ir.Table, params: Mapping[ir.Scalar, Any]) -> ir.Table:
     return expr.op().replace(mapping).to_expr()
 
 
-def condition_query(table: Transform, cond: Condition) -> Transform:
+def condition_query(table: Transform, cond: Condition, semantics: str = "reference") -> Transform:
     """A query selecting one condition column from a table or transformation:
     SQL for a SQL condition on a SQL transformation, an Ibis expression
-    otherwise (a SQL condition on an Ibis table is a SQL model over it)."""
+    otherwise (a SQL condition on an Ibis table is a SQL model over it, with
+    `semantics`)."""
     if isinstance(cond, str):
         query = f'SELECT ({cond}) AS "c" FROM {{}} AS "t"'
         if isinstance(table, str):
@@ -965,24 +1054,58 @@ def condition_query(table: Transform, cond: Condition) -> Transform:
 
         query = query.format('"t"')
         try:
-            schema = sql_model_schema(query, {"t": table.schema()})
+            schema = sql_model_schema(query, {"t": table.schema()}, semantics)
         except Unsupported as e:
             raise Unsupported(f"condition {cond!r}: {e}") from e
-        return SQLModel(query, (table.op(),), ("t",), schema).to_expr()
+        return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
     return table.select(c=resolve(cond, table))
 
 
+def requires_by_input(
+    requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None,
+    inputs: Sequence[str],
+    kind: str = "table",
+    error: type[Exception] = ValueError,
+) -> dict[str, Sequence[Condition]]:
+    """`requires` as a mapping from input to its conditions (#408). A plain
+    list is the conditions on the only input; a key that names no input
+    raises `error`, naming the key, the inputs and a close match."""
+    if requires is None:
+        return {}
+    if not isinstance(requires, Mapping):
+        conds = [requires] if isinstance(requires, (str, *TableCondition)) else list(requires)
+        if len(inputs) != 1:
+            raise error(
+                f"requires: a list of conditions needs exactly one input {kind}, and there "
+                f"are {len(inputs)} ({', '.join(inputs) or 'none'}); key them by {kind}, "
+                "as requires={name: [...]}"
+            )
+        return {inputs[0]: conds}
+    for key in requires:
+        if key in inputs:
+            continue
+        lower = {i.lower(): i for i in inputs}
+        close = [lower[k] for k in difflib.get_close_matches(str(key).lower(), lower, n=1)]
+        hint = f"; did you mean {close[0]!r}?" if close else ""
+        raise error(
+            f"requires: unknown {kind} {key!r}; the inputs are: {', '.join(inputs) or 'none'}"
+            + hint
+        )
+    return dict(requires)
+
+
 def verify(
     transform: Transform,
     *,
-    requires: Mapping[str, Sequence[Condition]] | None = None,
+    requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
     ensures: Sequence[Condition] = (),
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
     counterexamples: int = 200,
     params: Mapping[ir.Scalar, Any] | None = None,
     infer: bool = True,
+    semantics: Semantics = "reference",
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -997,8 +1120,10 @@ def verify(
     Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DataFusion, DuckDB and
-    Polars. A SQL string is DuckDB's SQL, and means what DuckDB computes
-    (`sverify.sql_lift`, with `semantics="duckdb"`).
+    Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
+    `sverify.sql_lift` with `semantics`: the reference semantics by default,
+    or what DuckDB computes with `semantics="duckdb"` (#411). The report
+    says which (`Report.semantics`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -1008,7 +1133,8 @@ def verify(
             query.
         requires: Preconditions, as a mapping from input table name to its
             conditions (Ibis expressions, SQL snippets, `unique` or
-            `references`). They are assumed, not checked. Default: none.
+            `references`), or, for a transformation with one input, a list
+            of its conditions. They are assumed, not checked. Default: none.
         ensures: Postconditions on the output to prove, including `unique`
             keys. Default: none, which still reports the facts and possible
             runtime errors.
@@ -1024,18 +1150,27 @@ def verify(
             is refused.
         infer: Whether to infer the bounds on input columns that rule out
             integer overflow (`infer_bounds`) and assume them with
-            `requires`. They are listed in `Report.inferred`. With False,
-            each overflow's `Issue.hint` suggests its bound instead.
-            Default True.
+            `requires`. They are listed in `Report.inferred`. An integer
+            `SUM` that may leave 64 bits is assumed to fit and checked on the
+            data while the job runs (`Report.assumed`). With False, each
+            overflow, `SUM`s included, is an error, and its `Issue.hint`
+            suggests a bound. Default True.
+        semantics: What the SQL `verify` lifts means, the transformation
+            if it is a SQL string and every SQL condition: `"reference"`
+            (the default), sverify's reference semantics, where an
+            operation that would create a NaN raises; or `"duckdb"`, what
+            DuckDB computes, NaN and ±inf included. An `sv.sql` expression
+            inside an Ibis transformation keeps its own `semantics`.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
         runtime errors, and what is known about each output column.
 
     Raises:
-        ValueError: `unique` or `references` names an unknown column or
-            table, or the checker fails on the request (for example on a plan
-            outside the Lean model).
+        ValueError: `requires` names an unknown table, `unique` or
+            `references` names an unknown column or table, or the checker
+            fails on the request (for example on a plan outside the Lean
+            model).
         TypeError: An Ibis condition is given for a SQL transform.
 
     Examples:
@@ -1075,14 +1210,18 @@ def verify(
         bound = [
             f"param{k} ({p.type()}) = {v!r}" for k, (p, v) in enumerate(params.items(), start=1)
         ]
+    inputs = list(tables or {})
+    if not isinstance(transform, str):
+        inputs += [t for t in leaf_tables(transform) if t not in inputs]
     return infer_bounds(
         transform,
-        requires=requires or {},
+        requires=requires_by_input(requires, inputs),
         ensures=ensures,
         tables=tables,
         counterexamples=counterexamples,
         params=bound,
         infer=infer,
+        semantics=_checked_semantics(semantics),
     )
 
 
@@ -1096,6 +1235,7 @@ def infer_bounds(
     params: list[str],
     infer: bool = True,
     inputs: Collection[str] | None = None,
+    semantics: Semantics = "reference",
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -1115,7 +1255,7 @@ def infer_bounds(
     transformations) are suggested for those tables' `ensures`."""
 
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
-        return _verify_once(transform, reqs, ensures, tables, n, params, inputs)
+        return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
 
     if not infer:
         return once(requires, counterexamples)[0]
@@ -1131,6 +1271,10 @@ def infer_bounds(
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
+    # An integer SUM that may overflow is assumed to fit, and checked on the
+    # data while the job runs: nothing bounds a group's rows yet (#219).
+    report.assumed = [i for i in report.issues if _sum(i)]
+    report.issues = [i for i in report.issues if not _sum(i)]
     return report
 
 
@@ -1142,6 +1286,7 @@ def _verify_once(
     counterexamples: int,
     bound: list[str],
     inputs: Collection[str] | None,
+    semantics: Semantics = "reference",
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1156,7 +1301,7 @@ def _verify_once(
         create_table(con, name, schema)
 
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query))
+        return json.loads(plan_json(con, query, semantics))
 
     def table_ref(name: str) -> Transform:
         return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
@@ -1164,12 +1309,12 @@ def _verify_once(
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t), c)) for t, c in req_conds]
+    req_plans = [plan(condition_query(table_ref(t), c, semantics)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(transform, c))
+        p = plan(condition_query(transform, c, semantics))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)
@@ -1271,6 +1416,7 @@ def _verify_once(
             checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
     assumable: Container[str] = schemas if inputs is None else inputs
     report = Report(
+        semantics=semantics,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
@@ -1405,7 +1551,7 @@ def overflow_hints(
                 f"ends of the timestamp range overflows. For example `_.{col} >= {ctor}(2000, "
                 f"1, 1)` and `_.{col} < {ctor}(2100, 1, 1)`"
             )
-    if any(i.kind == "SUM overflow" for i in report.warnings):
+    if any(_sum(i) for i in report.errors):
         for op in transform.op().find(ops.Sum):
             if (hint := _sum_hint(op, requires)) is not None:
                 hints.append(hint)
@@ -1433,7 +1579,10 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     # A BIGINT's own range bounds nothing: any two of its values may overflow.
     lo = None if lo is None or lo <= -(2**63) else lo
     hi = None if hi is None or hi >= 2**63 - 1 else hi
-    why = "no contract states how many rows a group has, so the job checks the sum as it runs"
+    why = (
+        "no contract states how many rows a group has yet (#219), so only a VALUES list or a "
+        "FETCH bounds them; the job checks the sum as it runs"
+    )
     if lo is not None and hi is not None:
         largest = max(abs(lo), abs(hi))
         if largest == 0:
@@ -1629,8 +1778,8 @@ class CompositionError(VerificationError):
     Import it from `sverify.errors`. It is raised when the link is built:
     when a transform is called on another contracted transformation's result,
     or on a node (`sverify.Node`) built from one, stored or not. The message
-    names both sides, for example "doubled needs (_.amount >= 0) (it is TRUE
-    or FALSE) on 't'; not_null only guarantees _.amount.notnull()". With
+    names both sides, for example "doubled needs (_.amount >= 0) (it may be
+    FALSE on some rows) on 't'; not_null only guarantees _.amount.notnull()". With
     `on_unproved="runtime"` and a bound input, the precondition is checked on
     the data instead; with `on_unproved="warn"` it is a warning.
 
@@ -1644,7 +1793,7 @@ class CompositionError(VerificationError):
     def __init__(self, report: Report, consumer: str, param: str, producer: str, guarantees):
         self.report = report
         self.consumer, self.param, self.producer = consumer, param, producer
-        needs = ", ".join(f"{c.label} (it is {c.value})" for c in report.unproved)
+        needs = ", ".join(f"{c.label} ({c.why})" for c in report.unproved)
         given = ", ".join(guarantees) or "nothing"
         Exception.__init__(
             self,
@@ -1830,22 +1979,24 @@ class ContractedTransform:
     def __init__(
         self,
         fn: Callable[..., ir.Table],
-        requires: Mapping[str, Sequence[Condition]],
+        requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None,
         ensures: Sequence[Condition],
         on_unproved: Literal["error", "runtime", "warn"],
         check_requires: bool,
         engine: Engine | None,
-        strict: bool = False,
+        infer: bool = True,
+        semantics: Semantics = "reference",
     ):
-        self.fn, self.requires, self.ensures = fn, requires, ensures
+        self.fn, self.ensures = fn, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
-        self.strict = strict
+        self.infer = infer
+        self.semantics = _checked_semantics(semantics)
         self.engine = engine
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
-        unknown = set(requires) - set(self.signature.parameters)
-        if unknown:
-            raise TypeError(f"requires names unknown parameters: {sorted(unknown)}")
+        self.requires: dict[str, Sequence[Condition]] = requires_by_input(
+            requires, list(self.signature.parameters), "parameter", TypeError
+        )
         self.last_report: Report | None = None
         """The `Report` of the proof of the postconditions in the last call,
         or None before the first call."""
@@ -1871,6 +2022,7 @@ class ContractedTransform:
             tag,
             inputs,
             infer,
+            self.semantics,
             ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
@@ -1886,6 +2038,7 @@ class ContractedTransform:
                 params=[],
                 infer=infer,
                 inputs=inputs,
+                semantics=self.semantics,
             )
         return self._cache[key]
 
@@ -2032,7 +2185,7 @@ class ContractedTransform:
         assumptions = {**abstraction.assumptions}
         _merge(assumptions, base)
         report = self.last_report = self._verify(
-            abstraction.body, assumptions, self.ensures, "ensures", base, not self.strict
+            abstraction.body, assumptions, self.ensures, "ensures", base, self.infer
         )
         # Inferred bounds on the inputs are preconditions like the rest:
         # checked on the data (or proved from metadata) and passed on,
@@ -2085,13 +2238,15 @@ def _marked_checked(report: Report) -> Report:
 
 
 def transform(
-    requires: Mapping[str, Sequence[Condition]] | None = None,
+    requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
     ensures: Sequence[Condition] = (),
     *,
     on_unproved: Literal["error", "runtime", "warn"] = "error",
     check_requires: bool = True,
     engine: Engine | None = None,
-    strict: bool = False,
+    infer: bool = True,
+    strict: bool | None = None,
+    semantics: Semantics = "reference",
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -2113,7 +2268,8 @@ def transform(
 
     Args:
         requires: Preconditions, as a mapping from parameter name to
-            conditions on that input: Ibis expressions (`_.amount >= 0`),
+            conditions on that input (or, for a function of one table, a
+            list of its conditions): Ibis expressions (`_.amount >= 0`),
             functions of the table, SQL snippets (`"amount >= 0"`), `unique`
             or `references`. Default: none.
         ensures: Postconditions on the result, in the same forms (but not
@@ -2130,13 +2286,20 @@ def transform(
         engine: Where checks on data run: `"duckdb"`, `"polars"` or
             `"datafusion"` run each condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
-        strict: Whether every bound that rules out integer overflow must be
-            stated in `requires`. By default (False) sverify infers the
-            bounds on input columns it needs (`amount * 2` on BIGINT needs
+        infer: Whether to infer the bounds on input columns that rule out
+            integer overflow, as `verify` does. By default (True) sverify
+            infers the bounds it needs (`amount * 2` on BIGINT needs
             `_.amount < 2**62`) and treats them as preconditions: they are
             checked on the data or proved from table metadata, and reported
-            as inferred (`Report.inferred`). With True, an overflow fails the
+            as inferred (`Report.inferred`). An integer `SUM` that may leave
+            64 bits is assumed to fit and checked on the data while the job
+            runs (`Report.assumed`). With False, every such bound must be
+            stated in `requires`: an overflow, a `SUM`'s included, fails the
             proof, and the report's hint names the bound to state.
+        strict: Deprecated alias of `infer`, with the opposite polarity:
+            `strict=True` is `infer=False`.
+        semantics: What the contract's SQL conditions mean in its proofs,
+            as `verify`'s: `"reference"` (the default) or `"duckdb"`.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -2195,7 +2358,7 @@ def transform(
             big.pipe(huge)
         except CompositionError as e:
             print(str(e).split(";")[0])
-        # huge needs (_.doubled >= 100) (it is TRUE or FALSE) on 't'
+        # huge needs (_.doubled >= 100) (it may be FALSE on some rows) on 't'
         ```
 
         A postcondition that does not follow is refused:
@@ -2211,9 +2374,16 @@ def transform(
             orders.pipe(total)
         except VerificationError as e:
             print(str(e).splitlines()[0])
-        # could not prove: (_.total > 5) (it is TRUE or FALSE)
+        # could not prove: (_.total > 5) (it may be FALSE on some rows)
         ```
     """
+    if strict is not None:
+        warnings.warn(
+            f"transform(strict={strict}) is deprecated; write infer={not strict}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        infer = not strict
     return lambda fn: ContractedTransform(
-        fn, requires or {}, ensures, on_unproved, check_requires, engine, strict
+        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics
     )

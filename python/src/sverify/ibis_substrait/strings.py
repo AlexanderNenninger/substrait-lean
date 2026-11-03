@@ -120,7 +120,10 @@ def _find_in_set(x: Exprs, op: Any) -> Json:
 
 
 def _translate(x: Exprs, op: Any) -> Json:
-    raise Unsupported("translate: DataFusion replaces grapheme clusters, not characters")
+    raise Unsupported(
+        "translate is not modelled yet (#60): the reference semantics has no character "
+        "mapping; chain .replace() for each character"
+    )
 
 
 def _string_concat(x: Exprs, op: Any) -> Json:

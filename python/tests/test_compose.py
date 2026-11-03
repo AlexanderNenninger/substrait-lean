@@ -56,7 +56,7 @@ def test_broken_link_names_both_sides():
     with pytest.raises(CompositionError) as e:
         doubled(not_null(orders))
     msg = str(e.value)
-    assert msg.startswith("doubled needs (_.amount >= 0) (it is TRUE or FALSE), ")
+    assert msg.startswith("doubled needs (_.amount >= 0) (it may be FALSE on some rows), ")
     assert msg.endswith("not_null only guarantees _.amount.notnull()")
 
 

@@ -1069,15 +1069,29 @@ class IncrementalView:
         """The view's change by recomputing it on the new inputs and diffing,
         as a weighted table."""
         new = self._kept(self._result_on(new_tables).cast(self.schema))
-        return arrow_of(self._merge(weighted(new, 1), self.store.negated(self.state)))
+        return arrow_of(self._merge(weighted(new, 1), self._kept(self.store.negated(self.state))))
 
-    def _kept(self, result: pa.Table) -> pa.Table:
-        """The rows of a result the state keeps: with retention, the buckets
-        after the last one retired. The others are final, so their change is
-        empty (`Retention.retention_sound`)."""
-        if self.retention is None or self.retired_through is None:
+    def _retires(self) -> bool:
+        """The view drops its final buckets: it has retention and every sink
+        keeps what the state drops."""
+        return self.retention is not None and all(
+            getattr(s, "keeps_retired", False) for s in self._sinks
+        )
+
+    def _kept(self, result: State) -> State:
+        """The rows of a result (or a weighted table) whose change the view
+        computes: with retention, the buckets that are not final at the
+        watermark before the batch. A final bucket changes in no admissible
+        batch (`Retention.retention_sound`), and a source's expiry deletes
+        only rows of final buckets (`Retention.expiry_sound`): the state and
+        the sink keep those buckets as they were."""
+        spec = self.retention
+        if spec is None or not self._retires():
             return result
-        return _retention.after(result, self.retention.column, self.retired_through)
+        cutoff = spec.cutoff(self.pipeline.latest.get((spec.table, spec.ts)))
+        if cutoff is None:
+            return result
+        return _retention.after(arrow_of(result), spec.column, cutoff)
 
 
 def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:
@@ -1247,15 +1261,33 @@ class Pipeline:
                 if not isinstance(c, ArrivesWithin) or not ch.num_rows:
                     continue
                 before: Any = self.latest.get((t, c.col))
-                bad, latest[(t, c.col)] = _retention.check_batch(ch, c, before)
+                # Deletes before the watermark are expiries where every view
+                # that retires buckets of the column holds them in final ones.
+                ends = [
+                    v.retention.final_before(before)
+                    for v in self._views
+                    if v.retention is not None
+                    and (v.retention.table, v.retention.ts) == (t, c.col)
+                    and v._retires()
+                    and before is not None
+                ]
+                bad, expired, latest[(t, c.col)] = _retention.check_batch(
+                    ch, c, before, min(ends) if ends else None
+                )
                 if bad is not None and bad.nulls:
                     raise PreconditionError(
                         f"{bad.nulls} changed row(s) of {t} violate {label(c)}: {c.col} is "
                         "NULL; the batch was rejected, nothing was applied"
                     )
+                if bad is not None and bad.open:
+                    raise PreconditionError(
+                        f"{bad.open} deleted row(s) of {t} violate {label(c)}: {c.col} before "
+                        f"the watermark {_retention.show_time(bad.watermark)}, in a time bucket "
+                        "that is not final yet; the batch was rejected, nothing was applied"
+                    )
                 if bad is not None:
                     raise PreconditionError(
-                        f"{bad.late} changed row(s) of {t} violate {label(c)}: {c.col} before "
+                        f"{bad.late} inserted row(s) of {t} violate {label(c)}: {c.col} before "
                         f"the watermark {_retention.show_time(bad.watermark)} (the latest "
                         f"{c.col} seen, {_retention.show_time(before)}, minus "
                         f"{show_duration(c.lateness)}); the batch was rejected, nothing was applied"
@@ -1265,6 +1297,8 @@ class Pipeline:
                     if before is None
                     else (f"watermark {_retention.show_time(before - c.lateness)}")
                 )
+                if expired:
+                    wm += f", {expired} expired row(s) deleted from final buckets"
                 found.append(Discharged(t, label(c), f"{ON_DATA}, {wm}"))
         return found, latest
 
@@ -1571,7 +1605,7 @@ class Pipeline:
         tables, before the commit."""
         for v in self._views:
             want = v._kept(v._result_on(pending.new_tables).cast(v.schema))
-            state = pending.states.get(v.name, v.state)
+            state = v._kept(pending.states.get(v.name, v.state))
             if arrow_of(v._merge(weighted(want, 1), v.store.negated(state))).num_rows:
                 raise AuditError(
                     f"view {v.name} differs from its recomputation; nothing was applied"

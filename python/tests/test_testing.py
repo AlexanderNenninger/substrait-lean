@@ -205,7 +205,7 @@ def test_an_unproved_contract_fails():
     assert lines[:2] == ["the contract of loose is not proved:", "  loose:"]
     # After the bounds inferred against overflow (#244).
     assert "    requires orders: (_.amount < 2**62) (inferred)" in lines
-    assert "    ensures (_.doubled >= 0): NOT proved (it is TRUE or FALSE)" in lines
+    assert "    ensures (_.doubled >= 0): NOT proved: it may be FALSE on some rows" in lines
 
 
 def test_an_unproved_link_fails():
@@ -316,7 +316,7 @@ def test_cases_meet_the_preconditions():
             "orders": [
                 sv.unique("id"),
                 _.amount > 3,
-                sv.references("customer", "customers", "name"),
+                sv.references("customer", to=("customers", "name")),
             ],
             "customers": [sv.unique("name"), "city <> 'x'"],
         }

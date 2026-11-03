@@ -3861,7 +3861,7 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .concat _ => ⟨true, none, false, false, true⟩
   | .collect => AVal.top
 
-/-- `ROW_NUMBER` and the ranks are positive integers, at most `Text.sizeCap`
+/-- `ROW_NUMBER` and the ranks are positive integers, at most `Text.rowCap`
 by the size hypothesis for relations (`Rel.Small`) when `sz` says to use
 it; `LAG`/`LEAD` read a
 value of the same column of another input row, or give the default;
@@ -3870,7 +3870,7 @@ described like one over a group (`Measure.abs`); `FIRST_VALUE` and friends
 may be anything. -/
 def WinFn.abs (sz : Bool) (env : List AVal) : WinFn → AVal
   | .rowNumber | .rank _ | .denseRank _ | .ntile _ =>
-    ⟨false, some ⟨some 1, if sz then some Text.sizeCap else none⟩, false, false, false⟩
+    ⟨false, some ⟨some 1, if sz then some Text.rowCap else none⟩, false, false, false⟩
   | .percentRank _ | .cumeDist _ => ⟨false, some Bound.top, false, false, false⟩
   -- An aggregate over a frame, rows of the input: a sum of non-negative
   -- integers is not negative, `MIN` and `MAX` are among the inputs (#229).
@@ -4225,7 +4225,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have h1 : (intsOf (v :: vs)).length = (v :: vs).length := by
             conv => rhs; rw [hcs]
             simp
-          have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le
+          have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := false) hne' hb hlen
         have e : floatSum (v :: vs) = floatSum ((intsOf (v :: vs)).map .int) := congrArg floatSum hcs
@@ -4254,7 +4254,7 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
           have h1 : (intsOf (v :: vs)).length = (v :: vs).length := by
             conv => rhs; rw [hcs]
             simp
-          have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le
+          have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le m grp
           rw [hvs] at h2; omega
         have key := floatBound_sound (avg := true) hne' hb hlen
         have e := congrArg (fun l => FloatCode.lift₂ (· / ·) (floatSum l) (FloatCode.ofInt l.length)) hcs
@@ -4392,14 +4392,14 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
     ∀ f : WinFn, (f.abs sz env).Mem (f.value part b a x)
   | .rowNumber => ⟨_, rfl, by
       have := List.length_filter_le (samePart part x) b
-      simp only [Bound.Mem, Text.sizeCap, Option.some.injEq]
+      simp only [Bound.Mem, Text.rowCap, Option.some.injEq]
       exact ⟨fun l hl => by subst hl; omega, fun u hu => by
         cases sz <;> simp at hu
         subst hu; have := hn rfl; omega⟩⟩
   | .rank _ => ⟨_, rfl, by
       have h1 := List.length_filter_le (samePart part x) b
       have h2 := List.length_filter_le (fun y => !peer ‹List SortKey› x y) (b.filter (samePart part x))
-      simp only [Bound.Mem, Text.sizeCap, Option.some.injEq]
+      simp only [Bound.Mem, Text.rowCap, Option.some.injEq]
       exact ⟨fun l hl => by subst hl; omega, fun u hu => by
         cases sz <;> simp at hu
         subst hu; have := hn rfl; omega⟩⟩
@@ -4409,12 +4409,12 @@ theorem WinFn.abs_sound {env : List AVal} {part : List Nat} {b a : List Row} {x 
       have h3 := dedup_length_le (((b.filter (samePart part x)).filter fun y => !peer sort x y).map
         fun y => sort.map (y.getD ·.col .null))
       simp only [List.length_map] at h3
-      simp only [Bound.Mem, Text.sizeCap, Option.some.injEq]
+      simp only [Bound.Mem, Text.rowCap, Option.some.injEq]
       exact ⟨fun l hl => by subst hl; omega, fun u hu => by
         cases sz <;> simp at hu
         subst hu; have := hn rfl; omega⟩⟩
   | .ntile k => ⟨_, rfl, by
-      simp only [Bound.Mem, Option.some.injEq, Text.sizeCap]
+      simp only [Bound.Mem, Option.some.injEq, Text.rowCap]
       have h1 := List.length_filter_le (samePart part x) b
       have h2 := List.length_filter_le (samePart part x) a
       generalize (List.filter (samePart part x) b).length = i at h1 ⊢
@@ -4464,7 +4464,7 @@ theorem EnvMem.window {env : List AVal} {part : List Nat} {b a : List Row} {x : 
 
 /-- **The size hypothesis for relations** (trusted, #202): every relation a
 window reads has fewer than `2⁶²` rows, which every engine's memory
-guarantees. It bounds `ROW_NUMBER` and the ranks by `Text.sizeCap`, so that
+guarantees. It bounds `ROW_NUMBER` and the ranks by `Text.rowCap`, so that
 `ROW_NUMBER() - 1` is proved not to overflow. -/
 def Rel.Small (cat : Catalog) : Rel → Prop
   | .read _ | .values _ _ => True
