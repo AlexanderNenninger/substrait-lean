@@ -24,7 +24,7 @@ rules, the touched keys from it, and the recompute, and is trusted.
 namespace Substrait
 namespace TouchedGroups
 
-open Retention (applyBatch filter_foldl_erase aggregateEval_filter_key)
+open Retention (applyBatch filter_foldl_erase)
 
 variable {gs : List Expr} {ms : List Measure}
 
@@ -54,10 +54,10 @@ theorem touched_sound (hg : gs ≠ []) {K : Row → Bool} {rows dels ins : Relat
         aggregateEval gs ms ((applyBatch rows dels ins).filter fun r => K (groupKey gs r))) := by
   refine (List.filter_append_perm (fun o => !K (o.take gs.length)) _).symm.trans
     (List.Perm.append ?_ ?_)
-  · refine (aggregateEval_filter_key hg ms (fun k => !K k) _).trans ?_
+  · refine (Retention.aggregateEval_filter_key hg ms (fun k => !K k) _).trans ?_
     rw [untouched_unchanged h]
-    exact (aggregateEval_filter_key hg ms (fun k => !K k) rows).symm
-  · simpa using aggregateEval_filter_key hg ms K (applyBatch rows dels ins)
+    exact (Retention.aggregateEval_filter_key hg ms (fun k => !K k) rows).symm
+  · simpa using Retention.aggregateEval_filter_key hg ms K (applyBatch rows dels ins)
 
 /-- `touched_sound` for `Rel.eval`: when the input `r` goes from `rows` to
 `applyBatch rows dels ins` and the batch touches only keys in `K`. -/
