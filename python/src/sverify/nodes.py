@@ -742,8 +742,10 @@ class Group:
 
 def _continue_versions(node: _Stored) -> None:
     """The sources of a stored node's stage whose versions restart with the
-    process (`sverify.io.Source`) number them above the versions its sink
-    recorded, so that its epochs keep growing and it writes exactly once."""
+    process (`sverify.io.Source`) start at the versions and cursors its
+    sink recorded, if they can restore their table there; else they number
+    their versions above, so that its epochs keep growing and it writes
+    exactly once."""
     resumes = {}
     for leaf in node._leaves():
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
@@ -753,8 +755,11 @@ def _continue_versions(node: _Stored) -> None:
     contract = committed() if resumes and committed is not None else None
     if contract is None:
         return
+    cursors = getattr(contract, "cursors", {})
     for name, resume in resumes.items():
-        if name in contract.sources:
+        if name in cursors:
+            resume(contract.sources[name], cursors[name])
+        elif name in contract.sources:
             resume(contract.sources[name])
 
 

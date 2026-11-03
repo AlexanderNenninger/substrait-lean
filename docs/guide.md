@@ -511,7 +511,12 @@ through both.
 A restarted job resumes from its sink and skips the recompute. You build the
 same nodes again and refresh; a stored node takes the stored rows only if
 its plan and source versions match what the sink recorded; otherwise it is
-computed, and the report says why:
+computed, and the report says why. A source of your own resumes too if it
+implements `restore(cursor)`: the sink records the source's cursor next to
+its version, and the restarted job starts from the table as of that cursor
+and reads only what is new since. `from_query` and `from_files` do this; a
+cursor whose rows are gone (`restore` returns None) reads the whole table
+again:
 
 ```python
 restarted = DeltaSource(str(lake / "transactions")).pipe(duplicate_payments).write(
