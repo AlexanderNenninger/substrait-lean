@@ -71,7 +71,7 @@ import json
 import math
 import warnings
 import weakref
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -223,6 +223,10 @@ class Issue:
     transformation's SQL raises there too, but no contract on rows can rule
     it out (a group may have any number of rows), so it is checked while the
     job runs instead (#202)."""
+    hint: str | None = None
+    """For an overflow: the bound that would rule it out, as code to add to
+    a contract, or why no bound on a column does (`infer_bounds`). None if
+    there is nothing to suggest."""
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.expr}"
@@ -269,6 +273,9 @@ class Report:
     did not return one."""
     rewrites: list[str] = field(default_factory=list)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
+    inferred: dict[str, list[Condition]] = field(default_factory=dict)
+    """The bounds inferred to rule out overflow (`infer_bounds`), per input
+    table: also in `requires`, and assumed like the rest of it."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
@@ -299,14 +306,20 @@ class Report:
     def __str__(self) -> str:
         lines = []
         for table, conds in self.requires.items():
-            lines += [f"requires {table}: {c}" for c in conds]
+            inferred = {label(c) for c in self.inferred.get(table, [])}
+            lines += [
+                f"requires {table}: {c}" + (" (inferred)" if c in inferred else "") for c in conds
+            ]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
-        lines += [f"may fail: {i}" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
+        for i in self.errors:
+            lines.append(f"may fail: {i}")
+            if i.hint:
+                lines.append(f"  hint: {i.hint}")
+        if any(i.kind == "overflow" and not i.hint for i in self.errors):
             lines.append(f"hint: {OVERFLOW_HINT}")
         lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
         if not self.deterministic:
@@ -328,9 +341,13 @@ class Report:
 
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
-        rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
+        for i in self.errors:
+            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |")
+            if i.hint:
+                rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
+        if any(i.kind == "overflow" and not i.hint for i in self.errors):
             rows.append(f"| hint | {OVERFLOW_HINT} |")
+        inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
         rows += [
             f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
             for i in self.warnings
@@ -339,6 +356,8 @@ class Report:
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         if self.params:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
+        if inferred:
+            note += [f"> ℹ️ assumed (inferred): {', '.join(inferred)}", ""]
         return "\n".join(
             [
                 *note,
@@ -505,7 +524,147 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
     return " or ".join(parts) if parts else "nothing (no rows)"
 
 
+class Inferred(str):
+    """A bound inferred to rule out an overflow (#244): a SQL condition on one
+    column of an input table, labelled as the Ibis code that states it
+    (`(_.amount < 2**62)`). NULL passes, since only a value can overflow. It
+    is checked, proved and reported like a precondition the user wrote."""
+
+    text: str
+
+    def __new__(cls, sql: str, text: str) -> Inferred:
+        out = super().__new__(cls, sql)
+        out.text = text
+        return out
+
+
+def _nice(x: int, up: bool) -> tuple[int, str]:
+    """A round number near `x`, at or above it if `up`, else at or below,
+    and how to write it: `2**62`, `3 * 10**18` or `1_000`."""
+    if x < 0:
+        v, text = _nice(-x, not up)
+        return -v, f"-{text}" if v else "0"
+    if x < 10**6:
+        return x, f"{x:_}"
+    k = x.bit_length() - 1
+    two = 2 ** (k + 1 if up and 2**k < x else k)
+    e = len(str(x)) - 1
+    d = x // 10**e + (1 if up and x % 10**e else 0)
+    ten = d * 10**e
+    better = min if up else max
+    v = better(two, ten)
+    if v == two:
+        return v, f"2**{v.bit_length() - 1}"
+    d, e = (v // 10**e, e) if v // 10**e < 10 else (1, e + 1)
+    return v, (f"10**{e}" if d == 1 else f"{d} * 10**{e}")
+
+
+_EPOCH = datetime(1970, 1, 1)
+_US_MIN = (datetime.min - _EPOCH) // timedelta(microseconds=1)
+_US_MAX = (datetime.max - _EPOCH) // timedelta(microseconds=1)
+
+
+def _year_of(code: int, per_year_unit: timedelta) -> int:
+    """The year of a timestamp (microseconds) or date (days) code, clamped to
+    Python's years."""
+    us = code * (per_year_unit // timedelta(microseconds=1))
+    if us < _US_MIN:
+        return 1
+    if us > _US_MAX:
+        return 9999
+    return (_EPOCH + timedelta(microseconds=us)).year
+
+
+def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> list[Inferred]:
+    """`lo <= col <= hi` as conditions, rounded inward to round numbers (or
+    whole years), each side its own condition. Empty for a type the
+    inference does not write bounds for."""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    sql = '"' + col.replace('"', '""') + '"'
+    # NULL cannot overflow, so a bound lets it pass.
+    null = f"{sql} IS NULL OR " if dtype.nullable else ""
+    out = []
+    if dtype.is_integer():
+        if lo is not None:
+            v, text = _nice(lo, up=True)
+            out.append(Inferred(f"{null}{sql} >= {v}", f"({ref} >= {text})"))
+        if hi is not None:
+            v, text = _nice(hi + 1, up=False)
+            out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
+        return out
+    if dtype.is_timestamp() and dtype.timezone is None:
+        unit, kind, py = timedelta(microseconds=1), "TIMESTAMP", "datetime"
+    elif dtype.is_date():
+        unit, kind, py = timedelta(days=1), "DATE", "date"
+    else:
+        return []
+
+    def code(year: int) -> int:
+        return (datetime(year, 1, 1) - _EPOCH) // unit
+
+    def lit(year: int) -> str:
+        day = date(year, 1, 1)
+        return f"{kind} '{day.isoformat()}{' 00:00:00' if kind == 'TIMESTAMP' else ''}'"
+
+    if lo is not None:
+        y = _year_of(lo, unit)
+        if code(y) < lo:
+            y += 1
+        out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
+    if hi is not None:
+        y = _year_of(hi + 1, unit)
+        out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
+    return out
+
+
+def _render_needs(
+    needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
+) -> dict[str, list[Inferred]]:
+    """The conditions of a list of `{table, col, lo, hi}` (column positions,
+    integer codes as strings), per table."""
+    out: dict[str, list[Inferred]] = {}
+    for n in needs:
+        schema = schemas.get(n["table"])
+        if schema is None or n["col"] >= len(schema):
+            continue
+        col = list(schema)[n["col"]]
+        lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
+        have = out.setdefault(n["table"], [])
+        have += [c for c in _bound_conditions(col, schema[col], lo, hi) if c not in have]
+    return out
+
+
+def _hint(
+    bound: dict | None,
+    schemas: Mapping[str, ibis.Schema],
+    assumable: Container[str],
+) -> str | None:
+    """What a report suggests for one overflow, from what the inference
+    found (`SubstraitLean/Infer.lean`)."""
+    if bound is None:
+        return None
+    if bound["why"] is not None:
+        return f"no bound on an input column rules it out: it comes from {bound['why']}"
+    conds = _render_needs(bound["needs"], schemas)
+    if not conds:
+        return None
+
+    def code(cs: Sequence[Inferred]) -> str:
+        return ", ".join(f"`{label(c)}`" for c in cs)
+
+    parts = []
+    for t, cs in conds.items():
+        if t in assumable:
+            parts.append(f"{code(cs)} in the requires of {t!r}")
+        else:
+            parts.append(f"{code(cs)} in the ensures of {t!r}")
+    lead = "no single bound rules it out; for example, state " if bound["split"] else "state "
+    return lead + " and ".join(parts)
+
+
 def label(cond: Condition) -> str:
+    if isinstance(cond, Inferred):
+        return cond.text
     if isinstance(cond, Unique):
         return f"unique({', '.join(cond.cols)})"
     if isinstance(cond, References):
@@ -585,6 +744,7 @@ def verify(
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
     counterexamples: int = 200,
     params: Mapping[ir.Scalar, Any] | None = None,
+    infer: bool = True,
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -624,6 +784,11 @@ def verify(
             `execute(params=...)` takes them. The report is about the
             transform with these values (`bind_params`); an unbound parameter
             is refused.
+        infer: Whether to infer the bounds on input columns that rule out
+            integer overflow (`infer_bounds`) and assume them with
+            `requires`. They are listed in `Report.inferred`. With False,
+            each overflow's `Issue.hint` suggests its bound instead.
+            Default True.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -664,10 +829,6 @@ def verify(
         report.facts["total"]  # 'an integer ≥ 1'
         ```
     """
-    schemas = {
-        name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
-        for name, s in (tables or {}).items()
-    }
     bound: list[str] = []
     if params:
         if isinstance(transform, str):
@@ -676,9 +837,82 @@ def verify(
         bound = [
             f"param{k} ({p.type()}) = {v!r}" for k, (p, v) in enumerate(params.items(), start=1)
         ]
+    return infer_bounds(
+        transform,
+        requires=requires or {},
+        ensures=ensures,
+        tables=tables,
+        counterexamples=counterexamples,
+        params=bound,
+        infer=infer,
+    )
+
+
+def infer_bounds(
+    transform: Transform,
+    *,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    tables: Mapping[str, ibis.Schema | ir.Table] | None,
+    counterexamples: int,
+    params: list[str],
+    infer: bool = True,
+    inputs: Collection[str] | None = None,
+) -> Report:
+    """`verify`, with the bounds that rule out overflow inferred (#244).
+
+    Lean's `SubstraitLean/Infer.lean` runs the range analysis backwards: for
+    each overflow it may not rule out, the range of each input column that
+    does (`amount * 2` on BIGINT fits when `amount < 2**62`). Those bounds
+    are candidates only. The ones on the tables in `assume` (all tables if
+    None) are added to `requires`, rounded inward to round numbers, and the
+    contract is proved again, as if the user had written them: a wrong bound
+    makes that proof fail, never pass wrongly. For the rest, and for
+    overflows without a unique bound (the product of two columns), the
+    report's `Issue.hint` suggests one.
+
+    `inputs` are the tables whose preconditions the caller states (None:
+    all): their bounds are assumed with `infer`, and suggested for
+    `requires`; bounds on other tables (results of other contracted
+    transformations) are suggested for those tables' `ensures`."""
+
+    def once(reqs: Mapping[str, Sequence[Condition]], n: int):
+        return _verify_once(transform, reqs, ensures, tables, n, params, inputs)
+
+    if not infer:
+        return once(requires, counterexamples)[0]
+    # Counterexamples only for the final proof.
+    report, raw, schemas = once(requires, 0)
+    extra = {
+        t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
+    }
+    if extra:
+        widened = {t: list(cs) for t, cs in requires.items()}
+        _merge(widened, extra)
+        report = once(widened, counterexamples)[0]
+        report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
+    elif counterexamples and report.unproved:
+        report = once(requires, counterexamples)[0]
+    return report
+
+
+def _verify_once(
+    transform: Transform,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    tables: Mapping[str, ibis.Schema | ir.Table] | None,
+    counterexamples: int,
+    bound: list[str],
+    inputs: Collection[str] | None,
+) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
+    """One proof (see `verify`), with the bounds Lean inferred and the input
+    schemas."""
+    schemas = {
+        name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
+        for name, s in (tables or {}).items()
+    }
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
-    requires = requires or {}
     con = connect()
     for name, schema in schemas.items():
         create_table(con, name, schema)
@@ -785,17 +1019,27 @@ def verify(
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
             checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
-    return Report(
+    assumable: Container[str] = schemas if inputs is None else inputs
+    report = Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
         deterministic=out["deterministic"],
-        issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
+        issues=[
+            Issue(
+                i["kind"],
+                i["expr"],
+                i["error"],
+                _hint(i["bound"], schemas, assumable) if i["error"] else None,
+            )
+            for i in out["issues"]
+        ],
         guard_free=out["guard_free"],
         optimized=out["optimized"],
         rewrites=out["rewrites"],
         params=bound,
     )
+    return report, out["inferred"], schemas
 
 
 def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
@@ -856,9 +1100,12 @@ class Discharged:
     table: str
     condition: str
     source: str
+    inferred: bool = False
+    """The condition is a bound inferred to rule out overflow (#244)."""
 
     def __str__(self) -> str:
-        return f"{self.table}: {self.condition} ({self.source})"
+        how = f"inferred, {self.source}" if self.inferred else self.source
+        return f"{self.table}: {self.condition} ({how})"
 
 
 # Metadata facts of tables read from a table format (`sverify.io`), keyed
@@ -894,7 +1141,9 @@ def _prove_from(table: ir.Table, facts: Sequence[str], conds: Sequence[Condition
     key = (name, str(table.schema()), tuple(facts), tuple(label(c) for c in conds))
     if key not in _proved_from:
         try:
-            report = verify(table, requires={name: list(facts)}, ensures=conds, counterexamples=0)
+            report = verify(
+                table, requires={name: list(facts)}, ensures=conds, counterexamples=0, infer=False
+            )
             _proved_from[key] = frozenset(c.label for c in report.ensures if c.proved)
         except Exception:
             _proved_from[key] = frozenset()
@@ -928,12 +1177,16 @@ def discharge(
                 break
             assumed += extra
             proved = _prove_from(table, assumed, rowwise)
-            out += [Discharged(name, label(c), source) for c in rowwise if label(c) in proved]
+            out += [
+                Discharged(name, label(c), source, isinstance(c, Inferred))
+                for c in rowwise
+                if label(c) in proved
+            ]
             todo = [c for c in todo if label(c) not in proved]
     for c in todo:
         if n := violations(table, c, engine):
             raise PreconditionError(f"{n} {what} violate {label(c)}")
-        out.append(Discharged(name, label(c), ON_DATA))
+        out.append(Discharged(name, label(c), ON_DATA, isinstance(c, Inferred)))
     return out
 
 
@@ -1143,9 +1396,11 @@ class ContractedTransform:
         on_unproved: Literal["error", "runtime", "warn"],
         check_requires: bool,
         engine: Engine | None,
+        strict: bool = False,
     ):
         self.fn, self.requires, self.ensures = fn, requires, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
+        self.strict = strict
         self.engine = engine
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
@@ -1162,17 +1417,37 @@ class ContractedTransform:
         functools.update_wrapper(self, fn)
 
     def _verify(
-        self, body: ir.Table, assumptions: Mapping[str, Sequence[Condition]], ensures, tag: str
+        self,
+        body: ir.Table,
+        assumptions: Mapping[str, Sequence[Condition]],
+        ensures,
+        tag: str,
+        inputs: Collection[str] = (),
+        infer: bool = False,
     ) -> Report:
+        """Prove `ensures` of `body`, inferring bounds on the tables in
+        `inputs` with `infer` (`infer_bounds`)."""
+        inputs = frozenset(inputs)
         key = (
             tag,
+            inputs,
+            infer,
             ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
             tuple(label(c) for c in ensures),
         )
         if key not in self._cache:
-            self._cache[key] = verify(body, requires=assumptions, ensures=ensures)
+            self._cache[key] = infer_bounds(
+                body,
+                requires=assumptions,
+                ensures=ensures,
+                tables=None,
+                counterexamples=200,
+                params=[],
+                infer=infer,
+                inputs=inputs,
+            )
         return self._cache[key]
 
     def _check_on_data(self, table: ir.Table, param: str, conds: Sequence[Condition]) -> bool:
@@ -1276,6 +1551,7 @@ class ContractedTransform:
         result = self.fn(*args, **kwargs)
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}
+        bound_inputs: dict[str, tuple[str, ir.Table]] = {}
         external: dict[str, list[Condition]] = {}
         unproved_links: list[str] = []
         taken = set(leaf_tables(result))
@@ -1287,6 +1563,7 @@ class ContractedTransform:
             if _is_base(op) and _lookup(op) is None:
                 # Data from outside: checked when bound to a backend.
                 _merge(base, {op.name: conds})  # type: ignore[attr-defined]
+                bound_inputs.setdefault(op.name, (param, value))  # type: ignore[attr-defined]
                 if self.check_requires:
                     self._check_on_data(value, param, conds)
                 continue
@@ -1304,7 +1581,7 @@ class ContractedTransform:
         assumptions = {**abstraction.assumptions}
         _merge(assumptions, base)
         report = self.last_report = self._verify(
-            abstraction.body, assumptions, self.ensures, "ensures"
+            abstraction.body, assumptions, self.ensures, "ensures", base, not self.strict
         )
         if not report.proved:
             if self.on_unproved == "warn":
@@ -1318,6 +1595,14 @@ class ContractedTransform:
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
+        # Inferred bounds on the inputs are preconditions like the rest:
+        # checked on the data (or proved from metadata) and passed on.
+        for t, conds in report.inferred.items():
+            _merge(base, {t: conds})
+            _merge(assumptions, {t: conds})
+            param, value = bound_inputs[t]
+            if self.check_requires:
+                self._check_on_data(value, param, conds)
         _merge(external, abstraction.external)
         _merge(external, base)
         proved = {c.label for c in report.ensures if c.proved}
@@ -1343,6 +1628,7 @@ def transform(
     on_unproved: Literal["error", "runtime", "warn"] = "error",
     check_requires: bool = True,
     engine: Engine | None = None,
+    strict: bool = False,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -1378,6 +1664,13 @@ def transform(
         engine: Where checks on data run: `"duckdb"`, `"polars"` or
             `"datafusion"` run each condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
+        strict: Whether every bound that rules out integer overflow must be
+            stated in `requires`. By default (False) sverify infers the
+            bounds on input columns it needs (`amount * 2` on BIGINT needs
+            `_.amount < 2**62`) and treats them as preconditions: they are
+            checked on the data or proved from table metadata, and reported
+            as inferred (`Report.inferred`). With True, an overflow fails the
+            proof, and the report's hint names the bound to state.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -1456,5 +1749,5 @@ def transform(
         ```
     """
     return lambda fn: ContractedTransform(
-        fn, requires or {}, ensures, on_unproved, check_requires, engine
+        fn, requires or {}, ensures, on_unproved, check_requires, engine, strict
     )
