@@ -74,3 +74,47 @@ def test_the_reference_lift_is_checked_too(query):
 def test_refusals_say_what(query, message):
     with pytest.raises(Refused, match=message):
         lift(query, SCHEMAS)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT LEAST(DATE '1992-01-01', DATE '1994-02-02', DATE '1991-01-01') AS x",
+        "SELECT LEAST(DATE '1992-01-01', NULL, DATE '1991-01-01') AS x",
+        "SELECT GREATEST(TIMESTAMP '1992-01-01 13:45:21.890123', TIMESTAMP '1991-01-01 01:23:45')"
+        " AS x",
+        "SELECT id, GREATEST(day, DATE '2024-01-15') AS d, LEAST(placed, TIMESTAMP"
+        " '2024-01-02 00:00:00') AS t FROM orders",
+    ],
+)
+def test_greatest_and_least_keep_dates_and_timestamps(query):
+    # #381: of constants alone, the written plan held the dates' and
+    # timestamps' integer codes, and DuckDB gave 7670 for 1991-01-01.
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_greatest_and_least_of_times_run_on_polars_as_on_duckdb():
+    import datetime as dt
+
+    import ibis
+    import pyarrow as pa
+
+    from sverify.engine import connect, put_table, run_plan, written_plan
+
+    table = pa.table(
+        {
+            "d": pa.array([dt.date(1992, 1, 1), None, dt.date(1980, 5, 5)], pa.date32()),
+            "ts": pa.array([dt.datetime(1992, 1, 1, 13, 45), None, dt.datetime(2001, 1, 1)]),
+            "tm": pa.array([dt.time(13, 45), None, dt.time(1, 2)], pa.time64("us")),
+            "tn": pa.array([dt.time(2, 0), dt.time(3, 0), None], pa.time64("us")),
+        }
+    )
+    con = connect()
+    put_table(con, "t", table)
+    sql = (
+        "SELECT LEAST(DATE '1992-01-01', DATE '1991-01-01') AS c, GREATEST(d, DATE '1985-01-01')"
+        " AS d, LEAST(ts, TIMESTAMP '1995-01-01 00:00:00') AS ts, GREATEST(tm, tn) AS tm FROM t"
+    )
+    plan = written_plan(json.dumps(lift(sql, {"t": ibis.Schema.from_pyarrow(table.schema)}).plan))
+    assert run_plan(con, plan, "polars").to_pylist() == run_plan(con, plan, "duckdb").to_pylist()

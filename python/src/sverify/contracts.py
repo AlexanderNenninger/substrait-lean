@@ -72,7 +72,7 @@ import math
 import warnings
 import weakref
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -189,6 +189,10 @@ class CheckedCondition:
     counterexample: Counterexample | None = None
     """For an unproved condition: inputs meeting the preconditions on which
     it fails, if the search (`sverify.counterexample`) found one."""
+    checked: bool = False
+    """For an unproved condition with `on_unproved="runtime"`: it is checked
+    on the output data instead, on a bound result when it is built, or on a
+    node at every refresh before its sink commits."""
 
 
 #: What a report suggests for an overflow it cannot rule out (#202).
@@ -198,6 +202,16 @@ OVERFLOW_HINT = (
     "your data: for example `_.amount < 1_000_000_000`, or, for an ASOF join with a "
     "tolerance, a lower bound on its time column such as `_.ts >= datetime(2000, 1, 1)`"
 )
+
+#: How a report's hint for a truncated timestamp or date starts.
+TRUNC_HINT = "bound the truncated column"
+
+
+def _truncates(expr: str) -> bool:
+    """Whether an issue's expression (`Expr.render`) truncates a timestamp or
+    a date, or bins a timestamp."""
+    return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
+
 
 #: How a report explains an issue that is checked while the job runs.
 RUNTIME_CHECK = (
@@ -273,6 +287,15 @@ class Report:
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
     these values only."""
+    hints: list[str] = field(default_factory=list)
+    """What to add to the contract for the `issues` it names (#379): bounds
+    on a truncated timestamp column, or on the column an integer `SUM` adds
+    up, with the largest group the bound lets fit."""
+    bounds: dict[str, tuple[int | None, int | None]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
 
     @property
     def proved(self) -> bool:
@@ -296,19 +319,31 @@ class Report:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
 
+    def _hints(self) -> list[str]:
+        """`hints`, and the general overflow hint for an overflow they do not
+        cover."""
+        truncated = any(h.startswith(TRUNC_HINT) for h in self.hints)
+        covered = [
+            i for i in self.errors if i.kind == "overflow" and truncated and _truncates(i.expr)
+        ]
+        if any(i.kind == "overflow" and i not in covered for i in self.errors):
+            return [*self.hints, OVERFLOW_HINT]
+        return self.hints
+
     def __str__(self) -> str:
         lines = []
         for table, conds in self.requires.items():
             lines += [f"requires {table}: {c}" for c in conds]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
+            if c.checked:
+                mark += f"; {DATA_CHECK}"
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
         lines += [f"may fail: {i}" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
-            lines.append(f"hint: {OVERFLOW_HINT}")
         lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
+        lines += [f"hint: {h}" for h in self._hints()]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
         if self.params:
@@ -322,6 +357,8 @@ class Report:
         def status(c: CheckedCondition) -> str:
             if c.proved:
                 return "✅ proved"
+            if c.checked:
+                return f"☑️ {c.value}; {DATA_CHECK}"
             if c.counterexample is None:
                 return f"❌ {c.value}"
             return f"❌ {c.value}; fails on `{c.counterexample}`".replace("|", "\\|")
@@ -329,12 +366,11 @@ class Report:
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
-            rows.append(f"| hint | {OVERFLOW_HINT} |")
         rows += [
             f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
             for i in self.warnings
         ]
+        rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         if self.params:
@@ -354,6 +390,9 @@ class Report:
 
 
 PARAMS_NOTE = "proved for these parameter values only"
+
+#: How a report marks a postcondition `on_unproved="runtime"` checks on data.
+DATA_CHECK = "checked on the output data"
 
 TIES_HINT = (
     "rows may tie in the ORDER BY of a window or of first(), last() or group_concat(), so the "
@@ -785,7 +824,7 @@ def verify(
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
             checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
-    return Report(
+    report = Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
@@ -795,6 +834,120 @@ def verify(
         optimized=out["optimized"],
         rewrites=out["rewrites"],
         params=bound,
+        bounds=_int_bounds(out["facts"], dtypes),
+    )
+    if not isinstance(transform, str) and report.issues:
+        report.hints = overflow_hints(transform, requires, report)
+    return report
+
+
+def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
+    """The integer bounds of the integer output columns in the checker's `facts`."""
+    out = {}
+    for f in facts:
+        dtype, b = dtypes.get(f["name"]), f["abstract"].get("int")
+        if dtype is not None and dtype.is_integer() and b is not None:
+            out[f["name"]] = tuple(None if v is None else int(v) for v in (b["lo"], b["hi"]))
+    return out
+
+
+def _origin(rel: Node, name: str) -> tuple[str, str] | None:
+    """The base table and column that column `name` of relation `rel` passes
+    on unchanged, if there is one."""
+    if isinstance(rel, ops.UnboundTable | ops.DatabaseTable):
+        return rel.name, name
+    values = getattr(rel, "values", None)
+    if isinstance(rel, ops.Aggregate):
+        values = {**rel.groups, **rel.metrics}
+    if values is not None:
+        return _value_origin(values[name]) if name in values else None
+    parent = getattr(rel, "parent", None)
+    if parent is not None and name in parent.schema:
+        return _origin(parent, name)
+    return None
+
+
+def _value_origin(value: Node) -> tuple[str, str] | None:
+    """The base table and column a value is, if it is a column passed on
+    unchanged."""
+    if isinstance(value, ops.Field):
+        return _origin(value.rel, value.name)
+    return None
+
+
+#: The bound a SUM hint proposes for an unbounded side of a column.
+SUM_BOUND = 1_000_000_000
+
+
+def overflow_hints(
+    transform: ir.Table, requires: Mapping[str, Sequence[Condition]], report: Report
+) -> list[str]:
+    """The bounds to add to `requires` for the overflows `report` names (#379):
+    lower and upper bounds on each truncated timestamp or date column, and for
+    an integer `SUM` that is checked while the job runs, a bound on the
+    column it adds up, with the largest group whose sum then fits 64 bits."""
+    hints: list[str] = []
+    if any(i.kind == "overflow" and _truncates(i.expr) for i in report.errors):
+        kinds = (ops.TimestampTruncate, ops.DateTruncate, ops.TimestampBucket)
+        for op in transform.op().find(kinds):
+            if (origin := _value_origin(op.arg)) is None:  # type: ignore[attr-defined]
+                continue
+            table, col = origin
+            ctor = "date" if op.arg.dtype.is_date() else "datetime"  # type: ignore[attr-defined]
+            hints.append(
+                f"{TRUNC_HINT} `{col}` in `requires` of {table}: truncating a value near the "
+                f"ends of the timestamp range overflows. For example `_.{col} >= {ctor}(2000, "
+                f"1, 1)` and `_.{col} < {ctor}(2100, 1, 1)`"
+            )
+    if any(i.kind == "SUM overflow" for i in report.warnings):
+        for op in transform.op().find(ops.Sum):
+            if (hint := _sum_hint(op, requires)) is not None:
+                hints.append(hint)
+    return list(dict.fromkeys(hints))
+
+
+def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | None:
+    """The hint for an integer `SUM`: what bounds its argument, and the
+    largest group whose sum fits 64 bits."""
+    arg = op.arg  # type: ignore[attr-defined]
+    rels = list(arg.relations)
+    if not arg.dtype.is_integer() or len(rels) != 1:
+        return None
+    origin = _value_origin(arg)
+    what = f"`{origin[1]}`" if origin else f"`{arg.name}`"
+    sub = rels[0].to_expr().select(x=arg.to_expr())
+    leaves = leaf_tables(sub)
+    known = {
+        t: [c for c in cs if not isinstance(c, References)]
+        for t, cs in requires.items()
+        if t in leaves
+    }
+    lo, hi = verify(sub, requires=known, counterexamples=0).bounds.get("x", (None, None))
+    # A BIGINT's own range bounds nothing: any two of its values may overflow.
+    lo = None if lo is None or lo <= -(2**63) else lo
+    hi = None if hi is None or hi >= 2**63 - 1 else hi
+    why = "no contract states how many rows a group has, so the job checks the sum as it runs"
+    if lo is not None and hi is not None:
+        largest = max(abs(lo), abs(hi))
+        if largest == 0:
+            return None
+        rows = (2**63 - 1) // largest
+        return (
+            f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
+            f"{rows:,} rows; {why}"
+        )
+    col = origin[1] if origin else "x"
+    proposed = []
+    if hi is None:
+        proposed.append(f"`_.{col} <= {SUM_BOUND:_}`")
+    if lo is None:
+        proposed.append(f"`_.{col} >= {-SUM_BOUND:_}`")
+    largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
+    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+    return (
+        f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
+        f"group's sum fits 64 bits for up to {(2**63 - 1) // largest:,} rows. Without a bound, "
+        f"{why}"
     )
 
 
@@ -995,7 +1148,18 @@ class Provenance:
     contracted transformation upstream."""
     unproved_links: list[str]
     """Preconditions on derived inputs that were checked on the data, or
-    merely warned about, instead of proved."""
+    merely warned about, instead of proved, and runtime-checked
+    postconditions of contracted transformations upstream."""
+    checked: list[Condition] = field(default_factory=list)
+    """The postconditions `on_unproved="runtime"` checks on the result's data
+    because they were not proved: on a bound result when it is built, and in
+    an incremental view on every state (`IncrementalView.checked`)."""
+
+
+def _checked_links(prov: Provenance) -> list[str]:
+    """A result's runtime-checked postconditions, as seen downstream: checked
+    on its own rows, they are nothing a consumer's state is checked for."""
+    return [f"{prov.transform.name}: {label(c)} was checked on data" for c in prov.checked]
 
 
 # Keyed by identity: Ibis ops compare by structure, and an equal expression
@@ -1076,7 +1240,7 @@ def _abstract(
             _merge(out.assumptions, {name: conds})
         if name in used and op not in given and (prov := _lookup(op)):
             _merge(out.external, prov.external)
-            out.unproved_links += prov.unproved_links
+            out.unproved_links += prov.unproved_links + _checked_links(prov)
     return out
 
 
@@ -1089,6 +1253,9 @@ class ViewContract:
     requires: dict[str, list[Condition]]
     guarantees: list[Condition]
     provenance: Provenance | None
+    checked: list[Condition] = field(default_factory=list)
+    """Postconditions that were not proved, which the view checks on every
+    state (`on_unproved="runtime"`)."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -1104,13 +1271,14 @@ def view_contract(expr: ir.Table) -> ViewContract:
         requires, unproved = inner.external, inner.unproved_links
     if unproved:
         raise ValueError(
-            "cannot maintain incrementally: preconditions on derived inputs were "
+            "cannot maintain incrementally: conditions on derived inputs were "
             f"not proved ({'; '.join(unproved)})"
         )
     return ViewContract(
         {t: list(cs) for t, cs in requires.items()},
         list(prov.guarantees) if prov else [],
         prov,
+        list(prov.checked) if prov else [],
     )
 
 
@@ -1192,7 +1360,10 @@ class ContractedTransform:
         prov = _lookup(value.op())
         if prov is not None:
             inner = _Abstraction(
-                prov.body, prov.assumptions, prov.external, list(prov.unproved_links)
+                prov.body,
+                prov.assumptions,
+                prov.external,
+                list(prov.unproved_links) + _checked_links(prov),
             )
             known = list(prov.guarantees)
         else:
@@ -1218,7 +1389,7 @@ class ContractedTransform:
             report, self.name, param, prov.transform.name, [label(c) for c in known]
         )
         if self.on_unproved == "warn":
-            warnings.warn(str(error), stacklevel=3)
+            warnings.warn(str(error), stacklevel=4)
         elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
             raise error
         return out
@@ -1261,9 +1432,12 @@ class ContractedTransform:
                 transformation's result does not follow from its guarantees.
             VerificationError: A postcondition, or the absence of runtime
                 errors, could not be proved (with `on_unproved="error"`, or
-                with `"runtime"` when the result is not bound).
+                with `"runtime"` when the result is neither bound nor a
+                node).
             PostconditionError: With `on_unproved="runtime"`, an unproved
-                postcondition fails on the output data.
+                postcondition fails on the output data of a bound result. A
+                node's are checked at every refresh instead
+                (`sverify.Node.refresh`).
             TypeError: Sources or nodes are mixed with Ibis tables.
             ValueError: The node would read two tables of the same name.
         """
@@ -1271,6 +1445,12 @@ class ContractedTransform:
 
         if nodes.wants_node(args, kwargs):
             return nodes.derive(self, args, kwargs)
+        return self._build(args, kwargs, node=False)
+
+    def _build(self, args: Sequence[Any], kwargs: Mapping[str, Any], *, node: bool) -> ir.Table:
+        """The result and its proof. A `node` result (`nodes.derive`, on
+        placeholder tables) has its runtime-checked postconditions checked
+        at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
         result = self.fn(*args, **kwargs)
@@ -1306,15 +1486,18 @@ class ContractedTransform:
         report = self.last_report = self._verify(
             abstraction.body, assumptions, self.ensures, "ensures"
         )
+        checked: list[Condition] = []
         if not report.proved:
             if self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=2)
+                warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in
             # "runtime" mode the engine raises them if they happen.
-            elif self.on_unproved == "runtime" and is_bound(result):
+            elif self.on_unproved == "runtime" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
-                for c in self.ensures:
-                    if label(c) in unproved and (n := violations(result, c, self.engine)):
+                checked = [c for c in self.ensures if label(c) in unproved]
+                report = self.last_report = _marked_checked(report)
+                for c in [] if node else checked:
+                    if n := violations(result, c, self.engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
@@ -1331,9 +1514,17 @@ class ContractedTransform:
                 report=report,
                 external=external,
                 unproved_links=unproved_links + abstraction.unproved_links,
+                checked=checked,
             ),
         )
         return result
+
+
+def _marked_checked(report: Report) -> Report:
+    """`report` (cached, so left as it is) with its unproved postconditions
+    marked as checked on data."""
+    ensures = [c if c.proved else replace(c, checked=True) for c in report.ensures]
+    return replace(report, ensures=ensures)
 
 
 def transform(
@@ -1350,7 +1541,9 @@ def transform(
     the postconditions are proved (cached per input schema and expression) and
     the report is kept in `.last_report`; see the module docstring. With
     `on_unproved="runtime"`, unproved postconditions are checked on the output
-    data instead, which needs inputs bound to a connection. `engine` says where
+    data instead: on inputs bound to a connection, when the transform is
+    called; on a node, at every refresh, on the rows the batch inserts, before
+    its sink commits. The report marks them `checked`. `engine` says where
     those checks on data run (see the module docstring).
 
     Piped from a source (`sverify.io`) or a node, `orders.pipe(doubled)`, or
@@ -1370,9 +1563,10 @@ def transform(
             errors.
         on_unproved: What happens when a postcondition, or a precondition on
             another contracted transformation's result, is not proved:
-            `"error"` (the default) raises; `"runtime"` checks it on the data
-            instead, which needs bound inputs; `"warn"` emits a warning and
-            returns the result.
+            `"error"` (the default) raises; `"runtime"` checks a postcondition
+            on the output data instead (bound inputs, or a node at every
+            refresh) and a precondition on a bound input's data; `"warn"`
+            emits a warning and returns the result.
         check_requires: Whether to check preconditions on the data of bound
             inputs at call time. Default True.
         engine: Where checks on data run: `"duckdb"`, `"polars"` or
