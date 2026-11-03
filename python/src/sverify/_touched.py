@@ -119,7 +119,8 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
         return found
     node, by, names, what = found
     if missing := [g for g in by if g not in names]:
-        return f"the view does not output the {what} key {missing[0]} unchanged"
+        key = "group" if what == "aggregate" else "partition"
+        return f"the view does not output the {key} key {missing[0]} unchanged"
     parent = node.parent.to_expr()  # type: ignore[attr-defined]
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
@@ -236,7 +237,7 @@ def _split(
             return "the aggregate has no GROUP BY"
         if not _row_local(list(agg.groups.values()), agg.parent):
             return "a grouping key reads other rows"
-        return agg, dict(agg.groups), names, "group"
+        return agg, dict(agg.groups), names, "aggregate"
     found = _under(op, _windowed)
     if found is None:
         return NOT_AGGREGATE
@@ -262,7 +263,7 @@ def _split(
         if name is None:
             return "the view does not output its PARTITION BY keys"
         by[name] = p
-    return proj, by, names, "partition"
+    return proj, by, names, "window"
 
 
 def _windowed(op: ops.Relation) -> bool:
