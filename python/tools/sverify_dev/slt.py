@@ -55,7 +55,7 @@ import threading
 import time
 import tomllib
 from collections import Counter
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -70,8 +70,10 @@ LEDGER = REPO / "characterization" / "duckdb"
 #: The one-row table a `SELECT` without `FROM` reads.
 ONE = "__sverify_one"
 
-#: Rows past which a table is not inlined into a plan for Lean.
-MAX_ROWS = 5000
+#: Rows past which a query's tables, together, are not inlined into a plan
+#: for Lean: `Rel.eval` joins and groups in quadratic time (#357), and data
+#: this size covers the semantics as well as more would.
+MAX_ROWS = 1000
 #: Iterations past which a file's loops are not expanded.
 MAX_ITERATIONS = 2000
 #: Seconds DuckDB may spend on one statement.
@@ -536,9 +538,10 @@ class Replay:
         finally:
             timer.cancel()
 
-    def sync(self, tables: Iterable[str]) -> dict[str, list[tuple]]:
+    def sync(self, tables: Iterable[str], cap: int | None = MAX_ROWS) -> dict[str, list[tuple]]:
         """Mirror the DuckDB tables (and views, as tables) a query reads.
-        Returns their rows, for inlining."""
+        Returns their rows, for inlining. Raises `OverflowError` past `cap`
+        rows in all."""
         from sverify.engine import table_rows
 
         known = {
@@ -563,15 +566,53 @@ class Replay:
                 continue
             if self.synced.get(name) != self.version:
                 table = self.arrow(f'SELECT * FROM "{name}"')
-                if table.num_rows > MAX_ROWS:
-                    raise OverflowError(f"table {name} has {table.num_rows} rows")
+                if cap is not None and table.num_rows > cap:
+                    n = table.num_rows
+                    raise OverflowError(f"table {name} has {n} rows, more than {cap}")
                 for alias in {name, name.lower()}:
                     self.con.put(alias, table)
                 self.synced[name] = self.version
             for alias in {name, name.lower()}:
                 rows[alias] = table_rows(self.con, name)
+        total = sum(len(rows[n]) for n in {lower[r.lower()] for r in tables if r.lower() in lower})
+        if cap is not None and total > cap:
+            raise OverflowError(f"the query reads {total} rows, more than {cap}")
         rows[ONE] = [(0,)]
         return rows
+
+    def condense(
+        self, rec: Record, tables: list[str]
+    ) -> tuple[dict[str, list[tuple]], Callable[[Any, Any, bool], bool]]:
+        """For a query reading more than `MAX_ROWS` rows: the first rows of
+        each table, `MAX_ROWS` in all, mirrored in place of the full ones,
+        and an outcome that compares with DuckDB's result on them (oracle A on
+        less data) rather than with the test's, which was for the full ones."""
+        from sverify.engine import table_rows
+
+        full = self.sync(tables, cap=None)
+        names = sorted({n for n in self.con.arrow if n != ONE and n in full})
+        distinct = sorted({n.lower() for n in names})
+        keep = max(1, MAX_ROWS // max(1, len(distinct)))
+        con = duckdb.connect()
+        for name in names:
+            small = self.con.arrow[name].slice(0, keep)
+            self.con.put(name, small)
+            self.synced.pop(name, None)  # the next query mirrors the full table again
+            con.register(name, small)
+        rows = {name: table_rows(self.con, name) for name in names}
+        rows[ONE] = [(0,)]
+        try:
+            rel = con.sql(rec.sql)
+            want, want_err = self.fmt.rows(rel.to_arrow_table() if rel else pa.table({})), None
+        except Exception as e:  # noqa: BLE001 - DuckDB's error is a result
+            want, want_err = None, _error(e)
+
+        def outcome(got: Any, err: Any, ordered: bool) -> bool:
+            if want_err is not None:
+                return err is not None
+            return err is None and _same_bag(got or [], want or [], ordered)
+
+        return rows, outcome
 
     def statement(self, rec: Record) -> None:
         try:
@@ -667,9 +708,11 @@ class Replay:
             return res
         try:
             rows = self.sync(tables)
-        except OverflowError as e:
-            res.reason = str(e)
-            return res
+        except OverflowError:
+            # Too much data for `Rel.eval` (#357): the query on the tables'
+            # first rows, against DuckDB's result on those.
+            rows, outcome = self.condense(rec, tables)
+            res.reason = f"condensed to {MAX_ROWS} rows"
         except Exception as e:  # noqa: BLE001 - a type Arrow or sverify cannot hold
             res.cls, res.reason = "refused", f"tables: {_clip(str(e), 200)}"
             return res

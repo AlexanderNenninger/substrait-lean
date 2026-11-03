@@ -279,3 +279,31 @@ def test_nested_values_become_arrow_structs():
         None,
         {"a": None, "b": None},
     ]
+
+
+def test_large_queries_are_condensed(tmp_path):
+    """A query reading more than `MAX_ROWS` rows runs on the tables' first
+    rows, and Lean is compared with DuckDB's result on those (#357)."""
+    path = tmp_path / "big.test"
+    n = slt.MAX_ROWS + 500
+    path.write_text(
+        textwrap.dedent(
+            f"""\
+            statement ok
+            CREATE TABLE a AS SELECT range AS k FROM range({n})
+
+            statement ok
+            CREATE TABLE b AS SELECT range AS k, range * 2 AS v FROM range({n})
+
+            query I
+            SELECT count(*) FROM a JOIN b ON a.k = b.k
+            ----
+            {n}
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/big.test")
+    (r,) = results
+    assert (r.cls, r.reason) == ("agree", f"condensed to {slt.MAX_ROWS} rows")
+    # Lean counted the condensed join, not the test's full one.
+    assert r.lean == f'[["{slt.MAX_ROWS // 2}"]]'
