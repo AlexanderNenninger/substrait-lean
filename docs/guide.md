@@ -170,7 +170,7 @@ The most common, and what sverify does about each:
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is checked while the job runs |
+| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data while the job runs |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
 | Guards that don't guard | DataFusion evaluates both branches of some `CASE`s and merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection |
@@ -345,8 +345,11 @@ Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
 wraps around there; the reference raises). An integer `SUM` leaving 64 bits
-is checked while the job runs instead: no proof before running can rule it
-out, since a group may have any number of rows. Guards are
+is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
+count) and `requires` bounds the column. Elsewhere sverify assumes the sum
+fits, as it assumes inferred bounds, and the job checks it on the data while it
+runs (`Report.assumed`; an error with `infer=False`). Bounds on a table's rows
+are #219. Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.

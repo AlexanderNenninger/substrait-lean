@@ -15,8 +15,8 @@ reported as an error too. Integer `+`, `-`, `*` and negation do not fail in
 DataFusion: they wrap around silently; so does `date_trunc` to a day or less
 below `-2⁶³`. The reference raises there (#202: `overflow` omitted means
 ERROR, at the declared width), and an error allows DataFusion's answer. All
-of these are `Issue`s and errors, except an integer `SUM` that leaves 64
-bits, which is checked while the job runs (`Issue.sumWraps`). So are arguments
+of these are `Issue`s and errors, an integer `SUM` that leaves 64 bits too
+(`Issue.sumWraps`, which the job also checks while it runs). So are arguments
 outside a function's domain (`sqrt` of a negative, a shift by 64, …,
 `SubstraitLean/Numeric.lean`), where the reference raises and DataFusion
 gives an IEEE value or a wrapped shift instead: an error allows that.
@@ -70,10 +70,10 @@ inductive Issue where
   which an error allows (a refinement). -/
   | wraps
   /-- An integer `SUM` leaving 64 bits. The reference raises, and so does the
-  SQL sverify writes, but no contract on rows can rule it out: nothing bounds
-  how many rows a group has. So it is checked while the job runs and does not
-  count against a proof (`isError` is false, as decided on #202). Kept apart
-  from `wraps` because it comes from a group's rows, not from one row:
+  SQL sverify writes, which keeps its check while the job runs. An error like
+  any other: a plan that may raise is not proved, unless the input's rows and
+  the argument's range bound the sum (`Measure.sumFits`). Kept apart from
+  `wraps` because it comes from a group's rows, not from one row:
   `SubstraitLean/Guards.lean` drops row-level checks, never this one. -/
   | sumWraps
   /-- An argument outside a function's domain (`SubstraitLean/Numeric.lean`):
@@ -111,10 +111,14 @@ def WinFn.sumArg? (fns : List WinFn) : List Expr :=
     | .agg m _ _ => if m.fn = .sum ∧ m.arg.isDecimal = false then some m.arg else none
     | _ => none
 
-/-- Errors are what a proof must rule out. A `SUM` overflow raises too, but
-is checked while the job runs instead (`sumWraps`). -/
+/-- The aggregates among a list of window functions. -/
+def WinFn.aggs (fns : List WinFn) : List Measure :=
+  fns.filterMap fun
+    | .agg m _ _ => some m
+    | _ => none
+
+/-- Errors are what a proof must rule out: every issue raises. -/
 def Issue.isError : Issue → Bool
-  | .sumWraps => false
   | _ => true
 
 def inI64 (i : Int) : Bool := decide (minI64 ≤ i) && decide (i ≤ maxI64)
@@ -1030,6 +1034,143 @@ theorem Measure.mayNan_of_makesNan {m : Measure} {grp : Relation} {abs : Expr �
     rw [hev] at this
     exact AVal.has_of_mem this
 
+/-! ## Bounded sums
+
+An integer `SUM` may leave 64 bits, and the reference raises there. Without
+a bound on how many rows a group has, nothing rules it out; where the plan's
+shape bounds its rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count, an
+aggregate without groups) and the argument's interval bounds each value,
+the sum fits. -/
+
+/-- At most how many rows `r` gives, where its shape says. -/
+def Rel.maxRows : Rel → Option Nat
+  | .values _ rows => some rows.length
+  | .fetch _ _ (some n) => some n
+  | .fetch r _ none => r.maxRows
+  | .filter r _ => r.maxRows
+  | .project r _ => r.maxRows
+  | .emit r _ => r.maxRows
+  | .orderBy r _ => r.maxRows
+  | .distinct r => r.maxRows
+  | .aggregate r gs _ => if gs.isEmpty then some 1 else r.maxRows
+  | _ => none
+
+theorem Rel.maxRows_sound {cat : Catalog} : ∀ {r : Rel} {n : Nat}, r.maxRows = some n →
+    (r.eval cat).length ≤ n
+  | .values _ rows, n, h => by simp only [maxRows, Option.some.injEq] at h; simp [eval, h]
+  | .fetch r _ (some k), n, h => by
+    simp only [maxRows, Option.some.injEq] at h; subst h; simp [eval]; omega
+  | .fetch r _ none, n, h => by
+    simp only [maxRows] at h; have := maxRows_sound (cat := cat) (r := r) h; simp [eval]; omega
+  | .filter r _, n, h => by
+    simp only [maxRows] at h
+    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound (r := r) h)
+  | .project r _, n, h => by
+    simp only [maxRows] at h; simpa [eval] using maxRows_sound (r := r) h
+  | .emit r _, n, h => by
+    simp only [maxRows] at h; simpa [eval] using maxRows_sound (r := r) h
+  | .orderBy r _, n, h => by
+    simp only [maxRows] at h; simpa [eval, List.length_mergeSort] using maxRows_sound (r := r) h
+  | .distinct r, n, h => by
+    simp only [maxRows] at h; exact Nat.le_trans (dedup_length_le _) (maxRows_sound (r := r) h)
+  | .aggregate r gs _, n, h => by
+    simp only [maxRows] at h
+    by_cases hg : gs.isEmpty = true
+    · simp only [hg, ite_true, Option.some.injEq] at h; subst h; simp [eval, aggregateEval, hg]
+    · simp only [hg, Bool.false_eq_true, ite_false] at h
+      simp only [eval, aggregateEval, hg, Bool.false_eq_true, ite_false, List.length_map]
+      exact Nat.le_trans (Nat.le_trans (dedup_length_le _) (by simp)) (maxRows_sound (cat := cat) (r := r) h)
+  | .read _, _, h | .cross _ _, _, h | .join _ _ _ _, _, h | .unionAll _ _, _, h
+  | .window _ _ _ _, _, h | .semi _ _ _ _, _, h | .unnest _ _, _, h => by simp [maxRows] at h
+
+theorem length_le_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
+    (hg : grp ∈ aggGroups gs rows) : grp.length ≤ rows.length := by
+  unfold aggGroups at hg
+  split at hg
+  · simp only [List.mem_singleton] at hg; exact hg ▸ Nat.le_refl _
+  · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
+    exact List.length_filter_le _ _
+
+theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
+    (m.inputs rows).length ≤ rows.length := by
+  have hk : (m.kept rows).length ≤ rows.length := by
+    unfold Measure.kept; split
+    · exact Nat.le_refl _
+    · exact List.length_filter_le _ _
+  have hf : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
+    Nat.le_trans (List.length_filter_le _ _) (by simpa using hk)
+  unfold Measure.inputs; split
+  · exact Nat.le_trans (dedup_length_le _) hf
+  · exact hf
+
+theorem intSum_bound (M : Int) (hM : 0 ≤ M) : ∀ vs : List Value,
+    (∀ i, Value.int i ∈ vs → -M ≤ i ∧ i ≤ M) →
+      -(M * vs.length) ≤ intSum vs ∧ intSum vs ≤ M * vs.length
+  | [], _ => by simp [intSum]
+  | v :: vs, h => by
+    have ih := intSum_bound M hM vs fun i hi => h i (List.mem_cons_of_mem _ hi)
+    have hl : M * ((v :: vs).length : Int) = M * vs.length + M := by
+      simp [Int.mul_add]
+    rw [hl]
+    cases v with
+    | int i =>
+      have := h i (List.mem_cons_self ..)
+      simp only [intSum]; omega
+    | _ => simp only [intSum]; omega
+
+/-- Does an integer `SUM` of `m`'s argument fit 64 bits on at most `n` rows,
+with the argument within `abs m.arg`? -/
+def Measure.sumFits (m : Measure) (abs : Expr → AVal) (n : Option Nat) : Bool :=
+  match (abs m.arg).int, n with
+  -- No integer at all: the sum is 0.
+  | none, _ => true
+  | some ⟨some lo, some hi⟩, some k =>
+    decide (((max lo.natAbs hi.natAbs * k : Nat) : Int) ≤ maxI64)
+  | _, _ => false
+
+theorem Measure.sumFits_sound {m : Measure} {abs : Expr → AVal} {n : Option Nat} {grp : Relation}
+    (hsound : ∀ y ∈ grp, (abs m.arg).Mem (m.arg.eval y))
+    (hlen : ∀ k, n = some k → grp.length ≤ k) (h : m.sumFits abs n = true) :
+    inI64 (intSum (m.inputs grp)) = true := by
+  have from_row : ∀ i, Value.int i ∈ m.inputs grp → (abs m.arg).Mem (.int i) := fun i hi => by
+    obtain ⟨_, y, hy, hv⟩ := Measure.mem_inputs hi
+    exact hv ▸ hsound y hy
+  unfold Measure.sumFits at h
+  split at h
+  · rename_i hn
+    -- No integer input: every input is something else.
+    have hz : ∀ vs : List Value, (∀ i, Value.int i ∈ vs → False) → intSum vs = 0 := by
+      intro vs; induction vs with
+      | nil => intro; rfl
+      | cons v vs ih =>
+        intro hv
+        cases v with
+        | int i => exact (hv i (List.mem_cons_self ..)).elim
+        | _ => simp only [intSum]; exact ih fun i hi => hv i (List.mem_cons_of_mem _ hi)
+    rw [hz _ fun i hi => by obtain ⟨b, hb, _⟩ := from_row i hi; simp [hn] at hb]
+    decide
+  · rename_i lo hi k hb
+    subst_vars
+    have hk := hlen k rfl
+    have hl := Nat.le_trans (Measure.inputs_length_le m grp) hk
+    have hdec : (((max lo.natAbs hi.natAbs * k : Nat)) : Int) ≤ maxI64 := of_decide_eq_true h
+    have hbnd := intSum_bound ((max lo.natAbs hi.natAbs : Nat) : Int) (Int.natCast_nonneg _)
+      (m.inputs grp) fun i hi' => by
+        obtain ⟨b, hb', hm⟩ := from_row i hi'
+        rw [hb] at hb'; cases hb'
+        have h1 := hm.1 lo rfl; have h2 := hm.2 hi rfl
+        omega
+    have hmul : ((max lo.natAbs hi.natAbs : Nat) : Int) * ((m.inputs grp).length : Int) ≤
+        ((max lo.natAbs hi.natAbs * k : Nat) : Int) := by
+      rw [← Int.natCast_mul]; exact Int.ofNat_le.mpr (Nat.mul_le_mul_left _ hl)
+    have hmax : maxI64 = 2 ^ 63 - 1 := rfl
+    have hmin : minI64 = -(2 ^ 63) := rfl
+    unfold inI64
+    rw [Bool.and_eq_true, decide_eq_true_eq, decide_eq_true_eq, hmin, hmax]
+    rw [hmax] at hdec
+    omega
+  · simp at h
+
 /-- **Where issues happen.** Filter and join conditions run on the loose
 input; projections on their input, or on the loose input under a filter or
 join condition (`under`), which may inline them. Aggregates evaluate their
@@ -1045,7 +1186,14 @@ def Rel.HasIssue (cat : Catalog) : Bool → Rel → Issue × Expr → Prop
   | u, .distinct r, p | u, .unnest r _, p => r.HasIssue cat u p
   -- A window `SUM` of integers may wrap around (its argument is a column:
   -- `Parse.issueFree`).
-  | u, .window r _ _ fns, p => r.HasIssue cat u p ∨ p ∈ (WinFn.sumArg? fns).map (.sumWraps, ·)
+  -- A window aggregate that would be NaN on some frame (#257): a frame is
+  -- some of the input's rows.
+  | u, .window r _ _ fns, p => r.HasIssue cat u p ∨
+      (∃ m ∈ WinFn.aggs fns, m.fn = .sum ∧ m.arg.isDecimal = false ∧ p = (.sumWraps, m.arg) ∧
+        ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ frame.length ≤ (r.eval cat).length ∧
+          inI64 (intSum (m.inputs frame)) = false) ∨
+      ∃ m ∈ WinFn.aggs fns, p = (.domain, m.arg) ∧
+        ∃ frame : Relation, (∀ y ∈ frame, y ∈ r.eval cat) ∧ m.fn.makesNan (m.inputs frame) = true
   | u, .cross a b, p | u, .unionAll a b, p => a.HasIssue cat u p ∨ b.HasIssue cat u p
   | _, .join a b _ on, p | _, .semi a b _ on, p => a.HasIssue cat true p ∨ b.HasIssue cat true p ∨
       ∃ x ∈ a.loose.eval cat, ∃ y ∈ b.loose.eval cat, p ∈ on.issues (x ++ y)
@@ -1069,19 +1217,28 @@ def Rel.mayIssues (cat : Catalog) (A : String → List AVal) (F : String → Lis
     r.mayIssues cat A F T u ++ es.flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T))
   | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r
   | u, .unnest r _ => r.mayIssues cat A F T u
-  | u, .window r _ _ fns => r.mayIssues cat A F T u ++ (WinFn.sumArg? fns).map (.sumWraps, ·)
+  | u, .window r _ _ fns => r.mayIssues cat A F T u ++
+      (WinFn.aggs fns).filterMap (fun m =>
+        if m.fn = .sum ∧ m.arg.isDecimal = false ∧
+          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false
+        then some (.sumWraps, m.arg) else none) ++
+      (WinFn.aggs fns).filterMap fun m =>
+        if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
+        then some (.domain, m.arg) else none
   | u, .cross a b | u, .unionAll a b => a.mayIssues cat A F T u ++ b.mayIssues cat A F T u
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
     a.mayIssues cat A F T true ++ b.mayIssues cat A F T true ++
       on.mayIssues (ab.aeval cat A F T true) (ab.facts cat F T)
-  -- Nothing bounds the number of rows in a group, so any integer sum may wrap.
+  -- An integer sum may wrap unless the input's rows and the argument bound it.
   | u, .aggregate r gs ms =>
     let s := if u then r.loose else r
     r.mayIssues cat A F T u ++
       (gs ++ ms.flatMap Measure.exprs).flatMap (·.mayIssues (s.aeval cat A F T true) (s.facts cat F T)) ++
       ms.filterMap (fun m =>
-        if m.fn = .sum ∧ m.arg.isDecimal = false then some (.sumWraps, m.arg) else none) ++
+        if m.fn = .sum ∧ m.arg.isDecimal = false ∧
+          m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false
+        then some (.sumWraps, m.arg) else none) ++
       ms.filterMap fun m =>
         if m.mayNan (·.absD (r.aeval cat A F T true) (r.facts cat F T))
         then some (.domain, m.arg) else none
@@ -1161,10 +1318,25 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | _, .fetch r _ _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf hsm p h
   | _, .window r _ _ _, hwf, hsm, p, h => by
     simp only [HasIssue] at h
-    simp only [mayIssues, List.mem_append]
-    rcases h with h | h
-    · exact .inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h)
-    · exact .inr h
+    simp only [mayIssues, List.mem_append, List.mem_filterMap]
+    have habs : ∀ y ∈ r.eval cat, ∀ e : Expr,
+        (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) := fun y hyr e =>
+      Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm.2) y hyr)
+        (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
+    rcases h with h | ⟨m, hm, hf, hd, rfl, frame, hframe, hlen, hov⟩ |
+      ⟨m, hm, rfl, frame, hframe, hnan⟩
+    · exact .inl (.inl (mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm.2 p h))
+    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false := by
+        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows
+        · rfl
+        · have := Measure.sumFits_sound (fun y hy => habs y (hframe y hy) m.arg)
+            (fun k hk => Nat.le_trans hlen (Rel.maxRows_sound hk)) hfit
+          rw [hov] at this; cases this
+      exact .inl (.inr ⟨m, hm, by simp [hf, hd, hfits]⟩)
+    · have hsound : ∀ y ∈ frame, ∀ e : Expr,
+          (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) :=
+        fun y hy e => habs y (hframe y hy) e
+      exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
   | _, .orderBy r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
   | _, .distinct r, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf hsm p h
   | _, .unnest r _, hwf, hsm, p, h => mayIssues_sound hcat hA hF hT (r := r) hwf.1 hsm p h
@@ -1199,7 +1371,7 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
   | u, .aggregate r gs ms, hwf, hsm, p, h => by
     simp only [HasIssue] at h
     simp only [mayIssues, List.mem_append, List.mem_flatMap, List.mem_filterMap]
-    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, _⟩ |
+    rcases h with h | ⟨row, hrow, e, he, hp⟩ | ⟨m, hm, hf, hd, rfl, grp, hgrp, hov⟩ |
       ⟨m, hm, rfl, grp, hgrp, hnan⟩
     · exact .inl (.inl (.inl (mayIssues_sound hcat hA hF hT hwf.1 hsm p h)))
     · have hs : (if u then r.loose else r).WF cat := by
@@ -1212,7 +1384,16 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         · exact Rel.Small.loose (r := r) hsm
       exact .inl (.inl (.inr ⟨e, by simpa using he, Expr.mayIssues_sound (aeval_sound hcat hA hF hT hs (fun _ => hsm') row hrow)
         (facts_sound hcat hF hT hs row hrow) (KsHold.nil row) e p hp⟩))
-    · exact .inl (.inr ⟨m, hm, by simp [hf, hd]⟩)
+    · have hfits : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows = false := by
+        cases hfit : m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) r.maxRows
+        · rfl
+        · have := Measure.sumFits_sound (grp := grp) (fun y hy => by
+              have hyr := mem_of_mem_aggGroups hgrp hy
+              exact Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
+                (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) m.arg)
+            (fun k hk => Nat.le_trans (length_le_of_mem_aggGroups hgrp) (Rel.maxRows_sound hk)) hfit
+          rw [hov] at this; cases this
+      exact .inl (.inr ⟨m, hm, by simp [hf, hd, hfits]⟩)
     · have hsound : ∀ y ∈ grp, ∀ e : Expr,
           (e.absD (r.aeval cat A F T true) (r.facts cat F T)).Mem (e.eval y) := by
         intro y hy e
@@ -1220,5 +1401,27 @@ theorem Rel.mayIssues_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
         exact Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf.1 (fun _ => hsm) y hyr)
           (facts_sound hcat hF hT hwf.1 y hyr) (KsHold.nil y) e
       exact .inr ⟨m, hm, by simp [Measure.mayNan_of_makesNan hsound hnan]⟩
+
+/-- The assumption a report makes of the integer `SUM`s it cannot bound
+(`Report.assumed` in `sverify`, inferred like #244's bounds): on this
+catalog, no group's or frame's integer sum leaves 64 bits. `Rel.HasIssue`'s
+`sumWraps` cases are exactly those sums, so this says none happens. The job
+checks it on the data: the SQL sverify writes raises where a sum does not
+fit. -/
+def Rel.SumsFit (cat : Catalog) (r : Rel) : Prop :=
+  ∀ p, r.HasIssue cat false p → p.1 ≠ .sumWraps
+
+/-- **Runs without errors under the `SUM` assumption**: when every issue
+`Rel.mayIssues` reports is an integer `SUM`, a catalog that meets the
+preconditions and on which the sums fit (`Rel.SumsFit`) runs into no issue
+at all. -/
+theorem Rel.noIssue_of_sumsFit {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat)
+    (hm : (r.mayIssues cat A F T false).all (·.1 == .sumWraps) = true) (hfit : r.SumsFit cat) :
+    ∀ p, ¬r.HasIssue cat false p := fun p hp =>
+  hfit p hp (by simpa using List.all_eq_true.mp hm p (mayIssues_sound hcat hA hF hT hwf hsmall p hp))
 
 end Substrait
