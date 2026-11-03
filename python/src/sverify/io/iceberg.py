@@ -76,7 +76,7 @@ from sverify.incremental import (
     snapshot_diff,
 )
 from sverify.io import _engine
-from sverify.io._common import ColumnStats, Contract, SinkWrite, q, stats_facts
+from sverify.io._common import ColumnStats, Contract, SinkWrite, q, rows_fact, stats_facts
 from sverify.io._sink import Sink, SinkChange
 from sverify.steps import Pipeable
 
@@ -294,7 +294,7 @@ class IcebergSource(Pipeable):
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
         schema = _arrow_schema(t)
         stats = [_stats(e, schema.names) for e in files]
-        return contract_facts(t) + stats_facts(stats, schema, source)
+        return contract_facts(t) + stats_facts(stats, schema, source) + rows_fact(stats, source)
 
     def snapshot(self, version: int | None = None) -> Snapshot:
         """The table's rows at a snapshot, with what its metadata says about

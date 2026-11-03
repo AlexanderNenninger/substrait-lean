@@ -180,6 +180,13 @@ def deleted_count(z: pa.Table) -> int:
     return -total(negative(z))
 
 
+def row_count(table: pa.Table | Native) -> int:
+    """How many rows `table` has."""
+    if isinstance(table, pa.Table):
+        return table.num_rows
+    return int(_sql("SELECT count(*) AS n FROM t", t=table).column(0)[0].as_py())
+
+
 def duplicate_keys(
     table: pa.Table | Native, cols: Sequence[str], among: pa.Table | None = None
 ) -> int:

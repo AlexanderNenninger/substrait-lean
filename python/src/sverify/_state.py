@@ -27,6 +27,7 @@ compare no values, so each store does them its own way.
 from __future__ import annotations
 
 import threading
+from collections.abc import Sequence
 
 import duckdb
 import pyarrow as pa
@@ -149,6 +150,29 @@ class Store:
         view.state = _retention.after(state, column, cutoff)
         return gone
 
+    def with_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> State:
+        """The rows of `z` whose `columns` equal a row of `keys` (the same
+        number of columns, in order), NULLs equal."""
+        state = arrow_of(z)
+        if not keys.num_rows or not state.num_rows:
+            return state.slice(0, 0)
+        # Each key column as dictionary indices over both tables, NULL its own
+        # value, so a hash join matches NULLs.
+        left, right = {}, {}
+        n = state.num_rows
+        for i, c in enumerate(columns):
+            both = pa.chunked_array(
+                [*state.column(c).chunks, *keys.column(i).cast(state.schema.field(c).type).chunks],
+                type=state.schema.field(c).type,
+            )
+            codes = both.dictionary_encode(null_encoding="encode").combine_chunks().indices
+            left[f"__k{i}"], right[f"__k{i}"] = codes[:n], codes[n:]
+        marked = state.append_column("__row", pa.array(range(n), pa.int64()))
+        for k, v in left.items():
+            marked = marked.append_column(k, v)
+        hits = marked.join(pa.table(right), list(right), join_type="left semi")
+        return state.take(hits.column("__row"))
+
 
 class ArrowStore(Store):
     """The state as an Arrow table in the Python process."""
@@ -268,6 +292,27 @@ class DuckDBStore(Store):
             gone = row[0] if row else 0
             db.execute(f"DELETE FROM {z.ref} WHERE {where}", [cutoff])
         return int(gone)
+
+    def with_keys(self, z: State, columns: Sequence[str], keys: pa.Table) -> State:
+        """`Store.with_keys` in DuckDB: a semi-join with NULLs equal."""
+        if not isinstance(z, Resident):
+            return super().with_keys(z, columns, keys)
+        with DuckDBStore._lock:
+            if DuckDBStore._db is None:
+                DuckDBStore._db = _duckdb.cursor()
+            db = DuckDBStore._db
+            on = " AND ".join(
+                f"s.{_q(c)} IS NOT DISTINCT FROM k.{_q(k)}"
+                for c, k in zip(columns, keys.column_names, strict=True)
+            )
+            db.register("__sverify_keys", keys)
+            try:
+                return db.sql(
+                    f"SELECT s.* FROM {z.ref} s WHERE EXISTS "
+                    f"(SELECT 1 FROM __sverify_keys k WHERE {on})"
+                ).to_arrow_table()
+            finally:
+                db.unregister("__sverify_keys")
 
     def has_negative(self, z: State) -> bool:
         if not isinstance(z, Resident):
