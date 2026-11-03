@@ -265,6 +265,13 @@ theorem rangeIssue_sound {lo hi x y : Int} {aa ar : AVal} {k : Issue} (ha : aa.M
     simp [AVal.withinRange_of_within hw.1 ha, AVal.withinRange_of_within hw.2 hr] at hn
   · simp
 
+/-- Every double code `a` describes has a decimal at scale `s`: the casts of
+its bounds do (`FloatCode.toDecimal?_between`, #223). -/
+def AVal.decFits (s : Nat) (a : AVal) : Bool := a.int.all fun b =>
+  match b.lo, b.hi with
+  | some l, some h => (FloatCode.toDecimal? l s).isSome && (FloatCode.toDecimal? h s).isSome
+  | _, _ => false
+
 /-- Every double code `a` describes casts to a `BIGINT`. -/
 def AVal.castFits (a : AVal) : Bool := a.int.all fun b => b.lo.any (castLo ≤ ·) && b.hi.any (· ≤ castHi)
 
@@ -289,7 +296,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .bucket _ _, aa, ar => rangeMay Time.nsMin Time.nsMax aa ar
   | .fmath f, aa, _ => if f.safe aa then [] else [.domain]
   | .decimal p _, aa, _ => if aa.int.all (·.fitsDigits p) then [] else [.overflow]
-  | .ftod _, _, _ => [.badCast]
+  | .ftod s, aa, _ => if aa.decFits s then [] else [.badCast]
   | .raise _, _, _ => [.raised]
   | _, _, _ => []
 
@@ -599,7 +606,21 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
     · simp_all
   case ftod.int s c =>
     simp only [UnFn.mayIssue]
-    split at hk <;> simp_all
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    split
+    · rename_i hnone hfits
+      exfalso
+      obtain ⟨b, hb, hc⟩ := ha
+      obtain ⟨bl, bh⟩ := b
+      simp only [AVal.decFits, hb, Option.all_some] at hfits
+      split at hfits
+      · simp only [Bool.and_eq_true, Option.isSome_iff_exists] at hfits
+        obtain ⟨⟨x, hx⟩, ⟨y, hy⟩⟩ := hfits
+        obtain ⟨q, hq, -, -⟩ := FloatCode.toDecimal?_between (hc.1 _ rfl) (hc.2 _ rfl) hx hy
+        rw [hq] at hnone; simp at hnone
+      · cases hfits
+    · simp
   case regexMatch.null | regexMatch.int | regexMatch.bool | regexMatch.str | regexMatch.list =>
     simp only [UnFn.mayIssue]
     split at hk <;> simp_all
