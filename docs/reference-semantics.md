@@ -75,7 +75,9 @@ fires, `Rel.eval`'s value is not the answer.
   never answers wrongly, and the report says that the check runs while the
   job runs. Today (`main`) it is the warning `sumWraps`; the change is
   [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
-  Row-count bounds in contracts, which could settle it, are a separate issue.
+  A row bound in the contract (`sv.rows(at_most=N)`, #219) settles it: with
+  values in `[-m, m]` and `n · m < 2⁶³`, the `SUM` is proved to fit
+  (`Rel.issuesR_sound` in [Rows.lean](../SubstraitLean/Rows.lean)).
 
 ## Core: numbers and NULLs
 

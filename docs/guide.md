@@ -409,6 +409,40 @@ print(sv.verify(per_minute))
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
 
+### Row bounds
+
+A bound on the values alone leaves the `SUM` checked while the job runs:
+a group with enough rows overflows anyway. `sv.rows(at_most=N)` in `requires`
+bounds how many rows an input has (#219). Lean carries the bound through the
+plan ([Rows.lean](../SubstraitLean/Rows.lean), `Rel.maxRows_sound`), and a
+`SUM` of values in `[-m, m]` over at most `n` rows, with `n · m < 2⁶³`, is
+proved to fit:
+
+```python
+per_host = samples.group_by("host").aggregate(cpu=samples.cpu.sum())
+report = sv.verify(
+    per_host,
+    requires={"samples": [_.cpu >= 0, _.cpu <= 100, sv.rows(at_most=10**12)]},
+)
+print(report)
+# requires samples: (_.cpu >= 0)
+# requires samples: (_.cpu <= 100)
+# requires samples: rows(at_most=1_000_000_000_000)
+# semantics: reference
+# known about the output:
+#   rows: at most 1,000,000,000,000
+# ...
+```
+
+* Filters, semi-joins and `DISTINCT` keep at most their input's rows; `LIMIT`
+  at most its count; `UNION ALL` adds; a join multiplies, or keeps the left
+  side's rows when its condition matches a `unique` key of the right side; an
+  aggregate without `GROUP BY` has one row.
+* The bound is checked on the data at call time and on every refresh, or
+  proved from the record counts of the Delta or Iceberg files a source reads.
+* In `ensures`, `sv.rows(at_most=N)` is proved from the inputs' bounds.
+  `Report.rows` is the bound on the output, under "known about the output".
+
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream

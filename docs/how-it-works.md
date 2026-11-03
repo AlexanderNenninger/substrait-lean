@@ -678,8 +678,12 @@ which does not block a proof.
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
   allows.
-* An integer `SUM` leaving 64 bits is checked while the job runs (nothing bounds
-  how many rows a group has): the SQL raises, and it does not make `proved` false.
+* An integer `SUM` leaving 64 bits is checked while the job runs: the SQL raises,
+  and it does not make `proved` false. A row bound settles it
+  ([Rows.lean](../SubstraitLean/Rows.lean), #219): `Rel.maxRows` bounds the rows
+  of every relation from `rows(at_most=N)` on the inputs, and `Rel.issuesR`
+  drops a `SUM` whose group of at most `n` rows of values in `[-m, m]` has
+  `n · m < 2⁶³` (`Rel.issuesR_sound`). Window `SUM`s stay checked.
 * Bounds that rule out overflow are inferred
   ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,

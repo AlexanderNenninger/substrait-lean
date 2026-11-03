@@ -1392,7 +1392,8 @@ def overflow_hints(
     """The bounds to add to `requires` for the overflows `report` names (#379):
     lower and upper bounds on each truncated timestamp or date column, and for
     an integer `SUM` that is checked while the job runs, a bound on the
-    column it adds up, with the largest group whose sum then fits 64 bits."""
+    column it adds up, with the largest group whose sum then fits 64 bits and
+    the row bound (`rows`) that proves it."""
     hints: list[str] = []
     # An overflow with its own hint (`infer_bounds`) has its exact bounds.
     if any(i.kind == "overflow" and _truncates(i.expr) and not i.hint for i in report.errors):
@@ -1435,7 +1436,15 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     # A BIGINT's own range bounds nothing: any two of its values may overflow.
     lo = None if lo is None or lo <= -(2**63) else lo
     hi = None if hi is None or hi >= 2**63 - 1 else hi
-    why = "no contract states how many rows a group has, so the job checks the sum as it runs"
+    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+
+    def bound_rows(n: int) -> str:
+        """How to state the row bound, or what happens without one (#219)."""
+        return (
+            f"`sv.rows(at_most={n:_})` in {where} proves it; without a row bound, the job "
+            "checks the sum as it runs"
+        )
+
     if lo is not None and hi is not None:
         largest = max(abs(lo), abs(hi))
         if largest == 0:
@@ -1443,7 +1452,7 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         rows = (2**63 - 1) // largest
         return (
             f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
-            f"{rows:,} rows; {why}"
+            f"{rows:,} rows; {bound_rows(rows)}"
         )
     col = origin[1] if origin else "x"
     proposed = []
@@ -1452,11 +1461,10 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     if lo is None:
         proposed.append(f"`_.{col} >= {-SUM_BOUND:_}`")
     largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
-    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+    rows = (2**63 - 1) // largest
     return (
         f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
-        f"group's sum fits 64 bits for up to {(2**63 - 1) // largest:,} rows. Without a bound, "
-        f"{why}"
+        f"group's sum fits 64 bits for up to {rows:,} rows, and {bound_rows(rows)}"
     )
 
 
