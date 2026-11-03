@@ -33,20 +33,20 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 35,
+             "functionReference": 41,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 29,
+                 "functionReference": 35,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -58,7 +58,7 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 29,
+                 "functionReference": 35,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -69,14 +69,14 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 35,
+             "functionReference": 41,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 29,
+                 "functionReference": 35,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -88,7 +88,7 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 29,
+                 "functionReference": 35,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -121,20 +121,20 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 35,
+             "functionReference": 41,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 29,
+                 "functionReference": 35,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -146,7 +146,7 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 29,
+                 "functionReference": 35,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -157,7 +157,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 32,
+             "functionReference": 38,
              "arguments":
              [{"value":
                {"selection":
@@ -171,14 +171,14 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 34,
+           "functionReference": 40,
            "arguments":
            [{"value":
              {"scalarFunction":
               {"outputType":
                {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                "options": [],
-               "functionReference": 32,
+               "functionReference": 38,
                "arguments":
                [{"value":
                  {"selection":
@@ -189,7 +189,7 @@
               {"outputType":
                {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                "options": [],
-               "functionReference": 29,
+               "functionReference": 35,
                "arguments":
                [{"value":
                  {"selection":
@@ -222,7 +222,7 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 30,
+         "functionReference": 36,
          "arguments":
          [{"value":
            {"selection":
@@ -233,7 +233,7 @@
      {"scalarFunction":
       {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
        "options": [],
-       "functionReference": 17,
+       "functionReference": 23,
        "arguments":
        [{"value":
          {"selection":
@@ -247,7 +247,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 18,
+     "functionReference": 24,
      "arguments":
      [{"value":
        {"selection":
@@ -265,7 +265,7 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 30,
+         "functionReference": 36,
          "arguments":
          [{"value":
            {"selection":
@@ -280,7 +280,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 29,
+           "functionReference": 35,
            "arguments":
            [{"value":
              {"selection":
@@ -291,7 +291,7 @@
        {"scalarFunction":
         {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 19,
+         "functionReference": 25,
          "arguments":
          [{"value":
            {"selection":
@@ -309,7 +309,7 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 30,
+         "functionReference": 36,
          "arguments":
          [{"value":
            {"selection":
@@ -324,7 +324,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 29,
+           "functionReference": 35,
            "arguments":
            [{"value":
              {"selection":
@@ -335,7 +335,7 @@
        {"scalarFunction":
         {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 20,
+         "functionReference": 26,
          "arguments":
          [{"value":
            {"selection":
@@ -353,7 +353,7 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 30,
+         "functionReference": 36,
          "arguments":
          [{"value":
            {"selection":
@@ -368,7 +368,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 29,
+           "functionReference": 35,
            "arguments":
            [{"value":
              {"selection":
@@ -379,7 +379,7 @@
        {"scalarFunction":
         {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 21,
+         "functionReference": 27,
          "arguments":
          [{"value":
            {"selection":
@@ -397,13 +397,13 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 35,
+         "functionReference": 41,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 29,
+             "functionReference": 35,
              "arguments":
              [{"value":
                {"selection":
@@ -414,7 +414,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 29,
+             "functionReference": 35,
              "arguments":
              [{"value":
                {"selection":
@@ -425,7 +425,7 @@
      {"scalarFunction":
       {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
        "options": [],
-       "functionReference": 22,
+       "functionReference": 28,
        "arguments":
        [{"value":
          {"selection":
@@ -443,13 +443,13 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 35,
+         "functionReference": 41,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 29,
+             "functionReference": 35,
              "arguments":
              [{"value":
                {"selection":
@@ -460,7 +460,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 29,
+             "functionReference": 35,
              "arguments":
              [{"value":
                {"selection":
@@ -471,7 +471,7 @@
      {"scalarFunction":
       {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
        "options": [],
-       "functionReference": 23,
+       "functionReference": 29,
        "arguments":
        [{"value":
          {"selection":
@@ -489,13 +489,13 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 35,
+         "functionReference": 41,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 29,
+             "functionReference": 35,
              "arguments":
              [{"value":
                {"selection":
@@ -506,7 +506,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 29,
+             "functionReference": 35,
              "arguments":
              [{"value":
                {"selection":
@@ -517,7 +517,7 @@
      {"scalarFunction":
       {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
        "options": [],
-       "functionReference": 24,
+       "functionReference": 30,
        "arguments":
        [{"value":
          {"selection":
@@ -535,20 +535,20 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 36,
+             "functionReference": 42,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 33,
+                 "functionReference": 39,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -559,7 +559,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 30,
+             "functionReference": 36,
              "arguments":
              [{"value": {"literal": {"fp64": 1}}},
               {"value":
@@ -574,7 +574,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 30,
+           "functionReference": 36,
            "arguments":
            [{"value":
              {"selection":
@@ -585,7 +585,7 @@
        {"scalarFunction":
         {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 25,
+         "functionReference": 31,
          "arguments":
          [{"value":
            {"selection":
@@ -603,20 +603,20 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 36,
+             "functionReference": 42,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 33,
+                 "functionReference": 39,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -627,7 +627,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 30,
+             "functionReference": 36,
              "arguments":
              [{"value": {"literal": {"fp64": 1}}},
               {"value":
@@ -642,7 +642,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 30,
+           "functionReference": 36,
            "arguments":
            [{"value":
              {"selection":
@@ -653,7 +653,7 @@
        {"scalarFunction":
         {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 26,
+         "functionReference": 32,
          "arguments":
          [{"value":
            {"selection":
@@ -667,7 +667,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 27,
+     "functionReference": 33,
      "arguments":
      [{"value":
        {"selection":
@@ -685,27 +685,27 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 34,
+             "functionReference": 40,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 36,
+                 "functionReference": 42,
                  "arguments":
                  [{"value":
                    {"scalarFunction":
                     {"outputType":
                      {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                      "options": [],
-                     "functionReference": 33,
+                     "functionReference": 39,
                      "arguments":
                      [{"value":
                        {"selection":
@@ -717,21 +717,21 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 36,
+                 "functionReference": 42,
                  "arguments":
                  [{"value":
                    {"scalarFunction":
                     {"outputType":
                      {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                      "options": [],
-                     "functionReference": 35,
+                     "functionReference": 41,
                      "arguments":
                      [{"value":
                        {"scalarFunction":
                         {"outputType":
                          {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                          "options": [],
-                         "functionReference": 29,
+                         "functionReference": 35,
                          "arguments":
                          [{"value":
                            {"selection":
@@ -744,7 +744,7 @@
                         {"outputType":
                          {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                          "options": [],
-                         "functionReference": 29,
+                         "functionReference": 35,
                          "arguments":
                          [{"value":
                            {"selection":
@@ -757,7 +757,7 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 30,
+                 "functionReference": 36,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -768,21 +768,21 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 34,
+             "functionReference": 40,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 36,
+                 "functionReference": 42,
                  "arguments":
                  [{"value":
                    {"scalarFunction":
                     {"outputType":
                      {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                      "options": [],
-                     "functionReference": 33,
+                     "functionReference": 39,
                      "arguments":
                      [{"value":
                        {"selection":
@@ -794,21 +794,21 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 36,
+                 "functionReference": 42,
                  "arguments":
                  [{"value":
                    {"scalarFunction":
                     {"outputType":
                      {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                      "options": [],
-                     "functionReference": 35,
+                     "functionReference": 41,
                      "arguments":
                      [{"value":
                        {"scalarFunction":
                         {"outputType":
                          {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                          "options": [],
-                         "functionReference": 29,
+                         "functionReference": 35,
                          "arguments":
                          [{"value":
                            {"selection":
@@ -821,7 +821,7 @@
                         {"outputType":
                          {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                          "options": [],
-                         "functionReference": 29,
+                         "functionReference": 35,
                          "arguments":
                          [{"value":
                            {"selection":
@@ -834,21 +834,21 @@
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 36,
+                 "functionReference": 42,
                  "arguments":
                  [{"value":
                    {"scalarFunction":
                     {"outputType":
                      {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                      "options": [],
-                     "functionReference": 29,
+                     "functionReference": 35,
                      "arguments":
                      [{"value":
                        {"scalarFunction":
                         {"outputType":
                          {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
                          "options": [],
-                         "functionReference": 28,
+                         "functionReference": 34,
                          "arguments":
                          [{"value":
                            {"selection":
@@ -886,7 +886,7 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 30,
+         "functionReference": 36,
          "arguments":
          [{"value":
            {"selection":
@@ -901,7 +901,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 30,
+           "functionReference": 36,
            "arguments":
            [{"value": {"literal": {"i64": 0}}},
             {"value":
@@ -916,7 +916,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 32,
+             "functionReference": 38,
              "arguments":
              [{"value":
                {"selection":
@@ -937,20 +937,20 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 36,
+             "functionReference": 42,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 33,
+                 "functionReference": 39,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -961,7 +961,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 30,
+             "functionReference": 36,
              "arguments":
              [{"value": {"literal": {"fp64": 0}}},
               {"value":
@@ -976,7 +976,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 30,
+           "functionReference": 36,
            "arguments":
            [{"value":
              {"selection":
@@ -991,7 +991,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 32,
+             "functionReference": 38,
              "arguments":
              [{"value":
                {"selection":
@@ -1094,6 +1094,296 @@
    "construct": "CAST(BIGINT AS DOUBLE)",
    "args": ["i64"]},
   {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 40,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 35,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}},
+              {"value": {"literal": {"fp64": "inf"}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 35,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 1}}}}},
+              {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"fp64": "nan"}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 40,
+           "arguments":
+           [{"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 35,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 0}}}}},
+                {"value": {"literal": {"fp64": "-inf"}}}]}}},
+            {"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 35,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 1}}}}},
+                {"value": {"literal": {"fp64": "inf"}}}]}}}]}}}],
+       "else":
+       {"scalarFunction":
+        {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 18,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 1}}}}}]}}}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "DOUBLE + DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 40,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 35,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}},
+              {"value": {"literal": {"fp64": "inf"}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 35,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 1}}}}},
+              {"value": {"literal": {"fp64": "inf"}}}]}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"fp64": "nan"}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 40,
+           "arguments":
+           [{"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 35,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 0}}}}},
+                {"value": {"literal": {"fp64": "-inf"}}}]}}},
+            {"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 35,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 1}}}}},
+                {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}}],
+       "else":
+       {"scalarFunction":
+        {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 20,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 1}}}}}]}}}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "DOUBLE - DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"ifThen":
+    {"ifs":
+     [{"then": {"literal": {"fp64": "nan"}},
+       "if":
+       {"scalarFunction":
+        {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 40,
+         "arguments":
+         [{"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 35,
+             "arguments":
+             [{"value":
+               {"selection":
+                {"rootReference": {},
+                 "directReference": {"structField": {"field": 0}}}}},
+              {"value": {"literal": {"fp64": 0}}}]}}},
+          {"value":
+           {"scalarFunction":
+            {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+             "options": [],
+             "functionReference": 41,
+             "arguments":
+             [{"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 35,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 1}}}}},
+                  {"value": {"literal": {"fp64": "inf"}}}]}}},
+              {"value":
+               {"scalarFunction":
+                {"outputType":
+                 {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                 "options": [],
+                 "functionReference": 35,
+                 "arguments":
+                 [{"value":
+                   {"selection":
+                    {"rootReference": {},
+                     "directReference": {"structField": {"field": 1}}}}},
+                  {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}}]}}}],
+     "else":
+     {"ifThen":
+      {"ifs":
+       [{"then": {"literal": {"fp64": "nan"}},
+         "if":
+         {"scalarFunction":
+          {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+           "options": [],
+           "functionReference": 40,
+           "arguments":
+           [{"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 41,
+               "arguments":
+               [{"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 35,
+                   "arguments":
+                   [{"value":
+                     {"selection":
+                      {"rootReference": {},
+                       "directReference": {"structField": {"field": 0}}}}},
+                    {"value": {"literal": {"fp64": "inf"}}}]}}},
+                {"value":
+                 {"scalarFunction":
+                  {"outputType":
+                   {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+                   "options": [],
+                   "functionReference": 35,
+                   "arguments":
+                   [{"value":
+                     {"selection":
+                      {"rootReference": {},
+                       "directReference": {"structField": {"field": 0}}}}},
+                    {"value": {"literal": {"fp64": "-inf"}}}]}}}]}}},
+            {"value":
+             {"scalarFunction":
+              {"outputType":
+               {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
+               "options": [],
+               "functionReference": 35,
+               "arguments":
+               [{"value":
+                 {"selection":
+                  {"rootReference": {},
+                   "directReference": {"structField": {"field": 1}}}}},
+                {"value": {"literal": {"fp64": 0}}}]}}}]}}}],
+       "else":
+       {"scalarFunction":
+        {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+         "options": [],
+         "functionReference": 22,
+         "arguments":
+         [{"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 0}}}}},
+          {"value":
+           {"selection":
+            {"rootReference": {},
+             "directReference": {"structField": {"field": 1}}}}}]}}}}}},
+   "semantics": "duckdb",
+   "result": "fp64",
+   "construct": "DOUBLE * DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
@@ -1159,7 +1449,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 17,
+     "functionReference": 23,
      "arguments":
      [{"value":
        {"selection":
@@ -1173,7 +1463,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 18,
+     "functionReference": 24,
      "arguments":
      [{"value":
        {"selection":
@@ -1187,7 +1477,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 19,
+     "functionReference": 25,
      "arguments":
      [{"value":
        {"selection":
@@ -1201,7 +1491,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 20,
+     "functionReference": 26,
      "arguments":
      [{"value":
        {"selection":
@@ -1215,7 +1505,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 21,
+     "functionReference": 27,
      "arguments":
      [{"value":
        {"selection":
@@ -1229,7 +1519,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 22,
+     "functionReference": 28,
      "arguments":
      [{"value":
        {"selection":
@@ -1243,7 +1533,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 23,
+     "functionReference": 29,
      "arguments":
      [{"value":
        {"selection":
@@ -1257,7 +1547,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 24,
+     "functionReference": 30,
      "arguments":
      [{"value":
        {"selection":
@@ -1271,7 +1561,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 25,
+     "functionReference": 31,
      "arguments":
      [{"value":
        {"selection":
@@ -1285,7 +1575,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 26,
+     "functionReference": 32,
      "arguments":
      [{"value":
        {"selection":
@@ -1299,7 +1589,7 @@
    {"scalarFunction":
     {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
      "options": [],
-     "functionReference": 27,
+     "functionReference": 33,
      "arguments":
      [{"value":
        {"selection":
@@ -1335,7 +1625,7 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 30,
+         "functionReference": 36,
          "arguments":
          [{"value":
            {"selection":
@@ -1350,7 +1640,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 30,
+           "functionReference": 36,
            "arguments":
            [{"value": {"literal": {"i64": 0}}},
             {"value":
@@ -1365,7 +1655,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 32,
+             "functionReference": 38,
              "arguments":
              [{"value":
                {"selection":
@@ -1386,20 +1676,20 @@
        {"scalarFunction":
         {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
          "options": [],
-         "functionReference": 34,
+         "functionReference": 40,
          "arguments":
          [{"value":
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 36,
+             "functionReference": 42,
              "arguments":
              [{"value":
                {"scalarFunction":
                 {"outputType":
                  {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
                  "options": [],
-                 "functionReference": 33,
+                 "functionReference": 39,
                  "arguments":
                  [{"value":
                    {"selection":
@@ -1410,7 +1700,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 30,
+             "functionReference": 36,
              "arguments":
              [{"value": {"literal": {"fp64": 0}}},
               {"value":
@@ -1425,7 +1715,7 @@
          {"scalarFunction":
           {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
            "options": [],
-           "functionReference": 30,
+           "functionReference": 36,
            "arguments":
            [{"value":
              {"selection":
@@ -1440,7 +1730,7 @@
            {"scalarFunction":
             {"outputType": {"boolean": {"nullability": "NULLABILITY_NULLABLE"}},
              "options": [],
-             "functionReference": 32,
+             "functionReference": 38,
              "arguments":
              [{"value":
                {"selection":
@@ -1546,7 +1836,61 @@
    "semantics": "reference",
    "result": "fp64",
    "construct": "CAST(BIGINT AS DOUBLE)",
-   "args": ["i64"]}],
+   "args": ["i64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 18,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "DOUBLE + DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 20,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "DOUBLE - DOUBLE",
+   "args": ["fp64", "fp64"]},
+  {"template":
+   {"scalarFunction":
+    {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "options": [],
+     "functionReference": 22,
+     "arguments":
+     [{"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 0}}}}},
+      {"value":
+       {"selection":
+        {"rootReference": {},
+         "directReference": {"structField": {"field": 1}}}}}]}},
+   "semantics": "reference",
+   "result": "fp64",
+   "construct": "DOUBLE * DOUBLE",
+   "args": ["fp64", "fp64"]}],
  "functions":
  [{"urn": "extension:io.substrait:functions_arithmetic",
    "name": "divide:i64_i64",
@@ -1597,80 +1941,98 @@
    "name": "least:fp64_fp64",
    "anchor": 16},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "sqrt:fp64",
+   "name": "add:i64_i64",
    "anchor": 17},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "exp:fp64",
+   "name": "add:fp64_fp64",
    "anchor": 18},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "ln:fp64",
+   "name": "subtract:i64_i64",
    "anchor": 19},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "log10:fp64",
+   "name": "subtract:fp64_fp64",
    "anchor": 20},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "log2:fp64",
+   "name": "multiply:i64_i64",
    "anchor": 21},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "sin:fp64",
+   "name": "multiply:fp64_fp64",
    "anchor": 22},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "cos:fp64",
+   "name": "sqrt:fp64",
    "anchor": 23},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "tan:fp64",
+   "name": "exp:fp64",
    "anchor": 24},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "asin:fp64",
+   "name": "ln:fp64",
    "anchor": 25},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "acos:fp64",
+   "name": "log10:fp64",
    "anchor": 26},
   {"urn": "extension:io.substrait:functions_arithmetic",
-   "name": "atan:fp64",
+   "name": "log2:fp64",
    "anchor": 27},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "sin:fp64",
+   "anchor": 28},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "cos:fp64",
+   "anchor": 29},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "tan:fp64",
+   "anchor": 30},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "asin:fp64",
+   "anchor": 31},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "acos:fp64",
+   "anchor": 32},
+  {"urn": "extension:io.substrait:functions_arithmetic",
+   "name": "atan:fp64",
+   "anchor": 33},
   {"urn": "extension:io.substrait:functions_rounding",
    "name": "floor:fp64",
-   "anchor": 28},
+   "anchor": 34},
   {"urn": "extension:io.substrait:functions_comparison",
    "name": "equal:any_any",
-   "anchor": 29},
+   "anchor": 35},
   {"urn": "extension:io.substrait:functions_comparison",
    "name": "lt:any_any",
-   "anchor": 30},
+   "anchor": 36},
   {"urn": "extension:io.substrait:functions_comparison",
    "name": "is_null:any",
-   "anchor": 31},
+   "anchor": 37},
   {"urn": "extension:io.substrait:functions_comparison",
    "name": "is_not_null:any",
-   "anchor": 32},
+   "anchor": 38},
   {"urn": "extension:io.substrait:functions_comparison",
    "name": "is_nan:fp64",
-   "anchor": 33},
+   "anchor": 39},
   {"urn": "extension:io.substrait:functions_boolean",
    "name": "and:bool",
-   "anchor": 34},
+   "anchor": 40},
   {"urn": "extension:io.substrait:functions_boolean",
    "name": "or:bool",
-   "anchor": 35},
+   "anchor": 41},
   {"urn": "extension:io.substrait:functions_boolean",
    "name": "not:bool",
-   "anchor": 36},
+   "anchor": 42},
   {"urn": "extension:io.substrait:functions_arithmetic",
    "name": "avg:i64",
-   "anchor": 37},
+   "anchor": 43},
   {"urn": "extension:io.substrait:functions_arithmetic",
    "name": "avg:fp64",
-   "anchor": 38},
+   "anchor": 44},
   {"urn": "extension:io.substrait:functions_arithmetic",
    "name": "sum:i64",
-   "anchor": 39},
+   "anchor": 45},
   {"urn": "extension:io.substrait:functions_arithmetic",
    "name": "sum:fp64",
-   "anchor": 40},
+   "anchor": 46},
   {"urn": "extension:io.substrait:functions_aggregate_generic",
    "name": "count:any",
-   "anchor": 41}],
+   "anchor": 47}],
  "aggregates":
  [{"semantics": "duckdb",
    "result": "fp64",
@@ -1682,7 +2044,7 @@
       {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
        "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
        "invocation": "AGGREGATION_INVOCATION_ALL",
-       "functionReference": 39,
+       "functionReference": 45,
        "arguments":
        [{"value":
          {"selection":
@@ -1692,7 +2054,7 @@
       {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
        "outputType": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
        "invocation": "AGGREGATION_INVOCATION_ALL",
-       "functionReference": 41,
+       "functionReference": 47,
        "arguments":
        [{"value":
          {"selection":
@@ -1730,7 +2092,7 @@
       {"phase": "AGGREGATION_PHASE_INITIAL_TO_RESULT",
        "outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
        "invocation": "AGGREGATION_INVOCATION_ALL",
-       "functionReference": 37,
+       "functionReference": 43,
        "arguments":
        [{"value":
          {"selection":

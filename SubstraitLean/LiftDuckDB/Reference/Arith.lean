@@ -92,3 +92,57 @@ abbrev Substrait.liftReference.power : Substrait.LiftEntry Substrait.Semantics.r
   ((Lean.Json.parse (Substrait.liftReference.power).json).toOption.getD Lean.Json.null) ==
     some (Substrait.liftReference.power).tmpl
 
+theorem Substrait.liftReference.addDouble_agree : ∀ (x y : Substrait.Value),
+  Substrait.DuckType.Has Substrait.DuckType.double x →
+    Substrait.DuckType.Has Substrait.DuckType.double y →
+      Substrait.Outcome.Agree
+        (Substrait.Expr.evalP Substrait.Profile.reference [x, y]
+          (Substrait.Expr.bin Substrait.BinFn.fadd (Substrait.Expr.field 0)
+            (Substrait.Expr.field 1)))
+        (Substrait.DuckFn.eval Substrait.Semantics.reference Substrait.DuckFn.addDouble [x, y]) := by
+  lift_tac2
+
+abbrev Substrait.liftReference.addDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.addDouble :=
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":18,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fadd (Substrait.Expr.field 0) (Substrait.Expr.field 1),
+    Substrait.LiftEntry.of₂ rfl Substrait.liftReference.addDouble_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.addDouble)
+  ((Lean.Json.parse (Substrait.liftReference.addDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.addDouble).tmpl
+
+theorem Substrait.liftReference.subDouble_agree : ∀ (x y : Substrait.Value),
+  Substrait.DuckType.Has Substrait.DuckType.double x →
+    Substrait.DuckType.Has Substrait.DuckType.double y →
+      Substrait.Outcome.Agree
+        (Substrait.Expr.evalP Substrait.Profile.reference [x, y]
+          (Substrait.Expr.bin Substrait.BinFn.fsub (Substrait.Expr.field 0)
+            (Substrait.Expr.field 1)))
+        (Substrait.DuckFn.eval Substrait.Semantics.reference Substrait.DuckFn.subDouble [x, y]) := by
+  lift_tac2
+
+abbrev Substrait.liftReference.subDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.subDouble :=
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":20,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fsub (Substrait.Expr.field 0) (Substrait.Expr.field 1),
+    Substrait.LiftEntry.of₂ rfl Substrait.liftReference.subDouble_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.subDouble)
+  ((Lean.Json.parse (Substrait.liftReference.subDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.subDouble).tmpl
+
+theorem Substrait.liftReference.mulDouble_agree : ∀ (x y : Substrait.Value),
+  Substrait.DuckType.Has Substrait.DuckType.double x →
+    Substrait.DuckType.Has Substrait.DuckType.double y →
+      Substrait.Outcome.Agree
+        (Substrait.Expr.evalP Substrait.Profile.reference [x, y]
+          (Substrait.Expr.bin Substrait.BinFn.fmul (Substrait.Expr.field 0)
+            (Substrait.Expr.field 1)))
+        (Substrait.DuckFn.eval Substrait.Semantics.reference Substrait.DuckFn.mulDouble [x, y]) := by
+  lift_tac2
+
+abbrev Substrait.liftReference.mulDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.mulDouble :=
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":22,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fmul (Substrait.Expr.field 0) (Substrait.Expr.field 1),
+    Substrait.LiftEntry.of₂ rfl Substrait.liftReference.mulDouble_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.mulDouble)
+  ((Lean.Json.parse (Substrait.liftReference.mulDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.mulDouble).tmpl
+

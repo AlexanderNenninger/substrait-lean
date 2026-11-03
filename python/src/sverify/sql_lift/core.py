@@ -127,6 +127,11 @@ def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
             t = _decimal(p, s1 + s2)
         args = [x if not x.type.is_null() else lf.to(x, t) for x in (a, b)]
         return E(_fn(name, [x.json for x in args], t, _overflow(lf, t)), t)
+    if t.is_float64():
+        # DuckDB's: NaN for `inf - inf` and `0 * inf`, where the reference raises.
+        sym = {"add": "+", "subtract": "-", "multiply": "*"}[name]
+        if g := _generated(lf, f"DOUBLE {sym} DOUBLE", [a, b]):
+            return g
     return E(_fn(name, [lf.to(a, t).json, lf.to(b, t).json], t, _overflow(lf, t)), t)
 
 

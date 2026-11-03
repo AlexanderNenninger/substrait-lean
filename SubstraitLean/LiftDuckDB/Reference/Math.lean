@@ -27,7 +27,7 @@ theorem Substrait.liftReference.elementary_sqrt_agree : ∀ (x : Substrait.Value
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_sqrt : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.sqrt) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":17,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":23,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_sqrt_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sqrt)
@@ -44,7 +44,7 @@ theorem Substrait.liftReference.elementary_exp_agree : ∀ (x : Substrait.Value)
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_exp : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.exp) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":18,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":24,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_exp_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.exp)
@@ -61,7 +61,7 @@ theorem Substrait.liftReference.elementary_ln_agree : ∀ (x : Substrait.Value),
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_ln : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.ln) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":19,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":25,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_ln_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.ln)
@@ -79,7 +79,7 @@ theorem Substrait.liftReference.elementary_log10_agree : ∀ (x : Substrait.Valu
 
 abbrev Substrait.liftReference.elementary_log10 : Substrait.LiftEntry Substrait.Semantics.reference
   (Substrait.DuckFn.elementary Substrait.FMath.log10) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":20,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":26,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_log10_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log10)
@@ -96,7 +96,7 @@ theorem Substrait.liftReference.elementary_log2_agree : ∀ (x : Substrait.Value
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_log2 : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.log2) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":21,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":27,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_log2_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log2)
@@ -113,7 +113,7 @@ theorem Substrait.liftReference.elementary_sin_agree : ∀ (x : Substrait.Value)
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_sin : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.sin) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":22,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":28,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_sin_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sin)
@@ -130,7 +130,7 @@ theorem Substrait.liftReference.elementary_cos_agree : ∀ (x : Substrait.Value)
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_cos : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.cos) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":23,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":29,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_cos_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.cos)
@@ -147,7 +147,7 @@ theorem Substrait.liftReference.elementary_tan_agree : ∀ (x : Substrait.Value)
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_tan : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.tan) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":24,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":30,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_tan_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.tan)
@@ -164,7 +164,7 @@ theorem Substrait.liftReference.elementary_asin_agree : ∀ (x : Substrait.Value
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_asin : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.asin) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":25,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":31,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_asin_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.asin)
@@ -181,7 +181,7 @@ theorem Substrait.liftReference.elementary_acos_agree : ∀ (x : Substrait.Value
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_acos : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.acos) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":26,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":32,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_acos_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.acos)
@@ -198,7 +198,7 @@ theorem Substrait.liftReference.elementary_atan_agree : ∀ (x : Substrait.Value
   lift_tac1
 
 abbrev Substrait.liftReference.elementary_atan : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.atan) :=
-  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":27,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0),
+  ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":33,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_atan_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.atan)

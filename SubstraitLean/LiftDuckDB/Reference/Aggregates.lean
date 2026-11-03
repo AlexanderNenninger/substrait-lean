@@ -32,7 +32,7 @@ theorem Substrait.liftReference.avgBigint_agree : ∀ (vs : List Substrait.Value
   lift_agg
 
 abbrev Substrait.liftReference.avgBigint : Substrait.AggEntry Substrait.Semantics.reference Substrait.DuckAgg.avgBigint :=
-  ⟨"{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":37,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.avg
+  ⟨"{\"finish\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":43,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.avg
     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0)) Bool.false Option.none []],
     Substrait.Expr.field 0, Substrait.liftReference.avgBigint_agree⟩
 

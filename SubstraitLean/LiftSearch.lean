@@ -132,7 +132,7 @@ def urnOf (name : String) : String :=
 /-- Functions of two arguments of one type that candidates call. -/
 def binaryNames : List String :=
   ["divide", "modulus", "sverify_fmod", "power", "greatest_skip_null", "least_skip_null",
-   "greatest", "least"]
+   "greatest", "least", "add", "subtract", "multiply"]
 
 /-- The functions candidates call, with their anchors, signatures and
 extension URNs: each of `binaryNames` on `i64` and on `fp64`, the logarithms,
@@ -235,8 +235,9 @@ def cores (f : DuckFn) : List (String × Json × List (String × String)) :=
   casts ++ callsOf ++ consts
 
 /-- Tests of the arguments a guard is built from: `IS [NOT] NULL` and
-comparisons with `0`; for a double also with `±1`, `isnan`, infinite, and
-"a finite fraction" (`floor(x) <> x`). A double's comparison also comes
+comparisons with `0`; for a double also with `±1`, `isnan`, infinite, each
+infinity on its own, and "a finite fraction" (`floor(x) <> x`). A double's
+comparison also comes
 guarded, `NOT isnan(x) AND …` and `NOT isnan(x) AND NOT infinite AND …`: a
 proof cannot see what a native function gives for NaN or `±∞`, and Kleene
 `AND` with a false first operand is false whatever follows. Each atom also
@@ -258,7 +259,9 @@ def atomsOf (f : DuckFn) (i : Nat) : List Json :=
     let cmps := cmp 0 ++ cmp 1 ++ cmp (-1)
     let frac := callJ "and:bool" [notNan, notInf,
       callJ "not:bool" [callJ "equal:any_any" [callJ? "floor:fp64" [x] [] "fp64" |>.getD .null, x]]]
-    let simple := base ++ cmp 1 ++ cmp (-1) ++ [isNan, isInf, frac]
+    -- Each infinity on its own: `∞ - ∞` is NaN, `∞ - (-∞)` is not.
+    let signedInf := [callJ "equal:any_any" [x, litJ ty "inf"], callJ "equal:any_any" [x, litJ ty "-inf"]]
+    let simple := base ++ cmp 1 ++ cmp (-1) ++ [isNan, isInf, frac] ++ signedInf
     simple ++ simple.map (fun a => callJ "not:bool" [a]) ++
       cmps.map (fun c => callJ "and:bool" [notNan, c]) ++
       cmps.map (fun c => callJ "and:bool" [notNan, notInf, c])
@@ -455,7 +458,7 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
 their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
+    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckElementary, ``duckPower, ``duckArith, ``FMath.isLog, ``duckSign,
     ``nanCase, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
     ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
@@ -464,7 +467,10 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``BinFn.apply, ``Value.pick, ``Value.ltB,
     ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_int,
     ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_int,
-    ``DuckDBSQL.ref_ffloor_null,
+    ``DuckDBSQL.ref_ffloor_null, ``DuckDBSQL.ref_fadd_int, ``DuckDBSQL.ref_fsub_int,
+    ``DuckDBSQL.ref_fmul_int, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
+    ``DuckDBSQL.ref_fsub_null_l, ``DuckDBSQL.ref_fsub_null_r, ``DuckDBSQL.ref_fmul_null_l,
+    ``DuckDBSQL.ref_fmul_null_r,
     ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_int,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
@@ -502,7 +508,7 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
 area check in parallel, each in a process of its own. -/
 def areaOf (c : Name) : String :=
   match c.componentsRev.head!.toString with
-  | "divInt" | "divDouble" | "modDouble" | "power" => "Arith"
+  | "divInt" | "divDouble" | "modDouble" | "power" | "addDouble" | "subDouble" | "mulDouble" => "Arith"
   | "elementary" => "Math"
   | "castDoubleBigint" | "castBigintDouble" => "Casts"
   | _ => "Compare"
