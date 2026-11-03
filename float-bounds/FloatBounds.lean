@@ -15,3 +15,4 @@ public import FloatBounds.WelfordRel
 public import FloatBounds.MergeRel
 public import FloatBounds.CovRel
 public import FloatBounds.CovTwoPass
+public import FloatBounds.CoreKappa
