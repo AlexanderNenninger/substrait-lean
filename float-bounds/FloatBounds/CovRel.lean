@@ -1214,3 +1214,57 @@ theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
       = (1 + u) ^ 2 * (Ea + Eb) + N := by rw [hN]; ring
   rw [e2]
   linarith
+
+/-- **One merge of pairs keeps the co-moment's bound.** -/
+theorem cmerge_step_arith {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Ra Rb R La Lb L
+    Mxa Mxb Mya Myb mxa mxb mya myb Dhx Dhy T Ca Cb Sha Shb Sh1 Sh : ℝ}
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (hma : m ≤ na) (hmb : m ≤ nb) (hh : 0 ≤ h)
+    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21)
+    (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
+    (htx : tiny ≤ Axa + Axb) (hty : tiny ≤ Aya + Ayb)
+    (hMxa : |Mxa| ≤ Axa) (hMxb : |Mxb| ≤ Axb) (hMya : |Mya| ≤ Aya) (hMyb : |Myb| ≤ Ayb)
+    (exa : |mxa - Mxa| ≤ 6 * u * Axa) (exb : |mxb - Mxb| ≤ 6 * u * Axb)
+    (eya : |mya - Mya| ≤ 6 * u * Aya) (eyb : |myb - Myb| ≤ 6 * u * Ayb)
+    (eDx : |Dhx - (mxa - mxb)| ≤ u * (|mxa - mxb| + tiny))
+    (eDy : |Dhy - (mya - myb)| ≤ u * (|mya - myb| + tiny))
+    (eT : |T - Dhx * Dhy * h| ≤ 5 * u * (|Dhx * Dhy| * h + (1 + h) * tiny))
+    (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb)
+    (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hR1 : |Ca + Cb| ≤ R)
+    (hR2 : |Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * h| ≤ R)
+    (hY : h * (|Mxa - Mxb| * |Mya - Myb|) ≤ R)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
+    (hEa : |Sha - Ca| ≤ cBound na Axa Aya Dxa Dya Ra La)
+    (hEb : |Shb - Cb| ≤ cBound nb Axb Ayb Dxb Dyb Rb Lb)
+    (h1 : |Sh1 - (Sha + Shb)| ≤ u * (|Sha + Shb| + tiny))
+    (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
+    |Sh - (Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * h)|
+      ≤ cBound (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + h * |Mxa - Mxb|)
+        (Dya + Dyb + h * |Mya - Myb|) R L := by
+  have hu := u_pos
+  have hAx : |Mxa - Mxb| ≤ Axa + Axb := by have := abs_sub Mxa Mxb; linarith
+  have hAy : |Mya - Myb| ≤ Aya + Ayb := by have := abs_sub Mya Myb; linarith
+  have h1x : |(mxa - mxb) - (Mxa - Mxb)| ≤ 6 * u * (Axa + Axb) := by
+    have e : (mxa - mxb) - (Mxa - Mxb) = (mxa - Mxa) - (mxb - Mxb) := by ring
+    rw [e]; have := abs_sub (mxa - Mxa) (mxb - Mxb); linarith
+  have h1y : |(mya - myb) - (Mya - Myb)| ≤ 6 * u * (Aya + Ayb) := by
+    have e : (mya - myb) - (Mya - Myb) = (mya - Mya) - (myb - Myb) := by ring
+    rw [e]; have := abs_sub (mya - Mya) (myb - Myb); linarith
+  have hdx := delta_err htx h1x eDx
+  have hdy := delta_err hty h1y eDy
+  have hp := cprod_err hh hAx hAy hdx hdy
+  have hQ : |Dhx * Dhy * h - (Mxa - Mxb) * (Mya - Myb) * h|
+      ≤ 7.1 * u * ((Axa + Axb) * (h * |Mya - Myb|) + (Aya + Ayb) * (h * |Mxa - Mxb|))
+        + 2 * u * (h * (|Mxa - Mxb| * |Mya - Myb|))
+        + 103 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) := by
+    have e : Dhx * Dhy * h - (Mxa - Mxb) * (Mya - Myb) * h
+        = h * (Dhx * Dhy - (Mxa - Mxb) * (Mya - Myb)) := by ring
+    rw [e, abs_mul, abs_of_nonneg hh]; exact hp
+  have eT' : |T - Dhx * Dhy * h| ≤ 5 * u * (|Dhx * Dhy * h| + (1 + h) * tiny) := by
+    rwa [abs_mul (Dhx * Dhy) h, abs_of_nonneg hh]
+  have hYabs : |(Mxa - Mxb) * (Mya - Myb) * h| ≤ h * (|Mxa - Mxb| * |Mya - Myb|) := by
+    rw [abs_mul, abs_mul, abs_of_nonneg hh]; linarith
+  have hT := cT_err (by positivity) hYabs (by positivity) hh hQ eT'
+  have hc := cmerge_com (by positivity) (by positivity) hY (by positivity) hh hR1 hR2 hEa hEb hT h1 h2
+  refine le_trans hc ?_
+  exact cmerge_fold hna hnb hm1 hma hmb hh hhm hn hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb
+    (by positivity) (by positivity) hRa hRb hR hLa hLb hL le_rfl le_rfl
