@@ -1416,7 +1416,9 @@ def _verify_once(
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
             suggested = _suggested(e.get("suggest"), schemas, assumable)
-            checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex, False, suggested))
+            checked.append(
+                CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
+            )
     report = Report(
         semantics=semantics,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
