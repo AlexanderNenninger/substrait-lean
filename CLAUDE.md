@@ -56,16 +56,20 @@ ssh homelab 'nproc; uptime; free -g | sed -n 2p; ls -d /tmp/substrait-lean-* 2>/
 
 Each run gets its own directory,
 `/tmp/substrait-lean-<uuid>`. Never run tests in a shared checkout such as
-`~/Projects/substrait-lean`. Clone the branch fresh and delete the directory
-afterwards:
+`~/Projects/substrait-lean`. `python/scripts/homelab_qa.sh` clones the pushed
+branch fresh, runs `poe qa` (or the poe tasks you name after the branch) with
+the worker cap and `nice -n 10`, deletes the directory, also on failure, and
+passes the exit status through. Run it from the repository root:
 
 ```bash
-ssh homelab 'export PATH=$HOME/.elan/bin:$HOME/.local/bin:$PATH
-  dir=/tmp/substrait-lean-$(uuidgen)
-  git clone -q --branch <branch> https://github.com/AlexanderNenninger/substrait-lean.git "$dir"
-  cd "$dir/python" && PYTEST_XDIST_AUTO_NUM_WORKERS=6 nice -n 10 uv run poe qa; status=$?
-  rm -rf "$dir"; exit $status'
+ssh homelab 'bash -s -- <branch>' < python/scripts/homelab_qa.sh
 ```
+
+The script copies a warm Lean build from
+`~/.cache/substrait-lean/lake/<toolchain>` into the clone before building, and
+replaces it with the clone's `.lake` after a successful run. Lake's trace
+hashes rebuild whatever changed, so a cache from another commit is safe. It
+keeps the caches of the two most recent toolchains, about 300 MB each.
 
 Run long QA commands there in the background, not in the foreground shell.
 
