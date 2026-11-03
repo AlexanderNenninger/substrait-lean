@@ -376,12 +376,12 @@ theorem merge_fold {na nb m h Aa Ab Da Db X Sa Sb ΔS Ea Eb La Lb L : ℝ}
     _ ≤ (1 + 3 * n * u) * Tn := by gcongr
 
 /-- **The merged mean**: from a computed weighted mean within
-`4 u (n_b A_a + n_a A_b) / n` of the children's, the merged mean is within
+`6 u (n_b A_a + n_a A_b) / n` of the children's, the merged mean is within
 `6 u (A_a + A_b)` of the exact one. -/
 theorem merge_mean {na nb ma mb Ma Mb Aa Ab mh : ℝ} (hna : 1 ≤ na) (hnb : 1 ≤ nb)
     (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
     (ha : |ma - Ma| ≤ 6 * u * Aa) (hb : |mb - Mb| ≤ 6 * u * Ab)
-    (hm : |mh - (na * ma + nb * mb) / (na + nb)| ≤ 4 * u * (nb * Aa + na * Ab) / (na + nb)) :
+    (hm : |mh - (na * ma + nb * mb) / (na + nb)| ≤ 6 * u * (nb * Aa + na * Ab) / (na + nb)) :
     |mh - (na * Ma + nb * Mb) / (na + nb)| ≤ 6 * u * (Aa + Ab) := by
   have hu := u_pos
   have hn0 : 0 < na + nb := by linarith
@@ -402,7 +402,7 @@ theorem merge_mean {na nb ma mb Ma Mb Aa Ab mh : ℝ} (hna : 1 ≤ na) (hnb : 1 
         + ((na * ma + nb * mb) / (na + nb) - (na * Ma + nb * Mb) / (na + nb)) := by ring
   rw [e]
   refine le_trans (abs_add_le _ _) ?_
-  have h2 : 4 * u * (nb * Aa + na * Ab) / (na + nb) + (na * (6 * u * Aa) + nb * (6 * u * Ab)) / (na + nb)
+  have h2 : 6 * u * (nb * Aa + na * Ab) / (na + nb) + (na * (6 * u * Aa) + nb * (6 * u * Ab)) / (na + nb)
       ≤ 6 * u * (Aa + Ab) := by
     rw [← add_div, div_le_iff₀ hn0]
     have : 0 ≤ u * (nb * Aa + na * Ab) := by positivity
@@ -568,6 +568,164 @@ theorem StdModel.T_chain {D : ℝ} {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt
   have e6 : 4.01 * u * (P * h) = 4.01 * (u * (P * h)) := by ring
   have e7 : 4 * u * (P * h) = 4 * (u * (P * h)) := by ring
   constructor <;> linarith
+
+/-- `|r Δ̂ − w Δ|` from the errors of `r ≈ w` and `Δ̂ ≈ Δ`. -/
+theorem fma_prod_err {r w Dh D : ℝ} (hw : 0 ≤ w) (ha : |r - w| ≤ 1.0001 * u * w)
+    (eD : |Dh - D| ≤ u * (|D| + tiny)) :
+    |r * Dh - w * D| ≤ 2.0002 * u * w * |D| + 1.0001 * u * w * tiny := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  obtain ⟨d, hd⟩ : ∃ d, d = |D| := ⟨_, rfl⟩
+  obtain ⟨b, hb⟩ : ∃ b, b = |Dh - D| := ⟨_, rfl⟩
+  rw [← hd]; rw [← hd, ← hb] at eD
+  have hd0 : 0 ≤ d := by rw [hd]; exact abs_nonneg _
+  have hb0 : 0 ≤ b := by rw [hb]; exact abs_nonneg _
+  have hDh' : |Dh| ≤ d + b := by
+    have := abs_sub_abs_le_abs_sub Dh D; rw [hd, hb]; linarith
+  have e : r * Dh - w * D = (r - w) * Dh + w * (Dh - D) := by ring
+  rw [e]
+  have k1 := abs_add_le ((r - w) * Dh) (w * (Dh - D))
+  rw [abs_mul, abs_mul, abs_of_nonneg hw, ← hb] at k1
+  have k2 : |r - w| * |Dh| ≤ 1.0001 * u * w * (d + b) :=
+    mul_le_mul ha hDh' (abs_nonneg _) (by positivity)
+  have k3 : (1.0001 * u * w + w) * b ≤ (1.0001 * u * w + w) * (u * (d + tiny)) :=
+    mul_le_mul_of_nonneg_left eD (by positivity)
+  have k4 : 0 ≤ u * w * (d + tiny) := by positivity
+  have k5 : (1.0001 * u) * (u * w * (d + tiny)) ≤ 0.0001 * (u * w * (d + tiny)) :=
+    mul_le_mul_of_nonneg_right (by linarith) k4
+  linarith
+
+/-- The arithmetic at the end of `dmean_spec`. -/
+theorem dmean_arith {ns nt n d E Y ms mt As At : ℝ} (hsr : 1 ≤ ns) (htr : 1 ≤ nt)
+    (hn' : n = nt + ns) (hu1 : u ≤ 0.001)
+    (k1 : E ≤ 2.03 * u * (ns * d) + u * Y + 2.03 * u * (n * tiny))
+    (hY : Y ≤ nt * |mt| + ns * |ms|) (hd : d ≤ |ms| + |mt|)
+    (hms : ns * |ms| ≤ 1.01 * As) (hmt : nt * |mt| ≤ 1.01 * At)
+    (hAs : ns * tiny ≤ As) (hAt : nt * tiny ≤ At) :
+    E ≤ 6 * u * (ns * At + nt * As) := by
+  have hu := u_pos
+  have ht := tiny_pos
+  have hAs0 : 0 ≤ As := le_trans (by positivity) hAs
+  have hAt0 : 0 ≤ At := le_trans (by positivity) hAt
+  have m1 : ns * |mt| ≤ 1.01 * (ns * At) := by
+    have : |mt| ≤ nt * |mt| := le_mul_of_one_le_left (abs_nonneg _) htr
+    have := mul_le_mul_of_nonneg_left this (by linarith : (0 : ℝ) ≤ ns)
+    have := mul_le_mul_of_nonneg_left hmt (by linarith : (0 : ℝ) ≤ ns)
+    linarith
+  have m2 : As ≤ nt * As := le_mul_of_one_le_left hAs0 htr
+  have m3 : At ≤ ns * At := le_mul_of_one_le_left hAt0 hsr
+  have m4 : n * tiny ≤ As + At := by rw [hn']; linarith
+  have m5 : ns * d ≤ ns * |ms| + ns * |mt| := by
+    have := mul_le_mul_of_nonneg_left hd (by linarith : (0 : ℝ) ≤ ns); linarith
+  have q1 := mul_le_mul_of_nonneg_left m5 hu.le
+  have q2 := mul_le_mul_of_nonneg_left hY hu.le
+  have q3 := mul_le_mul_of_nonneg_left m4 hu.le
+  have q4 := mul_le_mul_of_nonneg_left hms hu.le
+  have q5 := mul_le_mul_of_nonneg_left hmt hu.le
+  have q6 := mul_le_mul_of_nonneg_left m1 hu.le
+  have q7 := mul_le_mul_of_nonneg_left m2 hu.le
+  have q8 := mul_le_mul_of_nonneg_left m3 hu.le
+  have p1 : 0 ≤ u * (ns * At) := by positivity
+  have p2 : 0 ≤ u * (nt * As) := by positivity
+  linarith
+
+/-- DuckDB's merged mean `fma(fl(n_s / n), fl(m_s − m_t), m_t)`, one rounding
+for the fused multiply-add: within `6 u (n_s A_t + n_t A_s) / n` of the
+children's weighted mean, when `n_x |m_x| ≤ 1.01 A_x` and `n_x tiny ≤ A_x`. -/
+theorem StdModel.dmean_spec {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt) (hn : ns + nt ≤ 2 ^ 32)
+    {ms mt As At : ℝ} (hms : ns * |ms| ≤ 1.01 * As) (hmt : nt * |mt| ≤ 1.01 * At)
+    (hAs : ns * tiny ≤ As) (hAt : nt * tiny ≤ At) (hbs : |ms| ≤ 2 ^ 401) (hbt : |mt| ≤ 2 ^ 401) :
+    |M.fl (M.fl ((ns : ℝ) / ((nt : ℝ) + ns)) * M.fl (ms - mt) + mt)
+        - ((nt : ℝ) * mt + ns * ms) / ((nt : ℝ) + ns)|
+      ≤ 6 * u * ((ns : ℝ) * At + nt * As) / ((nt : ℝ) + ns) := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have ht' : tiny ≤ 1 / 2 ^ 1000 := by unfold tiny; norm_num
+  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  have hsr : (1 : ℝ) ≤ ns := by exact_mod_cast hs
+  have htr : (1 : ℝ) ≤ nt := by exact_mod_cast ht1
+  have hnr : (ns : ℝ) + nt ≤ 2 ^ 32 := by exact_mod_cast hn
+  obtain ⟨n, hn'⟩ : ∃ n : ℝ, n = (nt : ℝ) + ns := ⟨_, rfl⟩
+  rw [← hn']
+  have hn0 : 0 < n := by linarith
+  obtain ⟨w, hw⟩ : ∃ w : ℝ, w = (ns : ℝ) / n := ⟨_, rfl⟩
+  rw [← hw]
+  have hw1 : w ≤ 1 := by rw [hw, div_le_one hn0]; linarith
+  have hwn : n * w = ns := by rw [hw]; field_simp
+  have hw0 : 1 / 2 ^ 32 ≤ w := by
+    rw [hw, le_div_iff₀ hn0]; linarith
+  -- `fl(n_s / n)` and `fl(m_s − m_t)`
+  obtain ⟨D, hD⟩ : ∃ D, D = ms - mt := ⟨_, rfl⟩
+  rw [← hD]
+  have hDb : |D| ≤ 2 ^ 402 := by
+    rw [hD]; have := abs_sub ms mt; linarith
+  have er := M.err w (by rw [abs_of_nonneg (by linarith)]; linarith)
+  rw [abs_of_nonneg (by linarith : 0 ≤ w)] at er
+  have eD := M.err D (by linarith)
+  generalize M.fl w = r at er ⊢
+  generalize M.fl D = Dh at eD ⊢
+  have htw : u * tiny ≤ u * (0.0001 * w) := mul_le_mul_of_nonneg_left (by linarith) hu.le
+  have ha : |r - w| ≤ 1.0001 * u * w := by linarith
+  have E1 := fma_prod_err (by linarith) ha eD
+  -- `y`, the exact weighted mean
+  have hy : w * D + mt = ((nt : ℝ) * mt + ns * ms) / n := by
+    rw [eq_div_iff hn0.ne', hD, hw, hn']; field_simp; ring
+  rw [← hy]
+  have hyb : n * |w * D + mt| ≤ nt * |mt| + ns * |ms| := by
+    rw [hy, abs_div, abs_of_pos hn0, mul_div_cancel₀ _ hn0.ne']
+    have := abs_add_le ((nt : ℝ) * mt) (ns * ms)
+    rw [abs_mul, abs_mul, Nat.abs_cast, Nat.abs_cast] at this; exact this
+  have hz : |r * Dh + mt| ≤ |w * D + mt| + |r * Dh - w * D| := by
+    have := abs_sub_abs_le_abs_sub (r * Dh + mt) (w * D + mt)
+    have e : r * Dh + mt - (w * D + mt) = r * Dh - w * D := by ring
+    rw [e] at this; linarith
+  have hd0 : 0 ≤ |D| := abs_nonneg _
+  have hzb : |r * Dh + mt| ≤ maxFinite := by
+    have : |w * D + mt| ≤ 2 ^ 404 := by
+      have := abs_add_le (w * D) mt
+      rw [abs_mul, abs_of_nonneg (by linarith : 0 ≤ w)] at this
+      have := mul_le_mul hw1 hDb hd0 (by norm_num); linarith
+    have : u * w * |D| ≤ 1 / 2 ^ 53 * 1 * 2 ^ 402 :=
+      mul_le_mul (mul_le_mul hu' hw1 (by linarith) (by positivity)) hDb hd0 (by positivity)
+    have : u * w * tiny ≤ 1 / 2 ^ 53 * 1 * (1 / 2 ^ 1000) :=
+      mul_le_mul (mul_le_mul hu' hw1 (by linarith) (by positivity)) ht' ht.le (by positivity)
+    have : |r * Dh - w * D| ≤ 2 ^ 351 := by
+      have c : (2.0002 : ℝ) * (1 / 2 ^ 53 * 1 * 2 ^ 402) + 1.0001 * (1 / 2 ^ 53 * 1 * (1 / 2 ^ 1000))
+          ≤ 2 ^ 351 := by norm_num
+      linarith
+    linarith
+  have ef := M.err (r * Dh + mt) hzb
+  generalize M.fl (r * Dh + mt) = mh at ef ⊢
+  -- the final error, times `n`
+  have hfin : |mh - (w * D + mt)|
+      ≤ (1 + u) * (2.0002 * u * w * |D| + 1.0001 * u * w * tiny) + u * |w * D + mt| + u * tiny := by
+    have e : mh - (w * D + mt) = (mh - (r * Dh + mt)) + (r * Dh - w * D) := by ring
+    rw [e]
+    have := abs_add_le (mh - (r * Dh + mt)) (r * Dh - w * D)
+    have := mul_le_mul_of_nonneg_left hz hu.le
+    have := mul_le_mul_of_nonneg_left E1 hu.le
+    linarith
+  rw [le_div_iff₀ hn0, mul_comm]
+  have k1 : n * |mh - (w * D + mt)|
+      ≤ 2.03 * u * (ns * |D|) + u * (n * |w * D + mt|) + 2.03 * u * (n * tiny) := by
+    have h1 := mul_le_mul_of_nonneg_left hfin hn0.le
+    have h2 : n * ((1 + u) * (2.0002 * u * w * |D| + 1.0001 * u * w * tiny) + u * |w * D + mt|
+        + u * tiny) = (1 + u) * (2.0002 * u * (n * w) * |D| + 1.0001 * u * (n * w) * tiny)
+          + u * (n * |w * D + mt|) + u * (n * tiny) := by ring
+    rw [h2, hwn] at h1
+    have p1 : 0 ≤ u * (ns * |D|) := by positivity
+    have p2 : 0 ≤ u * (ns * tiny) := by positivity
+    have h3 : u * (u * (ns * |D|)) ≤ 0.001 * (u * (ns * |D|)) :=
+      mul_le_mul_of_nonneg_right (by linarith) p1
+    have h4 : u * (u * (ns * tiny)) ≤ 0.001 * (u * (ns * tiny)) :=
+      mul_le_mul_of_nonneg_right (by linarith) p2
+    have h5 : u * (ns * tiny) ≤ u * (n * tiny) := by
+      apply mul_le_mul_of_nonneg_left _ hu.le
+      exact mul_le_mul_of_nonneg_right (by linarith) ht.le
+    linarith
+  exact dmean_arith hsr htr hn' (by linarith) k1 hyb (by rw [hD]; exact abs_sub _ _) hms hmt hAs hAt
 
 end FloatBounds
 
