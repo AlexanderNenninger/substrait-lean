@@ -15,8 +15,8 @@ reported as an error too. Integer `+`, `-`, `*` and negation do not fail in
 DataFusion: they wrap around silently; so does `date_trunc` to a day or less
 below `-2⁶³`. The reference raises there (#202: `overflow` omitted means
 ERROR, at the declared width), and an error allows DataFusion's answer. All
-of these are `Issue`s and errors, except an integer `SUM` that leaves 64
-bits, which is checked while the job runs (`Issue.sumWraps`). So are arguments
+of these are `Issue`s and errors, an integer `SUM` that leaves 64 bits too
+(`Issue.sumWraps`, which the job also checks while it runs). So are arguments
 outside a function's domain (`sqrt` of a negative, a shift by 64, …,
 `SubstraitLean/Numeric.lean`), where the reference raises and DataFusion
 gives an IEEE value or a wrapped shift instead: an error allows that.
