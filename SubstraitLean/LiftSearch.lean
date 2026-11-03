@@ -559,7 +559,12 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
         s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
         s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
         s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
-        s!"    Substrait.LiftEntry.of{if n == 1 then "₁" else "₂"} rfl {agreeName}⟩\n\n"))
+        s!"    Substrait.LiftEntry.of{if n == 1 then "₁" else "₂"} rfl {agreeName}⟩\n\n" ++
+        -- The parser still reads the JSON as the template the proof is about
+        -- (`sverify.sql_lift` writes the JSON): checked by the build.
+        s!"#guard Substrait.LiftSearch.parse ({← LoweringSearch.ppSource fE})\n" ++
+        s!"  ((Lean.Json.parse ({tbl ++ short}).json).toOption.getD Lean.Json.null) ==\n" ++
+        s!"    some ({tbl ++ short}).tmpl\n\n"))
     return some s!"{label}: {j.compress}"
   -- The cache's template first, if it still agrees on the samples.
   if let some h := hint? then
