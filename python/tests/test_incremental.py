@@ -58,6 +58,7 @@ def run_differential(data, make_view):
 SETTINGS = settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ENGINES)
 @pytest.mark.parametrize("name", PIPELINES)
 @SETTINGS

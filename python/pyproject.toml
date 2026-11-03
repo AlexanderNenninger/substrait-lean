@@ -66,7 +66,7 @@ path = "hatch_build.py"
 exclude = ["build", "src/sverify/_bin"]
 
 [tool.hatch.build.targets.sdist.force-include]
-"../lakefile.toml" = "lean/lakefile.toml"
+"../lakefile.lean" = "lean/lakefile.lean"
 "../lake-manifest.json" = "lean/lake-manifest.json"
 "../lean-toolchain" = "lean/lean-toolchain"
 "../Main.lean" = "lean/Main.lean"
@@ -111,8 +111,8 @@ search-path = ["src", "tools", "tests"]
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.
 [tool.poe.tasks.prove]
-help = "Check every Lean proof; warnings (including `sorry`) fail the build"
-cmd = "lake build --wfail SubstraitLean"
+help = "Check every Lean proof, the generated entries' included; warnings (including `sorry`) fail the build"
+cmd = "lake -R -Kcheck_generated=true build --wfail SubstraitLean"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.build]
@@ -158,8 +158,14 @@ cmd = "tests/run.sh"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.test]
-help = "Python tests, including the randomized engine tests, on every core"
+help = "The fast Python tests (not `slow`, a tenth of the Hypothesis examples) on 2 workers; see tests/conftest.py"
+cmd = "pytest -n auto --dist worksteal -m 'not slow'"
+env = { PYTEST_XDIST_AUTO_NUM_WORKERS.default = "2", SVERIFY_PROFILE.default = "dev" }
+
+[tool.poe.tasks.test-all]
+help = "Every Python test with full Hypothesis counts, on every core (as CI and qa run them)"
 cmd = "pytest -n auto --dist worksteal"
+env = { SVERIFY_PROFILE.default = "ci" }
 
 [tool.poe.tasks.test-core]
 help = "Python tests of Lean and DataFusion as the reference (see tests/conftest.py)"
@@ -216,5 +222,5 @@ help = "Build the API reference site and serve it locally"
 cmd = "great-docs preview"
 
 [tool.poe.tasks.qa]
-help = "Run everything: prove, build, lint, typecheck, golden, test, notebooks"
-sequence = ["prove", "build", "lint", "typecheck", "golden", "test", "notebooks"]
+help = "Run everything: prove, build, lint, typecheck, golden, test-all, notebooks"
+sequence = ["prove", "build", "lint", "typecheck", "golden", "test-all", "notebooks"]

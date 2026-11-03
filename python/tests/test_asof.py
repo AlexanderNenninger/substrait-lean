@@ -113,6 +113,7 @@ def test_asof_guarantees_are_proved(how):
     assert report.proved, str(report)
 
 
+@pytest.mark.slow
 def test_ties_on_the_right_are_refused():
     """Two gyroscope readings at the same instant: which one is "the latest"
     is up to DataFusion, so nothing is claimed."""

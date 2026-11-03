@@ -139,6 +139,7 @@ def con():
     return con
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("case", VERIFIED, ids=lambda c: c.label)
 @settings(max_examples=25, deadline=None, suppress_health_check=list(HealthCheck))
 @given(data=tables())
