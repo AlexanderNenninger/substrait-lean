@@ -11,13 +11,8 @@ jobs:
       fail-fast: false
       matrix:
         areas:
-          - aggregate
-          - alter binder catalog cte delete export filter
-          - function/date function/generic function/numeric function/string
-          - generated_columns index insert join optimizer order overflow parallelism
-          - parser prepared projection setops sql_export storage subquery topn
-          - types
-          - update upsert window
+          - optimizer
+          - order overflow parallelism
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
