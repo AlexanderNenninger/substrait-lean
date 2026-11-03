@@ -942,3 +942,90 @@ theorem StdModel.wmean_spec {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt) (hn :
     linarith
   rw [mul_comm]
   exact wmerge_arith hsr htr hn' ha hb k1 hms hmt hAs hAt
+
+/-- `√(a b) + √(c d) ≤ √((a + c)(b + d))`. -/
+theorem sqrt_add_sqrt_le {a b c d : ℝ} (ha : 0 ≤ a) (hb : 0 ≤ b) (hc : 0 ≤ c) (hd : 0 ≤ d) :
+    √(a * b) + √(c * d) ≤ √((a + c) * (b + d)) := by
+  have p := Real.sqrt_nonneg (a * b)
+  have q := Real.sqrt_nonneg (c * d)
+  have hp : √(a * b) ^ 2 = a * b := Real.sq_sqrt (by positivity)
+  have hq : √(c * d) ^ 2 = c * d := Real.sq_sqrt (by positivity)
+  have h1 : (2 * (√(a * b) * √(c * d))) ^ 2 ≤ (a * d + b * c) ^ 2 := by
+    have e : (2 * (√(a * b) * √(c * d))) ^ 2 = 4 * (a * b) * (c * d) := by
+      rw [mul_pow, mul_pow, hp, hq]; ring
+    rw [e]; nlinarith [sq_nonneg (a * d - b * c)]
+  have h2 : 2 * (√(a * b) * √(c * d)) ≤ a * d + b * c :=
+    (abs_le_of_sq_le_sq' h1 (by positivity)).2
+  apply Real.le_sqrt_of_sq_le
+  nlinarith
+
+/-- The error of `Δ̂x Δ̂y` in a merge, times `h`. -/
+theorem cprod_err {Δx Δy Δhx Δhy Ax Ay h : ℝ} (hh : 0 ≤ h) (hΔx : |Δx| ≤ Ax) (hΔy : |Δy| ≤ Ay)
+    (hex : |Δhx - Δx| ≤ 7.1 * u * Ax + u * |Δx|) (hey : |Δhy - Δy| ≤ 7.1 * u * Ay + u * |Δy|) :
+    h * |Δhx * Δhy - Δx * Δy| ≤ 7.1 * u * (Ax * (h * |Δy|) + Ay * (h * |Δx|))
+      + 2 * u * (h * (|Δx| * |Δy|)) + 103 * u ^ 2 * h * (Ax * Ay) := by
+  have hu := u_pos
+  have hAx : 0 ≤ Ax := le_trans (abs_nonneg _) hΔx
+  have hAy : 0 ≤ Ay := le_trans (abs_nonneg _) hΔy
+  have e : Δhx * Δhy - Δx * Δy = Δx * (Δhy - Δy) + Δy * (Δhx - Δx) + (Δhx - Δx) * (Δhy - Δy) := by
+    ring
+  have h1 : |Δx * (Δhy - Δy)| ≤ |Δx| * (7.1 * u * Ay + u * |Δy|) := by
+    rw [abs_mul]; exact mul_le_mul_of_nonneg_left hey (abs_nonneg _)
+  have h2 : |Δy * (Δhx - Δx)| ≤ |Δy| * (7.1 * u * Ax + u * |Δx|) := by
+    rw [abs_mul]; exact mul_le_mul_of_nonneg_left hex (abs_nonneg _)
+  have bx : 7.1 * u * Ax + u * |Δx| ≤ 8.1 * u * Ax := by
+    have := mul_le_mul_of_nonneg_left hΔx hu.le; linarith
+  have by' : 7.1 * u * Ay + u * |Δy| ≤ 8.1 * u * Ay := by
+    have := mul_le_mul_of_nonneg_left hΔy hu.le; linarith
+  have h3 : |(Δhx - Δx) * (Δhy - Δy)| ≤ (8.1 * u * Ax) * (8.1 * u * Ay) := by
+    rw [abs_mul]; exact mul_le_mul (le_trans hex bx) (le_trans hey by') (abs_nonneg _) (by positivity)
+  have h4 : |Δhx * Δhy - Δx * Δy| ≤ |Δx| * (7.1 * u * Ay + u * |Δy|)
+      + |Δy| * (7.1 * u * Ax + u * |Δx|) + (8.1 * u * Ax) * (8.1 * u * Ay) := by
+    rw [e]
+    have := abs_add_le (Δx * (Δhy - Δy) + Δy * (Δhx - Δx)) ((Δhx - Δx) * (Δhy - Δy))
+    have := abs_add_le (Δx * (Δhy - Δy)) (Δy * (Δhx - Δx))
+    linarith
+  have h5 := mul_le_mul_of_nonneg_left h4 hh
+  have p : 0 ≤ u ^ 2 * h * (Ax * Ay) := by positivity
+  have e2 : h * (|Δx| * (7.1 * u * Ay + u * |Δy|) + |Δy| * (7.1 * u * Ax + u * |Δx|)
+      + (8.1 * u * Ax) * (8.1 * u * Ay)) = 7.1 * u * (Ax * (h * |Δy|) + Ay * (h * |Δx|))
+        + 2 * u * (h * (|Δx| * |Δy|)) + 65.61 * (u ^ 2 * h * (Ax * Ay)) := by ring
+  have e3 : 103 * u ^ 2 * h * (Ax * Ay) = 103 * (u ^ 2 * h * (Ax * Ay)) := by ring
+  linarith
+
+/-- The merge's term `T̂ ≈ Δ̂x Δ̂y h`, against `ΔC = Δx Δy h`, with `Y = |ΔC|`. -/
+theorem cT_err {T Q ΔC P Y A h : ℝ} (hP : 0 ≤ P) (hY : |ΔC| ≤ Y) (hA : 0 ≤ A) (hh : 0 ≤ h)
+    (hQ : |Q - ΔC| ≤ 7.1 * u * P + 2 * u * Y + 103 * u ^ 2 * h * A)
+    (hT : |T - Q| ≤ 5 * u * (|Q| + (1 + h) * tiny)) :
+    |T - ΔC| ≤ 7.2 * u * P + 7.1 * u * Y + 104 * u ^ 2 * h * A + 5 * u * (1 + h) * tiny := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have hY0 : 0 ≤ Y := le_trans (abs_nonneg _) hY
+  have hQa : |Q| ≤ Y + (7.1 * u * P + 2 * u * Y + 103 * u ^ 2 * h * A) := by
+    have := abs_sub_abs_le_abs_sub Q ΔC; linarith
+  have p1 : 0 ≤ u * P := by positivity
+  have p2 : 0 ≤ u ^ 2 * h * A := by positivity
+  have p3 : 0 ≤ u * Y := by positivity
+  have h1 : 5 * u * |Q| ≤ 5 * (u * Y) + 0.1 * (u * P) + 0.01 * (u * Y) + 1 * (u ^ 2 * h * A) := by
+    have := mul_le_mul_of_nonneg_left hQa (by positivity : (0 : ℝ) ≤ 5 * u)
+    have q1 : 5 * u * (7.1 * u * P) ≤ 0.1 * (u * P) := by
+      have := mul_le_mul_of_nonneg_right (by linarith : 35.5 * u ≤ 0.1) p1; nlinarith
+    have q2 : 5 * u * (2 * u * Y) ≤ 0.01 * (u * Y) := by
+      have := mul_le_mul_of_nonneg_right (by linarith : 10 * u ≤ 0.01) p3; nlinarith
+    have q3 : 5 * u * (103 * u ^ 2 * h * A) ≤ 1 * (u ^ 2 * h * A) := by
+      have := mul_le_mul_of_nonneg_right (by linarith : 515 * u ≤ 1) p2; nlinarith
+    have e : 5 * u * (Y + (7.1 * u * P + 2 * u * Y + 103 * u ^ 2 * h * A))
+        = 5 * (u * Y) + 5 * u * (7.1 * u * P) + 5 * u * (2 * u * Y)
+          + 5 * u * (103 * u ^ 2 * h * A) := by ring
+    linarith
+  have e : T - ΔC = (T - Q) + (Q - ΔC) := by ring
+  rw [e]
+  have h3 := abs_add_le (T - Q) (Q - ΔC)
+  have h4 : 5 * u * (|Q| + (1 + h) * tiny) = 5 * u * |Q| + 5 * u * (1 + h) * tiny := by ring
+  have e1 : 7.2 * u * P = 7.2 * (u * P) := by ring
+  have e2 : 7.1 * u * P = 7.1 * (u * P) := by ring
+  have e3 : 104 * u ^ 2 * h * A = 104 * (u ^ 2 * h * A) := by ring
+  have e4 : 103 * u ^ 2 * h * A = 103 * (u ^ 2 * h * A) := by ring
+  have e5 : 7.1 * u * Y = 7.1 * (u * Y) := by ring
+  have e6 : 2 * u * Y = 2 * (u * Y) := by ring
+  linarith
