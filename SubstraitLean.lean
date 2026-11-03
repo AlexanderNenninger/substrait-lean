@@ -19,6 +19,7 @@ import SubstraitLean.Safety
 import SubstraitLean.Infer
 import SubstraitLean.Partition
 import SubstraitLean.Retention
+import SubstraitLean.TouchedGroups
 import SubstraitLean.Guards
 import SubstraitLean.Profile
 import SubstraitLean.Lowering

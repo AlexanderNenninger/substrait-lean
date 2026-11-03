@@ -4,6 +4,7 @@ import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Contracts
 import SubstraitLean.Retention
+import SubstraitLean.TouchedGroups
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Completeness
@@ -223,3 +224,5 @@ end Substrait.Examples
 #print axioms Substrait.Retention.final_stable
 #print axioms Substrait.Retention.open_buckets_le
 #print axioms Substrait.Retention.trunc_eq_bucket
+#print axioms Substrait.TouchedGroups.touched_sound
+#print axioms Substrait.TouchedGroups.touched_eval
