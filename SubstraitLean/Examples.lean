@@ -221,5 +221,6 @@ end Substrait.Examples
 #print axioms Substrait.Retention.final_unchanged
 #print axioms Substrait.Retention.retention_sound
 #print axioms Substrait.Retention.final_stable
+#print axioms Substrait.Retention.expiry_sound
 #print axioms Substrait.Retention.open_buckets_le
 #print axioms Substrait.Retention.trunc_eq_bucket
