@@ -167,11 +167,66 @@ def references(col: str, table: str, other: str) -> References:
     return References(col, table, other)
 
 
-TableCondition = (Unique, References)
-"""Conditions on a whole table, not on each row."""
+@dataclass(frozen=True)
+class ArrivesWithin:
+    """Rows arrive at most `lateness` late on `col` (see `arrives_within`).
+
+    Attributes:
+        col: The time column, a timestamp.
+        lateness: How far behind the latest `col` seen a changed row may be.
+    """
+
+    col: str
+    lateness: timedelta
+
+
+def arrives_within(
+    col: str, *, days: float = 0, hours: float = 0, minutes: float = 0, seconds: float = 0
+) -> ArrivesWithin:
+    """A bound on lateness: every row a batch inserts or deletes has `col` at
+    most this far behind the largest `col` seen before the batch.
+
+    Only for `requires` on a source. The first refresh checks that `col` has
+    no NULLs, and every later batch is checked against the watermark, the
+    largest `col` seen minus the lateness: a row before it, or a NULL, breaks
+    the precondition and the batch is rejected (`PreconditionError`), so
+    nothing is applied. An incremental node that aggregates by a time bucket
+    of `col` (`ts.truncate("h")`, `ts.bucket(...)`) then drops the buckets
+    that end at or before the watermark from its state, since no admissible
+    batch changes them (`Retention.final_unchanged` in
+    `SubstraitLean/Retention.lean`), and keeps at most
+    `⌈lateness / width⌉ + 1` buckets (`Retention.open_buckets_le`).
+
+    Args:
+        col: The time column of the input, a timestamp.
+        days: The lateness, added up with the other units.
+        hours: The lateness, added up with the other units.
+        minutes: The lateness, added up with the other units.
+        seconds: The lateness, added up with the other units.
+
+    Returns:
+        An `ArrivesWithin` condition, for `requires`.
+
+    Raises:
+        ValueError: The lateness is negative.
+    """
+    lateness = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+    if lateness < timedelta(0):
+        raise ValueError(f"arrives_within needs a lateness of 0 or more, not {lateness}")
+    return ArrivesWithin(col, lateness)
+
+
+TableCondition = (Unique, References, ArrivesWithin)
+"""Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
-    Deferred | ir.BooleanValue | str | Unique | References | Callable[[ir.Table], ir.BooleanValue]
+    Deferred
+    | ir.BooleanValue
+    | str
+    | Unique
+    | References
+    | ArrivesWithin
+    | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
 
@@ -549,11 +604,22 @@ def label(cond: Condition) -> str:
         return f"unique({', '.join(cond.cols)})"
     if isinstance(cond, References):
         return f"references({cond.col}, {cond.table}.{cond.other})"
+    if isinstance(cond, ArrivesWithin):
+        return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
         return repr(cond)
     return getattr(cond, "__name__", repr(cond))
+
+
+def show_duration(d: timedelta) -> str:
+    """`d` in its largest whole unit: "2h", "90m", "1d", "1.5s"."""
+    us = d // timedelta(microseconds=1)
+    for unit, n in (("d", 86_400_000_000), ("h", 3_600_000_000), ("m", 60_000_000)):
+        if us and us % n == 0:
+            return f"{us // n}{unit}"
+    return f"{us / 1_000_000:g}s"
 
 
 def column_names(schema: ibis.Schema) -> list[str]:
@@ -819,6 +885,10 @@ def verify(
             checked.append(CheckedCondition(label(c), ok, value, cex))
         elif isinstance(c, References):
             checked.append(CheckedCondition(label(c), False, "foreign keys are not proved"))
+        elif isinstance(c, ArrivesWithin):
+            checked.append(
+                CheckedCondition(label(c), False, "lateness is checked on a source's batches")
+            )
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -969,6 +1039,11 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         present = table.filter(table[cond.col].notnull())
         missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
         return int(missing.execute())
+    if isinstance(cond, ArrivesWithin):
+        # On one snapshot, only the NULLs break it; batches are checked by
+        # the pipeline against the watermark.
+        nulls: Any = table.filter(table[cond.col].isnull()).count()
+        return int(nulls.execute())
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
