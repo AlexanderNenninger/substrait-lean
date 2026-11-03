@@ -227,14 +227,17 @@ def test_duckdb_covar_and_corr_have_the_generic_properties(
     con = duckdb.connect()
     con.execute("CREATE TABLE t (x DOUBLE, y DOUBLE)")
     con.executemany("INSERT INTO t VALUES (?, ?)", ps)
-    cov, corr = con.execute("SELECT COVAR_POP(y, x), CORR(y, x) FROM t").fetchone()
+    row = con.execute("SELECT COVAR_POP(y, x), CORR(y, x) FROM t").fetchone()
+    assert row is not None
+    cov, corr = row
     xs, ys = [Fraction(x) for x, _ in ps], [Fraction(y) for _, y in ps]
     b = max(max(abs(v) for v in xs + ys), Fraction(1, 2**500))
     if b > 2**399:
         return
 
     def comoment(a: list[Fraction], c: list[Fraction]) -> Fraction:
-        return sum((p * q for p, q in zip(a, c, strict=True)), Fraction(0)) - sum(a) * sum(c) / n
+        sa, sc = sum(a, Fraction(0)), sum(c, Fraction(0))
+        return sum((p * q for p, q in zip(a, c, strict=True)), Fraction(0)) - sa * sc / n
 
     e = 128 * n**2 * U * b**2
     tol = (e + 12 * n * U * b**2) / n
