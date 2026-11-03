@@ -20,9 +20,14 @@ Input (JSON):
   "transform": <plan>,         -- the transformation, to report facts and keys
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
-  "references": {"<table>": [[<col>, "<table>", <col>], ...]} }
+  "references": {"<table>": [[<col>, "<table>", <col>], ...]},
       -- input foreign keys: every non-NULL value of the column occurs in the
       -- other table's column (`ForeignKeys.Hold`)
+  "max_rows": {"<table>": <n>} }
+      -- row caps (`sv.max_rows`): the postconditions and facts are checked on
+      -- the plan with these reads capped (`Rel.capReads`), which is the plan
+      -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
+      -- get their error bounds from them (#85)
 ```
 
 Output: a JSON report (`Report.json`). Besides what is proved, it carries
@@ -207,6 +212,9 @@ def foreignKeys (j : Json) : ForeignKeys := fun t =>
 
 def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
 
+def rowCaps (j : Json) : String → Option Nat := fun t =>
+  (j.getObjValAs? Nat t).toOption
+
 def check (input : Json) : Except String Report := do
   let ensures ← ((input.getObjValAs? (Array Json) "ensures").toOption.getD #[]).toList.mapM
     parseJsonPlan
@@ -237,13 +245,14 @@ def check (input : Json) : Except String Report := do
   let inputKeys : String → List (List Nat) := fun t =>
     natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
   let T := Rel.keyedWindows cat A F inputKeys
+  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST or " ++
     "STRING_AGG, and the engine orders them"
   let mut results : List (String × Bool × String) := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
-    if !q.root.checkWF cat then throw "a postcondition plan is not well-formed"
-    let env := q.root.aeval cat A F T
+    if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
+    let env := (q.root.capReads caps).aeval cat A F T
     let names := if q.names.length == env.length then q.names
       else (List.range env.length).map (s!"#{·}")
     let total := q.root.windowsTotal cat A F inputKeys
@@ -253,7 +262,7 @@ def check (input : Json) : Except String Report := do
     | some p =>
       if !p.root.checkWF cat then []
       else
-        let fenv := p.root.aeval cat A F T
+        let fenv := (p.root.capReads caps).aeval cat A F T
         let fnames := if p.names.length == fenv.length then p.names
           else (List.range fenv.length).map (s!"#{·}")
         let decs := (p.root.kinds tables).map fun | .dec pr sc => some (pr, sc) | _ => none

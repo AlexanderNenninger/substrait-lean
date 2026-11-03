@@ -108,6 +108,44 @@ results from any co-moment within `E` of `C`:
   `Sxx` or `Syy` near `0`, `C / √(Sxx · Syy)` divides rounding errors by
   almost nothing.
 
+## In contracts
+
+The contract checker trusts `core_sum`, `core_avg` and `core_sign` as three
+axioms in `SubstraitLean/Aggregate.lean` (`floatSum_mem`, `floatAvg_mem`,
+`floatSum_sign`), with the tolerances `FloatCode.sumTolScaled` and
+`avgTolScaled` defined there as here. They cost a few integer operations per
+measure. `#print axioms Substrait.contract_sound` lists them.
+
+- Signs are exact: a `SUM` or `AVG` of doubles `≥ 0` is `≥ 0`, and of
+  doubles `≤ 0` is `≤ 0`.
+- The bounds need a row count. `sv.max_rows(n)` in `requires` caps an input
+  and is checked on the data (`COUNT(*) <= n`). The checker reads capped
+  tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
+  rows (`Rel.capReads_eval`), and bounds every relation's rows from it
+  (`Rel.maxRows`, `Rel.maxRows_sound`).
+- With a cap `n ≤ 2³²` and an input interval `[lo, hi]` within `2⁴⁰⁰`, a
+  `SUM` lies in `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]` and an `AVG` in
+  `[lo − τ', hi + τ']` (`floatBound`, `Measure.abs`).
+- `sv.approx(cond, rel=1e-6)` relaxes each comparison of a column with a
+  number `k` in `cond` by `rel · max(1, |k|)`. The default covers a `SUM` or
+  `AVG` over any cap up to `2³²` rows. A report hints at it when an exact
+  claim fails only by rounding.
+
+The homelab metrics rollup states its contract this way:
+
+```python
+@sv.transform(
+    requires={"metrics": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
+    ensures=[_.cpu_avg >= 0, sv.approx(_.cpu_avg <= 100)],
+)
+```
+
+`VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
+checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
+the variance also needs Popoviciu's inequality, the arguments of `COVAR` and
+`CORR` are pairs whose components the abstract domain does not bound, and no
+contract can state the lower bound on the variances that `corr_le` needs.
+
 ## Checking the proofs
 
 ```bash

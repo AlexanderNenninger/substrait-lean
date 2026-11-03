@@ -3594,12 +3594,240 @@ def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 /-- Some double, or NULL. -/
 def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
 
+/-! ### Row counts and float error bounds (#85) -/
+
+/-- An upper bound on the number of rows of a plan. Reads have none of their
+own: `sverify` wraps the reads of tables with a `max_rows` precondition in a
+`FETCH` of that many rows (`Rel.capReads`), which keeps their rows. -/
+def Rel.maxRows : Rel → Option Nat
+  | .read _ => none
+  | .values _ rows => some rows.length
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r | .semi r _ _ _
+  | .window r _ _ _ => r.maxRows
+  | .fetch r _ cnt => match cnt, r.maxRows with
+    | some k, some n => some (min k n)
+    | some k, none => some k
+    | none, n => n
+  | .cross a b | .join a b .inner _ => a.maxRows.bind fun n => b.maxRows.map (n * ·)
+  | .join _ _ .left _ => none
+  | .unionAll a b => a.maxRows.bind fun n => b.maxRows.map (n + ·)
+  | .aggregate r gs _ => if gs.isEmpty then some 1 else r.maxRows
+  | .unnest _ _ => none
+
+theorem length_crossRows (xs ys : Relation) : (crossRows xs ys).length = xs.length * ys.length := by
+  induction xs with
+  | nil => simp [crossRows]
+  | cons x xs ih =>
+    simp only [crossRows, List.flatMap_cons, List.length_append, List.length_map] at ih ⊢
+    rw [ih, List.length_cons, Nat.add_mul, Nat.one_mul]; omega
+
+theorem Rel.maxRows_sound {cat : Catalog} :
+    ∀ {r : Rel} {n : Nat}, r.maxRows = some n → (r.eval cat).length ≤ n
+  | .read _, _, h => by simp [maxRows] at h
+  | .values _ _, _, h => by simp only [maxRows, Option.some.injEq] at h; simp [eval, h]
+  | .filter r _, _, h => by
+    simp only [maxRows] at h; simp only [eval]
+    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound (r := r) h)
+  | .project r _, _, h | .emit r _, _, h => by
+    simp only [maxRows] at h; simp only [eval, List.length_map]; exact maxRows_sound (r := r) h
+  | .orderBy r _, _, h => by
+    simp only [maxRows] at h; simp only [eval, List.length_mergeSort]; exact maxRows_sound (r := r) h
+  | .distinct r, _, h => by
+    simp only [maxRows] at h; simp only [eval]
+    exact Nat.le_trans (dedup_length_le _) (maxRows_sound (r := r) h)
+  | .semi r _ _ _, _, h => by
+    simp only [maxRows] at h; simp only [eval]
+    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound (r := r) h)
+  | .window r _ _ _, _, h => by
+    simp only [maxRows] at h
+    simp only [eval, windowEval, windowRows_length, List.length_mergeSort]
+    exact maxRows_sound (r := r) h
+  | .fetch r _ cnt, n, h => by
+    simp only [eval]
+    cases cnt with
+    | none =>
+      simp only [maxRows] at h
+      have := maxRows_sound (cat := cat) h
+      simp only [List.length_drop]; omega
+    | some k =>
+      cases hr : r.maxRows with
+      | none =>
+        simp only [maxRows, hr, Option.some.injEq] at h
+        subst h; simp only [List.length_take]; exact Nat.min_le_left _ _
+      | some m =>
+        simp only [maxRows, hr, Option.some.injEq] at h
+        subst h
+        have := maxRows_sound (cat := cat) hr
+        simp only [List.length_take, List.length_drop]; omega
+  | .cross a b, n, h | .join a b .inner _, n, h => by
+    simp only [maxRows, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨na, ha, nb, hb, rfl⟩ := h
+    simp only [eval]
+    first
+      | exact Nat.le_trans (List.length_filter_le _ _)
+          (by rw [length_crossRows]; exact Nat.mul_le_mul (maxRows_sound ha) (maxRows_sound hb))
+      | (rw [length_crossRows]; exact Nat.mul_le_mul (maxRows_sound ha) (maxRows_sound hb))
+  | .join _ _ .left _, _, h => by simp [maxRows] at h
+  | .unionAll a b, n, h => by
+    simp only [maxRows, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨na, ha, nb, hb, rfl⟩ := h
+    simp only [eval, List.length_append]
+    exact Nat.add_le_add (maxRows_sound ha) (maxRows_sound hb)
+  | .aggregate r gs _, n, h => by
+    simp only [maxRows] at h
+    simp only [eval, aggregateEval]
+    split at h
+    · rename_i hg; simp only [Option.some.injEq] at h; subst h; simp [hg]
+    · rename_i hg; simp only [hg, Bool.false_eq_true, ↓reduceIte, List.length_map]
+      exact Nat.le_trans (dedup_length_le _) (by simpa using maxRows_sound (r := r) h)
+  | .unnest _ _, _, h => by simp [maxRows] at h
+
+/-- Each read of a table with a row cap, as a `FETCH` of at most that many
+rows. On tables within their caps it changes nothing (`Rel.capReads_eval`),
+and `Rel.maxRows` sees the caps. -/
+def Rel.capReads (caps : String → Option Nat) : Rel → Rel
+  | .read t => match caps t with
+    | some n => .fetch (.read t) 0 (some n)
+    | none => .read t
+  | .values n rows => .values n rows
+  | .filter r c => .filter (r.capReads caps) c
+  | .project r es => .project (r.capReads caps) es
+  | .emit r m => .emit (r.capReads caps) m
+  | .cross a b => .cross (a.capReads caps) (b.capReads caps)
+  | .join a b ty on => .join (a.capReads caps) (b.capReads caps) ty on
+  | .fetch r o c => .fetch (r.capReads caps) o c
+  | .unionAll a b => .unionAll (a.capReads caps) (b.capReads caps)
+  | .window r p s fns => .window (r.capReads caps) p s fns
+  | .semi a b anti on => .semi (a.capReads caps) (b.capReads caps) anti on
+  | .orderBy r k => .orderBy (r.capReads caps) k
+  | .distinct r => .distinct (r.capReads caps)
+  | .aggregate r gs ms => .aggregate (r.capReads caps) gs ms
+  | .unnest r c => .unnest (r.capReads caps) c
+
+theorem Rel.capReads_arity (caps : String → Option Nat) (cat : Catalog) :
+    ∀ r : Rel, (r.capReads caps).arity cat = r.arity cat
+  | .read t => by unfold capReads; split <;> rfl
+  | .values _ _ => rfl
+  | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => by
+    simp only [capReads, arity]; exact capReads_arity caps cat r
+  | .project r es => by simp only [capReads, arity, capReads_arity caps cat r]
+  | .emit _ _ => rfl
+  | .cross a b | .join a b _ _ => by
+    simp only [capReads, arity, capReads_arity caps cat a, capReads_arity caps cat b]
+  | .unionAll a _ => by simp only [capReads, arity, capReads_arity caps cat a]
+  | .window r _ _ _ => by simp only [capReads, arity, capReads_arity caps cat r]
+  | .aggregate _ _ _ => rfl
+  | .unnest r _ => by simp only [capReads, arity, capReads_arity caps cat r]
+
+/-- **Capping reads changes nothing** on tables within their caps. -/
+theorem Rel.capReads_eval {caps : String → Option Nat} {cat : Catalog}
+    (h : ∀ t n, caps t = some n → (cat t).rows.length ≤ n) :
+    ∀ r : Rel, (r.capReads caps).eval cat = r.eval cat
+  | .read t => by
+    unfold capReads
+    split
+    · rename_i n hn
+      simp only [eval, List.drop_zero]
+      exact List.take_of_length_le (h t n hn)
+    · rfl
+  | .values _ _ => rfl
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
+  | .window r _ _ _ | .unnest r _ | .aggregate r _ _ => by
+    simp only [capReads, eval, capReads_eval h r]
+  | .cross a b | .unionAll a b | .semi a b _ _ => by
+    simp only [capReads, eval, capReads_eval h a, capReads_eval h b]
+  | .join a b ty _ => by
+    cases ty <;> simp only [capReads, eval, capReads_eval h a, capReads_eval h b,
+      capReads_arity caps cat b]
+
+/-- The mean of the doubles `cs`, as `AggFn.avg` computes it. -/
+def avgCode (cs : List Int) : Int :=
+  FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)
+
+/-- The codes a `SUM` (`avg = false`) or an `AVG` of doubles in `b` lies in:
+signs are exact (`floatSum_sign`), and with at most `rows` values, finite
+bounds and at most `2³²` rows, the result is within the proved tolerance of
+the exact one (`floatSum_mem`, `floatAvg_mem`). -/
+def floatBound (avg : Bool) (b : Bound) (rows : Option Nat) : Bound :=
+  let signed : Bound :=
+    ⟨b.lo.bind fun l => if 0 ≤ l then some 0 else none,
+     b.hi.bind fun h => if h ≤ 0 then some 0 else none⟩
+  match b.lo, b.hi, rows with
+  | some cl, some ch, some n =>
+    let lo := FloatCode.scaled cl
+    let hi := FloatCode.scaled ch
+    if n ≤ 2 ^ 32 ∧ lo.natAbs ≤ 2 ^ 1474 ∧ hi.natAbs ≤ 2 ^ 1474 then
+      let Bs := max lo.natAbs hi.natAbs
+      if avg then
+        let t : Int := FloatCode.avgTolScaled n Bs
+        signed.meet ⟨some (FloatCode.codeLo (lo - t)), some (FloatCode.codeHi (hi + t))⟩
+      else
+        let t : Int := FloatCode.sumTolScaled n Bs
+        signed.meet ⟨some (FloatCode.codeLo (min lo (n * lo) - t)),
+          some (FloatCode.codeHi (max hi (n * hi) + t))⟩
+    else signed
+  | _, _, _ => signed
+
+theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List Int}
+    (hne : cs ≠ []) (hb : ∀ c ∈ cs, b.Mem c) (hrows : ∀ n, rows = some n → cs.length ≤ n) :
+    (floatBound avg b rows).Mem (if avg then avgCode cs else floatSum (cs.map .int)) := by
+  obtain ⟨blo, bhi⟩ := b
+  have hsign := floatSum_sign hne
+  have hsigned : (Bound.mk (blo.bind fun l => if 0 ≤ l then some 0 else none)
+      (bhi.bind fun h => if h ≤ 0 then some 0 else none)).Mem
+      (if avg then avgCode cs else floatSum (cs.map .int)) := by
+    constructor
+    · intro l hl
+      simp only [Option.bind_eq_some_iff] at hl
+      obtain ⟨l', hl', h⟩ := hl
+      split at h
+      · rename_i h0
+        cases h
+        have := (hsign.1 fun c hc => Int.le_trans h0 ((hb c hc).1 l' hl'))
+        cases avg <;> simp only [Bool.false_eq_true, ↓reduceIte, avgCode] <;> omega
+      · simp at h
+    · intro u hu
+      simp only [Option.bind_eq_some_iff] at hu
+      obtain ⟨u', hu', h⟩ := hu
+      split at h
+      · rename_i h0
+        cases h
+        have := (hsign.2 fun c hc => Int.le_trans ((hb c hc).2 u' hu') h0)
+        cases avg <;> simp only [Bool.false_eq_true, ↓reduceIte, avgCode] <;> omega
+      · simp at h
+  rcases blo with _ | cl
+  · exact hsigned
+  rcases bhi with _ | ch
+  · exact hsigned
+  rcases rows with _ | n
+  · exact hsigned
+  have hlen := hrows n rfl
+  have hsc : ∀ c ∈ cs, FloatCode.scaled cl ≤ FloatCode.scaled c ∧
+      FloatCode.scaled c ≤ FloatCode.scaled ch := fun c hc =>
+    ⟨FloatCode.scaled_mono ((hb c hc).1 cl rfl), FloatCode.scaled_mono ((hb c hc).2 ch rfl)⟩
+  simp only [floatBound]
+  split
+  · rename_i hok
+    obtain ⟨h32, hlo, hhi⟩ := hok
+    cases avg
+    · simp only [Bool.false_eq_true, ↓reduceIte] at hsigned ⊢
+      obtain ⟨l, u⟩ := floatSum_mem hne hlen h32 hlo hhi hsc
+      refine Bound.mem_meet hsigned ⟨?_, ?_⟩
+      · intro x hx; cases hx; exact FloatCode.codeLo_le l
+      · intro x hx; cases hx; exact FloatCode.le_codeHi u
+    · simp only [↓reduceIte] at hsigned ⊢
+      obtain ⟨l, u⟩ := floatAvg_mem hne hlen h32 hlo hhi hsc
+      refine Bound.mem_meet hsigned ⟨?_, ?_⟩
+      · intro x hx; cases hx; exact FloatCode.codeLo_le l
+      · intro x hx; cases hx; exact FloatCode.le_codeHi u
+  · exact hsigned
+
 /-- A measure over rows described by `env` and `fs`: a count is a natural
 number, a sum of integers keeps their sign, `MIN`, `MAX` and an integer
 `AVG` are within the argument's values, and the other measures are doubles. All but
 `COUNT` may be NULL, unless a group has a value (`grouped`, #372). -/
-def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false) :
-    AVal :=
+def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false)
+    (rows : Option Nat := none) : AVal :=
   let a := m.arg.absD env fs
   -- A group has a row (`grouped`), so a measure of a never-NULL argument
   -- without a filter has a value: `COUNT(*)` per group is at least 1.
@@ -3611,8 +3839,14 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .sum => ⟨!valued, some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  -- Doubles round, so some double.
-  | .fsum | .avg => ⟨!valued, some Bound.top, false, false, false⟩
+  -- Doubles round: within the proved error bound of the exact sum or mean
+  -- when the values are finite and there are at most `rows` of them (#85).
+  | .fsum => ⟨!valued,
+      some (if a.intsOnly then floatBound false (a.int.getD Bound.top) rows else Bound.top),
+      false, false, false⟩
+  | .avg => ⟨!valued,
+      some (if a.intsOnly then floatBound true (a.int.getD Bound.top) rows else Bound.top),
+      false, false, false⟩
   -- Between the smallest and the largest value (`AggFn.iavg`, #237).
   | .iavg =>
     ⟨!valued, some (if a.intsOnly then a.int.getD Bound.top else Bound.top), false, false, false⟩
@@ -3683,7 +3917,8 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | .unnest r c => (r.aeval cat A F T sz).set c AVal.top
   | .aggregate r gs ms =>
       gs.map (·.absD (r.aeval cat A F T sz) (r.facts cat F T)) ++
-        ms.map fun m => Measure.abs (r.aeval cat A F T sz) (r.facts cat F T) m !gs.isEmpty
+        ms.map fun m => Measure.abs (r.aeval cat A F T sz) (r.facts cat F T) m (!gs.isEmpty)
+          r.maxRows
 
 /-- Facts about an aggregate's rows that need its input's description: the
 `ratio` facts of its sums and counts, for the decimal `AVG`s a projection
@@ -3886,8 +4121,9 @@ theorem Measure.inputs_ne_nil {env : List AVal} {fs : List Fact} {grp : Relation
 
 theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (m : Measure) (grouped : Bool := false)
-    (hne : grouped = true → grp ≠ [] := by simp) :
-    (m.abs env fs grouped).Mem (m.eval grp) := by
+    (hne : grouped = true → grp ≠ [] := by simp) (rows : Option Nat := none)
+    (hrows : ∀ n, rows = some n → grp.length ≤ n := by simp) :
+    (m.abs env fs grouped rows).Mem (m.eval grp) := by
   have hin : ∀ v ∈ m.inputs grp, (m.arg.absD env fs).Mem v := by
     intro v hv
     obtain ⟨_, y, hy, rfl⟩ := Measure.mem_inputs hv
@@ -3966,10 +4202,65 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
-  case fsum | avg =>
+  case fsum =>
     cases hvs : m.inputs grp with
     | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
-    | cons v vs => exact ⟨_, rfl, Bound.mem_top _⟩
+    | cons v vs =>
+      refine ⟨_, rfl, ?_⟩
+      split
+      · rename_i honly
+        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
+          fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+        have hcs : v :: vs = (intsOf (v :: vs)).map .int := ints_map_intsOf fun w hw => by
+          obtain ⟨i, _, rfl, _⟩ := hint w hw; exact ⟨i, rfl⟩
+        have hne' : intsOf (v :: vs) ≠ [] := by
+          intro h; rw [h] at hcs; simp at hcs
+        have hb : ∀ c ∈ intsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
+          intro c hc
+          obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_intsOf.1 hc)
+          cases he; rw [hb]; exact hm
+        have hlen : ∀ n, rows = some n → (intsOf (v :: vs)).length ≤ n := by
+          intro n hn
+          have := hrows n hn
+          have h1 : (intsOf (v :: vs)).length = (v :: vs).length := by
+            conv => rhs; rw [hcs]
+            simp
+          have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le
+          rw [hvs] at h2; omega
+        have key := floatBound_sound (avg := false) hne' hb hlen
+        have e : floatSum (v :: vs) = floatSum ((intsOf (v :: vs)).map .int) := congrArg floatSum hcs
+        rw [e]; simpa using key
+      · exact Bound.mem_top _
+  case avg =>
+    cases hvs : m.inputs grp with
+    | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
+    | cons v vs =>
+      refine ⟨_, rfl, ?_⟩
+      split
+      · rename_i honly
+        have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
+          fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
+        have hcs : v :: vs = (intsOf (v :: vs)).map .int := ints_map_intsOf fun w hw => by
+          obtain ⟨i, _, rfl, _⟩ := hint w hw; exact ⟨i, rfl⟩
+        have hne' : intsOf (v :: vs) ≠ [] := by
+          intro h; rw [h] at hcs; simp at hcs
+        have hb : ∀ c ∈ intsOf (v :: vs), ((m.arg.absD env fs).int.getD Bound.top).Mem c := by
+          intro c hc
+          obtain ⟨_, b, he, hb, hm⟩ := hint _ (mem_intsOf.1 hc)
+          cases he; rw [hb]; exact hm
+        have hlen : ∀ n, rows = some n → (intsOf (v :: vs)).length ≤ n := by
+          intro n hn
+          have := hrows n hn
+          have h1 : (intsOf (v :: vs)).length = (v :: vs).length := by
+            conv => rhs; rw [hcs]
+            simp
+          have h2 : (m.inputs grp).length ≤ grp.length := Measure.inputs_length_le
+          rw [hvs] at h2; omega
+        have key := floatBound_sound (avg := true) hne' hb hlen
+        have e := congrArg (fun l => FloatCode.lift₂ (· / ·) (floatSum l) (FloatCode.ofInt l.length)) hcs
+        simp only [List.length_map] at e
+        rw [e]; simpa [avgCode] using key
+      · exact Bound.mem_top _
   case iavg =>
     cases hvs : m.inputs grp with
     | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
@@ -4086,11 +4377,12 @@ theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)
-    (hne : grouped = true → grp ≠ [] := by simp) :
-    EnvMem (ms.map fun m => Measure.abs env fs m grouped) (ms.map (·.eval grp)) := by
+    (hne : grouped = true → grp ≠ [] := by simp) (rows : Option Nat := none)
+    (hrows : ∀ n, rows = some n → grp.length ≤ n := by simp) :
+    EnvMem (ms.map fun m => Measure.abs env fs m grouped rows) (ms.map (·.eval grp)) := by
   intro j
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall _ grouped hne]
+  cases ms[j]? <;> simp [AVal.mem_top, Measure.abs_sound hall _ grouped hne rows hrows]
 
 /-- **Soundness of abstract plan evaluation**: every row a well-formed plan
 produces is described by `Rel.aeval`, provided the tables are. -/
@@ -4251,11 +4543,12 @@ theorem Rel.aeval_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
       obtain ⟨_, v, _, _, rfl⟩ := mem_unnestRow h
       exact (aeval_sound hcat hA hF hT hwf.1 hs x hx).set_top c v
   | .aggregate r gs ms, hwf, hs, row, h => by
-      obtain ⟨k, grp, rfl, hgrp, hk, hne⟩ := mem_aggregateEval_nonempty h
+      obtain ⟨k, grp, rfl, hgrp, hk, hne, hglen⟩ := mem_aggregateEval_len h
       have hall : ∀ y ∈ grp, EnvMem (r.aeval cat A F T sz) y ∧ FactsHold (r.facts cat F T) y :=
         fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 hs y (hgrp y hy),
           Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
       have hm := EnvMem.measures hall ms (!gs.isEmpty) (fun hg => hne (by simpa using hg))
+        (rows := r.maxRows) (fun n hn => Nat.le_trans hglen (Rel.maxRows_sound hn))
       rcases hk with ⟨rfl, rfl⟩ | ⟨x, hx, rfl⟩
       · exact EnvMem.append (by intro j; simp [AVal.mem_top]) hm (by simp)
       · exact (EnvMem.mapD (aeval_sound hcat hA hF hT hwf.1 hs x hx)

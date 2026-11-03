@@ -90,6 +90,7 @@ from sverify.contracts import (
     Condition,
     Discharged,
     Fact,
+    MaxRows,
     PostconditionError,
     PreconditionError,
     References,
@@ -1204,6 +1205,8 @@ class Pipeline:
                 raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
             if refs := [label(c) for c in conds if isinstance(c, References)]:
                 raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
+            if caps := [label(c) for c in conds if isinstance(c, MaxRows)]:
+                raise ValueError(f"incremental views do not support row caps: {caps}")
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
             table = self.con.table(t)
