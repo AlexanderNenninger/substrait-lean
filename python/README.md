@@ -135,7 +135,7 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it is TRUE or FALSE)
+# could not prove: (_.total > 5) (it may be FALSE on some rows)
 ```
 
 ## Testing with pytest

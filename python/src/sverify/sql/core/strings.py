@@ -94,7 +94,10 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         case "like", ([a, b] | [a, b, Lit(value=None)]):
             return Bin("like", a, b)
         case "like", [_, _, _]:
-            raise Unsupported("LIKE … ESCAPE is not supported (DataFusion only allows a backslash)")
+            raise Unsupported(
+                "LIKE … ESCAPE is not modelled yet; match a literal % or _ with contains "
+                "or starts_with"
+            )
         case "substring", [a, b]:
             return Bin("substr", a, b)
         case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
@@ -121,7 +124,8 @@ def call(name: str, args: list[Expr]) -> Expr | None:
             return Bin("ilike", a, b)
         case "ilike", [_, _, _]:
             raise Unsupported(
-                "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+                "ILIKE … ESCAPE is not modelled yet; match a literal % or _ with contains "
+                "or starts_with on lower(…)"
             )
         case "levenshtein", [a, b]:
             return Bin("levenshtein", a, b)

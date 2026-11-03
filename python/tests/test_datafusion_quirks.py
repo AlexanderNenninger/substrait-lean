@@ -72,7 +72,7 @@ def con():
     c = connect()
     for name, t in TABLES.items():
         put_table(c, name, t)
-    ctx = c.datafusion
+    ctx = c._datafusion_session
     for name, t in TABLES.items():
         ctx.deregister_table(name)
         ctx.register_record_batches(name, [t.to_batches()])
@@ -80,7 +80,7 @@ def con():
 
 
 def rows(con, sql: str) -> list[tuple]:
-    return arrow_rows(con.datafusion.sql(sql).to_arrow_table())
+    return arrow_rows(con._datafusion_session.sql(sql).to_arrow_table())
 
 
 def nan_aware(rows: list[tuple]) -> list[tuple]:
@@ -285,9 +285,12 @@ def test_union_batches_differ_in_nullability(con, sql, expected):
     `to_arrow_table()` fails to concatenate; `engine.collect` reconciles
     them, here and for plans (`run_substrait_json`)."""
     with pytest.raises(Exception, match="Schema at index 1 was different"):
-        con.datafusion.sql(sql).to_arrow_table()
+        con._datafusion_session.sql(sql).to_arrow_table()
     expected = sorted([(v,) for v in expected], key=str)
-    assert sorted(arrow_rows(canonical(collect(con.datafusion.sql(sql)))), key=str) == expected
+    assert (
+        sorted(arrow_rows(canonical(collect(con._datafusion_session.sql(sql)))), key=str)
+        == expected
+    )
     if "RECURSIVE" not in sql:  # the lift has no recursive queries
         plan = substrait_json(con, sql)
         assert sorted(arrow_rows(run_substrait_json(con, plan)), key=str) == expected

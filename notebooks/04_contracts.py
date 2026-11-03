@@ -171,8 +171,8 @@ def _(VerificationError, mo, orders, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    "It is TRUE or FALSE" is Lean's answer when `total > 5` holds for some
-    allowed inputs and fails for others. A refusal can also mean the truth is
+    "It may be FALSE on some rows" is Lean's answer when `total > 5` holds for
+    some allowed inputs and fails for others. A refusal can also mean the truth is
     out of reach of the analysis (the list at the end of this section says
     what it tracks), so a refusal means "not proved".
 
@@ -357,7 +357,7 @@ def _(mo):
     * A filter `x = 3` drops `x` from a key: `unique(id, customer)` and
       `customer = 'ada'` give `unique(id)`.
     * `ROW_NUMBER()` with the partition columns is a key (see Windows below).
-    * `sv.references("cust", "customers", "id")` in `requires` says every
+    * `sv.references("cust", to=("customers", "id"))` in `requires` says every
       non-NULL `cust` occurs in `customers.id`. It is an assumption, checked
       on the data, and nothing proves it in `ensures`.
     """)

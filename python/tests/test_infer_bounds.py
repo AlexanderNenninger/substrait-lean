@@ -245,7 +245,7 @@ def test_inferred_bounds_compose_through_nodes():
 
 
 def test_strict_requires_explicit_bounds():
-    @sv.transform(requires={"orders": [_.amount >= 0]}, strict=True)
+    @sv.transform(requires={"orders": [_.amount >= 0]}, infer=False)
     def strictly(orders):
         return orders.select(x=orders.amount * 2)
 
@@ -256,7 +256,7 @@ def test_strict_requires_explicit_bounds():
     [issue] = e.value.report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
 
-    @sv.transform(requires={"orders": [_.amount >= 0, _.amount < 2**62]}, strict=True)
+    @sv.transform(requires={"orders": [_.amount >= 0, _.amount < 2**62]}, infer=False)
     def stated(orders):
         return orders.select(x=orders.amount * 2)
 

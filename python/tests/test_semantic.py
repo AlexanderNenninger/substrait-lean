@@ -161,7 +161,7 @@ CUSTOMERS = ibis.table({"cid": "int64", "name": "string"}, name="c")
 LEFT = ORDERS.left_join(CUSTOMERS, ORDERS.cust == CUSTOMERS.cid).select(
     ORDERS.id, ORDERS.amount, CUSTOMERS.name
 )
-FK = {"o": [_.cust.notnull(), sv.references("cust", "c", "cid")]}
+FK = {"o": [_.cust.notnull(), sv.references("cust", to=("c", "cid"))]}
 
 
 def test_left_join_on_a_foreign_key_is_inner():
@@ -174,9 +174,9 @@ def test_left_join_on_a_foreign_key_is_inner():
 @pytest.mark.parametrize(
     "requires",
     [
-        {"o": [sv.references("cust", "c", "cid")]},
+        {"o": [sv.references("cust", to=("c", "cid"))]},
         {"o": [_.cust.notnull()]},
-        {"o": [_.cust.notnull(), sv.references("amount", "c", "cid")]},
+        {"o": [_.cust.notnull(), sv.references("amount", to=("c", "cid"))]},
     ],
 )
 def test_left_join_stays_without_a_not_null_foreign_key(requires):
@@ -248,13 +248,13 @@ def test_foreign_keys_are_checked_on_the_data():
     con = sv.connect()
     create_table(con, "c", CUSTOMERS.schema(), [(1, "x")])
     create_table(con, "o", ORDERS.schema(), [(1, 1, 5), (2, None, 6), (3, 2, 7)])
-    assert violations(con.table("o"), sv.references("cust", "c", "cid")) == 1
+    assert violations(con.table("o"), sv.references("cust", to=("c", "cid"))) == 1
 
 
 # Joins that only check a key (#75).
 
 KEYED_FK = {
-    "o": [_.cust.notnull(), sv.references("cust", "c", "cid")],
+    "o": [_.cust.notnull(), sv.references("cust", to=("c", "cid"))],
     "c": [sv.unique("cid")],
 }
 ON = ORDERS.cust == CUSTOMERS.cid
@@ -280,8 +280,11 @@ def test_join_that_only_checks_a_key_goes(expr, requires):
     [
         (ELIMINATED[0][0], {}),
         (ELIMINATED[1][0], {"c": [sv.unique("cid")]}),
-        (ELIMINATED[1][0], {"o": [sv.references("cust", "c", "cid")], "c": [sv.unique("cid")]}),
-        (ELIMINATED[1][0], {"o": [_.cust.notnull(), sv.references("cust", "c", "cid")]}),
+        (
+            ELIMINATED[1][0],
+            {"o": [sv.references("cust", to=("c", "cid"))], "c": [sv.unique("cid")]},
+        ),
+        (ELIMINATED[1][0], {"o": [_.cust.notnull(), sv.references("cust", to=("c", "cid"))]}),
         (ORDERS.left_join(CUSTOMERS, ON).select(ORDERS.id, CUSTOMERS.name), KEYED_FK),
     ],
 )

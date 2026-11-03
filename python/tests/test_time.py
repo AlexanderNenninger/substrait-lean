@@ -463,7 +463,9 @@ def tod_runs(expr: ibis.Table, values: list[int | None]) -> dict[str, list[tuple
     inline_tables(plan, {"r": [(v,) for v in values]})
     return {
         # chrono's formats and years, which only DataFusion's own SQL has.
-        "datafusion": plain(collect(con.datafusion.sql(ibis.to_sql(expr, dialect="datafusion")))),
+        "datafusion": plain(
+            collect(con._datafusion_session.sql(ibis.to_sql(expr, dialect="datafusion")))
+        ),
         "lean": lean_values(json.dumps(plan)),
         "polars": plain(run_plan(con, written, "polars")),
         "duckdb": plain(run_plan(con, written, "duckdb")),
@@ -495,7 +497,7 @@ def test_times_outside_chrono_fail(t):
     put_table(con, "r", pa.table({"ts": pa.array([PART_MIN - 1], pa.timestamp("us"))}))
     expr = R_TS.select(t=t)
     with pytest.raises(BaseException, match="(?i)convert|naive|datetime"):
-        collect(con.datafusion.sql(ibis.to_sql(expr, dialect="datafusion")))
+        collect(con._datafusion_session.sql(ibis.to_sql(expr, dialect="datafusion")))
     report = sv.verify(expr, infer=False)
     assert "overflow" in [i.kind for i in report.errors]
     with pytest.raises(polars_engine.Overflow):

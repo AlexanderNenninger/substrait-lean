@@ -360,12 +360,15 @@ def _(mo):
 
 
 @app.cell
-def _(sv):
+def _():
+    import datafusion
     import duckdb
 
     {
         "DuckDB": duckdb.sql("select 4699 / 2 as avg").fetchall()[0][0],
-        "DataFusion": sv.connect().datafusion.sql("select 4699 / 2 as avg").to_pylist()[0]["avg"],
+        "DataFusion": datafusion.SessionContext()
+        .sql("select 4699 / 2 as avg")
+        .to_pylist()[0]["avg"],
     }
     return
 
