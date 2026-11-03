@@ -788,3 +788,157 @@ theorem StdModel.T_chain2 {P : ℝ} {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ n
   have e5 : 5 * u * (|P| * h + (1 + h) * tiny) = 5 * (u * (|P| * h)) + 5 * u * ((1 + h) * tiny) := by
     ring
   linarith
+
+/-- The arithmetic at the end of `wmean_spec`. -/
+theorem wmerge_arith {ns nt n a b E ms mt As At : ℝ} (hsr : 1 ≤ ns) (htr : 1 ≤ nt)
+    (hn' : n = nt + ns) (ha : a = ns * |ms|) (hb : b = nt * |mt|)
+    (k1 : E ≤ 3.02 * u * (a + b) + 3.02 * u * tiny + u * (n * tiny))
+    (hms : ns * |ms| ≤ 1.01 * As) (hmt : nt * |mt| ≤ 1.01 * At)
+    (hAs : ns * tiny ≤ As) (hAt : nt * tiny ≤ At) :
+    E ≤ 6 * u * (ns * At + nt * As) := by
+  have hu := u_pos
+  have ht := tiny_pos
+  have hAs0 : 0 ≤ As := le_trans (by positivity) hAs
+  have hAt0 : 0 ≤ At := le_trans (by positivity) hAt
+  have m2 : As ≤ nt * As := le_mul_of_one_le_left hAs0 htr
+  have m3 : At ≤ ns * At := le_mul_of_one_le_left hAt0 hsr
+  have m4 : n * tiny ≤ As + At := by rw [hn']; linarith
+  have m5 : tiny ≤ As := by have := mul_le_mul_of_nonneg_right hsr ht.le; linarith
+  have m6 : tiny ≤ At := by have := mul_le_mul_of_nonneg_right htr ht.le; linarith
+  have q1 := mul_le_mul_of_nonneg_left hms hu.le
+  have q2 := mul_le_mul_of_nonneg_left hmt hu.le
+  have q3 := mul_le_mul_of_nonneg_left m4 hu.le
+  have q5 := mul_le_mul_of_nonneg_left m5 hu.le
+  have q6 := mul_le_mul_of_nonneg_left m6 hu.le
+  have q7 := mul_le_mul_of_nonneg_left m2 hu.le
+  have q8 := mul_le_mul_of_nonneg_left m3 hu.le
+  rw [ha, hb] at k1
+  have p1 : 0 ≤ u * (ns * At) := by positivity
+  have p2 : 0 ≤ u * (nt * As) := by positivity
+  linarith
+
+/-- DuckDB's merged mean of pairs, `fl(fl(fl(n_s m_s) + fl(n_t m_t)) / n)`: within
+`6 u (n_s A_t + n_t A_s) / n` of the children's weighted mean, when
+`n_x |m_x| ≤ 1.01 A_x` and `n_x tiny ≤ A_x`. -/
+theorem StdModel.wmean_spec {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt) (hn : ns + nt ≤ 2 ^ 32)
+    {ms mt As At : ℝ} (hms : ns * |ms| ≤ 1.01 * As) (hmt : nt * |mt| ≤ 1.01 * At)
+    (hAs : ns * tiny ≤ As) (hAt : nt * tiny ≤ At) (hbs : |ms| ≤ 2 ^ 401) (hbt : |mt| ≤ 2 ^ 401) :
+    |M.fl (M.fl (M.fl ((ns : ℝ) * ms) + M.fl ((nt : ℝ) * mt)) / ((nt : ℝ) + ns))
+        - ((nt : ℝ) * mt + ns * ms) / ((nt : ℝ) + ns)|
+      ≤ 6 * u * ((ns : ℝ) * At + nt * As) / ((nt : ℝ) + ns) := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have htn1 : tiny ≤ 1 := by unfold tiny; norm_num
+  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  have hsr : (1 : ℝ) ≤ ns := by exact_mod_cast hs
+  have htr : (1 : ℝ) ≤ nt := by exact_mod_cast ht1
+  have hnr : (ns : ℝ) + nt ≤ 2 ^ 32 := by exact_mod_cast hn
+  obtain ⟨n, hn'⟩ : ∃ n : ℝ, n = (nt : ℝ) + ns := ⟨_, rfl⟩
+  rw [← hn']
+  have hn0 : 0 < n := by linarith
+  obtain ⟨a, ha⟩ : ∃ a, a = ns * |ms| := ⟨_, rfl⟩
+  obtain ⟨b, hb⟩ : ∃ b, b = nt * |mt| := ⟨_, rfl⟩
+  have ha' : |(ns : ℝ) * ms| = a := by rw [ha, abs_mul, Nat.abs_cast]
+  have hb' : |(nt : ℝ) * mt| = b := by rw [hb, abs_mul, Nat.abs_cast]
+  have ha0 : 0 ≤ a := by rw [ha]; positivity
+  have hb0 : 0 ≤ b := by rw [hb]; positivity
+  have hab : a ≤ 2 ^ 433 := by
+    rw [ha]; have := mul_le_mul (by linarith : (ns : ℝ) ≤ 2 ^ 32) hbs (abs_nonneg _) (by norm_num)
+    norm_num at this ⊢; linarith
+  have hbb : b ≤ 2 ^ 433 := by
+    rw [hb]; have := mul_le_mul (by linarith : (nt : ℝ) ≤ 2 ^ 32) hbt (abs_nonneg _) (by norm_num)
+    norm_num at this ⊢; linarith
+  have r1 := M.err ((ns : ℝ) * ms) (by rw [ha']; linarith)
+  have r2 := M.err ((nt : ℝ) * mt) (by rw [hb']; linarith)
+  rw [ha'] at r1
+  rw [hb'] at r2
+  generalize M.fl ((ns : ℝ) * ms) = p1 at r1 ⊢
+  generalize M.fl ((nt : ℝ) * mt) = p2 at r2 ⊢
+  have hsum : |p1 + p2| ≤ a + b + u * (a + tiny) + u * (b + tiny) := by
+    have h1 := abs_add_le p1 p2
+    have h2 := abs_sub_abs_le_abs_sub p1 ((ns : ℝ) * ms)
+    have h3 := abs_sub_abs_le_abs_sub p2 ((nt : ℝ) * mt)
+    rw [ha'] at h2; rw [hb'] at h3
+    linarith
+  have hsb : |p1 + p2| ≤ 2 ^ 435 := by
+    have : u * (a + tiny) + u * (b + tiny) ≤ 2 ^ 434 := by
+      have := mul_le_mul hu' (by linarith : a + tiny ≤ 2 ^ 434) (by positivity) (by norm_num)
+      have := mul_le_mul hu' (by linarith : b + tiny ≤ 2 ^ 434) (by positivity) (by norm_num)
+      norm_num at *; linarith
+    have : (2 : ℝ) ^ 433 + 2 ^ 433 + 2 ^ 434 ≤ 2 ^ 435 := by norm_num
+    linarith
+  have r3 := M.err (p1 + p2) (by linarith)
+  generalize M.fl (p1 + p2) = q at r3 ⊢
+  -- `E = |q − (b' + a')|`
+  have hE : |q - ((nt : ℝ) * mt + ns * ms)| ≤ 2.01 * u * (a + b) + 3.01 * u * tiny := by
+    have e : q - ((nt : ℝ) * mt + ns * ms)
+        = (q - (p1 + p2)) + (p1 - (ns : ℝ) * ms) + (p2 - (nt : ℝ) * mt) := by ring
+    rw [e]
+    have k1 := abs_add_le ((q - (p1 + p2)) + (p1 - (ns : ℝ) * ms)) (p2 - (nt : ℝ) * mt)
+    have k2 := abs_add_le (q - (p1 + p2)) (p1 - (ns : ℝ) * ms)
+    have k3 : u * |p1 + p2| ≤ u * (a + b + u * (a + tiny) + u * (b + tiny)) :=
+      mul_le_mul_of_nonneg_left hsum hu.le
+    have k4 : u * (u * (a + tiny)) ≤ 0.001 * (u * (a + tiny)) :=
+      mul_le_mul_of_nonneg_right (by linarith) (by positivity)
+    have k5 : u * (u * (b + tiny)) ≤ 0.001 * (u * (b + tiny)) :=
+      mul_le_mul_of_nonneg_right (by linarith) (by positivity)
+    have p1 : 0 ≤ u * a := by positivity
+    have p2 : 0 ≤ u * b := by positivity
+    have p3 : 0 ≤ u * tiny := by positivity
+    linarith
+  have hqb : |q / n| ≤ 2 ^ 436 := by
+    rw [abs_div, abs_of_pos hn0, div_le_iff₀ hn0]
+    have := abs_sub_abs_le_abs_sub q ((nt : ℝ) * mt + ns * ms)
+    have := abs_add_le ((nt : ℝ) * mt) (ns * ms)
+    rw [hb', ha'] at this
+    have : 2.01 * u * (a + b) + 3.01 * u * tiny ≤ 2 ^ 434 := by
+      have k1 : u * (a + b) ≤ 1 / 2 ^ 53 * 2 ^ 434 :=
+        mul_le_mul hu' (by linarith : a + b ≤ 2 ^ 434) (by positivity) (by norm_num)
+      have k2 : u * tiny ≤ 1 / 2 ^ 53 * 1 := mul_le_mul hu' htn1 ht.le (by norm_num)
+      have k3 : (2.01 : ℝ) * (1 / 2 ^ 53 * 2 ^ 434) + 3.01 * (1 / 2 ^ 53 * 1) ≤ 2 ^ 434 := by
+        norm_num
+      linarith
+    have : (2 : ℝ) ^ 436 ≤ 2 ^ 436 * n := le_mul_of_one_le_right (by norm_num) (by linarith)
+    have : (2 : ℝ) ^ 433 + 2 ^ 433 + 2 ^ 434 ≤ 2 ^ 436 := by norm_num
+    linarith
+  have r4 := M.err (q / n) (by linarith)
+  rw [le_div_iff₀ hn0]
+  have k1 : n * |M.fl (q / n) - ((nt : ℝ) * mt + ns * ms) / n|
+      ≤ 3.02 * u * (a + b) + 3.02 * u * tiny + u * (n * tiny) := by
+    have e : M.fl (q / n) - ((nt : ℝ) * mt + ns * ms) / n
+        = (M.fl (q / n) - q / n) + (q - ((nt : ℝ) * mt + ns * ms)) / n := by
+      field_simp; ring
+    rw [e]
+    have h1 := abs_add_le (M.fl (q / n) - q / n) ((q - ((nt : ℝ) * mt + ns * ms)) / n)
+    have h2 : n * |(q - ((nt : ℝ) * mt + ns * ms)) / n| = |q - ((nt : ℝ) * mt + ns * ms)| := by
+      rw [abs_div, abs_of_pos hn0]; field_simp
+    have h3 : n * |q / n| ≤ a + b + |q - ((nt : ℝ) * mt + ns * ms)| := by
+      rw [abs_div, abs_of_pos hn0, mul_div_cancel₀ _ hn0.ne']
+      have := abs_sub_abs_le_abs_sub q ((nt : ℝ) * mt + ns * ms)
+      have := abs_add_le ((nt : ℝ) * mt) (ns * ms)
+      rw [hb', ha'] at this
+      linarith
+    have h4 := mul_le_mul_of_nonneg_left h1 hn0.le
+    have h5 := mul_le_mul_of_nonneg_left r4 hn0.le
+    have h5' : n * (u * (|q / n| + tiny)) = u * (n * |q / n|) + u * (n * tiny) := by ring
+    have h6 := mul_le_mul_of_nonneg_left h3 hu.le
+    have h7 := mul_le_mul_of_nonneg_left hE hu.le
+    have h8 : u * (2.01 * u * (a + b) + 3.01 * u * tiny)
+        ≤ 0.01 * (u * (a + b)) + 0.01 * (u * tiny) := by
+      have c1 : u * (2.01 * u * (a + b)) ≤ 0.01 * (u * (a + b)) := by
+        have := mul_le_mul_of_nonneg_right (by linarith : 2.01 * u ≤ 0.01)
+          (by positivity : 0 ≤ u * (a + b))
+        linarith
+      have c2 : u * (3.01 * u * tiny) ≤ 0.01 * (u * tiny) := by
+        have := mul_le_mul_of_nonneg_right (by linarith : 3.01 * u ≤ 0.01)
+          (by positivity : 0 ≤ u * tiny)
+        linarith
+      linarith
+    have h9 : n * (|M.fl (q / n) - q / n| + |(q - ((nt : ℝ) * mt + ns * ms)) / n|)
+        = n * |M.fl (q / n) - q / n| + n * |(q - ((nt : ℝ) * mt + ns * ms)) / n| := by ring
+    have h10 : u * (a + b + |q - ((nt : ℝ) * mt + ns * ms)|)
+        = u * (a + b) + u * |q - ((nt : ℝ) * mt + ns * ms)| := by ring
+    linarith
+  rw [mul_comm]
+  exact wmerge_arith hsr htr hn' ha hb k1 hms hmt hAs hAt
