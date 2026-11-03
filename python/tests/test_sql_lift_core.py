@@ -270,7 +270,8 @@ def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
         " FROM orders",
         "SELECT id, greatest(price, -price, 0.5) AS g, least(amount, id) AS l FROM orders",
         # IEEE 754's NaN of `inf - inf`, `0 * inf`, `inf / inf` and `0 / 0`,
-        # where the reference raises.
+        # where the reference raises. The first is `types/float/nan_arithmetic.test:90`.
+        "SELECT 'inf'::DOUBLE - 'inf'::DOUBLE ",
         "SELECT 'inf'::DOUBLE - 'inf'::DOUBLE AS s, '-inf'::DOUBLE + 'inf'::DOUBLE AS a,"
         " 'inf'::DOUBLE * 0.0 AS m, 0.0 * '-inf'::DOUBLE AS n,"
         " 'inf'::DOUBLE / 'inf'::DOUBLE AS d, 0.0::DOUBLE / 0.0::DOUBLE AS z",
