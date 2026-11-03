@@ -177,6 +177,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.window_allColumns
 #print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
+#print axioms Substrait.Rel.capReads_eval
+#print axioms Substrait.Rel.maxRows_sound
 #print axioms Substrait.FloatCode.ofInt_mono
 #print axioms Substrait.FloatCode.ofInt_exact
 #print axioms Substrait.FloatCode.ofInt_rel

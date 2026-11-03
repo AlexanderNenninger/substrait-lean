@@ -229,6 +229,45 @@ def corrOf (vs : List Value) : Value :=
       (FloatCode.ofFloat (FloatCode.toFloat (FloatCode.lift₂ (· * ·) sxx syy)).sqrt)
     .int r
 
+/-! ## Trusted: error bounds of `SUM` and `AVG` of doubles (#85)
+
+`floatSum` adds with native doubles, and the contract checker otherwise knows
+nothing of the result but "some double". The three facts below are all it
+assumes about rounding. They are stated on scaled values (`FloatCode.scaled`)
+and proved for IEEE 754 rounding to nearest in the separate package
+`float-bounds/`, as `core_sum`, `core_avg` and `core_sign`
+(`float-bounds/FloatBounds/Core.lean`), given its `NativeLink` (Lean's
+`Float` rounds to nearest) and the code conversions of `Float.lean`. They are
+axioms here so that the core needs no Mathlib (`docs/float-bounds.md`).
+
+A sum of `n ≤ N ≤ 2³²` doubles in `[lo, hi]` (scaled, at most `2¹⁴⁷⁴`, so
+`2⁴⁰⁰` unscaled) lies in `[min(lo, N·lo) − τ, max(hi, N·hi) + τ]`, their mean
+in `[lo − τ', hi + τ']`, and both keep the sign of the values. -/
+
+axiom floatSum_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
+    (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
+    (hb : ∀ c ∈ cs, lo ≤ FloatCode.scaled c ∧ FloatCode.scaled c ≤ hi) :
+    min lo (N * lo) - FloatCode.sumTolScaled N (max lo.natAbs hi.natAbs)
+        ≤ FloatCode.scaled (floatSum (cs.map .int)) ∧
+      FloatCode.scaled (floatSum (cs.map .int))
+        ≤ max hi (N * hi) + FloatCode.sumTolScaled N (max lo.natAbs hi.natAbs)
+
+axiom floatAvg_mem {cs : List Int} {N : Nat} {lo hi : Int} (hne : cs ≠ []) (hN : cs.length ≤ N)
+    (h32 : N ≤ 2 ^ 32) (hlo : lo.natAbs ≤ 2 ^ 1474) (hhi : hi.natAbs ≤ 2 ^ 1474)
+    (hb : ∀ c ∈ cs, lo ≤ FloatCode.scaled c ∧ FloatCode.scaled c ≤ hi) :
+    lo - FloatCode.avgTolScaled N (max lo.natAbs hi.natAbs)
+        ≤ FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .int))
+          (FloatCode.ofInt cs.length)) ∧
+      FloatCode.scaled (FloatCode.lift₂ (· / ·) (floatSum (cs.map .int))
+          (FloatCode.ofInt cs.length))
+        ≤ hi + FloatCode.avgTolScaled N (max lo.natAbs hi.natAbs)
+
+axiom floatSum_sign {cs : List Int} (hne : cs ≠ []) :
+    ((∀ c ∈ cs, 0 ≤ c) → 0 ≤ floatSum (cs.map .int) ∧
+        0 ≤ FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length)) ∧
+      ((∀ c ∈ cs, c ≤ 0) → floatSum (cs.map .int) ≤ 0 ∧
+        FloatCode.lift₂ (· / ·) (floatSum (cs.map .int)) (FloatCode.ofInt cs.length) ≤ 0)
+
 /-- The element `pick` keeps from each pair, from the left. -/
 def pickFold (pick : Value → Value → Bool) (v : Value) (vs : List Value) : Value :=
   vs.foldl (fun a b => if pick a b then b else a) v
@@ -498,6 +537,45 @@ theorem mem_aggregateEval_nonempty {gs : List Expr} {ms : List Measure} {rows : 
     obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
     refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_⟩
     exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
+
+/-- `mem_aggregateEval_nonempty`, with the group no longer than the input. -/
+theorem mem_aggregateEval_len {gs : List Expr} {ms : List Measure} {rows : Relation}
+    {row : Row} (h : row ∈ aggregateEval gs ms rows) :
+    ∃ k grp, row = k ++ ms.map (·.eval grp) ∧ (∀ y ∈ grp, y ∈ rows) ∧
+      ((gs = [] ∧ k = []) ∨ ∃ x ∈ rows, k = groupKey gs x) ∧ (gs ≠ [] → grp ≠ []) ∧
+      grp.length ≤ rows.length := by
+  unfold aggregateEval at h
+  split at h
+  · rename_i hg
+    simp only [List.mem_singleton] at h
+    exact ⟨[], rows, by simp [h], fun _ hy => hy, .inl ⟨List.isEmpty_iff.mp hg, rfl⟩,
+      fun hne => absurd (List.isEmpty_iff.mp hg) hne, Nat.le_refl _⟩
+  · simp only [List.mem_map] at h
+    obtain ⟨k, hk, rfl⟩ := h
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk)
+    refine ⟨_, _, rfl, fun y hy => (List.mem_filter.mp hy).1, .inr ⟨x, hx, rfl⟩, fun _ => ?_,
+      List.length_filter_le _ _⟩
+    exact List.ne_nil_of_mem (a := x) (List.mem_filter.mpr ⟨hx, by simp⟩)
+
+theorem ints_map_intsOf : ∀ {vs : List Value}, (∀ w ∈ vs, ∃ i, w = .int i) →
+    vs = (intsOf vs).map .int
+  | [], _ => rfl
+  | v :: vs, h => by
+    obtain ⟨i, rfl⟩ := h v (by simp)
+    simp only [intsOf, List.filterMap_cons, List.map_cons]
+    exact congrArg _ (ints_map_intsOf fun w hw => h w (by simp [hw]))
+
+theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
+    (m.inputs rows).length ≤ rows.length := by
+  have hk : (m.kept rows).length ≤ rows.length := by
+    unfold Measure.kept; split
+    · exact Nat.le_refl _
+    · exact List.length_filter_le _ _
+  have hf : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
+    Nat.le_trans (List.length_filter_le _ _) (by simpa using hk)
+  unfold Measure.inputs; split
+  · exact Nat.le_trans (dedup_length_le _) hf
+  · exact hf
 
 theorem aggregateEval_length {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}
     (h : row ∈ aggregateEval gs ms rows) : row.length = gs.length + ms.length := by

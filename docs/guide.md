@@ -319,6 +319,11 @@ except VerificationError as e:
 * Doubles and time: comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()` and intervals; doubles compare as SQL
   engines compare them, with one zero and one NaN above every number.
+* Sums and means of doubles round. Their signs are exact, and with a row cap
+  in `requires`, `sv.max_rows(10_000_000)` (checked on the data), Lean
+  bounds them by the proved rounding error ([float bounds](float-bounds.md)).
+  `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
+  the report suggests it when an exact claim misses only by rounding.
 * Not tracked yet: string contents, DECIMAL columns, relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).

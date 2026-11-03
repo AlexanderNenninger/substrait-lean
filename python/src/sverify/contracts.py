@@ -254,6 +254,132 @@ def arrives_within(
     return ArrivesWithin(col, lateness)
 
 
+@dataclass(frozen=True)
+class MaxRows:
+    """At most `n` rows (see `max_rows`).
+
+    Attributes:
+        n: The cap.
+    """
+
+    n: int
+
+
+def max_rows(n: int) -> MaxRows:
+    """A cap on an input's row count: at most `n` rows.
+
+    Only for `requires`, where it is checked on the data (`COUNT(*) <= n`)
+    like `unique`. Error bounds of floating-point aggregates grow with the
+    number of rows, so `SUM` and `AVG` of doubles get their bounds only from
+    inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies within
+    the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and their mean
+    within it of `[lo, hi]` (#85, `docs/float-bounds.md`). Caps of up to
+    `2³²` rows give bounds. Not supported by incremental views.
+
+    Args:
+        n: The largest number of rows the input may have.
+
+    Returns:
+        A `MaxRows` condition, for `requires`.
+
+    Raises:
+        ValueError: `n` is negative.
+    """
+    if n < 0:
+        raise ValueError(f"max_rows needs a cap of 0 or more, not {n}")
+    return MaxRows(int(n))
+
+
+@dataclass(frozen=True)
+class Approx:
+    """A condition relaxed by a relative tolerance (see `approx`).
+
+    Attributes:
+        cond: The condition, an Ibis expression or a function of the table.
+        rel: The relative tolerance.
+    """
+
+    cond: Any
+    rel: float
+
+    def __call__(self, table: ir.Table) -> ir.BooleanValue:
+        return _relax(resolve(self.cond, table), self.rel)
+
+
+def _relax(expr: ir.BooleanValue, rel: float) -> ir.BooleanValue:
+    """`expr` with each comparison against a number `k` moved outward by
+    `rel · max(1, |k|)`."""
+    import ibis.expr.operations as ops
+
+    def slack(k: Any) -> float:
+        return rel * max(1.0, abs(float(k)))
+
+    def number(node: Any) -> Any:
+        if isinstance(node, ops.Literal) and node.dtype.is_numeric():
+            return node.value
+        return None
+
+    def go(node: Any) -> ir.BooleanValue:
+        if isinstance(node, ops.And):
+            return go(node.left) & go(node.right)
+        if isinstance(node, ops.Or):
+            return go(node.left) | go(node.right)
+        if isinstance(node, ops.Between):
+            lo, hi = number(node.lower_bound), number(node.upper_bound)
+            if lo is not None and hi is not None:
+                return node.arg.to_expr().between(lo - slack(lo), hi + slack(hi))
+        up = (ops.Less, ops.LessEqual)
+        down = (ops.Greater, ops.GreaterEqual)
+        if isinstance(node, (*up, *down, ops.Equals)):
+            x, k, flipped = node.left, number(node.right), False
+            if k is None:
+                x, k, flipped = node.right, number(node.left), True
+            if k is not None:
+                e = x.to_expr()
+                d = slack(k)
+                if isinstance(node, ops.Equals):
+                    return e.between(k - d, k + d)
+                # `k <= x` bounds `x` from below, as `x >= k` does.
+                bound_above = isinstance(node, up) != flipped
+                strict = isinstance(node, (ops.Less, ops.Greater))
+                if bound_above:
+                    return e < k + d if strict else e <= k + d
+                return e > k - d if strict else e >= k - d
+        raise TypeError(
+            "approx relaxes comparisons of a column with a number, combined with AND and OR; "
+            f"it cannot relax {node.__class__.__name__}"
+        )
+
+    return go(expr.op())
+
+
+def approx(cond: Any, rel: float = 1e-6) -> Approx:
+    """A postcondition that holds up to rounding: every comparison of a column
+    with a number `k` in `cond` is relaxed by `rel · max(1, |k|)`.
+
+    `_.avg <= 100` may fail by the last bits after `AVG` of doubles rounds;
+    `approx(_.avg <= 100)` is `_.avg <= 100.0001`, which the checker proves
+    from the error bounds of #85 when the inputs have a row cap
+    (`max_rows`), and which runs as that condition at run time. The default
+    `rel = 1e-6` covers the error of a `SUM` or `AVG` over any cap up to
+    `2³²` rows, about `n · 2⁻⁵³` relative to the values' bound. Comparisons
+    combine with AND and OR; `BETWEEN` and `=` widen on both sides.
+
+    Args:
+        cond: An Ibis condition (`_.avg <= 100`) or a function of the table.
+        rel: The relative tolerance, `1e-6` by default.
+
+    Returns:
+        A condition for `ensures` (or `requires`).
+
+    Raises:
+        TypeError: `cond` is a SQL snippet.
+    """
+    if isinstance(cond, str):
+        raise TypeError("approx takes an Ibis condition, not SQL; write the slack in the SQL")
+    return Approx(cond, rel)
+
+
 Semantics = Literal["reference", "duckdb"]
 """What a check's SQL means: sverify's reference semantics (the default) or
 DuckDB's (#411)."""
@@ -265,7 +391,7 @@ def _checked_semantics(semantics: str) -> Semantics:
     return semantics  # type: ignore[return-value]
 
 
-TableCondition = (Unique, References, ArrivesWithin)
+TableCondition = (Unique, References, ArrivesWithin, MaxRows)
 """Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
@@ -275,6 +401,7 @@ Condition = (
     | Unique
     | References
     | ArrivesWithin
+    | MaxRows
     | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
@@ -936,6 +1063,10 @@ def label(cond: Condition) -> str:
         return f"references({cond.col}, {cond.table}.{cond.other})"
     if isinstance(cond, ArrivesWithin):
         return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
+    if isinstance(cond, MaxRows):
+        return f"max_rows({cond.n})"
+    if isinstance(cond, Approx):
+        return f"approx({label(cond.cond)}, rel={cond.rel:g})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
@@ -1293,6 +1424,11 @@ def _verify_once(
         t: [foreign_key(t, c) for c in cs if isinstance(c, References)]
         for t, cs in requires.items()
     }
+    caps = {
+        t: min(c.n for c in cs if isinstance(c, MaxRows))
+        for t, cs in requires.items()
+        if any(isinstance(c, MaxRows) for c in cs)
+    }
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1300,6 +1436,7 @@ def _verify_once(
         "keys": keys,
         "ensures_keys": ensures_keys,
         "references": foreign_keys,
+        "max_rows": caps,
     }
 
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -1351,6 +1488,8 @@ def _verify_once(
             checked.append(
                 CheckedCondition(label(c), False, "lateness is checked on a source's batches")
             )
+        elif isinstance(c, MaxRows):
+            checked.append(CheckedCondition(label(c), False, "row caps are checked on inputs"))
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -1380,7 +1519,58 @@ def _verify_once(
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
+    if not isinstance(transform, str):
+        report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
     return report, out["inferred"], schemas
+
+
+def rounding_hints(
+    transform: ir.Table,
+    ensures: Sequence[Condition],
+    checked: Sequence[CheckedCondition],
+    facts: Sequence[dict],
+    dtypes: Mapping[str, Any],
+) -> list[str]:
+    """For each unproved comparison of a double column with a number that the
+    column's proved bounds miss only by rounding (by at most `1e-6` of the
+    number, #85): how much, and the `approx` that proves it."""
+    import ibis.expr.operations as ops
+
+    bounds = {}
+    for f in facts:
+        dtype, b = dtypes.get(f["name"]), f["abstract"].get("int")
+        if dtype is not None and dtype.is_floating() and b is not None:
+            bounds[f["name"]] = tuple(
+                None if v is None else decode_double(int(v)) for v in (b["lo"], b["hi"])
+            )
+    hints = []
+    for cond, c in zip(ensures, checked, strict=True):
+        if c.proved or not isinstance(cond, Deferred):
+            continue
+        try:
+            node = cond.resolve(transform).op()
+        except Exception:  # noqa: BLE001 - only a hint
+            continue
+        if not isinstance(node, ops.Less | ops.LessEqual | ops.Greater | ops.GreaterEqual):
+            continue
+        col, lit = node.left, node.right
+        if not (isinstance(col, ops.Field) and isinstance(lit, ops.Literal)):
+            continue
+        if not lit.dtype.is_numeric() or col.name not in bounds:
+            continue
+        k = float(lit.value)
+        lo, hi = bounds[col.name]
+        above = isinstance(node, ops.Less | ops.LessEqual)
+        edge = hi if above else lo
+        if edge is None or not math.isfinite(edge):
+            continue
+        excess = edge - k if above else k - edge
+        if 0 < excess <= 1e-6 * max(1.0, abs(k)):
+            hints.append(
+                f"{c.label} holds up to rounding: {col.name} is proved within {excess:.3g} of "
+                f"{k:g} (#85); state it as sv.approx({c.label})"
+            )
+    return hints
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
@@ -1525,6 +1715,9 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
         return int(total.execute()) - int(distinct.execute())
+    if isinstance(cond, MaxRows):
+        rows: Any = table.count()
+        return max(0, int(rows.execute()) - cond.n)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)

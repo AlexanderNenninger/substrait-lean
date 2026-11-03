@@ -500,6 +500,53 @@ theorem ofInt_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
     ofInt i == finite (ofFloat (Float.ofInt i))
 #guard ofInt (2 ^ 1100) == ofMag false maxMag
 
+/-! ### Scaled values, for the error bounds of #85
+
+`scaled c` is the value of the double with code `c`, times `2¹⁰⁷⁴`: its
+magnitude, with its sign. It is monotone in the code, and a code bound
+follows from a scaled one (`le_codeHi`, `codeLo_le`), so the checker can do
+its interval arithmetic for `SUM` and `AVG` of doubles on integers. -/
+
+def scaled (c : Int) : Int :=
+  if c < 0 then -(((c.natAbs - 1) / 2 : Nat) : Int) else (((c.natAbs - 1) / 2 : Nat) : Int)
+
+theorem scaled_mono {c d : Int} (h : c ≤ d) : scaled c ≤ scaled d := by
+  unfold scaled
+  split <;> split <;> omega
+
+/-- A code with scaled value at most `s` is at most `codeHi s`. -/
+def codeHi (s : Int) : Int := 2 * s + 2
+
+/-- A code with scaled value at least `s` is at least `codeLo s`. -/
+def codeLo (s : Int) : Int := 2 * s - 2
+
+theorem le_codeHi {c s : Int} (h : scaled c ≤ s) : c ≤ codeHi s := by
+  unfold scaled at h; unfold codeHi
+  split at h <;> omega
+
+theorem codeLo_le {c s : Int} (h : s ≤ scaled c) : codeLo s ≤ c := by
+  unfold scaled at h; unfold codeLo
+  split at h <;> omega
+
+/-- `2⁵²`. -/
+def tolK : Nat := 2 ^ 52
+
+/-- `⌈a / b⌉`. -/
+def ceilDiv (a b : Nat) : Nat := (a + b - 1) / b
+
+/-- The error bound of a `SUM` of at most `n` doubles, each at most `Bs`
+scaled, scaled and rounded up: `γ n · n · ((1 + 2u) B + 2⁻¹⁰²²) + 2 n u B`
+with `u = 2⁻⁵³`, `γ n = n u / (1 − n u)`. Proved as `sumTol_le` in
+`float-bounds/FloatBounds/Core.lean` (`docs/float-bounds.md`). -/
+def sumTolScaled (n Bs : Nat) : Nat :=
+  ceilDiv (n ^ 2 * ((tolK + 1) * Bs + tolK ^ 2)) (tolK * (2 * tolK - n)) + ceilDiv (n * Bs) tolK
+
+/-- The error bound of an `AVG`: `γ (n + 2) · ((1 + 2u) B + 2⁻¹⁰²²) + 2 u B`
+(`avgTol_le`). -/
+def avgTolScaled (n Bs : Nat) : Nat :=
+  ceilDiv ((n + 2) * ((tolK + 1) * Bs + tolK ^ 2)) (tolK * (2 * tolK - (n + 2))) +
+    ceilDiv Bs tolK
+
 def isNan (c : Int) : Bool := c == nan
 
 -- One zero and one NaN: `-0.0` and a negative NaN (as x86 computes `0/0`)
