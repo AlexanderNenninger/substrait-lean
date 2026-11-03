@@ -19,6 +19,10 @@ composed) keeps its proved postconditions in every state: the preconditions
 on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
 `Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
+Postconditions a transform checks on its output instead of proving them
+(`on_unproved="runtime"`) are checked on the view's full state once, and then
+on the rows each batch inserts into it, before anything is replaced
+(`PostconditionError`).
 
 Users meet this module through nodes (`sverify.nodes`): `Node.pipe` composes
 contracted transforms over sources, `.write` stores a node in a sink and ends
@@ -86,6 +90,7 @@ from sverify.contracts import (
     Condition,
     Discharged,
     Fact,
+    PostconditionError,
     PreconditionError,
     References,
     Unique,
@@ -96,6 +101,7 @@ from sverify.contracts import (
     show_duration,
     table_facts,
     view_contract,
+    violations,
 )
 from sverify.engine import (
     Connection,
@@ -741,6 +747,9 @@ class RefreshReport:
     retention: list[RetentionReport] = field(default_factory=list)
     """For each view over a source with `arrives_within`: its open buckets,
     those retired in this refresh, and the bound (`sverify._retention`)."""
+    postconditions: list[Discharged] = field(default_factory=list)
+    """The unproved postconditions (`on_unproved="runtime"`) checked on the
+    rows the batch inserts into each view, by view."""
 
     @property
     def recomputed(self) -> list[str]:
@@ -749,6 +758,7 @@ class RefreshReport:
     def __str__(self) -> str:
         lines = [str(s) for s in self.sources]
         lines += [f"requires {p}" for p in self.preconditions]
+        lines += [f"ensures {p}" for p in self.postconditions]
         for v, vs in self.versions.items():
             lines.append(f"view {v}: " + ", ".join(f"{t}@v{n}" for t, n in vs.items()))
         if self.audited:
@@ -799,6 +809,12 @@ class IncrementalView:
         self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
+        self.checked: list[Condition] = contract.checked if contract else []
+        """Postconditions that were not proved, checked on every state
+        instead (`on_unproved="runtime"`): on the first in full, then on the
+        rows each batch inserts (`unique` keys against the new state)."""
+        self.postconditions: list[Discharged] = []
+        """How `checked` was established on the first state."""
         self.pipeline = pipeline or Pipeline(con, engine)
         self.pipeline._check_new_requires(self.requires)
         found = _retention.plan(query, self.requires)
@@ -844,6 +860,9 @@ class IncrementalView:
         self.table: ir.Table = con.table(name)
         """The view as a table for other queries; contracted transformations
         that read it build on `guarantees`."""
+        if self.stored is None:
+            # A resumed state was checked by the run that stored it.
+            self.postconditions = self._check(self.table, self.checked, "row(s)")
         if contract is not None:
             register_view(self.table, contract)
         self.pipeline._views.append(self)
@@ -885,7 +904,41 @@ class IncrementalView:
     @property
     def contracted(self) -> bool:
         # A plain function's view requires nothing of each input: {"orders": []}.
-        return any(self.requires.values()) or bool(self.guarantees)
+        return any(self.requires.values()) or bool(self.guarantees) or bool(self.checked)
+
+    def _check(self, table: ir.Table, conds: Sequence[Condition], what: str) -> list[Discharged]:
+        """Check runtime-checked postconditions on `table` (rows of the view),
+        raising `PostconditionError` with "<n> <what> of <view> violate ...".
+        """
+        out = []
+        for c in conds:
+            if n := violations(table, c, self.pipeline.engine):
+                raise PostconditionError(
+                    f"{n} {what} of {self.name} violate {label(c)}; nothing was applied"
+                )
+            out.append(Discharged(self.name, label(c), ON_DATA))
+        return out
+
+    def _check_change(self, delta: pa.Table, new: pa.Table | Native | None) -> list[Discharged]:
+        """Check `checked` on a batch: row conditions on the rows `delta`
+        inserts, keys on the `new` state (None if no key is checked)."""
+        rowwise = [c for c in self.checked if not isinstance(c, Unique)]
+        keys = [c for c in self.checked if isinstance(c, Unique)]
+        out: list[Discharged] = []
+        for conds, rows, what in [
+            (rowwise, rows_of(positive(delta)), "inserted row(s)"),
+            (keys, new, "row(s)"),
+        ]:
+            if not conds:
+                continue
+            assert rows is not None
+            name = self.name + "$checked"
+            put_table(self.con, name, rows)
+            try:
+                out += self._check(self.con.table(name), conds, what)
+            finally:
+                self.con.drop(name)
+        return out
 
     def _replan(self, changed: set[str]) -> None:
         """Plan the view again over the current schemas of the `changed`
@@ -1448,6 +1501,7 @@ class Pipeline:
             {v.name: v.versions for v in self._views},
             audited=audit,
             retention=self.retire() if retire else [],
+            postconditions=pending.checked,
         )
 
     def _reading(self, tables: set[str]) -> list[IncrementalView]:
@@ -1552,6 +1606,7 @@ class Pipeline:
         found = arrived + self._check_batch(changes, new_tables, facts or {})
         deltas: dict[str, pa.Table] = {t: consolidated(ch) for t, ch in changes.items()}
         stale = set(recompute or ())
+        checked: list[Discharged] = []
         states: dict[str, State] = {}
         in_place: dict[str, pa.Table] = {}
         # The tables whose new contents a recomputed view reads.
@@ -1571,21 +1626,33 @@ class Pipeline:
                 stale.add(v.name)
             delta = v._diff(new_tables) if rerun else v._delta(deltas)
             deltas[v.name] = delta
-            if isinstance(v.state, Resident) and not audit and v.name not in read_new:
+            # A checked key is checked on the whole new state.
+            keyed = any(isinstance(c, Unique) for c in v.checked)
+            if isinstance(v.state, Resident) and not audit and v.name not in read_new and not keyed:
                 # Only the state rows the change touches, merged with it.
                 merged = v._merge(matching(v.state, delta), delta)
                 if v.store.has_negative(merged):
                     raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
+                checked += v._check_change(delta, None)
                 in_place[v.name] = arrow_of(merged)
                 continue
             merged = v._merge(v.state, delta, keep=v.store.keep)
             if v.store.has_negative(merged):
                 raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
             new_tables[v.name] = v.store.expanded(merged)
+            checked += v._check_change(delta, new_tables[v.name])
             states[v.name] = merged
         changed = {name: deltas[name] for name in [*states, *in_place]}
         return _Commit(
-            changes, new_tables, dict(versions or {}), states, found, in_place, changed, latest
+            changes,
+            new_tables,
+            dict(versions or {}),
+            states,
+            found,
+            in_place,
+            changed,
+            latest=latest,
+            checked=checked,
         )
 
     def _commit(self, pending: _Commit) -> None:
@@ -1629,6 +1696,8 @@ class _Commit:
     """Each changed view's change, as a weighted table."""
     latest: dict[tuple[str, str], object] = field(default_factory=dict)
     """The largest time seen after the batch, per `arrives_within`."""
+    checked: list[Discharged] = field(default_factory=list)
+    """The views' runtime-checked postconditions, checked on the batch."""
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:

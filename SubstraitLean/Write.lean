@@ -697,7 +697,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
         let better := if f matches .greatest then call 400 [ja, jb] else call 400 [jb, ja]
         caseChain (call (UnFn.anchor .isNull) [ja]) jb
           (caseChain (call (UnFn.anchor .isNull) [jb]) ja (caseChain better jb ja))
-      | _, _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
+      -- Two constants are of the context's kind: a date or a timestamp is an
+      -- integer to the model, but not to the engines (#381).
+      | _, _ =>
+        let (ka, kb) := if isConst a && isConst b then (ctx, ctx) else (ka, kb)
+        call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
     | _ => call (BinFn.anchor f) [writeExpr cols ka a, writeExpr cols kb b]
   -- A double's negation and `ABS`, as the parser reads `negate` and `abs` of a
   -- double (`Parse.mkFloatCall`): written as those calls, so that they read
