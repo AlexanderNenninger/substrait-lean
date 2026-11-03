@@ -12,6 +12,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "python" / "src" / "sverify"
 
+# The installed wheel's tests run from a copy of `tests`, without the sources.
+pytestmark = pytest.mark.skipif(not SRC.is_dir(), reason="the repository is not here")
+
 #: The frontends and the writers shared by every engine.
 PYTHON = [
     *sorted((SRC / "ibis_substrait").glob("*.py")),
