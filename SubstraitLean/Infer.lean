@@ -56,6 +56,14 @@ structure Bounds where
 
 def Found.append (a b : Found) : Found := ⟨a.cols ++ b.cols, a.split || b.split, a.nes ++ b.nes⟩
 
+/-- The ranges without the sides `env` already implies. -/
+def Found.within (f : Found) (env : List AVal) : Found :=
+  { f with cols := f.cols.filterMap fun (j, b) =>
+    let known := ((env.getD j AVal.top).int).getD ⟨some 0, some (-1)⟩
+    let lo := b.lo.filter fun l => !(known.lo.any (l ≤ ·))
+    let hi := b.hi.filter fun h => !(known.hi.any (· ≤ h))
+    if lo.isNone && hi.isNone then none else some (j, ⟨lo, hi⟩) }
+
 /-- `⌈a / b⌉` and `⌊a / b⌋` for `b > 0`. -/
 def ceilDiv (a b : Int) : Int := -((-a) / b)
 def floorDiv (a b : Int) : Int := a / b
@@ -100,7 +108,7 @@ def spanDays (u : Time.TimeUnit) : Int := span u / Time.usPerDay
 /-- Ranges of the columns of `env` that keep `e` in `[lo, hi]`, or why there
 are none. Over-strict is fine; too weak only fails the proof. -/
 partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Except String Found
-  | .field i => pure ⟨[(i, ⟨some lo, some hi⟩)], false⟩
+  | .field i => pure { cols := [(i, ⟨some lo, some hi⟩)] }
   | .lit (.int v) => if lo ≤ v ∧ v ≤ hi then pure {} else throw "it adds a constant that is out of range"
   | .lit _ => pure {}
   | .un .neg a => need env fs (-hi) (-lo) a
@@ -123,7 +131,7 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
       | none, none => do
         let x ← need env fs (lo / 2) (hi / 2) a
         let y ← need env fs (lo / 2) (hi / 2) b
-        pure ⟨x.cols ++ y.cols, true⟩
+        pure { (x.append y) with split := true }
   | .bin .sub a b =>
     match a, b with
     | _, .lit (.int c) => need env fs (lo + c) (hi + c) a
@@ -136,7 +144,7 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
         -- No unique split: half the range each.
         let x ← need env fs (lo / 2) (hi / 2) a
         let y ← need env fs (-(hi / 2)) (-(lo / 2)) b
-        pure ⟨x.cols ++ y.cols, true⟩
+        pure { (x.append y) with split := true }
   | .bin .mul a b =>
     match a, b with
     | x, .lit (.int c) | .lit (.int c), x =>
@@ -157,16 +165,30 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
         let r : Int := isqrt k.toNat
         let x ← need env fs (-r) r a
         let y ← need env fs (-r) r b
-        pure ⟨x.cols ++ y.cols, true⟩
+        pure { (x.append y) with split := true }
+  -- Decimals are their unscaled integers, added and multiplied exactly.
+  | .bin .dadd a b => need env fs lo hi (.bin .add a b)
+  | .bin .dsub a b => need env fs lo hi (.bin .sub a b)
+  | .bin .dmul a b => need env fs lo hi (.bin .mul a b)
   -- `a / c`: only `c = ±1` can leave the range (`ABS` is `a / -1`).
   | .bin .idiv a (.lit (.int c)) =>
     if c = 1 then need env fs lo hi a
     else if c = -1 then need env fs (-hi) (-lo) a
     else if lo ≤ 0 ∧ 0 ≤ hi then pure {} else throw "it needs a quotient out of range"
-  | .ifThen _ t e => do
-    let x ← need env fs lo hi t
-    let y ← need env fs lo hi e
-    pure (x.append y)
+  -- A branch runs only on rows its condition lets through: what the
+  -- condition implies there needs no precondition. When each branch's
+  -- ranges would also restrict the other branch's rows, there is no single
+  -- weakest bound (`substring`'s offset from the start or from the end).
+  | .ifThen c t e => do
+    let et := c.refine env
+    let ee := c.refineNeg env
+    let x := (← need et fs lo hi t).within et
+    let y := (← need ee fs lo hi e).within ee
+    let both := !(x.within ee).cols.isEmpty && !(y.within et).cols.isEmpty
+    pure { x.append y with split := x.split || y.split || both }
+  -- `a / b` with `b` a column: `|a / b| ≤ |a|`, so `a` in a range symmetric
+  -- about 0 within `[lo, hi]` keeps it in (`MIN / -1` is the overflow).
+  | .bin .idiv a _ => need env fs (max lo (-hi)) (min hi (-lo)) a
   | e => throw s!"it reads {e.render}, which the inference does not look into"
 
 /-- `need` with an open side: `none` stands for no bound. Codes of doubles
