@@ -256,7 +256,7 @@ Design notes: [nested-values.md](nested-values.md).
 | Topic | Reference | Status |
 |---|---|---|
 | `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`). Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by the proved error bound (`floatSum_mem`, `floatAvg_mem` in `Aggregate.lean`, proved in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `float_order="any"`; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
-| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates) (#54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; whatever the algorithm (two-pass, textbook, or DuckDB's Welford and Chan), the result is within a proved bound, `64 · n² · u · B²` on the co-moment ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
+| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates) (#54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; for two-pass and for DuckDB's Welford and Chan, the result is within a proved bound that scales with the spread of the values ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
 | `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)); Polars and DataFusion (whose grouped min/max of doubles is not IEEE) refuse them until #271 |
 
@@ -271,27 +271,38 @@ ungrouped and Welford when grouped (`characterization/*/facts/`, ids
 The reference picks none. It allows any result with the generic properties
 that every reasonable algorithm keeps (`StatProps` in
 `SubstraitLean/StatProps.lean`, the set `AggFn.Allowed` uses). For `n ≤ 2³²`
-finite values at most `2³⁹⁹`, with `B = max(max |xᵢ|, 2⁻⁵⁰⁰)`, `u = 2⁻⁵³` and
-the exact co-moment `C = Σxy − Σx · Σy / n`:
+finite values at most `2³⁹⁸`, with `u = 2⁻⁵³`, `tiny = 2⁻¹⁰²²`, the exact
+co-moments `C = Σxy − Σx · Σy / n`, `S_xx` and `S_yy`, and
+`Q' = Σ (|xᵢ| + tiny)²` of each side:
 
 - `NULL` for no values and for a sample of one value; for `CORR`, for fewer
   than two pairs and for a side whose values are all equal.
 - A variance or deviation is `≥ 0`.
-- `VAR_*` and `COVAR_*` are within `τ = (128 n² u B² + 12 n u B²) / d` of
-  `C / d`, `d = n − 1` for a sample, `n` for a population.
+- `VAR_*` is within `τ = (160 n u √(Q' S) + 3970 n² u² Q' + 800 n² u · tiny) / d`
+  of `S / d`, `d = n − 1` for a sample, `n` for a population (`varTol`).
+- `COVAR_*` is within
+  `(71 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 15 n u √(S_xx S_yy) + 3970 n² u² √(Q'_x Q'_y) + 800 n² u · tiny) / d`
+  of `C / d` (`covTol`).
 - `STDDEV_*` is within `(1 ± u)` of `√(V ± τ)`.
-- `|CORR| ≤ 1 + 3E/L + 8u`, `E = 128 n² u B²`, when the co-moments of both
-  sides are at least `L ≥ 8E`. Without such a lower bound `CORR` can be any
-  double, and no engine clamps it to `[−1, 1]`.
+- `|CORR| ≤ 1 + 3E/L + 8u`, `E = 447 n u R + 11883 n² u² (Q'_x + Q'_y) + 2379 n² u · tiny`
+  (`corrErr`), where `R` is at least `√(Q' S)` of each side, `√(Q'_x S_yy)`,
+  `√(Q'_y S_xx)` and `√(S_xx S_yy)`, when the co-moments of both sides are at
+  least `L ≥ 8E`. Without such a lower bound `CORR` can be any double, and no
+  engine clamps it to `[−1, 1]`.
 
-The co-moment bound is proved for the two-pass algorithm (the reference's
-own), Welford's update with Chan's merge in any tree, and the textbook
-formula (`docs/float-bounds.md`). Outside the finite range the reference's own
-value is the one allowed. An engine profile may name a stricter algorithm
-(`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without one, the generic
-properties hold. No profile names one yet. Engines differ from the reference
-where it raises: DuckDB and Polars give NaN for an infinite value and for
-`CORR` with a zero variance, Spark NULL for the latter.
+The bounds scale with the spread of the values: for values near `10⁶` that
+vary by about `1`, the variance of `10⁶` of them is within about `2 · 10⁻²`.
+`StatProps` states each square root by a rational witness above it, so the
+core needs no square roots. The bounds are proved for the two-pass algorithm
+(the reference's own) and for DuckDB's Welford update with Chan's merge in any
+tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
+DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
+formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
+the reference's own value is the one allowed. An engine profile may name a
+stricter algorithm (`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without
+one, the generic properties hold. No profile names one yet. Engines differ
+from the reference where it raises: DuckDB and Polars give NaN for an
+infinite value and for `CORR` with a zero variance, Spark NULL for the latter.
 
 ### Of decimals
 

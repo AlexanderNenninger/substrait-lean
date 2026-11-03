@@ -10,3 +10,9 @@ public import FloatBounds.Textbook
 public import FloatBounds.Variance
 public import FloatBounds.Core
 public import FloatBounds.CoreStats
+public import FloatBounds.TwoPassRel
+public import FloatBounds.WelfordRel
+public import FloatBounds.MergeRel
+public import FloatBounds.CovRel
+public import FloatBounds.CovTwoPass
+public import FloatBounds.CoreKappa

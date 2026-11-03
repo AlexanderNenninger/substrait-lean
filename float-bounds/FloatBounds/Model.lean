@@ -46,14 +46,20 @@ theorem tiny_pos : 0 < tiny := by unfold tiny; positivity
 theorem u_le : u ≤ 2⁻¹ ^ 53 := le_rfl
 
 /-- A rounding `fl` from the reals to the reals (to the representable values)
-that meets the standard model wherever the result does not overflow, and
-keeps the sign, as rounding to nearest does. -/
+that meets the standard model wherever the result does not overflow, keeps
+the sign, and leaves representable values alone, as rounding to nearest
+does. -/
 structure StdModel where
   fl : ℝ → ℝ
   err : ∀ z, |z| ≤ maxFinite → |fl z - z| ≤ u * (|z| + tiny)
   /-- Rounding keeps the sign (it is monotone and `fl 0 = 0`). -/
   nonneg : ∀ z, 0 ≤ z → 0 ≤ fl z
   nonpos : ∀ z, z ≤ 0 → fl z ≤ 0
+  /-- A representable value rounds to itself, so rounding twice is rounding
+  once; `0` is representable. True of binary64: `x − 0`, `x / 1` and `0 + x`
+  are exact for a double `x`. -/
+  idem : ∀ z, fl (fl z) = fl z
+  zero : fl 0 = 0
 
 variable (M : StdModel)
 

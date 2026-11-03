@@ -158,24 +158,64 @@ with the generic properties (`StatProps`, [reference
 semantics](reference-semantics.md#statistical-aggregates)). Lean's own results
 have them by three trusted facts in `SubstraitLean/StatProps.lean`
 (`varOf_props`, `covOf_props`, `corrOf_props`), stated over Lean's `Rat`.
-[`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean) proves them:
-`core_var`, `core_stddev`, `core_cov` and `core_corr`, for two-pass on the
-decoded doubles, with `E = 128 n² u B²`, which covers the decoding
-(`comoment_decoded`, `12 n B δ`) and `64 n² u B'²` with `B' = (1 + 2u) B`.
+[`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves them:
+`core_var_k`, `core_cov_k` and `core_corr_k` for two-pass on the decoded
+doubles, and `core_stddev` with `sd_mono` for the deviation. Decoding moves a
+co-moment by `2u (√(S_xx Q'_y) + √(S_yy Q'_x)) + 4u² √(Q'_x Q'_y)`
+(`decode_cov`), which the bounds absorb. The bounds are the ones below, with
+the constants rounded up to cover DuckDB's algorithm and the final division;
+for `CORR` one witness `R` stands for all the square roots, which keeps the
+statement small.
 
-How loose this is depends on how far the values sit from zero relative to
-their spread. For a variance the bound is about `128 · n · u · B²`, or
-`1.4 · 10⁻⁸ · B²` at `10⁶` rows and `1.4 · 10⁻⁶ · B²` at `10⁸`. For CPU
-percentages (`B = 100`, a variance in the hundreds) that is far below the last
-digit that matters. For values near `10⁶` that vary by about `1` (timestamps in
-seconds, say), it is `1.4 · 10⁴` at `10⁶` rows, against a variance of about
-`1`: no useful bound.
+The earlier generic bound, `128 n² u B²` with `B = max |xᵢ|`
+([`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean)), did not
+scale with the spread. For a variance it is about `128 · n · u · B²`: far
+below the last digit that matters for CPU percentages (`B = 100`), and
+`1.4 · 10⁴` for `10⁶` values near `10⁶` that vary by about `1` (timestamps in
+seconds), against a variance of about `1`.
 
-The expected first-order behaviour of Welford's algorithm and of two-pass is
-`|Ŝ − S| ≲ c · n · u · √(S · Σx²)` (Chan, Golub and LeVeque, 1983), which
-scales with the spread and stays useful there; its proof is in progress. A
-tighter proved bound only narrows the allowed set, so it replaces this one
-without changing the interface.
+Bounds that scale with the spread are proved for three of the algorithms:
+
+- Two-pass ([`TwoPassRel.lean`](../float-bounds/FloatBounds/TwoPassRel.lean),
+  `twoPass_var_rel`): `|Ŝ − S| ≤ 8 n u S + 80 n² u² Σx² + 8 n² u · tiny`.
+  The error of the mean adds `n ε²` to the sum of squares, because the
+  deviations from the exact mean sum to `0`, so the bound is first order in
+  `u` relative to `S` itself.
+- Welford's update within one thread
+  ([`WelfordRel.lean`](../float-bounds/FloatBounds/WelfordRel.lean),
+  `welfordVar_rel`): `|Ŝ − S| ≤ 32 n u √(Q' S) + 104 n² u² Q' + 4 n u · tiny`,
+  `Q' = Σ (|x| + tiny)²`. This is the first-order behaviour Chan, Golub and
+  LeVeque (1983) describe. It needs the model to know that a double rounds
+  to itself (`StdModel.idem`, `StdModel.zero`), which makes Welford's first
+  step exact.
+- DuckDB's parallel aggregation, Welford's update in each thread and Chan's
+  merge of the threads' states in any order
+  ([`MergeRel.lean`](../float-bounds/FloatBounds/MergeRel.lean),
+  `chanVar_rel`): `|Ŝ − S| ≤ 148 n u √(Q' S) + 3961 n² u² Q' + 793 n u · tiny`.
+  DuckDB's merge computes the mean with a fused multiply-add
+  (`dmean_spec`). A merge of `a` and `b` values adds `2 min(a, b)` to a
+  weight that stays below `2 n (⌈log₂ n⌉ + 1)` (`Lw_merge`), and the
+  constants take `⌈log₂ n⌉ ≤ 32`.
+
+The covariance has the same kind of bounds, with `S_xx`, `S_yy` the
+co-moments of each side and `Q'_x = Σ (|x| + tiny)²`:
+
+- Two-pass ([`CovTwoPass.lean`](../float-bounds/FloatBounds/CovTwoPass.lean),
+  `twoPass_cov_rel`):
+  `|Ĉ − C| ≤ 6 n u √(S_xx S_yy) + 1.1 u (√(Q'_y S_xx) + √(Q'_x S_yy)) + 120 n² u² √(Q'_x Q'_y) + 4 n² u · tiny`.
+- DuckDB's parallel aggregation, Welford's update and the merge with the
+  weighted mean ([`CovRel.lean`](../float-bounds/FloatBounds/CovRel.lean),
+  `chanCov_rel`):
+  `|Ĉ − C| ≤ 70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`.
+
+By Cauchy–Schwarz every partial co-moment and every increment is at most
+`√(S_xx S_yy)` (`comoment_sq_le`), which is what the proofs scale with.
+
+For those timestamps (`10⁶` rows near `10⁶`, spread `1`), Welford's bound
+on the variance is about `32 · 10⁶ · 1.1 · 10⁻¹⁶ · 10⁶ ≈ 3.6 · 10⁻³`, the
+parallel one's about `1.6 · 10⁻²`, and two-pass's about `10⁻⁶`, against a
+variance of `1`.
+
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
