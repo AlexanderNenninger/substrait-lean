@@ -9,20 +9,16 @@ exact version, what the engine does, what the reference semantics does, a
 status, and its provenance (when it was checked, how, by what, and the
 evidence: links at a tag or commit, ledgers, probes, SQL repros).
 
-`characterization/<engine>/FACTS.md`, the readable overview, is generated
-from the documents by
+The documents are the record; there is no generated overview. The command
 
-    uv run python -m sverify_dev.facts --write
+    uv run python -m sverify_dev.facts
 
-Feature branches leave it alone: the `Generated files` workflow regenerates it
-on `main` after every merge. Without `--write`, the command checks the
-documents (`tests/test_facts.py` runs the same check).
+checks them (`tests/test_facts.py` runs the same check).
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -45,15 +41,6 @@ def engines(root: Path = ROOT) -> list[str]:
 def load(root: Path = ROOT) -> dict[Path, Fact]:
     """Every fact document, by path."""
     return {p: json.loads(p.read_text()) for p in sorted(root.glob("*/facts/*.json"))}
-
-
-def _natural(s: str) -> list[Any]:
-    return [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]
-
-
-def order(facts: list[Fact]) -> list[Fact]:
-    """Semantics before frontend facts, then by id (R2 before R10)."""
-    return sorted(facts, key=lambda f: (f.get("layer") == "frontend", _natural(f["id"])))
 
 
 def validate(docs: dict[Path, Fact], root: Path = ROOT) -> list[str]:
@@ -105,116 +92,11 @@ def validate(docs: dict[Path, Fact], root: Path = ROOT) -> list[str]:
     return problems
 
 
-def _prose(p: str | list[str]) -> str:
-    return p if isinstance(p, str) else "\n\n".join(p)
-
-
-def _cell(s: str) -> str:
-    return s.replace("|", "\\|").replace("\n", " ")
-
-
-def _evidence(e: dict[str, str], here: Path, repo: Path) -> str:
-    parts = []
-    if "url" in e:
-        label = e["url"].split("/test/sql/", 1)[-1] if "/test/sql/" in e["url"] else e["url"]
-        parts.append(f"[{label}]({e['url']})")
-    if "file" in e:
-        rel = os.path.relpath(repo / e["file"], here)
-        name = Path(e["file"]).name
-        parts.append(f"`{e['probe']}` in [{name}]({rel})" if "probe" in e else f"[{name}]({rel})")
-    if "test" in e:
-        parts.append(f"`{e['test']}`")
-    if "sql" in e:
-        parts.append(f"`{e['sql']}`" + (f" gives `{e['observed']}`" if "observed" in e else ""))
-    if "note" in e:
-        parts.append(f"({e['note']})")
-    return " ".join(parts)
-
-
-def _last_checked(f: Fact) -> str:
-    dates = [c["checked_at"] for c in f["provenance"] if c["checked_at"] != "unknown"]
-    return max(dates, default="unknown")
-
-
-def _issues(f: Fact) -> str:
-    return ", ".join(f"#{n}" for n in [*f.get("issues", []), *f.get("prs", [])])
-
-
-def render(engine: str, facts: list[Fact], root: Path = ROOT) -> str:
-    """`characterization/<engine>/FACTS.md`."""
-    here = root / engine
-    repo = root.parent
-    facts = order(facts)
-    versions = ", ".join(sorted({f["engine_version"] for f in facts}))
-    lines = [
-        f"# {engine}: facts",
-        "",
-        f"Generated from [facts/](facts/) by `uv run python -m sverify_dev.facts --write`; "
-        f"do not edit by hand. One JSON document per finding, in the format of "
-        f"[fact.schema.json](../fact.schema.json). Version checked: {versions}.",
-        "",
-        "| Id | Finding | Area | Status | Verdict | ≈ entries | Last checked |",
-        "|---|---|---|---|---|---:|---|",
-    ]
-    for f in facts:
-        verdict, entries = f.get("verdict", ""), str(f.get("ledger_entries", ""))
-        cells = [f"[{f['id']}](#{f['id'].lower()})", _cell(f["title"]), f["area"], f["status"],
-                 _cell(verdict), entries, _last_checked(f)]  # fmt: skip
-        lines.append("| " + " | ".join(cells) + " |")
-    settings: dict[str, list[str]] = {}
-    for f in facts:
-        for name, value in f.get("settings", {}).items():
-            if not isinstance(value, list):  # a list: checked under each value
-                settings.setdefault(name, []).append(f["id"])
-    if settings:
-        lines += ["", "Settings the facts depend on, at one value:", ""]
-        lines += [f"- `{name}`: {', '.join(ids)}" for name, ids in sorted(settings.items())]
-    for f in facts:
-        meta = [f"{engine} {f['engine_version']}", f["area"], f["status"]]
-        if f.get("layer") == "frontend":
-            meta.append("frontend")
-        if f.get("constructs"):
-            meta.append(", ".join(f"`{c}`" for c in f["constructs"]))
-        if f.get("settings"):
-            meta.append(", ".join(f"`{k} = {json.dumps(v)}`" for k, v in f["settings"].items()))
-        if _issues(f):
-            meta.append(_issues(f))
-        lines += ["", f'## <a id="{f["id"].lower()}"></a>{f["id"]}. {f["title"]}', "",
-                  " · ".join(meta), "", _prose(f["description"])]  # fmt: skip
-        if "reference" in f:
-            lines += ["", "Reference:", "", _prose(f["reference"])]
-        lines += ["", "Checked:", ""]
-        for c in f["provenance"]:
-            item = f"- {c['checked_at']}, {c['method']}, by {c['checked_by']}"
-            evidence = [_evidence(e, here, repo) for e in c.get("evidence", [])]
-            if evidence:
-                item += ": " + "; ".join(evidence)
-            item += "."
-            if "notes" in c:
-                item += " " + _prose(c["notes"]).replace("\n\n", " ")
-            lines.append(item)
-        for key, label in (("supersedes", "Supersedes"), ("superseded_by", "Superseded by")):
-            if key in f:
-                ids = f[key] if isinstance(f[key], list) else [f[key]]
-                lines += ["", f"{label} " + ", ".join(f"[{i}](#{i.lower()})" for i in ids) + "."]
-    return "\n".join(lines) + "\n"
-
-
-def write(root: Path = ROOT) -> None:
-    """Rewrite each engine's FACTS.md from its documents."""
-    docs = load(root)
-    for engine in engines(root):
-        facts = [f for p, f in docs.items() if p.parent.parent.name == engine]
-        (root / engine / "FACTS.md").write_text(render(engine, facts, root))
-
-
 def main() -> None:
     docs = load()
     problems = validate(docs)
     if problems:
         sys.exit("\n".join(problems))
-    if "--write" in sys.argv:
-        write()
     print(f"{len(docs)} facts, well-formed")
 
 

@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-IO3",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "delta: access denied with table-scoped vended keys on MinIO",
+  "verdict": "open",
+  "area": "io",
+  "layer": "io",
+  "constructs": [
+    "ATTACH ... (TYPE unity_catalog)",
+    "delta_scan"
+  ],
+  "settings": {
+    "s3_endpoint": "minio:9000",
+    "s3_url_style": "path",
+    "s3_use_ssl": false
+  },
+  "description": [
+    "With the workarounds of duckdb-IO1 and duckdb-IO2, a Delta table of the catalog fails in the `delta` extension (Delta Kernel) with `ObjectStoreError (8): ... lacked the necessary privileges`, on tables with and without `_delta_log/_last_checkpoint`. The keys are MinIO STS keys whose session policy the catalog scopes to the table's prefix (GetObject on the prefix, ListBucket with an `s3:prefix` condition).",
+    "delta-rs 1.6.6 reads the same tables with keys vended the same way (both through `uc://` and with the keys passed in `storage_options`), so the keys allow reading the table; which request Delta Kernel makes outside them is not isolated."
+  ],
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "manual-repro",
+      "checked_by": "homelab catalog session (AlexanderNenninger/homelab#9): DuckDB 2.0.0 in Python, extensions unity_catalog cc59382f52, delta 9dcfb65b99, httpfs 77392a7207, against Unity Catalog OSS 0.7.0 with unitycatalog/unitycatalog#1959 on MinIO",
+      "evidence": [
+        {
+          "sql": "SELECT count(*) FROM lake.metrics.host_minute",
+          "observed": "DeltaKernel ObjectStoreError (8): Error interacting with object store: The operation lacked the necessary privileges to complete for path host_minute/ (the table has a _last_checkpoint)"
+        },
+        {
+          "sql": "SELECT count(*) FROM lake.ci.job_commits",
+          "observed": "the same error for path ci/job_commits/_delta_log/_last_checkpoint (the table has no _last_checkpoint)"
+        }
+      ],
+      "notes": "delta-rs 1.6.6 (`DeltaTable('uc://homelab.ci.job_commits', ...)` and with the resolver's vended keys) read version 8 of the same table in the same container."
+    }
+  ]
+}
