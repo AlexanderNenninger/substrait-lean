@@ -40,6 +40,7 @@ Prefer end-user-visible behaviour (wrong rows, a failed round trip, a rejected p
 
 - **First person singular.** "I", never "we", "us" or "our" (the author built sverify alone). Leave "we" inside quotes from other sources.
 - **Friendly, not deferential.** A short thanks up front, naming something specific where there is one ("Thanks for SQLGlot, and for adding DuckDB's underscore separators in #4777!").
+- **Short titles.** Under about 80 characters: the component, then the symptom ("qualify: HAVING resolves a name to the projection alias instead of the input column"). Examples, versions and the list of affected engines go in the body.
 - **Ask for nothing.** No "please close / relabel / confirm / say if deliberate / let me know". State facts; maintainers decide. (A project form's own fixed wording, like DataFusion's willingness dropdown, is fine.)
 - **No self-doubting hedges** ("I may be misreading"). State what was checked and what wasn't ("ClickHouse shares the flag; I haven't checked its rule").
 - **Not terse.** Keep the explanation, the expected result with its reasoning, and where the cause is in the code. Drop pleasantries at the end.
