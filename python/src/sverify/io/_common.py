@@ -114,6 +114,16 @@ def stats_facts(
     return out
 
 
+def rows_fact(files: Sequence[Mapping[str, ColumnStats]], source: str) -> list[Fact]:
+    """A cap on the rows of a table made of `files`: the sum of their record
+    counts, when every file has one (#219). A file's count covers its deleted
+    rows too, so it bounds the rows a scan or a filter reads."""
+    counts = [next(iter(f.values())).rows if f else None for f in files]
+    if any(n is None for n in counts):
+        return []
+    return [Fact("TRUE", source, rows=sum(n for n in counts if n is not None))]
+
+
 def _sides(t: pa.DataType, files: Sequence[ColumnStats], hi_slack: timedelta) -> list[tuple]:
     """The bounds of the join of `files`, as (operator, literal) pairs."""
     double = pa.types.is_floating(t)

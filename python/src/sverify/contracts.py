@@ -268,19 +268,27 @@ class MaxRows:
 def max_rows(n: int) -> MaxRows:
     """A cap on an input's row count: at most `n` rows.
 
-    Only for `requires`, where it is checked on the data (`COUNT(*) <= n`)
-    like `unique`. Error bounds of floating-point aggregates grow with the
-    number of rows, so `SUM` and `AVG` of doubles get their bounds only from
-    inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies within
-    the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and their mean
-    within it of `[lo, hi]` (#85, `docs/float-bounds.md`). Caps of up to
-    `2³²` rows give bounds. Not supported by incremental views.
+    In `requires` it is checked on the data (`COUNT(*) <= n`) like `unique`,
+    or proved from the record counts of a Delta or Iceberg table's files; an
+    incremental view checks it on every batch. Lean carries the caps through
+    the plan (`Rel.maxRows`, and a join on a `unique` key of its right side
+    keeps the left side's rows, `Rel.capJoins`), and `Report.rows` bounds
+    the output. In `ensures` it is proved from them.
+
+    With a cap, an integer `SUM` of values in `[-m, m]` over at most `n`
+    rows, with `n · m < 2⁶³`, is proved to fit 64 bits (#219), and needs no
+    check on the data. Error bounds of floating-point aggregates grow with
+    the number of rows, so `SUM` and `AVG` of doubles get their bounds only
+    from inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies
+    within the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and
+    their mean within it of `[lo, hi]` (#85, `docs/float-bounds.md`). Caps of
+    up to `2³²` rows give bounds.
 
     Args:
         n: The largest number of rows the input may have.
 
     Returns:
-        A `MaxRows` condition, for `requires`.
+        A `MaxRows` condition, for `requires` or `ensures`.
 
     Raises:
         ValueError: `n` is negative.
@@ -568,6 +576,9 @@ class Report:
     bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    rows: int | None = None
+    """At most this many output rows, from the inputs' row caps (`max_rows`
+    in `requires`, `Rel.maxRows`); None if nothing bounds them."""
     semantics: Semantics = "reference"
     """What the SQL the report lifted means (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
@@ -634,8 +645,10 @@ class Report:
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
         lines.append(f"semantics: {self.semantics}")
-        if self.facts:
+        if self.facts or self.rows is not None:
             lines.append("known about the output:")
+            if self.rows is not None:
+                lines.append(f"  rows: at most {self.rows:,}")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
         return "\n".join(lines)
 
@@ -660,6 +673,8 @@ class Report:
         inferred += [f"SUM of `{i.expr}` {SUM_ASSUMED}" for i in self.assumed]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
+        if self.rows is not None:
+            facts.insert(0, f"| (rows) | at most {self.rows:,} |")
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         if self.params:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
@@ -1489,7 +1504,9 @@ def _verify_once(
                 CheckedCondition(label(c), False, "lateness is checked on a source's batches")
             )
         elif isinstance(c, MaxRows):
-            checked.append(CheckedCondition(label(c), False, "row caps are checked on inputs"))
+            n = out.get("rows")
+            value = "no bound on the rows" if n is None else f"at most {n:,} rows"
+            checked.append(CheckedCondition(label(c), n is not None and n <= c.n, value))
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -1516,6 +1533,7 @@ def _verify_once(
         rewrites=out["rewrites"],
         params=bound,
         bounds=_int_bounds(out["facts"], dtypes),
+        rows=out.get("rows"),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
@@ -1660,10 +1678,15 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     # A BIGINT's own range bounds nothing: any two of its values may overflow.
     lo = None if lo is None or lo <= -(2**63) else lo
     hi = None if hi is None or hi >= 2**63 - 1 else hi
-    why = (
-        "no contract states how many rows a group has yet (#219), so only a VALUES list or a "
-        "FETCH bounds them; the job checks the sum as it runs"
-    )
+    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+
+    def capped(n: int) -> str:
+        """The row cap that proves the sum fits (#219)."""
+        return (
+            f"`sv.max_rows({n:_})` in {where} proves it; without a row cap, the job checks "
+            "the sum as it runs"
+        )
+
     if lo is not None and hi is not None:
         largest = max(abs(lo), abs(hi))
         if largest == 0:
@@ -1671,7 +1694,7 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         rows = (2**63 - 1) // largest
         return (
             f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
-            f"{rows:,} rows; {why}"
+            f"{rows:,} rows; {capped(rows)}"
         )
     col = origin[1] if origin else "x"
     proposed = []
@@ -1680,11 +1703,10 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     if lo is None:
         proposed.append(f"`_.{col} >= {-SUM_BOUND:_}`")
     largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
-    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+    rows = (2**63 - 1) // largest
     return (
         f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
-        f"group's sum fits 64 bits for up to {(2**63 - 1) // largest:,} rows. Without a bound, "
-        f"{why}"
+        f"group's sum fits 64 bits for up to {rows:,} rows, and {capped(rows)}"
     )
 
 
@@ -1740,6 +1762,9 @@ class Fact:
 
     condition: str
     source: str
+    rows: int | None = None
+    """For a row-count fact, at most this many rows; its `condition` is then
+    `TRUE` (the record counts of a table format's files, #219)."""
 
 
 SCHEMA = "schema"
@@ -1820,10 +1845,22 @@ def discharge(
     `PreconditionError` with "<n> <what> violate <condition>"."""
     out: list[Discharged] = []
     todo = list(conds)
+    # A row cap from a row-count fact of metadata.
+    counts = [(f.rows, f.source) for f in facts or [] if f.rows is not None]
+    counted = {
+        id(c): source
+        for c in todo
+        if isinstance(c, MaxRows)
+        for source in [next((s for n, s in counts if n <= c.n), None)]
+        if source is not None
+    }
+    out += [Discharged(name, label(c), counted[id(c)]) for c in todo if id(c) in counted]
+    todo = [c for c in todo if id(c) not in counted]
     if facts is not None:
         stages: dict[str, list[str]] = {SCHEMA: []}
         for f in facts:
-            stages.setdefault(f.source, []).append(f.condition)
+            if f.rows is None:
+                stages.setdefault(f.source, []).append(f.condition)
         assumed: list[str] = []
         for source, extra in stages.items():
             rowwise = [c for c in todo if not isinstance(c, TableCondition)]

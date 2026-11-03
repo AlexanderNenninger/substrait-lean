@@ -194,7 +194,7 @@ end
 /-! ## `SUM`s of the plan are `SUM`s of the capped plan -/
 
 theorem sumWraps_ne_domain {e e' : Expr} (h : ((Issue.sumWraps, e) : Issue × Expr) = (.domain, e')) :
-    False := absurd (congrArg Prod.fst h) (by decide)
+    False := by simp only [Prod.mk.injEq, reduceCtorEq, false_and] at h
 
 /-- A `SUM` that overflows on the plan overflows on the plan with capped
 reads, on tables within their caps. -/
