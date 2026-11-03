@@ -4242,7 +4242,8 @@ class _Writer:
                 sql = d.bitwise(name, sa, sb)
                 if "shift" not in name:
                     return sql
-                bad = f"({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)})"
+                # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
+                bad = f"({sa} IS NOT NULL AND ({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)}))"
                 return self.domain(sb, bad, sql, "int")
             case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" as op, left=a, right=b):
                 f = {
