@@ -2075,9 +2075,8 @@ class _Parser:
                     return t
                 if name in _COMPARISONS and any(_calendar_interval(a) for a in arg_js):
                     raise Unsupported(
-                        f"{name} with an interval of days or months is not supported: DataFusion "
-                        "compares durations with it as (months, days, nanoseconds); write it in "
-                        "hours or seconds"
+                        f"{name} with an interval of days or months is not modelled yet "
+                        "(their length varies, #342); write it in hours or seconds"
                     )
                 parsed = [self.expr(a, cols) for a in arg_js]
                 if name == "date_diff" and any(
@@ -2340,8 +2339,7 @@ class _Parser:
         b = Lit(iv[1], "interval") if iv is not None else self.expr(bj, cols)
         if ka == "date" and _arg_kind(cols.lean, bj, b) == "date":
             raise Unsupported(
-                "date - date is not supported (DataFusion compares the duration wrongly); "
-                "use date_diff"
+                "date - date is not modelled yet (an interval of days, #342); use date_diff"
             )
         if iv is not None:
             months = -iv[0] if sub else iv[0]
@@ -2471,8 +2469,8 @@ class _Parser:
                 fr = self.frame(w, cols, sort)
                 if m.fn in ("fsum", "avg", "min") and fr.lo != ("unbounded", 0):
                     raise Unsupported(
-                        f"{name} over a sliding frame is not supported "
-                        "(DataFusion retracts rows wrongly)"
+                        f"{name} over a sliding frame is not supported yet; use a frame "
+                        "from UNBOUNDED PRECEDING"
                     )
                 return part, sort, WinFn("agg", measure=m, frame=fr)
         raise Unsupported(f"unsupported window function: {name}")

@@ -30,7 +30,7 @@ UNPROVABLE = [
     (left, {"orders": [sv.unique("id")]}, sv.unique("id")),
     (lambda o, c: o.filter(o.customer == "ada").select("id", "customer"), {}, _.customer != "ada"),
     # The foreign key holds in the counterexample: a matching customer with no city, or no customer.
-    (left, {"orders": [sv.references("customer", "customers", "name")]}, _.city.notnull()),
+    (left, {"orders": [sv.references("customer", to=("customers", "name"))]}, _.city.notnull()),
 ]
 
 

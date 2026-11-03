@@ -270,7 +270,7 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it is TRUE or FALSE)
+# could not prove: (_.total > 5) (it may be FALSE on some rows)
 # ...
 #   total: an integer ≥ 1
 ```
@@ -279,6 +279,9 @@ except VerificationError as e:
   (`"amount >= 0"`). SQL transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report.
+* `requires` maps each input to its conditions. A transformation with one
+  input also takes a plain list, `requires=[_.amount >= 0]`. A key that
+  names no input raises a `ValueError` that lists the inputs (#408).
 * Preconditions describe data that comes from outside. On a source, they
   are checked on the data when the node is first refreshed and then on each
   batch (`PreconditionError`), or proved from the table's metadata; on Ibis
@@ -301,9 +304,9 @@ except VerificationError as e:
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key).
-* Foreign keys: `sv.references("cust", "customers", "id")` in `requires`
+* Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
-  like `unique`). Nothing proves it in `ensures`, so it stays an assumption.
+  like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first, so
   every postcondition is `undetermined` and `report.deterministic` is
@@ -387,7 +390,7 @@ build on it like on any other precondition of a source.
   column, and a value from another contracted transformation is bounded by
   its `ensures`. For these the report's hint suggests a bound
   (`Issue.hint`), and sverify assumes none.
-* `@sv.transform(strict=True)` and `sv.verify(..., infer=False)` infer
+* `infer=False`, on `@sv.transform` and `sv.verify`, infers
   nothing: each overflow fails the proof, and its hint names the bound to
   state.
 
@@ -484,10 +487,18 @@ large = orders.pipe(lambda t: t.filter(_.amount > 20))
 SQL is DuckDB's dialect. Sverify reads it with its own lift (SQLGlot, #239)
 and writes every choice DuckDB's SQL leaves implicit into the plan: `/` divides
 as doubles, NULLs sort last, an integer literal has the narrowest type that
-holds it. `semantics="duckdb"`
-(the default) means what DuckDB computes; `semantics="reference"` means what
-sverify's reference computes where they differ, so a double divided by zero
-raises where DuckDB gives `inf`. The lift reads a subset so far (SELECT, WHERE,
+holds it.
+
+Every check uses sverify's reference semantics unless you opt into DuckDB's
+(#411). `semantics="reference"`, the default, means what sverify's reference
+computes, so a double divided by zero raises; `semantics="duckdb"` means what
+DuckDB computes, which gives `inf`, and models NaN and ±inf as DuckDB has
+them. `sv.sql(query, semantics=...)` attaches the choice to the query.
+`sv.verify(..., semantics=...)` and `@sv.transform(..., semantics=...)` make
+it for the SQL they lift themselves: a SQL transformation and SQL conditions.
+An `sv.sql` expression inside an Ibis transformation keeps its own. The report
+says which semantics it used (`Report.semantics`, a `semantics:` line). Until
+#411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
 joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
 saying what.
 
@@ -511,7 +522,7 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.last_report)
-# ensures (_.amount < 1000): NOT proved (it is TRUE, FALSE or NULL); checked on the output data
+# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where a column
 # ...
 print(n.refresh())
 # capped:

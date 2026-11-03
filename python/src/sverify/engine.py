@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import threading
+import warnings
 from collections.abc import Iterator, MutableMapping
 from dataclasses import replace
 from pathlib import Path
@@ -134,9 +135,9 @@ class Connection:
       data and metadata through it, and Ibis's own `execute` works on it.
     * `engine` runs plans (`sverify.engines.run`) unless a call names
       another.
-    * `datafusion` is a DataFusion session holding the same tables (with the
-      functions Ibis's DataFusion SQL calls), created on first use; only the
-      DataFusion engine needs it.
+    * The DataFusion engine runs on a private DataFusion session holding the
+      same tables (with the functions Ibis's DataFusion SQL calls), created
+      on first use.
 
     `sverify.connect()` makes one.
 
@@ -148,6 +149,8 @@ class Connection:
         engine: The engine that runs plans unless a call names another.
         arrow: The tables by name, as Arrow tables.
         ibis: The Ibis DuckDB backend the bound tables read through.
+        datafusion: Deprecated: the DataFusion session, an internal of the
+            DataFusion engine (#413).
 
     Raises:
         ValueError: `engine` is unknown.
@@ -239,6 +242,18 @@ class Connection:
 
     @property
     def datafusion(self) -> Any:
+        """Deprecated: the DataFusion session the DataFusion engine runs on, an
+        internal that will become private (#413)."""
+        warnings.warn(
+            "Connection.datafusion is deprecated: it is an internal of the DataFusion "
+            "engine. Run plans with sverify.engines.run(con, plan, 'datafusion').",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._datafusion_session
+
+    @property
+    def _datafusion_session(self) -> Any:
         """A `datafusion.SessionContext` with the connection's tables.
 
         Raises:
@@ -282,12 +297,12 @@ def connection_of(table: ir.Table) -> Connection | None:
     return getattr(backend, "_sverify_connection", None)
 
 
-def plan_json(con: Connection, query: ir.Table | str) -> str:
+def plan_json(con: Connection, query: ir.Table | str, semantics: str = "reference") -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
-    (`substrait_json`)."""
+    (`substrait_json`) with `semantics`."""
     if isinstance(query, str):
-        return substrait_json(con, query)
+        return substrait_json(con, query, semantics)
     return to_substrait_json(query)
 
 
@@ -355,7 +370,7 @@ def run_substrait_json(con: Connection, plan_json: str) -> pa.Table:
         ImportError: DataFusion is not installed.
     """
     ss = _datafusion().substrait
-    ctx = con.datafusion
+    ctx = con._datafusion_session
     proto = Plan()
     json_format.Parse(plan_json, proto)
     logical = ss.Consumer.from_substrait_plan(

@@ -311,13 +311,19 @@ def test_sliding_double_aggregates_are_refused():
     sliding = (
         "SELECT t, AVG(v) OVER (ORDER BY t ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS a FROM f"
     )
-    assert any(r["a"] != r["a"] for r in collect(con.datafusion.sql(sliding)).to_pylist())  # NaN
+    assert any(
+        r["a"] != r["a"] for r in collect(con._datafusion_session.sql(sliding)).to_pylist()
+    )  # NaN
     code, out, err = run_checker((), substrait_json(con, sliding))
     assert code != 0 and "sliding frame" in out + err
     running = "SELECT t, AVG(v) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING) AS a FROM f"
     assert run_checker((), substrait_json(con, running))[0] == 0
     stale = "SELECT t, MIN(v) OVER (ORDER BY t ROWS CURRENT ROW) AS m FROM f"
-    assert [r["m"] for r in collect(con.datafusion.sql(stale)).to_pylist()] == [0.0, 0.0, 0.0]
+    assert [r["m"] for r in collect(con._datafusion_session.sql(stale)).to_pylist()] == [
+        0.0,
+        0.0,
+        0.0,
+    ]
     assert run_checker((), substrait_json(con, stale))[0] != 0
 
 

@@ -32,7 +32,15 @@ hand on.
 
 Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
-The reference's meaning is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
+Sverify checks every plan against a reference semantics, and four principles
+decide what it does ([reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md#principles)):
+
+1. The reference follows Substrait, options included, and says where it
+   departs from it.
+2. Where Substrait is silent, it takes the least surprising choice and writes
+   down why. An option a plan omits means an error.
+3. Every engine can follow it with reasonable effort.
+4. Optimizations stay provable: an error means "may raise".
 
 Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
 
@@ -135,7 +143,7 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it is TRUE or FALSE)
+# could not prove: (_.total > 5) (it may be FALSE on some rows)
 ```
 
 ## Testing with pytest
@@ -194,8 +202,8 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
-through SQLGlot, with DuckDB's semantics (`semantics="duckdb"`, the default)
-or sverify's reference semantics (`semantics="reference"`), for a subset of
+through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
+the default) or DuckDB's (`semantics="duckdb"`), for a subset of
 SQL so far ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239),
 [#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)).
 
