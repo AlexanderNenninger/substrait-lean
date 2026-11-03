@@ -687,7 +687,10 @@ with `infer=False`.
 * Bounds that rule out overflow are inferred
   ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,
-  filters, joins and `MIN`/`MAX` down to base-table columns. The inference is
+  filters, joins and `MIN`/`MAX` down to base-table columns. So are the
+  ranges of codes that rule out domain errors, casts out of range, string
+  lengths and decimal precision, and the value a divisor's column must not
+  hold. The inference is
   untrusted and has no proofs. Its bounds are added to the preconditions and
   the contract is proved again (`contract_sound`, `Rel.mayIssues_sound`), so a
   wrong bound only makes that proof fail; on the data they are checked like

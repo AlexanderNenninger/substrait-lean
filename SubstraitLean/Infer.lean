@@ -28,6 +28,12 @@ Each overflow gets a `Bounds`:
   even split), which the caller shows and does not assume;
 * `why`, when no column range rules it out (an aggregate's or a window
   function's value): the caller suggests a bound in words.
+
+Besides overflow, `atIssue` covers other errors the same way: a divisor
+`$j + c` needs `$j ≠ -c` (`nes`); domain errors (`sqrt`, logarithms, `asin`,
+a fractional power, `fmod` of `±∞`) and casts to narrower integers or from
+doubles need ranges of codes; so do `repeat`'s count, `substring`'s offset
+and a decimal's digits.
 -/
 
 namespace Substrait.Infer

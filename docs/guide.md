@@ -388,6 +388,22 @@ build on it like on any other precondition of a source.
   timestamps to whole years (`ts.truncate("M")` needs
   `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
   range of nanosecond timestamps).
+* Other runtime errors get preconditions the same way:
+
+  | Operation | Inferred precondition |
+  |---|---|
+  | `a // b`, `a % b` | `(_.b != 0)`, `(_.b != 1)` for `a % (b - 1)` |
+  | `x.sqrt()`, `x ** 0.5` | `(_.x >= 0.0)` |
+  | `x.ln()`, `x.log10()`, `x.log2()` | `(_.x > 0)` |
+  | `x.asin()`, `x.acos()` | `(_.x >= -1.0)`, `(_.x <= 1.0)` |
+  | `x.cast("int64")` of a double | `(_.x >= -2**63)`, `(_.x < 2**63)` |
+  | `a.cast("int32")` | `(_.a >= -2**31)`, `(_.a < 2**31)` |
+  | `ibis.literal("ab").repeat(n)` | `(_.n < 2**30)` |
+  | `big * 2` of a `DECIMAL(38, 2)` | `(_.big >= -4 * 10**35)`, `(_.big < 5 * 10**35)` |
+  | `d + ibis.interval(days=10)` | `(_.d >= date(1, 1, 1))`, `(_.d < date(9999, 1, 1))` |
+
+  [test_infer_errors.py](../python/tests/test_infer_errors.py) has these
+  cases.
 * A product or sum of two unbounded columns has no single weakest bound,
   the value of an aggregate (`SUM`) or window function has none on a
   column, and a value from another contracted transformation is bounded by
