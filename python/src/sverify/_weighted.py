@@ -36,6 +36,14 @@ _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 
 
+def _forget_cursor() -> None:
+    global _DB
+    _DB = None
+
+
+_duckdb.on_reset(_forget_cursor)
+
+
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -170,6 +178,13 @@ def inserted_count(z: pa.Table) -> int:
 
 def deleted_count(z: pa.Table) -> int:
     return -total(negative(z))
+
+
+def row_count(table: pa.Table | Native) -> int:
+    """How many rows `table` has."""
+    if isinstance(table, pa.Table):
+        return table.num_rows
+    return int(_sql("SELECT count(*) AS n FROM t", t=table).column(0)[0].as_py())
 
 
 def duplicate_keys(

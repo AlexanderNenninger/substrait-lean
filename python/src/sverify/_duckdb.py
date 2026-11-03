@@ -20,12 +20,15 @@ the garbage collector queues it (`forget`), and the next cursor that asks
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 
 import duckdb
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 _GONE: list[tuple[str, str]] = []
+#: What forgets a cursor of the database kept elsewhere (`on_reset`).
+_FORGET: list[Callable[[], None]] = []
 
 
 def cursor() -> duckdb.DuckDBPyConnection:
@@ -35,6 +38,26 @@ def cursor() -> duckdb.DuckDBPyConnection:
         if _DB is None:
             _DB = duckdb.connect()
         return _DB.cursor()
+
+
+def on_reset(forget_cursor: Callable[[], None]) -> None:
+    """Have `reset` call `forget_cursor`: a module that keeps a cursor of the
+    database drops it there."""
+    _FORGET.append(forget_cursor)
+
+
+def reset() -> None:
+    """Close the process's database; the next `cursor` opens a new one. For
+    the sqllogictest replay (`sverify_dev.slt`): a DuckDB `FATAL` error
+    invalidates a database for good, and every later query on it fails."""
+    global _DB
+    with _LOCK:
+        for f in _FORGET:
+            f()
+        if _DB is not None:
+            _DB.close()
+        _DB = None
+        _GONE.clear()
 
 
 def forget(name: str, kind: str) -> None:
