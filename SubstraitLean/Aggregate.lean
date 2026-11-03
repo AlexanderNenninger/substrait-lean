@@ -81,7 +81,9 @@ inductive AggFn where
   /-- `ARRAY_AGG`: the list of the values, in the measure's `sort` order. -/
   | collect
   /-- `AVG` of integers with an integer result (Substrait's `avg` of `i64`,
-  #209): the exact mean, truncated toward zero. It always fits. -/
+  #209): the exact mean, truncated toward zero. It always fits, and lies
+  between the smallest and largest value (`clampInts` changes nothing for
+  integers; it spares the contract checker the division, #237). -/
   | iavg
   /-- `BIT_AND`, `BIT_OR`, `BIT_XOR` of 64-bit integers (#53): the operation
   folded over the values (the parser gives only these three). -/
@@ -152,6 +154,16 @@ def floatSum (vs : List Value) : Int :=
   vs.foldl (fun acc v => match v with
     | .int c => FloatCode.lift₂ (· + ·) acc c
     | _ => acc) (FloatCode.ofInt 0)
+
+/-- The integers among `vs`. -/
+def intsOf (vs : List Value) : List Int := vs.filterMap fun | .int c => some c | _ => none
+
+/-- `c` kept between the smallest and largest integer among `vs`, or `c`
+without integers. -/
+def clampInts (vs : List Value) (c : Int) : Int :=
+  match intsOf vs with
+  | [] => c
+  | x :: xs => min (max c (xs.foldl min x)) (xs.foldl max x)
 
 /-- `op` folded over the integers among `vs`, from `op`'s identity (`-1`,
 all bits set, for `and`; `0` for `or` and `xor`). -/
@@ -227,7 +239,7 @@ def AggFn.apply : AggFn → List Value → Value
   | .sum, vs => .int (intSum vs)
   | .fsum, vs => .int (floatSum vs)
   | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
-  | .iavg, vs => .int ((intSum vs).tdiv vs.length)
+  | .iavg, vs => .int (clampInts vs ((intSum vs).tdiv vs.length))
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs
   | .cov sample, vs => covOf sample vs
@@ -312,6 +324,149 @@ theorem AggFn.apply_minmax {f : AggFn} (hf : f = .min ∨ f = .max) {vs : List V
     f.apply vs = .null ∨ f.apply vs ∈ vs := by
   rcases hf with rfl | rfl <;> cases vs <;>
     first | (simp [apply]; done) | (simp only [apply]; exact .inr (pickFold_mem _ _ _))
+
+theorem foldl_min_le : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, xs.foldl min x ≤ y
+  | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _
+  | x, z :: zs, y, hy => by
+    simp only [List.foldl_cons]
+    have ih := foldl_min_le (min x z) zs
+    simp only [List.mem_cons] at hy
+    rcases hy with rfl | rfl | hy
+    · exact Int.le_trans (ih _ (List.mem_cons_self ..)) (Int.min_le_left _ _)
+    · exact Int.le_trans (ih _ (List.mem_cons_self ..)) (Int.min_le_right _ _)
+    · exact ih y (by simp [hy])
+
+theorem foldl_max_ge : ∀ (x : Int) (xs : List Int), ∀ y ∈ x :: xs, y ≤ xs.foldl max x
+  | x, [], y, hy => by simp at hy; subst hy; exact Int.le_refl _
+  | x, z :: zs, y, hy => by
+    simp only [List.foldl_cons]
+    have ih := foldl_max_ge (max x z) zs
+    simp only [List.mem_cons] at hy
+    rcases hy with rfl | rfl | hy
+    · exact Int.le_trans (Int.le_max_left _ _) (ih _ (List.mem_cons_self ..))
+    · exact Int.le_trans (Int.le_max_right _ _) (ih _ (List.mem_cons_self ..))
+    · exact ih y (by simp [hy])
+
+theorem foldl_min_mem : ∀ (x : Int) (xs : List Int), xs.foldl min x ∈ x :: xs
+  | x, [] => by simp
+  | x, z :: zs => by
+    simp only [List.foldl_cons]
+    have := foldl_min_mem (min x z) zs
+    simp only [List.mem_cons] at this ⊢
+    rcases this with h | h
+    · rw [h]; rcases Int.le_total x z with hxz | hxz
+      · exact .inl (Int.min_eq_left hxz)
+      · exact .inr (.inl (Int.min_eq_right hxz))
+    · exact .inr (.inr h)
+
+theorem foldl_max_mem : ∀ (x : Int) (xs : List Int), xs.foldl max x ∈ x :: xs
+  | x, [] => by simp
+  | x, z :: zs => by
+    simp only [List.foldl_cons]
+    have := foldl_max_mem (max x z) zs
+    simp only [List.mem_cons] at this ⊢
+    rcases this with h | h
+    · rw [h]; rcases Int.le_total x z with hxz | hxz
+      · exact .inr (.inl (Int.max_eq_right hxz))
+      · exact .inl (Int.max_eq_left hxz)
+    · exact .inr (.inr h)
+
+theorem mem_intsOf {vs : List Value} {c : Int} : c ∈ intsOf vs ↔ .int c ∈ vs := by
+  simp only [intsOf, List.mem_filterMap]
+  constructor
+  · rintro ⟨v, hv, h⟩; cases v <;> simp_all
+  · intro h; exact ⟨_, h, rfl⟩
+
+/-- A clamped value lies between two of the integers. -/
+theorem clampInts_between {vs : List Value} (hne : intsOf vs ≠ []) (c : Int) :
+    (∃ l ∈ intsOf vs, l ≤ clampInts vs c) ∧ (∃ h ∈ intsOf vs, clampInts vs c ≤ h) := by
+  unfold clampInts
+  split
+  · contradiction
+  · rename_i x xs hx
+    rw [hx]
+    have hl := foldl_min_le x xs (xs.foldl max x) (foldl_max_mem x xs)
+    refine ⟨⟨_, foldl_min_mem x xs, ?_⟩, ⟨_, foldl_max_mem x xs, Int.min_le_right _ _⟩⟩
+    exact Int.le_min.2 ⟨Int.le_max_right _ _, hl⟩
+
+/-- `AVG` of integers with an integer result, of values with an integer among
+them, lies between two of them. -/
+theorem AggFn.apply_iavg_between {vs : List Value} (hne : intsOf vs ≠ []) :
+    ∃ a, AggFn.iavg.apply vs = .int a ∧
+      (∃ l ∈ intsOf vs, l ≤ a) ∧ (∃ h ∈ intsOf vs, a ≤ h) := by
+  cases vs with
+  | nil => simp [intsOf] at hne
+  | cons v vs => exact ⟨_, rfl, clampInts_between hne _⟩
+
+theorem Value.le_refl (a : Value) : a.le a = true := by
+  rcases Value.le_total a a with h | h <;> exact h
+
+theorem pickFold_min_le : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
+    (pickFold (fun a b => !a.le b) v vs).le x = true
+  | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
+  | v, w :: ws, x, hx => by
+    simp only [pickFold, List.foldl_cons]
+    have ih := pickFold_min_le (if !v.le w then w else v) ws
+    simp only [pickFold] at ih
+    have hacc : (if !v.le w then w else v).le v = true ∧ (if !v.le w then w else v).le w = true := by
+      cases h : v.le w
+      · simp only [Bool.not_false, ite_true]
+        exact ⟨(Value.le_total v w).resolve_left (by simp [h]), Value.le_refl _⟩
+      · simp only [Bool.not_true, Bool.false_eq_true, ite_false]; exact ⟨Value.le_refl _, h⟩
+    have hm := ih _ (List.mem_cons_self ..)
+    simp only [List.mem_cons] at hx
+    rcases hx with rfl | rfl | hx
+    · exact Value.le_trans _ _ _ hm hacc.1
+    · exact Value.le_trans _ _ _ hm hacc.2
+    · exact ih x (by simp [hx])
+
+theorem pickFold_max_ge : ∀ (v : Value) (vs : List Value), ∀ x ∈ v :: vs,
+    x.le (pickFold (fun a b => !b.le a) v vs) = true
+  | v, [], x, hx => by simp at hx; subst hx; exact Value.le_refl _
+  | v, w :: ws, x, hx => by
+    simp only [pickFold, List.foldl_cons]
+    have ih := pickFold_max_ge (if !w.le v then w else v) ws
+    simp only [pickFold] at ih
+    have hacc : v.le (if !w.le v then w else v) = true ∧ w.le (if !w.le v then w else v) = true := by
+      cases h : w.le v
+      · simp only [Bool.not_false, ite_true]
+        exact ⟨(Value.le_total w v).resolve_left (by simp [h]), Value.le_refl _⟩
+      · simp only [Bool.not_true, Bool.false_eq_true, ite_false]; exact ⟨Value.le_refl _, h⟩
+    have hm := ih _ (List.mem_cons_self ..)
+    simp only [List.mem_cons] at hx
+    rcases hx with rfl | rfl | hx
+    · exact Value.le_trans _ _ _ hacc.1 hm
+    · exact Value.le_trans _ _ _ hacc.2 hm
+    · exact ih x (by simp [hx])
+
+/-- `MIN` of values is one of them, and at most each of them. -/
+theorem AggFn.apply_min {vs : List Value} {m : Value} (h : AggFn.min.apply vs = m) (hm : m ≠ .null) :
+    m ∈ vs ∧ ∀ x ∈ vs, m.le x = true := by
+  cases vs with
+  | nil => simp [apply] at h; exact absurd h.symm hm
+  | cons v vs =>
+    simp only [apply] at h; subst h
+    exact ⟨pickFold_mem _ _ _, pickFold_min_le v vs⟩
+
+/-- `MAX` of values is one of them, and at least each of them. -/
+theorem AggFn.apply_max {vs : List Value} {m : Value} (h : AggFn.max.apply vs = m) (hm : m ≠ .null) :
+    m ∈ vs ∧ ∀ x ∈ vs, x.le m = true := by
+  cases vs with
+  | nil => simp [apply] at h; exact absurd h.symm hm
+  | cons v vs =>
+    simp only [apply] at h; subst h
+    exact ⟨pickFold_mem _ _ _, pickFold_max_ge v vs⟩
+
+theorem Value.le_int {x y : Int} : (Value.int x).le (.int y) = true ↔ x ≤ y := by
+  rw [Value.le_def]; simp [Value.leScalar]
+
+/-- Two measures of the same argument and filter aggregate the same values
+(`DISTINCT` drops only repetitions). -/
+theorem Measure.mem_inputs_iff {m m' : Measure} (ha : m.arg = m'.arg) (hf : m.filter = m'.filter)
+    (rows : Relation) (v : Value) : v ∈ m.inputs rows ↔ v ∈ m'.inputs rows := by
+  have hk : m.kept rows = m'.kept rows := by simp only [Measure.kept, hf]
+  simp only [Measure.inputs, hk, ha]
+  split <;> split <;> simp [mem_dedup]
 
 theorem mem_aggregateEval {gs : List Expr} {ms : List Measure} {rows : Relation} {row : Row}
     (h : row ∈ aggregateEval gs ms rows) :

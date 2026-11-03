@@ -158,6 +158,10 @@ class DuckDBDialect(Dialect):
         start = self.cast("0", "float")
         return f"list_reduce(list_prepend({start}, {values}), lambda x, y: x + y)"
 
+    def float_extreme(self, fn: str, v: str, over: str) -> str:
+        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371).
+        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
+
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         values = f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
         return f"({values})[{1 if fn == 'first' else -1}]"

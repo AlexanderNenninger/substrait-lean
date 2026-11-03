@@ -269,6 +269,14 @@ def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
         "SELECT id, log(price) AS l, log(qty - 3) AS lq, sign(price) AS s, sign(qty) AS sq"
         " FROM orders",
         "SELECT id, greatest(price, -price, 0.5) AS g, least(amount, id) AS l FROM orders",
+        # IEEE 754's NaN of `inf - inf`, `0 * inf`, `inf / inf` and `0 / 0`,
+        # where the reference raises. The first is `types/float/nan_arithmetic.test:90`.
+        "SELECT 'inf'::DOUBLE - 'inf'::DOUBLE ",
+        "SELECT 'inf'::DOUBLE - 'inf'::DOUBLE AS s, '-inf'::DOUBLE + 'inf'::DOUBLE AS a,"
+        " 'inf'::DOUBLE * 0.0 AS m, 0.0 * '-inf'::DOUBLE AS n,"
+        " 'inf'::DOUBLE / 'inf'::DOUBLE AS d, 0.0::DOUBLE / 0.0::DOUBLE AS z",
+        "SELECT id, price / 0 - price / 0 AS s, price / 0 + -price / 0 AS a,"
+        " (price / 0) * (price - price) AS m, price / 0 + price / 0 AS i FROM orders",
     ],
 )
 def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):

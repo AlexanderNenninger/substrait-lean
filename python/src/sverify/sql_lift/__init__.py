@@ -27,7 +27,7 @@ where DuckDB and the reference (#185, #209) differ:
   `±inf` or NaN (`on_division_by_zero: IEEE`), even with
   `error_on_division_by_zero` on. The plan means what DuckDB computes, and the
   checker proves contracts of that. Where Lean's generated lift table has
-  an entry (`lift_table`, #268: `/`, `%` of doubles, `log`, `sign`,
+  an entry (`lift_table`, #268: `+`, `-`, `*`, `/`, `%` of doubles, `log`, `sign`,
   `greatest`/`least`, casts between BIGINT and DOUBLE, `avg` of integers),
   the lift writes that entry, which Lean proves means what DuckDB computes,
   NaN and ±inf included; the other rules are written by hand, pending

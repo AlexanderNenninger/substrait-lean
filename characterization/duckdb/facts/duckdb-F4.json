@@ -1,0 +1,25 @@
+{
+  "id": "duckdb-F4",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Collations, macros and identifiers",
+  "verdict": "frontend",
+  "area": "strings",
+  "layer": "frontend",
+  "constructs": [
+    "COLLATE",
+    "CREATE MACRO"
+  ],
+  "settings": {},
+  "description": "DuckDB has collations (`NOCASE`, `NOACCENT`), macros that shadow functions, and case-insensitive identifiers.",
+  "reference": "The replay skips queries under a collation or macro, and follows the identifiers.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "commit 20b02e9",
+      "notes": "Recorded from the replay's translation of DuckDB's SQL to DataFusion's (`sverify_dev.slt.translate`)."
+    }
+  ]
+}

@@ -3,8 +3,8 @@ import SubstraitLean.Numeric
 import Init.Data.Option.Basic
 import SubstraitLean.Expr
 import SubstraitLean.LiftDuckDB.Reference.Arith
-import SubstraitLean.LiftDuckDB.Reference.Math
 import SubstraitLean.LiftDuckDB.Reference.Compare
+import SubstraitLean.LiftDuckDB.Reference.Math
 import SubstraitLean.LiftDuckDB.Reference.Casts
 import SubstraitLean.LiftDuckDB.Reference.Aggregates
 
@@ -27,6 +27,9 @@ def Substrait.liftReference : Substrait.Lift (Substrait.Semantics.reference) :=
     | Substrait.DuckFn.divInt  => some Substrait.liftReference.divInt
     | Substrait.DuckFn.divDouble  => some Substrait.liftReference.divDouble
     | Substrait.DuckFn.modDouble  => some Substrait.liftReference.modDouble
+    | Substrait.DuckFn.addDouble  => some Substrait.liftReference.addDouble
+    | Substrait.DuckFn.subDouble  => some Substrait.liftReference.subDouble
+    | Substrait.DuckFn.mulDouble  => some Substrait.liftReference.mulDouble
     | Substrait.DuckFn.elementary Substrait.FMath.sqrt => some Substrait.liftReference.elementary_sqrt
     | Substrait.DuckFn.elementary Substrait.FMath.exp => some Substrait.liftReference.elementary_exp
     | Substrait.DuckFn.elementary Substrait.FMath.ln => some Substrait.liftReference.elementary_ln
@@ -55,6 +58,9 @@ def Substrait.liftReference.coverage : List (String × String × Nat) := [
   ("BIGINT / BIGINT", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":2,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("DOUBLE / DOUBLE", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":2,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("DOUBLE % DOUBLE", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":6,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
+  ("DOUBLE + DOUBLE", "seeded: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":42,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
+  ("DOUBLE - DOUBLE", "seeded: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":43,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
+  ("DOUBLE * DOUBLE", "seeded: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":44,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("sqrt(DOUBLE)", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":17,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("exp(DOUBLE)", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":18,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),
   ("ln(DOUBLE)", "cached: {\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":19,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", 0),

@@ -21,7 +21,7 @@ hand-written `DUCKDB` profile it replaces; oracle A (#242) tests it against
 the engine. With `semantics="reference"` a function means the reference's
 function at the same types (an error where DuckDB would give `±∞` or NaN).
 
-Covered so far: `/`, `%` of doubles, the elementary functions (`sqrt`, `exp`,
+Covered so far: `+`, `-`, `*`, `/`, `%` of doubles, the elementary functions (`sqrt`, `exp`,
 the logarithms, trigonometry) and `power`, `sign`, `greatest` and `least`,
 casts between `BIGINT` and `DOUBLE`, and the aggregate `avg` of `BIGINT`s
 (`DuckAgg`). A function the model cannot state
@@ -69,6 +69,9 @@ inductive DuckFn where
   | divDouble
   /-- `a % b` of `DOUBLE`s: C's `fmod` (R4). -/
   | modDouble
+  /-- `a + b`, `a - b` and `a * b` of `DOUBLE`s: IEEE 754's, NaN for
+  `∞ - ∞` and `0 · ∞` (`nanCase`), where the reference raises. -/
+  | addDouble | subDouble | mulDouble
   /-- `sqrt`, `exp`, `ln`, `log10` (DuckDB's `log(x)`), `log2` and the
   trigonometric functions of a `DOUBLE` (`FMath`). -/
   | elementary (f : FMath)
@@ -84,7 +87,7 @@ inductive DuckFn where
   deriving Repr, DecidableEq, Inhabited
 
 def DuckFn.all : List DuckFn :=
-  [.divInt, .divDouble, .modDouble] ++ FMath.all.map .elementary ++ [.power, .signBigint, .signDouble, .greatestBigint, .leastBigint,
+  [.divInt, .divDouble, .modDouble, .addDouble, .subDouble, .mulDouble] ++ FMath.all.map .elementary ++ [.power, .signBigint, .signDouble, .greatestBigint, .leastBigint,
    .greatestDouble, .leastDouble, .castDoubleBigint, .castBigintDouble]
 
 theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by
@@ -96,6 +99,8 @@ theorem DuckFn.mem_all (f : DuckFn) : f ∈ DuckFn.all := by
 def DuckFn.sql : DuckFn → String
   | .divInt => "BIGINT / BIGINT" | .divDouble => "DOUBLE / DOUBLE"
   | .modDouble => "DOUBLE % DOUBLE"
+  | .addDouble => "DOUBLE + DOUBLE" | .subDouble => "DOUBLE - DOUBLE"
+  | .mulDouble => "DOUBLE * DOUBLE"
   -- DuckDB's `log(x)` is `log10(x)`; the lift (`sverify.sql_lift`) looks it up
   -- under DuckDB's name.
   | .elementary .log10 => "log(DOUBLE)"
@@ -108,7 +113,7 @@ def DuckFn.sql : DuckFn → String
 
 def DuckFn.args : DuckFn → List DuckType
   | .divInt | .greatestBigint | .leastBigint => [.bigint, .bigint]
-  | .divDouble | .modDouble | .greatestDouble | .leastDouble | .power => [.double, .double]
+  | .divDouble | .modDouble | .addDouble | .subDouble | .mulDouble | .greatestDouble | .leastDouble | .power => [.double, .double]
   | .elementary _ | .signDouble | .castDoubleBigint => [.double]
   | .signBigint | .castBigintDouble => [.bigint]
 
@@ -171,6 +176,37 @@ theorem DuckDBSQL.ref_fmod_null_l (y : Value) : Profile.reference.bin .fmod .nul
 theorem DuckDBSQL.ref_fmod_null_r (x : Value) : Profile.reference.bin .fmod x .null = .ok .null := by
   cases x <;> rfl
 
+/-! The reference's `+`, `-` and `*` of doubles: a domain error for `∞ - ∞`
+and `0 · ∞`. -/
+
+theorem DuckDBSQL.ref_fadd_int (a b : Int) :
+    Profile.reference.bin .fadd (.int a) (.int b) =
+      if nanCase .fadd a b then .error .domain else .ok (.int (FloatCode.lift₂ (· + ·) a b)) := by
+  by_cases hn : nanCase .fadd a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+theorem DuckDBSQL.ref_fadd_null_l (y : Value) : Profile.reference.bin .fadd .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fadd_null_r (x : Value) : Profile.reference.bin .fadd x .null = .ok .null := by
+  cases x <;> rfl
+theorem DuckDBSQL.ref_fsub_int (a b : Int) :
+    Profile.reference.bin .fsub (.int a) (.int b) =
+      if nanCase .fsub a b then .error .domain else .ok (.int (FloatCode.lift₂ (· - ·) a b)) := by
+  by_cases hn : nanCase .fsub a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+theorem DuckDBSQL.ref_fsub_null_l (y : Value) : Profile.reference.bin .fsub .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fsub_null_r (x : Value) : Profile.reference.bin .fsub x .null = .ok .null := by
+  cases x <;> rfl
+theorem DuckDBSQL.ref_fmul_int (a b : Int) :
+    Profile.reference.bin .fmul (.int a) (.int b) =
+      if nanCase .fmul a b then .error .domain else .ok (.int (FloatCode.lift₂ (· * ·) a b)) := by
+  by_cases hn : nanCase .fmul a b <;>
+    simp [Profile.reference, raiseIf, BinFn.issue, nanIssue, BinFn.apply, hn, Issue.isError]
+theorem DuckDBSQL.ref_fmul_null_l (y : Value) : Profile.reference.bin .fmul .null y = .ok .null := by
+  cases y <;> rfl
+theorem DuckDBSQL.ref_fmul_null_r (x : Value) : Profile.reference.bin .fmul x .null = .ok .null := by
+  cases x <;> rfl
+
 theorem DuckDBSQL.ref_fpow_int (a b : Int) :
     Profile.reference.bin .fpow (.int a) (.int b) =
       if nanCase .fpow a b then .error .domain else .ok (.int (FloatCode.lift₂ Float.pow a b)) := by
@@ -199,6 +235,11 @@ theorem DuckDBSQL.ite_or {α} {p q : Prop} [Decidable p] [Decidable q] (a b : α
 doubles; NaN's is the largest, and its sign is `0`). -/
 def duckSign (x : Int) : Int := if x < 0 then -1 else if 0 < x then 1 else 0
 
+/-- DuckDB's `+`, `-` or `*` of doubles: NaN for `∞ - ∞` and `0 · ∞`, else
+IEEE 754's (`BinFn.apply`). -/
+def duckArith (f : BinFn) (op : Float → Float → Float) (a b : Int) : Int :=
+  if nanCase f a b then FloatCode.nan else FloatCode.lift₂ op a b
+
 /-- What the function gives for its arguments, under the semantics. `NULL`
 in, `NULL` out, but for `greatest` and `least`, which skip `NULL`s. -/
 def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
@@ -206,12 +247,18 @@ def DuckFn.eval : Semantics → DuckFn → List Value → Outcome
     .ok (.int (duckDivide (FloatCode.ofInt a) (FloatCode.ofInt b)))
   | .duckdb, .divDouble, [.int a, .int b] => .ok (.int (duckDivide a b))
   | .duckdb, .modDouble, [.int a, .int b] => .ok (.int (duckMod a b))
+  | .duckdb, .addDouble, [.int a, .int b] => .ok (.int (duckArith .fadd (· + ·) a b))
+  | .duckdb, .subDouble, [.int a, .int b] => .ok (.int (duckArith .fsub (· - ·) a b))
+  | .duckdb, .mulDouble, [.int a, .int b] => .ok (.int (duckArith .fmul (· * ·) a b))
   | .duckdb, .elementary f, [.int a] => .ok (.int (duckElementary f a))
   | .duckdb, .power, [.int a, .int b] => .ok (.int (duckPower a b))
   | .reference, .divInt, [.int a, .int b] =>
     Profile.reference.bin .fdiv (.int (FloatCode.ofInt a)) (.int (FloatCode.ofInt b))
   | .reference, .divDouble, [a, b] => Profile.reference.bin .fdiv a b
   | .reference, .modDouble, [a, b] => Profile.reference.bin .fmod a b
+  | .reference, .addDouble, [a, b] => Profile.reference.bin .fadd a b
+  | .reference, .subDouble, [a, b] => Profile.reference.bin .fsub a b
+  | .reference, .mulDouble, [a, b] => Profile.reference.bin .fmul a b
   | .reference, .elementary f, [a] => Profile.reference.un (.fmath f) a
   | .reference, .power, [a, b] => Profile.reference.bin .fpow a b
   | _, .signBigint, [.int a] => .ok (.int (duckSign a))

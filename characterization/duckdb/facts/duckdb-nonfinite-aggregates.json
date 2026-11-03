@@ -1,0 +1,63 @@
+{
+  "id": "duckdb-nonfinite-aggregates",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "±inf in variance, correlation and Kahan sums",
+  "verdict": "NaN, no error (since 2.0)",
+  "area": "aggregates",
+  "constructs": [
+    "var_samp",
+    "stddev_samp",
+    "corr",
+    "sum",
+    "fsum",
+    "favg",
+    "avg"
+  ],
+  "settings": {},
+  "description": [
+    "Any ±inf input makes `var_*`, `stddev_*` and `corr` NaN: the update computes `inf - inf`. `fsum` and `favg` of `[inf, 1]` are NaN, while `sum` and `avg` are `inf`.",
+    "One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN."
+  ],
+  "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3). Why the result is NaN, read from the update."
+    },
+    {
+      "checked_at": "2026-11-03",
+      "method": "manual-repro",
+      "checked_by": "the coordinator's subagent, and this session again, in python/'s DuckDB 2.0.0",
+      "evidence": [
+        {
+          "sql": "SELECT var_samp(x), stddev_samp(x), corr(x, x) FROM (VALUES ('inf'::DOUBLE), (1.0), (2.0)) t(x)",
+          "observed": "nan, nan, nan"
+        },
+        {
+          "sql": "SELECT sum(x), fsum(x), favg(x), avg(x) FROM (VALUES ('inf'::DOUBLE), (1.0)) t(x)",
+          "observed": "inf, nan, nan, inf"
+        },
+        {
+          "sql": "SELECT var_samp(x), var_pop(x), corr(x, x) FROM (VALUES (1.0::DOUBLE)) t(x)",
+          "observed": "NULL, 0.0, nan"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

@@ -113,6 +113,8 @@ conflicts with other PRs:
   from `sverify_dev.coverage --write-readme`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`.
+- `characterization/<engine>/FACTS.md`, the overview of an engine's facts,
+  from `sverify_dev.facts --write`.
 
 Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
 DuckDB lowering, for DuckDB's default settings only) and
@@ -224,6 +226,34 @@ first."
 Don't edit `CHANGELOG.md` in a feature PR: parallel PRs all conflict at its top.
 Add one file to `changelog.d/` instead (see its README). The release folds the
 fragments into `CHANGELOG.md`.
+
+## Engine facts
+
+What an engine does (overflow, NaN, casts, the algorithm behind `VARIANCE`, …)
+is recorded as facts, one JSON document per finding:
+`characterization/<engine>/facts/<id>.json` (`duckdb/`, `polars/`, `spark/`,
+…), in the format of `characterization/fact.schema.json`. Every engine's
+research goes there, whoever does it.
+
+- The id is the engine and a number or slug (`duckdb-R5`,
+  `polars-var-algorithm`); the file is named after it.
+- Say what the engine does (`description`), at which exact `engine_version`,
+  under which `settings`, and what the reference semantics does
+  (`reference`), with a `status`.
+- `provenance` lists each check: `checked_at` (the date), `method` (probe,
+  source-reading, docs, replay, fuzz, manual-repro), `checked_by` (the tool,
+  session or commit) and `evidence`: source links at a tag or commit, a SQL
+  repro with its `observed` output, a test id, or a file of the repository
+  (a ledger, or a construct of `probes.json`). Write "unknown" for what you
+  can't recover; never guess a date or version.
+- A new check of an old fact adds to its `provenance`. A fact that no longer
+  holds (a new engine version) gets a new document with `supersedes`, and the
+  old one `superseded_by`.
+
+`python -m sverify_dev.facts` checks the documents (`tests/test_facts.py`
+does too); `--write` regenerates the `FACTS.md` overviews, which feature
+branches don't commit (see Generated files). The judging principles and the
+DuckDB diff table are in `characterization/duckdb/README.md`.
 
 ## Upstream bugs
 

@@ -749,6 +749,11 @@ class Dialect:
         ordinal `o`, from +0.0 (rounding depends on the order)."""
         raise Unsupported(f"{self.name}: SUM of doubles in row order is not implemented")
 
+    def float_extreme(self, fn: str, v: str, over: str) -> str:
+        """`AggFn.min`/`max` (`fn` is `MIN` or `MAX`) of the doubles of `v`, over
+        the window `over` or the group: by their codes, NaN above `+∞` (#371)."""
+        raise Unsupported(f"{fn} of doubles is not yet supported on {self.name}; see #271")
+
     # Three-valued logic and comparisons (NULL-propagating)
 
     def eq(self, a: str, b: str) -> str:
@@ -2965,9 +2970,7 @@ class _Parser:
                     fn = "std_pop" if pop else "std_samp"
                 if k == "int":
                     arg = Un("itof", arg)
-            case (("min" | "max"), "float"):
-                raise Unsupported(f"{name} of doubles is not supported")
-            case (("min" | "max"), ("int" | "str" | "bool" | "time" | "date")):
+            case (("min" | "max"), ("int" | "float" | "str" | "bool" | "time" | "date")):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
                 raise Unsupported(f"{name} of this type is not supported")
@@ -3738,6 +3741,8 @@ class _Writer:
         if kind == "bool":
             as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
             return f"({f}({d.case_when(f'{v} IS NULL', d.null('int'), as_int)}) = {d.int_lit(1)})"
+        if kind == "float":
+            return d.float_extreme(f, v, "")
         return f"{f}({v})"
 
     def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
@@ -3935,6 +3940,8 @@ class _Writer:
             as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
             inner = d.case_when(f"{v} IS NULL", d.null("int"), as_int)
             return f"({f}({inner}) {w} = {d.int_lit(1)})"
+        if expr_kind(m.arg, ks) == "float":
+            return d.float_extreme(f, v, w)
         return f"{f}({v}) {w}"
 
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:

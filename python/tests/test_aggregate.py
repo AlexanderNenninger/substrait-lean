@@ -200,14 +200,114 @@ def both_infinities(sql: str, rows: list) -> bool:
     return any(math.inf in g and -math.inf in g for g in groups.values())
 
 
+EXTREMES = "SELECT k, MIN(x), MAX(x), COUNT(x) FROM t GROUP BY k"
+
+
+@settings(
+    max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(t=f_rows)
+def test_min_and_max_of_doubles_match_duckdb(t):
+    # DuckDB orders doubles as the model does, -∞ < … < +∞ < NaN (#371).
+    got, expected = run(EXTREMES, F, t)
+    lean = engine_rows(EXTREMES, F, t, "duckdb")["duckdb"]
+    assert canonical(lean) == canonical(expected)
+    floats = {1, 2}
+    got = [
+        tuple(
+            decode_double(v) if i in floats and isinstance(v, int) else v for i, v in enumerate(r)
+        )
+        for r in got
+    ]
+    got, expected = sorted(got, key=repr), sorted(expected, key=repr)
+    for g, e in zip(got, expected, strict=True):
+        assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)
+
+
+def test_avg_of_doubles_rounds_past_the_values():
+    # IEEE's mean of three 0.1 is 0.10000000000000002, above every value, so
+    # the reference claims no bound on an `AVG` of doubles (#85 bounds it).
+    rows = [(1, 0.1), (1, 0.1), (1, 0.1)]
+    sql = "SELECT k, AVG(x) FROM t GROUP BY k"
+    mean = (0.1 + 0.1 + 0.1) / 3
+    assert mean > 0.1
+    assert engine_rows(sql, F, rows) == {"polars": [(1, mean)], "duckdb": [(1, mean)]}
+
+
 @pytest.mark.backend("datafusion")
-def test_min_and_max_of_doubles_are_refused():
+def test_min_and_max_of_doubles_are_refused_on_datafusion():
     # DataFusion's grouped MIN of a group of +∞ is the largest finite double.
     expected = datafusion_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)])
     assert expected == [(1, 1.7976931348623157e308)]
-    readings = ibis.table({"k": "int64", "x": "float64"}, name="readings")
-    with pytest.raises(ValueError, match="min of doubles is not supported"):
-        sv.verify(readings.group_by("k").aggregate(m=readings.x.min()))
+    with pytest.raises(ValueError, match="MIN and MAX of doubles are not yet supported"):
+        engine_rows("SELECT k, MIN(x) FROM t GROUP BY k", F, [(1, math.inf)], "datafusion")
+
+
+def test_min_and_max_of_doubles_are_refused_on_polars():
+    with pytest.raises(Exception, match="(?i)not yet supported on Polars|unsupported aggregate"):
+        engine_rows(EXTREMES, F, [(1, 0.5)], "polars")
+
+
+samples = ibis.table({"host": "!string", "cpu": "!float64"}, name="samples")
+
+
+def test_min_and_max_of_doubles_are_proved():
+    # #371: `MIN` and `MAX` of doubles are among the values.
+    report = sv.verify(
+        samples.group_by("host").aggregate(lo=samples.cpu.min(), hi=samples.cpu.max()),
+        requires={"samples": [_.cpu >= 0, _.cpu <= 100]},
+        ensures=[_.hi <= 100, _.lo >= 0, _.lo <= _.hi, _.hi.notnull()],
+    )
+    assert report.proved, str(report)
+
+
+def test_rollup_contract_is_proved():
+    # #372: a per-minute rollup's contract, from the issue.
+    s = ibis.table({"host": "!string", "ts": "!timestamp(6)", "cpu": "!int32"}, name="s")
+    m = s.mutate(minute=s.ts.truncate("m"))
+    g = m.group_by(["host", "minute"]).aggregate(
+        n=m.count(), avg=m.cpu.mean(), lo=m.cpu.min(), mx=m.cpu.max()
+    )
+    report = sv.verify(
+        g,
+        requires={"s": [_.cpu >= 0, _.cpu <= 1000]},
+        ensures=[_.mx.notnull(), _.mx <= 1000, _.lo <= _.mx, _.avg.notnull()],
+    )
+    assert report.proved, str(report)
+    assert report.facts["mx"] == "an integer in [0, 1000]"
+    # The mean is a double division, which rounds: no bound from the inputs (#85).
+    report = sv.verify(
+        g, requires={"s": [_.cpu >= 0, _.cpu <= 1000]}, ensures=[_.mx >= _.avg, _.avg <= 1000]
+    )
+    assert [c.proved for c in report.ensures] == [False, False]
+
+
+def test_avg_of_doubles_is_not_null_but_unbounded():
+    g = samples.group_by("host").aggregate(avg=samples.cpu.mean(), hi=samples.cpu.max())
+    report = sv.verify(
+        g,
+        requires={"samples": [_.cpu >= 0, _.cpu <= 100]},
+        ensures=[_.avg.notnull(), _.avg <= 100, _.avg <= _.hi],
+    )
+    assert [c.proved for c in report.ensures] == [True, False, False]
+
+
+def test_decimal_avg_is_bounded_by_its_inputs():
+    # #237: a decimal `AVG` is its exact `SUM` by its `COUNT`, rounded.
+    t = ibis.table({"k": "!int64", "q": "!decimal(12, 2)"}, name="lineitem")
+    g = t.group_by("k").aggregate(avg_q=t.q.mean())
+    report = sv.verify(
+        g, requires={"lineitem": [_.q >= 1, _.q <= 50]}, ensures=[_.avg_q >= 1, _.avg_q <= 50]
+    )
+    assert report.proved, str(report)
+
+
+def test_avg_of_a_nullable_column_may_be_null():
+    t = ibis.table({"k": "!int64", "x": "float64"}, name="readings")
+    g = t.group_by("k").aggregate(avg=t.x.mean(), hi=t.x.max())
+    # A group may have only NULLs.
+    report = sv.verify(g, ensures=[_.avg.notnull(), _.hi.notnull()])
+    assert [c.proved for c in report.ensures] == [False, False]
 
 
 def test_integer_sum_overflow_is_a_warning():
@@ -238,7 +338,8 @@ def test_aggregate_postconditions_are_proved():
     )
     assert report.proved, str(report)
     assert report.facts["n"] == "an integer ≥ 1"
-    assert report.facts["top"] == "an integer ≥ 0 or NULL"
+    # `amount >= 0` rules out NULL, so each group has a maximum (#372).
+    assert report.facts["top"] == "an integer ≥ 0"
 
 
 def test_sum_has_no_upper_bound():

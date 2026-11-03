@@ -108,7 +108,7 @@ jobs:
         # run catches a problem on the other platforms.
         os: ${{ fromJSON((github.event_name == 'push' || github.event_name == 'workflow_dispatch'
           || github.event_name == 'schedule')
-          && '["ubuntu-latest", "ubuntu-24.04-arm", "macos-15", "macos-15-intel"]'
+          && '["ubuntu-latest", "ubuntu-24.04-arm", "macos-15"]'
           || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -221,7 +221,7 @@ jobs:
           pythons = sorted(json.loads(os.environ["PYTHONS"]), key=lambda v: tuple(map(int, v.split("."))))
           edges = sorted({pythons[0], pythons[-1]}, key=pythons.index)
           include = [{"os": os_, "python": p} for os_ in ("ubuntu-latest", "ubuntu-24.04-arm") for p in pythons]
-          include += [{"os": os_, "python": p} for os_ in ("macos-15", "macos-15-intel") for p in edges]
+          include += [{"os": "macos-15", "python": p} for p in edges]
           print("include=" + json.dumps(include))
           PY
 

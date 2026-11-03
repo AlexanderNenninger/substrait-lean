@@ -1,0 +1,27 @@
+{
+  "id": "duckdb-F1",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`/` and `//` on integers",
+  "verdict": "frontend",
+  "area": "integers",
+  "layer": "frontend",
+  "constructs": [
+    "/",
+    "//"
+  ],
+  "settings": {
+    "integer_division": false
+  },
+  "description": "In DuckDB, `/` on integers is float division and `//` is integer division; the setting `integer_division` switches `/`.",
+  "reference": "The lift reads `/` as DuckDB does: it divides as doubles, and `//` divides integers.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "commit 20b02e9",
+      "notes": "Recorded from the replay's translation of DuckDB's SQL to DataFusion's (`sverify_dev.slt.translate`)."
+    }
+  ]
+}

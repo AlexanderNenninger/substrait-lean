@@ -1,0 +1,44 @@
+{
+  "id": "duckdb-R15-atan2",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`atan2(0, 0)`",
+  "verdict": "no option matches: 0, where the reference raises",
+  "area": "doubles",
+  "constructs": [
+    "atan2"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "`atan2(0, 0)` is 0.",
+    "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged."
+  ],
+  "reference": "`atan2(0, 0)` raises.",
+  "status": "shimmed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "atan2(DOUBLE, DOUBLE)"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242
+  ]
+}

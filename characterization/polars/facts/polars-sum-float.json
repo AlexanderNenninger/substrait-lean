@@ -1,0 +1,44 @@
+{
+  "id": "polars-sum-float",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`sum` of floats: pairwise, Kahan when grouped",
+  "verdict": "pairwise (full); Kahan (grouped by index); plain across chunks",
+  "area": "aggregates",
+  "constructs": [
+    "sum"
+  ],
+  "settings": {},
+  "description": [
+    "A full aggregation sums pairwise: blocks of 128 in 16 SIMD stripes, combined pairwise, the remainder added in turn. Groups of indices use Kahan summation with a finiteness guard. Streaming merges partial sums plainly.",
+    "The sum of no values (or only nulls) is 0 in the Series API."
+  ],
+  "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L194-L215"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L254-L265"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-utils/src/kahan_sum.rs"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L867-L891"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Unverified: the sum of no values through polars-sql."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

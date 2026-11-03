@@ -14,7 +14,8 @@ matches is behaviour the model cannot express yet, and the rows that differ
 say where.
 
 `python -m sverify_dev.probe` writes `characterization/duckdb/probes.json`,
-the evidence `Profile.duckdb` is seeded from (`FACTS.md`).
+the evidence `Profile.duckdb` is seeded from (the `duckdb-R15-…` facts in
+`characterization/duckdb/facts/` cite its constructs).
 """
 
 from __future__ import annotations

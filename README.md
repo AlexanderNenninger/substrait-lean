@@ -47,7 +47,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `tests/` | Golden tests of the CLI (`tests/run.sh`, plans in `tests/fixtures`) and lowering expectations |
 | `notebooks/` | The tour, in [marimo](https://marimo.io) ([below](#the-tour)) |
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O and more), probed against the checker and the engines; [findings](catalogue/FINDINGS.md) |
-| `characterization/duckdb/` | DuckDB's behaviour as a diff against the reference model ([facts](characterization/duckdb/FACTS.md)) |
+| `characterization/` | What each engine does, as a diff against the reference model: one JSON document per fact, with provenance ([DuckDB's facts](characterization/duckdb/FACTS.md)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
 | `upstream/LEDGER.md` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream |
@@ -262,7 +262,7 @@ marimo.
 `uv build python --wheel` builds a wheel for the current platform. It bundles a
 stripped `substrait-check`, so installing it needs neither Lean nor elan. The
 [Wheels workflow](.github/workflows/wheels.yml) builds and tests wheels for Linux
-(x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
+(x86_64, aarch64) and macOS (arm64). A `v*` tag that matches the
 version in `python/pyproject.toml` also publishes them to PyPI. Each night,
 when `main` has changed, it publishes them as the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly)

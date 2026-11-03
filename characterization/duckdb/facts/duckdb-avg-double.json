@@ -1,0 +1,32 @@
+{
+  "id": "duckdb-avg-double",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`AVG` of doubles: plain sum by the count",
+  "verdict": "plain sum / n",
+  "area": "aggregates",
+  "constructs": [
+    "avg"
+  ],
+  "settings": {},
+  "description": "`AVG(DOUBLE)` is the plain sequential sum (duckdb-sum-double) divided by the count; `favg` uses the Kahan sum (duckdb-kahan-sum).",
+  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L184-L198"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

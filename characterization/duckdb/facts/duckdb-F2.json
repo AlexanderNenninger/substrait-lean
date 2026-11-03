@@ -1,0 +1,26 @@
+{
+  "id": "duckdb-F2",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "NULLs in `ORDER BY`",
+  "verdict": "frontend",
+  "area": "relations",
+  "layer": "frontend",
+  "constructs": [
+    "ORDER BY"
+  ],
+  "settings": {
+    "default_null_order": "nulls_last"
+  },
+  "description": "DuckDB puts NULLs last in both directions; DataFusion puts them first for `DESC`.",
+  "reference": "The replay writes the order out and follows `SET default_null_order`.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "commit 20b02e9",
+      "notes": "Recorded from the replay's translation of DuckDB's SQL to DataFusion's (`sverify_dev.slt.translate`)."
+    }
+  ]
+}

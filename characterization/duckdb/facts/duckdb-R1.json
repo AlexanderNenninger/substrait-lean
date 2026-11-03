@@ -1,0 +1,100 @@
+{
+  "id": "duckdb-R1",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer overflow of `+ - *` and negation",
+  "verdict": "deviation: unbounded, and reported as a warning",
+  "area": "integers",
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "unary -",
+    "add",
+    "subtract",
+    "multiply",
+    "negate"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB raises `Out of Range Error: Overflow …` at the declared width, `TINYINT` included, which is the reference (native). If a plan asks for `SILENT` or `SATURATE`, it needs a shim: compute in `HUGEINT` and wrap, `((x::HUGEINT + y + 2^(w-1)) % 2^w + 2^w) % 2^w - 2^(w-1)`, or clamp, `LEAST(GREATEST(x::HUGEINT + y, MIN_w), MAX_w)`, then cast back. `HUGEINT` holds every `i64` product, so both are exact. The written plan must emit the arithmetic at its declared width (S2 in the [README](README.md)).",
+    "Frontend (duckdb-F3): DuckDB gives an integer literal the narrowest type that holds it, so `100::TINYINT + 50` is an `i8` addition in DuckDB, and an `i64` one in DataFusion's plan."
+  ],
+  "reference": [
+    "Substrait and the reference: `add`, `subtract`, `multiply`, `negate` and `abs` on `i8`/`i16`/`i32`/`i64` return the same type; `divide` on integers overflows for `MIN / -1`. With `overflow` omitted, the reference raises when the result does not fit the declared type.",
+    "Lean, `+ - *` and negation: deviation. `Rel.eval`'s integers are unbounded, and `UnFn.wrap n`, which marks arithmetic narrower than 64 bits, is the identity ([`Expr.lean:134`](../../SubstraitLean/Expr.lean#L134)). `verify` reports the overflow only as a warning (`may wrap around`, not an error), and the parser accepts only `SILENT` for `+ - *` ([`Parse.lean:770`](../../SubstraitLean/Parse.lean#L770)). So `9223372036854775800 + 5000` and `100::TINYINT + 50::TINYINT` answer `9223372036854780800` and `150`, with no error, where the reference raises. The fix: report overflow at the declared width as an error, and accept `overflow: ERROR` (and the omitted option) rather than only `SILENT`."
+  ],
+  "status": "deviation",
+  "ledger_entries": 80,
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/overflow/integer_overflow.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/overflow/bigint_overflow.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/overflow/table_overflow.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/overflow/test_overflow.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/operator/test_division_overflow.test"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/optimizer/expression/test_negation_limits.test"
+        },
+        {
+          "file": "characterization/duckdb/overflow.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-01",
+      "method": "fuzz",
+      "checked_by": "sverify_dev.duckdb_fuzz on homelab (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/fuzz__int_overflow.json"
+        },
+        {
+          "file": "characterization/duckdb/fuzz__int_division.json"
+        }
+      ],
+      "notes": "`+`, `-`, `*`, negation, `abs(-2⁶³)`, `-2⁶³ / -1`"
+    },
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#242, commit d5efa18)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "BIGINT + BIGINT"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "BIGINT - BIGINT"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "BIGINT * BIGINT"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "-BIGINT"
+        }
+      ],
+      "notes": "`overflow: ERROR` matches, under every setting. `sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    185
+  ]
+}

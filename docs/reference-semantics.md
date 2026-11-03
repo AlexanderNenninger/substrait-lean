@@ -198,17 +198,17 @@ Design notes: [nested-values.md](nested-values.md).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `avg` of integers | Follows the plan's declared output type: `fp64` is the mean as a double, `i64` is Substrait's integer `avg`, truncated toward zero (`AggFn.iavg`). Any other output type is refused. | ✓ (#209) |
+| `avg` of integers | Follows the plan's declared output type: `fp64` is the mean as a double, `i64` is Substrait's integer `avg`, truncated toward zero (`AggFn.iavg`). The integer one lies between the smallest and largest value ([#237](https://github.com/AlexanderNenninger/substrait-lean/issues/237)). Any other output type is refused. | ✓ (#209) |
 | `sum` of integers | Returns `i64`; exact, checked at the end ([Errors](#errors)). | ✓ unbounded in `Rel.eval`; check: #255 |
 
 ### Of doubles
 
 | Topic | Reference | Status |
 |---|---|---|
-| `SUM` / `AVG` | Added in list order with native floats. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds: [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`), so contracts get no bound on it from its inputs. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds: [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
 | `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. **Each engine's own algorithm** for now (decided on #54), so results may differ in the last bits: the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; a proved error bound is [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
 | `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, as for `VARIANCE`: the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
-| `MIN` / `MAX` of doubles | — | **Refused** by the parser (DataFusion's grouped min/max of doubles is not IEEE) |
+| `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)); Polars and DataFusion (whose grouped min/max of doubles is not IEEE) refuse them until #271 |
 
 ### Of decimals
 

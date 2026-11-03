@@ -132,8 +132,9 @@ def test_cast_of_a_double_out_of_range_is_an_error(con):
 
 def test_refused_operations(con):
     t = con.table("t")
-    code, out, err = run_checker((), plan_json(con, t.aggregate(r=t.v.max())))
-    assert code != 0 and "max of doubles is not supported" in err + out
+    # MAX of doubles is accepted (#371): DuckDB orders doubles as the model does.
+    code, _, _ = run_checker((), plan_json(con, t.aggregate(r=t.v.max())))
+    assert code == 0
     ts = ibis.timestamp("2024-05-05 00:00:00")
     with pytest.raises(Unsupported, match="TimestampDelta"):
         plan_json(con, t.select(r=ts.delta(ibis.timestamp("2024-05-06 00:00:00"), unit="hour")))

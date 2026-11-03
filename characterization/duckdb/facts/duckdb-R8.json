@@ -1,0 +1,44 @@
+{
+  "id": "duckdb-R8",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A cast to a narrower integer that does not fit",
+  "verdict": "no finding (`verify`: cast out of range error)",
+  "area": "casts",
+  "constructs": [
+    "CAST",
+    "TRY_CAST",
+    "cast"
+  ],
+  "settings": {},
+  "description": "Native. `CAST` raises (`Conversion Error`); `RETURN_NULL` is `TRY_CAST`, also native.",
+  "reference": [
+    "Substrait and the reference: the plan's cast says `failureBehavior: THROW_EXCEPTION`, so the cast raises.",
+    "Lean: no finding. `verify` reports `cast out of range` as an error, and the checker refuses a constant one (`CAST(200 AS TINYINT)`). `Rel.eval`'s NULL there ([`Expr.lean:133`](../../SubstraitLean/Expr.lean#L133)) is the value for `RETURN_NULL`. A cast to `BIGINT` is not checked, which matters only for values that are already outside `i64` (duckdb-R6)."
+  ],
+  "status": "no-finding",
+  "ledger_entries": 10,
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/overflow/test_overflow.test",
+          "note": "lines 31,36,54"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/overflow/table_overflow.test",
+          "note": "line 154"
+        },
+        {
+          "file": "characterization/duckdb/overflow.json"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    185
+  ]
+}

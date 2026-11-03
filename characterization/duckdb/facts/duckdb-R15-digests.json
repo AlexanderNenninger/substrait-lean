@@ -1,0 +1,47 @@
+{
+  "id": "duckdb-R15-digests",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`md5`, `sha256` of VARCHAR",
+  "verdict": "the reference",
+  "area": "strings",
+  "constructs": [
+    "md5",
+    "sha256"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": "Gives the reference's value on every probed row.",
+  "reference": "`md5`, `sha256`.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-02",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe (#50, commit f1c86f3)",
+      "evidence": [
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "md5(VARCHAR)"
+        },
+        {
+          "file": "characterization/duckdb/probes.json",
+          "probe": "sha256(VARCHAR)"
+        }
+      ],
+      "notes": "`sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14)."
+    }
+  ],
+  "issues": [
+    242,
+    50
+  ]
+}

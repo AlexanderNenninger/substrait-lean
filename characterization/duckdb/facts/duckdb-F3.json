@@ -1,0 +1,24 @@
+{
+  "id": "duckdb-F3",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer literal types",
+  "verdict": "frontend",
+  "area": "integers",
+  "layer": "frontend",
+  "constructs": [
+    "integer literal"
+  ],
+  "settings": {},
+  "description": "DuckDB types an integer literal as the narrowest type that holds it (duckdb-R1).",
+  "reference": "`100::TINYINT + 50` is an `i8` addition in DuckDB, and an `i64` one in DataFusion's plan.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "commit 20b02e9",
+      "notes": "Recorded from the replay's translation of DuckDB's SQL to DataFusion's (`sverify_dev.slt.translate`)."
+    }
+  ]
+}

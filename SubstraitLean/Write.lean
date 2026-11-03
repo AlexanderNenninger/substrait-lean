@@ -792,6 +792,23 @@ def _root_.Substrait.Rel.anyExpr (p : Expr → Bool) : Rel → Bool
 
 def _root_.Substrait.Rel.decimalOps (r : Rel) : Bool := r.anyExpr Expr.decimalOps
 
+/-- Does the plan take a `MIN` or `MAX` of doubles (#371)? DataFusion's
+grouped ones compare like IEEE 754 from `±f64::MAX` (a group of `+∞` has
+`MIN` `f64::MAX`, and NaN is skipped). -/
+def _root_.Substrait.Rel.floatExtremes (tables : Parse.Tables) : Rel → Bool
+  | .read _ | .values _ _ => false
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
+  | .unnest r _ => r.floatExtremes tables
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ =>
+    a.floatExtremes tables || b.floatExtremes tables
+  | .window r _ _ fns =>
+    r.floatExtremes tables || fns.any fun
+      | .agg m _ _ => (m.fn == .min || m.fn == .max) && m.arg.kind (r.kinds tables) == .float
+      | _ => false
+  | .aggregate r _ ms =>
+    r.floatExtremes tables ||
+      ms.any fun m => (m.fn == .min || m.fn == .max) && m.arg.kind (r.kinds tables) == .float
+
 /-- Does the expression wrap around or clamp (`overflow` = `SILENT` or
 `SATURATE`, `UnFn.fit`, #241)? -/
 def _root_.Substrait.Expr.fits : Expr → Bool

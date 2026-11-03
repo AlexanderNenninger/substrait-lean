@@ -3960,6 +3960,7 @@ testing = [
 dev = [
     { name = "fakesnow" },
     { name = "hypothesis" },
+    { name = "jsonschema" },
     { name = "marimo" },
     { name = "moto", extra = ["server"] },
     { name = "poethepoet" },
@@ -3999,6 +4000,7 @@ provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight"
 dev = [
     { name = "fakesnow", specifier = ">=0.12.1" },
     { name = "hypothesis", specifier = ">=6.170.14" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "marimo", specifier = ">=0.25.2" },
     { name = "moto", extras = ["server"], specifier = ">=5.1" },
     { name = "poethepoet", specifier = ">=0.49.0" },

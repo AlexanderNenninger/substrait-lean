@@ -251,13 +251,13 @@
   }
  },
  "fin-max-drawdown": {
-  "checker": "rejected",
-  "detail": "error: max of doubles is not supported",
+  "checker": "verified",
+  "incremental": false,
   "native": "runs",
-  "as_double": {
-   "checker": "rejected",
-   "detail": "error: max of doubles is not supported",
-   "native": "runs"
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: max of doubles is not yet supported on Polars; see #271",
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; see #271"
   }
  },
  "fin-log-returns": {
@@ -552,9 +552,14 @@
   }
  },
  "iot-daily-energy": {
-  "checker": "rejected",
-  "detail": "error: max of doubles is not supported",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": false,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "refused: max of doubles is not yet supported on Polars; see #271",
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; see #271"
+  }
  },
  "iot-event-correlation": {
   "checker": "verified",
@@ -1499,11 +1504,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": false,
-   "may_fail": [
-    "overflow: DECIMAL_21_7(($23 * DECIMAL_1_1(2)))"
-   ]
+   "proved": true,
+   "guard_free": true
   },
   "verified_sql": {
    "duckdb": "yes"

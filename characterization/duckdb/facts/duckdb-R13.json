@@ -1,0 +1,51 @@
+{
+  "id": "duckdb-R13",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`substring` with a negative start",
+  "verdict": "fixed (#209): `WRAP_FROM_END`",
+  "area": "strings",
+  "constructs": [
+    "substring"
+  ],
+  "settings": {},
+  "description": [
+    "`WRAP_FROM_END` is native, but sverify's SQL normalizes the start for every engine (`CASE WHEN a < 0 THEN a + length + 1`, then the `LEFT_OF_BEGINNING` normalization it already had).",
+    "DataFusion's own `substring` is `LEFT_OF_BEGINNING`, so a wrapping one whose start is not a constant ≥ 0 is refused there."
+  ],
+  "reference": [
+    "Substrait: `negative_start: [WRAP_FROM_END, LEFT_OF_BEGINNING, ERROR]`.",
+    "Lean: was `LEFT_OF_BEGINNING`, as DataFusion does (`substring('hello' FROM -2 FOR 2) = ''`). Fixed (#209): the reference is `WRAP_FROM_END` when the plan omits the option (`Text.substrWrap`: `'lo'`; a start that wraps past the beginning, or 0, is left of it, so `substring('hello', -10, 7) = 'he'`, as in DuckDB). A plan that sets `LEFT_OF_BEGINNING` gets that (sverify's Ibis producer sets it for the starts it computes); `ERROR` is refused."
+  ],
+  "status": "fixed",
+  "ledger_entries": 10,
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/function/string/test_substring.test",
+          "note": "lines 129,207"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/types/string/test_unicode.test",
+          "note": "lines 31-41"
+        },
+        {
+          "file": "characterization/duckdb/function__string.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-02",
+      "method": "source-reading",
+      "checked_by": "commit 5b168e0 (#209)",
+      "notes": "substring counts a negative start from the end."
+    }
+  ],
+  "issues": [
+    209
+  ]
+}

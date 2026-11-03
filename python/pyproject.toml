@@ -78,6 +78,8 @@ dev = [
     "sverify[all]",
     "fakesnow>=0.12.1",
     "hypothesis>=6.170.14",
+    # Checks the engine facts against characterization/fact.schema.json.
+    "jsonschema>=4.26.0",
     "marimo>=0.25.2",
     # S3 for the Delta sink tests, run as its own process (upstream/LEDGER.md DL-1).
     "moto[server]>=5.1",
