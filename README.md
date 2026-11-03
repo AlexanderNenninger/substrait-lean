@@ -214,8 +214,9 @@ cd python && uv run poe qa       # everything below, in order; stops at the firs
 | `poe fmt` | Fixes lint issues and formats the Python code |
 | `poe typecheck` | Type-checks the Python code with pyrefly |
 | `poe golden` | Golden tests: CLI output on every plan in `tests/fixtures` |
-| `poe test` | Python tests, including the randomized engine tests, on every core |
-| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`; see `python/tests/conftest.py`). CI runs one job per backend. |
+| `poe test` | The fast Python tests on 2 workers: no `slow` tests, a tenth of the Hypothesis examples (see `python/tests/conftest.py`) |
+| `poe test-all` | Every Python test with the full Hypothesis counts, on every core, as `qa` and CI run them |
+| `poe test-core`, `test-datafusion`, `test-duckdb`, `test-polars`, `test-snowflake`, `test-spark` | The Python tests of one backend (`pytest -m <backend>`). CI runs one job per backend, and three for `core`. |
 | `poe notebooks` | Checks the tour notebooks and runs each one headless |
 | `poe docs`, `poe docs_preview` | Builds the API reference site into `python/great-docs/_site` (or serves it locally). Needs [Quarto](https://quarto.org) and `uv sync --group docs`; not part of `qa` |
 
@@ -261,7 +262,7 @@ marimo.
 `uv build python --wheel` builds a wheel for the current platform. It bundles a
 stripped `substrait-check`, so installing it needs neither Lean nor elan. The
 [Wheels workflow](.github/workflows/wheels.yml) builds and tests wheels for Linux
-(x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
+(x86_64, aarch64) and macOS (arm64). A `v*` tag that matches the
 version in `python/pyproject.toml` also publishes them to PyPI. Each night,
 when `main` has changed, it publishes them as the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly)
@@ -282,7 +283,7 @@ uv run --project python python my_pipeline.py
 ### Troubleshooting
 
 * `lake: command not found`: open a new terminal, or call `~/.elan/bin/lake`.
-* `no configuration file …lakefile`: run `lake` from the project root, where `lakefile.toml` is.
+* `no configuration file …lakefile`: run `lake` from the project root, where `lakefile.lean` is.
 * `… does not exist` for a notebook or `--project` path: those paths are relative to the
   project root, and `python/` is not the root.
 * Why DataFusion 51? Ibis 12's DataFusion backend fails to connect with

@@ -50,6 +50,7 @@ def test_the_plugin_is_registered():
     assert ep.value == "sverify.pytest_plugin"
 
 
+@pytest.mark.slow
 def test_the_example_test_file_passes(pytester):
     example = Path(__file__).with_name("test_plugin_example.py").read_text()
     pytester.makepyfile(test_example=example)
@@ -59,6 +60,7 @@ def test_the_example_test_file_passes(pytester):
     result.stdout.no_fnmatch_line("*warning*")
 
 
+@pytest.mark.slow
 def test_sv_engine_runs_once_per_engine(pytester):
     pytester.makepyfile(
         """

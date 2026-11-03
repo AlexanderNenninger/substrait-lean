@@ -58,6 +58,7 @@ def both(sql: str, t: list, u: list) -> tuple[list, list]:
     return lean_values(json.dumps(plan)), expected
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("sql", BAGS)
 @settings(
     max_examples=40, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]

@@ -3,7 +3,14 @@
 ## Running QA
 
 `poe qa` (from `python/`) runs everything: Lean proofs, build, lint,
-typecheck, golden tests and the Python tests. It is slow on this laptop.
+typecheck, golden tests and every Python test (`poe test-all`). It is slow on
+this laptop.
+
+Locally, run `poe test`: the fast set on 2 workers, without the `slow` tests
+and with a tenth of the Hypothesis examples (the `dev` profile,
+`python/tests/conftest.py`). Leave the full suite to CI or to homelab
+(`homelab_qa.sh` runs `qa`). CI runs every test with the full counts, `core`
+in three shards.
 
 ### Check capacity before expensive tasks
 
@@ -18,9 +25,10 @@ spare capacity. This applies to the laptop as much as to `homelab`.
   change touches.
 - **homelab**: see below.
 
-Run one expensive task at a time per agent, never several in parallel. The
-poe test tasks use `pytest -n auto`, which takes every core. On the laptop,
-run pytest directly with `-n 2` instead.
+Run one expensive task at a time per agent, never several in parallel.
+`poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
+use `pytest -n auto`, which takes every core. On the laptop, run pytest
+directly with `-n 2` instead.
 
 For long QA runs, use the `homelab` server for more compute: `ssh homelab`
 (reached over Tailscale, user `nennia`, key auth, so `ssh -o BatchMode=yes`
@@ -71,6 +79,14 @@ replaces it with the clone's `.lake` after a successful run. Lake's trace
 hashes rebuild whatever changed, so a cache from another commit is safe. It
 keeps the caches of the two most recent toolchains, about 300 MB each.
 
+The script refuses to start when less than 6 GB is available. It runs the
+whole job in a systemd user scope capped at 8 GB with no swap
+(`HOMELAB_QA_MEMORY_MAX` changes the cap). The first OOM kill stops the whole
+run, and its directory is deleted. A Lean change that sends `LiftDuckDB.lean`
+into the full lift search once took 12.4 GB in one `lean` process and nearly
+hung the box. Where user scopes are not available it
+falls back to `ulimit -v`, which caps each process on its own.
+
 Run long QA commands there in the background, not in the foreground shell.
 
 ## Notebooks on molab
@@ -98,12 +114,23 @@ conflicts with other PRs:
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`.
 
-Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/Off` and `On`
-(the DuckDB lowering) and `SubstraitLean/LiftDuckDB/Duckdb` and `Reference` (the
-lift from DuckDB SQL), entries with their proofs, are committed, and a build only
-checks them. When a build fails there, or a golden test of theirs changes,
-regenerate them with `poe regen-lowering` or `poe regen-lift` and commit the
-result. Both cap Lean at 6 GB (`-M 6144`).
+Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
+DuckDB lowering, for DuckDB's default settings only) and
+`SubstraitLean/LiftDuckDB/Duckdb` and `Reference` (the lift from DuckDB SQL),
+entries with their proofs, are committed, and a build only checks them. When a
+build fails there, or a golden test of theirs changes, regenerate them with
+`poe regen-lowering` or `poe regen-lift` and commit the result. Both cap Lean at
+6 GB (`-M 6144`).
+
+Their proofs are checked only when the lakefile's `check_generated` option is
+on (`SubstraitLean/Generated.lean`). It is off by default, so a local
+`lake build` takes the entries as proved and stays quick; the tables and their
+staleness checks are the same. CI, the Wheels workflow, `poe prove` (and so
+`poe qa`), `homelab_qa.sh` and the wheel's build hook turn it on with
+`lake -R -Kcheck_generated=true build`. Lake keeps the setting of the last `-R`,
+so after one of those, `lake -R build` goes back to quick builds. Turn it on
+locally when you change a generated module, `Profile.duckdb` or the
+generators' tactics.
 
 If you ran one of these commands locally, `git checkout` those files again
 before you commit. Edit the sources instead: the `CASES` of

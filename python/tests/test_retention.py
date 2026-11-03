@@ -84,6 +84,7 @@ def full(node, src):
 # -- the state stays bounded --------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_a_long_stream_keeps_its_state_bounded(engine):
     src = StaticSource(samples([("a", m, 1) for m in range(0, 60, 10)]), name="samples")
@@ -130,6 +131,7 @@ def test_the_summary_shows_open_and_retired_buckets():
     assert "requires checked on 1 row(s)" in line
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("lateness", "bound"),
     [
@@ -250,6 +252,7 @@ def random_stream(seed, batches=80):
     return first, out
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 @pytest.mark.parametrize("seed", range(4))
 def test_retention_matches_a_full_recompute(seed, engine):
@@ -273,6 +276,7 @@ def test_retention_matches_a_full_recompute(seed, engine):
     assert retired > 0
 
 
+@pytest.mark.slow
 def test_a_bucket_expression_with_an_offset():
     src = StaticSource(samples([("a", m, 1) for m in range(0, 240, 5)]), name="samples")
     sink = Recorder()
@@ -323,6 +327,7 @@ def test_views_retention_does_not_apply_to_say_why(body, reason):
     assert report.off is not None and reason in report.off
 
 
+@pytest.mark.slow
 def test_a_delta_sink_keeps_the_retired_buckets_across_a_restart(tmp_path):
     uri = str(tmp_path / "samples")
     write_deltalake(

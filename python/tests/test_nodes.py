@@ -322,6 +322,7 @@ def test_the_engine_is_chosen_at_refresh(tmp_path, engine, monkeypatch):
     assert rows(node)[-1] == (4, "dan", 4)
 
 
+@pytest.mark.slow
 def test_a_spark_session_as_the_engine(tmp_path):
     from spark_session import session
 
@@ -571,6 +572,7 @@ def test_nodes_read_stored_nodes_and_contracts_connect():
 customers_row = st.tuples(names, st.sampled_from(["Paris", "Rome", None]))
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ENGINES)
 @SETTINGS
 @given(data=st.data())

@@ -83,6 +83,7 @@ def grow(src):
     write_deltalake(src.uri, orders_table([(10 + n, "cy", 1)]), mode="append")
 
 
+@pytest.mark.slow
 def test_maintenance_on_s3(tmp_path, lake):
     root, store = lake
     uri = f"{root}/big"
@@ -108,6 +109,7 @@ def test_maintenance_on_s3(tmp_path, lake):
     assert rows(again) == recomputed(doubled(paid(src)), src)
 
 
+@pytest.mark.slow
 def test_a_restart_on_s3_resumes_past_another_writers_compaction(tmp_path, lake):
     root, store = lake
     uri = f"{root}/big"

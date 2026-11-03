@@ -3,7 +3,7 @@ import SubstraitLean.Lowering
 /-!
 # Lemmas the DuckDB lowering's proofs compute with (#241)
 
-The generated modules (`SubstraitLean/LoweringDuckDB/Off`, `On`) use them;
+The generated modules (`SubstraitLean/LoweringDuckDB/On`) use them;
 `scripts/RegenLowering.lean` passes them to the generator (`using`).
 -/
 

@@ -12,6 +12,8 @@
 * `AuditError`: in `refresh(audit=True)`, a change feed or a view disagrees
   with recomputation; nothing was applied.
 * `SqlError`: a SQL producer refused a query.
+* `CheckerVersionError`: the `substrait-check` binary is older or newer than
+  this sverify.
 """
 
 from sverify.contracts import (
@@ -20,11 +22,12 @@ from sverify.contracts import (
     PreconditionError,
     VerificationError,
 )
-from sverify.engine import SqlError
+from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncremental, SchemaError
 
 __all__ = [
     "AuditError",
+    "CheckerVersionError",
     "CompositionError",
     "NotIncremental",
     "PostconditionError",
