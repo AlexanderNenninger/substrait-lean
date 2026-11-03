@@ -183,6 +183,20 @@ Bounds that scale with the spread are proved for three of the algorithms:
   weight that stays below `2 n (⌈log₂ n⌉ + 1)` (`Lw_merge`), and the
   constants take `⌈log₂ n⌉ ≤ 32`.
 
+The covariance has the same kind of bounds, with `S_xx`, `S_yy` the
+co-moments of each side and `Q'_x = Σ (|x| + tiny)²`:
+
+- Two-pass ([`CovTwoPass.lean`](../float-bounds/FloatBounds/CovTwoPass.lean),
+  `twoPass_cov_rel`):
+  `|Ĉ − C| ≤ 6 n u √(S_xx S_yy) + 1.1 u (√(Q'_y S_xx) + √(Q'_x S_yy)) + 120 n² u² √(Q'_x Q'_y) + 4 n² u · tiny`.
+- DuckDB's parallel aggregation, Welford's update and the merge with the
+  weighted mean ([`CovRel.lean`](../float-bounds/FloatBounds/CovRel.lean),
+  `chanCov_rel`):
+  `|Ĉ − C| ≤ 70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`.
+
+By Cauchy–Schwarz every partial co-moment and every increment is at most
+`√(S_xx S_yy)` (`comoment_sq_le`), which is what the proofs scale with.
+
 For the timestamps above (`10⁶` rows near `10⁶`, spread `1`), Welford's bound
 on the variance is about `32 · 10⁶ · 1.1 · 10⁻¹⁶ · 10⁶ ≈ 3.6 · 10⁻³`, the
 parallel one's about `1.6 · 10⁻²`, and two-pass's about `10⁻⁶`, against a
