@@ -884,6 +884,48 @@ theorem tInv_of_wInv {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : WInv xs s) : T
       linarith
     exact mul_le_mul a1 a2 (by positivity) (by positivity)
 
+/-- **One merge keeps the co-moment's bound**: the error terms of a merge
+(`delta_err`, `sq_err`, `T_err`, `merge_com`) folded into the tree bound
+(`merge_fold`). -/
+theorem merge_step_arith {na nb m h Aa Ab Da Db Sa Sb La Lb L Ma Mb ma mb Dh T Sha Shb Sh1 Sh : ℝ}
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (hma : m ≤ na) (hmb : m ≤ nb) (hh : 0 ≤ h)
+    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
+    (htA : tiny ≤ Aa + Ab) (hMa : |Ma| ≤ Aa) (hMb : |Mb| ≤ Ab)
+    (ea : |ma - Ma| ≤ 6 * u * Aa) (eb : |mb - Mb| ≤ 6 * u * Ab)
+    (eD : |Dh - (mb - ma)| ≤ u * (|mb - ma| + tiny))
+    (eT : |T - Dh ^ 2 * h| ≤ 5 * u * (Dh ^ 2 * h + (1 + h) * tiny))
+    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
+    (hL : La + Lb + 2 * m ≤ L)
+    (hEa : |Sha - Sa| ≤ tBound na Aa Da Sa La) (hEb : |Shb - Sb| ≤ tBound nb Ab Db Sb Lb)
+    (h1 : |Sh1 - (Sha + Shb)| ≤ u * (|Sha + Shb| + tiny))
+    (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
+    |Sh - (Sa + Sb + (Mb - Ma) ^ 2 * h)|
+      ≤ tBound (na + nb) (Aa + Ab) (Da + Db + h * |Mb - Ma|) (Sa + Sb + (Mb - Ma) ^ 2 * h) L := by
+  have hA0 : 0 ≤ Aa + Ab := by positivity
+  have hΔA : |Mb - Ma| ≤ Aa + Ab := by have := abs_sub Mb Ma; linarith
+  have h1' : |(mb - ma) - (Mb - Ma)| ≤ 6 * u * (Aa + Ab) := by
+    have e : (mb - ma) - (Mb - Ma) = (mb - Mb) - (ma - Ma) := by ring
+    rw [e]; have := abs_sub (mb - Mb) (ma - Ma); linarith
+  have hd := delta_err htA h1' eD
+  have hs := sq_err hh hA0 hΔA hd
+  have hQ : |Dh ^ 2 * h - (Mb - Ma) ^ 2 * h| ≤ 14.2 * u * (Aa + Ab) * (h * |Mb - Ma|)
+      + 2 * u * ((Mb - Ma) ^ 2 * h) + 103 * u ^ 2 * h * (Aa + Ab) ^ 2 := by
+    have e : Dh ^ 2 * h - (Mb - Ma) ^ 2 * h = h * (Dh ^ 2 - (Mb - Ma) ^ 2) := by ring
+    rw [e, abs_mul, abs_of_nonneg hh]; exact hs
+  have hX : 0 ≤ h * |Mb - Ma| := by positivity
+  have hT := T_err hX (by positivity) hh hA0 hQ eT
+  have hc := merge_com hSa hSb (by positivity : 0 ≤ (Mb - Ma) ^ 2 * h) hX hA0 hh hEa hEb hT h1 h2
+  refine le_trans hc ?_
+  unfold tBound at hEa hEb ⊢
+  have hf := merge_fold hna hnb hm1 hma hmb hh hhm hn hAa hAb hDa hDb hX hSa hSb
+    (by positivity : 0 ≤ (Mb - Ma) ^ 2 * h) hLa hLb hL le_rfl le_rfl
+  have e : tBound na Aa Da Sa La = (1 + 3 * na * u) * (17 * u * Aa * Da + 9 * u * na * Sa
+      + 60 * u ^ 2 * La * Aa ^ 2 + 12 * u * tiny * La) := rfl
+  have e' : tBound nb Ab Db Sb Lb = (1 + 3 * nb * u) * (17 * u * Ab * Db + 9 * u * nb * Sb
+      + 60 * u ^ 2 * Lb * Ab ^ 2 + 12 * u * tiny * Lb) := rfl
+  rw [← e, ← e'] at hf
+  exact hf
+
 end FloatBounds
 
 end
