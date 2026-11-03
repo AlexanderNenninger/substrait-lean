@@ -7,9 +7,15 @@ from importlib import metadata
 import ibis
 import pyarrow as pa
 import pytest
+import sqlglot
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 
+@pytest.mark.skipif(
+    Version(sqlglot.__version__) >= Version("30.18"),
+    reason="development runs SQLGlot 30.22 for fakesnow; the wheel's tests run the pinned one",
+)
 def test_ibis_duckdb_creates_tables():
     # SQLGlot 30.18 and later write Ibis 12's `DROP VIEW IF EXISTS` without
     # the view's name, and DuckDB rejects it.
