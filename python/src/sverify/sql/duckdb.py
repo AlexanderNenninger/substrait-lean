@@ -109,7 +109,7 @@ class DuckDBDialect(Dialect):
         # The generated, proved templates (`SubstraitLean/LoweringDuckDB.lean`).
         from sverify.sql import lowering
 
-        return lowering.render(
+        sql = lowering.render(
             fn,
             args,
             lambda message, dep: self.raise_(message, dep, kind),
@@ -117,6 +117,8 @@ class DuckDBDialect(Dialect):
             self.int_lit,
             self.guards,
         )
+        # Wrap-arounds compute in HUGEINT: the result is a BIGINT again.
+        return self.cast(sql, "int") if sql is not None and kind == "int" else sql
 
     def row_ordinal(self) -> str:
         return "rowid"

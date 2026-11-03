@@ -4205,13 +4205,13 @@ class _Writer:
                 x = self.int_operand(a, ref, cols, "negation")
                 # The exact result, in 128 bits, is the template's argument.
                 low = d.lowered(f"fit:{mode}:{bits}", [f"(- CAST({x} AS HUGEINT))"], "int")
-                return d.cast(low, "int") if low is not None else d.fit_int(mode, bits, "-", [x])
+                return low if low is not None else d.fit_int(mode, bits, "-", [x])
             case Un(op="fit", arg=Bin(op=op, left=a, right=b), digits=bits, param=mode):
                 sym = {"add": "+", "sub": "-", "mul": "*"}[op]
                 xs = [self.int_operand(e, ref, cols, "arithmetic") for e in (a, b)]
                 exact = f"(CAST({xs[0]} AS HUGEINT) {sym} {xs[1]})"
                 low = d.lowered(f"fit:{mode}:{bits}", [exact], "int")
-                return d.cast(low, "int") if low is not None else d.fit_int(mode, bits, sym, xs)
+                return low if low is not None else d.fit_int(mode, bits, sym, xs)
             case Bin(op="and" | "or" as op, left=a, right=b):
                 f = d.and3 if op == "and" else d.or3
                 return f(go(a, "bool"), go(b, "bool"))
