@@ -409,6 +409,166 @@ theorem merge_mean {na nb ma mb Ma Mb Aa Ab mh : ℝ} (hna : 1 ≤ na) (hnb : 1 
     nlinarith
   linarith
 
+/-! ## DuckDB's merge -/
+
+variable (M : StdModel)
+
+theorem u_pows : (1 + u) ^ 4 ≤ 1 + 4.01 * u ∧ 1 - 4 * u ≤ (1 - u) ^ 4 ∧ (1 + u) ^ 3 ≤ 1.01 ∧
+    (1 + u) ^ 2 ≤ 1.01 := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have h2 : u ^ 2 ≤ u / 2 ^ 53 := by nlinarith
+  have h3 : u ^ 3 ≤ u / 2 ^ 53 := by nlinarith
+  have h4 : u ^ 4 ≤ u / 2 ^ 53 := by nlinarith
+  refine ⟨by nlinarith, by nlinarith, by nlinarith, by nlinarith⟩
+
+/-- One rounding of a value `z ≥ 0`: between `(1 − u) z − u·tiny` and
+`(1 + u) z + u·tiny`, and `≥ 0`. -/
+theorem StdModel.rnd_nonneg {z : ℝ} (hz : 0 ≤ z) (hb : z ≤ maxFinite) :
+    0 ≤ M.fl z ∧ M.fl z ≤ (1 + u) * z + u * tiny ∧ (1 - u) * z - u * tiny ≤ M.fl z := by
+  have h := abs_le.mp (M.err z (by rwa [abs_of_nonneg hz]))
+  rw [abs_of_nonneg hz] at h
+  exact ⟨M.nonneg _ hz, by linarith [h.2], by linarith [h.1]⟩
+
+set_option maxHeartbeats 800000 in
+/-- DuckDB's `T = Δ · Δ · n_s · n_t / n`, each operation rounded: within
+`5 u (Δ² h + (1 + h) tiny)` of `Δ² h`, `h = n_s n_t / n`. -/
+theorem StdModel.T_chain {D : ℝ} {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt)
+    (hn : ns + nt ≤ 2 ^ 32) (hD : |D| ≤ 2 ^ 420) :
+    |M.fl (M.fl (M.fl (M.fl (D * D) * ns) * nt) / ((ns : ℝ) + nt))
+        - D ^ 2 * ((ns : ℝ) * nt / ((ns : ℝ) + nt))|
+      ≤ 5 * u * (D ^ 2 * ((ns : ℝ) * nt / ((ns : ℝ) + nt))
+        + (1 + (ns : ℝ) * nt / ((ns : ℝ) + nt)) * tiny) := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  have hsr : (1 : ℝ) ≤ ns := by exact_mod_cast hs
+  have htr : (1 : ℝ) ≤ nt := by exact_mod_cast ht1
+  have hnr : (ns : ℝ) + nt ≤ 2 ^ 32 := by exact_mod_cast hn
+  obtain ⟨n, hn'⟩ : ∃ n : ℝ, n = (ns : ℝ) + nt := ⟨_, rfl⟩
+  rw [← hn']
+  have hn0 : 0 < n := by linarith
+  obtain ⟨P, hP⟩ : ∃ P, P = D ^ 2 := ⟨_, rfl⟩
+  rw [← hP, show D * D = P by rw [hP]; ring]
+  have hP0 : 0 ≤ P := by rw [hP]; positivity
+  have hPb : P ≤ 2 ^ 840 := by
+    rw [hP, ← sq_abs]; calc |D| ^ 2 ≤ (2 ^ 420) ^ 2 := by gcongr
+      _ = 2 ^ 840 := by norm_num
+  have hut : u * tiny ≤ 1 := le_trans (mul_le_mul hu' (by unfold tiny; norm_num : tiny ≤ 1)
+    ht.le (by norm_num)) (by norm_num)
+  have hu1 : u ≤ 1 / 2 := by linarith
+  -- the four roundings
+  obtain ⟨q10, q1u, q1l⟩ := M.rnd_nonneg hP0 (by linarith)
+  set q1 := M.fl P
+  have huP : u * P ≤ P := by have := mul_le_mul_of_nonneg_right hu1 hP0; linarith
+  have hq1 : q1 ≤ 2 ^ 842 := by linarith
+  have hq1b : q1 * ns ≤ 2 ^ 900 := by
+    have := mul_le_mul hq1 (by linarith : (ns : ℝ) ≤ 2 ^ 32) (by positivity) (by norm_num)
+    linarith
+  obtain ⟨q20, q2u, q2l⟩ := M.rnd_nonneg (by positivity : 0 ≤ q1 * ns) (by linarith)
+  set q2 := M.fl (q1 * ns)
+  have hq2 : q2 ≤ 2 ^ 902 := by
+    have := mul_le_mul_of_nonneg_right hu1 (by positivity : 0 ≤ q1 * ns); linarith
+  have hq2b : q2 * nt ≤ 2 ^ 950 := by
+    have := mul_le_mul hq2 (by linarith : (nt : ℝ) ≤ 2 ^ 32) (by positivity) (by norm_num)
+    linarith
+  obtain ⟨q30, q3u, q3l⟩ := M.rnd_nonneg (by positivity : 0 ≤ q2 * nt) (by linarith)
+  set q3 := M.fl (q2 * nt)
+  have hq3 : q3 ≤ 2 ^ 952 := by
+    have := mul_le_mul_of_nonneg_right hu1 (by positivity : 0 ≤ q2 * nt); linarith
+  have hq3b : q3 / n ≤ 2 ^ 960 := by
+    calc q3 / n ≤ q3 := div_le_self q30 (by linarith)
+      _ ≤ _ := by linarith
+  obtain ⟨-, q4u, q4l⟩ := M.rnd_nonneg (by positivity : 0 ≤ q3 / n) (by linarith)
+  -- `h`, `nt / n`, `1 / n`
+  obtain ⟨h, hh⟩ : ∃ h : ℝ, h = (ns : ℝ) * nt / n := ⟨_, rfl⟩
+  rw [← hh]
+  have hh0 : 0 ≤ h := by rw [hh]; positivity
+  obtain ⟨a, hadef⟩ : ∃ a : ℝ, a = (nt : ℝ) / n := ⟨_, rfl⟩
+  obtain ⟨b, hbdef⟩ : ∃ b : ℝ, b = 1 / n := ⟨_, rfl⟩
+  have ha0 : 0 ≤ a := by rw [hadef]; positivity
+  have ha1 : a ≤ 1 := by rw [hadef, div_le_one hn0]; linarith
+  have hb0 : 0 ≤ b := by rw [hbdef]; positivity
+  have hb1 : b ≤ 1 := by rw [hbdef, div_le_one hn0]; linarith
+  have eh : (ns : ℝ) * nt * b = h := by rw [hbdef, hh]; ring
+  have ea : (nt : ℝ) * b = a := by rw [hadef, hbdef]; ring
+  have e3 : q3 / n = q3 * b := by rw [hbdef]; ring
+  rw [e3] at q4u q4l ⊢
+  -- upper: `T ≤ (1+u)⁴ P h + u t ((1+u)³ h + (1+u)² a + (1+u) b + 1)`
+  have up : M.fl (q3 * b) ≤ (1 + u) ^ 4 * (P * h)
+      + u * tiny * ((1 + u) ^ 3 * h + (1 + u) ^ 2 * a + (1 + u) * b + 1) := by
+    have s2 : q2 ≤ (1 + u) * (((1 + u) * P + u * tiny) * ns) + u * tiny := by
+      have := mul_le_mul_of_nonneg_right q1u (by positivity : (0 : ℝ) ≤ ns)
+      have := mul_le_mul_of_nonneg_left this (by positivity : (0 : ℝ) ≤ 1 + u); linarith
+    have s3 : q3 ≤ (1 + u) * (((1 + u) * (((1 + u) * P + u * tiny) * ns) + u * tiny) * nt)
+        + u * tiny := by
+      have := mul_le_mul_of_nonneg_right s2 (by positivity : (0 : ℝ) ≤ nt)
+      have := mul_le_mul_of_nonneg_left this (by positivity : (0 : ℝ) ≤ 1 + u); linarith
+    have s4 : M.fl (q3 * b) ≤ (1 + u) * (((1 + u) * (((1 + u) * (((1 + u) * P + u * tiny) * ns)
+        + u * tiny) * nt) + u * tiny) * b) + u * tiny := by
+      have := mul_le_mul_of_nonneg_right s3 hb0
+      have := mul_le_mul_of_nonneg_left this (by positivity : (0 : ℝ) ≤ 1 + u); linarith
+    have e : (1 + u) * (((1 + u) * (((1 + u) * (((1 + u) * P + u * tiny) * ns) + u * tiny) * nt)
+        + u * tiny) * b) + u * tiny = (1 + u) ^ 4 * (P * ((ns : ℝ) * nt * b))
+        + u * tiny * ((1 + u) ^ 3 * ((ns : ℝ) * nt * b) + (1 + u) ^ 2 * ((nt : ℝ) * b)
+          + (1 + u) * b + 1) := by ring
+    rw [e, eh, ea] at s4; exact s4
+  -- lower: `T ≥ (1−u)⁴ P h − u t ((1+u)³ h + (1+u)² a + (1+u) b + 1)`
+  have lo : (1 - u) ^ 4 * (P * h) - u * tiny * ((1 + u) ^ 3 * h + (1 + u) ^ 2 * a + (1 + u) * b + 1)
+      ≤ M.fl (q3 * b) := by
+    have hu0 : 0 ≤ 1 - u := by linarith
+    have s2 : (1 - u) * (((1 - u) * P - u * tiny) * ns) - u * tiny ≤ q2 := by
+      have := mul_le_mul_of_nonneg_right q1l (by positivity : (0 : ℝ) ≤ ns)
+      have := mul_le_mul_of_nonneg_left this hu0; linarith
+    have s3 : (1 - u) * (((1 - u) * (((1 - u) * P - u * tiny) * ns) - u * tiny) * nt) - u * tiny
+        ≤ q3 := by
+      have := mul_le_mul_of_nonneg_right s2 (by positivity : (0 : ℝ) ≤ nt)
+      have := mul_le_mul_of_nonneg_left this hu0; linarith
+    have s4 : (1 - u) * (((1 - u) * (((1 - u) * (((1 - u) * P - u * tiny) * ns) - u * tiny) * nt)
+        - u * tiny) * b) - u * tiny ≤ M.fl (q3 * b) := by
+      have := mul_le_mul_of_nonneg_right s3 hb0
+      have := mul_le_mul_of_nonneg_left this hu0; linarith
+    have e : (1 - u) * (((1 - u) * (((1 - u) * (((1 - u) * P - u * tiny) * ns) - u * tiny) * nt)
+        - u * tiny) * b) - u * tiny = (1 - u) ^ 4 * (P * ((ns : ℝ) * nt * b))
+        - u * tiny * ((1 - u) ^ 3 * ((ns : ℝ) * nt * b) + (1 - u) ^ 2 * ((nt : ℝ) * b)
+          + (1 - u) * b + 1) := by ring
+    rw [e, eh, ea] at s4
+    have c : u * tiny * ((1 - u) ^ 3 * h + (1 - u) ^ 2 * a + (1 - u) * b + 1)
+        ≤ u * tiny * ((1 + u) ^ 3 * h + (1 + u) ^ 2 * a + (1 + u) * b + 1) := by
+      apply mul_le_mul_of_nonneg_left _ (by positivity)
+      have c1 : (1 - u) ^ 3 ≤ (1 + u) ^ 3 := by gcongr; linarith
+      have c2 : (1 - u) ^ 2 ≤ (1 + u) ^ 2 := by gcongr; linarith
+      have := mul_le_mul_of_nonneg_right c1 hh0
+      have := mul_le_mul_of_nonneg_right c2 ha0
+      have := mul_le_mul_of_nonneg_right (by linarith : 1 - u ≤ 1 + u) hb0
+      linarith
+    linarith
+  -- the constants
+  obtain ⟨f4, g4, f3, f2⟩ := u_pows
+  have hPh : 0 ≤ P * h := by positivity
+  have k1 : (1 + u) ^ 4 * (P * h) ≤ P * h + 4.01 * u * (P * h) := by
+    have := mul_le_mul_of_nonneg_right f4 hPh; linarith
+  have k2 : P * h - 4 * u * (P * h) ≤ (1 - u) ^ 4 * (P * h) := by
+    have := mul_le_mul_of_nonneg_right g4 hPh; linarith
+  have k3 : u * tiny * ((1 + u) ^ 3 * h + (1 + u) ^ 2 * a + (1 + u) * b + 1)
+      ≤ u * tiny * (1.01 * h + 3.02) := by
+    apply mul_le_mul_of_nonneg_left _ (by positivity)
+    have := mul_le_mul_of_nonneg_right f3 hh0
+    have := mul_le_mul f2 ha1 ha0 (by norm_num)
+    have := mul_le_mul (by linarith : 1 + u ≤ 1.01) hb1 hb0 (by norm_num)
+    linarith
+  have k4 : u * tiny * (1.01 * h + 3.02) ≤ 5 * u * ((1 + h) * tiny) := by
+    have : 0 ≤ u * tiny := by positivity
+    have := mul_le_mul_of_nonneg_left (by linarith : 1.01 * h + 3.02 ≤ 5 * (1 + h)) this
+    linarith
+  rw [abs_le]
+  have p : 0 ≤ u * (P * h) := by positivity
+  have e5 : 5 * u * (P * h + (1 + h) * tiny) = 5 * (u * (P * h)) + 5 * u * ((1 + h) * tiny) := by ring
+  have e6 : 4.01 * u * (P * h) = 4.01 * (u * (P * h)) := by ring
+  have e7 : 4 * u * (P * h) = 4 * (u * (P * h)) := by ring
+  constructor <;> linarith
+
 end FloatBounds
 
 end
