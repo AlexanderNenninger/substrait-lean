@@ -64,7 +64,8 @@ print(report.facts["doubled"])  # what Lean established about the column
 
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
   snippets (`"doubled >= 22"`). `sv.unique(...)` states a key;
-  `sv.references(col, table, key_col)` a foreign key (only in `requires`).
+  `sv.references(col, table, key_col)` a foreign key (only in `requires`);
+  `sv.rows(at_most=N)` a row count, which proves an integer `SUM` fits.
 * `requires` is checked on the source's data when the node is refreshed
   (`sverify.errors.PreconditionError`), or proved from table metadata.
 * Transforms compose: `revenue(paid(orders))` proves each link from the
