@@ -413,3 +413,208 @@ def CInv (ps : List (ℝ × ℝ)) (s : WState) : Prop :=
       Dy ^ 2 ≤ Lw ps.length * comoment (dupL (ps.map Prod.snd)) ∧
       |s.c - comoment ps| ≤ cBound ps.length (mag (ps.map Prod.fst)) (mag (ps.map Prod.snd)) Dx Dy
         (√(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))) (Lw ps.length)
+
+theorem cBound_nonneg {n Ax Ay Dx Dy R L : ℝ} (hn : 0 ≤ n) (hAx : 0 ≤ Ax) (hAy : 0 ≤ Ay)
+    (hDx : 0 ≤ Dx) (hDy : 0 ≤ Dy) (hR : 0 ≤ R) (hL : 0 ≤ L) : 0 ≤ cBound n Ax Ay Dx Dy R L := by
+  have hu := u_pos
+  have ht := tiny_pos
+  unfold cBound; positivity
+
+/-- The facts about the pairs a bound needs. -/
+theorem pair_facts {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.length ≤ 2 ^ 32)
+    (hB : Bounded (2 ^ 399) ps) :
+    (0 ≤ mag (ps.map Prod.fst) ∧ mag (ps.map Prod.fst) ≤ 2 ^ 432 ∧
+      ps.length * tiny ≤ mag (ps.map Prod.fst) ∧ |mx ps| * ps.length ≤ mag (ps.map Prod.fst) ∧
+      |mx ps| ≤ 2 ^ 400 ∧ 0 ≤ comoment (dupL (ps.map Prod.fst)) ∧
+      comoment (dupL (ps.map Prod.fst)) ≤ 2 ^ 830) ∧
+    (0 ≤ mag (ps.map Prod.snd) ∧ mag (ps.map Prod.snd) ≤ 2 ^ 432 ∧
+      ps.length * tiny ≤ mag (ps.map Prod.snd) ∧ |my ps| * ps.length ≤ mag (ps.map Prod.snd) ∧
+      |my ps| ≤ 2 ^ 400 ∧ 0 ≤ comoment (dupL (ps.map Prod.snd)) ∧
+      comoment (dupL (ps.map Prod.snd)) ≤ 2 ^ 830) := by
+  have h1 := list_facts (xs := ps.map Prod.fst) (by simpa using hne) (by simpa using hN)
+    (fun x hx => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact (hB p hp).1)
+  have h2 := list_facts (xs := ps.map Prod.snd) (by simpa using hne) (by simpa using hN)
+    (fun x hx => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact (hB p hp).2)
+  simp only [List.length_map, mx_dupL_fst, mx_dupL_snd] at h1 h2
+  exact ⟨h1, h2⟩
+
+/-- `√(S_xx S_yy) ≤ 2⁸³⁰`. -/
+theorem sqrt_le_830 {a b : ℝ} (_ha : 0 ≤ a) (hb : 0 ≤ b) (ha' : a ≤ 2 ^ 830) (hb' : b ≤ 2 ^ 830) :
+    √(a * b) ≤ 2 ^ 830 := by
+  rw [Real.sqrt_le_left (by positivity)]
+  have := mul_le_mul ha' hb' hb (by positivity)
+  have e : ((2 : ℝ) ^ 830) ^ 2 = 2 ^ 830 * 2 ^ 830 := by ring
+  rw [e]; exact this
+
+theorem StdModel.welfordStep_first {x y : ℝ} (hx : M.fl x = x) (hy : M.fl y = y) :
+    M.welfordStep .empty (x, y) = ⟨1, x, y, 0⟩ := by
+  simp only [StdModel.welfordStep, WState.empty, Nat.cast_zero, zero_add, sub_zero, div_one, hx,
+    hy, sub_self, M.zero, mul_zero]
+
+theorem StdModel.cInv_one {x y : ℝ} (hx : M.fl x = x) (hy : M.fl y = y) :
+    CInv [(x, y)] (M.welfordStep .empty (x, y)) := by
+  have ht := tiny_pos
+  rw [M.welfordStep_first hx hy]
+  have hmx : mx [(x, y)] = x := by simp [mx, sx]
+  have hmy : my [(x, y)] = y := by simp [my, sy]
+  have hc : comoment [(x, y)] = 0 := by simp [comoment, mx, my, sx, sy]
+  have hcx : comoment (dupL ([(x, y)].map Prod.fst)) = 0 := by
+    simp [comoment, dupL, mx, my, sx, sy]
+  have hcy : comoment (dupL ([(x, y)].map Prod.snd)) = 0 := by
+    simp [comoment, dupL, mx, my, sx, sy]
+  refine ⟨rfl, ?_, ?_, 0, 0, le_rfl, le_rfl, ?_, ?_, ?_⟩
+  · simp only [hmx, sub_self, abs_zero]
+    exact mul_nonneg (mul_nonneg (by norm_num) u_pos.le) (mag_nonneg _)
+  · simp only [hmy, sub_self, abs_zero]
+    exact mul_nonneg (mul_nonneg (by norm_num) u_pos.le) (mag_nonneg _)
+  · rw [hcx]; simp
+  · rw [hcy]; simp
+  · rw [hc, sub_self, abs_zero]
+    exact cBound_nonneg (by positivity) (mag_nonneg _) (mag_nonneg _) le_rfl le_rfl
+      (Real.sqrt_nonneg _) (Lw_nonneg _)
+
+/-- The exact update of the co-moment of the `x`s alone. -/
+theorem comoment_fst_snoc (ps : List (ℝ × ℝ)) (x y : ℝ) :
+    comoment (dupL ((ps ++ [(x, y)]).map Prod.fst))
+      = comoment (dupL (ps.map Prod.fst))
+        + (x - mx ps) * (x - (mx ps + (x - mx ps) / ((ps.length : ℝ) + 1))) := by
+  have hsnd : mx (dupL (ps.map Prod.fst ++ [x]))
+      = mx ps + (x - mx ps) / ((ps.length : ℝ) + 1) := by
+    rw [dupL_append, show dupL [x] = [(x, x)] from rfl, mx_snoc, dupL_length, mx_dupL_fst,
+      List.length_map]
+  rw [List.map_append, show [(x, y)].map Prod.fst = [x] from rfl, dupL_append,
+    show dupL [x] = [(x, x)] from rfl, comoment_snoc,
+    show dupL (ps.map Prod.fst) ++ [(x, x)] = dupL (ps.map Prod.fst ++ [x]) by simp [dupL],
+    my_dupL, hsnd, mx_dupL_fst]
+
+theorem comoment_snd_snoc (ps : List (ℝ × ℝ)) (x y : ℝ) :
+    comoment (dupL ((ps ++ [(x, y)]).map Prod.snd))
+      = comoment (dupL (ps.map Prod.snd))
+        + (y - my ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1))) := by
+  have hsnd : mx (dupL (ps.map Prod.snd ++ [y]))
+      = my ps + (y - my ps) / ((ps.length : ℝ) + 1) := by
+    rw [dupL_append, show dupL [y] = [(y, y)] from rfl, mx_snoc, dupL_length, mx_dupL_snd,
+      List.length_map]
+  rw [List.map_append, show [(x, y)].map Prod.snd = [y] from rfl, dupL_append,
+    show dupL [y] = [(y, y)] from rfl, comoment_snoc,
+    show dupL (ps.map Prod.snd) ++ [(y, y)] = dupL (ps.map Prod.snd ++ [y]) by simp [dupL],
+    my_dupL, hsnd, mx_dupL_snd]
+
+set_option maxHeartbeats 1000000 in
+theorem StdModel.cInv_snoc {ps : List (ℝ × ℝ)} {x y : ℝ} (hne : ps ≠ [])
+    (hN : ps.length + 1 ≤ 2 ^ 32) (hB : Bounded (2 ^ 399) (ps ++ [(x, y)])) {s : WState}
+    (hs : CInv ps s) : CInv (ps ++ [(x, y)]) (M.welfordStep s (x, y)) := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  obtain ⟨K', mxh, myh, Ch⟩ := s
+  obtain ⟨hn, hεx, hεy, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := hs
+  simp only at hn hεx hεy hC
+  subst hn
+  unfold CInv
+  have hBp : Bounded (2 ^ 399) ps := (Bounded.append.mp hB).1
+  have hxy := (Bounded.append.mp hB).2 (x, y) (by simp)
+  simp only at hxy
+  obtain ⟨⟨hAx0, hAxb, hAxt, hmx, hmxb, hSx0, hSxb⟩, ⟨hAy0, hAyb, hAyt, hmy, hmyb, hSy0, hSyb⟩⟩ :=
+    pair_facts hne (by omega) hBp
+  obtain ⟨⟨-, -, -, -, -, hSx0', hSxb'⟩, ⟨-, -, -, -, -, hSy0', hSyb'⟩⟩ :=
+    pair_facts (ps := ps ++ [(x, y)]) (by simp) (by simp; omega) hB
+  have hK1 : 1 ≤ ps.length := List.length_pos_iff.mpr hne
+  have hK1r : (1 : ℝ) ≤ ps.length := by exact_mod_cast hK1
+  have hKr : (ps.length : ℝ) + 1 ≤ 2 ^ 32 := by exact_mod_cast hN
+  -- the exact update
+  have hmxs := mx_snoc ps (x, y)
+  have hmys := my_snoc ps (x, y)
+  have hcs : comoment (ps ++ [(x, y)])
+      = comoment ps + (x - mx ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1))) := by
+    rw [comoment_snoc, hmys]
+  have hsx := comoment_fst_snoc ps x y
+  have hsy := comoment_snd_snoc ps x y
+  have hmagx : mag ((ps ++ [(x, y)]).map Prod.fst) = mag (ps.map Prod.fst) + |x| + tiny := by
+    simp [mag_append]; ring
+  have hmagy : mag ((ps ++ [(x, y)]).map Prod.snd) = mag (ps.map Prod.snd) + |y| + tiny := by
+    simp [mag_append]; ring
+  have hlen : (ps ++ [(x, y)]).length = ps.length + 1 := by simp
+  have hRle := abs_comoment_le_sqrt (ps ++ [(x, y)])
+  -- names
+  obtain ⟨w, hw⟩ : ∃ w : ℝ, w = 1 / ((ps.length : ℝ) + 1) := ⟨_, rfl⟩
+  have hw0 : 0 < w := by rw [hw]; positivity
+  have hw2 : w ≤ 1 / 2 := by
+    rw [hw, div_le_div_iff₀ (by positivity) (by norm_num)]; linarith
+  have ex : (x - mx ps) * (x - (mx ps + (x - mx ps) / ((ps.length : ℝ) + 1)))
+      = (x - mx ps) * ((x - mx ps) * (1 - w)) := by rw [hw]; ring
+  have ey : (y - my ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1)))
+      = (y - my ps) * ((y - my ps) * (1 - w)) := by rw [hw]; ring
+  have exy : (x - mx ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1)))
+      = (x - mx ps) * ((y - my ps) * (1 - w)) := by rw [hw]; ring
+  have hfx := dsq_facts (x - mx ps) hw0 hw2
+  have hfy := dsq_facts (y - my ps) hw0 hw2
+  rw [← ex] at hfx
+  rw [← ey] at hfy
+  obtain ⟨Sx', hSx'⟩ : ∃ S, S = comoment (dupL ((ps ++ [(x, y)]).map Prod.fst)) := ⟨_, rfl⟩
+  obtain ⟨Sy', hSy'⟩ : ∃ S, S = comoment (dupL ((ps ++ [(x, y)]).map Prod.snd)) := ⟨_, rfl⟩
+  rw [← hSx'] at hsx hSx0' hSxb' hRle ⊢
+  rw [← hSy'] at hsy hSy0' hSyb' hRle ⊢
+  -- `|ΔC| ≤ R'`, `R ≤ R'`
+  have hΔR : |(x - mx ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1)))| ≤ √(Sx' * Sy') := by
+    apply Real.abs_le_sqrt
+    have e : ((x - mx ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1)))) ^ 2
+        = ((x - mx ps) * (x - (mx ps + (x - mx ps) / ((ps.length : ℝ) + 1))))
+          * ((y - my ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1)))) := by
+      rw [ex, ey, exy]; ring
+    rw [e]
+    exact mul_le_mul (by linarith) (by linarith) hfy.1 hSx0'
+  have hRR : √(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))
+      ≤ √(Sx' * Sy') :=
+    Real.sqrt_le_sqrt (mul_le_mul (by linarith) (by linarith) hSy0 hSx0')
+  rw [hcs] at hRle ⊢
+  -- the bounds against overflow
+  have hLK := Lw_le (n := ps.length) (by omega)
+  have hL39 : Lw ps.length ≤ 2 ^ 39 := by
+    have : (ps.length : ℝ) ≤ 2 ^ 32 := by linarith
+    linarith
+  have hDxb := Ds_le hDx0 hSx0 hL39 hSxb hDx
+  have hDyb := Ds_le hDy0 hSy0 hL39 hSyb hDy
+  have hGb := cBound_le hK1r (by linarith) hAx0 hAxb hAy0 hAyb hDx0 hDxb hDy0 hDyb
+    (Real.sqrt_nonneg _) (sqrt_le_830 hSx0 hSy0 hSxb hSyb) (Lw_nonneg _) hL39
+  have hst := M.cov_step hK1 hN hmx hAxt hAxb hxy.1 hεx hmy hAyt hAyb hxy.2 hεy
+    (Real.sqrt_nonneg _) (by have := sqrt_le_830 hSx0' hSy0' hSxb' hSyb'; linarith) hRle hΔR hC
+    (by linarith)
+  obtain ⟨-, hmx'⟩ := M.wmean_step hK1 hN hmx hAxt hAxb hxy.1 hεx
+  obtain ⟨-, hmy'⟩ := M.wmean_step hK1 hN hmy hAyt hAyb hxy.2 hεy
+  have hnu : ((ps.length : ℝ) + 1) * u ≤ 1 / 2 ^ 21 := by
+    calc ((ps.length : ℝ) + 1) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  have ar := carith (n := (ps.length : ℝ)) (Ax' := mag (ps.map Prod.fst) + |x| + tiny)
+    (Ay' := mag (ps.map Prod.snd) + |y| + tiny) (dx := |x - mx ps|) (dy := |y - my ps|)
+    (L := Lw ps.length) (L' := Lw (ps.length + 1)) (by positivity) hnu hAx0 (by linarith [abs_nonneg x]) hAy0
+    (by linarith [abs_nonneg y]) hDx0 hDy0 (abs_nonneg _) (abs_nonneg _) (Real.sqrt_nonneg _)
+    hRR (Lw_nonneg _) (by have := Lw_succ ps.length; linarith) le_rfl
+  refine ⟨by simp [StdModel.welfordStep], ?_, ?_, Dx + |x - mx ps|, Dy + |y - my ps|,
+    by positivity, by positivity, ?_, ?_, ?_⟩
+  · simp only [StdModel.welfordStep, hmxs, hmagx]; exact hmx'
+  · simp only [StdModel.welfordStep, hmys, hmagy]; exact hmy'
+  · rw [hlen, hsx]
+    have h2 : |x - mx ps| ^ 2 ≤ 2 * ((x - mx ps) * (x - (mx ps + (x - mx ps) / ((ps.length : ℝ) + 1)))) := by
+      rw [sq_abs]; exact hfx.2.1
+    have := cs3 hDx0 (abs_nonneg _) le_rfl (Lw_nonneg _) (by norm_num : (0 : ℝ) ≤ 2) le_rfl hSx0
+      hfx.1 le_rfl hDx h2 (by simp)
+    simp only [add_zero] at this
+    have h3 := mul_le_mul_of_nonneg_right (by have := Lw_succ ps.length; linarith :
+      Lw ps.length + 2 ≤ Lw (ps.length + 1)) (by linarith : 0 ≤ comoment (dupL (ps.map Prod.fst))
+        + (x - mx ps) * (x - (mx ps + (x - mx ps) / ((ps.length : ℝ) + 1))))
+    linarith
+  · rw [hlen, hsy]
+    have h2 : |y - my ps| ^ 2 ≤ 2 * ((y - my ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1)))) := by
+      rw [sq_abs]; exact hfy.2.1
+    have := cs3 hDy0 (abs_nonneg _) le_rfl (Lw_nonneg _) (by norm_num : (0 : ℝ) ≤ 2) le_rfl hSy0
+      hfy.1 le_rfl hDy h2 (by simp)
+    simp only [add_zero] at this
+    have h3 := mul_le_mul_of_nonneg_right (by have := Lw_succ ps.length; linarith :
+      Lw ps.length + 2 ≤ Lw (ps.length + 1)) (by linarith : 0 ≤ comoment (dupL (ps.map Prod.snd))
+        + (y - my ps) * (y - (my ps + (y - my ps) / ((ps.length : ℝ) + 1))))
+    linarith
+  · simp only [StdModel.welfordStep]
+    rw [hlen, hmagx, hmagy]
+    push_cast
+    exact le_trans hst ar
