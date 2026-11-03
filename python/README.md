@@ -32,7 +32,15 @@ hand on.
 
 Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
-The reference's meaning is in [reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md).
+Sverify checks every plan against a reference semantics, and four principles
+decide what it does ([reference-semantics.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md#principles)):
+
+1. The reference follows Substrait, options included, and says where it
+   departs from it.
+2. Where Substrait is silent, it takes the least surprising choice and writes
+   down why. An option a plan omits means an error.
+3. Every engine can follow it with reasonable effort.
+4. Optimizations stay provable: an error means "may raise".
 
 Engines come in three tiers ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)):
 
