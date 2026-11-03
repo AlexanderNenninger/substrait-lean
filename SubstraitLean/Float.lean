@@ -99,9 +99,17 @@ def roundTo2 (s n : Nat) : Nat :=
     (n / 2 ^ s + 1) * 2 ^ s
   else n / 2 ^ s * 2 ^ s
 
+/-- The number of bits of `n`, counting at most `f` (structural, so that the
+kernel computes it in `f` steps; `Nat.log2` takes `n` steps). -/
+def bitLen : Nat → Nat → Nat
+  | 0, _ => 0
+  | f + 1, n => if n = 0 then 0 else bitLen f (n / 2) + 1
+
 /-- `n` rounded to 53 significant bits, as IEEE rounds an integer to a
-double (before the exponent's range is applied). -/
-def roundSig (n : Nat) : Nat := roundTo2 (Nat.log2 n - 52) n
+double (before the exponent's range is applied). From `2¹¹⁰⁰` on, far above
+every double, it is `2¹¹⁰⁰`. -/
+def roundSig (n : Nat) : Nat :=
+  if n < 2 ^ 1100 then roundTo2 (bitLen 1100 n - 53) n else 2 ^ 1100
 
 /-- The code of `i` rounded to 53 significant bits, without a bound on the
 exponent. -/
@@ -193,36 +201,80 @@ theorem roundTo2_mul (s k : Nat) : roundTo2 s (k * 2 ^ s) = k * 2 ^ s := by
   · omega
   · rfl
 
-theorem log2_mono {n n' : Nat} (h : n ≤ n') : Nat.log2 n ≤ Nat.log2 n' := by
-  by_cases hn : n = 0
-  · subst hn; exact Nat.zero_le _
-  · exact (Nat.le_log2 (by omega)).2 (Nat.le_trans (Nat.log2_self_le hn) h)
+theorem bitLen_zero : ∀ f, bitLen f 0 = 0
+  | 0 => rfl
+  | _ + 1 => by simp [bitLen]
 
+theorem bitLen_le_fuel : ∀ f n, bitLen f n ≤ f
+  | 0, _ => Nat.le_refl _
+  | f + 1, n => by
+    unfold bitLen; split
+    · exact Nat.zero_le _
+    · exact Nat.succ_le_succ (bitLen_le_fuel f _)
+
+theorem bitLen_mono : ∀ f {n n' : Nat}, n ≤ n' → bitLen f n ≤ bitLen f n'
+  | 0, _, _, _ => Nat.le_refl _
+  | f + 1, n, n', h => by
+    unfold bitLen; split
+    · exact Nat.zero_le _
+    · simp only [show n' ≠ 0 by omega, ↓reduceIte]
+      exact Nat.succ_le_succ (bitLen_mono f (Nat.div_le_div_right h))
+
+theorem lt_two_pow_bitLen : ∀ f n, n < 2 ^ f → n < 2 ^ bitLen f n
+  | 0, n, h => by simp at h; subst h; simp [bitLen]
+  | f + 1, n, h => by
+    unfold bitLen; split
+    · rename_i h0; simp [h0]
+    · have ih := lt_two_pow_bitLen f (n / 2) (by rw [Nat.pow_succ] at h; omega)
+      rw [Nat.pow_succ]; omega
+
+theorem two_pow_bitLen_le : ∀ f n, n ≠ 0 → 2 ^ bitLen f n ≤ 2 * n
+  | 0, n, h => by simp [bitLen]; omega
+  | f + 1, n, h => by
+    unfold bitLen
+    simp only [h, ↓reduceIte, Nat.pow_succ]
+    by_cases h2 : n / 2 = 0
+    · rw [h2, bitLen_zero]; omega
+    · have := two_pow_bitLen_le f (n / 2) h2; omega
+
+set_option exponentiation.threshold 2100 in
 theorem roundSig_mono {n n' : Nat} (h : n ≤ n') : roundSig n ≤ roundSig n' := by
   unfold roundSig
-  have hl := log2_mono h
-  by_cases hs : Nat.log2 n - 52 = Nat.log2 n' - 52
-  · rw [hs]; exact roundTo2_mono _ h
-  · -- `n` rounds to at most `2^(s+53)`, `n'` to at least `2^(s'+52)`, and `s < s'`.
-    have hn' : n' ≠ 0 := by
-      intro h0; subst h0
-      have : n = 0 := by omega
-      subst this; exact hs rfl
-    have h1 : n < 2 ^ 53 * 2 ^ (Nat.log2 n - 52) := by
+  have hl := bitLen_mono 1100 h
+  have hle := bitLen_le_fuel 1100 n
+  by_cases hn : n < 2 ^ 1100
+  · have h1 : n < 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) := by
       rw [← Nat.pow_add]
-      exact Nat.lt_of_lt_of_le Nat.lt_log2_self (Nat.pow_le_pow_right (by decide) (by omega))
-    have h2 : 2 ^ 52 * 2 ^ (Nat.log2 n' - 52) ≤ n' := by
+      exact Nat.lt_of_lt_of_le (lt_two_pow_bitLen _ _ hn) (Nat.pow_le_pow_right (by decide) (by omega))
+    have top : roundTo2 (bitLen 1100 n - 53) n ≤ 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) :=
+      Nat.le_trans (roundTo2_mono _ (Nat.le_of_lt h1)) (Nat.le_of_eq (roundTo2_mul _ _))
+    simp only [hn, ↓reduceIte]
+    by_cases hn' : n' < 2 ^ 1100
+    · simp only [hn', ↓reduceIte]
+      by_cases hs : bitLen 1100 n - 53 = bitLen 1100 n' - 53
+      · rw [hs]; exact roundTo2_mono _ h
+      · -- `n` rounds to at most `2^(s+53)`, `n'` to at least `2^(s'+52)`, and `s < s'`.
+        have hn0 : n' ≠ 0 := by
+          intro h0; subst h0; rw [bitLen_zero] at hs hl; omega
+        have h2 : 2 ^ 52 * 2 ^ (bitLen 1100 n' - 53) ≤ n' := by
+          have := two_pow_bitLen_le 1100 n' hn0
+          have e : bitLen 1100 n' = 53 + (bitLen 1100 n' - 53) := by omega
+          rw [e, Nat.pow_add, show (2 : Nat) ^ 53 = 2 * 2 ^ 52 by decide] at this
+          rw [Nat.mul_assoc] at this; omega
+        have h3 : 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) ≤ 2 ^ 52 * 2 ^ (bitLen 1100 n' - 53) := by
+          rw [← Nat.pow_add, ← Nat.pow_add]
+          exact Nat.pow_le_pow_right (by decide) (by omega)
+        calc roundTo2 (bitLen 1100 n - 53) n
+            ≤ 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) := top
+          _ ≤ 2 ^ 52 * 2 ^ (bitLen 1100 n' - 53) := h3
+          _ = roundTo2 (bitLen 1100 n' - 53) (2 ^ 52 * 2 ^ (bitLen 1100 n' - 53)) :=
+            (roundTo2_mul _ _).symm
+          _ ≤ roundTo2 (bitLen 1100 n' - 53) n' := roundTo2_mono _ h2
+    · simp only [hn', ↓reduceIte]
+      refine Nat.le_trans top ?_
       rw [← Nat.pow_add]
-      exact Nat.le_trans (Nat.pow_le_pow_right (by decide) (by omega)) (Nat.log2_self_le hn')
-    have h3 : 2 ^ 53 * 2 ^ (Nat.log2 n - 52) ≤ 2 ^ 52 * 2 ^ (Nat.log2 n' - 52) := by
-      rw [← Nat.pow_add, ← Nat.pow_add]
       exact Nat.pow_le_pow_right (by decide) (by omega)
-    calc roundTo2 (Nat.log2 n - 52) n
-        ≤ roundTo2 (Nat.log2 n - 52) (2 ^ 53 * 2 ^ (Nat.log2 n - 52)) := roundTo2_mono _ (Nat.le_of_lt h1)
-      _ = 2 ^ 53 * 2 ^ (Nat.log2 n - 52) := roundTo2_mul _ _
-      _ ≤ 2 ^ 52 * 2 ^ (Nat.log2 n' - 52) := h3
-      _ = roundTo2 (Nat.log2 n' - 52) (2 ^ 52 * 2 ^ (Nat.log2 n' - 52)) := (roundTo2_mul _ _).symm
-      _ ≤ roundTo2 (Nat.log2 n' - 52) n' := roundTo2_mono _ h2
+  · simp only [hn, show ¬n' < 2 ^ 1100 by omega, ↓reduceIte, Nat.le_refl]
 
 theorem ofIntRaw_mono {i j : Int} (h : i ≤ j) : ofIntRaw i ≤ ofIntRaw j := by
   simp only [ofIntRaw]
