@@ -47,7 +47,7 @@ def inferred(report: sv.Report) -> list[str]:
         (T.select(r=T.x**0.5), ["(_.x >= 0.0)"]),
         (T.select(r=T.x.cast("int64")), ["(_.x >= -2**63)", "(_.x < 2**63)"]),
         (T.select(r=T.a.cast("int32")), ["(_.a >= -2**31)", "(_.a < 2**31)"]),
-        (T.select(r=ibis.literal("ab").repeat(T.a)), ["(_.a < 2**30)"]),
+        (T.select(r=ibis.literal("ab").repeat(T.a)), ["(_.a < 2**30)"]),  # pyrefly: ignore
         (T.select(r=T.big * 2), ["(_.big >= -4 * 10**35)", "(_.big < 5 * 10**35)"]),
         (
             T.select(r=T.d + ibis.interval(days=10)),
