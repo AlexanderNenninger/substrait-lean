@@ -7,6 +7,17 @@ permissions:
   contents: read
 jobs:
   refresh:
+    strategy:
+      fail-fast: false
+      matrix:
+        areas:
+          - aggregate
+          - alter binder catalog cte delete export filter
+          - function/date function/generic function/numeric function/string
+          - generated_columns index insert join optimizer order overflow parallelism
+          - parser prepared projection setops sql_export storage subquery topn
+          - types
+          - update upsert window
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -22,14 +33,13 @@ jobs:
         with:
           path: ~/.cache/sverify/duckdb-slt
           key: duckdb-slt-${{ hashFiles('python/uv.lock') }}
-      - run: |
+      - env:
+          PYTHONUNBUFFERED: "1"
+        run: |
           cd python
-          uv run --locked python -m sverify_dev.slt --jobs 4 aggregate alter binder catalog cte delete \
-            export filter function/date function/generic function/numeric function/string \
-            generated_columns index insert join optimizer order overflow parallelism parser prepared \
-            projection setops sql_export storage subquery topn types update upsert window \
-            2>&1 | grep -vE "^slow|Cannot traverse"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+          uv run --locked python -m sverify_dev.slt --jobs 3 ${{ matrix.areas }}
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: ledgers
+          name: ledgers-${{ strategy.job-index }}
           path: characterization/duckdb/
