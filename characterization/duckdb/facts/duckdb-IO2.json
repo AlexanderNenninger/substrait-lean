@@ -1,0 +1,45 @@
+{
+  "id": "duckdb-IO2",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "unity_catalog: the vended endpoint_url is ignored",
+  "verdict": "set s3_endpoint, s3_url_style, s3_use_ssl",
+  "area": "io",
+  "layer": "io",
+  "constructs": [
+    "ATTACH ... (TYPE unity_catalog)",
+    "temporary-table-credentials"
+  ],
+  "settings": {
+    "s3_endpoint": "minio:9000",
+    "s3_url_style": "path",
+    "s3_use_ssl": false,
+    "s3_region": "us-east-1"
+  },
+  "description": [
+    "For each table it reads, the `unity_catalog` extension asks the catalog for temporary credentials and creates an internal S3 secret with them (`__internal_uc_<table id>`, scoped to the table's location). It does not take the `endpoint_url` the catalog vends with them (an S3-compatible store such as MinIO), so the reads go to AWS and fail with `InvalidAccessKeyId`.",
+    "Workaround: DuckDB's global S3 settings, which the internal secret falls back to: `SET s3_endpoint='host:port'`, `SET s3_url_style='path'`, `SET s3_use_ssl=false` for plain HTTP, `SET s3_region=...`."
+  ],
+  "status": "workaround",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "manual-repro",
+      "checked_by": "homelab catalog session (AlexanderNenninger/homelab#9): DuckDB 2.0.0 in Python, extensions unity_catalog cc59382f52, delta 9dcfb65b99, httpfs 77392a7207, against Unity Catalog OSS 0.7.0 with unitycatalog/unitycatalog#1959 on MinIO",
+      "evidence": [
+        {
+          "sql": "ATTACH 'homelab' AS lake (TYPE unity_catalog); SELECT count(*) FROM lake.ci.job_commits",
+          "observed": "HTTP 403 listing 's3://metrics/ci/job_commits/_delta_log/': InvalidAccessKeyId: The AWS Access Key Id you provided does not exist in our records (an AWS response; the catalog vended MinIO keys with endpoint_url http://minio:9000)"
+        },
+        {
+          "sql": "SELECT name, type, scope FROM duckdb_secrets()",
+          "observed": "('__internal_uc_c94a42d7-…', 's3', ['s3://metrics/ci/job_commits'])"
+        },
+        {
+          "sql": "SET s3_endpoint='minio:9000'; SET s3_url_style='path'; SET s3_use_ssl=false; SET s3_region='us-east-1'; then the same SELECT",
+          "observed": "the reads reach MinIO (and stop at duckdb-IO3)"
+        }
+      ]
+    }
+  ]
+}

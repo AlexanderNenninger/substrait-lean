@@ -119,7 +119,9 @@ measure. `#print axioms Substrait.contract_sound` lists them.
 - Signs are exact: a `SUM` or `AVG` of doubles `≥ 0` is `≥ 0`, and of
   doubles `≤ 0` is `≤ 0`.
 - The bounds need a row count. `sv.max_rows(n)` in `requires` caps an input
-  and is checked on the data (`COUNT(*) <= n`). The checker reads capped
+  and is checked on the data (`COUNT(*) <= n`), or proved from the record
+  counts of a Delta or Iceberg table's files. The same cap proves integer
+  `SUM`s fit 64 bits ([Row caps](guide.md#row-caps)). The checker reads capped
   tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
   (`Rel.maxRows`, `Rel.maxRows_sound`).

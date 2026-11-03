@@ -46,6 +46,27 @@ def _key(r: Mapping) -> tuple[str, int, str]:
     return r["file"], r["line"], r["sql"]
 
 
+def skipped_files(out: Path = slt.LEDGER) -> dict[str, str]:
+    """The files the ledgers' replay skipped as a whole, with the reason."""
+    found: dict[str, str] = {}
+    for p in sorted(out.glob("*.json")):
+        if p.name == "probes.json" or p.name.startswith("fuzz__"):
+            continue
+        found.update(json.loads(p.read_text()).get("skipped_files", {}))
+    return found
+
+
+def newly_skipped(skips: Mapping[str, str], before: Mapping[str, str]) -> list[str]:
+    """The files skipped as a whole this run (`skips`, with the reason) that
+    the ledgers compared (not in `before`): a skip there could hide a
+    regression, so the gate fails on it (#407)."""
+    return [
+        f"{f}: compared -> skipped ({why[:150]})"
+        for f, why in sorted(skips.items())
+        if f not in before
+    ]
+
+
 def ledger(out: Path = slt.LEDGER) -> dict[tuple[str, int, str], str]:
     """Each replayed query's class, by file, line and SQL, from the ledgers."""
     found: dict[tuple[str, int, str], str] = {}
@@ -98,18 +119,32 @@ def check_benchmarks(write: bool) -> tuple[list[str], list[str]]:
     return compare(before, stages, sorted(stages))
 
 
-def check_replay(files: int, jobs: int) -> tuple[list[str], list[str]]:
-    """The replay of the sampled files against the ledgers."""
+#: Test files the gate leaves out, with why; the full replay keeps them.
+EXCLUDED: dict[str, str] = {}
+
+
+def shard(files: Sequence[str], spec: str | None) -> list[str]:
+    """The `i/n` shard of `files` (1-based): every `n`th from the `i`th."""
+    if not spec:
+        return list(files)
+    i, n = (int(x) for x in spec.split("/"))
+    return list(files[i - 1 :: n])
+
+
+def check_replay(files: int, jobs: int, spec: str | None = None) -> tuple[list[str], list[str]]:
+    """The replay of the sampled files (of shard `spec`) against the ledgers."""
     known = ledger()
-    chosen = sample(known, files)
+    chosen = shard([f for f in sample(known, files) if f not in EXCLUDED], spec)
     base = slt.fetch() / "test" / "sql"
     now: dict[str, str] = {}
     before: dict[str, str] = {}
     skipped: Counter[str] = Counter()
-    for _, results, skip in slt.replay_files([(str(base / f), f) for f in chosen], jobs):
+    skips: dict[str, str] = {}
+    for rel, results, skip in slt.replay_files([(str(base / f), f) for f in chosen], jobs):
         if skip:
             # Not compared this run (a crash, a timeout): say so.
             skipped[skip.split(":")[0]] += 1
+            skips[rel] = skip
         for r in results:
             q = f"{r['file']}:{r['line']}"
             now[q] = r["cls"]
@@ -118,7 +153,8 @@ def check_replay(files: int, jobs: int) -> tuple[list[str], list[str]]:
     print(f"replay: {len(chosen)} files, {len(now)} queries, {decided} decided by oracle A")
     if skipped:
         print(f"replay: {sum(skipped.values())} files not compared: {dict(skipped)}")
-    return compare(before, now, sorted(now))
+    worse, better = compare(before, now, sorted(now))
+    return worse + newly_skipped(skips, skipped_files()), better
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -128,12 +164,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument(
+        "--shard", help="replay only shard i/n of the files; the benchmarks run in shard 1"
+    )
+    parser.add_argument(
         "--write", action="store_true", help="write the benchmarks' baseline and skip the replay"
     )
     args = parser.parse_args(argv)
-    worse, better = check_benchmarks(args.write)
+    worse: list[str] = []
+    better: list[str] = []
+    if not args.shard or args.shard.startswith("1/"):
+        worse, better = check_benchmarks(args.write)
     if not args.write:
-        w, b = check_replay(args.files, args.jobs)
+        w, b = check_replay(args.files, args.jobs, args.shard)
         worse, better = worse + w, better + b
     for line in better:
         print(f"better: {line}")

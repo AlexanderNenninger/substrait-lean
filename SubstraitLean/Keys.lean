@@ -654,6 +654,69 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
       rw [← hmap] at h1
       exact List.pairwise_map.mp h1
 
+/-! ## Fan-out of a join on a key
+
+A join whose condition determines a key of its right side gives each left
+row at most one partner, so it has at most as many rows as its left side
+(a left join keeps a row without partners as one row). Row bounds (#219) use
+this where a product of the sides would be far too large. -/
+
+theorem length_flatMap_le {α β : Type} {f : α → List β} {k : Nat} :
+    ∀ {l : List α}, (∀ x ∈ l, (f x).length ≤ k) → (l.flatMap f).length ≤ l.length * k
+  | [], _ => by simp
+  | x :: l, h => by
+    have := length_flatMap_le (l := l) fun y hy => h y (List.mem_cons_of_mem _ hy)
+    have hx := h x (List.mem_cons_self ..)
+    simp only [List.flatMap_cons, List.length_append, List.length_cons, Nat.succ_mul]
+    omega
+
+theorem length_le_one_of_pairwise_false {α : Type} :
+    ∀ {l : List α}, l.Pairwise (fun _ _ => False) → l.length ≤ 1
+  | [], _ | [_], _ => by simp
+  | _ :: b :: _, h => ((List.pairwise_cons.1 h).1 b (List.mem_cons_self ..)).elim
+
+/-- On a key of the right side that the condition determines, a left row has
+at most one partner. -/
+theorem partners_le_one {B : Relation} {n : Nat} {on : Expr} {kb : List Nat} {x : Row}
+    (hx : x.length = n) (hkB : KeyOn kb B) (hd : determines on n kb = true) :
+    ((B.map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 := by
+  apply length_le_one_of_pairwise_false
+  rw [List.pairwise_filter, List.pairwise_map]
+  exact hkB.imp fun hne ht ht' => hne (determines_sound hd hx ht ht')
+
+/-- Does the join condition determine a key of the right side? -/
+def Rel.keyedJoin (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (a b : Rel) (on : Expr) : Bool :=
+  (b.keys cat A F K).any (determines on (a.arity cat))
+
+/-- **A join on a key does not fan out**: inner or left, it has at most as
+many rows as its left side. -/
+theorem Rel.join_length_le_of_keyed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {a b : Rel} {ty : JoinType} {on : Expr}
+    (hwf : (Rel.join a b ty on).WF cat) (hkey : Rel.keyedJoin cat A F K a b on = true) :
+    ((Rel.join a b ty on).eval cat).length ≤ (a.eval cat).length := by
+  obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
+  have hkB := Rel.keys_sound hcat hA hF hK hwf.2.1 kb hkb
+  have hp : ∀ x ∈ a.eval cat,
+      (((b.eval cat).map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 :=
+    fun x hx => partners_le_one (Rel.eval_arity hcat hwf.1 x hx) hkB hd
+  refine Nat.le_trans ?_ (Nat.le_of_eq (Nat.mul_one _))
+  cases ty with
+  | inner =>
+    simp only [Rel.eval, crossRows, List.filter_flatMap]
+    exact length_flatMap_le hp
+  | left =>
+    simp only [Rel.eval]
+    refine length_flatMap_le fun x hx => ?_
+    unfold leftJoinRow
+    simp only []
+    split
+    · simp
+    · exact hp x hx
+
 end Substrait
 
 /-! ## Deterministic windows

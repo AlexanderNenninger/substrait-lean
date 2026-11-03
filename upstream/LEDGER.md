@@ -9,7 +9,7 @@ sverify works around it today.
 Add an entry whenever you find one, in the same PR as the workaround.
 Engine behaviour that is *documented and intended*, and differs from the
 reference model, isn't a bug: it belongs in that engine's characterization
-(`characterization/<engine>/FACTS.md`) and profile, not here.
+(`characterization/<engine>/facts/`) and profile, not here.
 
 **Status:** `unverified` (seen, not yet reduced to a minimal repro or
 checked against the latest upstream release), `confirmed` (minimal repro on
