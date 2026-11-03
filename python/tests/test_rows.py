@@ -30,9 +30,10 @@ def per_customer(orders):
 
 def test_rows_takes_a_count():
     assert sv.rows(at_most=5).at_most == 5
-    for bad in (-1, 1.5, True):
+    bad: list = [-1, 1.5, True]
+    for n in bad:
         with pytest.raises(ValueError, match="rows"):
-            sv.rows(at_most=bad)
+            sv.rows(at_most=n)
 
 
 def test_a_row_bound_proves_a_sum_fits():
@@ -64,7 +65,9 @@ def test_unbounded_values_leave_the_sum_checked():
 def test_the_readme_sql_model():
     """The README's `per_customer`, in SQL, with a row bound."""
     query = "SELECT customer, coalesce(sum(amount), 0) AS total FROM orders GROUP BY customer"
-    requires = {"orders": ["amount >= 0", "amount <= 1000000", "amount IS NOT NULL"]}
+    requires: dict[str, list] = {
+        "orders": ["amount >= 0", "amount <= 1000000", "amount IS NOT NULL"]
+    }
     tables = {"orders": ORDERS.schema()}
     assert sum_warnings(sv.verify(query, requires=requires, tables=tables))
     requires["orders"].append(sv.rows(at_most=10**9))
@@ -78,7 +81,7 @@ def test_row_bounds_propagate():
     assert sv.verify(ORDERS.limit(3), requires=rows).rows == 3
     assert sv.verify(ORDERS.union(ORDERS), requires=rows).rows == 200
     assert sv.verify(ORDERS.distinct(), requires=rows).rows == 100
-    assert sv.verify(ORDERS.aggregate(n=_.count()), requires=rows).rows == 1
+    assert sv.verify(ORDERS.aggregate(n=ORDERS.count()), requires=rows).rows == 1
     assert sv.verify(per_customer(ORDERS), requires=rows).rows == 100
     rows["items"] = [sv.rows(at_most=7)]
     assert sv.verify(ORDERS.cross_join(ITEMS), requires=rows).rows == 700
@@ -96,7 +99,7 @@ def test_a_join_fans_out_unless_on_a_key():
     sum of amounts up to 10¹³ may overflow. On a key of the orders, each item
     meets one order, and the sum fits."""
     amounts = [_.amount >= 0, _.amount <= 10**13, sv.rows(at_most=1000)]
-    requires = {"orders": amounts, "items": [sv.rows(at_most=1000)]}
+    requires: dict[str, list] = {"orders": amounts, "items": [sv.rows(at_most=1000)]}
     report = sv.verify(fan_out(ORDERS, ITEMS), requires=requires)
     assert sum_warnings(report)
     requires["orders"] = [*amounts, sv.unique("id")]
@@ -190,7 +193,8 @@ def test_delta_file_counts_prove_a_row_bound(tmp_path):
         ensures=[],
     )(amounts)
     node = src.pipe(contracted)
-    assert not contracted.last_report.warnings
+    report = contracted.last_report
+    assert report is not None and not report.warnings
     first = discharged(node.refresh()[node.name].preconditions)
     assert first[("orders", "rows(at_most=10)")] == "file stats @v2"
 
