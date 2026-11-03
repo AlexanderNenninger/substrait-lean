@@ -1,7 +1,7 @@
 """Touched-group recompute against recompute-and-diff, on the metrics shape.
 
     uv run python scripts/bench_touched.py [--hosts n] [--days d] [--refreshes r]
-        [--engines duckdb,polars] [--timeout seconds]
+        [--engines duckdb] [--timeout seconds]
 
 A view of per-minute groups (count, mean and max of a sample) over samples
 taken every 5 seconds per host for `--days` days (default 14, 10 hosts:
@@ -81,7 +81,7 @@ def option(argv: list[str], name: str, default: str) -> tuple[str, list[str]]:
 
 
 def main(argv: list[str]) -> None:
-    engines, argv = option(argv, "--engines", "duckdb,polars")
+    engines, argv = option(argv, "--engines", "duckdb")
     hosts, argv = option(argv, "--hosts", "10")
     days, argv = option(argv, "--days", "14")
     refreshes, argv = option(argv, "--refreshes", "5")
