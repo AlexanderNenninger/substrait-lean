@@ -42,3 +42,10 @@ def test_a_file_the_ledger_compared_and_this_run_skipped_fails():
     assert oracle.newly_skipped(skips, {"b.test": "require: tpch"}) == [
         "a.test: compared -> skipped (harness: the replay process crashed)"
     ]
+
+
+def test_the_shards_cover_the_files_once():
+    files = [f"{i}.test" for i in range(10)]
+    shards = [oracle.shard(files, f"{i}/3") for i in (1, 2, 3)]
+    assert sorted(sum(shards, [])) == sorted(files)
+    assert oracle.shard(files, None) == files

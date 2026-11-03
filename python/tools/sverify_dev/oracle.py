@@ -119,10 +119,22 @@ def check_benchmarks(write: bool) -> tuple[list[str], list[str]]:
     return compare(before, stages, sorted(stages))
 
 
-def check_replay(files: int, jobs: int) -> tuple[list[str], list[str]]:
-    """The replay of the sampled files against the ledgers."""
+#: Test files the gate leaves out, with why; the full replay keeps them.
+EXCLUDED: dict[str, str] = {}
+
+
+def shard(files: Sequence[str], spec: str | None) -> list[str]:
+    """The `i/n` shard of `files` (1-based): every `n`th from the `i`th."""
+    if not spec:
+        return list(files)
+    i, n = (int(x) for x in spec.split("/"))
+    return list(files[i - 1 :: n])
+
+
+def check_replay(files: int, jobs: int, spec: str | None = None) -> tuple[list[str], list[str]]:
+    """The replay of the sampled files (of shard `spec`) against the ledgers."""
     known = ledger()
-    chosen = sample(known, files)
+    chosen = shard([f for f in sample(known, files) if f not in EXCLUDED], spec)
     base = slt.fetch() / "test" / "sql"
     now: dict[str, str] = {}
     before: dict[str, str] = {}
@@ -152,12 +164,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument(
+        "--shard", help="replay only shard i/n of the files; the benchmarks run in shard 1"
+    )
+    parser.add_argument(
         "--write", action="store_true", help="write the benchmarks' baseline and skip the replay"
     )
     args = parser.parse_args(argv)
-    worse, better = check_benchmarks(args.write)
+    worse: list[str] = []
+    better: list[str] = []
+    if not args.shard or args.shard.startswith("1/"):
+        worse, better = check_benchmarks(args.write)
     if not args.write:
-        w, b = check_replay(args.files, args.jobs)
+        w, b = check_replay(args.files, args.jobs, args.shard)
         worse, better = worse + w, better + b
     for line in better:
         print(f"better: {line}")
