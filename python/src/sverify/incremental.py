@@ -902,6 +902,8 @@ class IncrementalView:
         self.touched: _touched.Touched | None = None
         """How the view is maintained by touched groups (`sverify._touched`)
         when it has no delta plans, if it can be."""
+        self.touched_off: str | None = None
+        """Why an aggregate without delta plans is recomputed and diffed."""
         try:
             self.deltas = delta_plans(json.dumps(plan))
         except NotIncremental as e:
@@ -911,8 +913,8 @@ class IncrementalView:
             found = _touched.plan(self.name, query)
             if isinstance(found, _touched.Touched):
                 self.touched = found
-            else:
-                self.fallback += f"; no touched groups: {found}"
+            elif found not in (_touched.NOT_AGGREGATE, _touched.SQL):
+                self.touched_off = found
         self.plan = written_plan(json.dumps(plan))
 
     @property
@@ -1112,8 +1114,10 @@ class IncrementalView:
         finally:
             for n in names:
                 con.drop(n)
-        old = self.store.with_keys(self.state, spec.columns, keys)
-        change = self._merge(weighted(new.cast(self.schema), 1), self.store.negated(old))
+        # With retention, the final buckets stay as they are.
+        new = self._kept(new.cast(self.schema))
+        old = self._kept(arrow_of(self.store.with_keys(self.state, spec.columns, keys)))
+        change = self._merge(weighted(new, 1), self.store.negated(old))
         return arrow_of(change), keys.num_rows
 
     def _result_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:

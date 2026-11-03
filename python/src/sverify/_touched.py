@@ -31,6 +31,9 @@ import ibis.expr.types as ir
 
 from sverify._retention import _aggregate, _row_local
 
+SQL = "the view is SQL; touched groups need an Ibis expression"
+NOT_AGGREGATE = "not an aggregate under filters and projections of its rows"
+
 
 @dataclass(frozen=True)
 class Touched:
@@ -56,10 +59,10 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
     from sverify.incremental import NotIncremental, delta_plans
 
     if isinstance(query, str):
-        return "the view is SQL; touched groups need an Ibis expression"
+        return SQL
     found = _aggregate(query.op())
     if found is None:
-        return "not an aggregate under filters and projections of its rows"
+        return NOT_AGGREGATE
     agg, names = found
     if not agg.groups:
         return "the aggregate has no GROUP BY"

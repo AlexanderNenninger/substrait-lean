@@ -830,11 +830,19 @@ class Group:
                     n.name,
                     None if stage is None else stage.view.versions,
                     stored,
-                    None if stage is None or not stage.view.recomputed else stage.view.fallback,
+                    None if stage is None else _recomputed(stage.view),
                     None if stage is None or stage.view.touched is None else stage.view.fallback,
                 )
             )
         return out
+
+
+def _recomputed(view: IncrementalView) -> str | None:
+    """Why a view is recomputed and diffed on every batch, or None."""
+    if not view.recomputed:
+        return None
+    off = f"; no touched groups: {view.touched_off}" if view.touched_off else ""
+    return f"{view.fallback}{off}"
 
 
 def _continue_versions(node: _Stored) -> None:
