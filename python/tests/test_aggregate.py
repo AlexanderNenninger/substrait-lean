@@ -214,7 +214,9 @@ def test_min_and_max_of_doubles_match_duckdb(t):
     assert canonical(lean) == canonical(expected)
     floats = {1, 2}
     got = [
-        tuple(decode_double(v) if i in floats and isinstance(v, int) else v for i, v in enumerate(r))
+        tuple(
+            decode_double(v) if i in floats and isinstance(v, int) else v for i, v in enumerate(r)
+        )
         for r in got
     ]
     got, expected = sorted(got, key=repr), sorted(expected, key=repr)

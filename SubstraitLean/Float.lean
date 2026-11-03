@@ -116,7 +116,7 @@ rounds them to `±∞`, but no integer the model holds (64 bits at most) gets
 there, and it lets the checker know the double is finite, so that no `SUM` or `AVG` of
 converted integers can add `+∞` and `-∞` (#257). Exact, so that the checker
 can use that the conversion is monotone (`ofInt_mono`). -/
-def ofInt (i : Int) : Int :=
+@[irreducible] def ofInt (i : Int) : Int :=
   max (-(2 * (maxMag : Int) + 1)) (min (2 * (maxMag : Int) + 1) (ofIntRaw i))
 
 theorem posInf_eq : posInf = 2 * maxMag + 3 := by

@@ -19,4 +19,5 @@ within the inputs' range, `MAX ≥ AVG`, and no NULL measures.
   of `x` in `[0, 1000]` is in `[0.0, 1000.0]`.
 
 Arithmetic on doubles still gives "some double", so `AVG(x) / 10` has no
-bound yet.
+bound yet, and neither has an `AVG` that DuckDB SQL computes as a double
+division (of a DECIMAL, or of integers under `semantics="duckdb"`).
