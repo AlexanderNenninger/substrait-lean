@@ -88,7 +88,7 @@ def oracle(con, sql: str) -> list[tuple]:
         source = PLANS.get(sql, sql)
         if callable(source):
             source = ibis.to_sql(source(ibis.table(R, name="r")), dialect="datafusion")
-        out = canonical_doubles(collect(con.datafusion.sql(source)))
+        out = canonical_doubles(collect(con._datafusion_session.sql(source)))
     return [tuple(x.values()) for x in out.to_pylist()]
 
 
@@ -255,7 +255,7 @@ def test_repeat_beyond_two_gigabytes_fails_everywhere():
     create_table(con, "r", R, rows)
     sql = "SELECT repeat(s, a) AS r FROM r"
     with pytest.raises(Exception, match="string size overflow on repeat"):
-        collect(con.datafusion.sql(sql))
+        collect(con._datafusion_session.sql(sql))
     plan = written_plan(substrait_json(con, sql))
     with pytest.raises(Exception, match="repeat beyond 2\\^31 - 1 bytes"):
         run_plan(con, plan, "duckdb")
@@ -271,9 +271,10 @@ def test_repeat_beyond_two_gigabytes_fails_everywhere():
 
 
 def test_translate_is_refused():
-    """DataFusion translates grapheme clusters, not characters:
-    `translate('e\u0301e', 'e', 'x')` is `'e\u0301x'`."""
-    with pytest.raises(ValueError, match="grapheme"):
+    """`translate` is not modelled: engines differ on what a character is
+    (DataFusion translates grapheme clusters: `translate('e\u0301e', 'e',
+    'x')` is `'e\u0301x'`)."""
+    with pytest.raises(ValueError, match="translate is not modelled yet"):
         sv.verify(T.select(x=T.name.translate("e", "x")))
 
 
@@ -295,7 +296,9 @@ def test_patterns_said_to_compile_do(pattern):
     con = connect()
     put_table(con, "t", pa.table({"name": ["abc"], "n": [1]}))
     collect(
-        con.datafusion.sql(ibis.to_sql(T.filter(T.name.re_search(pattern)), dialect="datafusion"))
+        con._datafusion_session.sql(
+            ibis.to_sql(T.filter(T.name.re_search(pattern)), dialect="datafusion")
+        )
     )
 
 

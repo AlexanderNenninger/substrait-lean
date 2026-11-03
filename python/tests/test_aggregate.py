@@ -74,7 +74,7 @@ def datafusion_rows(sql: str, schema: ibis.Schema, rows: list) -> list[tuple]:
     """DataFusion running `sql`, as an engine."""
     con = connect()
     create_table(con, "t", schema, rows)
-    out = collect(con.datafusion.sql(sql))
+    out = collect(con._datafusion_session.sql(sql))
     return list(zip(*(c.to_pylist() for c in out.columns), strict=True))
 
 

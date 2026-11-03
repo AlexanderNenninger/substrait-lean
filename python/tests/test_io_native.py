@@ -400,5 +400,5 @@ def test_a_datafusion_session_gets_arrow(tmp_path):
     pipe = Pipeline(con)
     pipe.source("t", DeltaSource(str(tmp_path / "t")))
     assert isinstance(con.get("t"), Scan)
-    assert con.datafusion.table("t").count() == 2
+    assert con._datafusion_session.table("t").count() == 2
     assert isinstance(con.get("t"), pa.Table)

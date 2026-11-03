@@ -242,11 +242,11 @@
  },
  "fin-bollinger": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
   "native": "runs",
   "as_double": {
    "checker": "rejected",
-   "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+   "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
    "native": "runs"
   }
  },
@@ -977,7 +977,7 @@
  },
  "ts-rolling-time-window": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
   "native": "runs"
  },
  "ts-rolling-7day-calendar": {
@@ -1647,7 +1647,7 @@
  },
  "win-moving-average": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
   "native": "runs"
  },
  "win-percent-of-total": {

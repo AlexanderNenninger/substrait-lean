@@ -270,7 +270,7 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it is TRUE or FALSE)
+# could not prove: (_.total > 5) (it may be FALSE on some rows)
 # ...
 #   total: an integer ≥ 1
 ```
@@ -279,6 +279,9 @@ except VerificationError as e:
   (`"amount >= 0"`). SQL transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report.
+* `requires` maps each input to its conditions. A transformation with one
+  input also takes a plain list, `requires=[_.amount >= 0]`. A key that
+  names no input raises a `ValueError` that lists the inputs (#408).
 * Preconditions describe data that comes from outside. On a source, they
   are checked on the data when the node is first refreshed and then on each
   batch (`PreconditionError`), or proved from the table's metadata; on Ibis
@@ -301,9 +304,9 @@ except VerificationError as e:
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key).
-* Foreign keys: `sv.references("cust", "customers", "id")` in `requires`
+* Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
-  like `unique`). Nothing proves it in `ensures`, so it stays an assumption.
+  like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first, so
   every postcondition is `undetermined` and `report.deterministic` is
@@ -386,7 +389,7 @@ build on it like on any other precondition of a source.
   column, and a value from another contracted transformation is bounded by
   its `ensures`. For these the report's hint suggests a bound
   (`Issue.hint`), and sverify assumes none.
-* `@sv.transform(strict=True)` and `sv.verify(..., infer=False)` infer
+* `infer=False`, on `@sv.transform` and `sv.verify`, infers
   nothing: each overflow fails the proof, and its hint names the bound to
   state.
 
@@ -510,7 +513,7 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.last_report)
-# ensures (_.amount < 1000): NOT proved (it is TRUE, FALSE or NULL); checked on the output data
+# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where a column
 # ...
 print(n.refresh())
 # capped:

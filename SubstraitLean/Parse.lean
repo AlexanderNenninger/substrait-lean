@@ -1107,7 +1107,7 @@ def temporalArith (parse : Json → J Expr) (cols : List Kind) (name : String) (
   -- `(months, days, nanoseconds)` and fails to beyond ±2⁶³ ns; `date_diff`
   -- is the number of days.
   if ka == .date && argKind cols bj b == .date then
-    throw "date - date is not supported (DataFusion compares the duration wrongly); use date_diff"
+    throw "date - date is not modelled yet (an interval of days, #342); use date_diff"
   let (months, rest) := match iv with
     | some (m, us) => (if sub then -m else m, if us == 0 then none else some (Expr.lit (.int us)))
     | none => (0, some b)
@@ -1283,7 +1283,7 @@ def mkStringCall? : String → List Expr → Option (J Expr)
   -- The third argument is the escape character; `NULL` means a backslash.
   | "like", [a, b] | "like", [a, b, .lit .null] => some <| pure (.bin .like a b)
   | "like", [_, _, _] =>
-    some <| throw "LIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+    some <| throw "LIKE … ESCAPE is not modelled yet; match a literal % or _ with contains or starts_with"
   | "substring", [s, a] => some <| pure (.bin (.substr none true) s a)
   | "substring", [s, a, .lit (.int n)] => some <|
     if n < 0 then throw "a negative substring length always fails"
@@ -1302,7 +1302,7 @@ def mkStringCall? : String → List Expr → Option (J Expr)
   | "repeat", [a, n] => some <| pure (.bin .strRepeat a n)
   | "ilike", [a, b] | "ilike", [a, b, .lit .null] => some <| pure (.bin .ilike a b)
   | "ilike", [_, _, _] =>
-    some <| throw "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+    some <| throw "ILIKE … ESCAPE is not modelled yet; match a literal % or _ with contains or starts_with on lower(…)"
   | "levenshtein", [a, b] => some <| pure (.bin .levenshtein a b)
   | "regexp_match", _ =>
     some <| throw "regexp_match is only supported as array_length(regexp_match(s, p))"
@@ -2181,7 +2181,7 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       if m.fn matches .var _ _ || m.fn matches .cov _ || m.fn matches .corr then
         throw s!"{n} over a window is not supported"
       if [AggFn.fsum, .avg, .iavg, .min].contains m.fn && fr.lo != .unboundedPreceding then
-        throw s!"{n} over a sliding frame is not supported (DataFusion retracts rows wrongly)"
+        throw s!"{n} over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING"
       -- A decimal `AVG` is its `SUM` and `COUNT` over the frame, divided
       -- (`parseWindowProject`), as for aggregates (`decimalAvgs`).
       if decAvg.isSome then
@@ -2397,7 +2397,7 @@ def liftSubquery (fns : List (Nat × String)) (parse : Json → P Rel) (inp : Re
     let q ← parse (← field s "input")
     oneColumn "a scalar subquery" q
     if !atMostOneRow (← get) q then
-      throw "a scalar subquery must have at most one row (DataFusion fails on more), \
+      throw "a scalar subquery must have at most one row (the engines raise on more), \
         and the checker cannot prove it (it can for an aggregate without groups, or LIMIT 1)"
     return .join inp q .left (.lit (.bool true))
   | ("inPredicate", ip) =>

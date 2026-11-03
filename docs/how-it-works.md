@@ -150,8 +150,8 @@ Connections. `sv.connect(engine=...)` gives a `Connection`: the Arrow
 tables (`sverify.engines.create_table`, `con.arrow`), the engine plans run on, and Ibis
 tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
-contracts find a table's data). `con.datafusion` is a DataFusion session with
-the same tables, created on first use. Tables are stored with their doubles as
+contracts find a table's data). The DataFusion engine runs on a private
+DataFusion session with the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
 A Delta or Iceberg source on DuckDB is held as a scan (`sverify._scan.Scan`):
@@ -237,7 +237,7 @@ engine is made to agree:
   inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
   `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
   in the same plan, follows DataFusion's order; and so does SQL run on
-  DataFusion directly (a query on `con.datafusion`).
+  DataFusion directly (a query on a `datafusion.SessionContext`).
 
 ### The Ibis producer
 
