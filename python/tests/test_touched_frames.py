@@ -51,7 +51,7 @@ def frames(by):
             "cpu",
             total=samples.cpu.sum().over(recent),
             n=samples.cpu.count().over(recent),
-            low=samples.cpu.min().over(earlier),
+            earlier=samples.cpu.sum().over(earlier),
         )
 
     return windows

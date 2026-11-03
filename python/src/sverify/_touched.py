@@ -149,7 +149,7 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
         recompute = over(parent.semi_join(touched, on))
         ranged = _ranged(name, agg, groups, touched, over)
     framed = None
-    if what == "partition" and (frame := _frame(agg)) is not None:
+    if what == "window" and (frame := _frame(agg)) is not None:
         f, start, end = frame
         col = next((names[n] for n, v in agg.values.items() if v == f and n in names), None)
         if col is not None:
