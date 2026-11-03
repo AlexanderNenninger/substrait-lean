@@ -35,3 +35,17 @@ jobs:
       # The shared Lake cache may hold it built: build it afresh.
       - run: rm -rf .lake/build/lib/lean/SubstraitLean/LiftDuckDB.* .lake/build/ir/SubstraitLean/LiftDuckDB.*
       - run: /usr/bin/time -v lake build SubstraitLean.LiftDuckDB 2>&1 | grep -E "Elapsed|Maximum resident|Built SubstraitLean.LiftDuckDB|error" | cut -c1-300
+      # The search without the cache's hints: what a build did when they no
+      # longer proved (a change to DuckDBSQL.lean or the model).
+      - continue-on-error: true
+        run: |
+          cat > /tmp/NoHints.lean <<'LEAN'
+          import SubstraitLean.LiftSearch
+          namespace Substrait
+          def noHints : List LiftHint := []
+          generate_lift liftDuckDB : Semantics.duckdb
+            using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
+            cache noHints
+          end Substrait
+          LEAN
+          /usr/bin/time -v lake env lean /tmp/NoHints.lean 2>&1 | grep -E "Elapsed|Maximum resident|error" | cut -c1-300

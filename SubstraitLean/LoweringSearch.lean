@@ -514,7 +514,8 @@ below with the generator's own simp sets, or a hand-written proof's name. -/
 def ppSource (e : Lean.Expr) : MetaM String := do
   let fmt ← withOptions (fun o =>
     (((o.setBool `pp.fullNames true).setBool `pp.deepTerms true).set `pp.maxSteps (100000000 : Nat)
-      |>.setBool `pp.fieldNotation false |>.setBool `pp.proofs true)) (ppExpr e)
+      |>.setBool `pp.fieldNotation false |>.setBool `pp.proofs true
+      |>.setBool `pp.structureInstances false)) (ppExpr e)
   return fmt.pretty 100
 
 /-- The generated module a construct's entry goes to: entries of an area
