@@ -24,8 +24,8 @@ Input (JSON):
       -- input foreign keys: every non-NULL value of the column occurs in the
       -- other table's column (`ForeignKeys.Hold`)
   "max_rows": {"<table>": <n>} }
-      -- row caps (`sv.max_rows`): the postconditions and facts are checked on
-      -- the plan with these reads capped (`Rel.capReads`), which is the plan
+      -- row caps (`sv.max_rows`): the postconditions, facts and issues are
+      -- checked on the plan with these reads capped (`Rel.capReads`), which is the plan
       -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
       -- get their error bounds from them (#85)
 ```
@@ -295,7 +295,7 @@ def check (input : Json) : Except String Report := do
       pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
   let issues := match transform with
-    | some p => if p.root.checkWF cat then (p.root.mayIssues cat A F T false).eraseDups else []
+    | some p => if p.root.checkWF cat then ((p.root.capReads caps).mayIssues cat A F T false).eraseDups else []
     | none => []
   let bounds := match transform with
     | some p =>

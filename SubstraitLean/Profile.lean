@@ -46,10 +46,34 @@ theorem Outcome.agree_refl : ∀ o : Outcome, o.Agree o
   | .ok _ => rfl
   | .error _ => trivial
 
+/-- An engine's own algorithm for a family of aggregates of doubles, with
+properties stricter than the generic ones the reference allows (#85,
+`StatProps`, `FloatSums`). Each names what the engine's characterization
+records (`characterization/<engine>/facts/`). -/
+inductive AggAlgo where
+  /-- Welford's update with Chan's merge (`duckdb-var-stddev`, `duckdb-covar`,
+  `spark-var-stddev`, `spark-covar`). -/
+  | welfordChan
+  /-- Two-pass per block, blocks merged by Chan's formula (`polars-var-std`,
+  ungrouped). -/
+  | blockTwoPass
+  /-- Pairwise summation (`polars-sum-float`). -/
+  | pairwiseSum
+  /-- Kahan's compensated summation (`duckdb-kahan-sum`, `fsum`). -/
+  | kahanSum
+  deriving Repr, DecidableEq
+
 /-- An engine's semantics of each function. -/
 structure Profile where
   un : UnFn → Value → Outcome
   bin : BinFn → Value → Value → Outcome
+  /-- The algorithm of `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`, if the
+  engine pins one with stricter properties; `none`: the generic properties
+  (`StatProps`). -/
+  statAlgo : Option AggAlgo := none
+  /-- The algorithm of `SUM` and `AVG` of doubles, likewise; `none`: any order
+  and grouping of the additions (`FloatSums`). -/
+  sumAlgo : Option AggAlgo := none
 
 /-- Raise an error issue; a warning (wrap-around) keeps the value. -/
 def raiseIf (k : Option Issue) (v : Value) : Outcome :=
@@ -59,8 +83,9 @@ def raiseIf (k : Option Issue) (v : Value) : Outcome :=
 
 /-- The reference: the model's value, raising where `Safety.lean` reports an
 error. -/
-def Profile.reference : Profile :=
-  ⟨fun f v => raiseIf (f.issue v) (f.apply v), fun f v w => raiseIf (f.issue v w) (f.apply v w)⟩
+def Profile.reference : Profile where
+  un f v := raiseIf (f.issue v) (f.apply v)
+  bin f v w := raiseIf (f.issue v w) (f.apply v w)
 
 /-- The error an outcome raises, if any. -/
 def Outcome.err? : Outcome → Option Issue

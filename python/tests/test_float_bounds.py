@@ -184,3 +184,62 @@ def test_max_rows_is_checked_on_the_data() -> None:
     with pytest.raises(PreconditionError, match="max_rows"):
         count(bound_orders([(1, "ada", 30), (2, "bob", 40)]))
     count(bound_orders([(1, "ada", 30)]))
+
+
+def test_truncating_a_bounded_average_is_exact() -> None:
+    """The cast of a double carries its tolerance: `[0, 100.0000001]` casts to
+    `[0, 100]`."""
+    g = metrics.group_by("host").aggregate(cpu_avg=metrics.cpu.mean())
+    report = sv.verify(
+        g.select(c=g.cpu_avg.cast("int64")),
+        requires={"metrics": [*CPU, sv.max_rows(10_000_000)]},
+        ensures=[_.c >= 0, _.c <= 100],
+    )
+    assert report.proved, str(report)
+
+
+def test_sums_and_means_of_converted_integers() -> None:
+    """`SUM(CAST(x AS DOUBLE))` and Ibis' mean of integers: the conversion is
+    exact up to 2⁵³, and the summation bound applies to the converted values."""
+    t = ibis.table({"host": "string", "cpu": "int64"}, name="t")
+    g = t.group_by("host").aggregate(s=t.cpu.cast("float64").sum(), m=t.cpu.mean())
+    report = sv.verify(
+        g,
+        requires={"t": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
+        ensures=[_.s >= 0, sv.approx(_.s <= 1_000_000_000), _.m >= 0, sv.approx(_.m <= 100)],
+    )
+    assert report.proved, str(report)
+
+
+pairs = st.lists(st.tuples(values, values), min_size=2, max_size=40)
+
+
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(ps=pairs, scale=magnitudes, shift=st.sampled_from([0.0, 1.0, 1e6]))
+def test_duckdb_covar_and_corr_have_the_generic_properties(
+    ps: list[tuple[float, float]], scale: float, shift: float
+) -> None:
+    """`StatProps` (`SubstraitLean/StatProps.lean`): `COVAR_POP` within
+    `τ = (128 n² u B² + 12 n u B²) / n`, `|CORR| ≤ 1 + 3E/L + 8u` when both
+    co-moments are at least `L ≥ 8E`."""
+    ps = [(x * scale + shift, y * scale - shift) for x, y in ps]
+    n = len(ps)
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t (x DOUBLE, y DOUBLE)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", ps)
+    cov, corr = con.execute("SELECT COVAR_POP(y, x), CORR(y, x) FROM t").fetchone()
+    xs, ys = [Fraction(x) for x, _ in ps], [Fraction(y) for _, y in ps]
+    b = max(max(abs(v) for v in xs + ys), Fraction(1, 2**500))
+    if b > 2**399:
+        return
+
+    def comoment(a: list[Fraction], c: list[Fraction]) -> Fraction:
+        return sum((p * q for p, q in zip(a, c, strict=True)), Fraction(0)) - sum(a) * sum(c) / n
+
+    e = 128 * n**2 * U * b**2
+    tol = (e + 12 * n * U * b**2) / n
+    assert abs(Fraction(cov) - comoment(xs, ys) / n) <= tol
+    sx, sy = comoment(xs, xs), comoment(ys, ys)
+    low = min(sx, sy)
+    if corr is not None and not math.isnan(corr) and low >= 8 * e and sx * sy <= 2**1000:
+        assert abs(Fraction(corr)) <= 1 + 3 * e / low + 8 * U

@@ -775,7 +775,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`), which [`float-bounds/`](float-bounds.md) proves for IEEE rounding with Mathlib, kept out of the core build.
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`). `StatProps.apply` (the reference's statistical aggregates are allowed) rests on three of the same kind: `varOf_props`, `covOf_props`, `corrOf_props` in `StatProps.lean`. [`float-bounds/`](float-bounds.md) proves all six for IEEE rounding with Mathlib, kept out of the core build.
 
 ## Modelling choices
 

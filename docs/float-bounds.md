@@ -140,6 +140,24 @@ The homelab metrics rollup states its contract this way:
 )
 ```
 
+## The generic properties of statistical aggregates
+
+The reference allows any result of `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`
+with the generic properties (`StatProps`, [reference
+semantics](reference-semantics.md#statistical-aggregates)). Lean's own results
+have them by three trusted facts in `SubstraitLean/StatProps.lean`
+(`varOf_props`, `covOf_props`, `corrOf_props`), stated over Lean's `Rat`.
+[`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean) proves them:
+`core_var`, `core_stddev`, `core_cov` and `core_corr`, for two-pass on the
+decoded doubles, with `E = 128 n² u B²`, which covers the decoding
+(`comoment_decoded`, `12 n B δ`) and `64 n² u B'²` with `B' = (1 + 2u) B`.
+
+The first-order behaviour of Welford's algorithm is tighter,
+`|Ŝ − S| ≲ c · n · u · √(S · Σx²)` (Chan, Golub and LeVeque, 1983); the proved
+bound scales with `n · u · Σx²`, which is larger when the values sit far from
+zero relative to their spread. A tighter proved bound only narrows
+the allowed set, so it can replace this one without changing the interface.
+
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
 the variance also needs Popoviciu's inequality, the arguments of `COVAR` and

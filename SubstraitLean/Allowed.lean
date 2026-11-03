@@ -60,6 +60,7 @@ theorem AggFn.apply_allowed (f : AggFn) (vs : List Value) : f.Allowed vs (f.appl
     | cons v vs =>
       simp only [Allowed, reduceCtorEq, ite_false]
       exact ⟨_, .seq (.refl _), rfl⟩
+  case var | cov | corr => simp only [Allowed]; exact StatProps.apply _ vs
   all_goals rfl
 
 /-- An aggregate that combines in two phases is a function of its values. -/
