@@ -40,7 +40,7 @@ means applying that diff: writing each function in a form the engine
 evaluates to the reference result, or refusing it where no shim exists.
 
 DuckDB is the first engine characterized this way:
-[`characterization/duckdb/FACTS.md`](../characterization/duckdb/FACTS.md)
+[`characterization/duckdb/facts/`](../characterization/duckdb/facts/)
 judges DuckDB's own sqllogictests and the fuzzer's findings against
 Substrait's definitions and options, not against ISO SQL or DuckDB. The plan
 is to state each profile in Lean and prove the shims (`shim_correct` in

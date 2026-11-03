@@ -4,8 +4,10 @@ import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Contracts
 import SubstraitLean.Retention
+import SubstraitLean.TouchedGroups
 import SubstraitLean.Safety
 import SubstraitLean.Keys
+import SubstraitLean.Rows
 import SubstraitLean.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
@@ -171,6 +173,7 @@ end Substrait.Examples
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
 #print axioms Substrait.Rel.keys_sound
+#print axioms Substrait.Rel.join_length_le_of_keyed
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak
 #print axioms Substrait.Rel.window_deterministic
@@ -180,6 +183,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.capReads_eval
 #print axioms Substrait.Rel.maxRows_sound
 #print axioms Substrait.StatProps.apply
+#print axioms Substrait.Rel.capJoins_eval
+#print axioms Substrait.Rel.issuesCapped_sound
 #print axioms Substrait.FloatCode.ofInt_mono
 #print axioms Substrait.FloatCode.ofInt_exact
 #print axioms Substrait.FloatCode.ofInt_rel
@@ -240,3 +245,5 @@ end Substrait.Examples
 #print axioms Substrait.Retention.expiry_sound
 #print axioms Substrait.Retention.open_buckets_le
 #print axioms Substrait.Retention.trunc_eq_bucket
+#print axioms Substrait.TouchedGroups.touched_sound
+#print axioms Substrait.TouchedGroups.touched_eval

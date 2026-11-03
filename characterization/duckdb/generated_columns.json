@@ -4,6 +4,7 @@
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "generated_columns",
   "summary": {"agree": 70, "disagree": 0, "refused": 24, "skipped": 22},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {"generated_columns/virtual/not_referencing_columns.test": "harness: the replay process crashed"},
   "results": [

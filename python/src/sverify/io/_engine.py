@@ -39,6 +39,14 @@ _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 
 
+def _forget_cursor() -> None:
+    global _DB
+    _DB = None
+
+
+_duckdb.on_reset(_forget_cursor)
+
+
 def _db() -> duckdb.DuckDBPyConnection:
     global _DB
     if _DB is None:

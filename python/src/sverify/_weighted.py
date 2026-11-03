@@ -36,6 +36,14 @@ _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()
 
 
+def _forget_cursor() -> None:
+    global _DB
+    _DB = None
+
+
+_duckdb.on_reset(_forget_cursor)
+
+
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
@@ -172,6 +180,13 @@ def deleted_count(z: pa.Table) -> int:
     return -total(negative(z))
 
 
+def row_count(table: pa.Table | Native) -> int:
+    """How many rows `table` has."""
+    if isinstance(table, pa.Table):
+        return table.num_rows
+    return int(_sql("SELECT count(*) AS n FROM t", t=table).column(0)[0].as_py())
+
+
 def duplicate_keys(
     table: pa.Table | Native, cols: Sequence[str], among: pa.Table | None = None
 ) -> int:
@@ -234,6 +249,23 @@ def matching(z: pa.Table | Native, rows: pa.Table) -> pa.Table:
     same = _same_rows(keys, "z", "r")
     out = _sql(f"SELECT * FROM z WHERE EXISTS (SELECT 1 FROM r WHERE {same})", z=z, r=rows)
     return out.cast(z.schema)
+
+
+def split_matching(table: pa.Table, rows: pa.Table) -> tuple[pa.Table, pa.Table]:
+    """The rows of `table` (a plain table) equal to some row of `rows` (a
+    table with its columns, and maybe a weight), and the other rows."""
+    keys = table.column_names
+    n = table.num_rows
+    if not n or not rows.num_rows:
+        return table.slice(0, 0), table
+    indexed = table.append_column(_ROW, _indices(n))
+    same = _same_rows(keys, "t", "r")
+    hit = _sql(
+        f"SELECT {_q(_ROW)} FROM t WHERE EXISTS (SELECT 1 FROM r WHERE {same})", t=indexed, r=rows
+    )
+    rows_hit = hit.column(_ROW)
+    mask = pc.call_function("is_in", [_indices(n)], pc.SetLookupOptions(value_set=rows_hit))
+    return table.take(rows_hit), table.filter(_call("invert", mask))
 
 
 def weights_in(z: pa.Table | Native, rows: pa.Table) -> pa.Array:

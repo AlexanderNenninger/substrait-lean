@@ -4,8 +4,8 @@ The replay of DuckDB's sqllogictests through sverify (`python -m sverify_dev.slt
 and the fuzz findings against DuckDB (`python -m sverify_dev.duckdb_fuzz`), one
 ledger per area of DuckDB's `test/sql/`, for epic #185, and the probes of DuckDB's functions (`python -m sverify_dev.probe`,
 [probes.json](probes.json)). The facts drawn from them are one JSON document
-each in [facts/](facts/), with their provenance; [FACTS.md](FACTS.md) is the
-overview, generated from them (`python -m sverify_dev.facts --write`).
+each in [facts/](facts/), with their provenance (`python -m sverify_dev.facts`
+checks them).
 
 The quoted tests (queries and expected results) are © Stichting DuckDB
 Foundation, MIT-licensed ([LICENSE-duckdb](LICENSE-duckdb)), taken from
@@ -126,7 +126,7 @@ true, integers only), `ieee_floating_point_ops` (default true: doubles),
 
 ## sverify: written plans and the harness
 
-S3, S4 and S6 are DataFusion's: [../datafusion/FACTS.md](../datafusion/FACTS.md).
+S3, S4 and S6 are DataFusion's: [../datafusion/facts/](../datafusion/facts/).
 
 ### S1. The written plan types literals by their value (#96)
 

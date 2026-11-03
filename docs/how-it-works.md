@@ -681,7 +681,12 @@ with `infer=False`.
   allows.
 * An integer `SUM` leaving 64 bits is ruled out where the plan bounds a group's
   rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
-  bounds each value (`Measure.sumFits`). Elsewhere it is an inferred assumption
+  bounds each value (`Measure.sumFits`). Row caps on the inputs count too
+  ([Rows.lean](../SubstraitLean/Rows.lean), #219): a capped read is a `FETCH`
+  (`Rel.capReads`), and a join on a key of its right side is capped by its
+  left side (`Rel.capJoins_eval`). Its `SUM`s are decided on the capped plan
+  and every other issue on the plan as it is (`Rel.issuesCapped_sound`).
+  Elsewhere it is an inferred assumption
   (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
   the job runs.
 * Bounds that rule out overflow are inferred

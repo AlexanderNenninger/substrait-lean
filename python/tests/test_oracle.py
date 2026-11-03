@@ -35,3 +35,17 @@ def test_the_sample_is_stable():
     assert oracle.sample(known, 0) == oracle.sample(known, 0)
     assert set(oracle.sample(known, 0)) == {"x.test", "z.test"}
     assert len(oracle.sample(known, 1)) == 1
+
+
+def test_a_file_the_ledger_compared_and_this_run_skipped_fails():
+    skips = {"a.test": "harness: the replay process crashed", "b.test": "require: tpch"}
+    assert oracle.newly_skipped(skips, {"b.test": "require: tpch"}) == [
+        "a.test: compared -> skipped (harness: the replay process crashed)"
+    ]
+
+
+def test_the_shards_cover_the_files_once():
+    files = [f"{i}.test" for i in range(10)]
+    shards = [oracle.shard(files, f"{i}/3") for i in (1, 2, 3)]
+    assert sorted(sum(shards, [])) == sorted(files)
+    assert oracle.shard(files, None) == files
