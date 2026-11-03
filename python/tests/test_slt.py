@@ -147,6 +147,19 @@ SELECT list_value(i) FROM t WHERE i = 1
 [1]
 
 statement ok
+CREATE TABLE u(i BIGINT);
+
+query I
+WITH ins AS (INSERT INTO u VALUES (1) RETURNING i) SELECT 1
+----
+1
+
+query I
+SELECT count(*) FROM u
+----
+1
+
+statement ok
 SET default_null_order='nulls_first'
 
 query I
@@ -195,6 +208,14 @@ def test_replay(replayed):
     assert (div.cls, div.side) == ("disagree", "lean")
     assert div.reason.startswith("verify: division by zero")
     assert _result(replayed, "SELECT list_value").reason.startswith("lift: ")
+    # Data-modifying CTEs are outside sverify's scope (#318); DuckDB still
+    # runs them, so the next query sees the row.
+    dml = _result(replayed, "WITH ins AS (INSERT")
+    assert (dml.cls, dml.reason) == (
+        "skipped",
+        "modifies data (INSERT in a query), outside sverify's scope",
+    )
+    assert _result(replayed, "SELECT count(*) FROM u").cls == "agree"
     # The lift reads DuckDB's default NULL order only.
     nulls = _result(replayed, "SELECT i FROM t ORDER BY i")
     assert (nulls.cls, nulls.reason) == ("skipped", "setting default_null_order")
@@ -208,11 +229,11 @@ def test_ledger(replayed, tmp_path):
     path = slt.write_ledger("area", "2.0.0", rows, {"area/y.test": "require json"}, tmp_path)
     assert path.name == "area.json"
     led = json.loads(path.read_text())
-    assert led["summary"] == {"agree": 1, "disagree": 2, "refused": 1, "skipped": 2}
+    assert led["summary"] == {"agree": 2, "disagree": 2, "refused": 1, "skipped": 3}
     assert led["disagree_sides"] == {"lean": 2}
     assert len(led["results"]) == len(rows)
     summary = slt.write_summary(tmp_path).read_text()
-    assert "| [area](area.json) | 1 | 0 | 2 | lean 2 | 1 | 2 | 1 |" in summary
+    assert "| [area](area.json) | 2 | 0 | 2 | lean 2 | 1 | 3 | 1 |" in summary
     # Rewriting keeps one table.
     assert slt.write_summary(tmp_path).read_text().count("<!-- slt:start -->") == 1
 

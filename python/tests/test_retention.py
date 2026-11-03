@@ -309,6 +309,29 @@ def test_a_sink_that_rewrites_whole_tables_turns_retention_off():
     assert state_rows(node) == 5
 
 
+def test_an_aggregate_under_a_projection_retires_its_buckets():
+    """#394: a projection over the aggregate reads only its own row, though
+    its fields lead into the aggregate's reductions."""
+
+    @sv.transform(requires={"samples": [sv.arrives_within("ts", hours=2), *BOUNDS]})
+    def percent(samples):
+        g = samples.group_by(["host", samples.ts.truncate("h").name("bucket")]).aggregate(
+            peak=samples.cpu.max()
+        )
+        return g.filter(g.peak >= 0).select("host", "bucket", pct=g.peak / 10)
+
+    src = StaticSource(samples([("a", m, 1) for m in range(0, 300, 30)]), name="samples")
+    sink = Recorder("percent")
+    node = src.pipe(percent).write(sink)
+    (report,) = node.refresh()["percent"].retention
+    assert report.off is None
+    assert (report.open, report.retired) == (3, 2)
+    src.apply(sv.Changes(inserts=samples([("a", 330, 5)])))
+    (report,) = node.refresh()["percent"].retention
+    assert report.retired == 1
+    assert sink.sorted() == full(node, src)
+
+
 @pytest.mark.parametrize(
     ("body", "reason"),
     [

@@ -17,9 +17,9 @@ from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
 
 def _temporal_literals(es: list[E]) -> list[E]:
-    """String constants next to a date or timestamp read as one, as DuckDB
-    casts them."""
-    temporal = [e.type for e in es if e.type.is_date() or e.type.is_timestamp()]
+    """String constants next to a date, timestamp or time of day read as one,
+    as DuckDB casts them."""
+    temporal = [e.type for e in es if e.type.is_date() or e.type.is_timestamp() or e.type.is_time()]
     if not temporal:
         return es
     es = [_temporal(e, temporal[0]) if e.type.is_string() and e.constant else e for e in es]
@@ -42,7 +42,29 @@ def _as_date(e: E) -> E:
     return E(literal(v.date(), dt.date), dt.date, v.date())
 
 
+#: A time of day as DuckDB reads one: `H:MM`, `H:MM:SS` or `H:MM:SS.ffffff`.
+_TIME = re.compile(r"\s*(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?\s*")
+
+
+def _time(e: E) -> E:
+    """A string constant as a TIME literal, in microseconds since midnight
+    (#386). What DuckDB raises on, and what it reads that the model has no
+    value for (`24:00:00`, an offset, digits past microseconds), is refused."""
+    m = _TIME.fullmatch(e.value) if isinstance(e.value, str) else None
+    if m is None:
+        raise Unsupported(f"cannot read {e.value!r} as a TIME; write it as HH:MM:SS[.ffffff]")
+    h, mi, sec = int(m[1]), int(m[2]), int(m[3] or 0)
+    if h > 23 or mi > 59 or sec > 59:
+        raise Unsupported(
+            f"cannot read {e.value!r} as a TIME: out of range (00:00:00 to 23:59:59.999999)"
+        )
+    v = dt_.time(h, mi, sec, int((m[4] or "0").ljust(6, "0")))
+    return E(literal(v, dt.time), dt.time, v)
+
+
 def _temporal(e: E, t: Any) -> E:
+    if t.is_time():
+        return _time(e)
     # DuckDB reads a date with spaces around it, and a timestamp with spaces
     # before it, or after it if it has a time of day.
     text = e.value

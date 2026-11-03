@@ -37,6 +37,7 @@ from typing import Any
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
+from ibis.common.graph import Node
 
 from sverify._weighted import _call, rows_of
 from sverify.contracts import ArrivesWithin, Condition, label, show_duration
@@ -88,12 +89,18 @@ class Retention:
         )
 
 
+def _own_tree(n: Node) -> bool:
+    """Whether `find` walks into `n`: a value's own expression, never the
+    relations its fields read (#394), whose reductions are other rows'."""
+    return not isinstance(n, ops.Relation)
+
+
 def _row_local(values: Sequence[ops.Value], parent: ops.Relation) -> bool:
     """Every value reads only the columns of its own row of `parent`."""
     for v in values:
-        if v.find(_NOT_ROW_LOCAL):
+        if v.find(_NOT_ROW_LOCAL, filter=_own_tree):
             return False
-        if any(getattr(f, "rel", None) != parent for f in v.find(ops.Field)):
+        if any(getattr(f, "rel", None) != parent for f in v.find(ops.Field, filter=_own_tree)):
             return False
     return True
 
