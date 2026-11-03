@@ -8,6 +8,7 @@ import SubstraitLean.Pretty
 import SubstraitLean.Semantic
 import SubstraitLean.Write
 import SubstraitLean.Infer
+import SubstraitLean.Rows
 
 /-!
 # Checking a contract
@@ -20,9 +21,10 @@ Input (JSON):
   "transform": <plan>,         -- the transformation, to report facts and keys
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
-  "references": {"<table>": [[<col>, "<table>", <col>], ...]} }
+  "references": {"<table>": [[<col>, "<table>", <col>], ...]},
       -- input foreign keys: every non-NULL value of the column occurs in the
       -- other table's column (`ForeignKeys.Hold`)
+  "rows": {"<table>": <n>} }  -- input row bounds: at most n rows (`RowBounds.Sound`)
 ```
 
 Output: a JSON report (`Report.json`). Besides what is proved, it carries
@@ -153,8 +155,11 @@ structure Report where
   keys : List (List Nat × Bool)
   /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
   deterministic : Bool := true
-  /-- Runtime errors and wrap-arounds `Rel.mayIssues_sound` cannot rule out. -/
+  /-- Runtime errors and wrap-arounds `Rel.issuesR_sound` cannot rule out:
+  an integer `SUM` the input row bounds keep within 64 bits is left out. -/
   issues : List (Issue × Expr) := []
+  /-- At most this many output rows (`Rel.maxRows_sound`). -/
+  rows : Option Nat := none
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
@@ -187,6 +192,7 @@ def Report.json (r : Report) : Json :=
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
     ("inferred", Json.arr (r.inferred.map need).toArray),
+    ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
     ("guard_free", Lean.toJson r.guardFree),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
@@ -204,6 +210,8 @@ def foreignKeys (j : Json) : ForeignKeys := fun t =>
     | some [c, s, p] => do
       pure ((← c.getNat?.toOption), (← s.getStr?.toOption), (← p.getNat?.toOption))
     | _ => none
+
+def rowBounds (j : Json) : RowBounds := fun t => (j.getObjValAs? Nat t).toOption
 
 def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
 
@@ -269,9 +277,17 @@ def check (input : Json) : Except String Report := do
       let derived := p.root.keys cat A F inputKeys
       pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
-  let issues := match transform with
-    | some p => if p.root.checkWF cat then (p.root.mayIssues cat A F T false).eraseDups else []
+  let R := rowBounds ((input.getObjVal? "rows").toOption.getD (.obj {}))
+  let wf := transform.any (·.root.checkWF cat)
+  let raw := match transform with
+    | some p => if wf then p.root.mayIssues cat A F T false else []
     | none => []
+  let issues := match transform with
+    | some p => if wf then (Rel.issuesR cat A F T inputKeys R false p.root).eraseDups else []
+    | none => []
+  let rows := match transform with
+    | some p => if wf then p.root.maxRows cat A F inputKeys R else none
+    | none => none
   let bounds := match transform with
     | some p =>
       if !p.root.checkWF cat then [] else
@@ -279,7 +295,7 @@ def check (input : Json) : Except String Report := do
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
   let guardFree := match transform with
-    | some p => p.root.checkWF cat && p.root.looseSub && issues.all (·.1 == .sumWraps)
+    | some p => wf && p.root.looseSub && raw.all (·.1 == .sumWraps)
     | none => false
   let (optimized, rewrites) := match transform with
     | some p =>
@@ -297,6 +313,7 @@ def check (input : Json) : Except String Report := do
     keys
     deterministic
     issues
+    rows
     bounds
     inferred := Infer.merged A (bounds.filter (·.1.isError))
     guardFree }
