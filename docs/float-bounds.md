@@ -160,7 +160,7 @@ digit that matters. For values near `10⁶` that vary by about `1` (timestamps i
 seconds, say), it is `1.4 · 10⁴` at `10⁶` rows, against a variance of about
 `1`: no useful bound.
 
-Bounds that scale with the spread are proved for two of the algorithms:
+Bounds that scale with the spread are proved for three of the algorithms:
 
 - Two-pass ([`TwoPassRel.lean`](../float-bounds/FloatBounds/TwoPassRel.lean),
   `twoPass_var_rel`): `|Ŝ − S| ≤ 8 n u S + 80 n² u² Σx² + 8 n² u · tiny`.
@@ -174,16 +174,23 @@ Bounds that scale with the spread are proved for two of the algorithms:
   LeVeque (1983) describe. It needs the model to know that a double rounds
   to itself (`StdModel.idem`, `StdModel.zero`), which makes Welford's first
   step exact.
+- DuckDB's parallel aggregation, Welford's update in each thread and Chan's
+  merge of the threads' states in any order
+  ([`MergeRel.lean`](../float-bounds/FloatBounds/MergeRel.lean),
+  `chanVar_rel`): `|Ŝ − S| ≤ 148 n u √(Q' S) + 3961 n² u² Q' + 793 n u · tiny`.
+  DuckDB's merge computes the mean with a fused multiply-add
+  (`dmean_spec`). A merge of `a` and `b` values adds `2 min(a, b)` to a
+  weight that stays below `2 n (⌈log₂ n⌉ + 1)` (`Lw_merge`), and the
+  constants take `⌈log₂ n⌉ ≤ 32`.
 
 For the timestamps above (`10⁶` rows near `10⁶`, spread `1`), Welford's bound
-on the variance is about `32 · 10⁶ · 1.1 · 10⁻¹⁶ · 10⁶ ≈ 3.6 · 10⁻³`, and
-two-pass's about `10⁻⁶`, against a variance of `1`.
+on the variance is about `32 · 10⁶ · 1.1 · 10⁻¹⁶ · 10⁶ ≈ 3.6 · 10⁻³`, the
+parallel one's about `1.6 · 10⁻²`, and two-pass's about `10⁻⁶`, against a
+variance of `1`.
 
-Chan's merge of the states of several threads (DuckDB's parallel
-aggregation) is the remaining step. Until it is proved, the generic
-properties keep the bound above, which holds for every algorithm. A
-tighter one only narrows the allowed set, so it replaces this one without
-changing the interface.
+The generic properties still keep the bound above, which holds for every
+algorithm. A tighter one only narrows the allowed set, so it replaces this
+one without changing the interface.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
