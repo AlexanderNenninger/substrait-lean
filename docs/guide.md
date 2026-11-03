@@ -321,11 +321,53 @@ understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.
 
-For an overflow, the report's `hint:` lines (`Report.hints`) name the bound to
-add. A truncated timestamp or date gets a lower and an upper bound on its
-column; an integer `SUM` gets the range Lean knows for the column it adds up
-and the largest group whose sum then fits 64 bits, or a bound to add when the
-column has none:
+### Inferred bounds
+
+An overflow at the declared width is an error (#202), so `amount * 2` on a
+`BIGINT` needs a bound on `amount`. Sverify infers it (#244): for each `+`,
+`-`, `*` by a constant, negation, `abs` and timestamp truncation that may
+leave its range, it works out the range each input column must stay in, and
+adds it to `requires` as if you had written it:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
+def twice(orders):
+    return orders.select(orders.id, twice=orders.amount * 2)
+
+twice(orders)
+print(twice.last_report)
+# requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 2**62) (inferred)
+# ensures (_.twice >= 0): proved
+# ...
+```
+
+An inferred bound is a precondition like the rest. It is checked on the
+data at call time and on every refresh, or proved from Delta and Iceberg
+file statistics, and refresh reports list it as
+`orders: (_.amount < 2**62) (inferred, checked on data)`. Downstream nodes
+build on it like on any other precondition of a source.
+
+* The inference is untrusted: Lean proves the contract again with the
+  inferred bounds added, so a wrong bound makes the proof fail
+  ([SubstraitLean/Infer.lean](../SubstraitLean/Infer.lean)).
+* Bounds are rounded inward to round numbers (`3 * 10**18`, `2**62`) and
+  timestamps to whole years (`ts.truncate("M")` needs
+  `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
+  range of nanosecond timestamps).
+* A product or sum of two unbounded columns has no single weakest bound,
+  the value of an aggregate (`SUM`) or window function has none on a
+  column, and a value from another contracted transformation is bounded by
+  its `ensures`. For these the report's hint suggests a bound
+  (`Issue.hint`), and sverify assumes none.
+* `@sv.transform(strict=True)` and `sv.verify(..., infer=False)` infer
+  nothing: each overflow fails the proof, and its hint names the bound to
+  state.
+
+For what it does not infer, the report's `hint:` lines (`Report.hints`) name
+the bound to add. An integer `SUM` gets the range Lean knows for the column it
+adds up and the largest group whose sum then fits 64 bits, or a bound to add
+when the column has none:
 
 ```python
 samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name="samples")
@@ -333,8 +375,8 @@ per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")])
     cpu=samples.cpu.sum()
 )
 print(sv.verify(per_minute))
+# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred)
 # ...
-# hint: bound the truncated column `ts` in `requires` of samples: ...`_.ts >= datetime(2000, 1, 1)` and `_.ts < datetime(2100, 1, 1)`
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
 

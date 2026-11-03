@@ -270,10 +270,13 @@ SAMPLES = ibis.table(
     ],
 )
 def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
-    report = sv.verify(expr)
-    assert [i.kind for i in report.errors] == ["overflow"]
-    [hint] = report.hints
-    assert f"`_.{col} >= " in hint and f"`_.{col} < " in hint and "of samples" in hint
+    # Inferred by default (#244); without inference, the issue's hint names them.
+    assert sv.verify(expr).proved
+    report = sv.verify(expr, infer=False)
+    [issue] = report.errors
+    assert issue.kind == "overflow" and issue.hint is not None
+    hint = issue.hint
+    assert f"`(_.{col} >= " in hint and "the requires of 'samples'" in hint
     assert OVERFLOW_HINT not in str(report)  # the hint covers the overflow
     bounded = sv.verify(expr, requires={"samples": [_[col] >= low, _[col] < high]})
     assert not bounded.issues
@@ -290,7 +293,9 @@ def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     assert "no contract states how many rows a group has" in hint
 
 
-def test_an_overflow_without_a_named_bound_keeps_the_general_hint():
+def test_an_overflow_of_two_columns_suggests_a_split():
     report = sv.verify(SAMPLES.select(d=SAMPLES.cpu * SAMPLES.cpu))
-    assert report.errors and not report.hints
-    assert f"hint: {OVERFLOW_HINT}" in str(report)
+    [issue] = report.errors
+    assert issue.hint is not None and issue.hint.startswith("no single bound rules it out")
+    assert report.inferred == {} and not report.hints
+    assert OVERFLOW_HINT not in str(report)
