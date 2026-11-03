@@ -418,14 +418,22 @@ bound against an error it is never assumed, only suggested
 (`Report.suggestions` in `sverify`): it changes what the transformation
 promises, which only its author can decide. -/
 
+/-- An open side of a postcondition's range, far beyond every code: the
+ranges it leads to are cut off at the base tables (`openSide`). -/
+def far : Int := 2 ^ 128
+
+/-- Drop the sides that come from `far`. -/
+def openSide (b : Bound) : Bound :=
+  ⟨b.lo.filter (-(2 ^ 120) < ·), b.hi.filter (· < 2 ^ 120)⟩
+
 /-- Ranges of the columns of `env` that make the condition TRUE: a
 conjunction of comparisons of a value with a constant. -/
 partial def holds (env : List AVal) (fs : List Fact) : Expr → Except String Found
   | .bin .and p q => do pure ((← holds env fs p).append (← holds env fs q))
-  | .bin .lt a (.lit (.int k)) => needD env fs none (some (k - 1)) a
-  | .bin .lt (.lit (.int k)) a => needD env fs (some (k + 1)) none a
-  | .un .not (.bin .lt a (.lit (.int k))) => needD env fs (some k) none a
-  | .un .not (.bin .lt (.lit (.int k)) a) => needD env fs none (some k) a
+  | .bin .lt a (.lit (.int k)) => need env fs (-far) (k - 1) a
+  | .bin .lt (.lit (.int k)) a => need env fs (k + 1) far a
+  | .un .not (.bin .lt a (.lit (.int k))) => need env fs k far a
+  | .un .not (.bin .lt (.lit (.int k)) a) => need env fs (-far) k a
   | .bin .eq a (.lit (.int k)) | .bin .eq (.lit (.int k)) a => need env fs k k a
   | e => throw s!"it is {e.render}, not a comparison with a constant"
 
@@ -440,7 +448,9 @@ def suggest (cat : Catalog) (A : String → List AVal) (F : String → List Fact
     if i < r.arity cat then { why := some "it is a column, not a comparison" }
     else match es[i - r.arity cat]? with
       | some c => match holds (r.aeval cat A F T true) (r.facts cat F T) c with
-        | .ok f => pullAll cat A F T r f
+        | .ok f =>
+          let b := pullAll cat A F T r f
+          { b with needs := b.needs.map fun (t, i, r) => (t, i, openSide r) }
         | .error why => { why := some why }
       | none => { why := some "it reads a column out of range" }
   | _, _ => { why := some "the postcondition's plan is not a selection" }
