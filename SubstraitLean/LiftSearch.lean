@@ -143,7 +143,9 @@ def functions : List (Nat × String × String) :=
   let guards := ["equal:any_any", "lt:any_any", "is_null:any", "is_not_null:any", "is_nan:fp64",
     "and:bool", "or:bool", "not:bool"]
   let aggs := ["avg:i64", "avg:fp64", "sum:i64", "sum:fp64", "count:any"]
-  (typed ++ unary ++ guards ++ aggs).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
+  -- Last, so the anchors before them stay: only seeded templates call them.
+  let arith := ["add:fp64_fp64", "subtract:fp64_fp64", "multiply:fp64_fp64"]
+  (typed ++ unary ++ guards ++ aggs ++ arith).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
 
 def fns : List (Nat × String) := functions.map fun (a, n, _) => (a, n)
 
@@ -455,7 +457,7 @@ def survivors (s : Semantics) (f : DuckFn) : List (Json × Substrait.Expr × Str
 their types), evaluate both sides, split on the comparisons, and compute. -/
 def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs (#[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
+    ``Outcome.ok_bind, ``DuckFn.eval, ``duckDivide, ``duckMod, ``duckArith, ``duckElementary, ``duckPower, ``FMath.isLog, ``duckSign,
     ``nanCase, ``isInfCode, ``ieeeDivZero, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_int,
     ``DuckDBSQL.ref_fmod_int, ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r,
     ``DuckDBSQL.ref_fmod_null_l, ``DuckDBSQL.ref_fmod_null_r, ``DuckDBSQL.apply_eq_int,
@@ -464,7 +466,10 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``BinFn.apply, ``Value.pick, ``Value.ltB,
     ``Lowering.ref_and, ``Lowering.ref_or, ``FloatCode.ofInt_ne_nan, ``DuckDBSQL.ref_fpow_int,
     ``DuckDBSQL.ref_fpow_null_l, ``DuckDBSQL.ref_fpow_null_r, ``DuckDBSQL.ref_ffloor_int,
-    ``DuckDBSQL.ref_ffloor_null,
+    ``DuckDBSQL.ref_ffloor_null, ``DuckDBSQL.ref_fadd_int, ``DuckDBSQL.ref_fsub_int,
+    ``DuckDBSQL.ref_fmul_int, ``DuckDBSQL.ref_fadd_null_l, ``DuckDBSQL.ref_fadd_null_r,
+    ``DuckDBSQL.ref_fsub_null_l, ``DuckDBSQL.ref_fsub_null_r, ``DuckDBSQL.ref_fmul_null_l,
+    ``DuckDBSQL.ref_fmul_null_r,
     ``DuckDBSQL.ite_or, ``Value.isTrue, ``and3, ``or3, ``Lowering.beq_int, ``Lowering.ref_isNull,
     ``Lowering.ref_not, ``Issue.isError, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_fmath_int,
     ``DuckDBSQL.ref_fmath_null, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
