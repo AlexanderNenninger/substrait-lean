@@ -771,8 +771,8 @@ def arrowCast (c : Const) (ty : String) : Option Const :=
 /-- Negation of a double constant: NaN stays NaN. -/
 def fneg (c : Int) : Int := if c == FloatCode.nan then c else FloatCode.neg c
 
-/-- Fold a function applied to constants, if it is one the parser knows. -/
-def foldCall : String → List Const → Option Const
+/-- Fold a core function (casts and numbers) applied to constants. -/
+def foldCoreCall : String → List Const → Option Const
   | "arrow_cast", [c, .str ty] => arrowCast c ty
   -- Negating a double negates its code; zero and NaN stay as they are.
   | "negate", [.int i] => some (.int (-i))
@@ -780,6 +780,10 @@ def foldCall : String → List Const → Option Const
   | "negate", [.code c] => some (.code (fneg c))
   | "negate", [c] => c.toFloat? >>= fun f => some (.code (fneg (FloatCode.ofFloat f)))
   | "trunc", [c] => c.toFloat? >>= fun f => some (.flt (if f ≥ 0 then f.floor else f.ceil))
+  | _, _ => none
+
+/-- Fold a temporal function (intervals) applied to constants. -/
+def foldTemporalCall : String → List Const → Option Const
   | "to_seconds", [c] => c.toFloat? >>= fun f => roundMicros? (f * 1000000.0) >>= (some ∘ .int)
   | "to_minutes", [c] => c.toInt? >>= fun i => some (.int (i * 60_000_000))
   | "to_hours", [c] => c.toInt? >>= fun i => some (.int (i * 3_600_000_000))
@@ -787,6 +791,11 @@ def foldCall : String → List Const → Option Const
   -- Intervals are plain microseconds here, so normalizing them changes nothing.
   | "normalized_interval", [c] => some c
   | _, _ => none
+
+/-- Fold a function applied to constants, if it is one the parser knows: the
+first area whose fold knows it. No two areas share a name. -/
+def foldCall (name : String) (cs : List Const) : Option Const :=
+  foldCoreCall name cs <|> foldTemporalCall name cs
 
 partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) := do
   if let some l := field? j "literal" then
@@ -1174,140 +1183,84 @@ def replacement (p r : String) (global : Bool) (a : Expr) : J Expr :=
     throw s!"the replacement {r.quote} of regexp_replace is invalid for {p.quote}"
   else simpleRegex p (.un (.regexReplace p r global) a)
 
-/-- Maps Substrait standard-extension functions onto the modelled ones.
-Comparisons are derived: `a > b := b < a`, `a ≤ b := ¬(b < a)`; under
-null-propagation these agree with the direct definitions. -/
-def mkCall : String → List Expr → J Expr
-  | "not", [a] => pure (.un .not a)
-  | "is_null", [a] => pure (.un .isNull a)
-  | "is_not_null", [a] => pure (.un .not (.un .isNull a))
+/-! ## Function calls
+
+`mkCall` maps Substrait standard-extension functions onto the modelled ones,
+one area at a time, the areas of `Write.lean`: core, strings, temporal,
+nested. Each area's `mk…Call?` gives `none` for a function it does not know.
+A new function goes at the end of its area's dispatcher, so pull requests for
+different areas touch different lines. No two areas share a name, so the
+order `mkCall` tries them in does not matter. -/
+
+/-- Logic, comparison and arithmetic. Comparisons are derived: `a > b := b <
+a`, `a ≤ b := ¬(b < a)`; under null-propagation these agree with the direct
+definitions. -/
+def mkCoreCall? : String → List Expr → Option (J Expr)
+  | "not", [a] => some <| pure (.un .not a)
+  | "is_null", [a] => some <| pure (.un .isNull a)
+  | "is_not_null", [a] => some <| pure (.un .not (.un .isNull a))
   -- `x IS TRUE`, `x IS NOT FALSE`, …: never `NULL`.
-  | "is_true", [a] => pure (.ifThen a (.lit (.bool true)) (.lit (.bool false)))
-  | "is_not_true", [a] => pure (.ifThen a (.lit (.bool false)) (.lit (.bool true)))
-  | "is_false", [a] => pure (.ifThen (.un .not a) (.lit (.bool true)) (.lit (.bool false)))
-  | "is_not_false", [a] => pure (.ifThen (.un .not a) (.lit (.bool false)) (.lit (.bool true)))
-  | "negate", [a] => pure (.un .neg a)
+  | "is_true", [a] => some <| pure (.ifThen a (.lit (.bool true)) (.lit (.bool false)))
+  | "is_not_true", [a] => some <| pure (.ifThen a (.lit (.bool false)) (.lit (.bool true)))
+  | "is_false", [a] => some <| pure (.ifThen (.un .not a) (.lit (.bool true)) (.lit (.bool false)))
+  | "is_not_false", [a] =>
+    some <| pure (.ifThen (.un .not a) (.lit (.bool false)) (.lit (.bool true)))
+  | "negate", [a] => some <| pure (.un .neg a)
   -- Some producers write unary minus as a one-argument `subtract`.
-  | "subtract", [a] => pure (.un .neg a)
-  | "add", [a, b] => pure (.bin .add a b)
-  | "subtract", [a, b] => pure (.bin .sub a b)
-  | "multiply", [a, b] => pure (.bin .mul a b)
-  | "equal", [a, b] => pure (.bin .eq a b)
-  | "not_equal", [a, b] => pure (.un .not (.bin .eq a b))
-  | "lt", [a, b] | "list_lt", [a, b] => pure (.bin .lt a b)
-  | "cardinality", [a] => pure (.un .cardinality a)
+  | "subtract", [a] => some <| pure (.un .neg a)
+  | "add", [a, b] => some <| pure (.bin .add a b)
+  | "subtract", [a, b] => some <| pure (.bin .sub a b)
+  | "multiply", [a, b] => some <| pure (.bin .mul a b)
+  | "equal", [a, b] => some <| pure (.bin .eq a b)
+  | "not_equal", [a, b] => some <| pure (.un .not (.bin .eq a b))
+  | "lt", [a, b] => some <| pure (.bin .lt a b)
   -- A shim's guards (#185), which `--write-duckdb` writes.
-  | "sverify_raise", [a, .lit (.str msg)] => pure (.un (.raise msg) a)
-  | "sverify_pair", [a, b] => pure (.bin .pair a b)
-  | "sverify_is_number", [a] => pure (.un .isNum a)
-  | "gt", [a, b] => pure (.bin .lt b a)
-  | "lte", [a, b] => pure (.un .not (.bin .lt b a))
-  | "gte", [a, b] => pure (.un .not (.bin .lt a b))
-  -- Intervals are total microseconds, already normalized.
-  | "normalized_interval", [a] => pure a
+  | "sverify_raise", [a, .lit (.str msg)] => some <| pure (.un (.raise msg) a)
+  | "sverify_pair", [a, b] => some <| pure (.bin .pair a b)
+  | "sverify_is_number", [a] => some <| pure (.un .isNum a)
+  | "gt", [a, b] => some <| pure (.bin .lt b a)
+  | "lte", [a, b] => some <| pure (.un .not (.bin .lt b a))
+  | "gte", [a, b] => some <| pure (.un .not (.bin .lt a b))
   -- There is one NaN, equal to itself.
-  | "is_nan", [a] | "isnan", [a] => pure (.bin .eq a (.lit (.int FloatCode.nan)))
+  | "is_nan", [a] | "isnan", [a] => some <| pure (.bin .eq a (.lit (.int FloatCode.nan)))
   -- `nanvl(x, NaN)` is `x` with one NaN, and `x + 0.0` is `x` with one
   -- zero: the writer's `canonical`, read back as it was.
-  | "nanvl", [a, .lit (.int c)] =>
+  | "nanvl", [a, .lit (.int c)] => some <|
     if c != FloatCode.nan then throw "nanvl is only supported with NaN as its fallback"
     else match a with
       | .bin .fadd x (.lit (.int 0)) => pure x
       | _ => pure a
   -- `and` / `or` are variadic in Substrait.
-  | "and", a :: as => pure (as.foldl (.bin .and) a)
-  | "or", a :: as => pure (as.foldl (.bin .or) a)
+  | "and", a :: as => some <| pure (as.foldl (.bin .and) a)
+  | "or", a :: as => some <| pure (as.foldl (.bin .or) a)
   -- Null handling and `GREATEST`/`LEAST`, as conditionals. These duplicate
   -- their arguments, which is harmless: expressions have no side effects.
   -- Eager: every argument is evaluated on every row.
-  | "coalesce", a :: as => pure <| match coalesce a as with
+  | "coalesce", a :: as => some <| pure <| match coalesce a as with
     | .ifThen c x r => .ifThen (eagerly c as) x r
     | e => e
-  | "nullif", [a, b] => pure (.ifThen (.bin .eq a b) (.lit .null) a)
+  | "nullif", [a, b] => some <| pure (.ifThen (.bin .eq a b) (.lit .null) a)
   -- `GREATEST`/`LEAST`, skipping `NULL`s: one operation per pair, which is the
   -- conditional `pick` (`Expr.eval_greatest`) but not a copy of its first
   -- argument at each step (#340).
-  | "greatest", a :: as | "greatest_skip_null", a :: as => pure (as.foldl (.bin .greatest) a)
-  | "least", a :: as | "least_skip_null", a :: as => pure (as.foldl (.bin .least) a)
+  | "greatest", a :: as | "greatest_skip_null", a :: as =>
+    some <| pure (as.foldl (.bin .greatest) a)
+  | "least", a :: as | "least_skip_null", a :: as => some <| pure (as.foldl (.bin .least) a)
   -- `-a` as `a / -1`, which fails on the smallest integer as `ABS` does.
-  | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .idiv a (.lit (.int (-1)))) a)
+  | "abs", [a] =>
+    some <| pure (.ifThen (.bin .lt a (.lit (.int 0))) (.bin .idiv a (.lit (.int (-1)))) a)
   -- Equality where `NULL` equals `NULL`: never `NULL` itself.
-  | "is_not_distinct_from", [a, b] => pure (notDistinct a b)
-  | "is_distinct_from", [a, b] => pure (.un .not (notDistinct a b))
+  | "is_not_distinct_from", [a, b] => some <| pure (notDistinct a b)
+  | "is_distinct_from", [a, b] => some <| pure (.un .not (notDistinct a b))
   -- Integer division and remainder truncate; doubles go to `mkFloatCall`.
-  | "divide", [a, b] => pure (.bin .idiv a b)
-  | "modulus", [a, b] => pure (.bin .imod a b)
-  | "power", [a, b] => pure (.bin .ipow a b)
-  -- Strings (`SubstraitLean/Text.lean`).
-  | "upper", [a] => pure (.un .upper a)
-  | "lower", [a] => pure (.un .lower a)
-  | "character_length", [a] | "char_length", [a] | "length", [a] => pure (.un .length a)
-  | "str_concat", [a, b] => pure (.bin .concat a b)
-  | "concat", a :: as => pure (as.foldl (.bin .concat) a)
-  | "strpos", [a, b] => pure (.bin .strpos a b)
-  | "starts_with", [a, b] => pure (.bin .startsWith a b)
-  | "ends_with", [a, b] => pure (.bin .endsWith a b)
-  -- The third argument is the escape character; `NULL` means a backslash.
-  | "like", [a, b] | "like", [a, b, .lit .null] => pure (.bin .like a b)
-  | "like", [_, _, _] => throw "LIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
-  | "substring", [s, a] => pure (.bin (.substr none true) s a)
-  | "substring", [s, a, .lit (.int n)] =>
-    if n < 0 then throw "a negative substring length always fails"
-    else pure (.bin (.substr (some n.toNat) true) s a)
-  | "substring", [_, _, _] => throw "substring lengths must be constants"
-  | "btrim", [a] => pure (.bin (.trim true true) a (.lit (.str " ")))
-  | "ltrim", [a] => pure (.bin (.trim true false) a (.lit (.str " ")))
-  | "rtrim", [a] => pure (.bin (.trim false true) a (.lit (.str " ")))
-  | "btrim", [a, b] => pure (.bin (.trim true true) a b)
-  | "ltrim", [a, b] => pure (.bin (.trim true false) a b)
-  | "rtrim", [a, b] => pure (.bin (.trim false true) a b)
-  | "reverse", [a] => pure (.un .reverse a)
-  | "ascii", [a] => pure (.un .ascii a)
-  | "replace", [a, .lit (.str p), .lit (.str r)] => pure (.un (.replace p r) a)
-  | "replace", [_, _, _] => throw "replace needs a constant pattern and replacement"
-  | "repeat", [a, n] => pure (.bin .strRepeat a n)
-  | "ilike", [a, b] | "ilike", [a, b, .lit .null] => pure (.bin .ilike a b)
-  | "ilike", [_, _, _] => throw "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
-  | "levenshtein", [a, b] => pure (.bin .levenshtein a b)
-  | "regexp_match", _ => throw "regexp_match is only supported as array_length(regexp_match(s, p))"
-  -- A constant pattern in `Text.simpleRegex`, which DuckDB checks when it
-  -- plans the query (#50).
-  | "regexp_extract", [a, .lit (.str p)] => simpleRegex p (.un (.regexExtract p 0) a)
-  | "regexp_extract", [a, .lit (.str p), .lit (.int g)] =>
-    if g < 0 then throw "regexp_extract needs a group number of at least 0"
-    else simpleRegex p (.un (.regexExtract p g.toNat) a)
-  | "regexp_extract", _ => throw "regexp_extract needs a constant pattern and group"
-  | "regexp_replace", [a, .lit (.str p), .lit (.str r)] => replacement p r false a
-  | "regexp_replace", [a, .lit (.str p), .lit (.str r), .lit (.str "g")] => replacement p r true a
-  | "regexp_replace", [_, .lit (.str _), .lit (.str _), .lit (.str fl)] =>
-    throw s!"regexp_replace with the flags '{fl}' is not supported (only 'g')"
-  | "regexp_replace", _ => throw "regexp_replace needs a constant pattern and replacement"
-  | "md5", [a] => pure (.un .md5 a)
-  | "sha256", [a] => pure (.un .sha256 a)
-  -- Timestamps (`SubstraitLean/Time.lean`).
-  | "date_part", [.lit (.str p), a] | "datepart", [.lit (.str p), a] =>
-    match Time.DatePart.ofName? p with
-    | some p => pure (.un (.datePart p) a)
-    | none => throw s!"unsupported date part '{p}'"
-  | "date_trunc", [.lit (.str u), a] | "datetrunc", [.lit (.str u), a] =>
-    match Time.TimeUnit.ofName? u with
-    | some u => pure (.un (.dateTrunc u) a)
-    | none => throw s!"unsupported date_trunc unit '{u}'"
-  -- chrono's formats; DataFusion's `to_char`.
-  | "strftime", [a, .lit (.str fmt)] | "to_char", [a, .lit (.str fmt)]
-  | "date_format", [a, .lit (.str fmt)] =>
-    match Time.parseFormat fmt.toList with
-    | some _ => pure (.un (.strftime fmt) a)
-    | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
-  -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
-  | "date_diff", [d, e] => pure (.bin .dateDiff d e)
+  | "divide", [a, b] => some <| pure (.bin .idiv a b)
+  | "modulus", [a, b] => some <| pure (.bin .imod a b)
+  | "power", [a, b] => some <| pure (.bin .ipow a b)
   -- Bitwise operations of integers (`SubstraitLean/Numeric.lean`); `NOT x`
   -- is `x XOR -1`.
-  | "bitwise_not", [a] => pure (.bin (.bit .xor) a (.lit (.int (-1))))
-  | name, [a, b] => match BitOp.ofName? name with
-    | some op => pure (.bin (.bit op) a b)
-    | none => throw s!"unsupported function {name}/2"
-  | name, args => throw s!"unsupported function {name}/{args.length}"
+  | "bitwise_not", [a] => some <| pure (.bin (.bit .xor) a (.lit (.int (-1))))
+  | name, [a, b] => (BitOp.ofName? name).map fun op => (pure (.bin (.bit op) a b) : J Expr)
+  | _, _ => none
 where
   notDistinct (a b : Expr) : Expr :=
     .ifThen (.un .isNull a) (.un .isNull b)
@@ -1316,6 +1269,96 @@ where
   coalesce (a : Expr) : List Expr → Expr
     | [] => a
     | b :: bs => .ifThen (.un .not (.un .isNull a)) a (coalesce b bs)
+
+/-- Strings (`SubstraitLean/Text.lean`). -/
+def mkStringCall? : String → List Expr → Option (J Expr)
+  | "upper", [a] => some <| pure (.un .upper a)
+  | "lower", [a] => some <| pure (.un .lower a)
+  | "character_length", [a] | "char_length", [a] | "length", [a] => some <| pure (.un .length a)
+  | "str_concat", [a, b] => some <| pure (.bin .concat a b)
+  | "concat", a :: as => some <| pure (as.foldl (.bin .concat) a)
+  | "strpos", [a, b] => some <| pure (.bin .strpos a b)
+  | "starts_with", [a, b] => some <| pure (.bin .startsWith a b)
+  | "ends_with", [a, b] => some <| pure (.bin .endsWith a b)
+  -- The third argument is the escape character; `NULL` means a backslash.
+  | "like", [a, b] | "like", [a, b, .lit .null] => some <| pure (.bin .like a b)
+  | "like", [_, _, _] =>
+    some <| throw "LIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+  | "substring", [s, a] => some <| pure (.bin (.substr none true) s a)
+  | "substring", [s, a, .lit (.int n)] => some <|
+    if n < 0 then throw "a negative substring length always fails"
+    else pure (.bin (.substr (some n.toNat) true) s a)
+  | "substring", [_, _, _] => some <| throw "substring lengths must be constants"
+  | "btrim", [a] => some <| pure (.bin (.trim true true) a (.lit (.str " ")))
+  | "ltrim", [a] => some <| pure (.bin (.trim true false) a (.lit (.str " ")))
+  | "rtrim", [a] => some <| pure (.bin (.trim false true) a (.lit (.str " ")))
+  | "btrim", [a, b] => some <| pure (.bin (.trim true true) a b)
+  | "ltrim", [a, b] => some <| pure (.bin (.trim true false) a b)
+  | "rtrim", [a, b] => some <| pure (.bin (.trim false true) a b)
+  | "reverse", [a] => some <| pure (.un .reverse a)
+  | "ascii", [a] => some <| pure (.un .ascii a)
+  | "replace", [a, .lit (.str p), .lit (.str r)] => some <| pure (.un (.replace p r) a)
+  | "replace", [_, _, _] => some <| throw "replace needs a constant pattern and replacement"
+  | "repeat", [a, n] => some <| pure (.bin .strRepeat a n)
+  | "ilike", [a, b] | "ilike", [a, b, .lit .null] => some <| pure (.bin .ilike a b)
+  | "ilike", [_, _, _] =>
+    some <| throw "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+  | "levenshtein", [a, b] => some <| pure (.bin .levenshtein a b)
+  | "regexp_match", _ =>
+    some <| throw "regexp_match is only supported as array_length(regexp_match(s, p))"
+  -- A constant pattern in `Text.simpleRegex`, which DuckDB checks when it
+  -- plans the query (#50).
+  | "regexp_extract", [a, .lit (.str p)] => some <| simpleRegex p (.un (.regexExtract p 0) a)
+  | "regexp_extract", [a, .lit (.str p), .lit (.int g)] => some <|
+    if g < 0 then throw "regexp_extract needs a group number of at least 0"
+    else simpleRegex p (.un (.regexExtract p g.toNat) a)
+  | "regexp_extract", _ => some <| throw "regexp_extract needs a constant pattern and group"
+  | "regexp_replace", [a, .lit (.str p), .lit (.str r)] => some <| replacement p r false a
+  | "regexp_replace", [a, .lit (.str p), .lit (.str r), .lit (.str "g")] =>
+    some <| replacement p r true a
+  | "regexp_replace", [_, .lit (.str _), .lit (.str _), .lit (.str fl)] =>
+    some <| throw s!"regexp_replace with the flags '{fl}' is not supported (only 'g')"
+  | "regexp_replace", _ => some <| throw "regexp_replace needs a constant pattern and replacement"
+  | "md5", [a] => some <| pure (.un .md5 a)
+  | "sha256", [a] => some <| pure (.un .sha256 a)
+  | _, _ => none
+
+/-- Dates and times (`SubstraitLean/Time.lean`). -/
+def mkTemporalCall? : String → List Expr → Option (J Expr)
+  -- Intervals are total microseconds, already normalized.
+  | "normalized_interval", [a] => some <| pure a
+  | "date_part", [.lit (.str p), a] | "datepart", [.lit (.str p), a] => some <|
+    match Time.DatePart.ofName? p with
+    | some p => pure (.un (.datePart p) a)
+    | none => throw s!"unsupported date part '{p}'"
+  | "date_trunc", [.lit (.str u), a] | "datetrunc", [.lit (.str u), a] => some <|
+    match Time.TimeUnit.ofName? u with
+    | some u => pure (.un (.dateTrunc u) a)
+    | none => throw s!"unsupported date_trunc unit '{u}'"
+  -- chrono's formats; DataFusion's `to_char`.
+  | "strftime", [a, .lit (.str fmt)] | "to_char", [a, .lit (.str fmt)]
+  | "date_format", [a, .lit (.str fmt)] => some <|
+    match Time.parseFormat fmt.toList with
+    | some _ => pure (.un (.strftime fmt) a)
+    | none => throw s!"strftime format '{fmt}' is not supported (only %Y %m %d %H %M %S %j %F %T %%)"
+  -- sverify's own: the days from `e` to `d` (Lean writes it for `UnFn.dateDiff`).
+  | "date_diff", [d, e] => some <| pure (.bin .dateDiff d e)
+  | _, _ => none
+
+/-- Lists and structs. -/
+def mkNestedCall? : String → List Expr → Option (J Expr)
+  -- sverify's own `lt` of two lists, which `Write.lean` writes as `list_lt` (#207).
+  | "list_lt", [a, b] => some <| pure (.bin .lt a b)
+  | "cardinality", [a] => some <| pure (.un .cardinality a)
+  | _, _ => none
+
+/-- Maps Substrait standard-extension functions onto the modelled ones: the
+first area that knows the function, else an error. -/
+def mkCall (name : String) (args : List Expr) : J Expr :=
+  match mkCoreCall? name args <|> mkStringCall? name args <|> mkTemporalCall? name args <|>
+      mkNestedCall? name args with
+  | some e => e
+  | none => throw s!"unsupported function {name}/{args.length}"
 
 /-- The kind the source plan declares for an expression: a literal's type,
 a cast's target, a function's output type, a `CASE`'s branches' (a double if one is).
