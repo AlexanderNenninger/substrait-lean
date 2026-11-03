@@ -568,7 +568,9 @@ def _(mo):
       out.
 
     A contracted transformation has to be proved free of runtime errors, and
-    correctness on the inputs that happen to arrive does not count. A `SUM`
+    correctness on the inputs that happen to arrive does not count. We pass
+    `infer=False` to `ratio` to see the error itself: by default Sverify
+    infers the precondition `(_.n != 0)` and checks it on the data. A `SUM`
     that may overflow does not block the proof, since it is checked while the
     job runs.
     """)
@@ -577,7 +579,7 @@ def _(mo):
 
 @app.cell
 def _(VerificationError, ibis, mo, sv):
-    @sv.transform()
+    @sv.transform(infer=False)
     def ratio(t):
         return t.select(x=t.qty // t.n)
 

@@ -108,7 +108,7 @@ def test_contracts_through_new_operators():
 
 
 def test_semi_join_condition_issues_are_reported():
-    report = sv.verify(t.semi_join(u, (t.b // u.a) == 1))
+    report = sv.verify(t.semi_join(u, (t.b // u.a) == 1), infer=False)
     assert {i.kind for i in report.errors} == {"division by zero", "overflow"}
 
 

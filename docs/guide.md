@@ -330,7 +330,7 @@ meets the preconditions, and `@sv.transform` refuses the transformation
 while there is one:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]})
+@sv.transform(requires={"orders": [_.amount >= 0]}, infer=False)
 def share(orders):
     return orders.select(orders.id, per_unit=orders.amount // (orders.amount - 30))
 
@@ -340,6 +340,9 @@ except VerificationError as e:
     print(str(e).splitlines()[0])
 # could not prove: no runtime error (division by zero: (($2 - 1) / ($2 - 30))), ...
 ```
+
+Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
+and proves `share` ([Inferred bounds](#inferred-bounds)).
 
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may

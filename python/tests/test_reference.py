@@ -47,10 +47,13 @@ def substrait_json(con, sql: str) -> str:
 
 
 def verify(sql: str, tables: dict, requires: list | None = None) -> sv.Report:
-    """`sv.verify` of `sql` with the reference's semantics."""
+    """`sv.verify` of `sql` with the reference's semantics, without inferred
+    preconditions: the errors the model reports."""
     inputs = {n: ibis.table(s, name=n) for n, s in tables.items()}
     return sv.verify(
-        sv.sql(sql, semantics="reference", **inputs), requires={n: requires or [] for n in tables}
+        sv.sql(sql, semantics="reference", **inputs),
+        requires={n: requires or [] for n in tables},
+        infer=False,
     )
 
 
@@ -258,7 +261,7 @@ def test_double_division_by_zero_may_fail():
     def ref(sql: str) -> ibis.Table:
         return sv.sql(sql, semantics="reference", f=f)
 
-    report = sv.verify(ref("SELECT x / y AS q FROM f"))
+    report = sv.verify(ref("SELECT x / y AS q FROM f"), infer=False)
     assert [str(i) for i in report.errors] == [
         "division by zero: ($0 /. $1)",
         "domain error: ($0 /. $1)",
