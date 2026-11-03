@@ -366,3 +366,199 @@ theorem StdModel.tp_exact {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs �
         + (comoment (qs.map (·.1)) - comoment (qs.map (·.2))) := by ring
   rw [e]
   linarith
+
+/-! ## The bounds `StatProps` states -/
+
+/-- The error of a co-moment of pairs, with `r₁ ≥ √(Q'_x S_yy)`,
+`r₂ ≥ √(Q'_y S_xx)`, `r_s ≥ √(S_xx S_yy)`, `r_q ≥ √(Q'_x Q'_y)`. -/
+noncomputable def covErr (n r1 r2 rs rq : ℝ) : ℝ :=
+  70 * n * u * (r1 + r2) + 11 * n * u * rs + 3961 * n ^ 2 * u ^ 2 * rq + 793 * n ^ 2 * u * tiny
+
+/-- The error of a co-moment of one side, with `r ≥ √(Q' S)`. -/
+noncomputable def varErr (n r Q : ℝ) : ℝ :=
+  148 * n * u * r + 3961 * n ^ 2 * u ^ 2 * Q + 793 * n ^ 2 * u * tiny
+
+/-- The tolerance of `COVAR_*`, `C / d`. -/
+noncomputable def covTol (n d r1 r2 rs rq : ℝ) : ℝ :=
+  (71 * n * u * (r1 + r2) + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq
+    + 800 * n ^ 2 * u * tiny) / d
+
+/-- The tolerance of `VAR_*`, `S / d`. -/
+noncomputable def varTol (n d r Q : ℝ) : ℝ :=
+  (150 * n * u * r + 3970 * n ^ 2 * u ^ 2 * Q + 800 * n ^ 2 * u * tiny) / d
+
+/-- Dividing a co-moment within `E` of `C` by `d`, rounded. -/
+theorem StdModel.div_kappa {C Ch E rs n d : ℝ} (h : |Ch - C| ≤ E) (hC : |C| ≤ rs) (hE0 : 0 ≤ E)
+    (hrs : 0 ≤ rs) (hn1 : 1 ≤ n) (hd : 1 ≤ d) (hdn : d ≤ n) (hbig : rs + E + n * tiny ≤ 2 ^ 999) :
+    |M.fl (Ch / d) - C / d| ≤ (E + 3 * u * E + 3 * u * rs + 3 * n * u * tiny) / d := by
+  have ht := tiny_pos
+  have hnt : 0 ≤ n * tiny := mul_nonneg (by linarith) ht.le
+  have hdt : d * tiny ≤ n * tiny := mul_le_mul_of_nonneg_right hdn ht.le
+  have := M.covar_error (Cm := rs + E + n * tiny) h (by linarith) (by linarith)
+    (by linarith) hd (by linarith)
+  have e : E / d + 3 * u * (rs + E + n * tiny) / d = (E + 3 * u * E + 3 * u * rs + 3 * n * u * tiny) / d := by
+    ring
+  linarith
+
+/-- `S ≤ Q' ≤ 2⁸³⁰` for `n ≤ 2³²` values at most `2³⁹⁸`. -/
+theorem SQ_facts {α : Type*} {qs : List α} (y : α → ℝ) (hN : qs.length ≤ 2 ^ 32)
+    (hB : ∀ q ∈ qs, |y q| ≤ 2 ^ 398) :
+    0 ≤ comoment (qs.map fun q => (y q, y q)) ∧
+    comoment (qs.map fun q => (y q, y q)) ≤ (qs.map fun q => (|y q| + tiny) ^ 2).sum ∧
+    (qs.map fun q => (|y q| + tiny) ^ 2).sum ≤ 2 ^ 830 := by
+  have ht := tiny_pos
+  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  have e : comoment (dupL (qs.map y)) = comoment (qs.map fun q => (y q, y q)) := by
+    simp [dupL, List.map_map, Function.comp_def]
+  refine ⟨by rw [← e]; exact comoment_dupL_nonneg _, ?_, ?_⟩
+  · rw [← e]
+    refine le_trans (comoment_dupL_le _) ?_
+    simp only [List.map_map, Function.comp_def]
+    apply List.sum_le_sum; intro q _
+    have := abs_nonneg (y q)
+    calc y q ^ 2 = |y q| ^ 2 := (sq_abs _).symm
+      _ ≤ (|y q| + tiny) ^ 2 := by gcongr; linarith
+  · have h := abs_sum_le_of_bound (B := (2 ^ 398 + 1) ^ 2) (xs := qs.map fun q => (|y q| + tiny) ^ 2) (by
+      intro z hz; obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hz
+      rw [abs_of_nonneg (by positivity)]
+      have := hB q hq
+      gcongr)
+    simp only [List.length_map] at h
+    have h2 := le_abs_self (qs.map fun q => (|y q| + tiny) ^ 2).sum
+    have hNr : (qs.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN
+    have h3 : (qs.length : ℝ) * (2 ^ 398 + 1) ^ 2 ≤ 2 ^ 32 * (2 ^ 398 + 1) ^ 2 := by gcongr
+    have h4 : (2 : ℝ) ^ 32 * (2 ^ 398 + 1) ^ 2 ≤ 2 ^ 830 := by norm_num
+    linarith
+
+theorem covTol_mono {n d r1 r2 rs rq r1' r2' rs' rq' : ℝ} (hn : 0 ≤ n) (hd : 0 < d)
+    (h1 : r1 ≤ r1') (h2 : r2 ≤ r2') (hs : rs ≤ rs') (hq : rq ≤ rq') :
+    covTol n d r1 r2 rs rq ≤ covTol n d r1' r2' rs' rq' := by
+  have hu := u_pos
+  unfold covTol
+  apply div_le_div_of_nonneg_right _ hd.le
+  have a := mul_le_mul_of_nonneg_left (add_le_add h1 h2) (by positivity : (0 : ℝ) ≤ 71 * n * u)
+  have b := mul_le_mul_of_nonneg_left hs (by positivity : (0 : ℝ) ≤ 15 * n * u)
+  have c := mul_le_mul_of_nonneg_left hq (by positivity : (0 : ℝ) ≤ 3970 * n ^ 2 * u ^ 2)
+  linarith
+
+set_option maxHeartbeats 1000000 in
+/-- **`COVAR_*` the core trusts** (`covOf_props`): `fl(Ĉ / d)` within
+`covTol` of `C / d`, for any `r₁ ≥ √(Q'_x S_yy)`, `r₂ ≥ √(Q'_y S_xx)`,
+`r_s ≥ √(S_xx S_yy)`, `r_q ≥ √(Q'_x Q'_y)`. -/
+theorem StdModel.core_cov_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs ≠ [])
+    (hN : qs.length ≤ 2 ^ 32) (hB : ∀ q ∈ qs, |q.2.1| ≤ 2 ^ 398 ∧ |q.2.2| ≤ 2 ^ 398)
+    (hd : ∀ q ∈ qs, |q.1.1 - q.2.1| ≤ 2 * u * |q.2.1| ∧ |q.1.2 - q.2.2| ≤ 2 * u * |q.2.2|)
+    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ qs.length) {r1 r2 rs rq : ℝ}
+    (h1 : √((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum)
+      * √(comoment (qs.map fun q => (q.2.2, q.2.2))) ≤ r1)
+    (h2 : √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum)
+      * √(comoment (qs.map fun q => (q.2.1, q.2.1))) ≤ r2)
+    (hs : √(comoment (qs.map fun q => (q.2.1, q.2.1)))
+      * √(comoment (qs.map fun q => (q.2.2, q.2.2))) ≤ rs)
+    (hq : √((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum)
+      * √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum) ≤ rq) :
+    |M.fl (M.twoPass (qs.map (·.1)) / d) - comoment (qs.map (·.2)) / d|
+      ≤ covTol qs.length d r1 r2 rs rq := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  have h0 := M.tp_exact hne hN hB hd
+  obtain ⟨hSx0, hSQx, hQx⟩ := SQ_facts (qs := qs) (fun q => q.2.1) hN (fun q hq => (hB q hq).1)
+  obtain ⟨hSy0, hSQy, hQy⟩ := SQ_facts (qs := qs) (fun q => q.2.2) hN (fun q hq => (hB q hq).2)
+  -- names
+  obtain ⟨n, hn⟩ : ∃ n : ℝ, n = qs.length := ⟨_, rfl⟩
+  obtain ⟨sx, hsx⟩ : ∃ r, r = √(comoment (qs.map fun q => (q.2.1, q.2.1))) := ⟨_, rfl⟩
+  obtain ⟨sy, hsy⟩ : ∃ r, r = √(comoment (qs.map fun q => (q.2.2, q.2.2))) := ⟨_, rfl⟩
+  obtain ⟨qx, hqx⟩ : ∃ r, r = √((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum) := ⟨_, rfl⟩
+  obtain ⟨qy, hqy⟩ : ∃ r, r = √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum) := ⟨_, rfl⟩
+  rw [← hn, ← hsx, ← hsy, ← hqx, ← hqy] at h0
+  simp only [← hsx, ← hsy, ← hqx, ← hqy] at h1 h2 hs hq
+  have hgoal : covTol (qs.length : ℝ) d r1 r2 rs rq = covTol n d r1 r2 rs rq := by rw [hn]
+  rw [hgoal]
+  have hn1 : (1 : ℝ) ≤ n := by rw [hn]; exact_mod_cast List.length_pos_iff.mpr hne
+  have hNr : n ≤ 2 ^ 32 := by rw [hn]; exact_mod_cast hN
+  have hd' : (1 : ℝ) ≤ d := by exact_mod_cast hd1
+  have hdn' : (d : ℝ) ≤ n := by rw [hn]; exact_mod_cast hdn
+  have hsx0 : 0 ≤ sx := by rw [hsx]; positivity
+  have hsy0 : 0 ≤ sy := by rw [hsy]; positivity
+  have hqx0 : 0 ≤ qx := by rw [hqx]; positivity
+  have hqy0 : 0 ≤ qy := by rw [hqy]; positivity
+  -- sizes: everything at most `2⁴¹⁵`
+  have b415 : ∀ {z : ℝ}, 0 ≤ z → z ≤ 2 ^ 830 → √z ≤ 2 ^ 415 := by
+    intro z hz hz'
+    rw [Real.sqrt_le_left (by positivity)]
+    have : ((2 : ℝ) ^ 415) ^ 2 = 2 ^ 830 := by norm_num
+    linarith
+  have bsx : sx ≤ 2 ^ 415 := by rw [hsx]; exact b415 hSx0 (le_trans hSQx hQx)
+  have bsy : sy ≤ 2 ^ 415 := by rw [hsy]; exact b415 hSy0 (le_trans hSQy hQy)
+  have bqx : qx ≤ 2 ^ 415 := by rw [hqx]; exact b415 (le_trans hSx0 hSQx) hQx
+  have bqy : qy ≤ 2 ^ 415 := by rw [hqy]; exact b415 (le_trans hSy0 hSQy) hQy
+  have p1 : sx * sy ≤ 2 ^ 830 := by
+    have := mul_le_mul bsx bsy hsy0 (by norm_num); norm_num at this ⊢; linarith
+  have p2 : qy * sx + qx * sy ≤ 2 ^ 831 := by
+    have a := mul_le_mul bqy bsx hsx0 (by norm_num)
+    have b := mul_le_mul bqx bsy hsy0 (by norm_num)
+    have : (2 : ℝ) ^ 415 * 2 ^ 415 + 2 ^ 415 * 2 ^ 415 = 2 ^ 831 := by norm_num
+    linarith
+  have p3 : qx * qy ≤ 2 ^ 830 := by
+    have := mul_le_mul bqx bqy hqy0 (by norm_num); norm_num at this ⊢; linarith
+  obtain ⟨E, hE⟩ : ∃ E, E = 7 * n * u * (sx * sy) + 3.2 * n * u * (qy * sx + qx * sy)
+      + 130 * n ^ 2 * u ^ 2 * (qx * qy) + 4 * n ^ 2 * u * tiny := ⟨_, rfl⟩
+  rw [← hE] at h0
+  have hE0 : 0 ≤ E := by rw [hE]; positivity
+  have hnu : n * u ≤ 1 / 2 ^ 21 := by
+    calc n * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  have hEb : E ≤ 2 ^ 840 := by
+    have hnu0 : 0 ≤ n * u := by positivity
+    have v2 : n ^ 2 * u ^ 2 ≤ 1 := by
+      have := mul_le_mul hnu hnu hnu0 (by norm_num)
+      have e : n ^ 2 * u ^ 2 = (n * u) * (n * u) := by ring
+      rw [e]; linarith
+    have v3 : n ^ 2 * u ≤ 2 ^ 32 := by
+      have := mul_le_mul hNr hnu hnu0 (by norm_num)
+      have e : n ^ 2 * u = n * (n * u) := by ring
+      rw [e]; norm_num at this ⊢; linarith
+    have k1 : 7 * n * u * (sx * sy) ≤ 7 * 2 ^ 830 := by
+      have := mul_le_mul (by linarith : 7 * n * u ≤ 7) p1 (by positivity) (by norm_num); linarith
+    have k2 : 3.2 * n * u * (qy * sx + qx * sy) ≤ 4 * 2 ^ 831 := by
+      have := mul_le_mul (by linarith : 3.2 * n * u ≤ 4) p2 (by positivity) (by norm_num); linarith
+    have k3 : 130 * n ^ 2 * u ^ 2 * (qx * qy) ≤ 130 * 2 ^ 830 := by
+      have := mul_le_mul (by linarith : 130 * n ^ 2 * u ^ 2 ≤ 130) p3 (by positivity) (by norm_num)
+      linarith
+    have k4 : 4 * n ^ 2 * u * tiny ≤ 4 * 2 ^ 32 := by
+      have := mul_le_mul (by linarith : 4 * n ^ 2 * u ≤ 4 * 2 ^ 32) ht1 ht.le (by norm_num); linarith
+    rw [hE]
+    have : (7 : ℝ) * 2 ^ 830 + 4 * 2 ^ 831 + 130 * 2 ^ 830 + 4 * 2 ^ 32 ≤ 2 ^ 840 := by norm_num
+    linarith
+  -- `|C| ≤ s_x s_y`
+  have hC : |comoment (qs.map (·.2))| ≤ sx * sy := by
+    have h := sq_comoment_le (qs.map (·.2))
+    simp only [List.map_map, Function.comp_def] at h
+    rw [hsx, hsy, ← Real.sqrt_mul hSx0]
+    exact Real.abs_le_sqrt h
+  have hdiv := M.div_kappa h0 hC hE0 (by positivity) hn1 hd' hdn' (by
+    have : n * tiny ≤ 2 ^ 32 := by nlinarith
+    have : (2 : ℝ) ^ 830 + 2 ^ 840 + 2 ^ 32 ≤ 2 ^ 999 := by norm_num
+    linarith)
+  refine le_trans hdiv ?_
+  -- the arithmetic
+  refine le_trans ?_ (covTol_mono (n := n) (by linarith) (by linarith) h1 h2 hs hq)
+  unfold covTol
+  apply div_le_div_of_nonneg_right _ (by linarith)
+  have uE : 3 * u * E ≤ 0.001 * E := mul_le_mul_of_nonneg_right (by linarith) hE0
+  have a1 : 3 * u * (sx * sy) ≤ 3 * n * u * (sx * sy) := by
+    have := mul_le_mul_of_nonneg_right hn1 (by positivity : (0 : ℝ) ≤ 3 * u * (sx * sy)); nlinarith
+  have a2 : 3 * n * u * tiny ≤ 3 * n ^ 2 * u * tiny := by
+    have : n ≤ n ^ 2 := by nlinarith
+    have := mul_le_mul_of_nonneg_right this (by positivity : (0 : ℝ) ≤ 3 * u * tiny); nlinarith
+  have a3 : 3.2 * n * u * (qy * sx + qx * sy) ≤ 70 * n * u * (qx * sy + qy * sx) := by
+    have : 0 ≤ n * u * (qy * sx + qx * sy) := by positivity
+    nlinarith
+  have q1 : 0 ≤ n * u * (sx * sy) := by positivity
+  have q2 : 0 ≤ n ^ 2 * u ^ 2 * (qx * qy) := by positivity
+  have q3 : 0 ≤ n ^ 2 * u * tiny := by positivity
+  have q4 : 0 ≤ n * u * (qx * sy + qy * sx) := by positivity
+  rw [hE] at uE ⊢
+  nlinarith
