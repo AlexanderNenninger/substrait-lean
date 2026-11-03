@@ -188,6 +188,33 @@ def test_bound_inputs_are_checked_at_call():
         doubled(db.table("big"))
 
 
+def test_an_eager_table_gets_the_inferred_bound():
+    """#430: a memtable is not a named base table, yet its bound is inferred,
+    checked on its data, and named as a `requires` in hints."""
+
+    @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.doubled >= 0])
+    def mutated(orders):
+        return orders.mutate(doubled=_.amount * 2)
+
+    orders = ibis.memtable(pa.table({"id": [1, 2], "amount": pa.array([10, 20], pa.int64())}))
+    out = mutated(orders)
+    report = mutated.last_report
+    assert report is not None and report.proved
+    assert inferred(report) == ["(_.amount < 2**62)"]
+    assert discharged(mutated.last_preconditions)[("orders", "(_.amount < 2**62)")] == ON_DATA
+    assert sorted(out.to_pyarrow().column("doubled").to_pylist()) == [20, 40]
+    big = ibis.memtable(pa.table({"id": [1], "amount": pa.array([2**62 + 5], pa.int64())}))
+    with pytest.raises(
+        PreconditionError, match=r"1 row\(s\) of orders violate \(_.amount < 2\*\*62\)"
+    ):
+        mutated(big)
+    explicit = sv.transform(
+        requires={"orders": [_.amount >= 0]}, ensures=[_.doubled >= 0], infer=False
+    )(mutated.__wrapped__)
+    with pytest.raises(VerificationError, match=r"in the requires of 'orders'"):
+        explicit(orders)
+
+
 def test_refresh_checks_the_inferred_bound_on_data():
     src = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
     node = src.pipe(doubled)
