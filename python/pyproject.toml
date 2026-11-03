@@ -124,8 +124,13 @@ cwd = "${POE_ROOT}/.."
 help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
 shell = """
 lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
-  && lake env lean scripts/RegenLowering.lean
+  && lake env lean -M 6144 scripts/RegenLowering.lean
 """
+cwd = "${POE_ROOT}/.."
+
+[tool.poe.tasks.regen-lift]
+help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it); Lean capped at 6 GB"
+shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake env lean -M 6144 scripts/RegenLift.lean"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.prove-floats]

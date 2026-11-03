@@ -498,10 +498,27 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
       | (simp_all [$fin,*] <;> omega)
       | omega))
 
+/-- The generated module a function's entry goes to (`writing`): entries of an
+area check in parallel, each in a process of its own. -/
+def areaOf (c : Name) : String :=
+  match c.componentsRev.head!.toString with
+  | "divInt" | "divDouble" | "modDouble" | "power" => "Arith"
+  | "elementary" => "Math"
+  | "castDoubleBigint" | "castBigintDouble" => "Casts"
+  | _ => "Compare"
+
+syntax (name := liftTemplateTac) "lift_template " num " [" ident,* "]" : tactic
+syntax (name := liftAggTac) "lift_agg" : tactic
+
+open Tactic in
+@[tactic liftTemplateTac] def evalLiftTemplate : Tactic := fun stx => do
+  let extra ← stx[3].getSepArgs.mapM fun i => realizeGlobalConstNoOverloadWithInfo i
+  evalTactic (← liftTac stx[1].isNatLit?.get! extra)
+
 /-- Search for and emit the entry of `f` under `s`; how it lifts, or why not. -/
 def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
-    (k : LoweringSearch.Construct) (f : DuckFn) (hint? : Option LiftHint) :
-    TermElabM (Except String String) := do
+    (k : LoweringSearch.Construct) (f : DuckFn) (hint? : Option LiftHint)
+    (sink : Option LoweringSearch.Sink := none) : TermElabM (Except String String) := do
   let short := k.short
   let fE := mkAppN (Lean.mkConst k.ctor) (k.args.map Lean.mkConst)
   let n := f.args.length
@@ -533,9 +550,21 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
     let hf ← mkEqRefl (← mkAppM ``DuckFn.args #[fE])
     let agree ← mkAppM (if n == 1 then ``LiftEntry.of₁ else ``LiftEntry.of₂) #[hf, Lean.mkConst agreeName]
     let entry ← mkAppM ``LiftEntry.mk #[toExpr j.compress, tmpl, agree]
+    let entryTy ← inferType entry
     addAndCompile <| .defnDecl {
       name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
-      type := ← inferType entry, value := entry }
+      type := entryTy, value := entry }
+    if let some out := sink then
+      out.modify (·.push (areaOf k.ctor,
+        s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
+        s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
+        s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
+        s!"    Substrait.LiftEntry.of{if n == 1 then "₁" else "₂"} rfl {agreeName}⟩\n\n" ++
+        -- The parser still reads the JSON as the template the proof is about
+        -- (`sverify.sql_lift` writes the JSON): checked by the build.
+        s!"#guard Substrait.LiftSearch.parse ({← LoweringSearch.ppSource fE})\n" ++
+        s!"  ((Lean.Json.parse ({tbl ++ short}).json).toOption.getD Lean.Json.null) ==\n" ++
+        s!"    some ({tbl ++ short}).tmpl\n\n"))
     return some s!"{label}: {j.compress}"
   -- The cache's template first, if it still agrees on the samples.
   if let some h := hint? then
@@ -636,9 +665,13 @@ def aggTac (_defs : Array Name) : TermElabM Syntax := do
            have hne := FloatCode.ofInt_ne_zero (i := ((xs.length + 1 : Nat) : Int)) (by omega)
            simp only [$ev,*, hne, decide_false])))
 
+open Tactic in
+@[tactic liftAggTac] def evalLiftAgg : Tactic := fun _ => do
+  evalTactic (← aggTac #[])
+
 /-- Search for and emit the entry of the aggregate `g` under `s`. -/
-def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAgg) :
-    TermElabM (Except String String) := do
+def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAgg)
+    (sink : Option LoweringSearch.Sink := none) : TermElabM (Except String String) := do
   let short := c.componentsRev.head!
   let rows := aggSampleGroups g.arg
   let mut passed := 0
@@ -668,12 +701,18 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
       addAndCompile <| .defnDecl {
         name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
         type := eTy, value := entry }
+      if let some out := sink then
+        out.modify (·.push ("Aggregates",
+          s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_agg\n\n" ++
+          s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource eTy} :=\n" ++
+          s!"  ⟨{repr json.compress}, {← LoweringSearch.ppSource mTerm},\n" ++
+          s!"    {← LoweringSearch.ppSource fTerm}, {agreeName}⟩\n\n"))
       return some json.compress
     if let some j := r then return .ok j
   return .error s!"missing: {passed} candidates passed the samples, none proved"
 
 syntax (name := generateLift) "generate_lift " ident " : " term " using " "[" ident,* "]"
-  " cache " ident : command
+  " cache " ident (" writing " str)? : command
 
 unsafe def evalHintsImpl (n : Name) : TermElabM (List LiftHint) := do
   Meta.evalExpr (List LiftHint) (← mkAppM ``List #[Lean.mkConst ``LiftHint]) (Lean.mkConst n)
@@ -688,6 +727,8 @@ def elabGenerateLift : CommandElab := fun stx => do
   let sStx : Term := ⟨stx[3]⟩
   let extra ← (stx[6].getSepArgs).mapM fun i => liftCoreM (realizeGlobalConstNoOverloadWithInfo i)
   let cacheName ← liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[9])
+  let writeDir : Option String := if stx[10].isNone then none else stx[10][1].isStrLit?
+  let sink : Option LoweringSearch.Sink ← if writeDir.isSome then some <$> IO.mkRef #[] else pure none
   let ctors := (← getConstInfoInduct ``DuckFn).ctors
   let results ← liftTermElabM do
     -- Equation lemmas once, outside the attempts (a failed one discards them).
@@ -704,7 +745,7 @@ def elabGenerateLift : CommandElab := fun stx => do
       let f ← evalDuckFn (mkAppN (Lean.mkConst k.ctor) (k.args.map Lean.mkConst))
       let t0 ← IO.monoMsNow
       let hint? := hints.find? fun h => h.semantics == s.name && h.construct == f.sql
-      let r ← liftOne tbl s sE extra k f hint?
+      let r ← liftOne tbl s sE extra k f hint? sink
       return (k, f, r, (← IO.monoMsNow) - t0)
   let aggCtors := (← getConstInfoInduct ``DuckAgg).ctors
   let aggResults ← liftTermElabM do
@@ -713,7 +754,7 @@ def elabGenerateLift : CommandElab := fun stx => do
     aggCtors.mapM fun c => withCurrHeartbeats do
       let g ← evalDuckAgg (Lean.mkConst c)
       let t0 ← IO.monoMsNow
-      let r ← liftAgg tbl s sE c g
+      let r ← liftAgg tbl s sE c g sink
       return (c, g, r, (← IO.monoMsNow) - t0)
   let aggAlts ← aggResults.toArray.mapM fun (c, _, r, _) => do
     let rhs ← match r with
@@ -746,6 +787,53 @@ def elabGenerateLift : CommandElab := fun stx => do
         cases f <;> (try (rename_i a; cases a)) <;> first | rfl | simp [DuckFn.refused] at h))
   else
     logError m!"no lift found for {missing}"
+  -- The generated modules (`writing`): what was found, to be checked by a
+  -- build instead of searched for again.
+  let some dir := writeDir | return
+  let some sink := sink | return
+  unless missing.isEmpty do return
+  let sSrc ← liftTermElabM do
+    LoweringSearch.ppSource (← instantiateMVars (← elabTermEnsuringType sStx (Lean.mkConst ``Semantics)))
+  let chunks ← sink.get
+  let modOf (area : String) : String := (dir.replace "/" ".") ++ "." ++ area
+  let env ← getEnv
+  let moduleOf (n : Name) : Option Name :=
+    (env.getModuleIdxFor? n).map fun i => env.header.moduleNames[i.toNat]!
+  let deps := (extra.filterMap moduleOf).toList.eraseDups
+  let names := ", ".intercalate (extra.toList.map toString)
+  let header (imports : List String) (what : String) : String :=
+    "\n".intercalate (imports.map (s!"import {·}")) ++ "\n\n" ++
+    s!"/-!\n# {what}\n\nGenerated by `poe regen-lift` (`generate_lift … writing`, " ++
+    "`SubstraitLean/LiftSearch.lean`): do not edit. A build checks these entries;\n" ++
+    "it does not search for them.\n-/\n\nopen Substrait\n\n" ++
+    s!"local macro \"lift_tac1\" : tactic => `(tactic| lift_template 1 [{names}])\n" ++
+    s!"local macro \"lift_tac2\" : tactic => `(tactic| lift_template 2 [{names}])\n\n"
+  let base := ["SubstraitLean.LiftSearch"] ++ deps.map toString
+  let areas := (chunks.toList.map (·.1)).eraseDups
+  IO.FS.createDirAll dir
+  for area in areas do
+    let body := String.join ((chunks.toList.filter (·.1 == area)).map (·.2))
+    IO.FS.writeFile s!"{dir}/{area}.lean" (header base s!"{tbl}: {area}" ++ body)
+  let alts := "\n".intercalate (results.map fun (k, _, r, _) =>
+    let pats := " ".intercalate (k.args.toList.map toString)
+    let rhs := match r with | .ok _ => s!"some {tbl ++ k.short}" | .error _ => "none"
+    s!"    | {k.ctor} {pats} => {rhs}")
+  let aggAlts := "\n".intercalate (aggResults.map fun (c, _, r, _) =>
+    let rhs := match r with | .ok _ => s!"some {tbl ++ c.componentsRev.head!}" | .error _ => "none"
+    s!"    | {c} => {rhs}")
+  let covRows := summary.map fun (sql, r, _) =>
+    s!"  ({repr sql}, {repr (match r with | .ok h => h | .error e => e)}, 0)"
+  let table :=
+    header (base ++ areas.map modOf) s!"{tbl}: the table" ++
+    s!"def {tbl} : Substrait.Lift ({sSrc}) :=\n  ⟨fun f => match f with\n{alts},\n" ++
+    s!"   fun g => match g with\n{aggAlts}⟩\n\n" ++
+    s!"/-- How each function lifts (`--lift-table`, the cache). -/\n" ++
+    s!"def {tbl}.coverage : List (String × String × Nat) := [\n{",\n".intercalate covRows}]\n\n" ++
+    s!"theorem {tbl}.total :\n    ∀ f, (Substrait.DuckFn.refused ({sSrc}) f).isNone → (({tbl}).entry f).isSome :=\n" ++
+    "  fun f h => by\n" ++
+    "    cases f <;> (try (rename_i a; cases a)) <;> first | rfl | simp [Substrait.DuckFn.refused] at h\n"
+  IO.FS.writeFile s!"{dir}/Table.lean" table
+  logInfo m!"wrote {dir}: {areas}, Table"
 
 end LiftSearch
 end Substrait

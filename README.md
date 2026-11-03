@@ -263,7 +263,11 @@ marimo.
 stripped `substrait-check`, so installing it needs neither Lean nor elan. The
 [Wheels workflow](.github/workflows/wheels.yml) builds and tests wheels for Linux
 (x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
-version in `python/pyproject.toml` also publishes them to PyPI.
+version in `python/pyproject.toml` also publishes them to PyPI. Each night,
+when `main` has changed, it publishes them as the
+[`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly)
+([python/README.md](python/README.md) shows how to install them). Start one by
+hand on `main` with `gh workflow run wheels.yml -f nightly=nightly`.
 
 `uv build python` also builds the sdist. It carries the Lean project under
 `lean/`, and `uv build` makes the wheel from it, so the sdist is checked on
