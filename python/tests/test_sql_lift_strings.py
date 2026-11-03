@@ -3,6 +3,7 @@ oracles A and C, and the refusals."""
 
 import json
 
+import ibis
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
@@ -10,6 +11,8 @@ from sverify.engine import run_checker
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql_lift import lift
 from sverify_dev.lift import check
+
+SCHEMA_T = ibis.schema({"s": "string", "a": "int64"})
 
 pytestmark = pytest.mark.backend("duckdb")
 
@@ -58,17 +61,56 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT id FROM orders WHERE customer LIKE 'a\\%'", "backslash"),
         ("SELECT id FROM orders WHERE customer LIKE customer", "not a constant"),
         ("SELECT substring(customer, 1, -1) FROM orders", "negative length"),
-        # DuckDB raises outside these (#336).
-        ("SELECT substring(customer, 4294967296, 2) FROM orders", "offset 4294967296 is outside"),
-        ("SELECT substring(customer, -4294967297, 2) FROM orders", "offset -4294967297"),
-        ("SELECT substring(customer, 0, 4294967296) FROM orders", "length 4294967296 is outside"),
-        (
-            "SELECT substring(customer, 9223372036854775807, 9223372036854775807) FROM orders",
-            "outside DuckDB's supported range",
-        ),
         ("SELECT customer || 1 FROM orders", "|| of a int32"),
     ],
 )
 def test_refusals_say_what(query, message):
     with pytest.raises(Refused, match=message):
         lift(query, SCHEMAS)
+
+
+def _kinds(sql: str, **kw) -> list[str]:
+    import sverify as sv
+
+    return [i.kind for i in sv.verify(sql, tables=SCHEMAS, counterexamples=0, **kw).errors]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # DuckDB raises outside `[-2³², 2³²)` offsets and `2³²` lengths (#336).
+        "SELECT substring(customer, 4294967296, 2) AS s FROM orders",
+        "SELECT substring(customer, -4294967297, 2) AS s FROM orders",
+        "SELECT substring(customer, 0, 4294967296) AS s FROM orders",
+        "SELECT substring(customer, 9223372036854775807, 9223372036854775807) AS s FROM orders",
+        # An offset from a column may be anything.
+        "SELECT substring(customer, amount) AS s FROM orders",
+    ],
+)
+def test_substring_out_of_range_is_an_error(sql):
+    assert "domain error" in _kinds(sql)
+
+
+def test_substring_in_range_is_proved_safe():
+    assert _kinds("SELECT substring(customer, 4294967295, 4294967295) AS s FROM orders") == []
+    # The analysis reads no bound from a column's type: even an INTEGER
+    # offset needs one in `requires`.
+    assert "domain error" in _kinds("SELECT substring(customer, qty, 2) AS s FROM orders")
+    sql = "SELECT substring(customer, amount, 2) AS s FROM orders"
+    within = {"orders": ["amount >= -4294967296", "amount < 4294967296"]}
+    assert "domain error" not in _kinds(sql, requires=within)
+
+
+@pytest.mark.parametrize("start", [-(2**32) - 1, -(2**40), 2**32, 2**40])
+def test_the_written_plan_raises_out_of_range(start):
+    # DuckDB raises for the offset it sees; the wrap-around arithmetic shifts
+    # a negative one, so the written plan guards it.
+    import pyarrow as pa
+
+    from sverify.engine import connect, run_plan, written_plan
+
+    con = connect()
+    con.put("t", pa.table({"s": ["hello"], "a": pa.array([start], pa.int64())}))
+    plan = json.dumps(lift("SELECT substring(s, a, 2) AS x FROM t", {"t": SCHEMA_T}).plan)
+    with pytest.raises(Exception, match="(?i)substring offset outside of supported range"):
+        run_plan(con, written_plan(plan), "duckdb")

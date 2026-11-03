@@ -76,12 +76,31 @@ def findFrom (t : List Char) : List Char → Nat → Option Nat
       | [] => none
       | _ :: r => findFrom t r (i + 1)
 
-/-- **The size hypothesis for strings** (trusted, #202): every string has
-fewer than `2⁶²` characters, which every engine's memory guarantees. So a
+/-- **The size hypothesis for strings** (trusted, #202, #336): every string
+has fewer than `2³²` characters. DuckDB's strings hold at most `2³² - 1`
+bytes, and its `substring` takes offsets and lengths in that range only. So a
 length or position never reaches `sizeCap`, and capping it there changes
 nothing; it gives the range analysis an upper bound, so that `strpos(s, t) - 1`
-is proved not to overflow. -/
-def sizeCap : Int := 2 ^ 62
+is proved not to overflow. (Relations keep their own bound, `rowCap`.) -/
+def sizeCap : Int := 2 ^ 32
+
+/-- **The size hypothesis for relations** (trusted, #202): a relation a window
+reads has fewer than `2⁶²` rows (`Rel.Small`), so `ROW_NUMBER` and the ranks
+stay below `rowCap`. -/
+def rowCap : Int := 2 ^ 62
+
+/-- `substring`'s offsets and lengths stay below `substrMax` in magnitude
+(#336): DuckDB raises for an offset outside `[-2³², 2³²)` or a length of
+`2³²` or more, and so does the reference (`Issue.domain`). -/
+def substrMax : Int := 2 ^ 32
+
+/-- Is `substring(s, a, n)` within the range of offsets and lengths? -/
+def substrInRange (a : Int) (n : Option Nat) : Bool :=
+  decide (-substrMax ≤ a) && decide (a < substrMax) && n.all fun n => decide ((n : Int) < substrMax)
+
+#guard substrInRange (2 ^ 32 - 1) (some (2 ^ 32 - 1)) && substrInRange (-(2 ^ 32)) none
+#guard !substrInRange (2 ^ 32) none && !substrInRange (-(2 ^ 32) - 1) none
+#guard !substrInRange 1 (some (2 ^ 32))
 
 /-- A length or position, which the size hypothesis keeps below `sizeCap`. -/
 def capped (n : Int) : Int := min n sizeCap

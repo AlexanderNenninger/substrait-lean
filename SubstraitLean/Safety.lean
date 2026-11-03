@@ -79,7 +79,9 @@ inductive Issue where
   /-- An argument outside a function's domain (`SubstraitLean/Numeric.lean`):
   `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
   outside `[-1, 1]`, `atan2(0, 0)`, `logb` to a base that is not positive or
-  is 1, a shift count outside `0`–`63`. The reference raises (Substrait's
+  is 1, a shift count outside `0`–`63`, a `substring` offset outside
+  `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336,
+  where DuckDB raises too). The reference raises (Substrait's
   `on_domain_error` = ERROR); DataFusion gives NaN, ±∞ or a wrapped shift
   instead, which an error allows (a refinement, epic #185). -/
   | domain
@@ -208,6 +210,7 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
     else if inI64 (a ^ b.toNat) then none else some .overflow
   | .strRepeat, .str s, .int n => if Text.repeatFits s n then none else some .overflow
+  | .substr n _, .str _, .int a => if Text.substrInRange a n then none else some .domain
   | .fatan2, .int y, .int x => domainIssue (atan2? y x)
   | .flogb, .int x, .int b => domainIssue (logb? x b)
   | .bit op, .int a, .int b => domainIssue (op.apply a b)
@@ -326,6 +329,12 @@ def repeatFitsAbs : Option Nat → AVal → Bool
 def repeatMay (sz : Option Nat) (ab : AVal) : List Issue :=
   if repeatFitsAbs sz ab then [] else [.overflow]
 
+/-- Is every offset of `ab`, and the length `n`, within `substring`'s range
+(`Text.substrInRange`)? -/
+def substrSafe (n : Option Nat) (ab : AVal) : Bool :=
+  n.all (fun n => decide ((n : Int) < Text.substrMax)) &&
+    ab.int.all fun b => b.lo.any (-Text.substrMax ≤ ·) && b.hi.any (· < Text.substrMax)
+
 /-- May `a` be the double with code `c`? -/
 def AVal.has (a : AVal) (c : Int) : Bool := a.int.any fun b => b.lo.all (· ≤ c) && b.hi.all (c ≤ ·)
 
@@ -422,6 +431,7 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
     (if ab.int.all (·.lo.any (0 ≤ ·)) then [] else [.negExponent]) ++
       (if powFits aa ab then [] else [.overflow])
   | .strRepeat, _, ab, _, _, sz => repeatMay sz ab
+  | .substr n _, _, ab, _, _, _ => if substrSafe n ab then [] else [.domain]
   | .fatan2, aa, ab, _, _, _ => if BinFn.domainSafe .fatan2 aa ab then [] else [.domain]
   | .flogb, aa, ab, _, _, _ => if BinFn.domainSafe .flogb aa ab then [] else [.domain]
   | .bit op, aa, ab, _, _, _ => if BinFn.domainSafe (.bit op) aa ab then [] else [.domain]
@@ -676,6 +686,17 @@ theorem repeatMay_sound {sz : Option Nat} {ab : AVal} {s : String} {n : Int}
       omega
   · simp
 
+theorem substrSafe_sound {n : Option Nat} {ab : AVal} {a : Int} (hb : ab.Mem (.int a))
+    (hs : substrSafe n ab = true) : Text.substrInRange a n = true := by
+  obtain ⟨y, hy, hm⟩ := hb
+  simp only [substrSafe, hy, Bool.and_eq_true, Option.all_some, Option.any_eq_true,
+    decide_eq_true_eq] at hs
+  obtain ⟨hn, ⟨l, hl, hle⟩, ⟨h, hh, hlt⟩⟩ := hs
+  have h1 := hm.1 l hl
+  have h2 := hm.2 h hh
+  simp only [Text.substrInRange, Bool.and_eq_true, decide_eq_true_eq]
+  exact ⟨⟨by omega, by omega⟩, hn⟩
+
 theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : Bool}
     {sz : Option Nat} {k : Issue}
     (ha : aa.Mem v) (hb : ab.Mem w) (hr : ar.Mem (f.apply v w))
@@ -711,6 +732,14 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
     subst hk
     rename_i hnf
     exact repeatMay_sound hb (fun m hm => hsz m s hm rfl) (by simpa using hnf)
+  case substr.str.int n _ s a =>
+    simp only [BinFn.mayIssue]
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    rename_i hnr
+    split
+    · rename_i hs; exact absurd (substrSafe_sound hb hs) (by simpa using hnr)
+    · simp
   case idiv.int.int i j =>
     simp only [BinFn.mayIssue, List.mem_append]
     split at hk
