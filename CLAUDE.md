@@ -77,7 +77,7 @@ whole job in a systemd user scope capped at 8 GB with no swap
 OOM-killed inside the scope and the run fails cleanly. A Lean change that
 sends `LiftDuckDB.lean` into the full lift search once took 12.4 GB in one
 `lean` process and nearly hung the box. Where user scopes are not available it
-falls back to `ulimit -v`.
+falls back to `ulimit -v`, which caps each process on its own.
 
 Run long QA commands there in the background, not in the foreground shell.
 

@@ -13,10 +13,10 @@
 # than 6 GB is available.
 #
 # The whole run is capped at 8 GB of memory and no swap, in a systemd user
-# scope (`ulimit -v` where user scopes are not available), so a runaway `lean`
-# process is killed inside the scope before it starves the box. Only the
-# process the kernel picks is killed (`OOMPolicy=continue`), so the run still
-# fails cleanly and deletes its directory.
+# scope (`ulimit -v`, per process, where user scopes are not available), so a
+# runaway `lean` process is killed inside the scope before it starves the box.
+# Only the process the kernel picks is killed (`OOMPolicy=continue`), so the
+# run still fails cleanly and deletes its directory.
 #
 # The warm build is the root package's `.lake` (the only Lake package QA
 # builds: `float-bounds/` and its Mathlib are not part of `poe qa`). It lives
