@@ -11,5 +11,5 @@ filters, joins and `MIN`/`MAX`. Lean proves the contract again with the
 inferred bounds, so a wrong inference only fails the proof. Where no single
 bound exists (the product of two columns, a `SUM`, a value from another
 contracted transformation), the report's `Issue.hint` suggests one.
-`@sv.transform(strict=True)` and `sv.verify(..., infer=False)` require
+`@sv.transform(infer=False)` and `sv.verify(..., infer=False)` require
 explicit bounds.
