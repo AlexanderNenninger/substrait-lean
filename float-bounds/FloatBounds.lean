@@ -10,3 +10,4 @@ public import FloatBounds.Textbook
 public import FloatBounds.Variance
 public import FloatBounds.Core
 public import FloatBounds.CoreStats
+public import FloatBounds.TwoPassRel
