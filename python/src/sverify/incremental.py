@@ -82,6 +82,7 @@ from sverify._weighted import (
     negated,
     negative,
     positive,
+    row_count,
     rows_of,
     split_matching,
     weighted,
@@ -971,8 +972,8 @@ class IncrementalView:
     def _check_change(self, delta: pa.Table, new: pa.Table | Native | None) -> list[Discharged]:
         """Check `checked` on a batch: row conditions on the rows `delta`
         inserts, keys on the `new` state (None if no key is checked)."""
-        rowwise = [c for c in self.checked if not isinstance(c, Unique)]
-        keys = [c for c in self.checked if isinstance(c, Unique)]
+        rowwise = [c for c in self.checked if not isinstance(c, Unique | MaxRows)]
+        keys = [c for c in self.checked if isinstance(c, Unique | MaxRows)]
         out: list[Discharged] = []
         for conds, rows, what in [
             (rowwise, rows_of(positive(delta)), "inserted row(s)"),
@@ -1314,8 +1315,6 @@ class Pipeline:
                 raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
             if refs := [label(c) for c in conds if isinstance(c, References)]:
                 raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
-            if caps := [label(c) for c in conds if isinstance(c, MaxRows)]:
-                raise ValueError(f"incremental views do not support row caps: {caps}")
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
             table = self.con.table(t)
@@ -1439,11 +1438,12 @@ class Pipeline:
     ) -> list[Discharged]:
         """Establish the base-table preconditions on a batch alone: row
         conditions on the inserted rows (from `facts` about them where
-        possible), and keys of the inserted rows against the new table."""
+        possible), keys of the inserted rows against the new table, and row
+        caps on the new table."""
         found: list[Discharged] = []
         for t, ch in changes.items():
             conds = self.requires.get(t, [])
-            rowwise = [c for c in conds if not isinstance(c, Unique | ArrivesWithin)]
+            rowwise = [c for c in conds if not isinstance(c, Unique | ArrivesWithin | MaxRows)]
             inserts = rows_of(positive(ch))
             if rowwise and inserts.num_rows:
                 name = t + "$inserts"
@@ -1460,6 +1460,10 @@ class Pipeline:
                 finally:
                     self.con.drop(name)
             for c in conds:
+                if isinstance(c, MaxRows):
+                    if (n := row_count(new_tables[t])) > c.n:
+                        raise PreconditionError(f"{n - c.n} row(s) of {t} violate {label(c)}")
+                    found.append(Discharged(t, label(c), ON_DATA))
                 if not isinstance(c, Unique):
                     continue
                 if inserts.num_rows and (clash := duplicate_keys(new_tables[t], c.cols, inserts)):
@@ -1794,7 +1798,7 @@ class Pipeline:
                 delta = v._delta(deltas)
             deltas[v.name] = delta
             # A checked key is checked on the whole new state.
-            keyed = any(isinstance(c, Unique) for c in v.checked)
+            keyed = any(isinstance(c, Unique | MaxRows) for c in v.checked)
             if isinstance(v.state, Resident) and not audit and v.name not in read_new and not keyed:
                 # Only the state rows the change touches, merged with it.
                 merged = v._merge(matching(v.state, delta), delta)

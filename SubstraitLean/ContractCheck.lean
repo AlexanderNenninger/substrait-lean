@@ -8,6 +8,7 @@ import SubstraitLean.Pretty
 import SubstraitLean.Semantic
 import SubstraitLean.Write
 import SubstraitLean.Infer
+import SubstraitLean.Rows
 
 /-!
 # Checking a contract
@@ -167,8 +168,12 @@ structure Report where
   keys : List (List Nat × Bool)
   /-- Does every window order its partitions totally (`Rel.windowsTotal`)? -/
   deterministic : Bool := true
-  /-- Runtime errors and wrap-arounds `Rel.mayIssues_sound` cannot rule out. -/
+  /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
+  out: an integer `SUM` the row caps keep within 64 bits is left out. -/
   issues : List (Issue × Expr) := []
+  /-- At most this many output rows, on inputs within their caps
+  (`Rel.maxRows_sound` of the capped plan). -/
+  rows : Option Nat := none
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
@@ -197,6 +202,7 @@ def Report.json (r : Report) : Json :=
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
+    ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
         ("expr", Lean.toJson e.render),
@@ -294,9 +300,16 @@ def check (input : Json) : Except String Report := do
       let derived := p.root.keys cat A F inputKeys
       pure (wanted.map fun k => (k, deterministic && derived.any fun k' => k'.all (k.contains ·)))
     | none => pure (wanted.map (·, false))
-  let issues := match transform with
-    | some p => if p.root.checkWF cat then (p.root.mayIssues cat A F T false).eraseDups else []
+  let raw := match transform with
+    | some p => if p.root.checkWF cat then p.root.mayIssues cat A F T false else []
     | none => []
+  let issues := match transform with
+    | some p =>
+      if p.root.checkWF cat then (p.root.issuesCapped cat A F T inputKeys caps).eraseDups else []
+    | none => []
+  let rows := match transform with
+    | some p => if p.root.checkWF cat then (p.root.capped cat A F inputKeys caps).maxRows else none
+    | none => none
   let bounds := match transform with
     | some p =>
       if !p.root.checkWF cat then [] else
@@ -304,7 +317,7 @@ def check (input : Json) : Except String Report := do
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
   let guardFree := match transform with
-    | some p => p.root.checkWF cat && p.root.looseSub && issues.all (·.1 == .sumWraps)
+    | some p => p.root.checkWF cat && p.root.looseSub && raw.all (·.1 == .sumWraps)
     | none => false
   let (optimized, rewrites) := match transform with
     | some p =>
@@ -323,6 +336,7 @@ def check (input : Json) : Except String Report := do
     keys
     deterministic
     issues
+    rows
     bounds
     inferred := Infer.merged A (bounds.filter (·.1.isError))
     inferredNes := Infer.mergedNes (bounds.filter (·.1.isError))
