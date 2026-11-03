@@ -113,6 +113,7 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - env:
           BACKENDS: ${{ matrix.backends }}
+          PYTEST_ADDOPTS: --durations=0 --durations-min=0.2
         run: |
           status=0
           for b in $BACKENDS; do
