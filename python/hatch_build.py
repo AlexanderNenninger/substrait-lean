@@ -6,6 +6,9 @@ install gets a symlink to `.lake/build/bin/substrait-check`, so a later
 `lake build` takes effect without reinstalling.
 
 The Lean project is the repository root, or `lean/` in an unpacked sdist.
+A wheel's build checks every generated entry's proof (`-Kcheck_generated=true`,
+`SubstraitLean/Generated.lean`), so no wheel ships an unchecked table; an
+editable install builds with the checkout's current setting.
 """
 
 from __future__ import annotations
@@ -41,7 +44,9 @@ class LakeBuildHook(BuildHookInterface):
         lake = shutil.which("lake") or str(Path.home() / ".elan" / "bin" / "lake")
         if not Path(lake).exists():
             raise RuntimeError("building sverify needs `lake` (install elan) on PATH")
-        subprocess.run([lake, "build", BINARY], cwd=repo, check=True)
+        # `-R` applies the option even where a previous build set it otherwise.
+        check = [] if version == "editable" else ["-R", "-Kcheck_generated=true"]
+        subprocess.run([lake, *check, "build", BINARY], cwd=repo, check=True)
 
         built = repo / ".lake" / "build" / "bin" / BINARY
         if version == "editable":

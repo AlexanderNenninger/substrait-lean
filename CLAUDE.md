@@ -98,12 +98,23 @@ conflicts with other PRs:
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`.
 
-Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/Off` and `On`
-(the DuckDB lowering) and `SubstraitLean/LiftDuckDB/Duckdb` and `Reference` (the
-lift from DuckDB SQL), entries with their proofs, are committed, and a build only
-checks them. When a build fails there, or a golden test of theirs changes,
-regenerate them with `poe regen-lowering` or `poe regen-lift` and commit the
-result. Both cap Lean at 6 GB (`-M 6144`).
+Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
+DuckDB lowering, for DuckDB's default settings only) and
+`SubstraitLean/LiftDuckDB/Duckdb` and `Reference` (the lift from DuckDB SQL),
+entries with their proofs, are committed, and a build only checks them. When a
+build fails there, or a golden test of theirs changes, regenerate them with
+`poe regen-lowering` or `poe regen-lift` and commit the result. Both cap Lean at
+6 GB (`-M 6144`).
+
+Their proofs are checked only when the lakefile's `check_generated` option is
+on (`SubstraitLean/Generated.lean`). It is off by default, so a local
+`lake build` takes the entries as proved and stays quick; the tables and their
+staleness checks are the same. CI, the Wheels workflow, `poe prove` (and so
+`poe qa`), `homelab_qa.sh` and the wheel's build hook turn it on with
+`lake -R -Kcheck_generated=true build`. Lake keeps the setting of the last `-R`,
+so after one of those, `lake -R build` goes back to quick builds. Turn it on
+locally when you change a generated module, `Profile.duckdb` or the
+generators' tactics.
 
 If you ran one of these commands locally, `git checkout` those files again
 before you commit. Edit the sources instead: the `CASES` of

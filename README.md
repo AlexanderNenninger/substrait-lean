@@ -278,7 +278,7 @@ uv run --project python python my_pipeline.py
 ### Troubleshooting
 
 * `lake: command not found`: open a new terminal, or call `~/.elan/bin/lake`.
-* `no configuration file …lakefile`: run `lake` from the project root, where `lakefile.toml` is.
+* `no configuration file …lakefile`: run `lake` from the project root, where `lakefile.lean` is.
 * `… does not exist` for a notebook or `--project` path: those paths are relative to the
   project root, and `python/` is not the root.
 * Why DataFusion 51? Ibis 12's DataFusion backend fails to connect with

@@ -255,10 +255,9 @@ def main (args : List String) : IO UInt32 := do
     IO.println Lowering.duckdbTableJson.compress
     return 0
   | ["--lowering-coverage"] => do
-    -- How each construct is lowered to DuckDB, per setting (#241); a golden test.
-    for (setting, cov) in [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)] do
-      for (c, how, _) in cov do
-        IO.println s!"error_on_division_by_zero={setting}\t{c}\t{how}"
+    -- How each construct is lowered to DuckDB (#241); a golden test.
+    for (c, how, _) in duckdbOn.coverage do
+      IO.println s!"error_on_division_by_zero=on\t{c}\t{how}"
     return 0
   | [path] => runOn "" (← IO.FS.readFile path)
   | [flag, path] =>
