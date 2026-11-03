@@ -40,15 +40,16 @@ and a summary table (`characterization/duckdb/README.md`).
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import contextlib
 import datetime as dt
 import functools
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import re
+import signal
 import subprocess
 import tempfile
 import threading
@@ -57,8 +58,10 @@ import tomllib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
+from multiprocessing import connection as mp_connection
+from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import duckdb
 import pyarrow as pa
@@ -951,6 +954,15 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     tf = parse(path.read_text(errors="replace"))
     if tf.skip:
         return [], tf.skip
+    if os.environ.get("SVERIFY_SLT_PROGRESS"):
+        # Which file a worker is on: a replay that hangs names it.
+        print(f"replaying: {rel}", flush=True)
+    # A new process database for each file: a DuckDB `FATAL` error
+    # invalidates a database for good, and every file a worker replayed
+    # after it would fail, which ones depending on scheduling (#407).
+    from sverify import _duckdb
+
+    _duckdb.reset()
     with tempfile.TemporaryDirectory(prefix="sverify-slt-") as tmp:
         return _replay(tf, rel, tmp), None
 
@@ -1176,26 +1188,83 @@ def test_files(root: Path, areas: Sequence[str]) -> dict[str, list[tuple[str, st
     return found
 
 
+#: How long one test file may take, in seconds. Past it the replay stops the
+#: file's worker and records the file as skipped (`timeout: …`): a hang, or a
+#: test slow by design, then shows by name instead of stalling the run.
+FILE_TIMEOUT = 300
+
+
+def _worker(conn: Connection) -> None:
+    """Replay the files `conn` sends until it sends None. The worker leads a
+    process group of its own, so that stopping it stops its checker too."""
+    os.setsid()
+    while (task := conn.recv()) is not None:
+        conn.send(_replay_one(task))
+
+
+def _start_worker(ctx: Any) -> tuple[Connection, Any]:
+    here, there = ctx.Pipe()
+    proc = ctx.Process(target=_worker, args=(there,), daemon=True)
+    proc.start()
+    there.close()
+    return here, proc
+
+
+def _stop_worker(conn: Connection, proc: Any) -> None:
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    proc.join()
+    conn.close()
+
+
 def replay_files(
-    files: list[tuple[str, str]], jobs: int
+    files: list[tuple[str, str]], jobs: int, timeout: float = FILE_TIMEOUT
 ) -> Iterator[tuple[str, list[dict], str | None]]:
-    """`_replay_one` on each file, in `jobs` processes. The files a dying
-    worker takes down (a crash in a native library) are retried one by one,
-    and a file that crashes alone is skipped."""
-    broken: list[tuple[str, str]] = []
-    with concurrent.futures.ProcessPoolExecutor(jobs) as pool:
-        futures = {pool.submit(_replay_one, f): f for f in files}
-        for fut in concurrent.futures.as_completed(futures):
-            try:
-                yield fut.result()
-            except concurrent.futures.process.BrokenProcessPool:
-                broken.append(futures[fut])
-    for f in sorted(broken):
-        with concurrent.futures.ProcessPoolExecutor(1) as pool:
-            try:
-                yield pool.submit(_replay_one, f).result()
-            except concurrent.futures.process.BrokenProcessPool:
-                yield f[1], [], "harness: the replay process crashed"
+    """`_replay_one` on each file, in `jobs` worker processes, one file at a
+    time each. A file whose worker dies (a crash in a native library) or that
+    takes over `timeout` seconds is skipped, with the reason, and its worker
+    replaced; the others go on."""
+    ctx = multiprocessing.get_context("spawn")
+    todo = list(reversed(files))
+    idle = [_start_worker(ctx) for _ in range(min(jobs, len(files)))]
+    busy: dict[Connection, tuple[Any, tuple[str, str], float]] = {}
+    try:
+        while todo or busy:
+            while idle and todo:
+                conn, proc = idle.pop()
+                task = todo.pop()
+                conn.send(task)
+                busy[conn] = (proc, task, time.monotonic())
+            due = min(start + timeout for _, _, start in busy.values())
+            ready = mp_connection.wait(list(busy), max(0.0, due - time.monotonic()))
+            for conn in cast(list[Connection], ready):
+                proc, task, _ = busy.pop(conn)
+                try:
+                    out = conn.recv()
+                except EOFError:
+                    _stop_worker(conn, proc)
+                    idle.append(_start_worker(ctx))
+                    yield task[1], [], "harness: the replay process crashed"
+                    continue
+                idle.append((conn, proc))
+                yield out
+            now = time.monotonic()
+            for conn, (proc, task, start) in list(busy.items()):
+                if now - start >= timeout:
+                    del busy[conn]
+                    _stop_worker(conn, proc)
+                    idle.append(_start_worker(ctx))
+                    yield task[1], [], f"timeout: the file took over {timeout:.0f} s"
+    finally:
+        for conn, _ in idle:
+            with contextlib.suppress(OSError):
+                conn.send(None)
+        for conn, (proc, _, _) in busy.items():
+            _stop_worker(conn, proc)
+        for conn, proc in idle:
+            proc.join(timeout=5)
+            if proc.is_alive():
+                _stop_worker(conn, proc)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

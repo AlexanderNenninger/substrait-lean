@@ -4,6 +4,7 @@
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "types/uuid",
   "summary": {"agree": 0, "disagree": 0, "refused": 20, "skipped": 2},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {},
   "results": [
