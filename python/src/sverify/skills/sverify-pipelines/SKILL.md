@@ -119,6 +119,25 @@ assert restarted.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 `sv.group(a, b).refresh()` refreshes several outputs against the same source
 versions, sharing the stored nodes they read; `.status()` reports on each.
 
+A sink that writes every minute gathers commits and small files. Give the
+`DeltaSink` its maintenance:
+
+```python
+minutely = DeltaSink(
+    str(lake / "big_minutely"),
+    checkpoint_interval=10,
+    log_retention=dt.timedelta(days=7),
+    compact_every=60,
+    vacuum_retention=dt.timedelta(days=1),
+)
+```
+
+`compact_every=60` compacts after every 60 writes, and `vacuum_retention`
+then removes the files no version from the last day needs; `sink.maintain()`
+does both by hand. The maintenance commits carry the contract. A restarted
+job resumes past them, and past another writer's `OPTIMIZE`, `VACUUM` or
+property change (an Iceberg sink past `replace` snapshots).
+
 ## Gotchas
 
 * Turn on Delta's Change Data Feed (`delta.enableChangeDataFeed`) or every

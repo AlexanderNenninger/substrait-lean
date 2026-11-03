@@ -614,6 +614,18 @@ print(restarted.refresh())
 #   wrote duplicate_payments from transactions@v3: already committed (v3)
 ```
 
+A `DeltaSink` that writes every minute gathers commits and small files,
+which readers replay and open. Its options keep the table small:
+`checkpoint_interval` and `log_retention` set the table's checkpoint interval
+and log retention, `compact_every=n` compacts the table after every `n`
+writes, and `vacuum_retention` then removes the files older versions needed.
+`sink.maintain(vacuum=...)` does the same by hand. These commits carry the
+contract, and a restarted job resumes past them, as it does past another
+writer's `OPTIMIZE`, `VACUUM`, property or constraint change. A commit that
+changes rows, by anyone else, makes the job compute the node again. Keep the
+log retention longer than the gap between two writes: the contract is read
+from the log.
+
 Each refresh report names what it trusted: that the change feed turns the
 old snapshot into the new one, and that writers and file statistics are
 correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
