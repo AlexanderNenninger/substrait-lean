@@ -2190,6 +2190,8 @@ class Translator:
             fn = "iavg"
         elif name in ("min", "max") and t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date):
             fn = name
+        elif name in ("min", "max") and t == pl.Float64:
+            raise Unsupported(f"{name} of doubles is not yet supported on Polars; see #271")
         elif name == "array_agg" and t in (pl.Int64, pl.Float64, pl.String, pl.Boolean):
             fn = "collect"
         elif name in ("bit_and", "bit_or", "bit_xor") and t == pl.Int64:
