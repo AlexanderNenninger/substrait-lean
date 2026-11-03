@@ -13,6 +13,7 @@ jobs:
         areas:
           - optimizer
           - order overflow parallelism
+          - generated_columns index insert join
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
