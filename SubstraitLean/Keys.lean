@@ -885,9 +885,105 @@ theorem window_orderFree {part : List Nat} {sort : List SortKey} {fns : List Win
     WinFn.wholeValue_perm (List.all_eq_true.mp hf f hfm) part hp' x)]
   exact hp'.map _
 
+/-! ## Windows partitioned by every column
+
+`ROW_NUMBER() OVER (PARTITION BY` every column`)` numbers the copies of each
+row, as the SQL lift writes `INTERSECT ALL` and `EXCEPT ALL` (#344). Rows tied
+in such a partition are equal, so a row's window values depend only on how
+many of its copies come before and after it, and the copies of a row take the
+same values in any arrangement (`window_allColumns`). Such a window needs no
+key. -/
+
+/-- Each row of `l` (which comes after `pre`), with how many rows equal to it
+come before it (in `pre` too) and after it. -/
+def occurrences : List Row → List Row → List (Row × Nat × Nat)
+  | _, [] => []
+  | pre, x :: l => (x, pre.count x, l.count x) :: occurrences (pre ++ [x]) l
+
+theorem occurrences_congr {pre pre' : List Row} (h : pre.Perm pre') :
+    ∀ l, occurrences pre l = occurrences pre' l
+  | [] => rfl
+  | x :: l => by
+    simp only [occurrences, h.count_eq x, occurrences_congr (h.append_right [x]) l]
+
+theorem occurrences_perm {l l' : List Row} (h : l.Perm l') :
+    ∀ pre, (occurrences pre l).Perm (occurrences pre l') := by
+  induction h with
+  | nil => intro; exact .refl _
+  | cons x _ ih =>
+    intro pre
+    simp only [occurrences, (‹List.Perm _ _›).count_eq x]
+    exact (ih (pre ++ [x])).cons _
+  | swap x y l =>
+    intro pre
+    simp only [occurrences]
+    rw [occurrences_congr (pre := pre ++ [y] ++ [x]) (pre' := pre ++ [x] ++ [y])
+      (by simpa using (List.Perm.swap x y []).append_left pre) l]
+    by_cases hxy : x = y
+    · subst hxy; exact .refl _
+    · have h1 : (x == y) = false := by simpa using hxy
+      have h2 : (y == x) = false := by simpa using Ne.symm hxy
+      simp only [List.count_cons, List.count_append, h1, h2,
+        Bool.false_eq_true, ↓reduceIte, Nat.add_zero]
+      exact .swap _ _ _
+  | trans _ _ ih₁ ih₂ => intro pre; exact (ih₁ pre).trans (ih₂ pre)
+
+/-- The row `x` with its window values, where the rows tied with it in its
+partition are `b` copies before it and `a` after. -/
+def copiesRow (fns : List WinFn) (x : Row) (b a : Nat) : Row :=
+  x ++ fns.map (·.valueIn (List.replicate b x) x (List.replicate a x))
+
+theorem windowRows_eq_occurrences {part : List Nat} {fns : List WinFn} {S : List Row}
+    (hS : ∀ x ∈ S, ∀ y ∈ S, samePart part x y = true → x = y) :
+    ∀ (pre l : List Row), (∀ x ∈ pre ++ l, x ∈ S) →
+      windowRows part fns pre l = (occurrences pre l).map fun o => copiesRow fns o.1 o.2.1 o.2.2
+  | _, [], _ => rfl
+  | pre, x :: l, hin => by
+    simp only [windowRows, occurrences, List.map_cons, List.cons.injEq]
+    refine ⟨?_, windowRows_eq_occurrences hS (pre ++ [x]) l fun y hy => hin y (by simpa using hy)⟩
+    have hx : x ∈ S := hin x (by simp)
+    have hf : ∀ m : List Row, (∀ y ∈ m, y ∈ S) →
+        m.filter (samePart part x) = List.replicate (m.count x) x := by
+      intro m hm
+      rw [← List.filter_beq]
+      apply List.filter_congr
+      intro y hy
+      by_cases h : samePart part x y = true
+      · obtain rfl := hS x hx y (hm y hy) h
+        simp [h]
+      · have hne : (y == x) = false := by
+          simp only [beq_eq_false_iff_ne]
+          rintro rfl
+          exact h (samePart_refl part y)
+        simp [h, hne]
+    simp only [copiesRow, WinFn.value, hf pre fun y hy => hin y (by simp [hy]),
+      hf l fun y hy => hin y (by simp [hy])]
+
+/-- **Windows partitioned by every column** do not depend on how ties are
+broken: rows tied in such a partition are equal, so any arrangement `s` of
+the input gives the rows `Rel.eval`'s stable sort gives, as a bag. -/
+theorem window_allColumns {part : List Nat} {sort : List SortKey} {fns : List WinFn}
+    {rows : Relation} {w : Nat} (hlen : ∀ x ∈ rows, x.length = w) (hpart : ∀ i < w, i ∈ part)
+    {s : List Row} (hp : s.Perm rows) :
+    (windowRows part fns [] s).Perm (windowEval part sort fns rows) := by
+  have hS : ∀ x ∈ rows, ∀ y ∈ rows, samePart part x y = true → x = y := by
+    intro x hx y hy h
+    simp only [samePart, decide_eq_true_eq, List.map_inj_left] at h
+    apply List.ext_getElem ((hlen x hx).trans (hlen y hy).symm)
+    intro i h1 h2
+    have := h i (hpart i (by rw [← hlen x hx]; exact h1))
+    simpa [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem h1,
+      List.getElem?_eq_getElem h2] using this
+  have hm := List.mergeSort_perm rows (sortLe sort)
+  unfold windowEval
+  rw [windowRows_eq_occurrences hS [] s fun x hx => hp.subset (by simpa using hx),
+    windowRows_eq_occurrences hS [] _ fun x hx => hm.subset (by simpa using hx)]
+  exact (occurrences_perm (hp.trans hm.symm) []).map _
+
 /-- Is every window deterministic: do its partition and sort columns contain
 a derived key of its input (`Rel.window_deterministic`), or are its functions
-order-free (`window_orderFree`)? -/
+order-free (`window_orderFree`), or does its partition cover every column
+(`Rel.window_allColumns`)? -/
 def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
@@ -903,7 +999,7 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
       a.windowsTotal cat A F K && b.windowsTotal cat A F K
   | .window r part sort fns =>
       r.windowsTotal cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all WinFn.orderFree)
+        fns.all WinFn.orderFree || (List.range (r.arity cat)).all (· ∈ part))
 
 /-- The check at one window: then the engine's tie-breaking is irrelevant. -/
 theorem Rel.window_deterministic {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
@@ -918,6 +1014,16 @@ theorem Rel.window_deterministic {cat : Catalog} (hcat : cat.WF) {A : String →
   obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp h
   simp only [List.all_eq_true, decide_eq_true_eq] at hsub
   exact window_tiebreak ((keys_sound hcat hA hF hK hwf k hk).superset hsub) hp hs
+
+/-- The check at one window whose partition covers every column: then too the
+engine's tie-breaking is irrelevant. -/
+theorem Rel.window_allColumns {cat : Catalog} (hcat : cat.WF) {r : Rel} {part : List Nat}
+    {sort : List SortKey} {fns : List WinFn} (hwf : r.WF cat)
+    (h : (List.range (r.arity cat)).all (· ∈ part) = true)
+    {s : List Row} (hp : s.Perm (r.eval cat)) :
+    (windowRows part fns [] s).Perm ((Rel.window r part sort fns).eval cat) := by
+  simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at h
+  exact Substrait.window_allColumns (Rel.eval_arity hcat hwf) h hp
 
 end Substrait
 

@@ -8,5 +8,4 @@ take the first branch's names. NULLs count as equal, and with `ALL`, `m` and
 (`EXCEPT ALL`), as in DuckDB. DuckDB's `TABLE t` shorthand, which SQLGlot does
 not parse, is written out as `SELECT * FROM t` first. In the sqllogictest
 replay, the `setops` area went from 18 agreeing queries to 79, none disagreeing.
-`UNION BY NAME` is still refused, and without keys on its inputs a report calls
-`INTERSECT ALL`/`EXCEPT ALL` undetermined.
+`UNION BY NAME` is still refused.
