@@ -77,6 +77,13 @@ class Recorder(Sink):
         return sorted(self.rows.elements(), key=repr)
 
 
+def arrivals(out) -> str:
+    """How a node's refresh checked `arrives_within`."""
+    assert out.report is not None
+    [found] = [p for p in out.report.preconditions if p.condition.startswith("arrives_within")]
+    return found.source
+
+
 def full(node, src):
     return sorted(recomputed(node, src), key=repr)
 
@@ -173,21 +180,42 @@ def test_a_late_row_is_rejected(engine):
     src.apply(sv.Changes(inserts=samples([("a", 120, 5)])))
     with pytest.raises(
         PreconditionError,
-        match=r"1 changed row\(s\) of samples violate "
+        match=r"1 inserted row\(s\) of samples violate "
         r"arrives_within\(ts, 2h\): ts before the watermark 2026-11-03 02:30",
     ):
         node.refresh(engine=engine)
     assert (sorted(map(repr, node.to_arrow().to_pylist())), node.versions) == before
 
 
-def test_a_late_delete_is_rejected():
+def test_a_delete_in_a_final_bucket_is_an_expiry():
     rows = [("a", m, 1) for m in range(0, 300, 30)]
     src = StaticSource(samples(rows), name="samples")
-    node = src.pipe(rollup())
+    sink = Recorder()
+    node = src.pipe(rollup()).write(sink)
     node.refresh()
+    kept = sink.sorted()
+    # The latest is 4:30 and the watermark 2:30: the hours before 2:00 are
+    # final, so deleting the row at 0:00 is the source's retention.
     src.apply(sv.Changes(deletes=samples([rows[0]])))
-    with pytest.raises(PreconditionError, match="violate arrives_within"):
+    out = node.refresh()["rollup"]
+    assert arrivals(out).endswith("1 expired row(s) deleted from final buckets")
+    assert sink.sorted() == kept
+    # The row at 2:00 is before the watermark, in the hour that is still open.
+    src.apply(sv.Changes(deletes=samples([rows[4]])))
+    with pytest.raises(PreconditionError, match=r"1 deleted row\(s\) of samples .* not final yet"):
         node.refresh()
+    assert sink.sorted() == kept
+
+
+def test_without_a_view_that_retires_every_early_delete_is_an_expiry():
+    rows = [("a", m, 1) for m in range(0, 300, 30)]
+    src = StaticSource(samples(rows), name="samples")
+    node = src.pipe(rollup()).write(sink_from(lambda change: None, name="rollup"))
+    node.refresh()
+    src.apply(sv.Changes(deletes=samples([rows[4]])))
+    node.refresh()
+    # The view keeps every bucket and applies the delete.
+    assert sorted(map(tuple, (r.values() for r in node.to_arrow().to_pylist()))) == full(node, src)
 
 
 def test_null_times_are_rejected():
@@ -226,9 +254,10 @@ def test_verify_does_not_prove_lateness():
 # -- equality with a full recompute --------------------------------------------
 
 
-def random_stream(seed, batches=80):
+def random_stream(seed, batches=80, expire=False):
     """Batches that respect a lateness of 2 h: every insert and delete at or
-    after the latest time seen before the batch, minus 2 h."""
+    after the latest time seen before the batch, minus 2 h. With `expire`,
+    batches also delete rows of the final hours (the source's retention)."""
     rng = random.Random(seed)
     first = [(rng.choice("ab"), m, rng.randrange(100)) for m in range(0, 240, 20)]
     live = list(first)
@@ -243,6 +272,10 @@ def random_stream(seed, batches=80):
         ]
         late_enough = [r for r in live if r[1] >= wm]
         dels = rng.sample(late_enough, min(len(late_enough), rng.randrange(3)))
+        # Hours that end at or before the watermark are final.
+        final = [r for r in live if r[1] < (wm // 60) * 60 and r not in dels]
+        if expire and final:
+            dels += rng.sample(final, min(len(final), rng.randrange(3)))
         for d in dels:
             live.remove(d)
         live += ins
@@ -255,18 +288,27 @@ def random_stream(seed, batches=80):
 @pytest.mark.slow
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 @pytest.mark.parametrize("seed", range(4))
-def test_retention_matches_a_full_recompute(seed, engine):
-    first, stream = random_stream(seed)
+@pytest.mark.parametrize("expire", [False, True])
+def test_retention_matches_a_full_recompute(seed, engine, expire):
+    first, stream = random_stream(seed, expire=expire)
     src = StaticSource(samples(first), name="samples")
+    # Every row inserted, less the deletes after the watermark: what the
+    # sink holds when the source expires rows of final buckets.
+    history = StaticSource(samples(first), name="samples")
     sink = Recorder()
     node = src.pipe(rollup()).write(sink)
     node.refresh(engine=engine)
     retired = 0
     for ins, dels in stream:
+        latest = max(view(node).pipeline.latest.values())
+        wm = (latest - T0) / timedelta(minutes=1) - 120
         src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        history.apply(
+            sv.Changes(inserts=samples(ins), deletes=samples([d for d in dels if d[1] >= wm]))
+        )
         entry = node.refresh(engine=engine)["rollup"]
         retired += entry.retention[0].retired
-        want = full(node, src)
+        want = full(node, history)
         # The sink has every bucket; the state the open ones.
         assert sink.sorted() == want
         cut = view(node).retired_through
@@ -377,3 +419,62 @@ def test_a_pipeline_reports_retention_without_nodes():
     (r,) = report.retention
     assert (r.view, r.column, r.open, r.retired) == ("hourly", "bucket", 3, 3)
     assert "retention hourly.bucket" in str(report)
+
+
+# -- a source with its own retention ----------------------------------------------
+
+
+def flight_job(log, sink):
+    from sverify.io.flight import FlightSource
+
+    src = FlightSource(f"grpc://127.0.0.1:{log.port}", "samples", schema=SCHEMA)
+    return src.pipe(rollup()).write(sink)
+
+
+def put_hour(log, hour):
+    """One batch: both hosts' samples of hour `hour`, every 10 minutes."""
+    fl = pytest.importorskip("pyarrow.flight")
+    client = fl.connect(f"grpc://127.0.0.1:{log.port}")
+    writer, acks = client.do_put(fl.FlightDescriptor.for_path("samples"), SCHEMA)
+    rows = [(h, 60 * hour + m, m) for m in range(0, 60, 10) for h in "ab"]
+    writer.write_batch(samples(rows).to_batches()[0])
+    acks.read()
+    writer.close()
+    client.close()
+    return rows
+
+
+@pytest.mark.slow
+def test_a_flight_log_that_expires_batches():
+    pytest.importorskip("pyarrow.flight")
+    from sverify.io.flight import FlightLog
+
+    # The log keeps 4 one-hour batches; with 2 h of lateness, a batch
+    # expires once its hour is final.
+    log = FlightLog(keep=4)
+    try:
+        sink = Recorder()
+        node = flight_job(log, sink)
+        history = StaticSource(samples([]), name="samples")
+        for hour in range(12):
+            history.apply(sv.Changes(inserts=samples(put_hour(log, hour))))
+            out = node.refresh()["rollup"]
+            (report,) = out.retention
+            assert report.off is None and report.open <= report.bound == 3
+            assert sink.sorted() == full(node, history)
+        assert arrivals(out).endswith("12 expired row(s) deleted from final buckets")
+    finally:
+        log.shutdown()
+    # A log that keeps 3 batches expires rows before the watermark of an
+    # hour that is still open: at 3:00 the watermark is 0:50.
+    log = FlightLog(keep=3)
+    try:
+        node = flight_job(log, Recorder())
+        for hour in range(3):
+            put_hour(log, hour)
+        node.refresh()
+        put_hour(log, 3)
+        with pytest.raises(PreconditionError, match="not final yet"):
+            node.refresh()
+    finally:
+        log.shutdown()

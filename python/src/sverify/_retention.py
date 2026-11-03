@@ -31,14 +31,14 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify._weighted import _call, rows_of
+from sverify._weighted import _call, negative, positive, rows_of
 from sverify.contracts import ArrivesWithin, Condition, label, show_duration
 
 # `date_trunc` to these units is a bucket from 1970-01-01 (`Retention.trunc_eq_bucket`).
@@ -80,6 +80,17 @@ class Retention:
         """The last bucket start that is final: a bucket starting at `b` is
         final when `b + width ≤ watermark`."""
         return None if latest is None else latest - self.lateness - self.width
+
+    def start(self, t: Any) -> Any:
+        """The start of the bucket of time `t`."""
+        epoch = datetime(1970, 1, 1, tzinfo=None if t.tzinfo is None else UTC) + self.origin
+        return epoch + (t - epoch) // self.width * self.width
+
+    def final_before(self, latest: Any) -> Any:
+        """Every time before this one is in a final bucket: the end of the
+        last final bucket (None: no row yet)."""
+        cutoff = self.cutoff(latest)
+        return None if cutoff is None else self.start(cutoff) + self.width
 
     def __str__(self) -> str:
         origin = f" from +{show_duration(self.origin)}" if self.origin else ""
@@ -241,27 +252,45 @@ class Late:
     """Rows of a batch that break `arrives_within`."""
 
     late: int
+    """Inserted rows before the watermark."""
+    open: int
+    """Deleted rows before the watermark whose bucket a view still holds."""
     nulls: int
     watermark: Any
 
 
-def check_batch(change: pa.Table, cond: ArrivesWithin, latest: Any) -> tuple[Late | None, Any]:
-    """The rows of `change` (a weighted table, inserts and deletes) before
-    the watermark of `latest`, or NULL, if any; and the largest `ts` seen
-    after the batch."""
-    rows = rows_of(change)
-    col = rows.column(cond.col)
-    nulls = col.null_count
+def _before(rows: pa.Table, col: str, t: Any) -> int:
+    """How many rows have `col` before `t`."""
+    c = rows.column(col)
+    if not len(c):
+        return 0
+    return _call("sum", _call("less", c, _scalar(t, c.type))).as_py() or 0
+
+
+def check_batch(
+    change: pa.Table, cond: ArrivesWithin, latest: Any, final_before: Any = None
+) -> tuple[Late | None, int, Any]:
+    """Check a batch (a weighted table, inserts and deletes) against the
+    watermark of `latest`. A row it inserts before the watermark is late. A
+    row it deletes before the watermark is an expiry, the source's own
+    retention, if its time is before `final_before` (None: the watermark):
+    every view that retires buckets of the column holds it in a final
+    bucket. Returns the rows that break the condition, if any; how many
+    rows expired; and the largest `ts` seen after the batch."""
+    inserted, deleted = rows_of(positive(change)), rows_of(negative(change))
+    nulls = inserted.column(cond.col).null_count + deleted.column(cond.col).null_count
     watermark = None if latest is None else latest - cond.lateness
-    late = 0
-    if watermark is not None and len(col):
-        late = _call("sum", _call("less", col, _scalar(watermark, col.type))).as_py() or 0
-    found = Late(late, nulls, watermark) if late or nulls else None
-    inserted = rows_of(change.filter(_call("greater", change.column(change.num_columns - 1), 0)))
+    late = open_ = expired = 0
+    if watermark is not None:
+        late = _before(inserted, cond.col, watermark)
+        limit = watermark if final_before is None else min(final_before, watermark)
+        expired = _before(deleted, cond.col, limit)
+        open_ = _before(deleted, cond.col, watermark) - expired
+    found = Late(late, open_, nulls, watermark) if late or open_ or nulls else None
     batch_latest = latest_of(inserted.column(cond.col))
     if latest is None or (batch_latest is not None and batch_latest > latest):
         latest = batch_latest
-    return found, latest
+    return found, expired, latest
 
 
 def show_time(v: Any) -> str:
