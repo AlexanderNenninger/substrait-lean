@@ -437,6 +437,31 @@ print(sv.verify(per_minute))
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
 
+### Suggested preconditions
+
+An unproved postcondition that compares a value with a constant gets a
+suggestion: the precondition on the inputs under which Lean proves it. It
+is never assumed, since it changes what the transformation accepts:
+
+```python
+items = ibis.table({"id": "int64", "qty": "!int64"}, name="items")
+report = sv.verify(
+    items.select(items.id, doubled=items.qty * 2),
+    requires={"items": [_.qty >= 0]},
+    ensures=[_.doubled <= 100],
+)
+print(report)
+# ...
+# ensures (_.doubled <= 100): NOT proved: it may be FALSE on some rows
+#   would hold with `(_.qty < 51)` in the requires of 'items'
+# ...
+```
+
+Sverify proves each suggestion before showing it, by proving the
+postcondition again with it added. `Report.suggestions` has them as code,
+per postcondition and table, for editors and language servers
+([test_suggestions.py](../python/tests/test_suggestions.py)).
+
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream
