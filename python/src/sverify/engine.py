@@ -408,15 +408,63 @@ def canonical(table: pa.Table) -> pa.Table:
     return pa.Table.from_arrays(columns, schema=table.schema)
 
 
+#: The checker protocol this sverify speaks: `protocol` in `Main.lean`, bumped
+#: with it whenever a mode's output changes shape.
+PROTOCOL = 1
+
+
+class CheckerVersionError(RuntimeError):
+    """The `substrait-check` binary speaks another protocol than this sverify:
+    a stale build of the checker, or a checker newer than the package."""
+
+
+_REBUILD = (
+    "rebuild it with `uv sync` (an editable install) or `lake build substrait-check`, "
+    "or reinstall sverify"
+)
+
+
+@functools.cache
+def _check_protocol(path: str) -> None:
+    """Ask the checker at `path` for its protocol, once per process."""
+    try:
+        out = subprocess.run(
+            [path, "--version"], capture_output=True, text=True, timeout=60
+        ).stdout.split()
+    except OSError as e:
+        raise FileNotFoundError(f"cannot run the checker at {path}: {e}") from e
+    if out[:2] != ["substrait-check", "protocol"] or len(out) != 3 or not out[2].isdigit():
+        raise CheckerVersionError(
+            f"the checker at {path} is older than this sverify "
+            f"(it does not report its protocol); {_REBUILD}"
+        )
+    found = int(out[2])
+    if found < PROTOCOL:
+        raise CheckerVersionError(
+            f"the checker at {path} is older than this sverify (protocol {found}, "
+            f"sverify needs {PROTOCOL}); {_REBUILD}"
+        )
+    if found > PROTOCOL:
+        raise CheckerVersionError(
+            f"the checker at {path} is newer than this sverify (protocol {found}, "
+            f"sverify speaks {PROTOCOL}); upgrade sverify, or build the checker "
+            "from the same commit"
+        )
+
+
 def checker_path() -> Path:
     """`$SVERIFY_CHECK` if set, else the `substrait-check` the wheel ships with
-    (a symlink to the lake build in an editable install)."""
+    (a symlink to the lake build in an editable install). The first call for a
+    path checks that the checker speaks this sverify's protocol
+    (`CheckerVersionError` if not)."""
     if env := os.environ.get("SVERIFY_CHECK"):
-        return Path(env)
-    bundled = Path(__file__).parent / "_bin" / "substrait-check"
-    if not bundled.exists():
-        raise FileNotFoundError(f"{bundled} is missing; reinstall sverify or set SVERIFY_CHECK")
-    return bundled
+        path = Path(env)
+    else:
+        path = Path(__file__).parent / "_bin" / "substrait-check"
+        if not path.exists():
+            raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECK")
+    _check_protocol(str(path))
+    return path
 
 
 class _Checker:
