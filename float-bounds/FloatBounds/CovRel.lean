@@ -1029,3 +1029,76 @@ theorem cT_err {T Q ΔC P Y A h : ℝ} (hP : 0 ≤ P) (hY : |ΔC| ≤ Y) (hA : 0
   have e5 : 7.1 * u * Y = 7.1 * (u * Y) := by ring
   have e6 : 2 * u * Y = 2 * (u * Y) := by ring
   linarith
+
+set_option maxHeartbeats 1000000 in
+/-- The co-moment after a merge of pairs: `Ŝ₁ = fl(Ŝ_a + Ŝ_b)`, then
+`Ŝ = fl(Ŝ₁ + T̂)`, when `|C_a + C_b|`, `|C_a + C_b + ΔC|` and `Y ≥ |ΔC|` are at
+most `R`. -/
+theorem cmerge_com {Ca Cb ΔC Sha Shb Sh1 T Sh Ea Eb P Y R A h : ℝ} (hP : 0 ≤ P) (hY0 : 0 ≤ Y)
+    (hYR : Y ≤ R) (hA : 0 ≤ A) (hh : 0 ≤ h) (hR1 : |Ca + Cb| ≤ R) (hR2 : |Ca + Cb + ΔC| ≤ R)
+    (hEa : |Sha - Ca| ≤ Ea) (hEb : |Shb - Cb| ≤ Eb)
+    (hT : |T - ΔC| ≤ 7.2 * u * P + 7.1 * u * Y + 104 * u ^ 2 * h * A + 5 * u * (1 + h) * tiny)
+    (h1 : |Sh1 - (Sha + Shb)| ≤ u * (|Sha + Shb| + tiny))
+    (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
+    |Sh - (Ca + Cb + ΔC)| ≤ (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * P + 9.2 * u * R
+      + 105 * u ^ 2 * h * A + (7.1 + 5.1 * h) * u * tiny := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have hR0 : 0 ≤ R := le_trans (abs_nonneg _) hR1
+  have hE0 : 0 ≤ Ea + Eb := by
+    have := abs_nonneg (Sha - Ca); have := abs_nonneg (Shb - Cb); linarith
+  have k1 : |Sha + Shb| ≤ R + (Ea + Eb) := by
+    have e : Sha + Shb = (Ca + Cb) + ((Sha - Ca) + (Shb - Cb)) := by ring
+    rw [e]; have := abs_add_le (Ca + Cb) ((Sha - Ca) + (Shb - Cb))
+    have := abs_add_le (Sha - Ca) (Shb - Cb)
+    linarith
+  have k2 : |Sh1 - (Ca + Cb)| ≤ (1 + u) * (Ea + Eb) + u * R + u * tiny := by
+    have e : Sh1 - (Ca + Cb) = (Sh1 - (Sha + Shb)) + ((Sha - Ca) + (Shb - Cb)) := by ring
+    rw [e]
+    have := abs_add_le (Sh1 - (Sha + Shb)) ((Sha - Ca) + (Shb - Cb))
+    have := abs_add_le (Sha - Ca) (Shb - Cb)
+    have := mul_le_mul_of_nonneg_left k1 hu.le
+    have e2 : u * (R + (Ea + Eb)) = u * R + u * (Ea + Eb) := by ring
+    linarith
+  obtain ⟨W, hW⟩ : ∃ W, W = u * R + u * tiny + (7.2 * u * P + 7.1 * u * Y
+      + 104 * u ^ 2 * h * A + 5 * u * (1 + h) * tiny) := ⟨_, rfl⟩
+  have hW0 : 0 ≤ W := by rw [hW]; positivity
+  have k3 : |Sh1 + T - (Ca + Cb + ΔC)| ≤ (1 + u) * (Ea + Eb) + W := by
+    have e : Sh1 + T - (Ca + Cb + ΔC) = (Sh1 - (Ca + Cb)) + (T - ΔC) := by ring
+    rw [e]; have := abs_add_le (Sh1 - (Ca + Cb)) (T - ΔC); rw [hW]; linarith
+  have k4 : |Sh1 + T| ≤ R + ((1 + u) * (Ea + Eb) + W) := by
+    have := abs_sub_abs_le_abs_sub (Sh1 + T) (Ca + Cb + ΔC); linarith
+  have k5 : |Sh - (Ca + Cb + ΔC)| ≤ (1 + u) * ((1 + u) * (Ea + Eb) + W) + u * R + u * tiny := by
+    have e : Sh - (Ca + Cb + ΔC) = (Sh - (Sh1 + T)) + (Sh1 + T - (Ca + Cb + ΔC)) := by ring
+    rw [e]
+    have := abs_add_le (Sh - (Sh1 + T)) (Sh1 + T - (Ca + Cb + ΔC))
+    have := mul_le_mul_of_nonneg_left k4 hu.le
+    have e2 : u * (R + ((1 + u) * (Ea + Eb) + W)) = u * R + u * ((1 + u) * (Ea + Eb)) + u * W := by
+      ring
+    have e3 : (1 + u) * ((1 + u) * (Ea + Eb) + W) = (1 + u) * (Ea + Eb) + u * ((1 + u) * (Ea + Eb))
+        + W + u * W := by ring
+    linarith
+  refine le_trans k5 ?_
+  have p1 : 0 ≤ u * P := by positivity
+  have p2 : 0 ≤ u ^ 2 * h * A := by positivity
+  have p3 : 0 ≤ u * R := by positivity
+  have p4 : 0 ≤ u * Y := by positivity
+  have p5 : 0 ≤ u * tiny := by positivity
+  have p6 : 0 ≤ h * (u * tiny) := by positivity
+  have hYR' : u * Y ≤ u * R := mul_le_mul_of_nonneg_left hYR hu.le
+  have k6 : u * W ≤ W / 2 ^ 50 := by
+    have := mul_le_mul_of_nonneg_right (by linarith : u ≤ 1 / 2 ^ 50) hW0; linarith
+  have hWe : W = u * R + u * tiny + 7.2 * (u * P) + 7.1 * (u * Y) + 104 * (u ^ 2 * h * A)
+      + 5 * (u * tiny) + 5 * (h * (u * tiny)) := by rw [hW]; ring
+  have k7 : W / 2 ^ 50 ≤ 0.0001 * (u * P) + 0.0001 * (u * R) + 0.0001 * (u * Y)
+      + 0.0001 * (u ^ 2 * h * A) + 0.0001 * (u * tiny) + 0.0001 * (h * (u * tiny)) := by
+    rw [hWe]; linarith
+  have e4 : (1 + u) * ((1 + u) * (Ea + Eb) + W) = (1 + u) ^ 2 * (Ea + Eb) + W + u * W := by ring
+  rw [e4]
+  have e6 : (7.1 + 5.1 * h) * u * tiny = 7.1 * (u * tiny) + 5.1 * (h * (u * tiny)) := by ring
+  have e7 : 7.3 * u * P = 7.3 * (u * P) := by ring
+  have e8 : 105 * u ^ 2 * h * A = 105 * (u ^ 2 * h * A) := by ring
+  have e9 : 9.2 * u * R = 9.2 * (u * R) := by ring
+  rw [e6, e7, e8, e9]
+  linarith
