@@ -99,10 +99,11 @@ conflicts with other PRs:
   `sverify_dev.catalogue --write-tables`.
 
 Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/Off` and `On`
-(the DuckDB lowering, entries with their proofs) are committed, and a build only
-checks them. When a build fails there, or the lowering golden test changes,
-regenerate them with `poe regen-lowering` (homelab: about 6 minutes) and commit
-the result.
+(the DuckDB lowering) and `SubstraitLean/LiftDuckDB/Duckdb` and `Reference` (the
+lift from DuckDB SQL), entries with their proofs, are committed, and a build only
+checks them. When a build fails there, or a golden test of theirs changes,
+regenerate them with `poe regen-lowering` or `poe regen-lift` and commit the
+result. Both cap Lean at 6 GB (`-M 6144`).
 
 If you ran one of these commands locally, `git checkout` those files again
 before you commit. Edit the sources instead: the `CASES` of
