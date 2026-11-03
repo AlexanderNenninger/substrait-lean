@@ -20,6 +20,9 @@ and they stay in the sink.
 * `retention_sound`: the final rows kept in the sink, plus the open rows
   recomputed after the batch, are the full recomputation.
 * `final_stable`: the same over any stream of admissible batches.
+* `expiry_sound`: a batch may also delete rows of final buckets, the
+  source's own retention; the sink keeps them, and the open rows are as
+  without those deletes.
 * `open_buckets_le`: at most `⌈lateness / width⌉ + 1` buckets are open, the
   bound #219's state bound builds on.
 
@@ -235,6 +238,65 @@ theorem final_stable (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucketOf
     refine (final_stable hg hW ht bs _ fun c hc => h c (.tail _ hc)).trans ?_
     obtain ⟨hwm, hadm⟩ := h b (.head _)
     exact final_unchanged hg hW ht fun r hr => Int.le_trans hwm (hadm r hr)
+
+/-! ## Expiries: the source's own retention -/
+
+theorem foldl_erase_erase (d : Row) :
+    ∀ (ds rows : Relation), ds.foldl List.erase (rows.erase d) = (ds.foldl List.erase rows).erase d
+  | [], _ => rfl
+  | x :: xs, rows => by
+    simp only [List.foldl_cons]
+    rw [List.erase_comm d x, foldl_erase_erase d xs]
+
+/-- On the rows in `p`, deletes act as the deletes in `p` alone. -/
+theorem filter_foldl_erase_filter {p : Row → Bool} :
+    ∀ (dels rows : Relation),
+      (dels.foldl List.erase rows).filter p = ((dels.filter p).foldl List.erase rows).filter p
+  | [], _ => rfl
+  | d :: ds, rows => by
+    by_cases hd : p d = true
+    · simp only [List.foldl_cons, List.filter_cons, hd, ↓reduceIte]
+      exact filter_foldl_erase_filter ds _
+    · have hd' : p d = false := by simpa using hd
+      simp only [List.foldl_cons, List.filter_cons, hd', Bool.false_eq_true, ↓reduceIte]
+      rw [filter_foldl_erase_filter ds, foldl_erase_erase, filter_erase_of_false hd']
+
+/-- Deleting rows of final buckets leaves the open buckets' rows as they
+were: the open rows after a batch that also deletes `expired` are those
+after the batch without them. -/
+theorem open_unchanged_by_expiry (hg : gs ≠ []) {rows expired dels ins : Relation}
+    (he : ∀ e ∈ expired, final W wm (bucketOf (groupKey gs e)) = true) :
+    (rowsOf gs bucketOf W wm false
+        (aggregateEval gs ms (applyBatch rows (expired ++ dels) ins))).Perm
+      (rowsOf gs bucketOf W wm false (aggregateEval gs ms (applyBatch rows dels ins))) := by
+  let p : Row → Bool := fun k => final W wm (bucketOf k) == false
+  let q : Row → Bool := fun r => p (groupKey gs r)
+  have hq : expired.filter q = [] :=
+    List.filter_eq_nil_iff.mpr fun e he' => by simp [q, p, he e he']
+  have key : (applyBatch rows (expired ++ dels) ins).filter q =
+      (applyBatch rows dels ins).filter q := by
+    simp only [applyBatch, List.filter_append]
+    rw [filter_foldl_erase_filter (expired ++ dels), List.filter_append, hq, List.nil_append,
+      ← filter_foldl_erase_filter]
+  exact (aggregateEval_filter_key hg ms p _).trans
+    (List.Perm.trans (.of_eq (by rw [key])) (aggregateEval_filter_key hg ms p _).symm)
+
+/-- **Expiries are sound**: a batch admissible but for `expired`, deletes of
+rows in final buckets (a source's retention, such as a Flight log's floor
+or a Delta `VACUUM`). The final rows kept in the sink and the open rows
+recomputed after the whole batch are the full recomputation after the batch
+without the expiries: the sink keeps the history the source forgot. Over a
+stream, the source then differs from that history only in rows of buckets
+final at an earlier watermark, which stay final (`final_mono`), so the
+argument repeats batch by batch. -/
+theorem expiry_sound (hg : gs ≠ []) (hW : 0 < W) (ht : Tumbling gs ts bucketOf W o)
+    {rows expired dels ins : Relation} (h : Admissible ts wm dels ins)
+    (he : ∀ e ∈ expired, final W wm (bucketOf (groupKey gs e)) = true) :
+    (aggregateEval gs ms (applyBatch rows dels ins)).Perm
+      (rowsOf gs bucketOf W wm true (aggregateEval gs ms rows) ++
+        rowsOf gs bucketOf W wm false
+          (aggregateEval gs ms (applyBatch rows (expired ++ dels) ins))) :=
+  (retention_sound hg hW ht h).trans ((open_unchanged_by_expiry hg he).symm.append_left _)
 
 /-! ## How many buckets are open -/
 

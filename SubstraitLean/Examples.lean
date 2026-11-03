@@ -179,6 +179,12 @@ end Substrait.Examples
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.FloatCode.ofInt_mono
 #print axioms Substrait.FloatCode.ofInt_exact
+#print axioms Substrait.FloatCode.ofInt_rel
+#print axioms Substrait.FloatCode.toInt?_ofInt
+#print axioms Substrait.FloatCode.ofDecimal_rel
+#print axioms Substrait.FloatCode.ofDecimal_mono
+#print axioms Substrait.FloatCode.toDecimal?_between
+#print axioms Substrait.FloatCode.roundRat_rel
 #print axioms Substrait.pairFacts_sound
 #print axioms Substrait.Rel.ratioPart_sound
 #print axioms Substrait.ratioSharpen_sound
@@ -228,5 +234,6 @@ end Substrait.Examples
 #print axioms Substrait.Retention.final_unchanged
 #print axioms Substrait.Retention.retention_sound
 #print axioms Substrait.Retention.final_stable
+#print axioms Substrait.Retention.expiry_sound
 #print axioms Substrait.Retention.open_buckets_le
 #print axioms Substrait.Retention.trunc_eq_bucket

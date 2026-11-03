@@ -211,8 +211,9 @@ uv keeps the version and drops the page, so add it to your `pyproject.toml`;
 find-links = ["https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly"]
 ```
 
-A wheel's own URL pins one build, until the next nightly replaces it. Copy it
-from the release page:
+Each build's wheels stay on the release for 30 days, so a wheel's own URL pins
+one build for that long. `--find-links` sees every build on the page and picks
+the newest. Copy a URL from the release page:
 
 ```bash
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
@@ -780,12 +781,22 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
 #   retention hourly.hour: 3 bucket(s) open (bound 3), 2 retired, 6 state row(s); watermark 2026-11-03 02:50:00
 ```
 
-- `arrives_within("ts", hours=2)` says every row a batch inserts or deletes
-  has `ts` at or after the watermark: the largest `ts` seen before the batch,
-  minus two hours. The first refresh checks that `ts` has no NULLs; every
-  later batch is checked at refresh, and a late row rejects the batch with
+- `arrives_within("ts", hours=2)` says every row a batch inserts has `ts` at
+  or after the watermark: the largest `ts` seen before the batch, minus two
+  hours. The first refresh checks that `ts` has no NULLs; every later batch
+  is checked at refresh, and a late row rejects the batch with
   `PreconditionError`, so nothing is applied. Quarantining late rows instead
   is #184.
+- A delete before the watermark is an expiry, the source's own retention (a
+  `FlightSource` floor, a Delta `VACUUM` of old partitions), when its row is
+  in a final bucket of every view that drops buckets of `ts`. The views and
+  their sinks keep those buckets as they were, and the report counts the
+  expired rows. Lean proves that the final buckets in the sink and the open
+  ones in the state are then a full recompute over every row the source
+  received, less the deletes at or after the watermark
+  (`Retention.expiry_sound`). A delete before the watermark in a bucket that
+  is still open rejects the batch. With no view that drops buckets of `ts`,
+  every delete is applied as it is.
 - A bucket that ends at or before the watermark is final. Lean proves that
   no admissible batch changes a final bucket, for every measure, so the
   final buckets kept in the sink and the open ones in the state add up to a
