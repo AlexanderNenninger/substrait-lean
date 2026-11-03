@@ -5,6 +5,7 @@ and its state equals a full recompute."""
 import random
 from datetime import datetime, timedelta
 
+import ibis
 import pyarrow as pa
 import pytest
 
@@ -218,3 +219,71 @@ def test_a_time_bucket_key_reads_only_the_touched_range(engine, monkeypatch):
         assert rows(node) == recomputed(node, src)
     assert ran.count(spec.recompute) == 1
     assert ran.count(spec.ranged.plan) == 14
+
+
+# -- windows: the partitions a batch touches ----------------------------------
+
+
+def windowed(samples):
+    w = ibis.window(group_by="host", order_by="minute", preceding=2, following=0)
+    return samples.select(
+        "host",
+        "minute",
+        "cpu",
+        rn=ibis.row_number().over(group_by="host", order_by="minute"),
+        recent=samples.cpu.sum().over(w),
+        before=samples.cpu.lag().over(group_by="host", order_by="minute"),
+    )
+
+
+def unique_stream(seed, steps=30):
+    """Batches over distinct `(host, minute)` pairs, so windows have no ties."""
+    rng = random.Random(seed)
+    minutes = iter(rng.sample(range(10_000), 400))
+    hosts = ["a", "b", "c", None]
+    live = [(rng.choice(hosts), next(minutes), rng.randrange(100)) for _ in range(30)]
+    first = list(live)
+    out = []
+    for _ in range(steps):
+        ins = [
+            (rng.choice(hosts), next(minutes), rng.randrange(100)) for _ in range(rng.randrange(3))
+        ]
+        dels = rng.sample(live, min(len(live), rng.randrange(3)))
+        for d in dels:
+            live.remove(d)
+        live += ins
+        out.append((ins, dels))
+    return first, out
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("seed", range(2))
+def test_touched_partitions_match_a_full_recompute(seed, engine):
+    first, batches = unique_stream(seed)
+    src = StaticSource(samples(first), name="samples")
+    node = src.pipe(windowed)
+    node.refresh(engine=engine)
+    assert view(node).strategy == "touched groups"
+    for ins, dels in batches:
+        src.apply(sv.Changes(inserts=samples(ins), deletes=samples(dels)))
+        out = node.refresh(engine=engine, audit=True)["windowed"]
+        assert out.report is not None
+        if touched := {h for h, _, _ in ins + dels}:
+            assert out.report.touched == {"windowed": len(touched)}
+        assert rows(node) == recomputed(node, src)
+
+
+def test_windows_with_different_partitions_are_recomputed():
+    def mixed(samples):
+        return samples.select(
+            "host",
+            "minute",
+            a=ibis.row_number().over(group_by="host", order_by="minute"),
+            b=ibis.row_number().over(order_by="minute"),
+        )
+
+    src = StaticSource(samples([("a", 1, 5), ("b", 2, 3)]), name="samples")
+    node = src.pipe(mixed)
+    node.refresh()
+    assert view(node).strategy == "recompute and diff"
+    assert "do not share one PARTITION BY" in str(node.status())

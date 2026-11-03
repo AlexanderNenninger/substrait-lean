@@ -128,6 +128,15 @@ measure. `#print axioms Substrait.contract_sound` lists them.
 - With a cap `n ≤ 2³²` and an input interval `[lo, hi]` within `2⁴⁰⁰`, a
   `SUM` lies in `[min(lo, n·lo) − τ, max(hi, n·hi) + τ]` and an `AVG` in
   `[lo − τ', hi + τ']` (`floatBound`, `Measure.abs`).
+- Casts carry these bounds on. A cast to an integer truncates both ends of
+  the interval, so `CAST(AVG(cpu) AS BIGINT)` is in `[0, 100]`, and a cast
+  to a decimal rounds them. Both are monotone, and `verify` reports no failed
+  cast or overflow where the casts of the ends fit (`Rel.issuesCapped` decides
+  every issue on the plan with capped reads, `Rel.hasIssue_capReads`). A
+  `SUM` of integers cast to doubles adds the doubles they convert to, and
+  their bounds are the conversions of the integers' bounds
+  (`FloatCode.ofInt_mono`), so each conversion's rounding beyond `2⁵³` is in
+  them already.
 - `sv.approx(cond, rel=1e-6)` relaxes each comparison of a column with a
   number `k` in `cond` by `rel · max(1, |k|)`. The default covers a `SUM` or
   `AVG` over any cap up to `2³²` rows. A report hints at it when an exact

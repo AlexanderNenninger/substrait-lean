@@ -562,8 +562,14 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   | none, some c => match field? c "type" with
     | some ty => if typeKind ty == .float then intBits ty else e.bits cols
     | none => e.bits cols
-  -- Arithmetic on constants alone is 64-bit, as their own types are.
-  | none, none => if e.readsField then e.bits cols else 64
+  -- A call has its declared output type's width: `(10::TINYINT * 10) * 10`
+  -- is 8-bit arithmetic throughout (#419). Without one, arithmetic on
+  -- constants alone is 64-bit, as DataFusion types it.
+  | none, none =>
+    match (field? j "scalarFunction").bind (field? · "outputType") with
+    | some ty => if (["i8", "i16", "i32"].any fun k => (ty.getObjVal? k).toOption.isSome)
+        then intBits ty else if e.readsField then e.bits cols else 64
+    | none => if e.readsField then e.bits cols else 64
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"

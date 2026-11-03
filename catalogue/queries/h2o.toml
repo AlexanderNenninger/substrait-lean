@@ -99,6 +99,9 @@ q = (
     .select("id6", largest2_v3=_.v3)
 )
 '''
+# Not verified SQL: `v3` ties within an `id6` in the benchmark's data, so the ROW_NUMBER
+# counts as nondeterministic, although the output keeps only `id6` and `v3`, which agree
+# on tied rows (#473). A `unique('id6', 'v3')` precondition would not be honest.
 requires = '''
 {
     'x': [_.v3.between(0, 100)],
@@ -115,10 +118,24 @@ intent = "Compute the squared Pearson correlation of two measures per pair of ke
 domain = "benchmark"
 source = { name = "db-benchmark groupby q9", url = "https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py", licence = "MPL-2.0" }
 features = ["group_by", "corr", "math_funcs", "agg_arithmetic"]
-pitfalls = ["division_by_zero: a group with constant v1 has no correlation (NULL or NaN by engine)"]
+pitfalls = ["degenerate_statistic: a group with constant v1 or v2 has no correlation (NULL, or NaN in DuckDB's own CORR)"]
 ibis = '''
-q = x.group_by(["id2", "id4"]).aggregate(r2=_.v1.corr(_.v2) ** 2)
+q = x.group_by(["id2", "id4"]).aggregate(r2=_.v1.corr(_.v2, how="pop") ** 2)
 '''
+# The ranges are the benchmark generator's (v1 in 1..5, v2 in 1..15). Not verified SQL:
+# on the synthetic data every group has a constant v1 or v2, where DuckDB's own CORR
+# gives NaN and the reference gives NULL (the pitfall above); the written plan gives NULL.
+requires = '''
+{
+    'x': [_.v1.between(1, 5), _.v2.between(1, 15)],
+}
+'''
+ensures = '''
+[
+    sv.unique('id2', 'id4'),
+]
+'''
+notes = "The population correlation: Pearson's r is the same for the sample and the population (the n − 1 cancels), and SQLGlot writes only the population form for DuckDB."
 
 [[query]]
 id = "h2o-groupby-q10"

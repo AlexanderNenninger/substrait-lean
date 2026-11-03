@@ -89,3 +89,25 @@ def test_the_generated_lift_is_duckdbs_with_nan_and_infinities(query):
     # (#268), which states NaN and ±inf exactly instead of refusing them.
     result = check(query, TABLES)
     assert result.ok, f"{result.stage}: {result.detail}"
+
+
+def test_duckdb_avg_of_a_nullable_integer_cannot_divide_by_zero():
+    # A group whose values are all NULL counts 0: the quotient is NULL (#434).
+    import ibis
+
+    import sverify as sv
+
+    jobs = ibis.table({"workflow": "!string", "duration_s": "int64"}, name="jobs")
+    query = "SELECT workflow, avg(duration_s) AS a FROM jobs GROUP BY workflow"
+    report = sv.verify(sv.sql(query, jobs=jobs, semantics="duckdb"))
+    assert not [i for i in report.issues if "division by zero" in str(i)], report
+    con = ibis.duckdb.connect()
+    con.raw_sql(
+        "CREATE TABLE jobs AS SELECT * FROM (VALUES ('a', NULL::BIGINT), ('b', 4))"
+        " t(workflow, duration_s)"
+    )
+    rows = sv.sql(query, jobs=con.table("jobs"), semantics="duckdb").order_by("workflow")
+    assert rows.to_pyarrow().to_pylist() == [
+        {"workflow": "a", "a": None},
+        {"workflow": "b", "a": 4.0},
+    ]

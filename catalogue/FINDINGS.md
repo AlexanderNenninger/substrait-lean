@@ -268,7 +268,7 @@ semi-structured data.
 |---|---|---|---|---|---|---|---|---|---|
 | clickbench | 7 | 7 | 0 | 0 | 0 | 7 | 6 | 7 | 6 |
 | finance | 18 | 15 | 0 | 3 | 0 | 16 | 3 | 14 | 3 |
-| h2o | 10 | 9 | 0 | 1 | 0 | 9 | 8 | 9 | 6 |
+| h2o | 10 | 9 | 0 | 1 | 0 | 10 | 8 | 8 | 6 |
 | iot | 12 | 11 | 0 | 1 | 0 | 12 | 10 | 11 | 8 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
 | modelling | 14 | 11 | 0 | 3 | 0 | 14 | 10 | 11 | 9 |
@@ -278,7 +278,7 @@ semi-structured data.
 | tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 0 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 0 | 22 | 6 |
 | windows | 13 | 11 | 0 | 2 | 0 | 13 | 11 | 11 | 5 |
-| **all** | 139 | 124 | 0 | 15 | 0 | 136 | 77 | 122 | 68 |
+| **all** | 139 | 124 | 0 | 15 | 0 | 137 | 77 | 121 | 68 |
 
 ### Feature frequency
 
@@ -408,6 +408,7 @@ Over the 124 queries that verify (some only as DOUBLE):
 | snowflake: refused: snowflake does not add a frame's doubles in order, and the rounding depends on it | 2 |
 | polars: refused: regexp_replace is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: regexp_replace is not yet supported on snowflake; see #271 | 1 |
+| duckdb: differs | 1 |
 | polars: refused: corr is not yet supported on Polars; see #271 | 1 |
 | snowflake: refused: covariance and correlation are not yet supported on snowflake; see #271 | 1 |
 | polars: refused: md5 is not yet supported on Polars; see #271 | 1 |
@@ -422,7 +423,7 @@ Over the 124 queries that verify (some only as DOUBLE):
 | `null_join_keys` | 19 | N4 |
 | `empty_aggregate` | 16 | A1 |
 | `timezone_dst` | 14 | D8 |
-| `division_by_zero` | 14 | I4, I5, F5 |
+| `division_by_zero` | 13 | I4, I5, F5 |
 | `decimal_scale` | 12 | – |
 | `float_sum_order` | 12 | F8 |
 | `window_default_frame` | 11 | O4 |
@@ -442,6 +443,7 @@ Over the 124 queries that verify (some only as DOUBLE):
 | `implicit_coercion` | 2 | I1, D1, D7 |
 | `regex_dialect` | 1 | S6 |
 | `duration_vs_interval` | 1 | – |
+| `degenerate_statistic` | 1 | – |
 | `eager_evaluation` | 1 | E1, E2, E4, E5 |
 | `like_escape` | 1 | S5 |
 | `substr_index` | 1 | S1, S2, S3 |

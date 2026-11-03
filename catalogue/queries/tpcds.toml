@@ -113,6 +113,24 @@ ORDER BY i_item_id, s_state
 LIMIT 100
 '''
 notes = "Ibis has no ROLLUP or GROUPING SETS, so this is DataFusion SQL."
+# The grand total of the ROLLUP over no rows has a NULL average, hence `agg1 IS NULL`.
+# AVG of integers is lifted as SUM / COUNT, so its bounds stop at 0. The query is SQL, so
+# its conditions are SQL too.
+requires = '''
+{
+    'store_sales': ['ss_quantity BETWEEN 1 AND 100', 'ss_list_price BETWEEN 1 AND 300', 'ss_sales_price BETWEEN 0 AND 300', 'ss_coupon_amt BETWEEN 0 AND 30000'],
+    'customer_demographics': [sv.unique('cd_demo_sk')],
+    'date_dim': [sv.unique('d_date_sk')],
+    'store': [sv.unique('s_store_sk')],
+    'item': [sv.unique('i_item_sk')],
+}
+'''
+ensures = '''
+[
+    'g_state BETWEEN 0 AND 1',
+    'agg1 IS NULL OR agg1 >= 0',
+]
+'''
 
 [[query]]
 id = "tpcds-q36"
@@ -142,6 +160,24 @@ ORDER BY lochierarchy DESC,
 LIMIT 100
 '''
 notes = "Ibis has no ROLLUP, so this is DataFusion SQL."
+# Not proved: a ROLLUP is a UNION ALL, which has no key, so the RANK over it counts as
+# nondeterministic and both postconditions are undetermined, although RANK does not
+# depend on how ties are broken (#471). The margin divides by SUM(ss_ext_sales_price),
+# which is 0 when every price is (the preconditions allow a price of 0).
+requires = '''
+{
+    'store_sales': ['ss_ext_sales_price BETWEEN 0 AND 30000'],
+    'date_dim': [sv.unique('d_date_sk')],
+    'item': [sv.unique('i_item_sk')],
+    'store': [sv.unique('s_store_sk')],
+}
+'''
+ensures = '''
+[
+    'lochierarchy BETWEEN 0 AND 2',
+    'rank_within_parent >= 1',
+]
+'''
 
 [[query]]
 id = "tpcds-q42"
@@ -212,6 +248,10 @@ q = (
     .limit(100)
 )
 '''
+# Not verified SQL: the FULL JOIN of the two daily series, with item_sk and d_date
+# coalesced, has those columns as a key, but `Rel.keys` derives none through a FULL JOIN
+# (#472). So the final windows count as nondeterministic, and both postconditions are
+# undetermined.
 requires = '''
 {
     'web_sales': [_.ws_sales_price.between(0, 300)],
@@ -265,6 +305,10 @@ q = (
     .limit(100)
 )
 '''
+# Not proved: the monthly sums, rescaled to compare with the average, may overflow their
+# decimal type until row caps bound exact sums (#470), and the division under
+# `avg_monthly_sales != 0` is not seen as guarded. TPC-DS gives approximate row counts
+# only, so no cap is stated.
 requires = '''
 {
     'store_sales': [_.ss_sales_price.between(0, 300)],
@@ -302,6 +346,9 @@ q = rev.mutate(
     revenueratio=rev.itemrevenue * 100 / rev.itemrevenue.sum().over(ibis.window(group_by="i_class"))
 ).order_by(["i_category", "i_class", "i_item_id", "i_item_desc", "revenueratio"])
 '''
+# Not proved: `itemrevenue * 100` may overflow its decimal type until row caps bound
+# exact sums (#470), and a class's revenue may be 0 (the preconditions allow a price of
+# 0), so the ratio may divide by zero.
 requires = '''
 {
     'store_sales': [_.ss_ext_sales_price.between(0, 30000)],
