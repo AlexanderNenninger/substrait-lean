@@ -1,4 +1,4 @@
-# TEMPORARY: measures cold builds before and after check_generated. Removed before merge.
+# TEMPORARY: measures cold builds before and after check_generated, on one runner. Removed before merge.
 name: build-measure
 on:
   push:
@@ -7,25 +7,26 @@ permissions:
   contents: read
 jobs:
   measure:
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [main, quick, checked]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ matrix.variant == 'main' && 'main' || github.sha }}
+          fetch-depth: 0
       - uses: ./.github/actions/setup-lean
         with:
           cache: "false"
-      - name: cold lake build
+      - name: cold builds
         run: |
-          rm -rf .lake
-          case "${{ matrix.variant }}" in
-            main) args="build" ;;
-            quick) args="-R build" ;;
-            checked) args="-R -Kcheck_generated=true build" ;;
-          esac
-          /usr/bin/time -v lake $args 2>&1 | grep -E "Elapsed|Maximum resident|error|Build completed|Built SubstraitLean\.(Lift|Lowering)DuckDB\.[A-Za-z]+\.[A-Za-z]+ \(" | cut -c1-200
+          measure() {
+            rm -rf .lake
+            echo "== $1"
+            /usr/bin/time -v lake $2 > /tmp/out 2>&1 || echo "FAILED"
+            grep -E "Elapsed|Maximum resident|error" /tmp/out | cut -c1-200
+            grep -oE "Built SubstraitLean[A-Za-z.]* \([0-9.]+m?s\)" /tmp/out | grep -v "ms)" | sort -t'(' -k2 -rn | head -6
+          }
+          sha=$(git rev-parse HEAD)
+          git checkout -q origin/main; measure main "build"
+          git checkout -q $sha; measure quick "-R build"
+          measure checked "-R -Kcheck_generated=true build"
+          git checkout -q origin/main; measure main-again "build"
