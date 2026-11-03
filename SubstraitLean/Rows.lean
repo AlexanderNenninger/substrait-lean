@@ -114,7 +114,7 @@ theorem leftJoinRow_length_le {on : Expr} {m : Nat} {B : Relation} {x : Row} {k 
   unfold leftJoinRow
   simp only []
   split
-  · simp
+  · exact Nat.le_max_left _ _
   · exact Nat.le_trans h (Nat.le_max_right _ _)
 
 theorem aggregateEval_length_le (gs : List Expr) (ms : List Measure) (rows : Relation) :
@@ -123,7 +123,7 @@ theorem aggregateEval_length_le (gs : List Expr) (ms : List Measure) (rows : Rel
   split
   · simp
   · simp only [List.length_map]
-    exact (dedup_length_le _).trans (by simp)
+    exact (Nat.le_trans (dedup_length_le _) (by simp))
 
 theorem optMul_le {a b : Option Nat} {x y n : Nat}
     (ha : ∀ k, a = some k → x ≤ k) (hb : ∀ k, b = some k → y ≤ k)
@@ -146,7 +146,7 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
     subst h; simp [eval]
   | .filter r _, hwf, n, h => by
     simp only [eval]
-    exact (List.length_filter_le _ _).trans (maxRows_sound hcat hA hF hK hR hwf.1 n h)
+    exact (Nat.le_trans (List.length_filter_le _ _) (maxRows_sound hcat hA hF hK hR hwf.1 n h))
   | .project r _, hwf, n, h => by
     simp only [eval, List.length_map]
     exact maxRows_sound hcat hA hF hK hR hwf.1 n h
@@ -161,10 +161,10 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
     exact maxRows_sound hcat hA hF hK hR hwf.1 n h
   | .distinct r, hwf, n, h => by
     simp only [eval]
-    exact (dedup_length_le _).trans (maxRows_sound hcat hA hF hK hR (r := r) hwf n h)
+    exact (Nat.le_trans (dedup_length_le _) (maxRows_sound hcat hA hF hK hR (r := r) hwf n h))
   | .semi a _ _ _, hwf, n, h => by
     simp only [eval]
-    exact (List.length_filter_le _ _).trans (maxRows_sound hcat hA hF hK hR hwf.1 n h)
+    exact (Nat.le_trans (List.length_filter_le _ _) (maxRows_sound hcat hA hF hK hR hwf.1 n h))
   | .cross a b, hwf, n, h => by
     simp only [eval, crossRows_length]
     exact optMul_le (maxRows_sound hcat hA hF hK hR hwf.1) (maxRows_sound hcat hA hF hK hR hwf.2) h
@@ -188,24 +188,25 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
         exact length_flatMap_le hp
       | left =>
         simp only [eval]
-        exact length_flatMap_le fun x hx => (leftJoinRow_length_le (hp x hx)).trans (by simp)
+        exact length_flatMap_le fun x hx => (Nat.le_trans (leftJoinRow_length_le (hp x hx)) (by simp))
     · cases ty with
       | inner =>
         simp only [eval]
-        refine (List.length_filter_le _ _).trans ?_
+        refine (Nat.le_trans (List.length_filter_le _ _) ?_)
         rw [crossRows_length]
         exact optMul_le ha hb h
       | left =>
         simp only [eval]
         refine Nat.le_trans (length_flatMap_le (k := max 1 (b.eval cat).length) fun x _ =>
-          leftJoinRow_length_le ((List.length_filter_le _ _).trans (by simp))) ?_
+          leftJoinRow_length_le ((Nat.le_trans (List.length_filter_le _ _) (by simp)))) ?_
         refine optMul_le ha (fun k hk => ?_) h
         cases hbr : b.maxRows cat A F K R with
         | none => simp [hbr] at hk
         | some j =>
           simp only [hbr, Option.map_some, Option.some.injEq] at hk
           subst hk
-          exact Nat.max_le_max (Nat.le_refl 1) (hb j hbr)
+          have := hb j hbr
+          omega
   | .fetch r off cnt, hwf, n, h => by
     have hr := maxRows_sound hcat hA hF hK hR (r := r) hwf
     simp only [maxRows] at h
@@ -242,7 +243,7 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
     omega
   | .aggregate r gs ms, hwf, n, h => by
     simp only [eval]
-    refine (aggregateEval_length_le gs ms _).trans ?_
+    refine (Nat.le_trans (aggregateEval_length_le gs ms _) ?_)
     simp only [maxRows] at h
     split at h
     · simp only [Option.some.injEq] at h
@@ -296,7 +297,12 @@ theorem intSum_natAbs_le {m : Nat} :
       omega
 
 theorem inI64_of_natAbs_le {s : Int} (h : (s.natAbs : Int) ≤ maxI64) : inI64 s = true := by
-  simp only [inI64, minI64, maxI64, Bool.and_eq_true, decide_eq_true_eq] at h ⊢
+  have h1 : s ≤ (s.natAbs : Int) := Int.le_natAbs
+  have h2 : -s ≤ (s.natAbs : Int) := by rw [← Int.natAbs_neg]; exact Int.le_natAbs
+  have hm : maxI64 = 9223372036854775807 := rfl
+  have hn : minI64 = -9223372036854775808 := rfl
+  rw [hm] at h
+  simp only [inI64, hn, hm, Bool.and_eq_true, decide_eq_true_eq]
   omega
 
 theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
@@ -307,10 +313,10 @@ theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
     · exact Nat.le_refl _
     · exact List.length_filter_le _ _
   have hv : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
-    (List.length_filter_le _ _).trans (by simpa using hk)
+    (Nat.le_trans (List.length_filter_le _ _) (by simpa using hk))
   simp only [Measure.inputs]
   split
-  · exact (dedup_length_le _).trans hv
+  · exact (Nat.le_trans (dedup_length_le _) hv)
   · exact hv
 
 theorem length_le_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
@@ -343,7 +349,7 @@ theorem Rel.sumFits_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
   · rename_i n hn
     have hrows := maxRows_sound hcat hA hF hK hR hwf n hn
     have hlen : (m.inputs grp).length ≤ n :=
-      (Measure.inputs_length_le m grp).trans ((length_le_of_mem_aggGroups hgrp).trans hrows)
+      (Nat.le_trans (Measure.inputs_length_le m grp) ((Nat.le_trans (length_le_of_mem_aggGroups hgrp) hrows)))
     unfold Substrait.sumFits at hfit
     split at hfit
     · rename_i M hM

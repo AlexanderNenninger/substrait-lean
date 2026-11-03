@@ -133,6 +133,50 @@ def unique(*cols: str) -> Unique:
 
 
 @dataclass(frozen=True)
+class RowsAtMost:
+    """At most `at_most` rows (see `rows`).
+
+    Attributes:
+        at_most: The largest number of rows.
+    """
+
+    at_most: int
+
+
+def rows(*, at_most: int) -> RowsAtMost:
+    """A bound on the number of rows (#219).
+
+    In `requires` it is an assumption about an input: checked on the data when
+    the input is bound to a backend, or proved from a Delta or Iceberg table's
+    metadata (the record counts of the files it reads). With it Lean bounds
+    the rows of every relation in the plan (`Rel.maxRows_sound` in
+    `SubstraitLean/Rows.lean`), and an integer `SUM` whose values lie in
+    `[-m, m]` over at most `n` rows, with `n · m < 2⁶³`, cannot overflow: the
+    report then has no "SUM overflow" to check while the job runs. In
+    `ensures` it is proved from the inputs' row bounds.
+
+    Args:
+        at_most: The largest number of rows, 0 or more.
+
+    Returns:
+        A `RowsAtMost` condition, for `requires` or `ensures`.
+
+    Raises:
+        ValueError: `at_most` is negative.
+
+    Examples:
+        ```python
+        sv.rows(at_most=10**6)
+        ```
+    """
+    if isinstance(at_most, bool) or not isinstance(at_most, int) or at_most < 0:
+        raise ValueError(
+            f"rows(at_most=...) takes a whole number of rows, 0 or more, not {at_most!r}"
+        )
+    return RowsAtMost(at_most)
+
+
+@dataclass(frozen=True)
 class References:
     """A foreign key: every non-NULL value of `col` occurs in column `other`
     of table `table` (see `references`).
@@ -265,7 +309,7 @@ def _checked_semantics(semantics: str) -> Semantics:
     return semantics  # type: ignore[return-value]
 
 
-TableCondition = (Unique, References, ArrivesWithin)
+TableCondition = (Unique, References, ArrivesWithin, RowsAtMost)
 """Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
@@ -275,6 +319,7 @@ Condition = (
     | Unique
     | References
     | ArrivesWithin
+    | RowsAtMost
     | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
@@ -424,6 +469,10 @@ class Report:
     bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    rows: int | None = None
+    """At most this many output rows, from the row bounds of the inputs
+    (`rows(at_most=...)` in `requires`, `Rel.maxRows_sound`); None if
+    nothing bounds them."""
     semantics: Semantics = "reference"
     """What the SQL the report lifted means (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
@@ -491,8 +540,10 @@ class Report:
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
         lines.append(f"semantics: {self.semantics}")
-        if self.facts:
+        if self.facts or self.rows is not None:
             lines.append("known about the output:")
+            if self.rows is not None:
+                lines.append(f"  rows: at most {self.rows:,}")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
         return "\n".join(lines)
 
@@ -519,6 +570,8 @@ class Report:
         ]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
+        if self.rows is not None:
+            facts.insert(0, f"| (rows) | at most {self.rows:,} |")
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         if self.params:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
@@ -841,6 +894,8 @@ def label(cond: Condition) -> str:
         return f"references({cond.col}, {cond.table}.{cond.other})"
     if isinstance(cond, ArrivesWithin):
         return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
+    if isinstance(cond, RowsAtMost):
+        return f"rows(at_most={cond.at_most:_})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
@@ -1192,6 +1247,11 @@ def _verify_once(
         t: [foreign_key(t, c) for c in cs if isinstance(c, References)]
         for t, cs in requires.items()
     }
+    row_bounds = {
+        t: min(c.at_most for c in cs if isinstance(c, RowsAtMost))
+        for t, cs in requires.items()
+        if any(isinstance(c, RowsAtMost) for c in cs)
+    }
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1199,6 +1259,7 @@ def _verify_once(
         "keys": keys,
         "ensures_keys": ensures_keys,
         "references": foreign_keys,
+        "rows": row_bounds,
     }
 
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -1250,6 +1311,10 @@ def _verify_once(
             checked.append(
                 CheckedCondition(label(c), False, "lateness is checked on a source's batches")
             )
+        elif isinstance(c, RowsAtMost):
+            n = out.get("rows")
+            value = "no bound on the rows" if n is None else f"at most {n:,} rows"
+            checked.append(CheckedCondition(label(c), n is not None and n <= c.at_most, value))
         else:
             e = next(rows)
             p = next(ens_iter)
@@ -1276,6 +1341,7 @@ def _verify_once(
         rewrites=out["rewrites"],
         params=bound,
         bounds=_int_bounds(out["facts"], dtypes),
+        rows=out.get("rows"),
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
@@ -1396,7 +1462,8 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
 
 def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
-    `unique`, rows beyond the first for each repeated key.
+    `unique`, rows beyond the first for each repeated key, and for `rows`,
+    rows beyond the bound.
 
     With an engine named, the condition's plan runs there, over the tables of
     the connection `table` is bound to; otherwise Ibis counts on that
@@ -1417,6 +1484,9 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         # the pipeline against the watermark.
         nulls: Any = table.filter(table[cond.col].isnull()).count()
         return int(nulls.execute())
+    if isinstance(cond, RowsAtMost):
+        n: Any = table.count()
+        return max(0, int(n.execute()) - cond.at_most)
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
@@ -1443,6 +1513,9 @@ class Fact:
 
     condition: str
     source: str
+    rows: int | None = None
+    """For a row-count fact, at most this many rows; its `condition` is then
+    `TRUE` (the file record counts of a table format, #219)."""
 
 
 SCHEMA = "schema"
@@ -1523,10 +1596,16 @@ def discharge(
     `PreconditionError` with "<n> <what> violate <condition>"."""
     out: list[Discharged] = []
     todo = list(conds)
+    counted = [f for f in facts or [] if f.rows is not None]
+    for c in [c for c in todo if isinstance(c, RowsAtMost)]:
+        if fact := next((f for f in counted if f.rows <= c.at_most), None):  # type: ignore[operator]
+            out.append(Discharged(name, label(c), fact.source))
+            todo.remove(c)
     if facts is not None:
         stages: dict[str, list[str]] = {SCHEMA: []}
         for f in facts:
-            stages.setdefault(f.source, []).append(f.condition)
+            if f.rows is None:
+                stages.setdefault(f.source, []).append(f.condition)
         assumed: list[str] = []
         for source, extra in stages.items():
             rowwise = [c for c in todo if not isinstance(c, TableCondition)]

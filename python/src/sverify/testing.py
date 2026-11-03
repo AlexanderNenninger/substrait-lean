@@ -56,6 +56,7 @@ from sverify.contracts import (
     ArrivesWithin,
     Condition,
     References,
+    RowsAtMost,
     TableCondition,
     Unique,
     _lookup,
@@ -409,6 +410,8 @@ def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
         return [r for r in rows if keys[_norm(tuple(r[c] for c in cond.cols))] > 1]
     if isinstance(cond, ArrivesWithin):
         return [r for r in rows if r[cond.col] is None]
+    if isinstance(cond, RowsAtMost):
+        return rows[cond.at_most :]
     if isinstance(cond, References):
         present = {_norm(r[cond.other]) for r in con.arrow[cond.table].to_pylist()}
         return [r for r in rows if r[cond.col] is not None and _norm(r[cond.col]) not in present]
