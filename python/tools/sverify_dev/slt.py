@@ -504,15 +504,20 @@ _FRONTEND = tuple(
 _PROBE = re.compile(r"^\s*(\(\s*)*(SELECT|WITH|VALUES|FROM|TABLE)\b", re.I)
 
 
+_DML = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE)\b", re.I)
+
+
 def _modifies(sql: str) -> str | None:
     """The statement that modifies data inside a query, such as an INSERT in
     a CTE (#318), or None."""
     import sqlglot as sg
 
+    if not _DML.search(sql):
+        return None  # most queries: no need to parse
     try:
         tree = sg.parse_one(sql, read="duckdb")
-    except sg.errors.ParseError:
-        return None
+    except (sg.errors.SqlglotError, RecursionError):
+        return None  # the lift says why, as for any query
     found = tree.find(sg.exp.Insert, sg.exp.Update, sg.exp.Delete, sg.exp.Merge)
     return None if found is None else found.key.upper()
 
