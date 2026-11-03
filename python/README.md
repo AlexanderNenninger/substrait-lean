@@ -82,8 +82,9 @@ uv keeps the version and drops the page, so add it to your `pyproject.toml`;
 find-links = ["https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly"]
 ```
 
-A wheel's own URL pins one build, until the next nightly replaces it. Copy it
-from the release page:
+Each build's wheels stay on the release for 30 days, so a wheel's own URL pins
+one build for that long. `--find-links` sees every build on the page and picks
+the newest. Copy a URL from the release page:
 
 ```bash
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
