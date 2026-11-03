@@ -160,6 +160,9 @@ def write (df : Bool) (plan : Plan) : IO UInt32 := do
       IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
       return 1
   if df then
+    if plan.root.floatExtremes plan.tables then
+      IO.eprintln "error: MIN and MAX of doubles are not yet supported on DataFusion; see #271"
+      return 1
     if plan.root.anyExpr Expr.nestedAccess then
       IO.eprintln "error: DataFusion does not run struct fields, list elements or cardinality as the reference does (#94)"
       return 1

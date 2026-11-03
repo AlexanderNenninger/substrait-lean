@@ -92,15 +92,32 @@ finite double of their sign. -/
 def finite (c : Int) : Int :=
   if posInf ≤ c then ofMag false maxMag else if c ≤ negInf then ofMag true maxMag else c
 
-/-- An integer as a double. IEEE rounds an integer to `±∞` only from
-`2¹⁰²⁴` on, so for every integer the model holds (64 bits at most) `finite`
-changes nothing; it lets the checker know the double is finite, so that no
-`SUM` or `AVG` of converted integers can add `+∞` and `-∞` (#257). -/
+/-- `n` rounded to a multiple of `2ˢ`, halves to the even multiple (IEEE's
+round to nearest). -/
+def roundTo2 (s n : Nat) : Nat :=
+  if 2 ^ s < 2 * (n % 2 ^ s) ∨ (2 * (n % 2 ^ s) = 2 ^ s ∧ n / 2 ^ s % 2 = 1) then
+    (n / 2 ^ s + 1) * 2 ^ s
+  else n / 2 ^ s * 2 ^ s
+
+/-- `n` rounded to 53 significant bits, as IEEE rounds an integer to a
+double (before the exponent's range is applied). -/
+def roundSig (n : Nat) : Nat := roundTo2 (Nat.log2 n - 52) n
+
+/-- The code of `i` rounded to 53 significant bits, without a bound on the
+exponent. -/
+def ofIntRaw (i : Int) : Int :=
+  let m : Int := (roundSig i.natAbs * 2 ^ 1074 : Nat)
+  if i = 0 then 0 else if i < 0 then -(2 * m + 1) else 2 * m + 1
+
+/-- An integer as a double, computed exactly (#372): its magnitude rounded
+to 53 significant bits, halves to even, as IEEE converts it. Magnitudes from
+`2¹⁰²⁴` on become the largest finite double (as `finite` makes them); IEEE
+rounds them to `±∞`, but no integer the model holds (64 bits at most) gets
+there, and it lets the checker know the double is finite, so that no `SUM` or `AVG` of
+converted integers can add `+∞` and `-∞` (#257). Exact, so that the checker
+can use that the conversion is monotone (`ofInt_mono`). -/
 def ofInt (i : Int) : Int :=
-  let c := finite (ofFloat (Float.ofInt i))
-  -- A non-zero integer is a non-zero double; this, too, changes nothing, and
-  -- lets the checker see that `CAST(n AS DOUBLE)` of a non-zero `n` is not 0.
-  if i ≠ 0 ∧ c = 0 then (if 0 < i then ofMag false 1 else ofMag true 1) else c
+  max (-(2 * (maxMag : Int) + 1)) (min (2 * (maxMag : Int) + 1) (ofIntRaw i))
 
 theorem posInf_eq : posInf = 2 * maxMag + 3 := by
   simp only [posInf, ofMag, infMag, Nat.add_one_ne_zero, ite_false, Bool.false_eq_true,
@@ -126,21 +143,110 @@ theorem finite_bounds (c : Int) : negInf < finite c ∧ finite c < posInf := by
   split <;> (try split) <;> omega
 
 theorem ofInt_bounds (i : Int) : negInf < ofInt i ∧ ofInt i < posInf := by
-  have hM := maxMag_pos
-  have hf := finite_bounds (ofFloat (Float.ofInt i))
-  simp only [ofInt]
-  split
-  · simp only [ofMag, posInf_eq, negInf_eq] at hf ⊢
-    have : (1 : Nat) ≠ nanMag := by simp [nanMag]
-    split <;> simp [this] <;> omega
-  · exact hf
+  simp only [ofInt, posInf_eq, negInf_eq]; omega
 
 theorem ofInt_ne_zero {i : Int} (h : i ≠ 0) : ofInt i ≠ 0 := by
-  simp only [ofInt]
+  have := maxMag_pos
+  simp only [ofInt, ofIntRaw, h, ite_false]
+  split <;> omega
+
+theorem roundTo2_mono (s : Nat) {n n' : Nat} (h : n ≤ n') : roundTo2 s n ≤ roundTo2 s n' := by
+  have hP : 0 < 2 ^ s := Nat.two_pow_pos s
+  have hq : n / 2 ^ s ≤ n' / 2 ^ s := Nat.div_le_div_right h
+  have hd := Nat.div_add_mod n (2 ^ s)
+  have hd' := Nat.div_add_mod n' (2 ^ s)
+  have hr := Nat.mod_lt n hP
+  have hr' := Nat.mod_lt n' hP
+  have lo : ∀ m, m / 2 ^ s * 2 ^ s ≤ roundTo2 s m := fun m => by
+    unfold roundTo2; split
+    · exact Nat.mul_le_mul_right _ (Nat.le_succ _)
+    · exact Nat.le_refl _
+  have hi : ∀ m, roundTo2 s m ≤ (m / 2 ^ s + 1) * 2 ^ s := fun m => by
+    unfold roundTo2; split
+    · exact Nat.le_refl _
+    · exact Nat.mul_le_mul_right _ (Nat.le_succ _)
+  rcases Nat.lt_or_eq_of_le hq with hlt | heq
+  · calc roundTo2 s n ≤ (n / 2 ^ s + 1) * 2 ^ s := hi n
+      _ ≤ n' / 2 ^ s * 2 ^ s := Nat.mul_le_mul_right _ hlt
+      _ ≤ roundTo2 s n' := lo n'
+  · have hrr : n % 2 ^ s ≤ n' % 2 ^ s := by
+      rw [Nat.mul_comm] at hd hd'
+      rw [heq] at hd; omega
+    have key := lo n'
+    unfold roundTo2 at key ⊢
+    rw [heq]
+    split
+    · split
+      · exact Nat.le_refl _
+      · omega
+    · split
+      · exact Nat.mul_le_mul_right _ (Nat.le_succ _)
+      · exact Nat.le_refl _
+
+theorem roundTo2_mul (s k : Nat) : roundTo2 s (k * 2 ^ s) = k * 2 ^ s := by
+  have hP : 0 < 2 ^ s := Nat.two_pow_pos s
+  have hm : k * 2 ^ s % 2 ^ s = 0 := Nat.mul_mod_left _ _
+  have hdv : k * 2 ^ s / 2 ^ s = k := Nat.mul_div_cancel _ hP
+  unfold roundTo2
+  rw [hm, hdv]
   split
-  · have : (1 : Nat) ≠ nanMag := by simp [nanMag]
-    split <;> simp [ofMag, this]
-  · rename_i hc; intro h0; exact hc ⟨h, h0⟩
+  · omega
+  · rfl
+
+theorem log2_mono {n n' : Nat} (h : n ≤ n') : Nat.log2 n ≤ Nat.log2 n' := by
+  by_cases hn : n = 0
+  · subst hn; exact Nat.zero_le _
+  · exact (Nat.le_log2 (by omega)).2 (Nat.le_trans (Nat.log2_self_le hn) h)
+
+theorem roundSig_mono {n n' : Nat} (h : n ≤ n') : roundSig n ≤ roundSig n' := by
+  unfold roundSig
+  have hl := log2_mono h
+  by_cases hs : Nat.log2 n - 52 = Nat.log2 n' - 52
+  · rw [hs]; exact roundTo2_mono _ h
+  · -- `n` rounds to at most `2^(s+53)`, `n'` to at least `2^(s'+52)`, and `s < s'`.
+    have hn' : n' ≠ 0 := by
+      intro h0; subst h0
+      have : n = 0 := by omega
+      subst this; exact hs rfl
+    have h1 : n < 2 ^ 53 * 2 ^ (Nat.log2 n - 52) := by
+      rw [← Nat.pow_add]
+      exact Nat.lt_of_lt_of_le Nat.lt_log2_self (Nat.pow_le_pow_right (by decide) (by omega))
+    have h2 : 2 ^ 52 * 2 ^ (Nat.log2 n' - 52) ≤ n' := by
+      rw [← Nat.pow_add]
+      exact Nat.le_trans (Nat.pow_le_pow_right (by decide) (by omega)) (Nat.log2_self_le hn')
+    have h3 : 2 ^ 53 * 2 ^ (Nat.log2 n - 52) ≤ 2 ^ 52 * 2 ^ (Nat.log2 n' - 52) := by
+      rw [← Nat.pow_add, ← Nat.pow_add]
+      exact Nat.pow_le_pow_right (by decide) (by omega)
+    calc roundTo2 (Nat.log2 n - 52) n
+        ≤ roundTo2 (Nat.log2 n - 52) (2 ^ 53 * 2 ^ (Nat.log2 n - 52)) := roundTo2_mono _ (Nat.le_of_lt h1)
+      _ = 2 ^ 53 * 2 ^ (Nat.log2 n - 52) := roundTo2_mul _ _
+      _ ≤ 2 ^ 52 * 2 ^ (Nat.log2 n' - 52) := h3
+      _ = roundTo2 (Nat.log2 n' - 52) (2 ^ 52 * 2 ^ (Nat.log2 n' - 52)) := (roundTo2_mul _ _).symm
+      _ ≤ roundTo2 (Nat.log2 n' - 52) n' := roundTo2_mono _ h2
+
+theorem ofIntRaw_mono {i j : Int} (h : i ≤ j) : ofIntRaw i ≤ ofIntRaw j := by
+  simp only [ofIntRaw]
+  have hm : ∀ {a b : Nat}, a ≤ b →
+      ((roundSig a * 2 ^ 1074 : Nat) : Int) ≤ ((roundSig b * 2 ^ 1074 : Nat) : Int) :=
+    fun hab => Int.ofNat_le.2 (Nat.mul_le_mul_right _ (roundSig_mono hab))
+  have h0 : ∀ a : Nat, (0 : Int) ≤ ((roundSig a * 2 ^ 1074 : Nat) : Int) := fun _ => Int.natCast_nonneg _
+  by_cases hi0 : i = 0 <;> by_cases hj0 : j = 0 <;> simp only [hi0, hj0, ite_true, ite_false] <;>
+    (try split) <;> (try split) <;> (try omega)
+  all_goals first
+    | (have := hm (a := j.natAbs) (b := i.natAbs) (by omega); have := h0 j.natAbs; omega)
+    | (have := hm (a := i.natAbs) (b := j.natAbs) (by omega); have := h0 i.natAbs; omega)
+    | (have := h0 i.natAbs; have := h0 j.natAbs; omega)
+
+/-- The conversion of integers to doubles is monotone. -/
+theorem ofInt_mono {i j : Int} (h : i ≤ j) : ofInt i ≤ ofInt j := by
+  have := ofIntRaw_mono h
+  simp only [ofInt]; omega
+
+-- The native conversion agrees, also where it rounds (`2⁵³ + 1` is a tie).
+#guard [0, 1, -1, 7, -12345, 2 ^ 53, 2 ^ 53 + 1, 2 ^ 53 + 3, -(2 ^ 53 + 1), 2 ^ 63 - 1,
+  -(2 ^ 63), 2 ^ 62 + 2 ^ 9, 2 ^ 62 + 2 ^ 9 + 1, 2 ^ 1100, -(2 ^ 1100)].all fun i =>
+    ofInt i == finite (ofFloat (Float.ofInt i))
+#guard ofInt (2 ^ 1100) == ofMag false maxMag
 
 def isNan (c : Int) : Bool := c == nan
 

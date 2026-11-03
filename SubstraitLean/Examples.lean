@@ -169,6 +169,10 @@ end Substrait.Examples
 #print axioms Substrait.Rel.window_allColumns
 #print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
+#print axioms Substrait.FloatCode.ofInt_mono
+#print axioms Substrait.pairFacts_sound
+#print axioms Substrait.Rel.ratioPart_sound
+#print axioms Substrait.ratioSharpen_sound
 #print axioms Substrait.aggregateEval_key
 #print axioms Substrait.Triple.compose
 #print axioms Substrait.Triple.compose_spec

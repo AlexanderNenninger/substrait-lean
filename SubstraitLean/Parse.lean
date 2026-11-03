@@ -1992,8 +1992,11 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   if name == "avg" && decAvg.isNone && !intOut then
     if let some ty := field? m "outputType" then
       if typeKind ty != .float then throw "avg with a non-double result is not supported"
+  -- Doubles compare by their codes, as DuckDB orders them (`Float.lean`,
+  -- #371); engines that order them otherwise refuse the plan.
   let minMax (k : Kind) :=
-    k == .int || k == .str || k == .bool || k == .time || k == .date || k matches .dec _ _
+    k == .int || k == .float || k == .str || k == .bool || k == .time || k == .date ||
+      k matches .dec _ _
   let (fn, arg) ← match name, k with
     | "count", _ => pure (AggFn.count, arg)
     | "sum", .int => pure (.sum, arg)
@@ -2003,10 +2006,6 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "avg", .int => pure (if intOut then (.iavg, arg) else (.avg, .un .itof arg))
     | "avg", .float => pure (.avg, arg)
     | "avg", .dec p s => pure (.sum, .un (.decimal p s) arg)
-    -- DataFusion's grouped `MIN`/`MAX` of doubles compares like IEEE 754 from
-    -- ±f64::MAX: a group of +∞ has `MIN` f64::MAX, and NaN is skipped next
-    -- to other values.
-    | "min", .float | "max", .float => throw s!"{name} of doubles is not supported"
     | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
     | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
     | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"

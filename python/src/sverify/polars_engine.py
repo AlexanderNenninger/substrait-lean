@@ -1557,7 +1557,15 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
-        return acc / len(vs) + 0.0 if fn == "avg" else acc
+        if fn == "fsum":
+            return acc
+
+        # Within the values, NaN above `+∞` (`AggFn.avg`, #372).
+        def key(x: float) -> tuple[bool, float]:
+            return (math.isnan(x), x)
+
+        mean = max(acc / len(vs) + 0.0, min(vs, key=key), key=key)
+        return min(mean, max(vs, key=key), key=key)
     # `pickFold` keeps the first extreme; equal values are the same value here.
     return min(vs) if fn == "min" else max(vs)
 
@@ -2034,7 +2042,7 @@ class Translator:
             if name == "avg" and not itof and t == pl.Int64 and _int_output(w):
                 fn = "iavg"
             if name in ("min", "max") and t == pl.Float64:
-                raise Unsupported(f"{name} of doubles is not supported")
+                raise Unsupported(f"{name} of doubles is not yet supported on Polars; see #271")
             out = {"count": pl.Int64, "sum": pl.Int64, "fsum": pl.Float64, "avg": pl.Float64,
                    "iavg": pl.Int64, "bit_and": pl.Int64, "bit_or": pl.Int64,
                    "bit_xor": pl.Int64}  # fmt: skip
