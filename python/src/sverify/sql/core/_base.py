@@ -1,42 +1,9 @@
-"""Substrait plans as SQL, with the semantics of the Lean `Rel` model.
-
-`to_sql(plan, dialect)` reads a Substrait JSON plan the way
-`SubstraitLean/Parse.lean` does, so it accepts exactly the plans the checker
-accepts: the same operators, the same functions and the same constant folding,
-with every other construct rejected (`Unsupported`). It then writes one SQL
-query whose result is `Rel.eval` of the plan. Nothing is left to engine
-defaults:
-
-* Every subquery names its columns positionally (`c0`, `c1`, …), so field
-  references are unambiguous whatever the input tables call their columns.
-* Integers are `BIGINT`: operands are cast, and arithmetic must raise on
-  overflow (Lean's integers are unbounded; a wrapped result would be wrong).
-  Division and remainder truncate. Where DataFusion fails at run time
-  (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
-  Lean's value is NULL and `SubstraitLean/Safety.lean` says when that can
-  happen; the SQL raises there too (`Dialect.raise_`).
-* Doubles have one zero and one NaN (`SubstraitLean/Float.lean`): `-0.0` is
-  `0.0`, NaN equals itself and is above `inf`, in comparisons, join
-  conditions, groups, window partitions and sort keys. Every double read
-  from a table, and every one an operation could make `-0.0`, goes through
-  `Dialect.canon`, so `-0.0` never reaches a result.
-* Filters keep a row only when the condition is TRUE, `AND`/`OR`/`NOT` are
-  Kleene's, and every `ORDER BY` key says where NULLs go.
-* Row order follows `Rel.eval`'s list order wherever it matters. Below a
-  `FETCH` or a window, subqueries carry an ordinal column `o`: scan order for
-  tables, row index for `VALUES`, left-major for joins, branch order for
-  `UNION ALL` and sort order for windows. Window sorts break ties by it, as
-  Lean's stable merge sort does, and the query's result is ordered by it when
-  the plan has a `FETCH` or a window.
-
-Engines differ in syntax and in a few semantics; those go through the hooks of
-a `Dialect` (see `sverify.sql.duckdb`).
-"""
+"""What `sverify.sql.core` is made of, but each area's functions (`strings`,
+`temporal`, `nested`), which register themselves here (`register`)."""
 
 from __future__ import annotations
 
 import base64
-import calendar
 import json
 import math
 import re
@@ -616,7 +583,46 @@ class Dialect:
         own dialect, which agrees with Rust's on simple patterns."""
         raise Unsupported(f"{self.name}: regular expressions are not implemented")
 
-    # Aggregates
+    def regex_extract(self, s: str, pattern: str, group: int) -> str:
+        """`UnFn.regexExtract` (#50): group `group` of the first match of the
+        constant `pattern` in `s`, `''` where there is none."""
+        raise Unsupported(f"regexp_extract is not yet supported on {self.name}; see #271")
+
+    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
+        """`UnFn.regexReplace` (#50): the first match of the constant `pattern`
+        in `s`, or every match, replaced (`\\1` is a group)."""
+        raise Unsupported(f"regexp_replace is not yet supported on {self.name}; see #271")
+
+    def digest(self, fn: str, s: str) -> str:
+        """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
+        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
+
+    # Lists (#94)
+
+    def unnest_from(self, source: str, lst: str, alias: str) -> str:
+        """`source` joined with the elements of its list column `lst`, as
+        `alias(e, i)`: element and 1-based position, no row for a NULL or
+        empty list (`Rel.unnest`, #94)."""
+        raise Unsupported(f"unnest is not yet supported on {self.name}; see #271")
+
+    def list_lit(self, items: list[str], kind: Lst) -> str:
+        """A list literal of the SQL items, of kind `kind` (#94)."""
+        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+
+    def list_element(self, x: str, offset: int) -> str:
+        """`UnFn.listElement`: zero-based, from the end for a negative offset,
+        NULL out of range (#94)."""
+        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+
+    def cardinality(self, x: str) -> str:
+        """`UnFn.cardinality`: the number of elements, NULL ones included."""
+        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
+
+    def list_lt(self, a: str, b: str) -> str:
+        """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
+        prefix is smaller, two NULL elements are equal, and a NULL element
+        against a value makes the result NULL (#207)."""
+        raise Unsupported(f"{self.name}: ordering comparisons of lists are not implemented")
 
     # Decimals (#27). The reference computes them exactly; a dialect whose
     # engine does too, with the hooks below, sets `decimals`.
@@ -686,6 +692,8 @@ class Dialect:
     def decimal_window_sum(self, v: str, w: str, k: Dec) -> str:
         return self.cast(f"SUM({v}) {w}", k)
 
+    # Aggregates
+
     def int_sum(self, v: str) -> str:
         """`SUM` of the BIGINT column `v`, exactly; a sum outside 64 bits
         raises (DataFusion wraps around, Lean's sum is the true one)."""
@@ -720,43 +728,10 @@ class Dialect:
         in the order `order`, joined by `sep`; NULL without values."""
         raise Unsupported(f"string_agg is not yet supported on {self.name}; see #271")
 
-    def regex_extract(self, s: str, pattern: str, group: int) -> str:
-        """`UnFn.regexExtract` (#50): group `group` of the first match of the
-        constant `pattern` in `s`, `''` where there is none."""
-        raise Unsupported(f"regexp_extract is not yet supported on {self.name}; see #271")
-
-    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
-        """`UnFn.regexReplace` (#50): the first match of the constant `pattern`
-        in `s`, or every match, replaced (`\\1` is a group)."""
-        raise Unsupported(f"regexp_replace is not yet supported on {self.name}; see #271")
-
-    def digest(self, fn: str, s: str) -> str:
-        """`md5(s)` or `sha256(s)` (#50): lowercase hex of the UTF-8 bytes."""
-        raise Unsupported(f"{fn} is not yet supported on {self.name}; see #271")
-
     def collect(self, v: str, order: Sequence[str]) -> str:
         """`AggFn.collect` (#94): the non-NULL values of the column `v` as a
         list, in the order `order`; NULL without values."""
         raise Unsupported(f"array_agg is not yet supported on {self.name}; see #271")
-
-    def unnest_from(self, source: str, lst: str, alias: str) -> str:
-        """`source` joined with the elements of its list column `lst`, as
-        `alias(e, i)`: element and 1-based position, no row for a NULL or
-        empty list (`Rel.unnest`, #94)."""
-        raise Unsupported(f"unnest is not yet supported on {self.name}; see #271")
-
-    def list_lit(self, items: list[str], kind: Lst) -> str:
-        """A list literal of the SQL items, of kind `kind` (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
-
-    def list_element(self, x: str, offset: int) -> str:
-        """`UnFn.listElement`: zero-based, from the end for a negative offset,
-        NULL out of range (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
-
-    def cardinality(self, x: str) -> str:
-        """`UnFn.cardinality`: the number of elements, NULL ones included."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; see #271")
 
     def pair(self, a: str, b: str) -> str:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
@@ -805,12 +780,6 @@ class Dialect:
     def is_true(self, a: str) -> str:
         """TRUE when `a` is TRUE, FALSE when it is FALSE or NULL."""
         return f"({a} IS TRUE)"
-
-    def list_lt(self, a: str, b: str) -> str:
-        """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
-        prefix is smaller, two NULL elements are equal, and a NULL element
-        against a value makes the result NULL (#207)."""
-        raise Unsupported(f"{self.name}: ordering comparisons of lists are not implemented")
 
     def case_when(self, c: str, t: str, e: str) -> str:
         """`t` when `c` is TRUE, else `e` (also when `c` is NULL)."""
@@ -919,16 +888,41 @@ class Field:
     index: int
 
 
+# The operations of `Un` and `Bin`, by area: a new one goes into its area's.
+CoreUnOp = Literal[
+    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
+    "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
+]  # fmt: skip
+CoreBinOp = Literal[
+    "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
+    "idiv", "imod", "ipow", "fpow", "fatan2", "flogb", "bit", "pair", "greatest", "least",
+]  # fmt: skip
+
+#: Strings (`strings.py`).
+StringUnOp = Literal[
+    "upper", "lower", "length", "regex_match", "reverse", "ascii", "replace", "regex_extract",
+    "regex_replace", "md5", "sha256",
+]  # fmt: skip
+StringBinOp = Literal[
+    "concat", "strpos", "starts_with", "ends_with", "like", "substr", "trim", "repeat", "ilike",
+    "levenshtein",
+]  # fmt: skip
+
+#: Dates and timestamps (`temporal.py`).
+TemporalUnOp = Literal[
+    "date_part", "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day",
+    "as_time", "strftime", "bucket",
+]  # fmt: skip
+TemporalBinOp = Literal["date_add", "date_diff"]
+
+#: Lists (`nested.py`).
+NestedUnOp = Literal["list_elem", "cardinality"]
+NestedBinOp = Literal["list_lt"]
+
+
 @dataclass(frozen=True)
 class Un:
-    op: Literal[
-        "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo",
-        "ftoi", "narrow", "itos", "upper", "lower", "length", "regex_match", "date_part",
-        "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day", "as_time",
-        "strftime", "bucket", "reverse", "ascii", "replace", "fmath", "dtrunc", "dtof", "fit",
-        "regex_extract", "regex_replace", "md5", "sha256", "ftoi_or_null", "narrow_or_null",
-        "list_elem", "cardinality",
-    ]  # fmt: skip
+    op: CoreUnOp | StringUnOp | TemporalUnOp | NestedUnOp
     arg: Expr
     digits: int = 0
     """The `d` of `froundTo d`, the bits of `narrow` and `fit`, the months of
@@ -948,12 +942,7 @@ class Un:
 
 @dataclass(frozen=True)
 class Bin:
-    op: Literal[
-        "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fmod",
-        "idiv", "imod", "ipow", "fpow", "concat", "strpos", "starts_with", "ends_with",
-        "like", "substr", "trim", "date_add", "date_diff", "repeat", "ilike", "levenshtein",
-        "fatan2", "flogb", "bit", "list_lt", "pair", "greatest", "least",
-    ]  # fmt: skip
+    op: CoreBinOp | StringBinOp | TemporalBinOp | NestedBinOp
     left: Expr
     right: Expr
     length: int | None = None
@@ -1347,6 +1336,22 @@ def _lean_lit_kind(v: Any) -> LeanKind:
     return "str" if isinstance(v, str) else "int"
 
 
+#: The result kinds of operations whose result kind is fixed, by `Un.op` and
+#: `Bin.op` (`Expr.kind`): the core ones here, each area module's registered by
+#: it (`register`).
+FixedKind = Literal["int", "float", "str", "time", "date", "tod"]
+UN_KINDS: dict[str, FixedKind] = {
+    "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
+    "froundTo": "float", "fmath": "float", "ftoi": "int", "ftoi_or_null": "int",
+    "narrow_or_null": "int", "narrow": "int", "fit": "int", "itos": "str",
+}  # fmt: skip
+BIN_KINDS: dict[str, FixedKind] = {
+    "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fmod": "float",
+    "fpow": "float", "fatan2": "float", "flogb": "float", "idiv": "int", "imod": "int",
+    "ipow": "int", "bit": "int",
+}  # fmt: skip
+
+
 def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
     match e:
         case DecOp(p=p, s=sc):
@@ -1361,63 +1366,20 @@ def lean_expr_kind(e: Expr, cols: list[LeanKind]) -> LeanKind:
             return cols[i] if i < len(cols) else "other"
         case Un(op="neg", arg=a):
             return lean_expr_kind(a, cols)
-        # A list's element (#94), and its length.
+        # A list's element (#94).
         case Un(op="list_elem", arg=a):
             k = lean_expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else "other"
-        case Un(op="cardinality"):
-            return "int"
-        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
-            return "float"
-        case Un(
-            op="ftoi"
-            | "ftoi_or_null"
-            | "narrow_or_null"
-            | "narrow"
-            | "fit"
-            | "length"
-            | "regex_match"
-            | "date_part"
-            | "day_part"
-            | "ascii"
-        ):
-            return "int"
-        case Un(
-            op="itos"
-            | "upper"
-            | "lower"
-            | "reverse"
-            | "replace"
-            | "regex_extract"
-            | "regex_replace"
-            | "md5"
-            | "sha256"
-        ):
-            return "str"
-        case Un(op="date_trunc"):
-            return "time"
-        case Un(op="to_date" | "day_trunc"):
-            return "date"
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
-        case Un(op="time_of_day"):
-            return "tod"
-        case Un(op="as_time" | "bucket"):
-            return "time"
-        case Un(op="strftime"):
-            return "str"
+        case Un(op=op) if op in UN_KINDS:
+            return UN_KINDS[op]
         case Un():
             return "bool"
         case Bin(op="add" | "sub" | "mul" | "greatest" | "least", left=a, right=b):
             return lean_expr_kind(b if isinstance(a, Lit) else a, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
-            return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "date_diff" | "levenshtein" | "bit"):
-            return "int"
-        case Bin(op="date_add"):
-            return "date"
-        case Bin(op="concat" | "substr" | "trim" | "repeat"):
-            return "str"
+        case Bin(op=op) if op in BIN_KINDS:
+            return BIN_KINDS[op]
         case Bin():
             return "bool"
         case If(then=Lit(value=v), orelse=o):
@@ -1443,53 +1405,12 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
         case Un(op="list_elem", arg=a):
             k = expr_kind(a, cols)
             return k.elem if isinstance(k, Lst) else None
-        case Un(op="cardinality"):
-            return "int"
-        case Un(op="itof" | "fneg" | "ffloor" | "fceil" | "fround" | "froundTo" | "fmath"):
-            return "float"
-        case Un(
-            op="ftoi"
-            | "ftoi_or_null"
-            | "narrow_or_null"
-            | "narrow"
-            | "fit"
-            | "length"
-            | "regex_match"
-            | "date_part"
-            | "day_part"
-            | "ascii"
-        ):
-            return "int"
-        case Un(
-            op="itos"
-            | "upper"
-            | "lower"
-            | "reverse"
-            | "replace"
-            | "regex_extract"
-            | "regex_replace"
-            | "md5"
-            | "sha256"
-        ):
-            return "str"
-        case Un(op="date_trunc"):
-            return "time"
-        case Un(op="to_date" | "day_trunc"):
-            return "date"
         case Un(op="add_months", param=k):
             return "time" if k == "time" else "date"
-        case Un(op="time_of_day"):
-            return "tod"
-        case Un(op="as_time" | "bucket"):
-            return "time"
-        case Un(op="strftime"):
-            return "str"
+        case Un(op=op) if op in UN_KINDS:
+            return UN_KINDS[op]
         case Un():
             return "bool"
-        case Bin(op="date_diff"):
-            return "int"
-        case Bin(op="date_add"):
-            return "date"
         case Bin(op="add" | "sub", left=a, right=b):
             ka, kb = expr_kind(a, cols), expr_kind(b, cols)
             if ka == "time" and kb == "time":
@@ -1497,12 +1418,8 @@ def expr_kind(e: Expr, cols: list[Kind | None]) -> Kind | None:
             return ka if ka in ("time", "interval") or kb is None else kb
         case Bin(op="mul" | "greatest" | "least", left=a, right=b):
             return expr_kind(a, cols) or expr_kind(b, cols)
-        case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb"):
-            return "float"
-        case Bin(op="idiv" | "imod" | "ipow" | "strpos" | "levenshtein" | "bit"):
-            return "int"
-        case Bin(op="concat" | "substr" | "trim" | "repeat"):
-            return "str"
+        case Bin(op=op) if op in BIN_KINDS:
+            return BIN_KINDS[op]
         case Bin():
             return "bool"
         case If(then=t, orelse=o):
@@ -3149,8 +3066,36 @@ def _arg_kind(cols: list[LeanKind], j: Any, e: Expr) -> LeanKind:
     return "other"
 
 
+#: Each area module (`strings`, `temporal`, `nested`) registers its `mkCall`
+#: cases here: the expression, or None where the function is not the area's.
+CALLS: list[Callable[[str, list[Expr]], Expr | None]] = []
+#: … and its cases of `_Writer.expr`: the SQL, or None where the expression is
+#: not the area's.
+EXPRS: list[
+    Callable[[_Writer, Expr, Callable[[int], str], list[Kind | None], Kind | None], str | None]
+] = []
+
+
+def register(
+    call: Callable[[str, list[Expr]], Expr | None],
+    expr: Callable[
+        [_Writer, Expr, Callable[[int], str], list[Kind | None], Kind | None], str | None
+    ],
+    un_kinds: dict[str, FixedKind],
+    bin_kinds: dict[str, FixedKind],
+) -> None:
+    """Add an area's `mkCall` cases, writer cases and the kinds of its
+    operations (`UN_KINDS`, `BIN_KINDS`); each operation has one kind."""
+    for table, kinds_ in ((UN_KINDS, un_kinds), (BIN_KINDS, bin_kinds)):
+        if dup := table.keys() & kinds_.keys():
+            raise ValueError(f"kinds registered twice: {sorted(dup)}")
+        table.update(kinds_)
+    CALLS.append(call)
+    EXPRS.append(expr)
+
+
 def _call(name: str, args: list[Expr]) -> Expr:
-    """`mkCall`."""
+    """`mkCall`: the core functions here, then each area's (`CALLS`)."""
     match name, args:
         case "not", [a]:
             return Un("not", a)
@@ -3172,8 +3117,6 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", Bin("eq", a, b))
         case "lt", [a, b]:
             return Bin("lt", a, b)
-        case "list_lt", [a, b]:
-            return Bin("list_lt", a, b)
         case "gt", [a, b]:
             return Bin("lt", b, a)
         case "lte", [a, b]:
@@ -3218,56 +3161,6 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("imod", a, b)
         case "power", [a, b]:
             return Bin("ipow", a, b)
-        # Strings (`SubstraitLean/Text.lean`).
-        case "upper", [a]:
-            return Un("upper", a)
-        case "lower", [a]:
-            return Un("lower", a)
-        case (("character_length" | "char_length" | "length"), [a]):
-            return Un("length", a)
-        case "str_concat", [a, b]:
-            return Bin("concat", a, b)
-        case "strpos", [a, b]:
-            return Bin("strpos", a, b)
-        case "starts_with", [a, b]:
-            return Bin("starts_with", a, b)
-        case "ends_with", [a, b]:
-            return Bin("ends_with", a, b)
-        # The third argument is the escape character; NULL means a backslash.
-        case "like", ([a, b] | [a, b, Lit(value=None)]):
-            return Bin("like", a, b)
-        case "like", [_, _, _]:
-            raise Unsupported("LIKE … ESCAPE is not supported (DataFusion only allows a backslash)")
-        case "substring", [a, b]:
-            return Bin("substr", a, b)
-        case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
-            if n < 0:
-                raise Unsupported("a negative substring length always fails")
-            return Bin("substr", a, b, length=n)
-        case "substring", [_, _, _]:
-            raise Unsupported("substring lengths must be constants")
-        case (("btrim" | "ltrim" | "rtrim"), [a, *rest]) if len(rest) <= 1:
-            chars = rest[0] if rest else Lit(" ", "str")
-            sides = {"btrim": (True, True), "ltrim": (True, False), "rtrim": (False, True)}[name]
-            return Bin("trim", a, chars, sides=sides)
-        case "reverse", [a]:
-            return Un("reverse", a)
-        case "ascii", [a]:
-            return Un("ascii", a)
-        case "replace", [a, Lit(value=str(pattern)), Lit(value=str(replacement))]:
-            return Un("replace", a, param=pattern, replacement=replacement)
-        case "replace", [_, _, _]:
-            raise Unsupported("replace needs a constant pattern and replacement")
-        case "repeat", [a, b]:
-            return Bin("repeat", a, b)
-        case "ilike", ([a, b] | [a, b, Lit(value=None)]):
-            return Bin("ilike", a, b)
-        case "ilike", [_, _, _]:
-            raise Unsupported(
-                "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
-            )
-        case "levenshtein", [a, b]:
-            return Bin("levenshtein", a, b)
         # Bitwise operations (`SubstraitLean/Numeric.lean`); `NOT x` is `x XOR -1`.
         case "bitwise_not", [a]:
             return Bin("bit", a, Lit(-1, "int"), param="bitwise_xor")
@@ -3277,45 +3170,9 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Bin("bit", a, b, param="bitwise_shift_right")
         case _, [a, b] if name in BITWISE:
             return Bin("bit", a, b, param=name)
-        case "regexp_match", _:
-            raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
-        case "cardinality", [a]:
-            return Un("cardinality", a)
-        # A constant pattern (#50); `Text.simpleRegex` is checked in Lean.
-        case "regexp_extract", [a, Lit(value=str(pattern))]:
-            return Un("regex_extract", a, param=pattern)
-        case "regexp_extract", [a, Lit(value=str(pattern)), Lit(value=int(g))] if (
-            not isinstance(g, bool) and g >= 0
-        ):
-            return Un("regex_extract", a, param=pattern, digits=g)
-        case "regexp_extract", _:
-            raise Unsupported("regexp_extract needs a constant pattern and group")
-        case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r))]:
-            return Un("regex_replace", a, param=pattern, replacement=r)
-        case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r)), Lit(value="g")]:
-            return Un("regex_replace", a, param=pattern, replacement=r, flags="g")
-        case "regexp_replace", [_, _, _, *_]:
-            raise Unsupported(
-                "regexp_replace needs a constant pattern and replacement, and no flags but 'g'"
-            )
-        case (("md5" | "sha256"), [a]):
-            return Un(name, a)
-        # Timestamps (`SubstraitLean/Time.lean`).
-        case (("date_part" | "datepart"), [Lit(value=str(part)), a]):
-            if part.lower() not in DATE_PARTS:
-                raise Unsupported(f"unsupported date part '{part}'")
-            return Un("date_part", a, param=part.lower())
-        case (("date_trunc" | "datetrunc"), [Lit(value=str(unit)), a]):
-            if unit.lower() not in TIME_UNITS:
-                raise Unsupported(f"unsupported date_trunc unit '{unit}'")
-            return Un("date_trunc", a, param=unit.lower())
-        case (("strftime" | "to_char" | "date_format"), [a, Lit(value=str(fmt))]):
-            if parse_format(fmt) is None:
-                raise Unsupported(f"strftime format '{fmt}' is not supported")
-            return Un("strftime", a, param=fmt)
-        # sverify's own: the days from `e` to `d`.
-        case "date_diff", [d, e]:
-            return Bin("date_diff", d, e)
+    for call in CALLS:
+        if (out := call(name, args)) is not None:
+            return out
     raise Unsupported(f"unsupported function {name}/{len(args)}")
 
 
@@ -3332,17 +3189,6 @@ def parse_format(fmt: str) -> list[str] | None:
         else:
             return None
     return out
-
-
-#: `Time.DatePart.name` and `Time.TimeUnit.name`.
-DATE_PARTS = (
-    "year", "quarter", "month", "week", "day", "hour", "minute", "second", "millisecond",
-    "microsecond", "dow", "doy",
-)  # fmt: skip
-TIME_UNITS = (
-    "microsecond", "millisecond", "second", "minute", "hour", "day", "week", "month", "quarter",
-    "year",
-)  # fmt: skip
 
 
 def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
@@ -4288,8 +4134,6 @@ class _Writer:
                 if isinstance(b, Lit) and isinstance(b.value, int) and b.kind == "int":
                     return d.int_pow(sa, b.value)
                 return d.int_pow_var(sa, self.int_operand(b, ref, cols, "POWER"))
-            case Bin(op="list_lt", left=a, right=b):
-                return d.list_lt(go(a, None), go(b, None))
             case Bin(op="pair", left=a, right=b):
                 return d.pair(go(a, "float"), go(b, "float"))
             case Bin(op="greatest" | "least" as op, left=a, right=b):
@@ -4328,185 +4172,9 @@ class _Writer:
             case If(cond=c, then=t, orelse=o):
                 k = kind(e) or ctx
                 return d.case_when(go(c, "bool"), go(t, k), go(o, k))
-            case Un(op="length", arg=a):
-                return d.char_length(self.operand(a, "str", ref, cols, "length"))
-            case Un(op="upper" | "lower" as op, arg=a):
-                x = self.operand(a, "str", ref, cols, op)
-                return self.ascii_only(x, (d.upper if op == "upper" else d.lower)(x), op.upper())
-            case Un(op="regex_match", arg=a, param=pattern):
-                groups = regex_groups(pattern)
-                x = self.operand(a, "str", ref, cols, "regexp_match")
-                m = d.case_when(d.regex_search(x, pattern), d.int_lit(groups), d.null("int"))
-                return (
-                    self.ascii_only(x, m, f"regular expression {pattern!r}", "int")
-                    if (unicode_classes(pattern))
-                    else m
-                )
-            case Un(op="date_part", arg=a, param=part) if kind(a) == "tod":
-                return d.time_part(part, self.operand(a, "tod", ref, cols, "date_part"))
-            case Un(op="date_part", arg=a, param=part):
-                return d.date_part(part, self.operand(a, "time", ref, cols, "date_part"))
-            case Un(op="time_of_day", arg=a):
-                x = self.operand(a, "time", ref, cols, "CAST to TIME")
-                return self.chrono_only(x, d.time_of_day(x), "CAST to TIME", "tod")
-            case Un(op="bucket", arg=a, digits=k, origin=origin):
-                # `Time.bucket`, in integer microseconds; DataFusion's nanoseconds
-                # wrap outside ±2⁶³, where it is an error here.
-                x = self.operand(a, "time", ref, cols, "date_bin")
-                us = d.time_micros(x)
-                rel = f"({us} - {d.int_lit(origin)})"
-                k_ = d.int_lit(k)
-                floor = f"(({d.trunc_mod(rel, k_)} + {k_}) % {k_})"
-                r = d.as_time(f"({us} - {floor})")
-                if not d.guards:
-                    return r
-                lo, hi = d.int_lit(NS_MIN), d.int_lit(NS_MAX)
-                fail = d.raise_("date_bin outside ±2^63 ns", x, "time")
-                ru = d.time_micros(r)
-                bad = f"({us} NOT BETWEEN {lo} AND {hi} OR {ru} NOT BETWEEN {lo} AND {hi})"
-                return d.case_when(bad, fail, r)
-            case Un(op="as_time", arg=a):
-                return d.as_time(self.int_operand(a, ref, cols, "CAST to TIMESTAMP"))
-            case Un(op="strftime", arg=a, param=fmt):
-                x = self.operand(a, "time", ref, cols, "strftime")
-                return self.chrono_only(x, self.strftime(x, fmt), "strftime", "str")
-            case Un(op="date_trunc", arg=a, param=unit):
-                return self.date_trunc(unit, self.operand(a, "time", ref, cols, "date_trunc"))
-            case Un(op="to_date", arg=a):
-                return d.to_date(self.operand(a, "time", ref, cols, "CAST to DATE"))
-            case Un(op="day_part", arg=a, param=part):
-                x = self.operand(a, "date", ref, cols, "date_part")
-                lo, hi = d.int_lit(CHRONO_DAY_MIN), d.int_lit(CHRONO_DAY_MAX)
-                inside = f"{d.date_days(x)} BETWEEN {lo} AND {hi}"
-                return f"(CASE WHEN {inside} THEN {d.date_part(part, d.date_to_time(x))} END)"
-            case Un(op="day_trunc", arg=a, param=unit):
-                x = self.operand(a, "date", ref, cols, "date_trunc")
-                return self.date_range(
-                    x,
-                    lambda y: d.to_date(d.date_trunc(unit, d.date_to_time(y))),
-                    NS_DAY_MIN,
-                    NS_DAY_MAX,
-                    f"date_trunc to a {unit}",
-                )
-            case Un(op="add_months", arg=a, digits=months, param=k):
-                kind: Kind = "time" if k == "time" else "date"
-                x = self.operand(a, kind, ref, cols, "adding months")
-                if kind == "date":
-                    if (c := _const_days(a)) is not None and _in_dates(c, _add_months(months, c)):
-                        # Decided when the plan is written (TPC-H Q6).
-                        return d.add_months(x, months, kind)
-                    return self.date_range(
-                        x, lambda y: d.add_months(y, months, kind), DAY_MIN, DAY_MAX,
-                        "adding months",
-                    )  # fmt: skip
-                if not d.guards:
-                    return d.add_months(x, months, kind)
-                lo, hi = d.int_lit(PART_MIN), d.int_lit(PART_MAX)
-                us = d.time_micros(x)
-                fail = d.raise_("adding months outside the years chrono represents", x, "time")
-                safe = d.add_months(
-                    f"(CASE WHEN {us} BETWEEN {lo} AND {hi} THEN {x} END)", months, kind
-                )
-                return d.case_when(
-                    f"({us} NOT BETWEEN {lo} AND {hi} "
-                    f"OR {d.time_micros(safe)} NOT BETWEEN {lo} AND {hi})",
-                    fail,
-                    safe,
-                )
-            case Bin(op="date_add", left=a, right=b):
-                x = self.operand(a, "date", ref, cols, "date + days")
-                n = self.int_operand(b, ref, cols, "date + days")
-                c, k = _const_days(a), b.value if isinstance(b, Lit) else None
-                if c is not None and isinstance(k, int) and _in_dates(c, c + k):
-                    return d.date_add_days(x, n)
-                return self.date_range(
-                    x, lambda y: d.date_add_days(y, n), DAY_MIN, DAY_MAX, "date + days"
-                )
-            case Bin(op="date_diff", left=a, right=b):
-                x = self.operand(a, "date", ref, cols, "date_diff")
-                y = self.operand(b, "date", ref, cols, "date_diff")
-                return d.date_diff_days(x, y)
-            case Bin(op="concat", left=a, right=b):
-                sa, sb = (self.operand(x, "str", ref, cols, "||") for x in (a, b))
-                return d.concat(sa, sb)
-            case Bin(op="strpos" | "starts_with" | "ends_with" as op, left=a, right=b):
-                sa, sb = (self.operand(x, "str", ref, cols, op) for x in (a, b))
-                f = {"strpos": d.strpos, "starts_with": d.starts_with, "ends_with": d.ends_with}
-                return f[op](sa, sb)
-            case Bin(op="like" | "ilike" as op, left=a, right=b):
-                sa, sb = (self.operand(x, "str", ref, cols, op.upper()) for x in (a, b))
-                if isinstance(b, Lit):
-                    pattern = None if b.value is None else d.str_lit(like_pattern(b.value))
-                else:
-                    pattern = d.like_pattern(sb)
-                if pattern is None:
-                    return d.null("bool")
-                if op == "like":
-                    return d.like(sa, pattern)
-                # A black box: Unicode case folding, which engines do with their own tables.
-                text = sa if isinstance(b, Lit) and b.value.isascii() else d.concat(sa, sb)
-                return self.ascii_only(text, d.ilike(sa, pattern), "ILIKE", "bool")
-            case Un(op="reverse", arg=a):
-                x = self.operand(a, "str", ref, cols, "reverse")
-                return self.ascii_only(x, d.reverse(x), "reverse")
-            case Un(op="ascii", arg=a):
-                x = self.operand(a, "str", ref, cols, "ascii")
-                return self.ascii_only(x, d.first_code_point(x), "ascii", "int")
-            case Un(op="regex_extract", arg=a, param=pattern, digits=group):
-                x = self.operand(a, "str", ref, cols, "regexp_extract")
-                v = d.regex_extract(x, pattern, group)
-                if unicode_classes(pattern):
-                    return self.ascii_only(x, v, f"regular expression {pattern!r}")
-                return v
-            case Un(op="regex_replace", arg=a, param=pattern, replacement=r, flags=flags):
-                x = self.operand(a, "str", ref, cols, "regexp_replace")
-                v = d.regex_replace(x, pattern, r, flags == "g")
-                if unicode_classes(pattern):
-                    return self.ascii_only(x, v, f"regular expression {pattern!r}")
-                return v
-            case Un(op="list_elem", arg=a, digits=offset):
-                return d.list_element(go(a, kind(a)), offset)
-            case Un(op="cardinality", arg=a):
-                return d.cardinality(go(a, kind(a)))
-            case Un(op="md5" | "sha256" as op, arg=a):
-                return d.digest(op, self.operand(a, "str", ref, cols, op))
-            case Un(op="replace", arg=a, param=pattern, replacement=replacement):
-                if not pattern:
-                    # Rust puts the replacement around every character; SQL engines
-                    # return the string unchanged.
-                    raise Unsupported("replace with an empty pattern differs between engines")
-                x = self.operand(a, "str", ref, cols, "replace")
-                return d.replace(x, d.str_lit(pattern), d.str_lit(replacement))
-            case Bin(op="repeat", left=a, right=b):
-                sa = self.operand(a, "str", ref, cols, "repeat")
-                n = self.int_operand(b, ref, cols, "repeat")
-                r = d.repeat(sa, n)
-                if not d.guards:
-                    return r
-                # `Text.repeatFits`; the count capped so that the product fits.
-                cap = d.int_lit(REPEAT_MAX + 1)
-                capped = f"(CASE WHEN {n} > {cap} THEN {cap} ELSE {n} END)"
-                big = f"({capped} * {d.octet_length(sa)} > {d.int_lit(REPEAT_MAX)})"
-                fail = d.raise_("repeat beyond 2^31 - 1 bytes", sa, "str")
-                return d.case_when(big, fail, r)
-            case Bin(op="levenshtein", left=a, right=b):
-                sa, sb = (self.operand(x, "str", ref, cols, "levenshtein") for x in (a, b))
-                return self.ascii_only(
-                    d.concat(sa, sb), d.levenshtein(sa, sb), "levenshtein", "int"
-                )
-            case Bin(op="substr", left=a, right=b, length=length, param=start):
-                sa = self.operand(a, "str", ref, cols, "substring")
-                sb = self.int_operand(b, ref, cols, "substring")
-                if start != "LEFT_OF_BEGINNING" and not (
-                    isinstance(b, Lit) and isinstance(b.value, int) and b.value >= 0
-                ):
-                    # `Text.substrWrap`: a negative start counts from the end.
-                    shifted = d.int_add(d.int_add(sb, d.char_length(sa)), d.int_lit(1))
-                    sb = f"(CASE WHEN {sb} < {d.int_lit(0)} THEN {shifted} ELSE {sb} END)"
-                return self.substring(sa, sb, length)
-            case Bin(op="trim", left=a, right=b, sides=sides):
-                sa, sb = (self.operand(x, "str", ref, cols, "trim") for x in (a, b))
-                return d.trim(sa, sb, *sides)
+        for case in EXPRS:
+            if (sql := case(self, e, ref, cols, ctx)) is not None:
+                return sql
         raise Unsupported(f"unsupported expression {e!r}")
 
     def decimal(self, e: DecOp, ref: Callable[[int], str], cols: list[Kind | None]) -> str:
@@ -4760,8 +4428,6 @@ OUTSIDE_DATES = "outside the reference's dates (0001-01-01 to 9999-12-31)"
 CHRONO_DAY_MIN, CHRONO_DAY_MAX = -96465292, 95026236
 PART_MIN, PART_MAX = -8334601228800000000, 8210266876799999999
 NS_DAY_MIN, NS_DAY_MAX = -106751, 106751
-#: The longest string DataFusion's `repeat` writes, in bytes (`Text.repeatMax`).
-REPEAT_MAX = 2**31 - 1
 
 
 def like_pattern(p: str) -> str:
@@ -4778,53 +4444,6 @@ def pow10(k: int) -> float:
         return math.pow(10.0, k)
     except OverflowError:
         return math.inf
-
-
-def unicode_classes(p: str) -> bool:
-    """Does the pattern use `\\d`, `\\w`, `\\s` or `\\b` (or their negations)?
-    Rust's are Unicode classes; RE2's (DuckDB), Java's (Spark) and Snowflake's
-    are ASCII-only, so they agree on ASCII text only (`Text.classesDiffer`)."""
-    i = 0
-    while i < len(p):
-        if p[i] == "\\" and i + 1 < len(p):
-            if p[i + 1] in "dDwWsSbB":
-                return True
-            i += 2
-        else:
-            i += 1
-    return False
-
-
-def regex_groups(p: str) -> int:
-    """The entries `regexp_match(s, p)` has on a match: its capture groups, or
-    the whole match if there are none. Groups are counted as `(` outside
-    classes and escapes, but `(?:`, which is exact for patterns without
-    other `(?`."""
-    groups, k, in_class = 0, 0, False
-    while k < len(p):
-        c = p[k]
-        if c == "\\":
-            k += 2
-            continue
-        if in_class:
-            in_class = c != "]"
-        elif c == "[":
-            in_class = True
-            # A `]` right after `[` or `[^` is a literal member.
-            if p[k + 1 : k + 2] == "^":
-                k += 1
-            if p[k + 1 : k + 2] == "]":
-                k += 1
-        elif c == "(":
-            if p[k + 1 : k + 3] == "?:":
-                # Non-capturing.
-                k += 1
-            elif p[k + 1 : k + 2] == "?":
-                raise Unsupported(f"regular expressions with '(?' are not supported: {p!r}")
-            else:
-                groups += 1
-        k += 1
-    return max(groups, 1)
 
 
 def _is_int_arith(e: Expr) -> bool:
@@ -4910,27 +4529,3 @@ def to_sql(plan: dict, dialect: Dialect, *, tie_free: bool = False, guards: bool
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
-
-
-def _const_days(e: Expr) -> int | None:
-    """The days of a constant DATE."""
-    return e.value if isinstance(e, Lit) and e.kind == "date" and isinstance(e.value, int) else None
-
-
-def _in_dates(*days: int) -> bool:
-    return all(DAY_MIN <= x <= DAY_MAX for x in days)
-
-
-def _add_months(m: int, days: int) -> int:
-    """`Time.addMonths`: the same day `m` months later, or that month's last
-    day; for dates within the reference's (`_in_dates`)."""
-    if not _in_dates(days):
-        return DAY_MAX + 1
-    start = date(1970, 1, 1)
-    day = start + timedelta(days=days)
-    y, mo = divmod(day.month - 1 + m, 12)
-    year, month = day.year + y, mo + 1
-    if not 1 <= year <= 9999:
-        return DAY_MAX + 1
-    last = calendar.monthrange(year, month)[1]
-    return (date(year, month, min(day.day, last)) - start).days
