@@ -14,6 +14,7 @@ from decimal import Decimal as D
 import ibis
 import pyarrow as pa
 import pytest
+from ibis import _
 
 import sverify as sv
 from sverify.engine import connect, put_table, run_checker, run_plan, substrait_json, written_plan
@@ -151,11 +152,28 @@ def test_avg_over_a_window(con):
         ("SELECT a * b * a AS r FROM t", ["overflow"]),
         ("SELECT CAST(a AS DECIMAL(4,2)) AS r FROM t", ["overflow"]),
         ("SELECT CAST(f AS DECIMAL(10,2)) AS r FROM t", ["cast out of range", "overflow"]),
+        # Within bounds whose casts fit, the cast of a double is safe (#223).
+        ("SELECT CAST(f AS DECIMAL(10,2)) AS r FROM t WHERE f BETWEEN 0 AND 100", []),
+        ("SELECT CAST(f AS DECIMAL(4,2)) AS r FROM t WHERE f BETWEEN 0 AND 100", ["overflow"]),
     ],
 )
 def test_verify_reports_overflow_where_it_can_happen(sql, errors):
-    report = sv.verify(sql, tables=SCHEMAS) if isinstance(sql, str) else sv.verify(sql)
+    report = (
+        sv.verify(sql, tables=SCHEMAS, infer=False)
+        if isinstance(sql, str)
+        else sv.verify(sql, infer=False)
+    )
     assert [i.kind for i in report.errors] == errors
+
+
+def test_casts_keep_bounds():
+    """A decimal cast to a double, and back, keeps its bounds."""
+    q = T.filter([T.a >= 0, T.a <= 50]).select(d=T.a.cast("float64"))
+    report = sv.verify(q, ensures=[_.d >= 0, _.d <= 50])
+    assert report.proved, str(report)
+    q = T.filter([T.f >= 0, T.f <= 100]).select(r=T.f.cast("decimal(10, 2)"))
+    report = sv.verify(q, ensures=[_.r >= 0, _.r <= 100])
+    assert report.proved and report.errors == [], str(report)
 
 
 def test_decimal_sum_does_not_wrap():
@@ -206,7 +224,7 @@ def test_report_shows_decimals_at_their_scale():
     unscaled integer (#250, TPC-H Q6's `revenue`)."""
     li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
     sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
-    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li))
+    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), infer=False)
     assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
     assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
     t = ibis.table({"a": "decimal(10,2)"}, name="t")

@@ -21,6 +21,10 @@ from sverify.sql.core._base import (
     register,
 )
 
+#: `substring`'s offsets lie in `[-SUBSTR_MAX, SUBSTR_MAX)`, its lengths below
+#: `SUBSTR_MAX` (`Text.substrMax`, #336).
+SUBSTR_MAX = 2**32
+
 #: The longest string DataFusion's `repeat` writes, in bytes (`Text.repeatMax`).
 REPEAT_MAX = 2**31 - 1
 
@@ -94,7 +98,10 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         case "like", ([a, b] | [a, b, Lit(value=None)]):
             return Bin("like", a, b)
         case "like", [_, _, _]:
-            raise Unsupported("LIKE … ESCAPE is not supported (DataFusion only allows a backslash)")
+            raise Unsupported(
+                "LIKE … ESCAPE is not modelled yet; match a literal % or _ with contains "
+                "or starts_with"
+            )
         case "substring", [a, b]:
             return Bin("substr", a, b)
         case "substring", [a, b, Lit(value=int(n))] if not isinstance(n, bool):
@@ -121,7 +128,8 @@ def call(name: str, args: list[Expr]) -> Expr | None:
             return Bin("ilike", a, b)
         case "ilike", [_, _, _]:
             raise Unsupported(
-                "ILIKE … ESCAPE is not supported (DataFusion only allows a backslash)"
+                "ILIKE … ESCAPE is not modelled yet; match a literal % or _ with contains "
+                "or starts_with on lower(…)"
             )
         case "levenshtein", [a, b]:
             return Bin("levenshtein", a, b)
@@ -240,7 +248,14 @@ def expr(
             ):
                 # `Text.substrWrap`: a negative start counts from the end.
                 shifted = d.int_add(d.int_add(sb, d.char_length(sa)), d.int_lit(1))
-                sb = f"(CASE WHEN {sb} < {d.int_lit(0)} THEN {shifted} ELSE {sb} END)"
+                wrapped = f"(CASE WHEN {sb} < {d.int_lit(0)} THEN {shifted} ELSE {sb} END)"
+                if d.guards:
+                    # `Text.substrInRange` (#336): the engine raises on an
+                    # offset out of range, but sees the shifted one here.
+                    low = f"({sb} < {d.int_lit(-SUBSTR_MAX)})"
+                    fail = d.raise_("substring offset outside of supported range", sa, "int")
+                    wrapped = d.case_when(low, fail, wrapped)
+                sb = wrapped
             return self.substring(sa, sb, length)
         case Bin(op="trim", left=a, right=b, sides=sides):
             sa, sb = (self.operand(x, "str", ref, cols, "trim") for x in (a, b))

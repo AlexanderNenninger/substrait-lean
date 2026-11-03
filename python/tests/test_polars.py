@@ -666,7 +666,7 @@ def test_polars_fails_only_where_reported(i, rows):
     nor DuckDB running the same plan fails and nothing wraps, they agree (Ibis's
     own DuckDB SQL is no oracle here: its `//` truncates)."""
     expr = NUMERIC_PIPELINES[i]
-    report = sv.verify(expr)
+    report = sv.verify(expr, infer=False)
     con = connect()
     put_table(
         con,

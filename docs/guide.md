@@ -170,7 +170,7 @@ The most common, and what sverify does about each:
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is checked while the job runs |
+| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data while the job runs |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
 | Guards that don't guard | DataFusion evaluates both branches of some `CASE`s and merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection |
@@ -211,8 +211,9 @@ uv keeps the version and drops the page, so add it to your `pyproject.toml`;
 find-links = ["https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly"]
 ```
 
-A wheel's own URL pins one build, until the next nightly replaces it. Copy it
-from the release page:
+Each build's wheels stay on the release for 30 days, so a wheel's own URL pins
+one build for that long. `--find-links` sees every build on the page and picks
+the newest. Copy a URL from the release page:
 
 ```bash
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
@@ -270,7 +271,7 @@ try:
     plus_one(orders)
 except VerificationError as e:
     print(e)
-# could not prove: (_.total > 5) (it is TRUE or FALSE)
+# could not prove: (_.total > 5) (it may be FALSE on some rows)
 # ...
 #   total: an integer ≥ 1
 ```
@@ -279,6 +280,9 @@ except VerificationError as e:
   (`"amount >= 0"`). SQL transformations are checked with
   `sv.verify(sql, tables=..., requires=..., ensures=...)`, which returns the
   report.
+* `requires` maps each input to its conditions. A transformation with one
+  input also takes a plain list, `requires=[_.amount >= 0]`. A key that
+  names no input raises a `ValueError` that lists the inputs (#408).
 * Preconditions describe data that comes from outside. On a source, they
   are checked on the data when the node is first refreshed and then on each
   batch (`PreconditionError`), or proved from the table's metadata; on Ibis
@@ -301,9 +305,9 @@ except VerificationError as e:
   key. In `requires` it is checked on the data; in `ensures` it is proved
   (keys survive filters, projections, aggregates and joins whose condition
   pins down the other side's key).
-* Foreign keys: `sv.references("cust", "customers", "id")` in `requires`
+* Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
-  like `unique`). Nothing proves it in `ensures`, so it stays an assumption.
+  like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first, so
   every postcondition is `undetermined` and `report.deterministic` is
@@ -315,6 +319,11 @@ except VerificationError as e:
 * Doubles and time: comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()` and intervals; doubles compare as SQL
   engines compare them, with one zero and one NaN above every number.
+* Sums and means of doubles round. Their signs are exact, and with a row cap
+  in `requires`, `sv.max_rows(10_000_000)` (checked on the data), Lean
+  bounds them by the proved rounding error ([float bounds](float-bounds.md)).
+  `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
+  the report suggests it when an exact claim misses only by rounding.
 * Not tracked yet: string contents, DECIMAL columns, relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
@@ -326,7 +335,7 @@ meets the preconditions, and `@sv.transform` refuses the transformation
 while there is one:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]})
+@sv.transform(requires={"orders": [_.amount >= 0]}, infer=False)
 def share(orders):
     return orders.select(orders.id, per_unit=orders.amount // (orders.amount - 30))
 
@@ -337,12 +346,18 @@ except VerificationError as e:
 # could not prove: no runtime error (division by zero: (($2 - 1) / ($2 - 30))), ...
 ```
 
+Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
+and proves `share` ([Inferred bounds](#inferred-bounds)).
+
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
 wraps around there; the reference raises). An integer `SUM` leaving 64 bits
-is checked while the job runs instead: no proof before running can rule it
-out, since a group may have any number of rows. Guards are
+is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
+count) and `requires` bounds the column. Elsewhere sverify assumes the sum
+fits, as it assumes inferred bounds, and the job checks it on the data while it
+runs (`Report.assumed`; an error with `infer=False`). Bounds on a table's rows
+are #219. Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.
@@ -381,12 +396,28 @@ build on it like on any other precondition of a source.
   timestamps to whole years (`ts.truncate("M")` needs
   `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
   range of nanosecond timestamps).
+* Other runtime errors get preconditions the same way:
+
+  | Operation | Inferred precondition |
+  |---|---|
+  | `a // b`, `a % b` | `(_.b != 0)`, `(_.b != 1)` for `a % (b - 1)` |
+  | `x.sqrt()`, `x ** 0.5` | `(_.x >= 0.0)` |
+  | `x.ln()`, `x.log10()`, `x.log2()` | `(_.x > 0)` |
+  | `x.asin()`, `x.acos()` | `(_.x >= -1.0)`, `(_.x <= 1.0)` |
+  | `x.cast("int64")` of a double | `(_.x >= -2**63)`, `(_.x < 2**63)` |
+  | `a.cast("int32")` | `(_.a >= -2**31)`, `(_.a < 2**31)` |
+  | `ibis.literal("ab").repeat(n)` | `(_.n < 2**30)` |
+  | `big * 2` of a `DECIMAL(38, 2)` | `(_.big >= -4 * 10**35)`, `(_.big < 5 * 10**35)` |
+  | `d + ibis.interval(days=10)` | `(_.d >= date(1, 1, 1))`, `(_.d < date(9999, 1, 1))` |
+
+  [test_infer_errors.py](../python/tests/test_infer_errors.py) has these
+  cases.
 * A product or sum of two unbounded columns has no single weakest bound,
   the value of an aggregate (`SUM`) or window function has none on a
   column, and a value from another contracted transformation is bounded by
   its `ensures`. For these the report's hint suggests a bound
   (`Issue.hint`), and sverify assumes none.
-* `@sv.transform(strict=True)` and `sv.verify(..., infer=False)` infer
+* `infer=False`, on `@sv.transform` and `sv.verify`, infers
   nothing: each overflow fails the proof, and its hint names the bound to
   state.
 
@@ -483,10 +514,18 @@ large = orders.pipe(lambda t: t.filter(_.amount > 20))
 SQL is DuckDB's dialect. Sverify reads it with its own lift (SQLGlot, #239)
 and writes every choice DuckDB's SQL leaves implicit into the plan: `/` divides
 as doubles, NULLs sort last, an integer literal has the narrowest type that
-holds it. `semantics="duckdb"`
-(the default) means what DuckDB computes; `semantics="reference"` means what
-sverify's reference computes where they differ, so a double divided by zero
-raises where DuckDB gives `inf`. The lift reads a subset so far (SELECT, WHERE,
+holds it.
+
+Every check uses sverify's reference semantics unless you opt into DuckDB's
+(#411). `semantics="reference"`, the default, means what sverify's reference
+computes, so a double divided by zero raises; `semantics="duckdb"` means what
+DuckDB computes, which gives `inf`, and models NaN and ±inf as DuckDB has
+them. `sv.sql(query, semantics=...)` attaches the choice to the query.
+`sv.verify(..., semantics=...)` and `@sv.transform(..., semantics=...)` make
+it for the SQL they lift themselves: a SQL transformation and SQL conditions.
+An `sv.sql` expression inside an Ibis transformation keeps its own. The report
+says which semantics it used (`Report.semantics`, a `semantics:` line). Until
+#411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
 joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
 saying what.
 
@@ -510,7 +549,7 @@ def capped(orders):
 
 n = orders.pipe(capped)    # no VerificationError: checked at refresh
 print(capped.last_report)
-# ensures (_.amount < 1000): NOT proved (it is TRUE, FALSE or NULL); checked on the output data
+# ensures (_.amount < 1000): NOT proved: it may be FALSE or NULL on some rows, where a column
 # ...
 print(n.refresh())
 # capped:
@@ -766,12 +805,22 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
 #   retention hourly.hour: 3 bucket(s) open (bound 3), 2 retired, 6 state row(s); watermark 2026-11-03 02:50:00
 ```
 
-- `arrives_within("ts", hours=2)` says every row a batch inserts or deletes
-  has `ts` at or after the watermark: the largest `ts` seen before the batch,
-  minus two hours. The first refresh checks that `ts` has no NULLs; every
-  later batch is checked at refresh, and a late row rejects the batch with
+- `arrives_within("ts", hours=2)` says every row a batch inserts has `ts` at
+  or after the watermark: the largest `ts` seen before the batch, minus two
+  hours. The first refresh checks that `ts` has no NULLs; every later batch
+  is checked at refresh, and a late row rejects the batch with
   `PreconditionError`, so nothing is applied. Quarantining late rows instead
   is #184.
+- A delete before the watermark is an expiry, the source's own retention (a
+  `FlightSource` floor, a Delta `VACUUM` of old partitions), when its row is
+  in a final bucket of every view that drops buckets of `ts`. The views and
+  their sinks keep those buckets as they were, and the report counts the
+  expired rows. Lean proves that the final buckets in the sink and the open
+  ones in the state are then a full recompute over every row the source
+  received, less the deletes at or after the watermark
+  (`Retention.expiry_sound`). A delete before the watermark in a bucket that
+  is still open rejects the batch. With no view that drops buckets of `ts`,
+  every delete is applied as it is.
 - A bucket that ends at or before the watermark is final. Lean proves that
   no admissible batch changes a final bucket, for every measure, so the
   final buckets kept in the sink and the open ones in the state add up to a

@@ -242,11 +242,11 @@
  },
  "fin-bollinger": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
   "native": "runs",
   "as_double": {
    "checker": "rejected",
-   "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+   "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
    "native": "runs"
   }
  },
@@ -977,7 +977,7 @@
  },
  "ts-rolling-time-window": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
   "native": "runs"
  },
  "ts-rolling-7day-calendar": {
@@ -1341,11 +1341,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": false,
-   "may_fail": [
-    "division by zero: (DECIMAL_TO_DOUBLE_4($1) /. DECIMAL_TO_DOUBLE_4($2))"
-   ]
+   "proved": true,
+   "guard_free": true
   },
   "verified_sql": {
    "duckdb": "yes"
@@ -1452,8 +1449,7 @@
    "proved": false,
    "guard_free": false,
    "may_fail": [
-    "overflow: DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))",
-    "division by zero: (DECIMAL_TO_DOUBLE_5(DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))) /. DECIMAL_TO_DOUBLE_4($1))"
+    "overflow: DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))"
    ]
   },
   "verified_sql": {
@@ -1647,7 +1643,7 @@
  },
  "win-moving-average": {
   "checker": "rejected",
-  "detail": "error: avg over a sliding frame is not supported (DataFusion retracts rows wrongly)",
+  "detail": "error: avg over a sliding frame is not supported yet; use a frame from UNBOUNDED PRECEDING",
   "native": "runs"
  },
  "win-percent-of-total": {

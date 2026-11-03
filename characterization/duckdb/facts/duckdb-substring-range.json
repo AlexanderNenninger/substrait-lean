@@ -1,0 +1,62 @@
+{
+  "id": "duckdb-substring-range",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`substring` raises for an offset or a length outside 32 bits",
+  "verdict": "fixed (#336): the reference raises too",
+  "area": "strings",
+  "constructs": [
+    "substring"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB's `substring(s, start, length)` raises \"Substring offset outside of supported range\" for a `start` outside `[-2³², 2³²)`, and \"Substring length outside of supported range\" for a `length` of `2³²` or more. With a NULL string, offset or length it gives NULL."
+  ],
+  "reference": [
+    "Was: no such error; `Rel.eval` returned rows, and `verify` reported nothing (#336).",
+    "Now: the same range is an error in the reference (`Text.substrInRange`, `Issue.domain`), reported by `verify` unless the offset's bounds rule it out. The size hypothesis for strings is 2³² characters (`Text.sizeCap`). DuckDB raises itself; the written plan guards the offset its wrap-around arithmetic shifts."
+  ],
+  "status": "fixed",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "probe",
+      "checked_by": "session quick-fixes (#336), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT substring('hello', 4294967295, 2), substring('hello', -4294967296, 2), substring('hello', 1, 4294967295)",
+          "observed": "'', '', 'hello'"
+        },
+        {
+          "sql": "SELECT substring('hello', 4294967296, 2)",
+          "observed": "Out of Range Error: Substring offset outside of supported range"
+        },
+        {
+          "sql": "SELECT substring('hello', -4294967297, 2)",
+          "observed": "Out of Range Error: Substring offset outside of supported range"
+        },
+        {
+          "sql": "SELECT substring('hello', 1, 4294967296)",
+          "observed": "Out of Range Error: Substring length outside of supported range"
+        },
+        {
+          "sql": "SELECT substring(NULL::VARCHAR, -4294967297, 2), substring('abc', NULL::BIGINT, 4294967296)",
+          "observed": "NULL, NULL"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-03",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt (#240), reported in #336",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/string/test_substring.test"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    336
+  ]
+}

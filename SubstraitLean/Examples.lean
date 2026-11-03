@@ -10,6 +10,7 @@ import SubstraitLean.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Partition
+import SubstraitLean.Allowed
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
@@ -160,6 +161,12 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
+#print axioms Substrait.Rel.noIssue_of_sumsFit
+#print axioms Substrait.Rel.eval_allowed
+#print axioms Substrait.Rel.allowed_perm_eval
+#print axioms Substrait.Rel.refines_of_perm
+#print axioms Substrait.Rel.guardFree_allowed
+#print axioms Substrait.Rel.duckdb_shim_allowed
 #print axioms Substrait.FloatCode.round_mono
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
@@ -170,8 +177,16 @@ end Substrait.Examples
 #print axioms Substrait.Rel.window_allColumns
 #print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
+#print axioms Substrait.Rel.capReads_eval
+#print axioms Substrait.Rel.maxRows_sound
 #print axioms Substrait.FloatCode.ofInt_mono
 #print axioms Substrait.FloatCode.ofInt_exact
+#print axioms Substrait.FloatCode.ofInt_rel
+#print axioms Substrait.FloatCode.toInt?_ofInt
+#print axioms Substrait.FloatCode.ofDecimal_rel
+#print axioms Substrait.FloatCode.ofDecimal_mono
+#print axioms Substrait.FloatCode.toDecimal?_between
+#print axioms Substrait.FloatCode.roundRat_rel
 #print axioms Substrait.pairFacts_sound
 #print axioms Substrait.Rel.ratioPart_sound
 #print axioms Substrait.ratioSharpen_sound
@@ -221,5 +236,6 @@ end Substrait.Examples
 #print axioms Substrait.Retention.final_unchanged
 #print axioms Substrait.Retention.retention_sound
 #print axioms Substrait.Retention.final_stable
+#print axioms Substrait.Retention.expiry_sound
 #print axioms Substrait.Retention.open_buckets_le
 #print axioms Substrait.Retention.trunc_eq_bucket

@@ -358,6 +358,102 @@ theorem ofIntExact_exact {i : Int} (h : i.natAbs ≤ 2 ^ 53) : ofIntExact i = ex
   simp only [ofIntExact, ofIntRaw, exactCode, hr]
   split <;> (try split) <;> omega
 
+/-- The code of magnitude `m` (`|x| · 2¹⁰⁷⁴`), negative if `neg`. -/
+def signedCode (neg : Bool) (m : Nat) : Int :=
+  if m = 0 then 0 else if neg then -(2 * (m : Int) + 1) else 2 * (m : Int) + 1
+
+/-- Rounding to a multiple of `2ˢ` moves by at most half of it. -/
+theorem roundTo2_err (s n : Nat) (hs : 1 ≤ s) :
+    roundTo2 s n ≤ n + 2 ^ (s - 1) ∧ n ≤ roundTo2 s n + 2 ^ (s - 1) := by
+  have hP : 2 ^ s = 2 * 2 ^ (s - 1) := by rw [← Nat.pow_succ']; congr 1; omega
+  have hd := Nat.div_add_mod n (2 ^ s)
+  have hrl := Nat.mod_lt n (Nat.two_pow_pos s)
+  unfold roundTo2
+  rw [hP] at hd hrl ⊢
+  generalize 2 ^ (s - 1) = G at hd hrl ⊢
+  generalize n / (2 * G) = q at hd ⊢
+  generalize n % (2 * G) = r at hd hrl ⊢
+  have e1 : (q + 1) * (2 * G) = q * (2 * G) + 2 * G := by rw [Nat.add_mul, Nat.one_mul]
+  have e2 : 2 * G * q = q * (2 * G) := Nat.mul_comm _ _
+  rw [e1]
+  split <;> constructor <;> omega
+
+set_option exponentiation.threshold 2100 in
+/-- `roundSig` is within half a unit in the last place: `2⁻⁵³`, relatively. -/
+theorem roundSig_rel {n : Nat} (h0 : 0 < n) (h : n < 2 ^ 1100) :
+    2 ^ 53 * roundSig n ≤ (2 ^ 53 + 1) * n ∧ (2 ^ 53 - 1) * n ≤ 2 ^ 53 * roundSig n := by
+  unfold roundSig
+  simp only [h, ↓reduceIte]
+  rw [bitLen_min h]
+  have p53 : (2 : Nat) ^ 53 = 9007199254740992 := by decide
+  by_cases hs : bitLen 1100 n - 53 = 0
+  · rw [hs, show roundTo2 0 n = n by simpa using roundTo2_mul 0 n, p53]
+    constructor <;> omega
+  · have hb := two_pow_bitLen_le 1100 n (by omega)
+    have e : bitLen 1100 n = (bitLen 1100 n - 53 - 1) + 54 := by omega
+    rw [e, Nat.pow_add] at hb
+    obtain ⟨h1, h2⟩ := roundTo2_err (bitLen 1100 n - 53) n (by omega)
+    have e2 : 2 ^ (bitLen 1100 n - 53 - 1) * 2 ^ 54 = 2 * (2 ^ (bitLen 1100 n - 53 - 1) * 2 ^ 53) := by
+      rw [show (2 : Nat) ^ 54 = 2 * 2 ^ 53 by decide]; ac_rfl
+    rw [show bitLen 1100 n - 53 - 1 = bitLen 1100 n - 53 - 1 from rfl] at h1 h2
+    generalize 2 ^ (bitLen 1100 n - 53 - 1) = E at hb h1 h2 e2
+    generalize roundTo2 (bitLen 1100 n - 53) n = R at h1 h2 ⊢
+    rw [p53] at e2 ⊢
+    constructor <;> omega
+
+set_option exponentiation.threshold 2100 in
+theorem bitLen_pow {k : Nat} (hk : k < 1100) : bitLen 1100 (2 ^ k) = k + 1 := by
+  have h1 := lt_two_pow_bitLen 1100 (2 ^ k) (Nat.pow_lt_pow_right (by decide) hk)
+  have h2 := two_pow_bitLen_le 1100 (2 ^ k) (Nat.pos_iff_ne_zero.1 (Nat.two_pow_pos k))
+  rw [← Nat.pow_succ'] at h2
+  have := (Nat.pow_lt_pow_iff_right (by decide : 1 < 2)).1 h1
+  have := (Nat.pow_le_pow_iff_right (by decide : 1 < 2)).1 h2
+  omega
+
+set_option exponentiation.threshold 2100 in
+theorem roundSig_pow {k : Nat} (hk : k < 1100) : roundSig (2 ^ k) = 2 ^ k := by
+  have hC : 2 ^ k < 2 ^ 1100 := Nat.pow_lt_pow_right (by decide) hk
+  unfold roundSig
+  simp only [hC, ↓reduceIte]
+  rw [bitLen_min hC, bitLen_pow hk]
+  have e : 2 ^ k = 2 ^ (k - (k + 1 - 53)) * 2 ^ (k + 1 - 53) := by
+    rw [← Nat.pow_add]; congr 1; omega
+  rw [e]; exact roundTo2_mul _ _
+
+set_option exponentiation.threshold 2100 in
+theorem ofIntExact_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
+    ∃ M, ofIntExact i = signedCode (decide (i < 0)) M ∧
+      2 ^ 53 * M ≤ (2 ^ 53 + 1) * (i.natAbs * 2 ^ 1074) ∧
+      (2 ^ 53 - 1) * (i.natAbs * 2 ^ 1074) ≤ 2 ^ 53 * M := by
+  have hpos : 0 < i.natAbs := by omega
+  have hC : i.natAbs < 2 ^ 1100 := Nat.lt_of_le_of_lt h (Nat.pow_lt_pow_right (by decide) (by decide))
+  obtain ⟨r1, r2⟩ := roundSig_rel hpos hC
+  -- `2¹⁰²³` is a double: rounding stays at or below it, far from overflow.
+  have htop : roundSig i.natAbs ≤ 2 ^ 1023 := by
+    have := roundSig_mono h; rwa [roundSig_pow (by decide)] at this
+  have hM : roundSig i.natAbs * 2 ^ 1074 ≤ maxMag := by
+    have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := by unfold maxMag; rfl
+    have e : (2 : Nat) ^ 1023 * 2 ^ 1074 = 2 ^ 52 * 2 ^ 2045 := by
+      simp only [← Nat.pow_add]
+    rw [hm]
+    refine Nat.le_trans (Nat.mul_le_mul_right _ htop) ?_
+    rw [e]; exact Nat.mul_le_mul_right _ (by decide)
+  have hMi : ((roundSig i.natAbs * 2 ^ 1074 : Nat) : Int) ≤ maxMag := by exact_mod_cast hM
+  have hpos' : 0 < roundSig i.natAbs := by
+    have p53 : (2 : Nat) ^ 53 = 9007199254740992 := by decide
+    rw [p53] at r2; omega
+  have hne : roundSig i.natAbs * 2 ^ 1074 ≠ 0 := Nat.mul_ne_zero (by omega) (by
+    exact Nat.pos_iff_ne_zero.1 (Nat.two_pow_pos _))
+  refine ⟨roundSig i.natAbs * 2 ^ 1074, ?_, ?_, ?_⟩
+  · unfold ofIntExact ofIntRaw signedCode
+    generalize roundSig i.natAbs * 2 ^ 1074 = M at hMi hne ⊢
+    generalize (maxMag : Int) = X at hMi ⊢
+    simp only [h0, hne, ↓reduceIte]
+    by_cases hn : i < 0 <;> simp only [hn, decide_true, decide_false, ↓reduceIte,
+      Bool.false_eq_true] <;> omega
+  · rw [← Nat.mul_assoc, ← Nat.mul_assoc]; exact Nat.mul_le_mul_right _ r1
+  · rw [← Nat.mul_assoc, ← Nat.mul_assoc]; exact Nat.mul_le_mul_right _ r2
+
 /-- A conversion of integers to doubles, with what the checker knows of it. -/
 structure IntToDouble where
   conv : Int → Int
@@ -366,12 +462,17 @@ structure IntToDouble where
   mono : ∀ {i j}, i ≤ j → conv i ≤ conv j
   /-- Integers up to `2⁵³` in magnitude are doubles exactly. -/
   exact : ∀ {i}, i.natAbs ≤ 2 ^ 53 → conv i = exactCode i
+  /-- Up to `2¹⁰²³`, within half a unit in the last place: `2⁻⁵³`, relatively. -/
+  rel : ∀ {i}, i ≠ 0 → i.natAbs ≤ 2 ^ 1023 → ∃ M, conv i = signedCode (decide (i < 0)) M ∧
+    2 ^ 53 * M ≤ (2 ^ 53 + 1) * (i.natAbs * 2 ^ 1074) ∧
+    (2 ^ 53 - 1) * (i.natAbs * 2 ^ 1074) ≤ 2 ^ 53 * M
 
 /-- `ofIntExact`, behind a constant the kernel does not unfold: proofs about
 plans use only the properties above, as they did of the native conversion
 before, and type-checking them never computes a rounding. -/
 opaque intToDouble : IntToDouble :=
-  ⟨ofIntExact, ofIntExact_bounds, ofIntExact_ne_zero, ofIntExact_mono, ofIntExact_exact⟩
+  ⟨ofIntExact, ofIntExact_bounds, ofIntExact_ne_zero, ofIntExact_mono, ofIntExact_exact,
+    ofIntExact_rel⟩
 
 /-- An integer as a double (`ofIntExact`). -/
 def ofInt (i : Int) : Int := intToDouble.conv i
@@ -386,11 +487,65 @@ theorem ofInt_mono {i j : Int} (h : i ≤ j) : ofInt i ≤ ofInt j := intToDoubl
 /-- Integers up to `2⁵³` in magnitude convert exactly. -/
 theorem ofInt_exact {i : Int} (h : i.natAbs ≤ 2 ^ 53) : ofInt i = exactCode i := intToDouble.exact h
 
+/-- Integers up to `2¹⁰²³` in magnitude convert within half a unit in the last
+place, `|fl(n) − n| ≤ 2⁻⁵³ · |n|` (as magnitudes `· 2¹⁰⁷⁴`). -/
+theorem ofInt_rel {i : Int} (h0 : i ≠ 0) (h : i.natAbs ≤ 2 ^ 1023) :
+    ∃ M, ofInt i = signedCode (decide (i < 0)) M ∧
+      2 ^ 53 * M ≤ (2 ^ 53 + 1) * (i.natAbs * 2 ^ 1074) ∧
+      (2 ^ 53 - 1) * (i.natAbs * 2 ^ 1074) ≤ 2 ^ 53 * M := intToDouble.rel h0 h
+
 -- The native conversion agrees, also where it rounds (`2⁵³ + 1` is a tie).
 #guard [0, 1, -1, 7, -12345, 2 ^ 53, 2 ^ 53 + 1, 2 ^ 53 + 3, -(2 ^ 53 + 1), 2 ^ 63 - 1,
   -(2 ^ 63), 2 ^ 62 + 2 ^ 9, 2 ^ 62 + 2 ^ 9 + 1, 2 ^ 1100, -(2 ^ 1100)].all fun i =>
     ofInt i == finite (ofFloat (Float.ofInt i))
 #guard ofInt (2 ^ 1100) == ofMag false maxMag
+
+/-! ### Scaled values, for the error bounds of #85
+
+`scaled c` is the value of the double with code `c`, times `2¹⁰⁷⁴`: its
+magnitude, with its sign. It is monotone in the code, and a code bound
+follows from a scaled one (`le_codeHi`, `codeLo_le`), so the checker can do
+its interval arithmetic for `SUM` and `AVG` of doubles on integers. -/
+
+def scaled (c : Int) : Int :=
+  if c < 0 then -(((c.natAbs - 1) / 2 : Nat) : Int) else (((c.natAbs - 1) / 2 : Nat) : Int)
+
+theorem scaled_mono {c d : Int} (h : c ≤ d) : scaled c ≤ scaled d := by
+  unfold scaled
+  split <;> split <;> omega
+
+/-- A code with scaled value at most `s` is at most `codeHi s`. -/
+def codeHi (s : Int) : Int := 2 * s + 2
+
+/-- A code with scaled value at least `s` is at least `codeLo s`. -/
+def codeLo (s : Int) : Int := 2 * s - 2
+
+theorem le_codeHi {c s : Int} (h : scaled c ≤ s) : c ≤ codeHi s := by
+  unfold scaled at h; unfold codeHi
+  split at h <;> omega
+
+theorem codeLo_le {c s : Int} (h : s ≤ scaled c) : codeLo s ≤ c := by
+  unfold scaled at h; unfold codeLo
+  split at h <;> omega
+
+/-- `2⁵²`. -/
+def tolK : Nat := 2 ^ 52
+
+/-- `⌈a / b⌉`. -/
+def ceilDiv (a b : Nat) : Nat := (a + b - 1) / b
+
+/-- The error bound of a `SUM` of at most `n` doubles, each at most `Bs`
+scaled, scaled and rounded up: `γ n · n · ((1 + 2u) B + 2⁻¹⁰²²) + 2 n u B`
+with `u = 2⁻⁵³`, `γ n = n u / (1 − n u)`. Proved as `sumTol_le` in
+`float-bounds/FloatBounds/Core.lean` (`docs/float-bounds.md`). -/
+def sumTolScaled (n Bs : Nat) : Nat :=
+  ceilDiv (n ^ 2 * ((tolK + 1) * Bs + tolK ^ 2)) (tolK * (2 * tolK - n)) + ceilDiv (n * Bs) tolK
+
+/-- The error bound of an `AVG`: `γ (n + 2) · ((1 + 2u) B + 2⁻¹⁰²²) + 2 u B`
+(`avgTol_le`). -/
+def avgTolScaled (n Bs : Nat) : Nat :=
+  ceilDiv ((n + 2) * ((tolK + 1) * Bs + tolK ^ 2)) (tolK * (2 * tolK - (n + 2))) +
+    ceilDiv Bs tolK
 
 def isNan (c : Int) : Bool := c == nan
 
@@ -443,36 +598,38 @@ def fmod (a b : Int) : Int :=
 #guard fmod (ofFloat 0.3) (ofFloat 0.1) == ofFloat 0.09999999999999998
 #guard fmod (ofFloat 5e-324) (ofFloat 2.0) == ofFloat 5e-324
 
-/-- `CAST(x AS DECIMAL(_, s))` of a double, as the decimal's unscaled integer:
+/-- `CAST(x AS DECIMAL(_, s))` of a double with native floats (the model's is
+`toDecimal?`, `SubstraitLean/Conversions.lean`), as the decimal's unscaled integer:
 `round(x · 10ˢ)` computed in doubles, halves away from zero, as DuckDB and
 DataFusion cast (#27). NaN and ±∞ have none. -/
-def toDecimal? (c : Int) (s : Nat) : Option Int :=
+def toDecimalNative? (c : Int) (s : Nat) : Option Int :=
   let (negative, m) := finiteParts (ofFloat (toFloat c * Float.ofNat (10 ^ s)).round)
   -- A whole double's magnitude is a multiple of 2¹⁰⁷⁴.
   if infMag ≤ m then none else
     let q : Int := (m / 2 ^ 1074 : Nat)
     some (if negative then -q else q)
 
-/-- A decimal's unscaled integer `n` at scale `s` as a double's code,
+/-- A decimal's unscaled integer `n` at scale `s` as a double's code with
+native floats (the model's is `ofDecimal`, `SubstraitLean/Conversions.lean`),
 correctly rounded (#27). A decimal has at most 38 digits, far below `2¹⁰²⁴`,
 so `finite` changes nothing and tells the checker the double is finite
 (#257). -/
-def ofDecimal (n : Int) (s : Nat) : Int :=
+def ofDecimalNative (n : Int) (s : Nat) : Int :=
   let f := Float.ofScientific n.natAbs true s
   finite (ofFloat (if n < 0 then -f else f))
 
 -- The backends' cases: the product rounds in doubles (`-2.675 · 100` is
 -- `-267.5`), and `0.145 · 100` is just below `14.5`.
-#guard toDecimal? (ofFloat 0.125) 2 == some 13 && toDecimal? (ofFloat (-2.675)) 2 == some (-268)
-#guard toDecimal? (ofFloat 0.135) 2 == some 14 && toDecimal? (ofFloat 0.145) 2 == some 14
-#guard toDecimal? (ofFloat 2.5) 0 == some 3 && toDecimal? (ofFloat (-2.5)) 0 == some (-3)
-#guard toDecimal? (ofFloat 1e20) 2 == some (10 ^ 22) && toDecimal? nan 2 == none
-#guard toDecimal? posInf 0 == none && toDecimal? 0 3 == some 0
-#guard ofDecimal 1234 2 == ofFloat 12.34 && ofDecimal (-5) 2 == ofFloat (-0.05)
-#guard ofDecimal 145 3 == ofFloat 0.145 && ofDecimal 0 5 == 0
+#guard toDecimalNative? (ofFloat 0.125) 2 == some 13 && toDecimalNative? (ofFloat (-2.675)) 2 == some (-268)
+#guard toDecimalNative? (ofFloat 0.135) 2 == some 14 && toDecimalNative? (ofFloat 0.145) 2 == some 14
+#guard toDecimalNative? (ofFloat 2.5) 0 == some 3 && toDecimalNative? (ofFloat (-2.5)) 0 == some (-3)
+#guard toDecimalNative? (ofFloat 1e20) 2 == some (10 ^ 22) && toDecimalNative? nan 2 == none
+#guard toDecimalNative? posInf 0 == none && toDecimalNative? 0 3 == some 0
+#guard ofDecimalNative 1234 2 == ofFloat 12.34 && ofDecimalNative (-5) 2 == ofFloat (-0.05)
+#guard ofDecimalNative 145 3 == ofFloat 0.145 && ofDecimalNative 0 5 == 0
 -- Correctly rounded where `n` itself is not a double: 2⁵³ + 1 is a tie.
-#guard ofDecimal 9007199254740993 0 == ofFloat 9007199254740992.0
-#guard ofDecimal 99999999999999999999 2 == ofFloat 999999999999999999.99
+#guard ofDecimalNative 9007199254740993 0 == ofFloat 9007199254740992.0
+#guard ofDecimalNative 99999999999999999999 2 == ofFloat 999999999999999999.99
 
 end Substrait.FloatCode
 

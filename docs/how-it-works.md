@@ -150,8 +150,8 @@ Connections. `sv.connect(engine=...)` gives a `Connection`: the Arrow
 tables (`sverify.engines.create_table`, `con.arrow`), the engine plans run on, and Ibis
 tables bound to them (`con.table(name)`, through an in-memory Ibis DuckDB
 backend that views the Arrow tables, so Ibis's own `.to_pyarrow()` works and
-contracts find a table's data). `con.datafusion` is a DataFusion session with
-the same tables, created on first use. Tables are stored with their doubles as
+contracts find a table's data). The DataFusion engine runs on a private
+DataFusion session with the same tables, created on first use. Tables are stored with their doubles as
 the model has them (below).
 
 A Delta or Iceberg source on DuckDB is held as a scan (`sverify._scan.Scan`):
@@ -237,7 +237,7 @@ engine is made to agree:
   inside a plan on DataFusion is not wrapped, so a sum that is NaN (as
   `inf + -inf`, negative on x86) or underflows to −0.0, and is then compared
   in the same plan, follows DataFusion's order; and so does SQL run on
-  DataFusion directly (a query on `con.datafusion`).
+  DataFusion directly (a query on a `datafusion.SessionContext`).
 
 ### The Ibis producer
 
@@ -665,9 +665,10 @@ the JSON plumbing.
 
 [Safety.lean](../SubstraitLean/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
-`may fail: …` (a `VerificationError` from `@sv.transform`), or, for an
-integer `SUM`, `may fail: SUM overflow: … (checked while the job runs …)`,
-which does not block a proof.
+`may fail: …` (a `VerificationError` from `@sv.transform`). An integer `SUM`
+that may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
+group (inferred; checked on the data while the job runs …)`, and is an error
+with `infer=False`.
 
 * Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
@@ -678,12 +679,18 @@ which does not block a proof.
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
   allows.
-* An integer `SUM` leaving 64 bits is checked while the job runs (nothing bounds
-  how many rows a group has): the SQL raises, and it does not make `proved` false.
+* An integer `SUM` leaving 64 bits is ruled out where the plan bounds a group's
+  rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
+  bounds each value (`Measure.sumFits`). Elsewhere it is an inferred assumption
+  (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
+  the job runs.
 * Bounds that rule out overflow are inferred
   ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,
-  filters, joins and `MIN`/`MAX` down to base-table columns. The inference is
+  filters, joins and `MIN`/`MAX` down to base-table columns. So are the
+  ranges of codes that rule out domain errors, casts out of range, string
+  lengths and decimal precision, and the value a divisor's column must not
+  hold. The inference is
   untrusted and has no proofs. Its bounds are added to the preconditions and
   the contract is proved again (`contract_sound`, `Rel.mayIssues_sound`), so a
   wrong bound only makes that proof fail; on the data they are checked like
@@ -768,7 +775,7 @@ hypotheses:
   same rows as filtering the whole table, if no row of a skipped file makes
   the filter TRUE (which the checker proves from the file's statistics).
 
-All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
+All proofs depend only on Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`), and the contract checker's on three more: the error bounds of `SUM` and `AVG` of doubles (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign` in `Aggregate.lean`), which [`float-bounds/`](float-bounds.md) proves for IEEE rounding with Mathlib, kept out of the core build.
 
 ## Modelling choices
 
