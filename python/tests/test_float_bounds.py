@@ -212,37 +212,58 @@ def test_sums_and_means_of_converted_integers() -> None:
 
 
 pairs = st.lists(st.tuples(values, values), min_size=2, max_size=40)
+TINY = Fraction(1, 2**1022)
+
+
+def sqrt_up(q: Fraction) -> Fraction:
+    """A rational at least `√q`, for the witnesses of `StatProps`."""
+    k = 2**40
+    return Fraction(math.isqrt(q.numerator * q.denominator * k * k) + 1, q.denominator * k)
 
 
 @settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(ps=pairs, scale=magnitudes, shift=st.sampled_from([0.0, 1.0, 1e6]))
-def test_duckdb_covar_and_corr_have_the_generic_properties(
+def test_duckdb_var_covar_and_corr_have_the_generic_properties(
     ps: list[tuple[float, float]], scale: float, shift: float
 ) -> None:
-    """`StatProps` (`SubstraitLean/StatProps.lean`): `COVAR_POP` within
-    `τ = (128 n² u B² + 12 n u B²) / n`, `|CORR| ≤ 1 + 3E/L + 8u` when both
-    co-moments are at least `L ≥ 8E`."""
+    """`StatProps` (`SubstraitLean/StatProps.lean`): `VAR_POP` within `varTol`,
+    `COVAR_POP` within `covTol`, `|CORR| ≤ 1 + 3E/L + 8u` (`corrErr`) when both
+    co-moments are at least `L ≥ 8E`, with the square roots by rational
+    witnesses above them. The bounds scale with the spread, so a shift of
+    `10⁶` keeps them small."""
     ps = [(x * scale + shift, y * scale - shift) for x, y in ps]
     n = len(ps)
     con = duckdb.connect()
     con.execute("CREATE TABLE t (x DOUBLE, y DOUBLE)")
     con.executemany("INSERT INTO t VALUES (?, ?)", ps)
-    row = con.execute("SELECT COVAR_POP(y, x), CORR(y, x) FROM t").fetchone()
+    row = con.execute("SELECT VAR_POP(x), COVAR_POP(y, x), CORR(y, x) FROM t").fetchone()
     assert row is not None
-    cov, corr = row
+    var, cov, corr = row
     xs, ys = [Fraction(x) for x, _ in ps], [Fraction(y) for _, y in ps]
-    b = max(max(abs(v) for v in xs + ys), Fraction(1, 2**500))
-    if b > 2**399:
+    if max(abs(v) for v in xs + ys) > 2**398:
         return
 
     def comoment(a: list[Fraction], c: list[Fraction]) -> Fraction:
         sa, sc = sum(a, Fraction(0)), sum(c, Fraction(0))
         return sum((p * q for p, q in zip(a, c, strict=True)), Fraction(0)) - sa * sc / n
 
-    e = 128 * n**2 * U * b**2
-    tol = (e + 12 * n * U * b**2) / n
-    assert abs(Fraction(cov) - comoment(xs, ys) / n) <= tol
-    sx, sy = comoment(xs, xs), comoment(ys, ys)
+    def qsum(a: list[Fraction]) -> Fraction:
+        return sum(((abs(v) + TINY) ** 2 for v in a), Fraction(0))
+
+    sx, sy, c = comoment(xs, xs), comoment(ys, ys), comoment(xs, ys)
+    qx, qy = qsum(xs), qsum(ys)
+    second = n**2 * U * TINY
+    var_tol = (160 * n * U * sqrt_up(qx * sx) + 3970 * n**2 * U**2 * qx + 800 * second) / n
+    assert abs(Fraction(var) - sx / n) <= var_tol
+    cov_tol = (
+        71 * n * U * (sqrt_up(qx * sy) + sqrt_up(qy * sx))
+        + 15 * n * U * sqrt_up(sx * sy)
+        + 3970 * n**2 * U**2 * sqrt_up(qx * qy)
+        + 800 * second
+    ) / n
+    assert abs(Fraction(cov) - c / n) <= cov_tol
+    r = max(sqrt_up(a * b) for a in (qx, qy, sx) for b in (sx, sy))
+    e = 447 * n * U * r + 11883 * n**2 * U**2 * (qx + qy) + 2379 * second
     low = min(sx, sy)
     if corr is not None and not math.isnan(corr) and low >= 8 * e and sx * sy <= 2**1000:
         assert abs(Fraction(corr)) <= 1 + 3 * e / low + 8 * U
