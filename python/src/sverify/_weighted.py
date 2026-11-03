@@ -236,6 +236,23 @@ def matching(z: pa.Table | Native, rows: pa.Table) -> pa.Table:
     return out.cast(z.schema)
 
 
+def split_matching(table: pa.Table, rows: pa.Table) -> tuple[pa.Table, pa.Table]:
+    """The rows of `table` (a plain table) equal to some row of `rows` (a
+    table with its columns, and maybe a weight), and the other rows."""
+    keys = table.column_names
+    n = table.num_rows
+    if not n or not rows.num_rows:
+        return table.slice(0, 0), table
+    indexed = table.append_column(_ROW, _indices(n))
+    same = _same_rows(keys, "t", "r")
+    hit = _sql(
+        f"SELECT {_q(_ROW)} FROM t WHERE EXISTS (SELECT 1 FROM r WHERE {same})", t=indexed, r=rows
+    )
+    rows_hit = hit.column(_ROW)
+    mask = pc.call_function("is_in", [_indices(n)], pc.SetLookupOptions(value_set=rows_hit))
+    return table.take(rows_hit), table.filter(_call("invert", mask))
+
+
 def weights_in(z: pa.Table | Native, rows: pa.Table) -> pa.Array:
     """The weight in the weighted table `z` of each row of `rows` (a table
     with `z`'s row columns, and maybe a weight), 0 where `z` lacks it."""

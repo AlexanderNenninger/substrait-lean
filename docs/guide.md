@@ -319,6 +319,11 @@ except VerificationError as e:
 * Doubles and time: comparisons with constants are exact, including
   sentinels like `-9999.0`, `isnan()` and intervals; doubles compare as SQL
   engines compare them, with one zero and one NaN above every number.
+* Sums and means of doubles round. Their signs are exact, and with a row cap
+  in `requires`, `sv.max_rows(10_000_000)` (checked on the data), Lean
+  bounds them by the proved rounding error ([float bounds](float-bounds.md)).
+  `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
+  the report suggests it when an exact claim misses only by rounding.
 * Not tracked yet: string contents, DECIMAL columns, relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
@@ -330,7 +335,7 @@ meets the preconditions, and `@sv.transform` refuses the transformation
 while there is one:
 
 ```python
-@sv.transform(requires={"orders": [_.amount >= 0]})
+@sv.transform(requires={"orders": [_.amount >= 0]}, infer=False)
 def share(orders):
     return orders.select(orders.id, per_unit=orders.amount // (orders.amount - 30))
 
@@ -340,6 +345,9 @@ except VerificationError as e:
     print(str(e).splitlines()[0])
 # could not prove: no runtime error (division by zero: (($2 - 1) / ($2 - 30))), ...
 ```
+
+Without `infer=False`, sverify infers the precondition `(_.amount != 30)`
+and proves `share` ([Inferred bounds](#inferred-bounds)).
 
 Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
@@ -388,6 +396,22 @@ build on it like on any other precondition of a source.
   timestamps to whole years (`ts.truncate("M")` needs
   `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
   range of nanosecond timestamps).
+* Other runtime errors get preconditions the same way:
+
+  | Operation | Inferred precondition |
+  |---|---|
+  | `a // b`, `a % b` | `(_.b != 0)`, `(_.b != 1)` for `a % (b - 1)` |
+  | `x.sqrt()`, `x ** 0.5` | `(_.x >= 0.0)` |
+  | `x.ln()`, `x.log10()`, `x.log2()` | `(_.x > 0)` |
+  | `x.asin()`, `x.acos()` | `(_.x >= -1.0)`, `(_.x <= 1.0)` |
+  | `x.cast("int64")` of a double | `(_.x >= -2**63)`, `(_.x < 2**63)` |
+  | `a.cast("int32")` | `(_.a >= -2**31)`, `(_.a < 2**31)` |
+  | `ibis.literal("ab").repeat(n)` | `(_.n < 2**30)` |
+  | `big * 2` of a `DECIMAL(38, 2)` | `(_.big >= -4 * 10**35)`, `(_.big < 5 * 10**35)` |
+  | `d + ibis.interval(days=10)` | `(_.d >= date(1, 1, 1))`, `(_.d < date(9999, 1, 1))` |
+
+  [test_infer_errors.py](../python/tests/test_infer_errors.py) has these
+  cases.
 * A product or sum of two unbounded columns has no single weakest bound,
   the value of an aggregate (`SUM`) or window function has none on a
   column, and a value from another contracted transformation is bounded by
@@ -412,6 +436,31 @@ print(sv.verify(per_minute))
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
+
+### Suggested preconditions
+
+An unproved postcondition that compares a value with a constant gets a
+suggestion: the precondition on the inputs under which Lean proves it. It
+is never assumed, since it changes what the transformation accepts:
+
+```python
+items = ibis.table({"id": "int64", "qty": "!int64"}, name="items")
+report = sv.verify(
+    items.select(items.id, doubled=items.qty * 2),
+    requires={"items": [_.qty >= 0]},
+    ensures=[_.doubled <= 100],
+)
+print(report)
+# ...
+# ensures (_.doubled <= 100): NOT proved: it may be FALSE on some rows
+#   would hold with `(_.qty < 51)` in the requires of 'items'
+# ...
+```
+
+Sverify proves each suggestion before showing it, by proving the
+postcondition again with it added. `Report.suggestions` has them as code,
+per postcondition and table, for editors and language servers
+([test_suggestions.py](../python/tests/test_suggestions.py)).
 
 ### Composing contracts
 

@@ -11,6 +11,7 @@ import SubstraitLean.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Partition
+import SubstraitLean.Allowed
 import SubstraitLean.Guards
 import SubstraitLean.LoweringDuckDB
 import SubstraitLean.LiftDuckDB
@@ -162,6 +163,11 @@ end Substrait.Examples
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
 #print axioms Substrait.Rel.noIssue_of_sumsFit
+#print axioms Substrait.Rel.eval_allowed
+#print axioms Substrait.Rel.allowed_perm_eval
+#print axioms Substrait.Rel.refines_of_perm
+#print axioms Substrait.Rel.guardFree_allowed
+#print axioms Substrait.Rel.duckdb_shim_allowed
 #print axioms Substrait.FloatCode.round_mono
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
@@ -172,6 +178,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.window_allColumns
 #print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
+#print axioms Substrait.Rel.capReads_eval
+#print axioms Substrait.Rel.maxRows_sound
 #print axioms Substrait.FloatCode.ofInt_mono
 #print axioms Substrait.FloatCode.ofInt_exact
 #print axioms Substrait.FloatCode.ofInt_rel

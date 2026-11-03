@@ -254,6 +254,132 @@ def arrives_within(
     return ArrivesWithin(col, lateness)
 
 
+@dataclass(frozen=True)
+class MaxRows:
+    """At most `n` rows (see `max_rows`).
+
+    Attributes:
+        n: The cap.
+    """
+
+    n: int
+
+
+def max_rows(n: int) -> MaxRows:
+    """A cap on an input's row count: at most `n` rows.
+
+    Only for `requires`, where it is checked on the data (`COUNT(*) <= n`)
+    like `unique`. Error bounds of floating-point aggregates grow with the
+    number of rows, so `SUM` and `AVG` of doubles get their bounds only from
+    inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies within
+    the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and their mean
+    within it of `[lo, hi]` (#85, `docs/float-bounds.md`). Caps of up to
+    `2³²` rows give bounds. Not supported by incremental views.
+
+    Args:
+        n: The largest number of rows the input may have.
+
+    Returns:
+        A `MaxRows` condition, for `requires`.
+
+    Raises:
+        ValueError: `n` is negative.
+    """
+    if n < 0:
+        raise ValueError(f"max_rows needs a cap of 0 or more, not {n}")
+    return MaxRows(int(n))
+
+
+@dataclass(frozen=True)
+class Approx:
+    """A condition relaxed by a relative tolerance (see `approx`).
+
+    Attributes:
+        cond: The condition, an Ibis expression or a function of the table.
+        rel: The relative tolerance.
+    """
+
+    cond: Any
+    rel: float
+
+    def __call__(self, table: ir.Table) -> ir.BooleanValue:
+        return _relax(resolve(self.cond, table), self.rel)
+
+
+def _relax(expr: ir.BooleanValue, rel: float) -> ir.BooleanValue:
+    """`expr` with each comparison against a number `k` moved outward by
+    `rel · max(1, |k|)`."""
+    import ibis.expr.operations as ops
+
+    def slack(k: Any) -> float:
+        return rel * max(1.0, abs(float(k)))
+
+    def number(node: Any) -> Any:
+        if isinstance(node, ops.Literal) and node.dtype.is_numeric():
+            return node.value
+        return None
+
+    def go(node: Any) -> ir.BooleanValue:
+        if isinstance(node, ops.And):
+            return go(node.left) & go(node.right)
+        if isinstance(node, ops.Or):
+            return go(node.left) | go(node.right)
+        if isinstance(node, ops.Between):
+            lo, hi = number(node.lower_bound), number(node.upper_bound)
+            if lo is not None and hi is not None:
+                return node.arg.to_expr().between(lo - slack(lo), hi + slack(hi))
+        up = (ops.Less, ops.LessEqual)
+        down = (ops.Greater, ops.GreaterEqual)
+        if isinstance(node, (*up, *down, ops.Equals)):
+            x, k, flipped = node.left, number(node.right), False
+            if k is None:
+                x, k, flipped = node.right, number(node.left), True
+            if k is not None:
+                e = x.to_expr()
+                d = slack(k)
+                if isinstance(node, ops.Equals):
+                    return e.between(k - d, k + d)
+                # `k <= x` bounds `x` from below, as `x >= k` does.
+                bound_above = isinstance(node, up) != flipped
+                strict = isinstance(node, (ops.Less, ops.Greater))
+                if bound_above:
+                    return e < k + d if strict else e <= k + d
+                return e > k - d if strict else e >= k - d
+        raise TypeError(
+            "approx relaxes comparisons of a column with a number, combined with AND and OR; "
+            f"it cannot relax {node.__class__.__name__}"
+        )
+
+    return go(expr.op())
+
+
+def approx(cond: Any, rel: float = 1e-6) -> Approx:
+    """A postcondition that holds up to rounding: every comparison of a column
+    with a number `k` in `cond` is relaxed by `rel · max(1, |k|)`.
+
+    `_.avg <= 100` may fail by the last bits after `AVG` of doubles rounds;
+    `approx(_.avg <= 100)` is `_.avg <= 100.0001`, which the checker proves
+    from the error bounds of #85 when the inputs have a row cap
+    (`max_rows`), and which runs as that condition at run time. The default
+    `rel = 1e-6` covers the error of a `SUM` or `AVG` over any cap up to
+    `2³²` rows, about `n · 2⁻⁵³` relative to the values' bound. Comparisons
+    combine with AND and OR; `BETWEEN` and `=` widen on both sides.
+
+    Args:
+        cond: An Ibis condition (`_.avg <= 100`) or a function of the table.
+        rel: The relative tolerance, `1e-6` by default.
+
+    Returns:
+        A condition for `ensures` (or `requires`).
+
+    Raises:
+        TypeError: `cond` is a SQL snippet.
+    """
+    if isinstance(cond, str):
+        raise TypeError("approx takes an Ibis condition, not SQL; write the slack in the SQL")
+    return Approx(cond, rel)
+
+
 Semantics = Literal["reference", "duckdb"]
 """What a check's SQL means: sverify's reference semantics (the default) or
 DuckDB's (#411)."""
@@ -265,7 +391,7 @@ def _checked_semantics(semantics: str) -> Semantics:
     return semantics  # type: ignore[return-value]
 
 
-TableCondition = (Unique, References, ArrivesWithin)
+TableCondition = (Unique, References, ArrivesWithin, MaxRows)
 """Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
@@ -275,6 +401,7 @@ Condition = (
     | Unique
     | References
     | ArrivesWithin
+    | MaxRows
     | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
@@ -297,6 +424,10 @@ class CheckedCondition:
     """For an unproved condition with `on_unproved="runtime"`: it is checked
     on the output data instead, on a bound result when it is built, or on a
     node at every refresh before its sink commits."""
+    suggested: dict[str, list[Condition]] = field(default_factory=dict)
+    """For an unproved condition: preconditions on the inputs, per table,
+    under which Lean proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
+    Never assumed: adding them is the author's choice."""
 
     @property
     def why(self) -> str:
@@ -465,6 +596,17 @@ class Report:
         return [i for i in self.issues if not i.error]
 
     @property
+    def suggestions(self) -> dict[str, dict[str, list[str]]]:
+        """For each unproved postcondition with one, the preconditions per
+        input table under which it would be proved, as code
+        (`{"(_.y <= 100)": {"orders": ["(_.x <= 50)"]}}`)."""
+        return {
+            c.label: {t: [label(x) for x in cs] for t, cs in c.suggested.items()}
+            for c in self.ensures
+            if c.suggested
+        }
+
+    @property
     def unproved(self) -> list[CheckedCondition]:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
@@ -496,6 +638,8 @@ class Report:
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
+            if c.suggested:
+                lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: SUM of {i.expr} {SUM_ASSUMED}" for i in self.assumed]
         for i in self.errors:
             lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
@@ -522,7 +666,11 @@ class Report:
                 return f"❌ {c.why}"
             return f"❌ {c.why}; fails on `{c.counterexample}`".replace("|", "\\|")
 
-        rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
+        rows = []
+        for c in self.ensures:
+            rows.append(f"| `{c.label}` | {status(c)} |")
+            if c.suggested:
+                rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
             note = f" ({RUNTIME_CHECK})" if _sum(i) else ""
@@ -551,6 +699,15 @@ class Report:
                 *facts,
             ]
         )
+
+
+def _would_hold(c: CheckedCondition) -> str:
+    """The suggestion line of an unproved postcondition."""
+    parts = [
+        f"{', '.join(f'`{label(x)}`' for x in cs)} in the requires of {t!r}"
+        for t, cs in c.suggested.items()
+    ]
+    return "would hold with " + " and ".join(parts)
 
 
 PARAMS_NOTE = "proved for these parameter values only"
@@ -776,6 +933,28 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
             v, text = _nice(hi + 1, up=False)
             out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
         return out
+    if dtype.is_floating():
+        return _double_conditions(ref, sql, null, lo, hi)
+    if dtype.is_decimal() and dtype.scale is not None:
+        scale = dtype.scale
+
+        def dec(k: int) -> str:
+            return f"{Decimal(k).scaleb(-scale):.{scale}f}"
+
+        # Large bounds as round whole numbers (`5 * 10**35`), small ones exactly.
+        if lo is not None:
+            if abs(lo) >= 10 ** (scale + 6):
+                v, text = _nice(-((-lo) // 10**scale), up=True)
+                out.append(Inferred(f"{null}{sql} >= {dec(v * 10**scale)}", f"({ref} >= {text})"))
+            else:
+                out.append(Inferred(f"{null}{sql} >= {dec(lo)}", f"({ref} >= {dec(lo)})"))
+        if hi is not None:
+            if abs(hi) >= 10 ** (scale + 6):
+                v, text = _nice(hi // 10**scale + 1, up=False)
+                out.append(Inferred(f"{null}{sql} < {dec(v * 10**scale)}", f"({ref} < {text})"))
+            else:
+                out.append(Inferred(f"{null}{sql} <= {dec(hi)}", f"({ref} <= {dec(hi)})"))
+        return out
     if dtype.is_timestamp() and dtype.timezone is None:
         unit, kind, py = timedelta(microseconds=1), "TIMESTAMP", "datetime"
     elif dtype.is_date():
@@ -801,20 +980,90 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
     return out
 
 
+# Codes of the smallest positive and the largest finite double.
+_TINY_CODE = 1
+_MAX_CODE = 2 * MAX_MAG + 1
+
+
+def _double_conditions(
+    ref: str, sql: str, null: str, lo: int | None, hi: int | None
+) -> list[Inferred]:
+    """`lo <= col <= hi` on double codes: `> 0` for the smallest positive
+    double, round powers of two near ±2⁶³ (a cast to BIGINT), and the
+    decoded doubles otherwise."""
+
+    def num(x: float) -> str:
+        if x.is_integer() and abs(x) >= 1e6:
+            return _nice(int(x), up=x < 0)[1]
+        return repr(x)
+
+    out = []
+    if lo is not None:
+        if lo == _TINY_CODE:
+            out.append(Inferred(f"{null}{sql} > 0", f"({ref} > 0)"))
+        elif lo > -_MAX_CODE:
+            x = decode_double(lo)
+            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {num(x)})"))
+        else:
+            x = decode_double(-_MAX_CODE)
+            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {x!r})"))
+    if hi is not None:
+        nxt = decode_double(hi + 1)
+        if hi < _MAX_CODE and nxt.is_integer() and abs(nxt) >= 1e6:
+            # Just below a round number: `< 2**63`.
+            out.append(Inferred(f"{null}{sql} < {nxt!r}", f"({ref} < {num(nxt)})"))
+        else:
+            x = decode_double(min(hi, _MAX_CODE))
+            out.append(Inferred(f"{null}{sql} <= {x!r}", f"({ref} <= {x!r})"))
+    return out
+
+
+def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
+    """`col != k`, for a code `k` of the column's type (a divisor's 0)."""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    sql = '"' + col.replace('"', '""') + '"'
+    null = f"{sql} IS NULL OR " if dtype.nullable else ""
+    if dtype.is_integer():
+        v = str(k)
+    elif dtype.is_floating():
+        v = repr(decode_double(k))
+    elif dtype.is_decimal() and dtype.scale is not None:
+        v = f"{Decimal(k).scaleb(-dtype.scale):.{dtype.scale}f}"
+    else:
+        return None
+    return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
+
+
+def _suggested(
+    bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
+) -> dict[str, list[Condition]]:
+    """The preconditions Lean suggests for an unproved postcondition, on the
+    tables whose `requires` the caller states; none for a split or a why."""
+    if bound is None or bound["why"] is not None or bound["split"]:
+        return {}
+    conds = _render_needs(bound["needs"], schemas)
+    return {t: list[Condition](cs) for t, cs in conds.items() if t in assumable and cs}
+
+
 def _render_needs(
     needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
 ) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}` (column positions,
-    integer codes as strings), per table."""
+    """The conditions of a list of `{table, col, lo, hi}` or `{table, col,
+    ne}` (column positions, integer codes as strings), per table."""
     out: dict[str, list[Inferred]] = {}
     for n in needs:
         schema = schemas.get(n["table"])
         if schema is None or n["col"] >= len(schema):
             continue
         col = list(schema)[n["col"]]
-        lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
         have = out.setdefault(n["table"], [])
-        have += [c for c in _bound_conditions(col, schema[col], lo, hi) if c not in have]
+        if "ne" in n:
+            c = _ne_condition(col, schema[col], int(n["ne"]))
+            new = [] if c is None else [c]
+        else:
+            lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
+            new = _bound_conditions(col, schema[col], lo, hi)
+        have += [c for c in new if c not in have]
     return out
 
 
@@ -855,6 +1104,10 @@ def label(cond: Condition) -> str:
         return f"references({cond.col}, {cond.table}.{cond.other})"
     if isinstance(cond, ArrivesWithin):
         return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
+    if isinstance(cond, MaxRows):
+        return f"max_rows({cond.n})"
+    if isinstance(cond, Approx):
+        return f"approx({label(cond.cond)}, rel={cond.rel:g})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
@@ -1127,7 +1380,7 @@ def infer_bounds(
         return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
 
     if not infer:
-        return once(requires, counterexamples)[0]
+        return _confirm_suggestions(once(requires, counterexamples)[0], requires, once)
     # Counterexamples only for the final proof.
     report, raw, schemas = once(requires, 0)
     extra = {
@@ -1140,11 +1393,29 @@ def infer_bounds(
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
+    report = _confirm_suggestions(report, requires, once)
     # An integer SUM that may overflow is assumed to fit, and checked on the
     # data while the job runs: nothing bounds a group's rows yet (#219).
     report.assumed = [i for i in report.issues if _sum(i)]
     report.issues = [i for i in report.issues if not _sum(i)]
     return report
+
+
+def _confirm_suggestions(report: Report, requires, once) -> Report:
+    """`report` with only the suggestions a proof confirms: each unproved
+    postcondition's suggested preconditions are added to `requires` (and to
+    what was inferred), and kept if the postcondition is then proved."""
+    ensures = []
+    for c in report.ensures:
+        if c.suggested:
+            widened = {t: list(cs) for t, cs in requires.items()}
+            _merge(widened, report.inferred)
+            _merge(widened, c.suggested)
+            again = once(widened, 0)[0]
+            if not any(e.label == c.label and e.proved for e in again.ensures):
+                c = replace(c, suggested={})
+        ensures.append(c)
+    return replace(report, ensures=ensures)
 
 
 def _verify_once(
@@ -1212,6 +1483,11 @@ def _verify_once(
         t: [foreign_key(t, c) for c in cs if isinstance(c, References)]
         for t, cs in requires.items()
     }
+    caps = {
+        t: min(c.n for c in cs if isinstance(c, MaxRows))
+        for t, cs in requires.items()
+        if any(isinstance(c, MaxRows) for c in cs)
+    }
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1219,6 +1495,7 @@ def _verify_once(
         "keys": keys,
         "ensures_keys": ensures_keys,
         "references": foreign_keys,
+        "max_rows": caps,
     }
 
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
@@ -1231,6 +1508,7 @@ def _verify_once(
         dtype = dtypes.get(f["name"])
         return (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
 
+    assumable: Container[str] = schemas if inputs is None else inputs
     rows = iter(out["ensures"])
     key_results = iter(out["keys"])
     req_named = [(t, p) for (t, _), p in zip(req_conds, req_plans, strict=True)]
@@ -1270,12 +1548,16 @@ def _verify_once(
             checked.append(
                 CheckedCondition(label(c), False, "lateness is checked on a source's batches")
             )
+        elif isinstance(c, MaxRows):
+            checked.append(CheckedCondition(label(c), False, "row caps are checked on inputs"))
         else:
             e = next(rows)
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
-            checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
-    assumable: Container[str] = schemas if inputs is None else inputs
+            suggested = _suggested(e.get("suggest"), schemas, assumable)
+            checked.append(
+                CheckedCondition(e["name"], e["proved"], e["value"], cex, suggested=suggested)
+            )
     report = Report(
         semantics=semantics,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
@@ -1299,7 +1581,58 @@ def _verify_once(
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
+    if not isinstance(transform, str):
+        report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
     return report, out["inferred"], schemas
+
+
+def rounding_hints(
+    transform: ir.Table,
+    ensures: Sequence[Condition],
+    checked: Sequence[CheckedCondition],
+    facts: Sequence[dict],
+    dtypes: Mapping[str, Any],
+) -> list[str]:
+    """For each unproved comparison of a double column with a number that the
+    column's proved bounds miss only by rounding (by at most `1e-6` of the
+    number, #85): how much, and the `approx` that proves it."""
+    import ibis.expr.operations as ops
+
+    bounds = {}
+    for f in facts:
+        dtype, b = dtypes.get(f["name"]), f["abstract"].get("int")
+        if dtype is not None and dtype.is_floating() and b is not None:
+            bounds[f["name"]] = tuple(
+                None if v is None else decode_double(int(v)) for v in (b["lo"], b["hi"])
+            )
+    hints = []
+    for cond, c in zip(ensures, checked, strict=True):
+        if c.proved or not isinstance(cond, Deferred):
+            continue
+        try:
+            node = cond.resolve(transform).op()
+        except Exception:  # noqa: BLE001 - only a hint
+            continue
+        if not isinstance(node, ops.Less | ops.LessEqual | ops.Greater | ops.GreaterEqual):
+            continue
+        col, lit = node.left, node.right
+        if not (isinstance(col, ops.Field) and isinstance(lit, ops.Literal)):
+            continue
+        if not lit.dtype.is_numeric() or col.name not in bounds:
+            continue
+        k = float(lit.value)
+        lo, hi = bounds[col.name]
+        above = isinstance(node, ops.Less | ops.LessEqual)
+        edge = hi if above else lo
+        if edge is None or not math.isfinite(edge):
+            continue
+        excess = edge - k if above else k - edge
+        if 0 < excess <= 1e-6 * max(1.0, abs(k)):
+            hints.append(
+                f"{c.label} holds up to rounding: {col.name} is proved within {excess:.3g} of "
+                f"{k:g} (#85); state it as sv.approx({c.label})"
+            )
+    return hints
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
@@ -1444,6 +1777,9 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
         return int(total.execute()) - int(distinct.execute())
+    if isinstance(cond, MaxRows):
+        rows: Any = table.count()
+        return max(0, int(rows.execute()) - cond.n)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)

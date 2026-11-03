@@ -22,8 +22,31 @@ NULLs), strings, temporal, nested, casts, aggregates, windows and relations.
 
 ## What it is
 
-An engine runs a plan **correctly** when, on every input, it gives
-`Rel.eval`'s rows or raises an error. It may not give other rows.
+The reference follows Substrait. Where it overrides Substrait, it says so
+([Overrides](#overrides)).
+
+The reference is a relation: for each input it allows a set of results
+(`Rel.Allowed`, `SubstraitLean/Allowed.lean`). An engine runs a plan
+**correctly** when, on every input, it returns an allowed result or raises an
+error. `Rel.eval` (`SubstraitLean/Rel.lean`) computes one allowed result, a
+witness (`Rel.eval_allowed`), and `verify` proves its theorems through it.
+
+The set holds more than one result only where the reference leaves a choice
+to the engine:
+
+* the order of rows, except what an `ORDER BY` promises, and how ties in an
+  `ORDER BY` or a window's order are broken;
+* the row `FIRST`, `LAST`, `collect` and `STRING_AGG` take first where their
+  order ties (any row without an order, as in Ibis's `distinct(on=)`);
+* the order and grouping in which a double `SUM` or `AVG` adds its values
+  (`FloatSums`), each result within the error bound of
+  [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85);
+* a statistical aggregate's value (`VARIANCE`, `STDDEV`, `COVAR_*`, `CORR`),
+  within its generic properties (`StatProps`, with #85).
+
+A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
+any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
+of every allowed result. Where a plan has them, `Report.deterministic` says so.
 
 The reference is not a model of any engine, DuckDB included. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which
@@ -31,9 +54,14 @@ behaviours it has natively, which need a shim (a guard, a cast, a `CASE`), and
 which the translation refuses. The shims are proved against the reference in
 Lean (`SubstraitLean/Profile.lean`: `Profile.reference`,
 `Expr.evalP_reference`; `SubstraitLean/Lowering.lean`: `Lowering.lower_correct`,
-`Rel.duckdb_shim_sound`).
+`Rel.duckdb_shim_sound`), and so return allowed results
+(`Rel.duckdb_shim_allowed`, `Rel.guardFree_allowed`).
 That each engine matches its profile is tested, not proved. How profiles and
 shims work is in [engine-profiles.md](engine-profiles.md).
+
+For now the reference is demonstrated on DuckDB only. New functions run on
+DuckDB, and the other engines refuse them until their lowerings land
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 
 ## Principles
 
@@ -41,10 +69,20 @@ Decided on #185 ("Principles for the reference model"):
 
 | # | Principle | What it means in practice |
 |---|---|---|
-| 1 | **Substrait's semantics, options included.** | A function means what its extension YAML says. An option set in the plan is part of its meaning. |
+| 1 | **Follows Substrait, options included.** | A function means what its extension YAML says. An option set in the plan is part of its meaning. Where the reference overrides Substrait, it says so, with the reason ([Overrides](#overrides)). |
 | 2 | **The least surprising choice where Substrait is silent**, with its reason. | An option the plan omits, or behaviour the spec leaves open, gets one choice, written down below with the reason. |
-| 3 | **Can be emulated on every backend.** | Types keep their declared widths (`i8`…`i64`); there are no unbounded integers. Every choice is one DuckDB, Polars, DataFusion, Spark and Snowflake can follow with a shim. |
-| 4 | **Keeps optimizations provable.** | Filter pushdown, reordering, sharding and incremental maintenance stay provable. This is why an error means "may raise" ([Errors](#errors)). |
+| 3 | **Every engine can follow it with reasonable effort.** | Types keep their declared widths (`i8`…`i64`); there are no unbounded integers. Every choice has a reasonable shim or translation on DuckDB, Polars, DataFusion, Spark and Snowflake, one that can be built and run. |
+| 4 | **Keeps optimizations provable.** | Filter pushdown, reordering, sharding and incremental maintenance stay provable. A rewrite refines the plan (`Rel.Refines`): it may narrow the set of allowed results, never widen it. This is why an error means "may raise" ([Errors](#errors)). |
+
+## Overrides
+
+Where the reference departs from Substrait, and why:
+
+| Override | What the reference does | Why |
+|---|---|---|
+| One zero | `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`, and `GROUP BY`, `DISTINCT` and joins see one zero. | DuckDB, Spark and Snowflake have one zero ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89)); IEEE's two zeros, which DataFusion keeps apart, surprise `-0.0 >= 0`. |
+| One NaN | One NaN, equal to itself and greater than every number, `+∞` included. | DuckDB, Spark and Snowflake treat NaN this way (#89); IEEE's NaN, unequal to itself, would split `GROUP BY` and `DISTINCT` and drop rows from joins. |
+| The size hypothesis | Every string has fewer than 2³² characters (`Text.sizeCap`), and every relation a window reads fewer than 2⁶² rows (`Rel.Small`). | Substrait's types are unbounded; DuckDB's strings hold fewer than 2³² bytes (#336), no machine's memory holds 2⁶² rows, and the range analysis needs a bound for `CHARACTER_LENGTH`, `strpos` and `ROW_NUMBER`. |
 
 Engine quirks belong in profiles, never in the reference. Changing the
 reference is a breaking change and is treated as one (#185,
@@ -60,8 +98,10 @@ fires, `Rel.eval`'s value is not the answer.
 * **An error means "may raise".** The reference may raise wherever the plan
   hits an error issue. ✓
 * **Rewrites are refinements.** An optimized plan may raise in fewer cases
-  than the original. It never answers differently and never raises where the
-  original didn't. ✓ (#185)
+  than the original, and allow fewer results (`Rel.Refines`). It never gives a
+  result the original doesn't allow and never raises where the original
+  didn't. A rewrite to a plan without choices whose rows are the original's
+  refines it (`Rel.refines_of_perm`). ✓ (#185)
 * **An error that can't be ruled out makes the report unproved.**
   `Report.proved` is false until a precondition excludes it. ✓ for division
   by zero, casts out of range, domain errors, decimal precision and the
@@ -102,7 +142,7 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 | Topic | Reference | Status |
 |---|---|---|
 | `fp64` | IEEE 754 binary64, computed with Lean's native `Float`. | ✓ |
-| `fp32` | IEEE binary32. | **Not yet.** One double kind: `fp32` is computed as `fp64`. [#208](https://github.com/AlexanderNenninger/substrait-lean/issues/208) |
+| `fp32` | IEEE binary32. | **Not yet.** `fp32` arithmetic is refused (fact [duckdb-R12](../characterization/duckdb/FACTS.md#duckdb-r12), #208); [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) models it. |
 | Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. | ✓ |
 | **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
@@ -211,8 +251,8 @@ Design notes: [nested-values.md](nested-values.md).
 
 | Topic | Reference | Status |
 |---|---|---|
-| `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`), so contracts get no bound on it from its inputs. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds: [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
-| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. **Each engine's own algorithm** for now (decided on #54), so results may differ in the last bits: the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; a proved error bound is [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`). Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by the proved error bound (`floatSum_mem`, `floatAvg_mem` in `Aggregate.lean`, proved in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `float_order="any"`; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
+| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. **Each engine's own algorithm** for now (decided on #54), so results may differ in the last bits: the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; whatever the algorithm (two-pass, textbook, or DuckDB's Welford and Chan), the result is within a proved bound, `64 · n² · u · B²` on the co-moment ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
 | `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, as for `VARIANCE`: the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)); Polars and DataFusion (whose grouped min/max of doubles is not IEEE) refuse them until #271 |
 
@@ -258,11 +298,11 @@ these links connect it to a real run.
 
 | Assumption | Where | Status |
 |---|---|---|
-| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), and every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …). | Not on `main`; [PR #254](https://github.com/AlexanderNenninger/substrait-lean/pull/254) states it, and the theorems that need it take `Rel.Small` |
+| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), and every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …). | ✓ The theorems that need it take `Rel.Small`; an override of Substrait ([Overrides](#overrides)) |
 | **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/` | On `main`: the Ibis producer, and the SQLGlot lift for DuckDB's SQL (#252, #264). DataFusion's SQL producer is no longer a frontend (#211) |
 | **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
 | **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
-| **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64 for arithmetic. The conversions between integers, decimals and doubles are computed exactly instead (`SubstraitLean/Conversions.lean`), behind `opaque` constants with their proved properties, and `#guard`s compare them with the native ones. An integer or decimal that IEEE would round to `±∞` (from 2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the largest finite double (#257). | `SubstraitLean/Float.lean`, `SubstraitLean/Conversions.lean` | Stated; a proved link is part of [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64 for arithmetic. The conversions between integers, decimals and doubles are computed exactly instead (`SubstraitLean/Conversions.lean`), behind `opaque` constants with their proved properties, and `#guard`s compare them with the native ones. An integer or decimal that IEEE would round to `±∞` (from 2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the largest finite double (#257). | `SubstraitLean/Float.lean`, `SubstraitLean/Conversions.lean` | Stated. The error bounds of `SUM` and `AVG` are three axioms in `Aggregate.lean` (`floatSum_mem`, `floatAvg_mem`, `floatSum_sign`), proved in [`float-bounds/`](float-bounds.md) from `NativeLink`, the stated link of `Float` to IEEE rounding ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
 
 ## Where things are decided
 

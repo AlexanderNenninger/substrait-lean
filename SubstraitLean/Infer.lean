@@ -28,6 +28,12 @@ Each overflow gets a `Bounds`:
   even split), which the caller shows and does not assume;
 * `why`, when no column range rules it out (an aggregate's or a window
   function's value): the caller suggests a bound in words.
+
+Besides overflow, `atIssue` covers other errors the same way: a divisor
+`$j + c` needs `$j ≠ -c` (`nes`); domain errors (`sqrt`, logarithms, `asin`,
+a fractional power, `fmod` of `±∞`) and casts to narrower integers or from
+doubles need ranges of codes; so do `repeat`'s count, `substring`'s offset
+and a decimal's digits.
 -/
 
 namespace Substrait.Infer
@@ -41,16 +47,28 @@ structure Found where
   cols : Cols := []
   /-- An arbitrary choice was made (two unbounded operands). -/
   split : Bool := false
+  /-- Columns that must not hold a value (a divisor's column, `$j ≠ k`). -/
+  nes : List (Nat × Int) := []
 
 /-- What rules out one overflow. -/
 structure Bounds where
   /-- Base-table columns (`table`, column) and their ranges. -/
   needs : List (String × Nat × Bound) := []
   split : Bool := false
+  /-- Base-table columns and a value each must not hold. -/
+  nes : List (String × Nat × Int) := []
   /-- Why no column range rules it out, if none does. -/
   why : Option String := none
 
-def Found.append (a b : Found) : Found := ⟨a.cols ++ b.cols, a.split || b.split⟩
+def Found.append (a b : Found) : Found := ⟨a.cols ++ b.cols, a.split || b.split, a.nes ++ b.nes⟩
+
+/-- The ranges without the sides `env` already implies. -/
+def Found.within (f : Found) (env : List AVal) : Found :=
+  { f with cols := f.cols.filterMap fun (j, b) =>
+    let known := ((env.getD j AVal.top).int).getD ⟨some 0, some (-1)⟩
+    let lo := b.lo.filter fun l => !(known.lo.any (l ≤ ·))
+    let hi := b.hi.filter fun h => !(known.hi.any (· ≤ h))
+    if lo.isNone && hi.isNone then none else some (j, ⟨lo, hi⟩) }
 
 /-- `⌈a / b⌉` and `⌊a / b⌋` for `b > 0`. -/
 def ceilDiv (a b : Int) : Int := -((-a) / b)
@@ -96,7 +114,7 @@ def spanDays (u : Time.TimeUnit) : Int := span u / Time.usPerDay
 /-- Ranges of the columns of `env` that keep `e` in `[lo, hi]`, or why there
 are none. Over-strict is fine; too weak only fails the proof. -/
 partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Except String Found
-  | .field i => pure ⟨[(i, ⟨some lo, some hi⟩)], false⟩
+  | .field i => pure { cols := [(i, ⟨some lo, some hi⟩)] }
   | .lit (.int v) => if lo ≤ v ∧ v ≤ hi then pure {} else throw "it adds a constant that is out of range"
   | .lit _ => pure {}
   | .un .neg a => need env fs (-hi) (-lo) a
@@ -119,7 +137,7 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
       | none, none => do
         let x ← need env fs (lo / 2) (hi / 2) a
         let y ← need env fs (lo / 2) (hi / 2) b
-        pure ⟨x.cols ++ y.cols, true⟩
+        pure { (x.append y) with split := true }
   | .bin .sub a b =>
     match a, b with
     | _, .lit (.int c) => need env fs (lo + c) (hi + c) a
@@ -132,7 +150,7 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
         -- No unique split: half the range each.
         let x ← need env fs (lo / 2) (hi / 2) a
         let y ← need env fs (-(hi / 2)) (-(lo / 2)) b
-        pure ⟨x.cols ++ y.cols, true⟩
+        pure { (x.append y) with split := true }
   | .bin .mul a b =>
     match a, b with
     | x, .lit (.int c) | .lit (.int c), x =>
@@ -153,20 +171,58 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
         let r : Int := isqrt k.toNat
         let x ← need env fs (-r) r a
         let y ← need env fs (-r) r b
-        pure ⟨x.cols ++ y.cols, true⟩
+        pure { (x.append y) with split := true }
+  -- Decimals are their unscaled integers, added and multiplied exactly.
+  | .bin .dadd a b => need env fs lo hi (.bin .add a b)
+  | .bin .dsub a b => need env fs lo hi (.bin .sub a b)
+  | .bin .dmul a b => need env fs lo hi (.bin .mul a b)
   -- `a / c`: only `c = ±1` can leave the range (`ABS` is `a / -1`).
   | .bin .idiv a (.lit (.int c)) =>
     if c = 1 then need env fs lo hi a
     else if c = -1 then need env fs (-hi) (-lo) a
     else if lo ≤ 0 ∧ 0 ≤ hi then pure {} else throw "it needs a quotient out of range"
-  | .ifThen _ t e => do
-    let x ← need env fs lo hi t
-    let y ← need env fs lo hi e
-    pure (x.append y)
+  -- A branch runs only on rows its condition lets through: what the
+  -- condition implies there needs no precondition. When each branch's
+  -- ranges would also restrict the other branch's rows, there is no single
+  -- weakest bound (`substring`'s offset from the start or from the end).
+  | .ifThen c t e => do
+    let et := c.refine env
+    let ee := c.refineNeg env
+    let x := (← need et fs lo hi t).within et
+    let y := (← need ee fs lo hi e).within ee
+    let both := !(x.within ee).cols.isEmpty && !(y.within et).cols.isEmpty
+    pure { x.append y with split := x.split || y.split || both }
+  -- `a / b` with `b` a column: `|a / b| ≤ |a|`, so `a` in a range symmetric
+  -- about 0 within `[lo, hi]` keeps it in (`MIN / -1` is the overflow).
+  | .bin .idiv a _ => need env fs (max lo (-hi)) (min hi (-lo)) a
   | e => throw s!"it reads {e.render}, which the inference does not look into"
 
-/-- The range an expression with an overflow issue must stay in, applied to
-its operand where the issue is about the operand. -/
+/-- `need` with an open side: `none` stands for no bound. Codes of doubles
+lie in `[negInf, nan]`, so those are the open ends, and the sides that stay
+open are dropped from the result. -/
+def needD (env : List AVal) (fs : List Fact) (lo hi : Option Int) (e : Expr) :
+    Except String Found := do
+  let l := lo.getD (FloatCode.negInf - 1)
+  let h := hi.getD (FloatCode.nan + 1)
+  let f ← need env fs l h e
+  pure { f with cols := f.cols.map fun (j, b) =>
+    (j, ⟨if lo.isNone && b.lo == some l then none else b.lo,
+         if hi.isNone && b.hi == some h then none else b.hi⟩) }
+
+/-- The finite doubles. -/
+def finiteD (env : List AVal) (fs : List Fact) : Expr → Except String Found :=
+  needD env fs (some (FloatCode.negInf + 1)) (some (FloatCode.posInf - 1))
+
+/-- A divisor that must not be 0: `$j + c` needs `$j ≠ -c`. -/
+def nonZero : Expr → Except String Found
+  | .un .itof x => nonZero x
+  | x => match x.linTerm with
+    | some (j, c) => pure { nes := [(j, -c)] }
+    | none => throw s!"it divides by {x.render}, which the inference does not look into"
+
+/-- The range an expression with an issue must stay in, applied to its
+operand where the issue is about the operand: overflow, division by zero,
+domain errors, casts out of range, and a `SUM` excepted. -/
 def atIssue (env : List AVal) (fs : List Fact) : Issue × Expr → Except String Found
   | (.wraps, .un (.wrap n) a) => need env fs (-(2 ^ (n - 1))) (2 ^ (n - 1) - 1) a
   | (.wraps, .un (.dateTrunc u) a) => need env fs (minI64 + span u) maxI64 a
@@ -187,6 +243,37 @@ def atIssue (env : List AVal) (fs : List Fact) : Issue × Expr → Except String
     let y ← need env fs Time.dayMin Time.dayMax (.bin .dateAdd a b)
     pure (x.append y)
   | (.overflow, e@(.bin .idiv _ _)) => need env fs minI64 maxI64 e
+  | (.overflow, .un (.decimal p _) a) => need env fs (1 - 10 ^ p) (10 ^ p - 1) a
+  | (.overflow, .bin .strRepeat s n) => match s.strBytes? with
+    | some m => if m = 0 then pure {} else need env fs minI64 (Text.repeatMax / m) n
+    | none => throw "it repeats a string that is not a constant"
+  | (.divByZero, .bin _ _ b) => nonZero b
+  | (.badCast, .un .ftoi a) => needD env fs (some FloatCode.castLo) (some FloatCode.castHi) a
+  | (.badCast, .un (.narrow n) a) => need env fs (-(2 ^ (n - 1))) (2 ^ (n - 1) - 1) a
+  | (.negExponent, .bin .ipow _ b) => need env fs 0 maxI64 b
+  | (.domain, .un (.fmath f) a) => needD env fs f.lo? f.hi? a
+  -- A negative base needs an integer exponent; a base ≥ 0 needs none.
+  | (.domain, .bin .fpow a _) => needD env fs (some 0) none a
+  -- `fmod(±∞, y)`.
+  | (.domain, .bin .fmod a _) => finiteD env fs a
+  -- `∞ - ∞`, `0 · ∞`, `∞ / ∞`: either side finite rules it out.
+  | (.domain, .bin .fadd a b) | (.domain, .bin .fsub a b) | (.domain, .bin .fmul a b)
+  | (.domain, .bin .fdiv a b) => do
+    let x ← finiteD env fs a
+    let y ← finiteD env fs b
+    pure { x.append y with split := true }
+  -- A logarithm of a positive number to a positive base other than 1.
+  | (.domain, .bin .flogb x b) => do
+    let fx ← needD env fs (some 1) none x
+    let fb ← needD env fs (some 1) none b
+    let one ← match b.linTerm with
+      | some (j, c) => pure ({ nes := [(j, FloatCode.one - c)] } : Found)
+      | none => throw s!"its base is {b.render}, which the inference does not look into"
+    pure ((fx.append fb).append one)
+  | (.domain, .bin (.substr n _) _ a) =>
+    if n.all fun n => decide ((n : Int) < Text.substrMax) then
+      need env fs (-Text.substrMax) (Text.substrMax - 1) a
+    else throw "its length is a constant out of range"
   | (k, _) => throw s!"the inference does not cover this kind of {k.name}"
 
 /-! ## Down to the base tables -/
@@ -249,14 +336,48 @@ def pullNeeds (cat : Catalog) (A : String → List AVal) (F : String → List Fa
         else throw "it reads the value of an aggregate other than MIN or MAX"
       | none => throw "it reads a column out of range"
 
+/-- The base-table column behind column `i` of `r` that must not hold `k`. -/
+def pullNe (cat : Catalog) : Rel → Nat → Int → Except String (List (String × Nat × Int))
+  | .read t, i, k => pure [(t, i, k)]
+  | .values _ _, _, _ => throw "it reads a value written in the query (VALUES)"
+  | .filter r _, i, k | .fetch r _ _, i, k | .orderBy r _, i, k | .distinct r, i, k
+  | .semi r _ _ _, i, k => pullNe cat r i k
+  | .emit r m, i, k => match m[i]? with
+    | some j => pullNe cat r j k
+    | none => throw "it reads a column out of range"
+  | .project r es, i, k =>
+    if i < r.arity cat then pullNe cat r i k
+    else match es[i - r.arity cat]?.bind Expr.linTerm with
+      | some (j, c) => pullNe cat r j (k - c)
+      | none => throw "it divides by a computed value"
+  | .cross a c, i, k | .join a c _ _, i, k =>
+    if i < a.arity cat then pullNe cat a i k else pullNe cat c (i - a.arity cat) k
+  | .unionAll a c, i, k => do pure ((← pullNe cat a i k) ++ (← pullNe cat c i k))
+  | .window r _ _ _, i, k =>
+    if i < r.arity cat then pullNe cat r i k else throw "it reads the value of a window function"
+  | .unnest r col, i, k =>
+    if i ≠ col then pullNe cat r i k else throw "it reads an UNNEST element"
+  | .aggregate r gs ms, i, k =>
+    let go (e : Expr) := match e.linTerm with
+      | some (j, c) => pullNe cat r j (k - c)
+      | none => throw "it divides by a computed value"
+    match gs[i]? with
+    | some g => go g
+    | none => match ms[i - gs.length]? with
+      | some m => if m.fn = .min ∨ m.fn = .max then go m.arg
+        else throw "it reads the value of an aggregate other than MIN or MAX"
+      | none => throw "it reads a column out of range"
+
 /-- The base-table columns behind a node's input columns `cols`. -/
 def pullAll (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
     (r : Rel) (f : Found) : Bounds :=
   let step := fun (acc : Except String (List (String × Nat × Bound) × Bool)) (jc : Nat × Bound) =>
     do let (out, s) ← acc; let (n, s') ← pullNeeds cat A F T r jc.1 jc.2; pure (out ++ n, s || s')
-  match f.cols.foldl step (pure ([], f.split)) with
-  | .ok (needs, split) => { needs, split }
-  | .error why => { why := some why }
+  let nes := f.nes.foldl (init := pure []) fun acc (j, k) => do
+    pure ((← acc) ++ (← pullNe cat r j k))
+  match f.cols.foldl step (pure ([], f.split)), nes with
+  | .ok (needs, split), .ok nes => { needs, split, nes }
+  | .error why, _ | _, .error why => { why := some why }
 
 /-- The bounds that rule out each overflow `e.mayIssues` reports on the rows
 of `r`. -/
@@ -288,6 +409,52 @@ def Rel.bounds (cat : Catalog) (A : String → List AVal) (F : String → List F
     let s := if u then r.loose else r
     Rel.bounds cat A F T u r ++ (gs ++ ms.flatMap Measure.exprs).flatMap (onRows cat A F T s)
 
+/-! ## Suggestions for postconditions
+
+An unproved postcondition that compares a value with a constant would hold
+if the value stayed in a range: `_.x * 2 <= 100` holds when `x <= 50`. The
+same backward analysis finds that range on the base-table columns. Unlike a
+bound against an error it is never assumed, only suggested
+(`Report.suggestions` in `sverify`): it changes what the transformation
+promises, which only its author can decide. -/
+
+/-- An open side of a postcondition's range, far beyond every code: the
+ranges it leads to are cut off at the base tables (`openSide`). -/
+def far : Int := 2 ^ 128
+
+/-- Drop the sides that come from `far`. -/
+def openSide (b : Bound) : Bound :=
+  ⟨b.lo.filter (-(2 ^ 120) < ·), b.hi.filter (· < 2 ^ 120)⟩
+
+/-- Ranges of the columns of `env` that make the condition TRUE: a
+conjunction of comparisons of a value with a constant. -/
+partial def holds (env : List AVal) (fs : List Fact) : Expr → Except String Found
+  | .bin .and p q => do pure ((← holds env fs p).append (← holds env fs q))
+  | .bin .lt a (.lit (.int k)) => need env fs (-far) (k - 1) a
+  | .bin .lt (.lit (.int k)) a => need env fs (k + 1) far a
+  | .un .not (.bin .lt a (.lit (.int k))) => need env fs k far a
+  | .un .not (.bin .lt (.lit (.int k)) a) => need env fs (-far) k a
+  | .bin .eq a (.lit (.int k)) | .bin .eq (.lit (.int k)) a => need env fs k k a
+  | e => throw s!"it is {e.render}, not a comparison with a constant"
+
+/-- The base-table ranges that make column `i` of a postcondition's plan
+TRUE (the plan selects the condition from the transformation's output). -/
+def suggest (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
+    Rel → Nat → Bounds
+  | .emit r m, i => match m[i]? with
+    | some j => suggest cat A F T r j
+    | none => { why := some "it reads a column out of range" }
+  | .project r es, i =>
+    if i < r.arity cat then { why := some "it is a column, not a comparison" }
+    else match es[i - r.arity cat]? with
+      | some c => match holds (r.aeval cat A F T true) (r.facts cat F T) c with
+        | .ok f =>
+          let b := pullAll cat A F T r f
+          { b with needs := b.needs.map fun (t, i, r) => (t, i, openSide r) }
+        | .error why => { why := some why }
+      | none => { why := some "it reads a column out of range" }
+  | _, _ => { why := some "the postcondition's plan is not a selection" }
+
 /-- The intersection of two ranges. -/
 def meet (a b : Bound) : Bound :=
   ⟨match a.lo, b.lo with
@@ -315,5 +482,10 @@ def merged (A : String → List AVal) (bs : List (Issue × Expr × Bounds)) :
     | some (_, _, b') => acc.map fun x => if x.1 == t && x.2.1 == i then (t, i, meet b b') else x
     | none => acc ++ [(t, i, b)]
   trim A all
+
+/-- The values each base-table column must not hold, for the issues that
+have exact bounds. -/
+def mergedNes (bs : List (Issue × Expr × Bounds)) : List (String × Nat × Int) :=
+  (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.nes).flatten.eraseDups
 
 end Substrait.Infer

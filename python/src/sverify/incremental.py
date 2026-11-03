@@ -83,6 +83,7 @@ from sverify._weighted import (
     negative,
     positive,
     rows_of,
+    split_matching,
     weighted,
 )
 from sverify.contracts import (
@@ -91,6 +92,7 @@ from sverify.contracts import (
     Condition,
     Discharged,
     Fact,
+    MaxRows,
     PostconditionError,
     PreconditionError,
     References,
@@ -1312,6 +1314,8 @@ class Pipeline:
                 raise ValueError(f"preconditions on view {t!r} must be proved, not checked")
             if refs := [label(c) for c in conds if isinstance(c, References)]:
                 raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
+            if caps := [label(c) for c in conds if isinstance(c, MaxRows)]:
+                raise ValueError(f"incremental views do not support row caps: {caps}")
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
             table = self.con.table(t)
@@ -1918,12 +1922,14 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
     occurrence each) and inserted. Raises `ValueError`, naming a row, if a
     delete is not in `current`, even where the change also inserts it."""
     deletes = negative(change)
-    kept = consolidated(weighted(current, 1), deletes)
+    inserts = positive(change)
+    if not deletes.num_rows:
+        return concat([current, expanded(inserts)])
+    # Only the rows equal to a deleted row change, at the cost of the change.
+    hit, rest = split_matching(current, deletes)
+    kept = consolidated(weighted(hit, 1), deletes)
     missing = negative(kept)
     if missing.num_rows:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
-    inserts = positive(change)
-    if not deletes.num_rows:
-        return concat([current, expanded(inserts)])
-    return expanded(consolidated(kept, inserts))
+    return concat([rest, expanded(consolidated(kept, inserts))])

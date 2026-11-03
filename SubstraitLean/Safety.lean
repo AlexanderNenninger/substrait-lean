@@ -1088,50 +1088,9 @@ theorem Measure.mayNan_of_makesNan {m : Measure} {grp : Relation} {abs : Expr �
 
 An integer `SUM` may leave 64 bits, and the reference raises there. Without
 a bound on how many rows a group has, nothing rules it out; where the plan's
-shape bounds its rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count, an
-aggregate without groups) and the argument's interval bounds each value,
-the sum fits. -/
-
-/-- At most how many rows `r` gives, where its shape says. -/
-def Rel.maxRows : Rel → Option Nat
-  | .values _ rows => some rows.length
-  | .fetch _ _ (some n) => some n
-  | .fetch r _ none => r.maxRows
-  | .filter r _ => r.maxRows
-  | .project r _ => r.maxRows
-  | .emit r _ => r.maxRows
-  | .orderBy r _ => r.maxRows
-  | .distinct r => r.maxRows
-  | .aggregate r gs _ => if gs.isEmpty then some 1 else r.maxRows
-  | _ => none
-
-theorem Rel.maxRows_sound {cat : Catalog} : ∀ {r : Rel} {n : Nat}, r.maxRows = some n →
-    (r.eval cat).length ≤ n
-  | .values _ rows, n, h => by simp only [maxRows, Option.some.injEq] at h; simp [eval, h]
-  | .fetch r _ (some k), n, h => by
-    simp only [maxRows, Option.some.injEq] at h; subst h; simp [eval]; omega
-  | .fetch r _ none, n, h => by
-    simp only [maxRows] at h; have := maxRows_sound (cat := cat) (r := r) h; simp [eval]; omega
-  | .filter r _, n, h => by
-    simp only [maxRows] at h
-    exact Nat.le_trans (List.length_filter_le _ _) (maxRows_sound (r := r) h)
-  | .project r _, n, h => by
-    simp only [maxRows] at h; simpa [eval] using maxRows_sound (r := r) h
-  | .emit r _, n, h => by
-    simp only [maxRows] at h; simpa [eval] using maxRows_sound (r := r) h
-  | .orderBy r _, n, h => by
-    simp only [maxRows] at h; simpa [eval, List.length_mergeSort] using maxRows_sound (r := r) h
-  | .distinct r, n, h => by
-    simp only [maxRows] at h; exact Nat.le_trans (dedup_length_le _) (maxRows_sound (r := r) h)
-  | .aggregate r gs _, n, h => by
-    simp only [maxRows] at h
-    by_cases hg : gs.isEmpty = true
-    · simp only [hg, ite_true, Option.some.injEq] at h; subst h; simp [eval, aggregateEval, hg]
-    · simp only [hg, Bool.false_eq_true, ite_false] at h
-      simp only [eval, aggregateEval, hg, Bool.false_eq_true, ite_false, List.length_map]
-      exact Nat.le_trans (Nat.le_trans (dedup_length_le _) (by simp)) (maxRows_sound (cat := cat) (r := r) h)
-  | .read _, _, h | .cross _ _, _, h | .join _ _ _ _, _, h | .unionAll _ _, _, h
-  | .window _ _ _ _, _, h | .semi _ _ _ _, _, h | .unnest _ _, _, h => by simp [maxRows] at h
+shape bounds its rows (`Rel.maxRows` in `Contracts.lean`: a `VALUES` list, a
+`FETCH` count, an aggregate without groups, products and unions of bounded
+inputs) and the argument's interval bounds each value, the sum fits. -/
 
 theorem length_le_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
     (hg : grp ∈ aggGroups gs rows) : grp.length ≤ rows.length := by
@@ -1140,18 +1099,6 @@ theorem length_le_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
   · simp only [List.mem_singleton] at hg; exact hg ▸ Nat.le_refl _
   · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
     exact List.length_filter_le _ _
-
-theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
-    (m.inputs rows).length ≤ rows.length := by
-  have hk : (m.kept rows).length ≤ rows.length := by
-    unfold Measure.kept; split
-    · exact Nat.le_refl _
-    · exact List.length_filter_le _ _
-  have hf : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
-    Nat.le_trans (List.length_filter_le _ _) (by simpa using hk)
-  unfold Measure.inputs; split
-  · exact Nat.le_trans (dedup_length_le _) hf
-  · exact hf
 
 theorem intSum_bound (M : Int) (hM : 0 ≤ M) : ∀ vs : List Value,
     (∀ i, Value.int i ∈ vs → -M ≤ i ∧ i ≤ M) →

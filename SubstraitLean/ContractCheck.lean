@@ -20,9 +20,14 @@ Input (JSON):
   "transform": <plan>,         -- the transformation, to report facts and keys
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
-  "references": {"<table>": [[<col>, "<table>", <col>], ...]} }
+  "references": {"<table>": [[<col>, "<table>", <col>], ...]},
       -- input foreign keys: every non-NULL value of the column occurs in the
       -- other table's column (`ForeignKeys.Hold`)
+  "max_rows": {"<table>": <n>} }
+      -- row caps (`sv.max_rows`): the postconditions and facts are checked on
+      -- the plan with these reads capped (`Rel.capReads`), which is the plan
+      -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
+      -- get their error bounds from them (#85)
 ```
 
 Output: a JSON report (`Report.json`). Besides what is proved, it carries
@@ -142,12 +147,21 @@ def need (n : String × Nat × Bound) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
     ("lo", bound n.2.2.lo), ("hi", bound n.2.2.hi)]
 
+/-- A value column `col` of `table` must not hold. -/
+def needNe (n : String × Nat × Int) : Json :=
+  Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
+    ("ne", Json.str (toString n.2.2))]
+
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
-  Json.mkObj [("needs", Json.arr (b.needs.map need).toArray), ("split", Lean.toJson b.split),
+  Json.mkObj [("needs", Json.arr (b.needs.map need ++ b.nes.map needNe).toArray),
+    ("split", Lean.toJson b.split),
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
 structure Report where
   ensures : List (String × Bool × String)
+  /-- For each postcondition, the base-table ranges that would make it hold
+  (`Infer.suggest`): untrusted, and only suggested. -/
+  suggestions : List Infer.Bounds := []
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -169,12 +183,15 @@ structure Report where
   /-- The ranges of `bounds` that follow from the operations alone, merged
   per base-table column. -/
   inferred : List (String × Nat × Bound) := []
+  /-- The values `bounds` rule out per base-table column (a divisor's 0). -/
+  inferredNes : List (String × Nat × Int) := []
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
-    ("ensures", Json.arr (r.ensures.map fun (n, ok, v) =>
+    ("ensures", Json.arr ((r.ensures.zip (r.suggestions ++
+        List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).map fun ((n, ok, v), b) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
-        ("value", Lean.toJson v)]).toArray),
+        ("value", Lean.toJson v), ("suggest", if ok then .null else b.json)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
@@ -186,7 +203,7 @@ def Report.json (r : Report) : Json :=
         ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
-    ("inferred", Json.arr (r.inferred.map need).toArray),
+    ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe).toArray),
     ("guard_free", Lean.toJson r.guardFree),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
@@ -206,6 +223,9 @@ def foreignKeys (j : Json) : ForeignKeys := fun t =>
     | _ => none
 
 def parseJsonPlan (j : Json) : Except String Plan := parsePlan j.compress
+
+def rowCaps (j : Json) : String → Option Nat := fun t =>
+  (j.getObjValAs? Nat t).toOption
 
 def check (input : Json) : Except String Report := do
   let ensures ← ((input.getObjValAs? (Array Json) "ensures").toOption.getD #[]).toList.mapM
@@ -237,23 +257,28 @@ def check (input : Json) : Except String Report := do
   let inputKeys : String → List (List Nat) := fun t =>
     natLists ((input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption) |>.getD (.arr #[]))
   let T := Rel.keyedWindows cat A F inputKeys
+  let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST or " ++
     "STRING_AGG, and the engine orders them"
   let mut results : List (String × Bool × String) := []
+  let mut suggestions : List Infer.Bounds := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
-    if !q.root.checkWF cat then throw "a postcondition plan is not well-formed"
-    let env := q.root.aeval cat A F T
+    if !(q.root.capReads caps).checkWF cat then throw "a postcondition plan is not well-formed"
+    let env := (q.root.capReads caps).aeval cat A F T
     let names := if q.names.length == env.length then q.names
       else (List.range env.length).map (s!"#{·}")
     let total := q.root.windowsTotal cat A F inputKeys
     results := results ++ names.zip (env.map fun a =>
       if total then (a.certainlyTrue, a.render) else (false, tied))
+    suggestions := suggestions ++ (List.range env.length).map fun i =>
+      let b := Infer.suggest cat A F T q.root i
+      { b with needs := Infer.trim A b.needs }
   let facts := match transform with
     | some p =>
       if !p.root.checkWF cat then []
       else
-        let fenv := p.root.aeval cat A F T
+        let fenv := (p.root.capReads caps).aeval cat A F T
         let fnames := if p.names.length == fenv.length then p.names
           else (List.range fenv.length).map (s!"#{·}")
         let decs := (p.root.kinds tables).map fun | .dec pr sc => some (pr, sc) | _ => none
@@ -293,12 +318,14 @@ def check (input : Json) : Except String Report := do
     optimized
     rewrites
     ensures := results
+    suggestions
     facts
     keys
     deterministic
     issues
     bounds
     inferred := Infer.merged A (bounds.filter (·.1.isError))
+    inferredNes := Infer.mergedNes (bounds.filter (·.1.isError))
     guardFree }
 
 end Substrait.ContractCheck
