@@ -176,6 +176,31 @@ def test_a_schema_for_a_source_that_starts_empty():
     assert rows(node) == [(1, 1, 20)]
 
 
+class Down(Source):
+    """A source whose server is down until `up` is set."""
+
+    up = False
+
+    def read(self, since):
+        if not self.up:
+            raise ConnectionError("server down")
+        if since is not None:
+            return None
+        return Batch(pa.table({"id": [1], "ts": [1], "amount": [20]}), cursor=1)
+
+
+def test_a_declared_schema_proves_without_reading():
+    schema = pa.schema([("id", pa.int64()), ("ts", pa.int64()), ("amount", pa.int64())])
+    src = Down("payments", schema=schema)
+    node = big(src)
+    assert src.schema() == schema
+    with pytest.raises(ConnectionError):
+        node.refresh()
+    src.up = True
+    node.refresh()
+    assert rows(node) == [(1, 1, 20)]
+
+
 def test_a_batch_in_another_schema_is_refused():
     f = feed()
     node = big(from_query(f.since, cursor_on="ts", name="payments"))

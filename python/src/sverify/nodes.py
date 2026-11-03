@@ -41,7 +41,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify.contracts import Discharged, _lookup, _register
+from sverify.contracts import Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
@@ -422,6 +422,7 @@ class Node:
             self._stage = _Stage.build(self, leaves, versions, engine, sink)
             out.started = self._stage.view.resumed or "computed"
             out.preconditions = list(self._stage.pipe.preconditions)
+            out.postconditions = list(self._stage.view.postconditions)
             if self._stage.view.versions != versions:
                 out.report = self._stage.refresh(versions, audit)
         else:
@@ -459,9 +460,10 @@ class _Stored(Node):
         expr = ibis.table(upstream.schema, name=sink.name)
         prov = _lookup(upstream._expr.op())
         if prov is not None:
-            # Its sources' preconditions are checked by its own stage, not
-            # by the stages reading it.
-            _register(expr.op(), replace(prov, external={}))
+            # Its sources' preconditions, and its runtime-checked
+            # postconditions, are checked by its own stage, not by the
+            # stages reading it.
+            _register(expr.op(), replace(prov, external={}, checked=[]))
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
@@ -566,12 +568,17 @@ class StageRefresh:
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""
+    postconditions: list[Discharged] = field(default_factory=list)
+    """On the first refresh: the postconditions the node's transform did not
+    prove and checks on its output (`on_unproved="runtime"`), checked on the
+    full result (later batches: `report.postconditions`)."""
 
     def __str__(self) -> str:
         lines = [f"{self.node}:"]
         if self.started:
             lines.append(f"  {self.started}")
         lines += [f"  requires {p}" for p in self.preconditions]
+        lines += [f"  ensures {p}" for p in self.postconditions]
         if self.report is not None:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
         if self.write is not None:
@@ -836,6 +843,12 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
         if not isinstance(v, Node) and not is_source(v):
             return v
         node = v if isinstance(v, Node) else _source_node(v)
+        if isinstance(node, _Derived) and (prov := _lookup(node._expr.op())) and prov.checked:
+            raise ValueError(
+                f"{node.name} checks {', '.join(label(c) for c in prov.checked)} on its "
+                f"output at refresh (on_unproved='runtime'), which {transform.name} would "
+                "fuse away: store it first, with .write(sink)"
+            )
         inputs.append(node)
         return node._expr
 
@@ -850,5 +863,5 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
                     f"{transform.name} reads two tables named {leaf.name!r}: "
                     "give one of the sources or sinks another name (name=...)"
                 )
-    expr = transform(*lifted_args, **lifted_kwargs)
+    expr = transform._build(lifted_args, lifted_kwargs, node=True)
     return _Derived(transform, expr, inputs)
