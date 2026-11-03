@@ -69,7 +69,7 @@ def stream(seed, steps=40, lateness=30):
     latest = max(m for _, m, _ in live if m is not None)
     out = []
     for step in range(steps):
-        ins = [
+        ins: list[tuple[str | None, int | None, int]] = [
             (
                 rng.choice(hosts),
                 rng.randrange(latest - lateness, latest + 6),
