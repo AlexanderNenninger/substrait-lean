@@ -356,8 +356,9 @@ wraps around there; the reference raises). An integer `SUM` leaving 64 bits
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
 count) and `requires` bounds the column. Elsewhere sverify assumes the sum
 fits, as it assumes inferred bounds, and the job checks it on the data while it
-runs (`Report.assumed`; an error with `infer=False`). Bounds on a table's rows
-are #219. Guards are
+runs (`Report.assumed`; an error with `infer=False`). A `max_rows`
+precondition does not bound a group's rows for this yet; bounds on a table's
+rows are #219. Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.

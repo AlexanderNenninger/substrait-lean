@@ -1723,8 +1723,9 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     lo = None if lo is None or lo <= -(2**63) else lo
     hi = None if hi is None or hi >= 2**63 - 1 else hi
     why = (
-        "no contract states how many rows a group has yet (#219), so only a VALUES list or a "
-        "FETCH bounds them; the job checks the sum as it runs"
+        "no precondition bounds a group's rows for an integer SUM yet (`max_rows` bounds only "
+        "the tolerances of SUM and AVG of doubles; #219), so only a VALUES list or a FETCH "
+        "does; the job checks the sum as it runs"
     )
     if lo is not None and hi is not None:
         largest = max(abs(lo), abs(hi))

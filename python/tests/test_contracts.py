@@ -290,7 +290,7 @@ def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     assert "up to 9,223,372,036 rows" in hint
     [hint] = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100]}).hints
     assert "it is in [0, 100]" in hint and "up to 92,233,720,368,547,758 rows" in hint
-    assert "no contract states how many rows a group has" in hint
+    assert "no precondition bounds a group's rows for an integer SUM yet" in hint
 
 
 def test_an_overflow_of_two_columns_suggests_a_split():
