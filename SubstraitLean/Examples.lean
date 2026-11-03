@@ -161,8 +161,9 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
-#print axioms Substrait.Rel.maxRows_sound
+#print axioms Substrait.Rel.rowBound_sound
 #print axioms Substrait.Rel.issuesR_sound
+#print axioms Substrait.Rel.noIssue_of_sumsFit
 #print axioms Substrait.FloatCode.round_mono
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
@@ -224,5 +225,6 @@ end Substrait.Examples
 #print axioms Substrait.Retention.final_unchanged
 #print axioms Substrait.Retention.retention_sound
 #print axioms Substrait.Retention.final_stable
+#print axioms Substrait.Retention.expiry_sound
 #print axioms Substrait.Retention.open_buckets_le
 #print axioms Substrait.Retention.trunc_eq_bucket

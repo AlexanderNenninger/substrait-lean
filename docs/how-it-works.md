@@ -665,9 +665,10 @@ the JSON plumbing.
 
 [Safety.lean](../SubstraitLean/Safety.lean) proves that a transformation runs without
 runtime errors, or reports what may go wrong. `sverify` reports these as
-`may fail: …` (a `VerificationError` from `@sv.transform`), or, for an
-integer `SUM`, `may fail: SUM overflow: … (checked while the job runs …)`,
-which does not block a proof.
+`may fail: …` (a `VerificationError` from `@sv.transform`). An integer `SUM`
+that may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
+group (inferred; checked on the data while the job runs …)`, and is an error
+with `infer=False`.
 
 * Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
@@ -678,12 +679,17 @@ which does not block a proof.
   integers), and `date_trunc` to a day or less below `-2⁶³` µs, are errors too: the
   reference raises (#202), while DataFusion wraps around silently, which an error
   allows.
-* An integer `SUM` leaving 64 bits is checked while the job runs: the SQL raises,
-  and it does not make `proved` false. A row bound settles it
-  ([Rows.lean](../SubstraitLean/Rows.lean), #219): `Rel.maxRows` bounds the rows
-  of every relation from `rows(at_most=N)` on the inputs, and `Rel.issuesR`
-  drops a `SUM` whose group of at most `n` rows of values in `[-m, m]` has
-  `n · m < 2⁶³` (`Rel.issuesR_sound`). Window `SUM`s stay checked.
+* An integer `SUM` leaving 64 bits is ruled out where the plan bounds a group's
+  rows (`Rel.maxRows`: a `VALUES` list, a `FETCH` count) and the argument's range
+  bounds each value (`Measure.sumFits`). Row bounds on the inputs
+  (`rows(at_most=N)`, #219) bound more: `Rel.rowBound` in
+  [Rows.lean](../SubstraitLean/Rows.lean) carries them through filters, joins
+  (a join on a key of its right side keeps the left side's rows), unions and
+  aggregates (`Rel.rowBound_sound`), and `Rel.issuesR` drops each `SUM`, of a
+  group or of a window frame, that they keep within 64 bits
+  (`Rel.issuesR_sound`). Elsewhere it is an inferred assumption
+  (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
+  the job runs.
 * Bounds that rule out overflow are inferred
   ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,

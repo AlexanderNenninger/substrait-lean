@@ -5,7 +5,7 @@ import SubstraitLean.Keys
 /-!
 # Row-count bounds (#219)
 
-`Rel.maxRows` bounds how many rows a plan returns, from bounds on its base
+`Rel.rowBound` bounds how many rows a plan returns, from bounds on its base
 tables (a precondition `rows(at_most=N)`, or a table format's metadata):
 
 * filters, semi-joins, `DISTINCT`: at most their input;
@@ -18,12 +18,15 @@ tables (a precondition `rows(at_most=N)`, or a table format's metadata):
 * aggregates: one row without `GROUP BY`, otherwise at most one per input row;
 * literal tables: their rows; `UNNEST` is unbounded.
 
-`Rel.maxRows_sound` proves the bound against `Rel.eval`.
+`Rel.rowBound_sound` proves the bound against `Rel.eval`. It extends
+`Rel.maxRows` (`SubstraitLean/Safety.lean`), which bounds rows from the plan's
+shape alone, to base tables, joins and unions.
 
-With it, an integer `SUM` over a group of at most `n` rows whose values all
-satisfy `|x| ≤ m` stays within `n · m`. When that fits in 64 bits, the `SUM`
-cannot overflow, and `Rel.issuesR` leaves it out of the issues
-`Rel.mayIssues` reports (`Rel.issuesR_sound`). Window `SUM`s stay reported.
+With it, an integer `SUM` over a group or window frame of at most `n` rows
+whose values all satisfy `|x| ≤ m` stays within `n · m`
+(`Measure.sumFits`). When that fits in 64 bits, the `SUM` cannot overflow,
+and `Rel.issuesR` leaves it out of the issues `Rel.mayIssues` reports
+(`Rel.issuesR_sound`).
 -/
 
 namespace Substrait
@@ -52,26 +55,26 @@ def Rel.keyedJoin (cat : Catalog) (A : String → List AVal) (F : String → Lis
   (b.keys cat A F K).any (determines on (a.arity cat))
 
 /-- An upper bound on the number of rows (`none`: unbounded). -/
-def Rel.maxRows (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+def Rel.rowBound (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) (R : RowBounds) : Rel → Option Nat
   | .read t => R t
   | .values _ rows => some rows.length
   | .filter r _ | .project r _ | .emit r _ | .window r _ _ _ | .orderBy r _ | .distinct r =>
-      r.maxRows cat A F K R
-  | .semi a _ _ _ => a.maxRows cat A F K R
-  | .cross a b => optMul (a.maxRows cat A F K R) (b.maxRows cat A F K R)
+      r.rowBound cat A F K R
+  | .semi a _ _ _ => a.rowBound cat A F K R
+  | .cross a b => optMul (a.rowBound cat A F K R) (b.rowBound cat A F K R)
   | .join a b ty on =>
-      if Rel.keyedJoin cat A F K a b on then a.maxRows cat A F K R
+      if Rel.keyedJoin cat A F K a b on then a.rowBound cat A F K R
       else match ty with
-        | .inner => optMul (a.maxRows cat A F K R) (b.maxRows cat A F K R)
-        | .left => optMul (a.maxRows cat A F K R) ((b.maxRows cat A F K R).map (max 1))
+        | .inner => optMul (a.rowBound cat A F K R) (b.rowBound cat A F K R)
+        | .left => optMul (a.rowBound cat A F K R) ((b.rowBound cat A F K R).map (max 1))
   | .fetch r off cnt =>
-      match cnt, r.maxRows cat A F K R with
+      match cnt, r.rowBound cat A F K R with
       | some c, some n => some (min c (n - off))
       | some c, Option.none => some c
       | Option.none, n => n.map (· - off)
-  | .unionAll a b => optAdd (a.maxRows cat A F K R) (b.maxRows cat A F K R)
-  | .aggregate r gs _ => if gs.isEmpty then some 1 else r.maxRows cat A F K R
+  | .unionAll a b => optAdd (a.rowBound cat A F K R) (b.rowBound cat A F K R)
+  | .aggregate r gs _ => if gs.isEmpty then some 1 else r.rowBound cat A F K R
   | .unnest _ _ => Option.none
 
 /-! ## Soundness of the row bound -/
@@ -132,47 +135,47 @@ theorem optMul_le {a b : Option Nat} {x y n : Nat}
   subst h
   exact Nat.mul_le_mul (ha _ rfl) (hb _ rfl)
 
-/-- **Soundness of `Rel.maxRows`**: a well-formed plan returns at most the
+/-- **Soundness of `Rel.rowBound`**: a well-formed plan returns at most the
 bound's rows, on base tables within their bounds. -/
-theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+theorem Rel.rowBound_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
     (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {R : RowBounds} (hR : R.Sound cat) :
-    ∀ {r : Rel}, r.WF cat → ∀ n, r.maxRows cat A F K R = some n → (r.eval cat).length ≤ n
+    ∀ {r : Rel}, r.WF cat → ∀ n, r.rowBound cat A F K R = some n → (r.eval cat).length ≤ n
   | .read t, _, n, h => hR t n h
   | .values _ _, _, n, h => by
-    simp only [maxRows, Option.some.injEq] at h
+    simp only [rowBound, Option.some.injEq] at h
     subst h; simp [eval]
   | .filter r _, hwf, n, h => by
     simp only [eval]
-    exact (Nat.le_trans (List.length_filter_le _ _) (maxRows_sound hcat hA hF hK hR hwf.1 n h))
+    exact (Nat.le_trans (List.length_filter_le _ _) (rowBound_sound hcat hA hF hK hR hwf.1 n h))
   | .project r _, hwf, n, h => by
     simp only [eval, List.length_map]
-    exact maxRows_sound hcat hA hF hK hR hwf.1 n h
+    exact rowBound_sound hcat hA hF hK hR hwf.1 n h
   | .emit r _, hwf, n, h => by
     simp only [eval, List.length_map]
-    exact maxRows_sound hcat hA hF hK hR hwf.1 n h
+    exact rowBound_sound hcat hA hF hK hR hwf.1 n h
   | .window r _ _ _, hwf, n, h => by
     simp only [eval, windowEval, windowRows_length, List.length_mergeSort]
-    exact maxRows_sound hcat hA hF hK hR hwf.1 n h
+    exact rowBound_sound hcat hA hF hK hR hwf.1 n h
   | .orderBy r _, hwf, n, h => by
     simp only [eval, List.length_mergeSort]
-    exact maxRows_sound hcat hA hF hK hR hwf.1 n h
+    exact rowBound_sound hcat hA hF hK hR hwf.1 n h
   | .distinct r, hwf, n, h => by
     simp only [eval]
-    exact (Nat.le_trans (dedup_length_le _) (maxRows_sound hcat hA hF hK hR (r := r) hwf n h))
+    exact (Nat.le_trans (dedup_length_le _) (rowBound_sound hcat hA hF hK hR (r := r) hwf n h))
   | .semi a _ _ _, hwf, n, h => by
     simp only [eval]
-    exact (Nat.le_trans (List.length_filter_le _ _) (maxRows_sound hcat hA hF hK hR hwf.1 n h))
+    exact (Nat.le_trans (List.length_filter_le _ _) (rowBound_sound hcat hA hF hK hR hwf.1 n h))
   | .cross a b, hwf, n, h => by
     simp only [eval, crossRows_length]
-    exact optMul_le (maxRows_sound hcat hA hF hK hR hwf.1) (maxRows_sound hcat hA hF hK hR hwf.2) h
+    exact optMul_le (rowBound_sound hcat hA hF hK hR hwf.1) (rowBound_sound hcat hA hF hK hR hwf.2) h
   | .join a b ty on, hwf, n, h => by
-    have ha := maxRows_sound hcat hA hF hK hR hwf.1
-    have hb := maxRows_sound hcat hA hF hK hR hwf.2.1
+    have ha := rowBound_sound hcat hA hF hK hR hwf.1
+    have hb := rowBound_sound hcat hA hF hK hR hwf.2.1
     have hlen := Rel.eval_arity hcat hwf.1
-    simp only [maxRows] at h
+    simp only [rowBound] at h
     split at h
     · -- Each left row has at most one partner.
       rename_i hkey
@@ -200,7 +203,7 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
         refine Nat.le_trans (length_flatMap_le (k := max 1 (b.eval cat).length) fun x _ =>
           leftJoinRow_length_le ((Nat.le_trans (List.length_filter_le _ _) (by simp)))) ?_
         refine optMul_le ha (fun k hk => ?_) h
-        cases hbr : b.maxRows cat A F K R with
+        cases hbr : b.rowBound cat A F K R with
         | none => simp [hbr] at hk
         | some j =>
           simp only [hbr, Option.map_some, Option.some.injEq] at hk
@@ -208,12 +211,12 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
           have := hb j hbr
           omega
   | .fetch r off cnt, hwf, n, h => by
-    have hr := maxRows_sound hcat hA hF hK hR (r := r) hwf
-    simp only [maxRows] at h
+    have hr := rowBound_sound hcat hA hF hK hR (r := r) hwf
+    simp only [rowBound] at h
     simp only [eval]
     cases cnt with
     | none =>
-      cases hm : r.maxRows cat A F K R with
+      cases hm : r.rowBound cat A F K R with
       | none => simp [hm] at h
       | some j =>
         simp only [hm, Option.map_some, Option.some.injEq] at h
@@ -221,7 +224,7 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
         simp only [List.length_drop]
         omega
     | some c =>
-      cases hm : r.maxRows cat A F K R with
+      cases hm : r.rowBound cat A F K R with
       | none =>
         simp only [hm, Option.some.injEq] at h
         simp only [List.length_take]
@@ -232,11 +235,11 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
         simp only [List.length_take, List.length_drop]
         omega
   | .unionAll a b, hwf, n, h => by
-    have ha := maxRows_sound hcat hA hF hK hR hwf.1
-    have hb := maxRows_sound hcat hA hF hK hR hwf.2.1
+    have ha := rowBound_sound hcat hA hF hK hR hwf.1
+    have hb := rowBound_sound hcat hA hF hK hR hwf.2.1
     simp only [eval, List.length_append]
-    simp only [maxRows] at h
-    cases hma : a.maxRows cat A F K R <;> cases hmb : b.maxRows cat A F K R <;>
+    simp only [rowBound] at h
+    cases hma : a.rowBound cat A F K R <;> cases hmb : b.rowBound cat A F K R <;>
       simp only [hma, hmb, optAdd, Option.some.injEq, reduceCtorEq] at h
     have := ha _ hma
     have := hb _ hmb
@@ -244,143 +247,54 @@ theorem Rel.maxRows_sound {cat : Catalog} (hcat : cat.WF) {A : String → List A
   | .aggregate r gs ms, hwf, n, h => by
     simp only [eval]
     refine (Nat.le_trans (aggregateEval_length_le gs ms _) ?_)
-    simp only [maxRows] at h
+    simp only [rowBound] at h
     split at h
     · simp only [Option.some.injEq] at h
       simp [*]
     · simp only [*, Bool.false_eq_true, ite_false]
-      exact maxRows_sound hcat hA hF hK hR hwf.1 n h
-  | .unnest _ _, _, n, h => by simp [maxRows] at h
+      exact rowBound_sound hcat hA hF hK hR hwf.1 n h
+  | .unnest _ _, _, n, h => by simp [rowBound] at h
 
 /-! ## Integer sums over few rows -/
 
-/-- The largest absolute value of an integer the abstract value allows
-(`0` when it allows none). -/
-def AVal.absMax (a : AVal) : Option Nat :=
-  match a.int with
-  | Option.none => some 0
-  | some b => match b.lo, b.hi with
-    | some l, some h => some (max l.natAbs h.natAbs)
-    | _, _ => Option.none
+/-- Does an integer `SUM` of `m` over any group or window frame of `r`'s rows
+fit in 64 bits, by `r`'s row bound? -/
+def Rel.sumFitsR (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (K : String → List (List Nat)) (R : RowBounds) (r : Rel) (m : Measure) : Bool :=
+  m.sumFits (·.absD (r.aeval cat A F T true) (r.facts cat F T)) (r.rowBound cat A F K R)
 
-theorem AVal.absMax_mem {a : AVal} {m : Nat} {i : Int} (h : a.absMax = some m)
-    (hm : a.Mem (.int i)) : i.natAbs ≤ m := by
-  obtain ⟨b, hb, hlo, hhi⟩ := hm
-  simp only [absMax, hb] at h
-  cases hl : b.lo <;> cases hh : b.hi <;> simp only [hl, hh, reduceCtorEq, Option.some.injEq] at h
-  rename_i l u
-  have := hlo l hl
-  have := hhi u hh
-  omega
-
-/-- A `SUM` of at most `n` values allowed by `a` fits in 64 bits. -/
-def sumFits (n : Nat) (a : AVal) : Bool :=
-  match a.absMax with
-  | some m => decide ((n * m : Nat) ≤ maxI64)
-  | Option.none => false
-
-theorem intSum_natAbs_le {m : Nat} :
-    ∀ (vs : List Value), (∀ i, Value.int i ∈ vs → i.natAbs ≤ m) →
-      (intSum vs).natAbs ≤ vs.length * m
-  | [], _ => by simp [intSum]
-  | v :: vs, h => by
-    have ih := intSum_natAbs_le vs fun i hi => h i (List.mem_cons_of_mem _ hi)
-    rw [List.length_cons, Nat.succ_mul]
-    match v with
-    | .int i =>
-      have := h i (List.mem_cons_self ..)
-      have := Int.natAbs_add_le i (intSum vs)
-      simp only [intSum]
-      omega
-    | .null | .bool _ | .str _ | .list _ =>
-      simp only [intSum]
-      omega
-
-theorem inI64_of_natAbs_le {s : Int} (h : (s.natAbs : Int) ≤ maxI64) : inI64 s = true := by
-  have h1 : s ≤ (s.natAbs : Int) := Int.le_natAbs
-  have h2 : -s ≤ (s.natAbs : Int) := by rw [← Int.natAbs_neg]; exact Int.le_natAbs
-  have hm : maxI64 = 9223372036854775807 := rfl
-  have hn : minI64 = -9223372036854775808 := rfl
-  rw [hm] at h
-  simp only [inI64, hn, hm, Bool.and_eq_true, decide_eq_true_eq]
-  omega
-
-theorem Measure.inputs_length_le (m : Measure) (rows : Relation) :
-    (m.inputs rows).length ≤ rows.length := by
-  have hk : (m.kept rows).length ≤ rows.length := by
-    unfold Measure.kept
-    split
-    · exact Nat.le_refl _
-    · exact List.length_filter_le _ _
-  have hv : (((m.kept rows).map m.arg.eval).filter (· != .null)).length ≤ rows.length :=
-    (Nat.le_trans (List.length_filter_le _ _) (by simpa using hk))
-  simp only [Measure.inputs]
-  split
-  · exact (Nat.le_trans (dedup_length_le _) hv)
-  · exact hv
-
-theorem length_le_of_mem_aggGroups {gs : List Expr} {rows grp : Relation}
-    (hg : grp ∈ aggGroups gs rows) : grp.length ≤ rows.length := by
-  unfold aggGroups at hg
-  split at hg
-  · simp only [List.mem_singleton] at hg
-    exact hg ▸ Nat.le_refl _
-  · obtain ⟨k, _, rfl⟩ := List.mem_map.1 hg
-    exact List.length_filter_le _ _
-
-/-- Does an integer `SUM` of `arg` over any group of `r`'s rows fit in 64
-bits? -/
-def Rel.sumFits (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (T : WindowKeys) (K : String → List (List Nat)) (R : RowBounds) (r : Rel) (arg : Expr) : Bool :=
-  match r.maxRows cat A F K R with
-  | some n => Substrait.sumFits n (arg.absD (r.aeval cat A F T true) (r.facts cat F T))
-  | Option.none => false
-
-theorem Rel.sumFits_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+/-- A sum over at most `r`'s rows, all of them `r`'s, fits when `Rel.sumFitsR`
+says so. -/
+theorem Rel.sumFitsR_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.Sound cat)
     {K : String → List (List Nat)} (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
-    {R : RowBounds} (hR : R.Sound cat) {r : Rel} {gs : List Expr} {m : Measure} {grp : Relation}
-    (hwf : r.WF cat) (hsm : r.Small cat) (hgrp : grp ∈ aggGroups gs (r.eval cat))
-    (hfit : r.sumFits cat A F T K R m.arg = true) : inI64 (intSum (m.inputs grp)) = true := by
-  unfold Rel.sumFits at hfit
-  split at hfit
-  · rename_i n hn
-    have hrows := maxRows_sound hcat hA hF hK hR hwf n hn
-    have hlen : (m.inputs grp).length ≤ n :=
-      (Nat.le_trans (Measure.inputs_length_le m grp) ((Nat.le_trans (length_le_of_mem_aggGroups hgrp) hrows)))
-    unfold Substrait.sumFits at hfit
-    split at hfit
-    · rename_i M hM
-      have hle : (n * M : Nat) ≤ maxI64 := of_decide_eq_true hfit
-      have hint : ∀ i, Value.int i ∈ m.inputs grp → i.natAbs ≤ M := fun i hi => by
-        obtain ⟨_, y, hy, hev⟩ := Measure.mem_inputs hi
-        have hyr := mem_of_mem_aggGroups hgrp hy
-        have := Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf (fun _ => hsm) y hyr)
-          (facts_sound hcat hF hT hwf y hyr) (KsHold.nil y) m.arg
-        rw [hev] at this
-        exact AVal.absMax_mem hM this
-      have hs := intSum_natAbs_le _ hint
-      have : (m.inputs grp).length * M ≤ n * M := Nat.mul_le_mul_right M hlen
-      exact inI64_of_natAbs_le (by omega)
-    · simp at hfit
-  · simp at hfit
+    {R : RowBounds} (hR : R.Sound cat) {r : Rel} {m : Measure} {grp : Relation}
+    (hwf : r.WF cat) (hsm : r.Small cat) (hin : ∀ y ∈ grp, y ∈ r.eval cat)
+    (hlen : grp.length ≤ (r.eval cat).length)
+    (hfit : r.sumFitsR cat A F T K R m = true) : inI64 (intSum (m.inputs grp)) = true :=
+  Measure.sumFits_sound
+    (fun y hy => Expr.absD_sound (aeval_sound hcat hA hF hT (sz := true) hwf (fun _ => hsm) y (hin y hy))
+      (facts_sound hcat hF hT hwf y (hin y hy)) (KsHold.nil y) m.arg)
+    (fun k hk => Nat.le_trans hlen (rowBound_sound hcat hA hF hK hR hwf k hk)) hfit
 
 /-! ## Issues with row bounds -/
 
-/-- The integer `SUM`s that may leave 64 bits: those over groups the row
-bound and the values' range do not keep within them, and every window `SUM`. -/
+/-- The integer `SUM`s that may leave 64 bits: those over groups or window
+frames the row bound and the values' range do not keep within them. -/
 def Rel.sumRisks (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) (K : String → List (List Nat)) (R : RowBounds) : Rel → List (Issue × Expr)
   | .read _ | .values _ _ => []
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ => r.sumRisks cat A F T K R
-  | .window r _ _ fns => r.sumRisks cat A F T K R ++ (WinFn.sumArg? fns).map (.sumWraps, ·)
+  | .window r _ _ fns => r.sumRisks cat A F T K R ++ (WinFn.aggs fns).filterMap fun m =>
+      if m.fn = .sum ∧ m.arg.isDecimal = false ∧ r.sumFitsR cat A F T K R m = false
+      then some (.sumWraps, m.arg) else Option.none
   | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ =>
       a.sumRisks cat A F T K R ++ b.sumRisks cat A F T K R
   | .aggregate r _ ms => r.sumRisks cat A F T K R ++ ms.filterMap fun m =>
-      if m.fn = .sum ∧ m.arg.isDecimal = false ∧ r.sumFits cat A F T K R m.arg = false
+      if m.fn = .sum ∧ m.arg.isDecimal = false ∧ r.sumFitsR cat A F T K R m = false
       then some (.sumWraps, m.arg) else Option.none
 
 /-- `Rel.mayIssues`, with only the integer `SUM`s of `Rel.sumRisks`. -/
@@ -415,10 +329,18 @@ theorem Rel.sumRisks_sound {cat : Catalog} (hcat : cat.WF) {A : String → List 
   | _, .unnest r _, hwf, hsm, e, h => sumRisks_sound hcat hA hF hT hK hR (r := r) hwf.1 hsm e h
   | _, .window r _ _ _, hwf, hsm, e, h => by
     simp only [HasIssue] at h
-    simp only [sumRisks, List.mem_append]
-    rcases h with h | h
+    simp only [sumRisks, List.mem_append, List.mem_filterMap]
+    rcases h with h | ⟨m, hm, hf, hd, heq, frame, hframe, hlen, hov⟩ | ⟨_, _, heq, _⟩
     · exact .inl (sumRisks_sound hcat hA hF hT hK hR hwf.1 hsm.2 e h)
-    · exact .inr h
+    · refine .inr ⟨m, hm, ?_⟩
+      have hfit : r.sumFitsR cat A F T K R m = false := by
+        cases hc : r.sumFitsR cat A F T K R m
+        · rfl
+        · rw [Rel.sumFitsR_sound hcat hA hF hT hK hR hwf.1 hsm.2 hframe hlen hc] at hov
+          exact absurd hov (by simp)
+      simp only [Prod.mk.injEq] at heq
+      simp [hf, hd, hfit, heq.2]
+    · simp only [Prod.mk.injEq, reduceCtorEq, false_and] at heq
   | _, .cross a b, hwf, hsm, e, h => by
     simp only [HasIssue] at h
     simp only [sumRisks, List.mem_append]
@@ -454,10 +376,11 @@ theorem Rel.sumRisks_sound {cat : Catalog} (hcat : cat.WF) {A : String → List 
     · exact .inl (sumRisks_sound hcat hA hF hT hK hR hwf.1 hsm e h)
     · exact absurd rfl (Expr.issues_ne_sumWraps hp)
     · refine .inr ⟨m, hm, ?_⟩
-      have hfit : r.sumFits cat A F T K R m.arg = false := by
-        cases hc : r.sumFits cat A F T K R m.arg
+      have hfit : r.sumFitsR cat A F T K R m = false := by
+        cases hc : r.sumFitsR cat A F T K R m
         · rfl
-        · rw [Rel.sumFits_sound hcat hA hF hT hK hR hwf.1 hsm hgrp hc] at hov
+        · rw [Rel.sumFitsR_sound hcat hA hF hT hK hR hwf.1 hsm
+            (fun y hy => mem_of_mem_aggGroups hgrp hy) (length_le_of_mem_aggGroups hgrp) hc] at hov
           exact absurd hov (by simp)
       simp only [Prod.mk.injEq] at heq
       simp [hf, hd, hfit, heq.2]

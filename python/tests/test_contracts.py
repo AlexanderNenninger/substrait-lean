@@ -293,7 +293,8 @@ def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     assert "`sv.rows(at_most=92_233_720_368_547_758)` in `requires` of samples proves it" in hint
     # With that row bound, the sum is proved to fit.
     rows = sv.rows(at_most=92_233_720_368_547_758)
-    assert not sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100, rows]}).issues
+    proved = sv.verify(expr, requires={"samples": [_.cpu >= 0, _.cpu <= 100, rows]})
+    assert not proved.issues and not proved.assumed
 
 
 def test_an_overflow_of_two_columns_suggests_a_split():

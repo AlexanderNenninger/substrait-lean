@@ -158,7 +158,7 @@ structure Report where
   /-- Runtime errors and wrap-arounds `Rel.issuesR_sound` cannot rule out:
   an integer `SUM` the input row bounds keep within 64 bits is left out. -/
   issues : List (Issue × Expr) := []
-  /-- At most this many output rows (`Rel.maxRows_sound`). -/
+  /-- At most this many output rows (`Rel.rowBound_sound`). -/
   rows : Option Nat := none
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
@@ -286,7 +286,7 @@ def check (input : Json) : Except String Report := do
     | some p => if wf then (Rel.issuesR cat A F T inputKeys R false p.root).eraseDups else []
     | none => []
   let rows := match transform with
-    | some p => if wf then p.root.maxRows cat A F inputKeys R else none
+    | some p => if wf then p.root.rowBound cat A F inputKeys R else none
     | none => none
   let bounds := match transform with
     | some p =>

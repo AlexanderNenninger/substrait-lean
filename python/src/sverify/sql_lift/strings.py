@@ -63,6 +63,10 @@ def _const_str(v: str) -> E:
     return E(literal(v, dt.string), dt.string, v)
 
 
+#: The offsets and the lengths DuckDB's `substring` takes; it raises outside them.
+_SUBSTRING_RANGE = {False: range(-(2**32), 2**32), True: range(2**32)}
+
+
 def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) -> E:
     # DuckDB counts from 1, and from the end for a negative start: Substrait's
     # `negative_start` WRAP_FROM_END, the reference's default (#209 R13).
@@ -77,6 +81,13 @@ def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) ->
             raise Unsupported(f"substring with a {e.type} position is not supported")
         if a is length and e.constant and e.value is not None and e.value < 0:
             raise Unsupported("substring with a negative length is not supported yet")
+        if e.constant and e.value is not None and e.value not in _SUBSTRING_RANGE[a is length]:
+            # DuckDB raises; the model has no such error yet (#336).
+            what = "length" if a is length else "offset"
+            raise Unsupported(
+                f"substring {what} {e.value} is outside DuckDB's supported range, where it "
+                "raises; the model has no such error yet (#336)"
+            )
         args.append(lf.to(e, dt.int64).json)
     if start is None:
         raise Unsupported("substring needs a start")

@@ -20,8 +20,9 @@ ITEMS = ibis.table({"order_id": "int64", "qty": "int64"}, name="items")
 SUM_OVERFLOW = "SUM overflow"
 
 
-def sum_warnings(report: sv.Report) -> list[str]:
-    return [i.expr for i in report.warnings if i.kind == SUM_OVERFLOW]
+def sum_risks(report: sv.Report) -> list[str]:
+    """The SUMs that may overflow: assumed to fit (`Report.assumed`), or errors."""
+    return [i.expr for i in [*report.issues, *report.assumed] if i.kind == SUM_OVERFLOW]
 
 
 def per_customer(orders):
@@ -39,12 +40,12 @@ def test_rows_takes_a_count():
 def test_a_row_bound_proves_a_sum_fits():
     bounded = [_.amount >= 0, _.amount <= 1_000_000]
     report = sv.verify(per_customer(ORDERS), requires={"orders": bounded})
-    assert sum_warnings(report)
+    assert sum_risks(report)
     report = sv.verify(
         per_customer(ORDERS), requires={"orders": [*bounded, sv.rows(at_most=10**12)]}
     )
     # 10¹² rows of at most 10⁶ each: below 2⁶³.
-    assert not report.warnings
+    assert not sum_risks(report)
     assert report.proved
     assert report.rows == 10**12
     assert "requires orders: rows(at_most=1_000_000_000_000)" in str(report)
@@ -54,12 +55,12 @@ def test_a_row_bound_proves_a_sum_fits():
 def test_too_many_rows_leave_the_sum_checked():
     requires = {"orders": [_.amount >= 0, _.amount <= 1_000_000, sv.rows(at_most=10**13)]}
     report = sv.verify(per_customer(ORDERS), requires=requires)
-    assert sum_warnings(report)
+    assert sum_risks(report)
 
 
 def test_unbounded_values_leave_the_sum_checked():
     report = sv.verify(per_customer(ORDERS), requires={"orders": [sv.rows(at_most=10)]})
-    assert sum_warnings(report)
+    assert sum_risks(report)
 
 
 def test_the_readme_sql_model():
@@ -69,10 +70,10 @@ def test_the_readme_sql_model():
         "orders": ["amount >= 0", "amount <= 1000000", "amount IS NOT NULL"]
     }
     tables = {"orders": ORDERS.schema()}
-    assert sum_warnings(sv.verify(query, requires=requires, tables=tables))
+    assert sum_risks(sv.verify(query, requires=requires, tables=tables))
     requires["orders"].append(sv.rows(at_most=10**9))
     report = sv.verify(query, requires=requires, ensures=["total >= 0"], tables=tables)
-    assert report.proved and not report.warnings
+    assert report.proved and not sum_risks(report)
 
 
 def test_row_bounds_propagate():
@@ -101,10 +102,10 @@ def test_a_join_fans_out_unless_on_a_key():
     amounts = [_.amount >= 0, _.amount <= 10**13, sv.rows(at_most=1000)]
     requires: dict[str, list] = {"orders": amounts, "items": [sv.rows(at_most=1000)]}
     report = sv.verify(fan_out(ORDERS, ITEMS), requires=requires)
-    assert sum_warnings(report)
+    assert sum_risks(report)
     requires["orders"] = [*amounts, sv.unique("id")]
     report = sv.verify(fan_out(ORDERS, ITEMS), requires=requires)
-    assert not report.warnings
+    assert not sum_risks(report)
     keyed = ITEMS.join(ORDERS, ITEMS.order_id == ORDERS.id)
     assert sv.verify(keyed, requires=requires).rows == 1000
 
@@ -166,11 +167,11 @@ def test_benchmark_sums_are_proved_with_row_bounds(catalogue, qid):
     query = cat.build(q, schemas, "native")
     requires, ensures = cat.contract(q, schemas, "native")
     before = sv.verify(query, requires=requires, ensures=ensures, counterexamples=0)
-    assert sum_warnings(before)
+    assert sum_risks(before)
     for t, n in SCALE[qid].items():
         requires[t] = [*requires.get(t, []), sv.rows(at_most=n)]
     report = sv.verify(query, requires=requires, ensures=ensures, counterexamples=0)
-    assert not report.warnings, str(report)
+    assert not sum_risks(report), str(report)
     assert report.proved and report.guard_free
     assert report.rows is not None
 
@@ -194,7 +195,7 @@ def test_delta_file_counts_prove_a_row_bound(tmp_path):
     )(amounts)
     node = src.pipe(contracted)
     report = contracted.last_report
-    assert report is not None and not report.warnings
+    assert report is not None and not sum_risks(report)
     first = discharged(node.refresh()[node.name].preconditions)
     assert first[("orders", "rows(at_most=10)")] == "file stats @v2"
 
