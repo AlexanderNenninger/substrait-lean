@@ -56,13 +56,14 @@ In order of day-to-day value:
    goes, a left join on a NOT NULL foreign key becomes an inner join). See
    [docs/optimizations.md](optimizations.md).
 
-What it doesn't do (yet). DECIMAL columns are refused (keep money as
-integer cents); framed window aggregates (running totals, moving averages),
-`RANK` and `NTILE` are not in the model; and incremental maintenance covers
-filters, projections, inner and cross joins and `UNION ALL`. Other views (left
-joins, aggregates, windows, `DISTINCT`) are recomputed and diffed instead, and
-`node.status()` says so. [What is supported](../README.md#what-is-supported) has the full
-table.
+What it doesn't do (yet). Rolling means, `MIN` over a sliding frame,
+correlated scalar subqueries and parameters (`ibis.param`) are not in the
+model. Incremental maintenance covers filters, projections, inner and cross
+joins and `UNION ALL`; an aggregate recomputes only the groups a batch
+touches, and a window only the partitions it touches. Other views (left
+joins, `DISTINCT`) are recomputed and diffed instead, and `node.status()`
+says so. [The Ibis coverage table](../README.md#ibis-coverage) has the full
+list.
 
 ## Workflows
 
@@ -190,13 +191,14 @@ pip install 'sverify[delta,iceberg,polars,datafusion,spark]'   # or 'sverify[all
 
 The core runs on DuckDB: contracts, incremental maintenance, and SQL for
 DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
-(needs Java 17 or 21), `delta` and `iceberg`. Wheels bundle the Lean checker
+(needs Java 17 or 21), `delta`, `iceberg`, `flight` (`FlightSource`) and
+`testing` (Hypothesis strategies). Wheels bundle the Lean checker
 as a small native binary, so you need no Lean toolchain; they exist for Linux
 (x86_64, aarch64) and macOS (arm64), Python 3.12 and later.
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
-`0.4.0.dev<commits>+g<sha>` so they sort after 0.3.0. They are not on PyPI:
+`<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
 ```bash
 uv add "sverify>=0.4.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
@@ -216,7 +218,7 @@ one build for that long. `--find-links` sees every build on the page and picks
 the newest. Copy a URL from the release page:
 
 ```bash
-pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
+pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-<version>-py3-none-<platform>.whl"
 ```
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
@@ -324,7 +326,7 @@ except VerificationError as e:
   bounds them by the proved rounding error ([float bounds](float-bounds.md)).
   `sv.approx(_.cpu_avg <= 100)` states a postcondition up to that rounding;
   the report suggests it when an exact claim misses only by rounding.
-* Not tracked yet: string contents, DECIMAL columns, relations beyond
+* Not tracked yet: string contents, relations beyond
   "column plus constant" (`a < 2 * b`), and counts across rows (so
   `COUNT(*) >= 1` in a group is not known).
 
@@ -586,8 +588,11 @@ it for the SQL they lift themselves: a SQL transformation and SQL conditions.
 An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line). Until
 #411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
-joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
-saying what.
+joins of every kind, subqueries and CTEs, GROUP BY with grouping sets,
+windows, set operations, ORDER BY, LIMIT, CASE, CAST, and the numeric,
+string, date and list functions of
+[#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)) and
+refuses the rest, saying what.
 
 A node without delta rules (left join, aggregate, window, `DISTINCT`,
 `LIMIT`) is recomputed and diffed instead, and `status()` says so. An

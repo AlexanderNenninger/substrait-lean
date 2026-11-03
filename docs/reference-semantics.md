@@ -107,9 +107,9 @@ fires, `Rel.eval`'s value is not the answer.
 * **An error that can't be ruled out makes the report unproved.**
   `Report.proved` is false until a precondition excludes it. ✓ for division
   by zero, casts out of range, domain errors, decimal precision and the
-  other error issues. Integer `+ - *` and negation overflow are still only a
-  warning on `main` ("may wrap around"): [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202),
-  [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
+  other error issues, and for integer `+ - *` and negation overflow at the
+  declared width ([#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202)).
+  Inferred bounds (#244) discharge most overflows.
 * **Integer `SUM` overflow is an inferred assumption, checked on the data.**
   A group's integer sum may leave 64 bits, and the reference raises there.
   Where the plan bounds a group's rows (a `VALUES` list, a `FETCH` count, an
@@ -131,8 +131,8 @@ fires, `Rel.eval`'s value is not the answer.
 
 | Topic | Reference | Status |
 |---|---|---|
-| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error, not a wrapped value. | Narrow-width arithmetic is checked via `UnFn.wrap`, as a warning. #202 / [#255](https://github.com/AlexanderNenninger/substrait-lean/pull/255) makes it an error. |
-| `overflow` omitted or `ERROR` | `+ - *`, negate, `abs`, `sum`: an error when the result doesn't fit the declared width. | `abs(MIN)` and `MIN / -1` are errors ✓. `+ - *`, negate and `sum`: a warning on `main`, which also accepts only `SILENT` (or omitted) in the parser; #202 / [#255](https://github.com/AlexanderNenninger/substrait-lean/pull/255). |
+| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error, not a wrapped value. | ✓ An overflow at the declared width is an error ([#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202)); a call's declared output type gives its width (#419). |
+| `overflow` omitted or `ERROR` | `+ - *`, negate, `abs`, `sum`: an error when the result doesn't fit the declared width. | ✓ (#202). An integer `sum` that may overflow is an assumption checked on the data (above). |
 | `overflow: SILENT` / `SATURATE` | Wrap-around / clamp at the declared width, when the plan asks. | ✓ for integer `+ - *` and negation: `UnFn.fit` on the exact result ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241)). DuckDB runs them through the generated lowering (128-bit arithmetic); Polars, Spark, Snowflake and DataFusion refuse them for now. `sum`, `abs` and decimals accept only `ERROR`. |
 | `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
 | Division or `modulus` by zero | An error when `on_division_by_zero` is omitted or `ERROR`; `NULL` only when the plan asks. | ✓ (`Rel.eval` gives NULL there; `verify` reports the error, so that value is never an answer) |

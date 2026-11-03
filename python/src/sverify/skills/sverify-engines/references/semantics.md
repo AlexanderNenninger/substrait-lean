@@ -8,9 +8,9 @@ the model on random tables.
 * **NULL logic.** Filters and join conditions keep a row only when the
   condition is TRUE (`IS TRUE`); `AND`/`OR` are three-valued; equi-join keys
   never match on NULL. Every `ORDER BY` says where NULLs go.
-* **Integers** are 64-bit. Overflow raises on DuckDB, Polars and Spark (ANSI
-  mode), and Snowflake's NUMBER(38) is range-checked, where DataFusion wraps
-  silently. Integer division and remainder truncate toward zero everywhere.
+* **Integers** have their declared widths. Overflow raises on DuckDB, Polars
+  and Spark (ANSI mode), and Snowflake's NUMBER(38) is range-checked, where
+  DataFusion wraps silently. Integer division and remainder truncate toward zero everywhere.
   Division by zero, `MIN / -1`, bad `POWER`s and out-of-range casts raise.
 * **Doubles** have one zero (−0.0 is 0.0) and one NaN, equal to itself and
   above every number, in comparisons, joins, grouping and sorts. `SUM` and

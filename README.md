@@ -327,8 +327,10 @@ The open work is tracked on GitHub:
 
 Longer-term directions:
 
-1. Non-linear incremental operators. Aggregates (SUM and COUNT per group
-   are linear over Z-sets), `DISTINCT`, semi and left joins, windows.
+1. Non-linear incremental operators. Aggregates and windows recompute only
+   the groups and partitions a batch touches; SUM and COUNT per group are
+   linear over Z-sets and could be maintained from the changes alone, as
+   could `DISTINCT`, semi and left joins.
 2. Completeness. Contracts say what every output row satisfies; the
    converse ("no window is lost") is a Lean theorem per plan today
    (`IoT.window_complete`); the checker doesn't report it yet.

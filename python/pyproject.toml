@@ -28,7 +28,7 @@ dependencies = [
 # `sverify.connect()`. Other engines and table formats are extras; the SQL
 # dialects (DuckDB, Snowflake, Spark) need nothing.
 [project.optional-dependencies]
-# DataFusion as an engine (`engine="datafusion"`), and the producer for SQL strings.
+# DataFusion as an engine (`engine="datafusion"`).
 datafusion = ["datafusion==51.0.0"]
 polars = ["numpy>=2.5.4", "polars>=2.1.0"]
 spark = ["pyspark>=4.0"]

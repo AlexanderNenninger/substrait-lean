@@ -18,8 +18,8 @@ Doubles compare as SQL engines compare them: one zero, and one NaN, equal to
 itself and above every number, so `NaN > 30` is TRUE and a filter `v > 30`
 keeps NaN rows. Ask for `~_.v.isnan()` if a NaN must not get through.
 
-Not tracked: string contents, DECIMAL columns, relations beyond "column plus
-constant", counts across rows.
+Not tracked: string contents, relations beyond "column plus constant",
+counts across rows.
 
 ## SQL transformations
 
@@ -33,15 +33,15 @@ orders = ibis.table({"id": "int64", "amount": "int64"}, name="orders")
 report = sv.verify(
     "select id, amount * 2 as doubled from orders where amount > 10",
     tables={"orders": orders},
-    requires={"orders": ["amount >= 0", "amount < 1000000000", sv.unique("id")]},
+    requires={"orders": ["amount >= 0", sv.unique("id")]},  # amount < 2**62 is inferred
     ensures=["doubled >= 22", sv.unique("id")],
 )
 assert report.proved
 ```
 
-Nodes come from Ibis transforms: a SQL string can be verified, but not
-built into a node (there is no public replacement for incremental views over
-SQL strings yet).
+In a node, write the SQL as a transform's body, `return sv.sql(query,
+orders=orders)`: sverify proves, composes and refreshes it like an Ibis
+transform.
 
 ## Composing contracts
 

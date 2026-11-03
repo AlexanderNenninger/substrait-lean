@@ -64,7 +64,9 @@ print(report.facts["doubled"])  # what Lean established about the column
 
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
   snippets (`"doubled >= 22"`). `sv.unique(...)` states a key;
-  `sv.references(col, table, key_col)` a foreign key (only in `requires`).
+  `sv.references("cust", to=customers.id)` a foreign key (only in
+  `requires`); `sv.max_rows(n)` caps an input's rows. A transformation with
+  one input also takes a plain list, `requires=[_.amount >= 0]`.
 * `requires` is checked on the source's data when the node is refreshed
   (`sverify.errors.PreconditionError`), or proved from table metadata.
 * Transforms compose: `revenue(paid(orders))` proves each link from the
@@ -100,9 +102,18 @@ assert sv.verify(fixed, requires={"orders": [_.amount >= 0]}, ensures=[_.total >
 ```
 
 `report.issues` lists runtime errors that may happen (division by zero,
-overflow, bad casts): an error makes `proved` False; a warning (64-bit
-wrap-around) doesn't. Guard a divisor with `NULLIF`/`ifelse`, or bound it in
-`requires`.
+overflow at the declared width, bad casts); an error makes `proved` False.
+Sverify infers the bounds that rule most of them out (`amount * 2` gets
+`(_.amount < 2**62) (inferred)` in `requires`), checks them on the data, and
+`infer=False` turns that off. For the rest, `report.hints` names the bound to
+add, and an unproved comparison with a constant comes with the precondition
+that proves it (`report.suggestions`). An integer `SUM` that may overflow is
+listed in `report.assumed` and checked on the data while the job runs; a row
+cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
+`NULLIF`/`ifelse`, or bound it in `requires`.
+
+Sums and means of doubles round: with a row cap, `sv.approx(_.cpu_avg <= 100)`
+states a postcondition up to the proved rounding error.
 
 ## Choose what happens when a proof fails
 
@@ -167,24 +178,27 @@ test_doubles_are_big()
 
 ## Gotchas
 
-* **No DECIMAL columns.** Tables with DECIMAL columns are refused; keep money
-  as integer cents (doubles don't compare exactly).
 * **Windows need a key.** `LAG`, `LEAD` and `ROW_NUMBER` depend on how ties
   break unless `requires` has a key on the partition and order columns
   (`sv.unique("device_id", "ts")`); without it every postcondition is
   undetermined and `report.deterministic` is False.
 * **SQL strings are DuckDB's SQL**, read by sverify's lift, which covers a
-  subset so far (SELECT, WHERE, joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST,
-  arithmetic): write the rest in Ibis. In DuckDB's SQL, `/` divides as
-  doubles; integer division is `//`.
+  subset so far (SELECT, WHERE, joins, subqueries and CTEs, GROUP BY with
+  grouping sets, windows, set operations, ORDER BY, LIMIT, CASE, CAST and
+  common functions): write the rest in Ibis. In DuckDB's SQL, `/` divides as
+  doubles; integer division is `//`. Checks use sverify's reference semantics
+  unless you pass `semantics="duckdb"` (to `sv.sql`, `sv.verify` or
+  `@sv.transform`), which models DuckDB's NaN and `±inf`.
 * **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
 * **Incremental maintenance** covers filters, projections, inner and cross
-  joins and `UNION ALL`; other nodes (left joins, aggregates, windows,
-  `DISTINCT`, `LIMIT`) are recomputed and diffed on each refresh (see the
-  `sverify-pipelines` skill).
+  joins and `UNION ALL`; aggregates and windows recompute only the groups and
+  partitions a batch touches; other nodes (left joins, `DISTINCT`, `LIMIT`)
+  are recomputed and diffed on each refresh (see the `sverify-pipelines`
+  skill).
 * **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
-  the rounding would depend on the split.
+  the rounding would depend on the split; `float_order="any"` splits them
+  anyway, unproved.
 
 ## More
 

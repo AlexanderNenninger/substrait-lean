@@ -19,16 +19,16 @@ An engine runs a plan **correctly** when, on every input, it gives
 
 **The size hypothesis.** Integers have their declared widths, and so do
 lengths, positions and ranks. The reference assumes, as every engine's memory
-guarantees, that every string has fewer than `2⁶²` characters and every
+guarantees, that every string has fewer than `2³²` characters (#336) and every
 relation a window reads fewer than `2⁶²` rows. It is trusted and stated where
 it is used: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`, `levenshtein`
-and `ascii` at `2⁶²` (a cap no real string reaches), and `Rel.Small` is a
+and `ascii` at `2³²` (a cap no real string reaches), and `Rel.Small` is a
 hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound` and
 `Rel.duckdb_sound`. With it, and with input columns bounded by their types,
 the range analysis proves that `ROW_NUMBER() - 1`, Ibis's `find`
 (`strpos - 1`) and sverify's floor division do not overflow. It infers no
-bound for arithmetic the plan does on its own values (`amount * 2`); that
-still needs a precondition, or the inferred bounds of #244.
+bound from the hypothesis for arithmetic the plan does on its own values
+(`amount * 2`); that needs a precondition, which sverify infers (#244).
 
 ## An engine profile is a diff
 

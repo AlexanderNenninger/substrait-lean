@@ -528,20 +528,20 @@ Substrait consumer, Polars, DuckDB's and Spark's SQL). These are covered by gold
 round trips and the differential tests instead.
 
 The size hypothesis (trusted, stated in the theorems that use it): every
-string has fewer than 2⁶² characters, and every relation a window reads fewer
+string has fewer than 2³² characters (#336), and every relation a window reads fewer
 than 2⁶² rows. No machine's memory holds more, and it is what bounds lengths,
 positions and ranks: `Text.sizeCap` caps `CHARACTER_LENGTH`, `strpos`,
 `levenshtein` and `ascii` there (a cap the hypothesis never reaches), and
 `Rel.Small` is a hypothesis of `Rel.mayIssues_sound`, `Rel.guardFree_sound`
 and `Rel.duckdb_sound`. So `ROW_NUMBER() - 1` and Ibis's `find` (`strpos - 1`)
-are proved not to overflow without a precondition, while `amount * 2` still
-needs one.
+are proved not to overflow without a precondition, while `amount * 2` needs
+one, which sverify infers (#244).
 
 ## How the results are checked
 
 * Proofs: `lake build` re-checks every theorem. The main ones say that the
-  update plan computes exactly the change to the result, and that running it on
-  DataFusion with the weight-column encoding gives that result. See
+  update plan computes exactly the change to the result, and that running it
+  with the weight-column encoding gives that result. See
   [Proven theorems](#proven-theorems).
 * Randomized testing: `uv run pytest` generates random tables and random batches of
   inserts and deletes, including NULLs and duplicates. After every batch it
@@ -618,7 +618,7 @@ interval, possible booleans, and whether it can be a string.
 * `window_tiebreak`, `Rel.window_deterministic` ([Keys.lean](../SubstraitLean/Keys.lean)):
   when a window's partition and sort columns contain a key of its input, every
   arrangement of the input sorted by the window's keys gives the same rows as
-  `Rel.eval`. So the proofs describe what DataFusion computes, however it breaks ties.
+  `Rel.eval`. So the proofs describe what an engine computes, however it breaks ties.
 * `orderFact_sound`, `winFacts_sound`, `WinFn.abs_sound`: what is known about
   `LAG`/`LEAD`/`ROW_NUMBER` columns holds. Strict order uses an oracle saying
   which windows have a key (`WindowKeys`); `Rel.keyedWindows_sound` proves the
@@ -670,7 +670,7 @@ that may overflow is assumed to fit, `assumes: SUM of … fits 64 bits in every
 group (inferred; checked on the data while the job runs …)`, and is an error
 with `infer=False`.
 
-* Errors, where DataFusion fails: integer division or remainder by zero, `MIN / -1`,
+* Errors, where the engines fail: integer division or remainder by zero, `MIN / -1`,
   integer `POWER` with a negative exponent or a result outside 64 bits,
   `CAST(double AS BIGINT)` of NaN, ±∞ or an out-of-range value, a regular expression
   that may not compile, and `date_trunc` to a week, month, quarter or year outside
@@ -722,8 +722,8 @@ Trusted: *when* DataFusion evaluates an expression (`Rel.HasIssue`: `CASE` is la
 `AND`/`OR` are not, filter and join conditions may run before the filters below
 them). `python/tests/test_numeric.py` runs the plans on DataFusion and DuckDB on
 random data and checks they only fail where an error was reported. `BIGINT` and timestamp columns are taken to
-hold 64-bit values (from the schema); arithmetic on 32-bit columns is checked
-against 64-bit limits, so its overflow is not caught.
+hold 64-bit values (from the schema); arithmetic on narrower integers is
+checked at their declared width (#202, #419).
 
 ### Incremental view maintenance
 
