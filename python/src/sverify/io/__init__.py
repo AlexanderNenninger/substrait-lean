@@ -29,6 +29,9 @@ Your own sources and sinks:
   `SinkChange`, and optionally `committed()`, which reads back the last
   contract, so states are written exactly once across restarts.
   `sink_from(fn)` hands the whole table to a function.
+* `FlightSource` reads a table of a numbered batch log on an Arrow Flight
+  server, and `FlightLog` is a small server that keeps one
+  (`pip install 'sverify[flight]'`).
 * A table format with metadata and a change feed implements the full
   `VersionedSource` protocol: `Snapshot` and `SourceBatch` are what it
   returns.
@@ -47,11 +50,14 @@ from sverify.io._storage import Storage
 
 if TYPE_CHECKING:
     from sverify.io.delta import DeltaSink, DeltaSource
+    from sverify.io.flight import FlightLog, FlightSource
     from sverify.io.iceberg import IcebergSink, IcebergSource
 
 _MODULES = {
     "DeltaSink": "delta",
     "DeltaSource": "delta",
+    "FlightLog": "flight",
+    "FlightSource": "flight",
     "IcebergSink": "iceberg",
     "IcebergSource": "iceberg",
 }
@@ -68,6 +74,8 @@ __all__ = [
     "Contract",
     "DeltaSink",
     "DeltaSource",
+    "FlightLog",
+    "FlightSource",
     "IcebergSink",
     "IcebergSource",
     "Sink",

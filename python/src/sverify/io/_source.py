@@ -354,8 +354,7 @@ class Source(Pipeable, ABC):
         elif batch.kind == "changes":
             inserts = rows
             deletes = empty if batch.deletes is None else self._fit(batch.deletes)
-            change = pa.concat_tables([weighted(inserts, 1), weighted(deletes, -1)])
-            table = _apply_change(st.table, change, self.name)
+            table = self._changed(st.table, inserts, deletes)
         else:
             raise ValueError(f"{self.name}: unknown batch kind {batch.kind!r}")
         st.cursor = batch.cursor
@@ -364,6 +363,13 @@ class Source(Pipeable, ABC):
         st.version += 1
         st.table = table
         self._log(_Entry(st.version, inserts, deletes, batch.kind))
+
+    def _changed(self, table: pa.Table, inserts: pa.Table, deletes: pa.Table) -> pa.Table:
+        """`table` after a batch of kind `"changes"`: `deletes` removed (one
+        copy each) and `inserts` added. A source that knows the result
+        without the work, such as `FlightSource`, overrides it."""
+        change = pa.concat_tables([weighted(inserts, 1), weighted(deletes, -1)])
+        return _apply_change(table, change, self.name)
 
     def _log(self, entry: _Entry) -> None:
         st = self._state
