@@ -184,7 +184,7 @@ structure Report where
 def Report.json (r : Report) : Json :=
   Json.mkObj [
     ("ensures", Json.arr ((r.ensures.zip (r.suggestions ++
-        List.replicate r.ensures.length {})).map fun ((n, ok, v), b) =>
+        List.replicate r.ensures.length ({ why := none } : Infer.Bounds))).map fun ((n, ok, v), b) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
         ("value", Lean.toJson v), ("suggest", if ok then .null else b.json)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
