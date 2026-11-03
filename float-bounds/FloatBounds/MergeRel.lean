@@ -260,6 +260,155 @@ theorem merge_com {Sa Sb ΔS Sha Shb Sh1 T Sh Ea Eb X A h : ℝ} (hSa : 0 ≤ Sa
   rw [e5, e6, e7, e8, hsplit]
   linarith
 
+/-- `(1 + u)² (1 + 3 k u) ≤ 1 + 3 n u` for `k + 1 ≤ n`. -/
+theorem fac_merge {k n : ℝ} (_hk : 0 ≤ k) (hkn : k + 1 ≤ n) (hn : n * u ≤ 1 / 2 ^ 21) :
+    (1 + u) ^ 2 * (1 + 3 * k * u) ≤ 1 + 3 * n * u := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have hku : k * u ≤ 1 / 2 ^ 21 := by nlinarith
+  have h1 : (1 + u) ^ 2 * (1 + 3 * k * u) = 1 + 3 * k * u + (2 * u + u ^ 2) * (1 + 3 * k * u) := by
+    ring
+  have h2 : (2 * u + u ^ 2) * (1 + 3 * k * u) ≤ 3 * u := by
+    have : 1 + 3 * k * u ≤ 1 + 3 / 2 ^ 21 := by linarith
+    have : 2 * u + u ^ 2 ≤ 2 * u + u / 2 ^ 53 := by nlinarith
+    nlinarith
+  have h3 : 3 * k * u + 3 * u ≤ 3 * n * u := by nlinarith
+  linarith
+
+/-- The terms of `merge_fold`: the children's bounds and a merge's new terms
+fit in the merged bound. -/
+theorem fold_terms {na nb m h Aa Ab Da Db X Sa Sb ΔS La Lb L : ℝ}
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hma : m ≤ na) (_hmb : m ≤ nb) (_hh : 0 ≤ h)
+    (hhm : h ≤ m) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
+    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hX : 0 ≤ X) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb) (hΔS : 0 ≤ ΔS)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L) :
+    (17 * u * Aa * Da + 9 * u * na * Sa + 60 * u ^ 2 * La * Aa ^ 2 + 12 * u * tiny * La)
+      + (17 * u * Ab * Db + 9 * u * nb * Sb + 60 * u ^ 2 * Lb * Ab ^ 2 + 12 * u * tiny * Lb)
+      + (14.4 * u * (Aa + Ab) * X + 8.2 * u * (Sa + Sb + ΔS) + 105 * u ^ 2 * h * (Aa + Ab) ^ 2
+        + (7.1 + 5.1 * h) * u * tiny)
+      ≤ 17 * u * (Aa + Ab) * (Da + Db + X) + 9 * u * (na + nb) * (Sa + Sb + ΔS)
+        + 60 * u ^ 2 * L * (Aa + Ab) ^ 2 + 12 * u * tiny * L := by
+  have hu := u_pos
+  have ht := tiny_pos
+  have a1 : u * Aa * Da ≤ u * (Aa + Ab) * Da := by
+    have := mul_le_mul_of_nonneg_right (by linarith : Aa ≤ Aa + Ab) (by positivity : 0 ≤ u * Da)
+    linarith
+  have a2 : u * Ab * Db ≤ u * (Aa + Ab) * Db := by
+    have := mul_le_mul_of_nonneg_right (by linarith : Ab ≤ Aa + Ab) (by positivity : 0 ≤ u * Db)
+    linarith
+  have a3 : 0 ≤ u * (Aa + Ab) * X := by positivity
+  have b1 : u * (na * Sa) ≤ u * ((na + nb - 1) * Sa) :=
+    mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hSa) hu.le
+  have b2 : u * (nb * Sb) ≤ u * ((na + nb - 1) * Sb) :=
+    mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hSb) hu.le
+  have b3 : 0 ≤ u * ((na + nb - 1) * ΔS) := by
+    have : 0 ≤ na + nb - 1 := by linarith
+    positivity
+  have b4 : 0 ≤ u * (Sa + Sb + ΔS) := by positivity
+  have e1 : Aa ^ 2 ≤ (Aa + Ab) ^ 2 := by nlinarith
+  have e2 : Ab ^ 2 ≤ (Aa + Ab) ^ 2 := by nlinarith
+  have e3 : u ^ 2 * La * Aa ^ 2 ≤ u ^ 2 * La * (Aa + Ab) ^ 2 :=
+    mul_le_mul_of_nonneg_left e1 (by positivity)
+  have e4 : u ^ 2 * Lb * Ab ^ 2 ≤ u ^ 2 * Lb * (Aa + Ab) ^ 2 :=
+    mul_le_mul_of_nonneg_left e2 (by positivity)
+  have e5 : u ^ 2 * h * (Aa + Ab) ^ 2 ≤ u ^ 2 * m * (Aa + Ab) ^ 2 :=
+    mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_left hhm (by positivity)) (by positivity)
+  have e6 : u ^ 2 * (La + Lb + 2 * m) * (Aa + Ab) ^ 2 ≤ u ^ 2 * L * (Aa + Ab) ^ 2 :=
+    mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_left hL (by positivity)) (by positivity)
+  have e7 : 0 ≤ u ^ 2 * m * (Aa + Ab) ^ 2 := by
+    have : 0 ≤ m := by linarith
+    positivity
+  have f1 : u * tiny * (7.1 + 5.1 * h) ≤ u * tiny * (24 * m) :=
+    mul_le_mul_of_nonneg_left (by linarith) (by positivity)
+  have f2 : u * tiny * (La + Lb + 2 * m) ≤ u * tiny * L := mul_le_mul_of_nonneg_left hL (by positivity)
+  linarith
+
+/-- **A merge keeps the invariant's bound**, with `m = min(n_a, n_b)`,
+`h = n_a n_b / n ≤ m` and `X = h |Δ|`. -/
+theorem merge_fold {na nb m h Aa Ab Da Db X Sa Sb ΔS Ea Eb La Lb L : ℝ}
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (hma : m ≤ na) (hmb : m ≤ nb) (hh : 0 ≤ h)
+    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
+    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hX : 0 ≤ X) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb) (hΔS : 0 ≤ ΔS)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
+    (hEa : Ea ≤ (1 + 3 * na * u) * (17 * u * Aa * Da + 9 * u * na * Sa + 60 * u ^ 2 * La * Aa ^ 2
+      + 12 * u * tiny * La))
+    (hEb : Eb ≤ (1 + 3 * nb * u) * (17 * u * Ab * Db + 9 * u * nb * Sb + 60 * u ^ 2 * Lb * Ab ^ 2
+      + 12 * u * tiny * Lb)) :
+    (1 + u) ^ 2 * (Ea + Eb) + 14.4 * u * (Aa + Ab) * X + 8.2 * u * (Sa + Sb + ΔS)
+        + 105 * u ^ 2 * h * (Aa + Ab) ^ 2 + (7.1 + 5.1 * h) * u * tiny
+      ≤ (1 + 3 * (na + nb) * u) * (17 * u * (Aa + Ab) * (Da + Db + X)
+        + 9 * u * (na + nb) * (Sa + Sb + ΔS) + 60 * u ^ 2 * L * (Aa + Ab) ^ 2
+        + 12 * u * tiny * L) := by
+  have hu := u_pos
+  have ht := tiny_pos
+  set A := Aa + Ab
+  set S := Sa + Sb + ΔS
+  set n := na + nb
+  have hA0 : 0 ≤ A := by positivity
+  set Ta := 17 * u * Aa * Da + 9 * u * na * Sa + 60 * u ^ 2 * La * Aa ^ 2 + 12 * u * tiny * La
+  set Tb := 17 * u * Ab * Db + 9 * u * nb * Sb + 60 * u ^ 2 * Lb * Ab ^ 2 + 12 * u * tiny * Lb
+  have hTa : 0 ≤ Ta := by positivity
+  have hTb : 0 ≤ Tb := by positivity
+  set Tn := 17 * u * A * (Da + Db + X) + 9 * u * n * S + 60 * u ^ 2 * L * A ^ 2 + 12 * u * tiny * L
+  -- the children
+  have fa := fac_merge (by linarith) (by linarith : na + 1 ≤ n) hn
+  have fb := fac_merge (by linarith) (by linarith : nb + 1 ≤ n) hn
+  have k1 : (1 + u) ^ 2 * (Ea + Eb) ≤ (1 + 3 * n * u) * (Ta + Tb) := by
+    have g1 : (1 + u) ^ 2 * Ea ≤ (1 + 3 * n * u) * Ta := by
+      calc (1 + u) ^ 2 * Ea ≤ (1 + u) ^ 2 * ((1 + 3 * na * u) * Ta) := by gcongr
+        _ = ((1 + u) ^ 2 * (1 + 3 * na * u)) * Ta := by ring
+        _ ≤ _ := by gcongr
+    have g2 : (1 + u) ^ 2 * Eb ≤ (1 + 3 * n * u) * Tb := by
+      calc (1 + u) ^ 2 * Eb ≤ (1 + u) ^ 2 * ((1 + 3 * nb * u) * Tb) := by gcongr
+        _ = ((1 + u) ^ 2 * (1 + 3 * nb * u)) * Tb := by ring
+        _ ≤ _ := by gcongr
+    linarith
+  have k2 := fold_terms hna hnb hm1 hma hmb hh hhm hAa hAb hDa hDb hX hSa hSb hΔS hLa hLb hL
+  have hnew0 : 0 ≤ 14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2
+      + (7.1 + 5.1 * h) * u * tiny := by positivity
+  have k3 : 14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2 + (7.1 + 5.1 * h) * u * tiny
+      ≤ (1 + 3 * n * u) * (14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2
+        + (7.1 + 5.1 * h) * u * tiny) := le_mul_of_one_le_left hnew0 (by nlinarith)
+  calc _ ≤ (1 + 3 * n * u) * (Ta + Tb) + (1 + 3 * n * u) * (14.4 * u * A * X + 8.2 * u * S
+        + 105 * u ^ 2 * h * A ^ 2 + (7.1 + 5.1 * h) * u * tiny) := by linarith
+    _ = (1 + 3 * n * u) * (Ta + Tb + (14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2
+        + (7.1 + 5.1 * h) * u * tiny)) := by ring
+    _ ≤ (1 + 3 * n * u) * Tn := by gcongr
+
+/-- **The merged mean**: from a computed weighted mean within
+`4 u (n_b A_a + n_a A_b) / n` of the children's, the merged mean is within
+`6 u (A_a + A_b)` of the exact one. -/
+theorem merge_mean {na nb ma mb Ma Mb Aa Ab mh : ℝ} (hna : 1 ≤ na) (hnb : 1 ≤ nb)
+    (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
+    (ha : |ma - Ma| ≤ 6 * u * Aa) (hb : |mb - Mb| ≤ 6 * u * Ab)
+    (hm : |mh - (na * ma + nb * mb) / (na + nb)| ≤ 4 * u * (nb * Aa + na * Ab) / (na + nb)) :
+    |mh - (na * Ma + nb * Mb) / (na + nb)| ≤ 6 * u * (Aa + Ab) := by
+  have hu := u_pos
+  have hn0 : 0 < na + nb := by linarith
+  have h1 : |(na * ma + nb * mb) / (na + nb) - (na * Ma + nb * Mb) / (na + nb)|
+      ≤ (na * (6 * u * Aa) + nb * (6 * u * Ab)) / (na + nb) := by
+    rw [← sub_div, abs_div, abs_of_pos hn0]
+    apply div_le_div_of_nonneg_right _ hn0.le
+    have e : na * ma + nb * mb - (na * Ma + nb * Mb) = na * (ma - Ma) + nb * (mb - Mb) := by ring
+    rw [e]
+    have := abs_add_le (na * (ma - Ma)) (nb * (mb - Mb))
+    rw [abs_mul, abs_mul, abs_of_pos (by linarith : (0 : ℝ) < na),
+      abs_of_pos (by linarith : (0 : ℝ) < nb)] at this
+    have := mul_le_mul_of_nonneg_left ha (by linarith : (0 : ℝ) ≤ na)
+    have := mul_le_mul_of_nonneg_left hb (by linarith : (0 : ℝ) ≤ nb)
+    linarith
+  have e : mh - (na * Ma + nb * Mb) / (na + nb)
+      = (mh - (na * ma + nb * mb) / (na + nb))
+        + ((na * ma + nb * mb) / (na + nb) - (na * Ma + nb * Mb) / (na + nb)) := by ring
+  rw [e]
+  refine le_trans (abs_add_le _ _) ?_
+  have h2 : 4 * u * (nb * Aa + na * Ab) / (na + nb) + (na * (6 * u * Aa) + nb * (6 * u * Ab)) / (na + nb)
+      ≤ 6 * u * (Aa + Ab) := by
+    rw [← add_div, div_le_iff₀ hn0]
+    have : 0 ≤ u * (nb * Aa + na * Ab) := by positivity
+    nlinarith
+  linarith
+
 end FloatBounds
 
 end
