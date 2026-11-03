@@ -951,6 +951,9 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     tf = parse(path.read_text(errors="replace"))
     if tf.skip:
         return [], tf.skip
+    if os.environ.get("SVERIFY_SLT_PROGRESS"):
+        # Which file a worker is on: a replay that hangs names it.
+        print(f"replaying: {rel}", flush=True)
     # A new process database for each file: a DuckDB `FATAL` error
     # invalidates a database for good, and every file a worker replayed
     # after it would fail, which ones depending on scheduling (#407).

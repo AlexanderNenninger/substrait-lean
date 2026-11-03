@@ -160,6 +160,9 @@ jobs:
           path: ~/.cache/sverify/duckdb-slt
           key: duckdb-slt-${{ hashFiles('python/uv.lock') }}
       - run: uv run --locked --project python poe -C python oracle-a
+        env:
+          # Name the file each worker starts, so a replay that hangs shows where.
+          SVERIFY_SLT_PROGRESS: "1"
 
   notebooks:
     needs: changes
