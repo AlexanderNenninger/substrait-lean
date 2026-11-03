@@ -203,6 +203,16 @@ OVERFLOW_HINT = (
     "tolerance, a lower bound on its time column such as `_.ts >= datetime(2000, 1, 1)`"
 )
 
+#: How a report's hint for a truncated timestamp or date starts.
+TRUNC_HINT = "bound the truncated column"
+
+
+def _truncates(expr: str) -> bool:
+    """Whether an issue's expression (`Expr.render`) truncates a timestamp or
+    a date, or bins a timestamp."""
+    return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
+
+
 #: How a report explains an issue that is checked while the job runs.
 RUNTIME_CHECK = (
     "checked while the job runs, which raises if it happens; no proof before "
@@ -277,6 +287,15 @@ class Report:
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
     these values only."""
+    hints: list[str] = field(default_factory=list)
+    """What to add to the contract for the `issues` it names (#379): bounds
+    on a truncated timestamp column, or on the column an integer `SUM` adds
+    up, with the largest group the bound lets fit."""
+    bounds: dict[str, tuple[int | None, int | None]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
 
     @property
     def proved(self) -> bool:
@@ -300,6 +319,17 @@ class Report:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
 
+    def _hints(self) -> list[str]:
+        """`hints`, and the general overflow hint for an overflow they do not
+        cover."""
+        truncated = any(h.startswith(TRUNC_HINT) for h in self.hints)
+        covered = [
+            i for i in self.errors if i.kind == "overflow" and truncated and _truncates(i.expr)
+        ]
+        if any(i.kind == "overflow" and i not in covered for i in self.errors):
+            return [*self.hints, OVERFLOW_HINT]
+        return self.hints
+
     def __str__(self) -> str:
         lines = []
         for table, conds in self.requires.items():
@@ -312,9 +342,8 @@ class Report:
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
         lines += [f"may fail: {i}" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
-            lines.append(f"hint: {OVERFLOW_HINT}")
         lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
+        lines += [f"hint: {h}" for h in self._hints()]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
         if self.params:
@@ -337,12 +366,11 @@ class Report:
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
-            rows.append(f"| hint | {OVERFLOW_HINT} |")
         rows += [
             f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
             for i in self.warnings
         ]
+        rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         if self.params:
@@ -796,7 +824,7 @@ def verify(
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
             checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
-    return Report(
+    report = Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
@@ -806,6 +834,120 @@ def verify(
         optimized=out["optimized"],
         rewrites=out["rewrites"],
         params=bound,
+        bounds=_int_bounds(out["facts"], dtypes),
+    )
+    if not isinstance(transform, str) and report.issues:
+        report.hints = overflow_hints(transform, requires, report)
+    return report
+
+
+def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
+    """The integer bounds of the integer output columns in the checker's `facts`."""
+    out = {}
+    for f in facts:
+        dtype, b = dtypes.get(f["name"]), f["abstract"].get("int")
+        if dtype is not None and dtype.is_integer() and b is not None:
+            out[f["name"]] = tuple(None if v is None else int(v) for v in (b["lo"], b["hi"]))
+    return out
+
+
+def _origin(rel: Node, name: str) -> tuple[str, str] | None:
+    """The base table and column that column `name` of relation `rel` passes
+    on unchanged, if there is one."""
+    if isinstance(rel, ops.UnboundTable | ops.DatabaseTable):
+        return rel.name, name
+    values = getattr(rel, "values", None)
+    if isinstance(rel, ops.Aggregate):
+        values = {**rel.groups, **rel.metrics}
+    if values is not None:
+        return _value_origin(values[name]) if name in values else None
+    parent = getattr(rel, "parent", None)
+    if parent is not None and name in parent.schema:
+        return _origin(parent, name)
+    return None
+
+
+def _value_origin(value: Node) -> tuple[str, str] | None:
+    """The base table and column a value is, if it is a column passed on
+    unchanged."""
+    if isinstance(value, ops.Field):
+        return _origin(value.rel, value.name)
+    return None
+
+
+#: The bound a SUM hint proposes for an unbounded side of a column.
+SUM_BOUND = 1_000_000_000
+
+
+def overflow_hints(
+    transform: ir.Table, requires: Mapping[str, Sequence[Condition]], report: Report
+) -> list[str]:
+    """The bounds to add to `requires` for the overflows `report` names (#379):
+    lower and upper bounds on each truncated timestamp or date column, and for
+    an integer `SUM` that is checked while the job runs, a bound on the
+    column it adds up, with the largest group whose sum then fits 64 bits."""
+    hints: list[str] = []
+    if any(i.kind == "overflow" and _truncates(i.expr) for i in report.errors):
+        kinds = (ops.TimestampTruncate, ops.DateTruncate, ops.TimestampBucket)
+        for op in transform.op().find(kinds):
+            if (origin := _value_origin(op.arg)) is None:  # type: ignore[attr-defined]
+                continue
+            table, col = origin
+            ctor = "date" if op.arg.dtype.is_date() else "datetime"  # type: ignore[attr-defined]
+            hints.append(
+                f"{TRUNC_HINT} `{col}` in `requires` of {table}: truncating a value near the "
+                f"ends of the timestamp range overflows. For example `_.{col} >= {ctor}(2000, "
+                f"1, 1)` and `_.{col} < {ctor}(2100, 1, 1)`"
+            )
+    if any(i.kind == "SUM overflow" for i in report.warnings):
+        for op in transform.op().find(ops.Sum):
+            if (hint := _sum_hint(op, requires)) is not None:
+                hints.append(hint)
+    return list(dict.fromkeys(hints))
+
+
+def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | None:
+    """The hint for an integer `SUM`: what bounds its argument, and the
+    largest group whose sum fits 64 bits."""
+    arg = op.arg  # type: ignore[attr-defined]
+    rels = list(arg.relations)
+    if not arg.dtype.is_integer() or len(rels) != 1:
+        return None
+    origin = _value_origin(arg)
+    what = f"`{origin[1]}`" if origin else f"`{arg.name}`"
+    sub = rels[0].to_expr().select(x=arg.to_expr())
+    leaves = leaf_tables(sub)
+    known = {
+        t: [c for c in cs if not isinstance(c, References)]
+        for t, cs in requires.items()
+        if t in leaves
+    }
+    lo, hi = verify(sub, requires=known, counterexamples=0).bounds.get("x", (None, None))
+    # A BIGINT's own range bounds nothing: any two of its values may overflow.
+    lo = None if lo is None or lo <= -(2**63) else lo
+    hi = None if hi is None or hi >= 2**63 - 1 else hi
+    why = "no contract states how many rows a group has, so the job checks the sum as it runs"
+    if lo is not None and hi is not None:
+        largest = max(abs(lo), abs(hi))
+        if largest == 0:
+            return None
+        rows = (2**63 - 1) // largest
+        return (
+            f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
+            f"{rows:,} rows; {why}"
+        )
+    col = origin[1] if origin else "x"
+    proposed = []
+    if hi is None:
+        proposed.append(f"`_.{col} <= {SUM_BOUND:_}`")
+    if lo is None:
+        proposed.append(f"`_.{col} >= {-SUM_BOUND:_}`")
+    largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
+    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+    return (
+        f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
+        f"group's sum fits 64 bits for up to {(2**63 - 1) // largest:,} rows. Without a bound, "
+        f"{why}"
     )
 
 
