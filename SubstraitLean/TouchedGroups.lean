@@ -134,14 +134,14 @@ theorem touched_window_sound (K : List Value → Bool) {rows dels ins : Relation
       (fun o => !K (keyOf part o)) = [] :=
     List.filter_eq_nil_iff.mpr fun o ho => by
       obtain ⟨x, hx, he⟩ :=
-        keyOf_windowEval (fun r hr => hw r (List.mem_of_mem_filter hr)) ho
+        keyOf_windowEval (fun r hr => hw r (List.mem_filter.mp hr).1) ho
       simp [he, (List.mem_filter.mp hx).2]
   have h2 : (windowEval part sort fns (rows.filter fun r => !K (keyOf part r))).filter
       (fun o => !K (keyOf part o)) =
         windowEval part sort fns (rows.filter fun r => !K (keyOf part r)) :=
     List.filter_eq_self.mpr fun o ho => by
       obtain ⟨x, hx, he⟩ :=
-        keyOf_windowEval (fun r hr => hw r (List.mem_of_mem_filter hr)) ho
+        keyOf_windowEval (fun r hr => hw r (List.mem_filter.mp hr).1) ho
       have := (List.mem_filter.mp hx).2
       simpa [he] using this
   have hold : ((windowEval part sort fns rows).filter fun o => !K (keyOf part o)).Perm
