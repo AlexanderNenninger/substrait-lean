@@ -3,12 +3,14 @@ an aggregate without delta rules recomputes only the groups a batch touches,
 and its state equals a full recompute."""
 
 import random
+from datetime import datetime, timedelta
 
 import pyarrow as pa
 import pytest
 
 import sverify as sv
 from _pipelines import recomputed, rows
+from sverify import incremental
 from sverify.io import StaticSource
 
 SCHEMA = pa.schema([("host", pa.string()), ("minute", pa.int64()), ("cpu", pa.int64())])
@@ -159,3 +161,60 @@ def test_a_view_downstream_of_touched_groups():
         src.apply(batch)
         node.refresh(audit=True)
     assert rows(node) == [("b", 1, 2, 11, 3, 8, 5.5)]
+
+
+# -- a time bucket among the keys: only the touched range is read -------------
+
+T0 = datetime(2026, 11, 3)
+TIMES = pa.schema([("host", pa.string()), ("ts", pa.timestamp("us")), ("cpu", pa.int64())])
+
+
+def timed(rows) -> pa.Table:
+    """`(host, seconds after T0 or None, cpu)` rows."""
+    return pa.table(
+        {
+            "host": [h for h, _, _ in rows],
+            "ts": [None if s is None else T0 + timedelta(seconds=s) for _, s, _ in rows],
+            "cpu": [c for _, _, c in rows],
+        },
+        schema=TIMES,
+    )
+
+
+def per_bucket(samples):
+    return samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
+        n=samples.count(), high=samples.cpu.max()
+    )
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_time_bucket_key_reads_only_the_touched_range(engine, monkeypatch):
+    rng = random.Random(7)
+    live: list[tuple[str, int | None, int]] = [
+        (rng.choice("ab"), rng.randrange(600), rng.randrange(100)) for _ in range(40)
+    ]
+    src = StaticSource(timed(live), name="samples")
+    node = src.pipe(per_bucket)
+    node.refresh(engine=engine)
+    spec = view(node).touched
+    assert spec is not None and spec.ranged is not None and spec.ranged.key == 1
+    ran = []
+    real = incremental.run_plan_on
+    monkeypatch.setattr(
+        incremental, "run_plan_on", lambda con, plan, *a: ran.append(plan) or real(con, plan, *a)
+    )
+    for step in range(15):
+        ins: list[tuple[str, int | None, int]] = [
+            (rng.choice("ab"), rng.randrange(600, 700), rng.randrange(100))
+        ]
+        if step == 7:
+            ins.append(("a", None, 1))  # a NULL time: the whole input is read
+        dels = rng.sample([r for r in live if r[1] is not None], 2)
+        for d in dels:
+            live.remove(d)
+        live += ins
+        src.apply(sv.Changes(inserts=timed(ins), deletes=timed(dels)))
+        node.refresh(engine=engine, audit=True)
+        assert rows(node) == recomputed(node, src)
+    assert ran.count(spec.recompute) == 1
+    assert ran.count(spec.ranged.plan) == 14
