@@ -29,9 +29,11 @@ polars = ["numpy>=2.5.4", "polars>=2.1.0"]
 spark = ["pyspark>=4.0"]
 delta = ["deltalake>=1.6.6"]
 iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
+# `sverify.io.flight`: pyarrow built with Flight, as the PyPI wheels are.
+flight = ["pyarrow>=26.0.0"]
 # `sverify.testing` and its pytest plugin; the plugin is registered without it.
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,testing]"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing]"]
 
 # The pytest plugin (`sverify.pytest_plugin`): `pytest -p no:sverify` turns it off.
 [project.entry-points.pytest11]
@@ -114,6 +116,14 @@ cwd = "${POE_ROOT}/.."
 [tool.poe.tasks.build]
 help = "Build the substrait-check CLI that sverify calls"
 cmd = "lake build substrait-check"
+cwd = "${POE_ROOT}/.."
+
+[tool.poe.tasks.regen-lowering]
+help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
+shell = """
+lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
+  && lake env lean scripts/RegenLowering.lean
+"""
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.prove-floats]

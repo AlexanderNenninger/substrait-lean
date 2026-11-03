@@ -1,16 +1,19 @@
-import SubstraitLean.LoweringSearch
-import SubstraitLean.LoweringCache
+import SubstraitLean.LoweringHint
+import SubstraitLean.LoweringDuckDB.Off.Table
+import SubstraitLean.LoweringDuckDB.On.Table
 
 /-!
 # The generated lowering to DuckDB (#241)
 
-`generate_lowering` builds a table for DuckDB's profile under each setting of
-`error_on_division_by_zero`. Every function is native but two. Division and
-modulus by zero with the setting off get the guard `CASE WHEN x IS NOT NULL AND
-y = 0 THEN error() ELSE x / y END`, which the search finds. `overflow` =
-`SATURATE` (`UnFn.fit`) gets a `CASE` clamping to the width's bounds, which the
-search finds too, and `SILENT` the hand-written wrap-around schema
-(`LoweringSearch.schema?`), proved per width.
+The tables for DuckDB's profile under each setting of
+`error_on_division_by_zero`, `duckdbOff` and `duckdbOn`, are generated: the
+search (`generate_lowering`, `SubstraitLean/LoweringSearch.lean`) runs in
+`scripts/RegenLowering.lean` (`poe regen-lowering`) and writes each entry it
+found, with its proof, to `SubstraitLean/LoweringDuckDB/Off` and `On`, one
+module per area, which a build checks in parallel without searching. Where
+DuckDB differs from the reference (FACTS R15), an entry is a guard that
+raises where the reference does, or `MIN % -1` and `<<` as the reference
+computes them; elsewhere the native function.
 
 Its correctness (`Lowering.duckdb_exact`, `Rel.duckdb_shim_sound`) follows
 from the generic theorems of `SubstraitLean/Lowering.lean`. `duckdbOff.coverage`
@@ -20,51 +23,6 @@ and `duckdbOn.coverage` list how each construct is lowered; the golden test
 -/
 
 namespace Substrait
-
-/-! ### `overflow` = `SILENT` or `SATURATE` (#241)
-
-DuckDB has no function for `UnFn.fit`: its profile computes it as the
-reference does, but the SQL printer has nothing to print, so every template
-must avoid it (`excluding`). These lemmas let the proofs compute it. -/
-
-theorem Lowering.ref_fit (m : OverflowMode) (w : IntWidth) (x : Value) :
-    Profile.reference.un (.fit m w) x = .ok (UnFn.apply (.fit m w) x) := by
-  cases x <;> rfl
-
-theorem Lowering.apply_fit_int (m : OverflowMode) (w : IntWidth) (i : Int) :
-    UnFn.apply (.fit m w) (.int i) = .int (w.fit m i) := rfl
-theorem Lowering.apply_fit_null (m : OverflowMode) (w : IntWidth) :
-    UnFn.apply (.fit m w) .null = .null := rfl
-theorem Lowering.apply_fit_bool (m : OverflowMode) (w : IntWidth) (b : Bool) :
-    UnFn.apply (.fit m w) (.bool b) = .bool b := rfl
-theorem Lowering.apply_fit_str (m : OverflowMode) (w : IntWidth) (s : String) :
-    UnFn.apply (.fit m w) (.str s) = .str s := rfl
-theorem Lowering.apply_fit_list (m : OverflowMode) (w : IntWidth) (vs : List Value) :
-    UnFn.apply (.fit m w) (.list vs) = .list vs := rfl
-
-generate_lowering duckdbOff : Profile.duckdb { errorOnDivZero := false }
-  unfolding [Profile.duckdb, duckBin, duckUn, duckZero, duckShl, nanCase, isInfCode,
-    FMath.inDomain, FMath.lo?, FMath.hi?, FMath.apply, domainIssue, nanIssue]
-  using [Lowering.ref_fit, Lowering.apply_fit_int, Lowering.apply_fit_null, Lowering.apply_fit_bool,
-    Lowering.apply_fit_str, Lowering.apply_fit_list, IntWidth.fit, IntWidth.lo, IntWidth.hi,
-    IntWidth.half, IntWidth.modulus, Lowering.tmod_add_tmod, Profile.duckdb_imod_pos,
-    Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow,
-    Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
-    Lowering.apply_ffloor_str, Lowering.apply_ffloor_list, Lowering.pow2Chain_eval, List.mem_range]
-  excluding [UnFn.fit]
-  cache loweringCache
-
-generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
-  unfolding [Profile.duckdb, duckBin, duckUn, duckZero, duckShl, nanCase, isInfCode,
-    FMath.inDomain, FMath.lo?, FMath.hi?, FMath.apply, domainIssue, nanIssue]
-  using [Lowering.ref_fit, Lowering.apply_fit_int, Lowering.apply_fit_null, Lowering.apply_fit_bool,
-    Lowering.apply_fit_str, Lowering.apply_fit_list, IntWidth.fit, IntWidth.lo, IntWidth.hi,
-    IntWidth.half, IntWidth.modulus, Lowering.tmod_add_tmod, Profile.duckdb_imod_pos,
-    Lowering.shl_apply, Lowering.shr_apply, Int.reduceToNat, Nat.reducePow,
-    Lowering.apply_ffloor_int, Lowering.apply_ffloor_null, Lowering.apply_ffloor_bool,
-    Lowering.apply_ffloor_str, Lowering.apply_ffloor_list, Lowering.pow2Chain_eval, List.mem_range]
-  excluding [UnFn.fit]
-  cache loweringCache
 
 /-- A new `SubstraitLean/LoweringCache.lean` from this build's coverage
 (`substrait-check --lowering-cache`): each construct's template as the report

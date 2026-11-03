@@ -502,12 +502,54 @@ def templateTac (unfold natives extra : Array Name) (unary : Bool) : TermElabM S
            | (simp_all [$fin,*] <;> omega)
            | omega)))
 
+/-! ## Generated source
+
+`generate_lowering … writing "dir"` also writes what it found as Lean source,
+so that a build checks the entries instead of searching for them (`lake
+build` elaborates `dir/<Area>.lean` and `dir/Table.lean`; `poe
+regen-lowering` runs the search again). Each proof is one of the tactics
+below with the generator's own simp sets, or a hand-written proof's name. -/
+
+/-- An expression as source: full names, no abbreviation. -/
+def ppSource (e : Lean.Expr) : MetaM String := do
+  let fmt ← withOptions (fun o =>
+    (((o.setBool `pp.fullNames true).setBool `pp.deepTerms true).set `pp.maxSteps (100000000 : Nat)
+      |>.setBool `pp.fieldNotation false |>.setBool `pp.proofs true)) (ppExpr e)
+  return fmt.pretty 100
+
+/-- The generated module a construct's entry goes to: entries of an area
+check in parallel, and a change rebuilds its area only. -/
+def areaOf (c : Name) : String :=
+  match c.componentsRev.head!.toString with
+  | "fmath" => "Math"
+  | "fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" | "fatan2" | "flogb" => "Doubles"
+  | "idiv" | "imod" | "fit" | "ipow" => "Integers"
+  | "bit" => "Bits"
+  | _ => "Other"
+
+/-- Generated source by module (`"Native"`, an area), in order. -/
+abbrev Sink := IO.Ref (Array (String × String))
+
+syntax (name := loweringNativeTac) "lowering_native " "[" ident,* "]" : tactic
+syntax (name := loweringTemplateTac) "lowering_template " "[" ident,* "]" "[" ident,* "]" "[" ident,* "]"
+  (&" unary")? : tactic
+
+open Tactic in
+@[tactic loweringNativeTac] def evalLoweringNative : Tactic := fun stx => do
+  let us ← stx[2].getSepArgs.mapM fun i => realizeGlobalConstNoOverloadWithInfo i
+  evalTactic (← nativeTac us)
+
+open Tactic in
+@[tactic loweringTemplateTac] def evalLoweringTemplate : Tactic := fun stx => do
+  let names (i : Nat) := stx[i].getSepArgs.mapM fun i => realizeGlobalConstNoOverloadWithInfo i
+  evalTactic (← templateTac (← names 2) (← names 5) (← names 8) !stx[10].isNone)
+
 /-! ## Emitting -/
 
 /-- Try to prove the construct `c` native under the profile `pE`; emit
 `tbl.c_native` and the entry `tbl.c` if it is. -/
-def lowerNative (tbl : Name) (pE : Lean.Expr) (tac : Syntax) (unary : Bool) (c : Name) :
-    TermElabM Bool := do
+def lowerNative (tbl : Name) (pE : Lean.Expr) (tac : Syntax) (unary : Bool) (c : Name)
+    (sink : Option Sink := none) : TermElabM Bool := do
   let short := c.componentsRev.head!
   forallTelescope (← getConstInfoCtor c).type fun ps _ => do
     let selfE := mkAppN (Lean.mkConst c) ps
@@ -523,9 +565,15 @@ def lowerNative (tbl : Name) (pE : Lean.Expr) (tac : Syntax) (unary : Bool) (c :
     let h ← mkAppM (if unary then ``Lowering.un_agree_of_eq else ``Lowering.bin_agree_of_eq)
       #[mkAppN (Lean.mkConst nativeName) ps]
     let entry ← mkAppM (if unary then ``UnEntry.native else ``BinEntry.native) #[selfE, h]
+    let entryTy ← mkForallFVars ps (← inferType entry)
+    let entryVal ← mkLambdaFVars ps entry
     addAndCompile <| .defnDecl {
       name := tbl ++ short, levelParams := [], safety := .safe, hints := .abbrev
-      type := ← mkForallFVars ps (← inferType entry), value := ← mkLambdaFVars ps entry }
+      type := entryTy, value := entryVal }
+    if let some out := sink then
+      out.modify (·.push ("Native",
+        s!"theorem {nativeName} : {← ppSource ty} := by\n  native_tac\n\n" ++
+        s!"abbrev {tbl ++ short} : {← ppSource entryTy} :=\n  {← ppSource entryVal}\n\n"))
     return true
 
 /-- A construct: a constructor, with its finite parameters (an option, a
@@ -564,7 +612,8 @@ samples, prove the first that passes, and emit `tbl.k_agree` and the entry
 `tbl.k`. Hand-written schemas come first; a construct the engine does not
 have (`excluded`) gets no template that calls it. -/
 def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excluded : Bool)
-    (k : Construct) (hint? : Option String := none) : TermElabM (Except String String) := do
+    (k : Construct) (hint? : Option String := none) (sink : Option Sink := none) :
+    TermElabM (Except String String) := do
   let unary := k.unary
   let n := if unary then 1 else 2
   forallTelescope (← getConstInfoCtor k.ctor).type fun ps _ => do
@@ -599,7 +648,8 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
         mkForallFVars (ps ++ xs) (← mkAppM ``Outcome.Agree #[lhs, rhs])
       -- A hand-written schema may come with its proof, `Lowering.<construct>_agree`.
       let hand := ``Lowering ++ k.short.appendAfter "_agree"
-      let tac : Syntax ← if written && (← getEnv).contains hand then
+      let byHand := written && (← getEnv).contains hand
+      let tac : Syntax ← if byHand then
           `(tactic| (intros; apply $(mkIdent hand))) else pure tac
       let some agree ← prove agreeTy tac | return none
       let agreeName := tbl ++ k.short.appendAfter "_agree"
@@ -607,12 +657,25 @@ def lowerSearch (tbl : Name) (pE : Lean.Expr) (p : Profile) (tac : Syntax) (excl
       let mustE ← mkAppM ``Expr.must #[tmpl]
       let mem (i : Nat) := mkAppM ``Membership.mem #[mustE, toExpr i]
       let strictTy ← if unary then mem 0 else mkAppM ``And #[← mem 0, ← mem 1]
-      let some strict ← prove strictTy (← `(tactic| simp [Substrait.Expr.must, Lowering.shlTemplate])) | return none
+      let named := tmpl.find? (·.isConstOf ``Lowering.shlTemplate) |>.isSome
+      let strictTac ← if named then `(tactic| simp [Substrait.Expr.must, Lowering.shlTemplate])
+        else `(tactic| simp [Substrait.Expr.must])
+      let some strict ← prove strictTy strictTac | return none
       let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
         #[tmpl, strict, mkAppN (Lean.mkConst agreeName) ps]
+      let entryTy ← mkForallFVars ps (← inferType entry)
       addAndCompile <| .defnDecl {
         name := tbl ++ k.short, levelParams := [], safety := .safe, hints := .abbrev
-        type := ← mkForallFVars ps (← inferType entry), value := ← mkLambdaFVars ps entry }
+        type := entryTy, value := ← mkLambdaFVars ps entry }
+      if let some out := sink then
+        unless ps.isEmpty do throwError "{k.label}: a template with parameters cannot be written out"
+        let proof := if byHand then s!"intros; apply {hand}" else if unary then "un_tac" else "bin_tac"
+        let strictSrc := if named then "simp [Substrait.Expr.must, Substrait.Lowering.shlTemplate]"
+          else "simp [Substrait.Expr.must]"
+        out.modify (·.push (areaOf k.ctor,
+          s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
+          s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
+          s!"  ⟨{← ppSource tmpl}, by {strictSrc}, {agreeName}⟩\n\n"))
       let shown := cand.show k.ctor.componentsRev.head!.toString
       return some (if written then s!"hand-written schema: {shown}" else shown)
     -- The cache's template first (`LoweringHint`), found among the candidates
@@ -642,7 +705,7 @@ def guardFns : List Name :=
 
 syntax (name := generateLowering) "generate_lowering " ident " : " term
   " unfolding " "[" ident,* "]" " using " "[" ident,* "]" " excluding " "[" ident,* "]"
-  (" cache " ident)? : command
+  (" cache " ident)? (" writing " str)? : command
 
 unsafe def evalHintsImpl (n : Name) : TermElabM (List LoweringHint) := do
   Meta.evalExpr (List LoweringHint) (← mkAppM ``List #[Lean.mkConst ``LoweringHint]) (Lean.mkConst n)
@@ -663,10 +726,12 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let excluded ← names 14
   let cacheName ← if stx[16].isNone then pure none
     else some <$> liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[16][1])
+  let writeDir : Option String := if stx[17].isNone then none else stx[17][1].isStrLit?
+  let sink : Option Sink ← if writeDir.isSome then some <$> IO.mkRef #[] else pure none
   let ctors ← [(``UnFn, true), (``BinFn, false)].flatMapM fun (ind, unary) => do
     return (← getConstInfoInduct ind).ctors.map (·, unary)
   -- Each constructor: native, or its constructs, each with how it was lowered.
-  let results ← liftTermElabM do
+  let (results, natives, pSrc) ← liftTermElabM do
     let pE ← instantiateMVars (← elabTermEnsuringType pStx (Lean.mkConst ``Profile))
     let p ← evalProfile pE
     let hints ← match cacheName with | some n => evalHints n | none => pure []
@@ -683,7 +748,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
       if !excluded.contains c then
         -- Each constructor starts afresh: heartbeats count all of the
         -- command's work, and every new constructor adds to it.
-        if ← withCurrHeartbeats (lowerNative tbl pE ntac unary c) then
+        if ← withCurrHeartbeats (lowerNative tbl pE ntac unary c sink) then
           results := results.push (c, some #[(⟨c, unary, #[]⟩, .ok "native", (← IO.monoMsNow) - t0)])
           if guardFns.contains c then natives := natives.push (tbl ++ c.componentsRev.head!.appendAfter "_native")
           continue
@@ -695,10 +760,10 @@ def elabGenerateLowering : CommandElab := fun stx => do
       for k in ks do
         let t0 ← IO.monoMsNow
         let t := tac
-        let how ← withCurrHeartbeats (lowerSearch tbl pE p t (excluded.contains c) k (hintOf k))
+        let how ← withCurrHeartbeats (lowerSearch tbl pE p t (excluded.contains c) k (hintOf k) sink)
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
-    return results
+    return (results, natives, ← ppSource pE)
   let entries (c : Name) : Array (Construct × Except String String × Nat) :=
     ((results.find? (·.1 == c)).bind (·.2)).getD #[]
   let missing := results.flatMap fun (_, r) => (r.getD #[]).filterMap fun (k, how, _) =>
@@ -727,13 +792,73 @@ def elabGenerateLowering : CommandElab := fun stx => do
   -- The coverage report, in the constructors' order.
   let rows := ctors.toArray.flatMap fun (c, _) => (entries c).map fun (k, how, ms) =>
     (k.label, (match how with | .ok h => h | .error e => e), ms)
-  let rows ← rows.mapM fun (c, how, ms) => `(($(quote c), $(quote how), $(quote ms)))
-  elabCommand (← `(def $(mkIdent (short ++ `coverage)) : List (String × String × Nat) := [$rows,*]))
+  let rowStx ← rows.mapM fun (c, how, ms) => `(($(quote c), $(quote how), $(quote ms)))
+  elabCommand (← `(def $(mkIdent (short ++ `coverage)) : List (String × String × Nat) := [$rowStx,*]))
   if missing.isEmpty then
     elabCommand (← `(theorem $(mkIdent (short ++ `total)) : ($(mkIdent tbl)).Total :=
       ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
        fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
   else
     logError m!"no lowering found for {missing.toList}"
+  -- The generated modules (`writing`): what was found, to be checked by a
+  -- build instead of searched for again.
+  let some dir := writeDir | return
+  let some sink := sink | return
+  unless missing.isEmpty do return
+  let chunks ← sink.get
+  let modOf (area : String) : String := (dir.replace "/" ".") ++ "." ++ area
+  let env ← getEnv
+  let moduleOf (n : Name) : Option Name :=
+    (env.getModuleIdxFor? n).map fun i => env.header.moduleNames[i.toNat]!
+  let deps := ((unfold ++ extra).filterMap moduleOf).toList.eraseDups
+  let names (ns : Array Name) := ", ".intercalate (ns.toList.map toString)
+  let macros :=
+    s!"local macro \"native_tac\" : tactic => `(tactic| lowering_native [{names unfold}])\n" ++
+    s!"local macro \"un_tac\" : tactic =>\n  `(tactic| lowering_template [{names unfold}] [{names natives}]\n" ++
+    s!"    [{names extra}] unary)\n" ++
+    s!"local macro \"bin_tac\" : tactic =>\n  `(tactic| lowering_template [{names unfold}] [{names natives}]\n" ++
+    s!"    [{names extra}])\n"
+  let header (imports : List String) (what : String) : String :=
+    "\n".intercalate (imports.map (s!"import {·}")) ++ "\n\n" ++
+    s!"/-!\n# {what}\n\nGenerated by `poe regen-lowering` (`generate_lowering … writing`, " ++
+    "`SubstraitLean/LoweringSearch.lean`): do not edit. A build checks these entries;\n" ++
+    "it does not search for them.\n-/\n\nopen Substrait\n\n" ++ macros ++ "\n"
+  let base := ["SubstraitLean.LoweringSearch"] ++ deps.map toString
+  let areas := (chunks.toList.map (·.1)).eraseDups.filter (· != "Native")
+  IO.FS.createDirAll dir
+  let body (area : String) := String.join ((chunks.toList.filter (·.1 == area)).map (·.2))
+  IO.FS.writeFile s!"{dir}/Native.lean"
+    (header base s!"{tbl}: the functions the engine computes as the reference does" ++ body "Native")
+  for area in areas do
+    IO.FS.writeFile s!"{dir}/{area}.lean"
+      (header (base ++ [modOf "Native"]) s!"{tbl}: {area}" ++ body area)
+  -- The table, its coverage report and its totality.
+  let armText (ind : Name) : CommandElabM String := do
+    let lines ← (← getConstInfoInduct ind).ctors.mapM fun c => do
+      let nargs := (← getConstInfoCtor c).numFields
+      let es := entries c
+      if let some (k, _, _) := es[0]? then
+        if !k.args.isEmpty then
+          return "\n".intercalate (es.toList.map fun (k, how, _) =>
+            let pats := " ".intercalate (k.args.toList.map toString)
+            let rhs := match how with | .error _ => "none" | .ok _ => s!"some {tbl ++ k.short}"
+            s!"    | {c} {pats} => {rhs}")
+      let xs := " ".intercalate ((List.range nargs).map (s!"a{·}"))
+      let rhs := if es.any (·.2.1 matches .error _) || es.isEmpty then "none"
+        else s!"some ({tbl ++ c.componentsRev.head!} {xs})"
+      return s!"    | {c} {xs} => {rhs}"
+    return "\n".intercalate lines
+  let covRows := rows.toList.map fun (c, how, _) => s!"  ({repr c}, {repr how}, 0)"
+  let table :=
+    header (base ++ (("Native" :: areas).map modOf)) s!"{tbl}: the table" ++
+    s!"def {tbl} : Substrait.Lowering ({pSrc}) :=\n  ⟨fun f => match f with\n{← armText ``UnFn},\n" ++
+    s!"   fun f => match f with\n{← armText ``BinFn}⟩\n\n" ++
+    s!"/-- How each construct is lowered (`--lowering-coverage`). -/\n" ++
+    s!"def {tbl}.coverage : List (String × String × Nat) := [\n{",\n".intercalate covRows}]\n\n" ++
+    s!"theorem {tbl}.total : ({tbl}).Total :=\n" ++
+    "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
+    "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n"
+  IO.FS.writeFile s!"{dir}/Table.lean" table
+  logInfo m!"wrote {dir}: Native, {areas}, Table"
 
 end Substrait.LoweringSearch

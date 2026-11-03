@@ -118,10 +118,14 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   by `2ʸ` from `Lowering.pow2Chain`, proved once by induction, and wraps
   around as `SILENT` does. The proofs generalize the special codes (`±∞`,
   NaN, `±1`) to variables with their order first, so that nothing evaluates
-  their 600-digit values. `SubstraitLean/LoweringCache.lean`, written by
-  `substrait-check --lowering-cache` and checked in, records each construct's
-  template, so that a build tries it first instead of searching; a stale
-  entry costs time, never correctness. `substrait-check --lowering-table` exports the
+  their 600-digit values. The search does not run in a build: `poe regen-lowering`
+  (`scripts/RegenLowering.lean`) runs it and writes each entry it found, with
+  its proof, to `SubstraitLean/LoweringDuckDB/Off` and `On`, one module per area
+  (`Native`, `Integers`, `Doubles`, `Math`, `Bits`) and a `Table`, which `lake
+  build` checks in parallel. A committed table that no longer fits fails the
+  build: a proof stops checking when `Profile.duckdb` changes, and the table's
+  `match` is not exhaustive when a function is added. `SubstraitLean/LoweringCache.lean`
+  records each construct's template for the regeneration, which tries it first. `substrait-check --lowering-table` exports the
   templates, and `sverify.sql.lowering`, a small interpreter in the trusted path,
   writes them as DuckDB SQL: the DuckDB printer asks it first (`Dialect.lowered`),
   so the guards in DuckDB's SQL are the proved ones. `SubstraitLean/Lowering.lean` proves once that
