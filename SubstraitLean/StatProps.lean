@@ -11,39 +11,29 @@ generic properties every reasonable algorithm keeps (`StatProps`, the set
 `AggFn.Allowed` uses in `SubstraitLean/Allowed.lean`). An engine profile may
 name a stricter algorithm (`Profile.statAlgo`); without one, these hold.
 
-For `n ≤ 2³²` finite values at most `2³⁹⁸` in magnitude, with `u = 2⁻⁵³`,
-the exact co-moments `C = Σxy − Σx · Σy / n`, `S_xx`, `S_yy`, and
-`Q' = Σ (|xᵢ| + tiny)²` of each side:
+For `n ≤ 2³²` finite values at most `2³⁹⁹` in magnitude, with
+`B = max(max |xᵢ|, 2⁻⁵⁰⁰)`, `u = 2⁻⁵³` and the exact co-moment
+`C = Σxy − Σx · Σy / n`:
 
 * `NULL` exactly where the reference says: no values, a sample of one value,
   and for `CORR` fewer than two pairs or a side whose values are all equal;
 * a variance or deviation is `≥ 0`;
-* `VAR_*`, `S / d` with `d = n − 1` (sample) or `n` (population), is within
-  `(160 n u √(Q' S) + 3970 n² u² Q' + 800 n² u · tiny) / d` (`varTol`);
-* `COVAR_*`, `C / d`, is within
-  `(71 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 15 n u √(S_xx S_yy) + 3970 n² u² √(Q'_x Q'_y) + 800 n² u · tiny) / d`
-  (`covTol`);
+* `VAR_*` and `COVAR_*`, `C / d` with `d = n − 1` (sample) or `n`
+  (population), are within `τ = (128 n² u B² + 12 n u B²) / d`;
 * `STDDEV_*` is within `(1 ± u)` of `√(V ± τ)`, stated squared;
-* `|CORR| ≤ 1 + 3E/L + 8u`, `E = 447 n u R + 11883 n² u² (Q'_x + Q'_y) + 2379 n² u · tiny`
-  (`corrErr`), for an `R` at least `√(Q' S)` of each side, `√(Q'_x S_yy)`,
-  `√(Q'_y S_xx)` and `√(S_xx S_yy)`, when the co-moments of both sides are
-  at least `L ≥ 8E` (and `L ≥ 2⁻⁵⁰⁰`, their product at most `2¹⁰⁰⁰`).
-  Without such a lower bound `CORR` may be any double.
+* `|CORR| ≤ 1 + 3E/L + 8u`, `E = 128 n² u B²`, when the co-moments of both
+  sides are at least `L ≥ 8E` (and `L ≥ 2⁻⁵⁰⁰`, their product at most
+  `2¹⁰⁰⁰`). Without such a lower bound `CORR` may be any double.
 
-The core has no square roots, so each property holds for every rational
-witness `r ≥ 0` with `r² ≥` the product it bounds. The bounds scale with the
-spread of the values: they stay small for values far from zero that vary
-little. They hold for the two-pass algorithm (the reference's own,
-`twoPass_var_rel`, `twoPass_cov_rel`) and for Welford's update with Chan's
-merge in any tree, in DuckDB's order of operations (`chanVar_rel`,
-`chanCov_rel`), all in `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
-cancels catastrophically and is not covered. Outside the finite range above,
-the reference's own value is the one allowed.
+The co-moment bound holds for the two-pass algorithm (the reference's own),
+for Welford's update with Chan's merge in any tree, and for the textbook
+formula `Σx² − (Σx)²/n` (`docs/float-bounds.md`). Outside the finite range
+above, the reference's own value is the one allowed.
 
 Lean's own results have these properties by three trusted facts,
 `varOf_props`, `covOf_props` and `corrOf_props`, proved for IEEE rounding in
-`float-bounds/` (`core_var_k`, `core_stddev`, `core_cov_k`, `core_corr_k` in
-`FloatBounds/CoreKappa.lean`), so the core needs no Mathlib. They make
+`float-bounds/` (`core_var`, `core_stddev`, `core_cov`, `core_corr` in
+`FloatBounds/CoreStats.lean`), so the core needs no Mathlib. They make
 `StatProps.apply`, the witness, hold.
 -/
 
@@ -60,32 +50,22 @@ def val (c : Int) : Rat := (FloatCode.scaled c : Rat) / 2 ^ 1074
 
 def absQ (q : Rat) : Rat := if q < 0 then -q else q
 
-/-- `Q' = Σ (|xᵢ| + tiny)²`, the magnitude the bounds scale with. -/
-def qsum (xs : List Rat) : Rat := (xs.map fun x => (absQ x + tiny) ^ 2).sum
+/-- `max (max |xᵢ|) 2⁻⁵⁰⁰`: the `B` of the bounds. -/
+def bound (xs : List Rat) : Rat := xs.foldl (fun m x => max m (absQ x)) (1 / 2 ^ 500)
 
 /-- The co-moment `Σxy − Σx · Σy / n` of exact values. -/
 def comoment (ps : List (Rat × Rat)) : Rat :=
   (ps.map fun p => p.1 * p.2).sum - (ps.map (·.1)).sum * (ps.map (·.2)).sum / ps.length
 
-/-- The error bound of `VAR_*`, `S / d`, for an `r ≥ √(Q' S)`. -/
-def varTol (n d : Nat) (r Q : Rat) : Rat :=
-  (160 * n * u * r + 3970 * n ^ 2 * u ^ 2 * Q + 800 * n ^ 2 * u * tiny) / d
+/-- `E = 128 n² u B²`, the error bound of a co-moment. -/
+def err (n : Nat) (B : Rat) : Rat := 128 * n ^ 2 * u * B ^ 2
 
-/-- The error bound of `COVAR_*`, `C / d`, for `r₁ ≥ √(Q'_x S_yy)`,
-`r₂ ≥ √(Q'_y S_xx)`, `r_s ≥ √(S_xx S_yy)` and `r_q ≥ √(Q'_x Q'_y)`. -/
-def covTol (n d : Nat) (r1 r2 rs rq : Rat) : Rat :=
-  (71 * n * u * (r1 + r2) + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq
-    + 800 * n ^ 2 * u * tiny) / d
+/-- The error bound of `C / d`: `(E + 12 n u B²) / d`. -/
+def tol (n d : Nat) (B : Rat) : Rat := (err n B + 12 * n * u * B ^ 2) / d
 
-/-- The error bound of the three co-moments of `CORR`, for an `R` at least
-`√(Q' S)` of each side, `√(Q'_x S_yy)`, `√(Q'_y S_xx)` and `√(S_xx S_yy)`, and
-`Q = Q'_x + Q'_y`. -/
-def corrErr (n : Nat) (R Q : Rat) : Rat :=
-  447 * n * u * R + 11883 * n ^ 2 * u ^ 2 * Q + 2379 * n ^ 2 * u * tiny
-
-/-- At most `2³²` doubles, each at most `2³⁹⁸` in magnitude (finite). -/
+/-- At most `2³²` doubles, each at most `2³⁹⁹` in magnitude (finite). -/
 def fits (cs : List Int) : Bool :=
-  cs.length ≤ 2 ^ 32 && cs.all fun c => (FloatCode.scaled c).natAbs ≤ 2 ^ 1472
+  cs.length ≤ 2 ^ 32 && cs.all fun c => (FloatCode.scaled c).natAbs ≤ 2 ^ 1473
 
 /-- A deviation `σ` near `√V` with `V` within `τ`: squared,
 `(σ − u·tiny)² ≤ (1 + u)² (V + τ)` (where `σ > u·tiny`) and
@@ -106,42 +86,28 @@ instance (vs : List Value) : Decidable (allInts vs) :=
     obtain ⟨i, rfl⟩ := h' w hw; rfl)
 
 /-- The properties of `VAR_*` (`sqrt = false`) or `STDDEV_*` of the doubles
-`cs`, for a non-`NULL` result `c`: `≥ 0`, and within `varTol r` of
-`V = S / d` for every `r ≥ √(Q' S)`. -/
+`cs`, for a non-`NULL` result `c`. -/
 def varProps (sample sqrt : Bool) (cs : List Int) (c : Int) : Prop :=
   let xs := cs.map val
   let d := if sample then cs.length - 1 else cs.length
-  let S := comoment (xs.map fun x => (x, x))
-  let Q := qsum xs
-  0 ≤ c ∧ ∀ r : Rat, 0 ≤ r → Q * S ≤ r * r →
-    let τ := varTol cs.length d r Q
-    if sqrt then sdNear (val c) (S / d) τ else absQ (val c - S / d) ≤ τ
+  let V := comoment (xs.map fun x => (x, x)) / d
+  let τ := tol cs.length d (bound xs)
+  0 ≤ c ∧ if sqrt then sdNear (val c) V τ else absQ (val c - V) ≤ τ
 
-/-- The property of `COVAR_*` of the pairs `ps`, for a non-`NULL` result `c`:
-within `covTol` of `C / d` for every set of witnesses. -/
+/-- The property of `COVAR_*` of the pairs `ps`, for a non-`NULL` result `c`. -/
 def covProps (sample : Bool) (ps : List (Int × Int)) (c : Int) : Prop :=
   let qs := ps.map fun p => (val p.1, val p.2)
   let d := if sample then ps.length - 1 else ps.length
-  let sx := comoment (qs.map fun q => (q.1, q.1))
-  let sy := comoment (qs.map fun q => (q.2, q.2))
-  let Qx := qsum (qs.map (·.1))
-  let Qy := qsum (qs.map (·.2))
-  ∀ r1 r2 rs rq : Rat, 0 ≤ r1 → 0 ≤ r2 → 0 ≤ rs → 0 ≤ rq →
-    Qx * sy ≤ r1 * r1 → Qy * sx ≤ r2 * r2 → sx * sy ≤ rs * rs → Qx * Qy ≤ rq * rq →
-    absQ (val c - comoment qs / d) ≤ covTol ps.length d r1 r2 rs rq
+  absQ (val c - comoment qs / d) ≤ tol ps.length d (bound (qs.map (·.1) ++ qs.map (·.2)))
 
 /-- The property of `CORR` of the pairs `ps`, for a non-`NULL` result `c`. -/
 def corrProps (ps : List (Int × Int)) (c : Int) : Prop :=
   let qs := ps.map fun p => (val p.1, val p.2)
+  let E := err ps.length (bound (qs.map (·.1) ++ qs.map (·.2)))
   let sx := comoment (qs.map fun q => (q.1, q.1))
   let sy := comoment (qs.map fun q => (q.2, q.2))
-  let Qx := qsum (qs.map (·.1))
-  let Qy := qsum (qs.map (·.2))
-  ∀ R L : Rat, 0 ≤ R →
-    (∀ a ∈ [Qx, Qy, sx], ∀ b ∈ [sx, sy], a * b ≤ R * R) →
-    8 * corrErr ps.length R (Qx + Qy) ≤ L → 1 / 2 ^ 500 ≤ L → L ≤ sx → L ≤ sy →
-      sx * sy ≤ 2 ^ 1000 →
-      absQ (val c) ≤ 1 + 3 * corrErr ps.length R (Qx + Qy) / L + 8 * u
+  ∀ L : Rat, 8 * E ≤ L → 1 / 2 ^ 500 ≤ L → L ≤ sx → L ≤ sy → sx * sy ≤ 2 ^ 1000 →
+    absQ (val c) ≤ 1 + 3 * E / L + 8 * u
 
 end Stat
 

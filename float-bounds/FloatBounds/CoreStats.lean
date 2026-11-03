@@ -4,11 +4,7 @@ public import FloatBounds.Variance
 public import FloatBounds.Core
 
 /-!
-# The statistical aggregates the core trusted before the first-order bounds (#85)
-
-`SubstraitLean/StatProps.lean` now states the bounds of `CoreKappa.lean`,
-which scale with the spread of the values. The bounds below, in
-`B = max |xᵢ|`, remain true and are what `CoreKappa.lean` builds on.
+# The statistical aggregates the core trusts (#85)
 
 `SubstraitLean/StatProps.lean` states the generic properties of `VAR_*`,
 `STDDEV_*`, `COVAR_*` and `CORR`, and three trusted facts that Lean's own
