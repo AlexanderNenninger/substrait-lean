@@ -125,6 +125,14 @@ file; touch the shared `_base.py` only for what the area files say lives there.
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.
+- **Parse** (`SubstraitLean/Parse.lean`): the function's arm in its area's
+  `mkCoreCall?`, `mkStringCall?`, `mkTemporalCall?` or `mkNestedCall?`, before
+  its `| _, _ => none` (core: before the trailing `BitOp` arm too). Doubles go
+  in `mkFloatCall`, decimals in `decimalCall`, constant folding in
+  `foldCoreCall`/`foldTemporalCall`, aggregates in `parseMeasure`'s
+  `match name, k`, windows in `parseWindow`'s `match baseName name, args`. A
+  string function's integer arguments go in `stringFns`; an option's functions
+  in that option's arm of `optionAccepts`.
 - **SQL writer** (`python/src/sverify/sql/core/<area>.py`, `strings`,
   `temporal`, `nested`): the function's case in the area's `call` (`mkCall`),
   its SQL in the area's `expr`, and its result kind in the area's `UN_KINDS` or
