@@ -48,7 +48,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | h2o-groupby-q6 | [H2O groupby q6: median and standard deviation of v3 by id4, id5](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✗ | N | `percentile` |
 | h2o-groupby-q7 | [H2O groupby q7: max v1 minus min v2 by id3](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
 | h2o-groupby-q8 | [H2O groupby q8: largest two v3 by id6](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPDS |  |
-| h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | D |  |
+| h2o-groupby-q9 | [H2O groupby q9: squared correlation of v1 and v2 by id2, id4](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | N |  |
 | h2o-groupby-q10 | [H2O groupby q10: sum and count by six keys](https://github.com/duckdblabs/db-benchmark/blob/main/polars/groupby-polars.py) | ✓ | NPD |  |
 | h2o-join-q1 | [H2O join q1: inner join with a small table on an integer key](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | NPDS |  |
 | h2o-join-q3 | [H2O join q3: left join with a medium table](https://github.com/duckdblabs/db-benchmark/blob/main/polars/join-polars.py) | ✓ | NPDS |  |

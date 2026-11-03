@@ -13,6 +13,9 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+overrides = [{ name = "sqlglot", specifier = "~=30.22.0" }]
+
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -3917,6 +3920,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "ibis-framework", extra = ["duckdb"] },
     { name = "pyarrow" },
+    { name = "sqlglot" },
     { name = "substrait" },
 ]
 
@@ -3991,6 +3995,7 @@ requires-dist = [
     { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
+    { name = "sqlglot", specifier = "~=30.17.0" },
     { name = "substrait", specifier = ">=0.37.0" },
     { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing"], marker = "extra == 'all'" },
 ]
@@ -4010,7 +4015,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "snowflake-connector-python", specifier = "<5" },
-    { name = "sqlglot", specifier = ">=30.22.0" },
+    { name = "sqlglot", specifier = ">=30.17.0" },
     { name = "sverify", extras = ["all"] },
 ]
 docs = [{ name = "great-docs", specifier = ">=0.11.0" }]

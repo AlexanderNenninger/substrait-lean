@@ -247,3 +247,4 @@ end Substrait.Examples
 #print axioms Substrait.Retention.trunc_eq_bucket
 #print axioms Substrait.TouchedGroups.touched_sound
 #print axioms Substrait.TouchedGroups.touched_eval
+#print axioms Substrait.TouchedGroups.touched_window_sound

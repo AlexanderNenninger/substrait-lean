@@ -419,3 +419,32 @@ def test_try_cast_is_no_error_and_cast_is():
             run_plan(con, plan, engine)
     with pytest.raises(Exception, match="TRY_CAST to DECIMAL"):
         written_plan(to_substrait_json(TC.select(d=TC.f.try_cast("decimal(10, 2)"))))
+
+
+# #419: the result of narrow arithmetic on constants keeps its declared width,
+# so the next operation is checked at that width too
+# (`overflow/table_overflow.test:96`).
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "(i * 10::TINYINT) * 10::TINYINT",
+        "(i::SMALLINT * 100::SMALLINT) * 100::SMALLINT",
+        "(10::TINYINT * 10::TINYINT) * i",
+        "-(100::TINYINT + 27::TINYINT) - i",
+        "(100::TINYINT - 28::TINYINT) + i * 10::TINYINT",
+        "(1000::INTEGER * 1000::INTEGER) * i::INTEGER * 10000::INTEGER",
+    ],
+)
+def test_nested_narrow_arithmetic_overflows_as_duckdb(expr):
+    con = connect()
+    put_table(con, "t", pa.table({"i": pa.array([1, 10], pa.int8())}))
+    sql = f"SELECT {expr} AS x FROM t"
+    native = duckdb.connect()
+    native.register("t", pa.table({"i": pa.array([1, 10], pa.int8())}))
+    with pytest.raises(duckdb.Error, match="Overflow"):
+        native.execute(sql).fetchall()
+    assert "overflow" in [
+        i.kind for i in sv.verify(sql, tables={"t": {"i": "int8"}}, infer=False).issues
+    ]
+    with pytest.raises(duckdb.Error, match="out of range"):
+        run_plan(con, written_plan(substrait_json(con, sql)), "duckdb")

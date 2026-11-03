@@ -29,7 +29,7 @@ Ibis expression; the pipeline then
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -136,25 +136,35 @@ def _aggregate(op: ops.Relation) -> tuple[ops.Aggregate, dict[str, str]] | None:
     """The aggregate a view ends in, under filters, projections and sorts of
     its output rows, and for each column of the aggregate the view's column
     that is it unchanged."""
+    found = _under(op, lambda o: isinstance(o, ops.Aggregate))
+    return None if found is None else (found[0], found[1])  # type: ignore[return-value]
+
+
+def _under(
+    op: ops.Relation, top: Callable[[ops.Relation], bool]
+) -> tuple[ops.Relation, dict[str, str]] | None:
+    """The relation `top` picks that a view ends in, under filters,
+    projections and sorts of its output rows, and for each of its columns
+    the view's column that is it unchanged."""
+    if top(op):
+        return op, {n: n for n in op.schema.names}  # type: ignore[attr-defined]
     match op:
-        case ops.Aggregate():
-            return op, {n: n for n in op.schema.names}  # type: ignore[attr-defined]
         case ops.Filter(parent=parent, predicates=preds) if _row_local(preds, parent):
-            return _aggregate(parent)
+            return _under(parent, top)
         case ops.Sort(parent=parent):
-            return _aggregate(parent)
+            return _under(parent, top)
         case ops.Project(parent=parent, values=values) if _row_local(list(values.values()), parent):
-            inner = _aggregate(parent)
+            inner = _under(parent, top)
             if inner is None:
                 return None
-            agg, names = inner
+            rel, names = inner
             out = {}
             for a, n in names.items():
                 for name, v in values.items():
                     if isinstance(v, ops.Field) and v.name == n:
                         out[a] = name
                         break
-            return agg, out
+            return rel, out
     return None
 
 

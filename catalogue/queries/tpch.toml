@@ -445,9 +445,12 @@ q = (
     .order_by(ibis.desc("part_value"))
 )
 '''
+# The cap on partsupp is the specification's 800,000·SF rows at scale factor 100,000, the largest it lists.
+# Not proved yet: `SUM(value) * 0.0001` may overflow its decimal type, because row caps
+# don't bound exact sums yet (#470).
 requires = '''
 {
-    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
+    'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999), sv.max_rows(80_000_000_000)],
     'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
     'nation': [sv.unique('n_nationkey')],
 }
@@ -552,9 +555,12 @@ q = j.aggregate(
     promo_revenue=100.0 * ibis.ifelse(j.p_type.startswith("PROMO"), rev, 0).sum() / rev.sum()
 )
 '''
+# The cap on lineitem is the specification's bound at scale factor 100,000, the largest it lists: at most 7 lines for each of 1,500,000·SF orders.
+# Not proved yet: `100.0 * SUM(…)` may overflow its decimal type, because row caps don't
+# bound exact sums yet (#470).
 requires = '''
 {
-    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000), sv.max_rows(1_050_000_000_000)],
     'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
 }
 '''
@@ -762,9 +768,12 @@ q = (
     .order_by("s_name")
 )
 '''
+# The cap on lineitem is the specification's bound at scale factor 100,000, the largest it lists: at most 7 lines for each of 1,500,000·SF orders.
+# Not proved yet: `0.5 * SUM(l_quantity)` may overflow its decimal type, because row caps
+# don't bound exact sums yet (#470).
 requires = '''
 {
-    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000)],
+    'lineitem': [_.l_quantity.between(1, 50), _.l_discount.between(0, 0.1), _.l_tax.between(0, 0.08), _.l_extendedprice.between(900, 105000), sv.max_rows(1_050_000_000_000)],
     'part': [sv.unique('p_partkey'), _.p_size.between(1, 50)],
     'partsupp': [_.ps_suppkey.notnull(), _.ps_supplycost.between(1, 1000), _.ps_availqty.between(1, 9999)],
     'supplier': [sv.unique('s_suppkey'), _.s_acctbal.between(-999.99, 9999.99)],
