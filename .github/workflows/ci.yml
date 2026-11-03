@@ -124,8 +124,9 @@ jobs:
       - env:
           BACKENDS: ${{ matrix.backends }}
           SVERIFY_SHARD: ${{ matrix.shard }}
-          PYTEST_ADDOPTS: --durations=0 --durations-min=0.2
-          SVERIFY_PROFILE: dev
+          # The slowest tests, to see which to mark `slow` or what unbalances
+          # the shards.
+          PYTEST_ADDOPTS: --durations=25
         run: |
           status=0
           for b in $BACKENDS; do

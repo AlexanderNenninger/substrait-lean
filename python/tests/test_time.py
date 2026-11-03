@@ -146,6 +146,7 @@ def test_date_part_matches_duckdb(values):
         assert canonical(rows) == canonical(expected), engine
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("unit", UNITS)
 @settings(
     max_examples=30, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]

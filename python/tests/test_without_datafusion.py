@@ -54,6 +54,7 @@ def run(script: str, engine: str = "duckdb") -> None:
     assert out.returncode == 0, out.stderr
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_views_and_pipelines(engine):
     run(
@@ -83,6 +84,7 @@ def test_views_and_pipelines(engine):
     )
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_contracts(engine):
     run(

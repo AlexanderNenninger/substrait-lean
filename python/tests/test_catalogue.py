@@ -78,6 +78,7 @@ def con():
 NATIVE_DIFFERS = {"duration_vs_interval"}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("query", QUERIES, ids=lambda q: q.id)
 def test_status_holds(con, query):
     got = cat.probe(con, query, SCHEMAS)

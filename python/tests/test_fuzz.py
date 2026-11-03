@@ -39,6 +39,7 @@ def test_random_queries_agree_with_lean(case):
     assert not unexplained(findings)
 
 
+@pytest.mark.slow
 @CHEAP
 @given(case=fuzz.contract_cases())
 def test_proved_postconditions_hold(case):
