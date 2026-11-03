@@ -152,11 +152,19 @@ have them by three trusted facts in `SubstraitLean/StatProps.lean`
 decoded doubles, with `E = 128 n² u B²`, which covers the decoding
 (`comoment_decoded`, `12 n B δ`) and `64 n² u B'²` with `B' = (1 + 2u) B`.
 
-The first-order behaviour of Welford's algorithm is tighter,
-`|Ŝ − S| ≲ c · n · u · √(S · Σx²)` (Chan, Golub and LeVeque, 1983); the proved
-bound scales with `n · u · Σx²`, which is larger when the values sit far from
-zero relative to their spread. A tighter proved bound only narrows
-the allowed set, so it can replace this one without changing the interface.
+How loose this is depends on how far the values sit from zero relative to
+their spread. For a variance the bound is about `128 · n · u · B²`, or
+`1.4 · 10⁻⁸ · B²` at `10⁶` rows and `1.4 · 10⁻⁶ · B²` at `10⁸`. For CPU
+percentages (`B = 100`, a variance in the hundreds) that is far below the last
+digit that matters. For values near `10⁶` that vary by about `1` (timestamps in
+seconds, say), it is `1.4 · 10⁴` at `10⁶` rows, against a variance of about
+`1`: no useful bound.
+
+The expected first-order behaviour of Welford's algorithm and of two-pass is
+`|Ŝ − S| ≲ c · n · u · √(S · Σx²)` (Chan, Golub and LeVeque, 1983), which
+scales with the spread and stays useful there; its proof is in progress. A
+tighter proved bound only narrows the allowed set, so it replaces this one
+without changing the interface.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
