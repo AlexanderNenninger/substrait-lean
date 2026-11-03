@@ -19,6 +19,22 @@ jobs:
       # The shared Lake cache may hold it built: build it afresh.
       - run: rm -rf .lake/build/lib/lean/SubstraitLean/LiftDuckDB.* .lake/build/ir/SubstraitLean/LiftDuckDB.*
       - run: /usr/bin/time -v lake build SubstraitLean.LiftDuckDB 2>&1 | grep -E "Elapsed|Maximum resident|Built SubstraitLean.LiftDuckDB|error"
+  # The branch whose cold QA build took LiftDuckDB to 12.3 GB on homelab.
+  agg-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: claude/agg-contracts-bfd62c
+      - uses: ./.github/actions/setup-lean
+      - run: lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache
+      - run: rm -rf .lake/build/lib/lean/SubstraitLean/LiftDuckDB.* .lake/build/ir/SubstraitLean/LiftDuckDB.*
+      - run: |
+          ( while sleep 20; do ps -eo rss,etime,args --sort=-rss | grep "bin/lean" | grep -v grep | head -1 | cut -c1-120; done ) &
+          /usr/bin/time -v timeout 1200 lake build SubstraitLean.LiftDuckDB 2>&1 | grep -E "Elapsed|Maximum resident|Built SubstraitLean.LiftDuckDB|error" | cut -c1-300
   regen:
     runs-on: ubuntu-latest
     steps:
