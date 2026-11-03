@@ -1,11 +1,12 @@
 """`sverify.io.flight`: `FlightSource` reading `FlightLog`, a real Flight
 server in this process, in pipelines: appends, batches dropped past the
-server's retention, an empty log and a source resumed at a cursor."""
+server's retention, an empty log and a source restored at a cursor."""
 
 import json
 
 import pyarrow as pa
 import pytest
+from deltalake import DeltaTable
 from ibis import _
 
 import sverify as sv
@@ -13,6 +14,7 @@ from _pipelines import rows
 
 fl = pytest.importorskip("pyarrow.flight")
 
+from sverify.io import DeltaSink, DeltaSource  # noqa: E402
 from sverify.io.flight import FlightLog, FlightSource  # noqa: E402
 
 SAMPLES = pa.schema([("host", pa.string()), ("ts", pa.int64()), ("cpu", pa.float64())])
@@ -78,7 +80,8 @@ def test_appends_by_the_number_of_the_last_batch(server):
     assert "appended to samples v1→v2" in entry.detail
     assert "numbers batches in order of arrival" in entry.detail
     assert rows(node) == [("a", 1, 0.5), ("b", 2, 0.75)]
-    assert cursor(src) == 4 and json.loads(json.dumps(cursor(src))) == 4
+    assert cursor(src) == {"seq": 4, "floor": 1}
+    assert json.loads(json.dumps(cursor(src))) == cursor(src)
     # Nothing new: no new version.
     [entry] = node.refresh()["busy"].report.sources
     assert entry.start == entry.end == 2
@@ -153,20 +156,53 @@ def test_a_declared_schema_needs_no_server():
     assert src.schema() == SAMPLES
 
 
-def test_a_source_resumed_at_a_cursor_deletes_what_the_server_drops(server):
+def test_a_source_restored_at_a_cursor_deletes_what_the_server_drops(server):
     put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
     first = FlightSource(location(server), "samples")
     busy(first).refresh()
-    # Another process, resumed at the cursor the first one recorded.
+    recorded = cursor(first)
+    # Another process, restored at the cursor a sink recorded.
     resumed = FlightSource(location(server), "samples", schema=SAMPLES)
     put(server, "samples", [sample("a", 3, 0.7)])
-    batch = read(resumed, cursor(first))
-    assert (batch.kind, batch.cursor) == ("append", 3)
+    assert resumed.restore(recorded).to_pylist() == [sample("a", 1, 0.5), sample("a", 2, 0.6)]
+    batch = read(resumed, recorded)
+    assert (batch.kind, batch.cursor) == ("append", {"seq": 3, "floor": 1})
     assert batch.table.to_pylist() == [sample("a", 3, 0.7)]
     server.drop("samples", below=2)
-    batch = read(resumed, 3)
-    assert (batch.kind, batch.cursor, batch.table.num_rows) == ("changes", 3, 0)
+    batch = read(resumed, batch.cursor)
+    assert (batch.kind, batch.cursor, batch.table.num_rows) == (
+        "changes",
+        {"seq": 3, "floor": 2},
+        0,
+    )
     assert batch.deletes.to_pylist() == [sample("a", 1, 0.5)]
+
+
+def test_a_cursor_does_not_restore_after_the_server_dropped_batches(server):
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    first = FlightSource(location(server), "samples")
+    busy(first).refresh()
+    recorded = cursor(first)
+    server.drop("samples", below=2)
+    # Batch 1's row is gone: no restore, the job reads the whole log again.
+    assert FlightSource(location(server), "samples").restore(recorded) is None
+    assert FlightSource(location(server), "samples").restore(None) is None
+
+
+def test_an_empty_log_restores_to_no_rows(server):
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    busy(src).refresh()
+    assert cursor(src) is None
+    put(server, "samples", [sample("a", 1, 0.5)])
+    busy(src).refresh()
+    put(server, "other", [sample("b", 1, 0.5)])
+    # Nothing of the table up to a cursor before its first batch.
+    assert (
+        FlightSource(location(server), "samples", schema=SAMPLES)
+        .restore({"seq": 0, "floor": 1})
+        .num_rows
+        == 0
+    )
 
 
 def test_a_bearer_token():
@@ -183,3 +219,45 @@ def test_a_bearer_token():
         assert src.latest() == 0
     finally:
         s.shutdown()
+
+
+# -- a restart from what a DeltaSink recorded --------------------------------
+
+
+def restart_job(server, path):
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    return src, busy(src).write(DeltaSink(path))
+
+
+def stored_ts(path):
+    return sorted(r["ts"] for r in DeltaTable(path).to_pyarrow_table().to_pylist())
+
+
+def test_a_restarted_job_resumes_and_reads_later_drops_as_deletes(server, tmp_path):
+    path = str(tmp_path / "busy")
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    _, node = restart_job(server, path)
+    node.refresh()
+    recorded = DeltaSource(path).contract()
+    assert recorded is not None and recorded.cursors == {"samples": {"seq": 2, "floor": 1}}
+    put(server, "samples", [sample("a", 3, 0.7)])
+    _, restarted = restart_job(server, path)
+    out = restarted.refresh()["busy"]
+    assert out.started is not None and out.started.startswith("resumed from")
+    assert out.write is not None and (out.write.mode, out.write.inserted) == ("merge", 1)
+    assert stored_ts(path) == [1, 2, 3]
+    server.drop("samples", below=2)
+    w = restarted.refresh().writes[0]
+    assert (w.mode, w.deleted) == ("merge", 1)
+    assert stored_ts(path) == [2, 3]
+
+
+def test_a_drop_while_down_recomputes(server, tmp_path):
+    path = str(tmp_path / "busy")
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    restart_job(server, path)[1].refresh()
+    server.drop("samples", below=2)
+    _, restarted = restart_job(server, path)
+    w = restarted.refresh().writes[0]
+    assert w.mode == "overwrite"
+    assert stored_ts(path) == [2]

@@ -557,11 +557,13 @@ numbered batch log on an Arrow Flight server (`pip install
 the ticket `{"table": t, "after": n}` streams the batches numbered above
 `n`, each with `{"seq": s}` as app metadata, and names in the stream's schema
 metadata the `floor`, the lowest number it still holds; an optional
-`"until": m` stops at `m`. The source's cursor is the number of the last
-batch read. A refresh appends the new batches, as they arrived and without a
-copy, and the batches below the floor, which the server dropped past its
-retention, come back as deletes, so the source holds the server's window of
-rows. The report states what this assumes: the server numbers batches in
+`"until": m` stops at `m`. The source's cursor is `{"seq": n, "floor": f}`,
+the number of the last batch read and the floor at that read. A refresh
+appends the new batches, as they arrived and without a copy, and the batches
+below the floor, which the server dropped past its retention, come back as
+deletes, so the source holds the server's window of rows. A restarted job
+resumes at the cursor its sink recorded, unless the server dropped batches
+since; then it reads the whole log again. The report states what this assumes: the server numbers batches in
 order of arrival, never changes one, and drops only whole batches below its
 floor. `FlightLog()` is a small in-memory server that keeps such a log
 (`keep=` batches per table, or `drop(table, below=n)`), the one
@@ -602,7 +604,12 @@ log.shutdown()
 A restarted job resumes from its sink and skips the recompute. You build the
 same nodes again and refresh; a stored node takes the stored rows only if
 its plan and source versions match what the sink recorded; otherwise it is
-computed, and the report says why:
+computed, and the report says why. A source of your own resumes too if it
+implements `restore(cursor)`: the sink records the source's cursor next to
+its version, and the restarted job starts from the table as of that cursor
+and reads only what is new since. `from_query` and `from_files` do this; a
+cursor whose rows are gone (`restore` returns None) reads the whole table
+again:
 
 ```python
 restarted = DeltaSource(str(lake / "transactions")).pipe(duplicate_payments).write(

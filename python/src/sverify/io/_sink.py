@@ -346,9 +346,10 @@ class _Kept:
         if len(self.log) > KEEP:
             self.floor = self.log.pop(0).version
 
-    def _resume_after(self, version: int) -> None:
+    def _resume_after(self, version: int, cursor: object = None) -> None:
         """Number the versions above `version`, which a sink downstream
-        recorded in an earlier process (`sverify.io.Source._resume_after`)."""
+        recorded in an earlier process (`sverify.io.Source._resume_after`;
+        a stored node records no cursor)."""
         if self.version > version:
             return
         if self.table is None:

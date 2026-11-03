@@ -32,6 +32,7 @@ from sverify.incremental import (
     _apply_change,
     snapshot_diff,
 )
+from sverify.io._common import UNRECORDED, cursor_value
 from sverify.steps import Pipeable
 
 Kind = Literal["append", "snapshot", "changes"]
@@ -91,6 +92,8 @@ class _Entry:
     deletes: pa.Table
     kind: Kind | None
     """None: a version that changes nothing (`_resume_after`)."""
+    cursor: Any = None
+    """The cursor read at this version."""
 
 
 @dataclass
@@ -101,6 +104,13 @@ class _State:
     log: list[_Entry] = field(default_factory=list)
     floor: int = 0
     """The log holds every batch after this version."""
+    oldest: int = 0
+    """The oldest version `snapshot` gives: versions below it are an
+    earlier process's, or the table before the first read."""
+    restored: bool = False
+    """The table is what `restore` returned."""
+    fresh: bool = True
+    """Nothing but the schema was handed out yet: no version was read."""
 
 
 class Source(Pipeable, ABC):
@@ -123,10 +133,14 @@ class Source(Pipeable, ABC):
 
     The source keeps the table as of its latest version in memory, since
     joins and keys need it, and has no metadata: preconditions on it are
-    checked on the rows. Versions count reads in this process, so a
-    restarted job reads the whole table again. A stored node reading it
-    is then recomputed and written again in full, with versions above the
-    ones its sink recorded, so its sink still writes exactly once.
+    checked on the rows. Versions count reads, and a sink records the
+    version of each source next to its cursor. A restarted job reads the
+    whole table again, unless the source implements `restore`: then it
+    starts from the table as of the cursor its sink recorded, and the first
+    refresh reads only what is new since (`read(cursor)`). A stored node
+    reading a source that cannot restore is recomputed and written again in
+    full, with versions above the ones its sink recorded, so its sink still
+    writes exactly once.
 
     Args:
         name: The table's name in the plans that read it.
@@ -221,6 +235,32 @@ class Source(Pipeable, ABC):
         batch = self.read(None)
         return self._st().table.schema.empty_table() if batch is None else batch.table
 
+    def restore(self, cursor: Any) -> Any:
+        """The whole table as of `cursor`, a cursor that a sink recorded in
+        an earlier process, so a restarted job resumes from its sinks.
+        Override it for a source whose cursors last: a log's sequence
+        number, a high-water mark, the files read. Then `read(cursor)` must
+        return what is new since, and the next refresh is incremental. A
+        sink records the cursor if it has a JSON form (see
+        `Batch.cursor`).
+
+        The restored table is trusted to be the table the stored nodes were
+        computed from; `refresh(audit=True)` reads the whole table again on
+        later batches.
+
+        Args:
+            cursor: The cursor the sink recorded, as `read` returned it
+                (datetimes, dates, decimals, bytes and tuples come back as
+                they were).
+
+        Returns:
+            The rows, in any form `Batch.table` takes, or None if the
+            cursor is no longer valid (the rows it points to are gone):
+            then the job reads the whole table, `read(None)`, and recomputes.
+            Default: None.
+        """
+        return None
+
     # -- the versioned source the pipeline reads -----------------------------
 
     def schema(self) -> pa.Schema:
@@ -234,26 +274,40 @@ class Source(Pipeable, ABC):
         """Read what is new, and return the latest version."""
         if self._state is None:
             return self._st().version
+        self._state.fresh = False
         self._take(self.read(self._state.cursor))
         return self._state.version
 
     def snapshot(self, version: int | None = None) -> Snapshot:
-        """The table as of the latest read.
+        """The table as of a version: the latest read, or an earlier
+        version whose batches the source still keeps.
 
         Args:
-            version: The latest version, or None for it.
+            version: The version, or None for the latest.
 
         Returns:
             The version and the rows, with no facts.
 
         Raises:
-            ValueError: `version` is not the latest; the source keeps only
-                its latest table.
+            ValueError: The source no longer keeps `version`'s batches, or
+                `version` is newer than the latest.
         """
         st = self._st()
-        if version not in (None, st.version):
-            raise ValueError(f"{self.name} keeps only its latest read, v{st.version}")
-        return Snapshot(st.version, st.table, [])
+        st.fresh = False
+        if version is None or version == st.version:
+            return Snapshot(st.version, st.table, [])
+        if not max(st.floor, st.oldest) <= version < st.version:
+            raise ValueError(f"{self.name} no longer keeps v{version} (latest: v{st.version})")
+        # Undo the batches after `version`.
+        undo = [
+            t
+            for e in st.log
+            if e.version > version
+            for t in (weighted(e.deletes, 1), weighted(e.inserts, -1))
+        ]
+        if not undo:
+            return Snapshot(version, st.table, [])
+        return Snapshot(version, _apply_change(st.table, pa.concat_tables(undo), self.name), [])
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from version `since` to the latest, as a refresh reads
@@ -271,6 +325,7 @@ class Source(Pipeable, ABC):
             ValueError: `until` is not the latest version.
         """
         st = self._st()
+        st.fresh = False
         if until not in (None, st.version):
             raise ValueError(f"{self.name} keeps only its latest read, v{st.version}")
         if since == st.version:
@@ -319,10 +374,11 @@ class Source(Pipeable, ABC):
             schema = plain_schema(schema)
             self._state = _State(self._base, schema.empty_table())
             self._take(batch)
+            self._state.oldest = self._state.version
         return self._state
 
-    def _fit(self, data: Any) -> pa.Table:
-        schema = self._st().table.schema
+    def _fit(self, data: Any, schema: pa.Schema | None = None) -> pa.Table:
+        schema = schema or self._st().table.schema
         table = as_arrow(data)
         try:
             return table.select(schema.names).cast(schema)
@@ -362,7 +418,7 @@ class Source(Pipeable, ABC):
             return
         st.version += 1
         st.table = table
-        self._log(_Entry(st.version, inserts, deletes, batch.kind))
+        self._log(_Entry(st.version, inserts, deletes, batch.kind, batch.cursor))
 
     def _changed(self, table: pa.Table, inserts: pa.Table, deletes: pa.Table) -> pa.Table:
         """`table` after a batch of kind `"changes"`: `deletes` removed (one
@@ -378,18 +434,69 @@ class Source(Pipeable, ABC):
         if len(st.log) > KEEP:
             st.floor = st.log.pop(0).version
 
-    def _resume_after(self, version: int) -> None:
-        """A sink recorded this source at `version` in an earlier process:
-        number the versions of this process above it, so that they keep
-        growing. The table read so far becomes version `version + 1`."""
-        if self._state is None:
-            self._base = max(self._base, version)
-            return
+    def _durable(self) -> bool:
+        """Whether the source's cursors last across processes (`restore`)."""
+        return type(self).restore is not Source.restore
+
+    def _cursor_at(self, version: int) -> Any:
+        """The cursor read at `version`, for a sink to record, or
+        `UNRECORDED` (the cursors do not last, or `version` is not kept)."""
         st = self._state
+        if st is None or not self._durable():
+            return UNRECORDED
+        if version == st.version:
+            return st.cursor
+        return next((e.cursor for e in st.log if e.version == version), UNRECORDED)
+
+    def _resume_after(self, version: int, cursor: Any = UNRECORDED) -> None:
+        """A sink recorded this source at `version` in an earlier process,
+        with `cursor` (its JSON form, `cursor_json`) if it recorded one.
+
+        If no version was read yet and `restore` gives the table as of the
+        cursor, the source starts at `version` with that table: a stored
+        node resumes from its sink, and the next read is `read(cursor)`. A
+        read made only for the schema is dropped. Else number the versions
+        of this process above `version`, so that they keep growing: the
+        table read so far (or the first read) becomes version `version +
+        1`. Of several sinks' records, only the greatest version restores."""
+        st = self._state
+        if st is not None and not st.fresh:
+            self._above(version)
+            return
+        highest = version >= self._base
+        self._base = max(self._base, version)
+        if not highest or (st is not None and st.restored and st.version >= version):
+            return
+        restored = self._restored(version, cursor)
+        if restored is not None:
+            self._state = restored
+        elif st is not None and st.restored:
+            self._state = None  # read the whole table, above `version`
+        elif st is not None:
+            self._above(version)
+
+    def _above(self, version: int) -> None:
+        """Number the table read so far `version + 1`, if it is not above."""
+        st = self._state
+        assert st is not None
         if st.version <= version:
             st.version = version + 1
             empty = st.table.schema.empty_table()
-            self._log(_Entry(st.version, empty, empty, None))
+            self._log(_Entry(st.version, empty, empty, None, st.cursor))
+            st.oldest = st.version
+
+    def _restored(self, version: int, cursor: Any) -> _State | None:
+        """The state at `version` from `restore(cursor)`, or None."""
+        if cursor is UNRECORDED or not self._durable():
+            return None
+        value = cursor_value(cursor)
+        data = self.restore(value)
+        if data is None:
+            return None
+        table = as_arrow(data)
+        schema = self._declared if self._declared is not None else table.schema
+        rows = self._fit(table, plain_schema(schema))
+        return _State(version, rows, value, floor=version, oldest=version, restored=True)
 
     def _reread(self, version: int) -> pa.Table:
         """For an audit: the whole table at `version`, read again."""
@@ -424,6 +531,9 @@ class _Query(Source):
         if cursor is None:
             return table.schema.empty_table()
         return table.filter(pc.call_function("less_equal", [table.column(self.cursor_on), cursor]))
+
+    def restore(self, cursor: Any) -> Any:
+        return self.reread(cursor)
 
 
 def from_query(
@@ -550,7 +660,7 @@ class _Files(Source):
     def _scan(self, fs: Any, paths: list[str]) -> pa.Table:
         import pyarrow.dataset as ds
 
-        schema = None if self._state is None else self._state.table.schema
+        schema = self._declared if self._state is None else self._state.table.schema
         return ds.dataset(paths, format=self.format, filesystem=fs, schema=schema).to_table()
 
     def read(self, since: Any) -> Batch | None:
@@ -564,6 +674,14 @@ class _Files(Source):
     def reread(self, cursor: Any) -> Any:
         fs, _ = self._files()
         return self._scan(fs, list(cursor or []))
+
+    def restore(self, cursor: Any) -> Any:
+        if not cursor:
+            return None
+        fs, paths = self._files()
+        if not set(cursor) <= set(paths):
+            return None  # a file read before is gone
+        return self._scan(fs, list(cursor))
 
 
 def from_files(
