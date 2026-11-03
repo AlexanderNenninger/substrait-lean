@@ -15,6 +15,27 @@ team.
 
 Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
+## Principles
+
+Sverify checks every plan against a reference semantics written in Lean, and
+describes each engine by how it differs from that reference. Four principles
+decide what the reference does ([#185](https://github.com/AlexanderNenninger/substrait-lean/issues/185),
+[reference-semantics.md](docs/reference-semantics.md#principles)):
+
+1. The reference follows Substrait. A function means what its extension YAML
+   says, options included. Where the reference departs from Substrait, it says
+   so and gives the reason.
+2. Where Substrait is silent, the reference takes the least surprising choice
+   and writes down why. An option a plan omits means an error.
+3. Every engine can follow it with reasonable effort. Types keep their declared
+   widths, and each choice has a reasonable shim or translation on DuckDB,
+   Polars, DataFusion, Spark and Snowflake.
+4. Optimizations stay provable. An error means "may raise", so filter
+   pushdown, reordering, sharding and incremental maintenance stay correct.
+
+Engine quirks belong in the engine profiles ([engine-profiles.md](docs/engine-profiles.md)).
+Changing the reference is a breaking change.
+
 ## How the parts fit
 
 ```text
