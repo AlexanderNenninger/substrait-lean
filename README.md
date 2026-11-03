@@ -262,7 +262,7 @@ marimo.
 `uv build python --wheel` builds a wheel for the current platform. It bundles a
 stripped `substrait-check`, so installing it needs neither Lean nor elan. The
 [Wheels workflow](.github/workflows/wheels.yml) builds and tests wheels for Linux
-(x86_64, aarch64) and macOS (arm64, x86_64). A `v*` tag that matches the
+(x86_64, aarch64) and macOS (arm64). A `v*` tag that matches the
 version in `python/pyproject.toml` also publishes them to PyPI. Each night,
 when `main` has changed, it publishes them as the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly)

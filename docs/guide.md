@@ -192,7 +192,7 @@ The core runs on DuckDB: contracts, incremental maintenance, and SQL for
 DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
 (needs Java 17 or 21), `delta` and `iceberg`. Wheels bundle the Lean checker
 as a small native binary, so you need no Lean toolchain; they exist for Linux
-(x86_64, aarch64) and macOS (arm64, x86_64), Python 3.12 and later.
+(x86_64, aarch64) and macOS (arm64), Python 3.12 and later.
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
