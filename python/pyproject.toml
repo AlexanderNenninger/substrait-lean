@@ -116,6 +116,14 @@ help = "Build the substrait-check CLI that sverify calls"
 cmd = "lake build substrait-check"
 cwd = "${POE_ROOT}/.."
 
+[tool.poe.tasks.regen-lowering]
+help = "Search for the DuckDB lowering again and write it to SubstraitLean/LoweringDuckDB (a build only checks it)"
+shell = """
+lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLean.LoweringDuckDB.Lemmas \
+  && lake env lean scripts/RegenLowering.lean
+"""
+cwd = "${POE_ROOT}/.."
+
 [tool.poe.tasks.prove-floats]
 help = "Check the float error bounds (float-bounds/, needs Mathlib; not part of qa)"
 shell = "lake exe cache get && lake build --wfail"
