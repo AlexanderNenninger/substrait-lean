@@ -312,18 +312,66 @@ theorem ofIntExact_mono {i j : Int} (h : i ≤ j) : ofIntExact i ≤ ofIntExact 
   have := ofIntRaw_mono h
   simp only [ofIntExact]; omega
 
+/-- The code of an integer that is a double exactly (`|i| ≤ 2⁵³`). -/
+def exactCode (i : Int) : Int :=
+  let m : Int := (i.natAbs * 2 ^ 1074 : Nat)
+  if i = 0 then 0 else if i < 0 then -(2 * m + 1) else 2 * m + 1
+
+set_option exponentiation.threshold 2100 in
+theorem roundSig_exact {n : Nat} (h : n ≤ 2 ^ 53) : roundSig n = n := by
+  have hC : n < 2 ^ 1100 := Nat.lt_of_le_of_lt h (Nat.pow_lt_pow_right (by decide) (by decide))
+  unfold roundSig
+  simp only [hC, ↓reduceIte]
+  rw [bitLen_min hC]
+  by_cases hn : n = 0
+  · subst hn; rw [bitLen_zero]; simpa using roundTo2_mul 0 0
+  have hb := two_pow_bitLen_le 1100 n hn
+  have hb54 : bitLen 1100 n ≤ 54 := by
+    apply Nat.le_of_not_lt; intro hlt
+    have := Nat.pow_le_pow_right (show 0 < 2 by decide) hlt
+    have : 2 ^ 55 ≤ 2 * n := Nat.le_trans this hb
+    have : (2 : Nat) ^ 55 = 2 * 2 ^ 54 := by decide
+    have : (2 : Nat) ^ 54 = 2 * 2 ^ 53 := by decide
+    omega
+  by_cases h53 : bitLen 1100 n ≤ 53
+  · rw [show bitLen 1100 n - 53 = 0 by omega]
+    simpa using roundTo2_mul 0 n
+  · have hb' : bitLen 1100 n = 54 := by omega
+    rw [hb'] at hb
+    have e1 : (2 : Nat) ^ 54 = 2 * 2 ^ 53 := by decide
+    have hn' : n = 2 ^ 52 * 2 ^ 1 := by
+      have : (2 : Nat) ^ 53 = 2 ^ 52 * 2 ^ 1 := by decide
+      omega
+    rw [hb', show 54 - 53 = 1 by rfl, hn']
+    exact roundTo2_mul _ _
+
+set_option exponentiation.threshold 2100 in
+theorem ofIntExact_exact {i : Int} (h : i.natAbs ≤ 2 ^ 53) : ofIntExact i = exactCode i := by
+  have hr := roundSig_exact h
+  have hM : ((i.natAbs * 2 ^ 1074 : Nat) : Int) ≤ maxMag := by
+    have : i.natAbs * 2 ^ 1074 ≤ maxMag := by
+      have hm : maxMag = (2 ^ 53 - 1) * 2 ^ 2045 := by unfold maxMag; rfl
+      rw [hm]
+      exact Nat.le_trans (Nat.mul_le_mul_right _ h) (by decide)
+    exact_mod_cast this
+  have h0 : (0 : Int) ≤ ((i.natAbs * 2 ^ 1074 : Nat) : Int) := Int.natCast_nonneg _
+  simp only [ofIntExact, ofIntRaw, exactCode, hr]
+  split <;> (try split) <;> omega
+
 /-- A conversion of integers to doubles, with what the checker knows of it. -/
 structure IntToDouble where
   conv : Int → Int
   bounds : ∀ i, negInf < conv i ∧ conv i < posInf
   ne_zero : ∀ {i}, i ≠ 0 → conv i ≠ 0
   mono : ∀ {i j}, i ≤ j → conv i ≤ conv j
+  /-- Integers up to `2⁵³` in magnitude are doubles exactly. -/
+  exact : ∀ {i}, i.natAbs ≤ 2 ^ 53 → conv i = exactCode i
 
 /-- `ofIntExact`, behind a constant the kernel does not unfold: proofs about
 plans use only the properties above, as they did of the native conversion
 before, and type-checking them never computes a rounding. -/
 opaque intToDouble : IntToDouble :=
-  ⟨ofIntExact, ofIntExact_bounds, ofIntExact_ne_zero, ofIntExact_mono⟩
+  ⟨ofIntExact, ofIntExact_bounds, ofIntExact_ne_zero, ofIntExact_mono, ofIntExact_exact⟩
 
 /-- An integer as a double (`ofIntExact`). -/
 def ofInt (i : Int) : Int := intToDouble.conv i
@@ -334,6 +382,9 @@ theorem ofInt_ne_zero {i : Int} (h : i ≠ 0) : ofInt i ≠ 0 := intToDouble.ne_
 
 /-- The conversion of integers to doubles is monotone. -/
 theorem ofInt_mono {i j : Int} (h : i ≤ j) : ofInt i ≤ ofInt j := intToDouble.mono h
+
+/-- Integers up to `2⁵³` in magnitude convert exactly. -/
+theorem ofInt_exact {i : Int} (h : i.natAbs ≤ 2 ^ 53) : ofInt i = exactCode i := intToDouble.exact h
 
 -- The native conversion agrees, also where it rounds (`2⁵³ + 1` is a tie).
 #guard [0, 1, -1, 7, -12345, 2 ^ 53, 2 ^ 53 + 1, 2 ^ 53 + 3, -(2 ^ 53 + 1), 2 ^ 63 - 1,

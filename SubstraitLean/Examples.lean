@@ -171,6 +171,7 @@ end Substrait.Examples
 #print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.FloatCode.ofInt_mono
+#print axioms Substrait.FloatCode.ofInt_exact
 #print axioms Substrait.pairFacts_sound
 #print axioms Substrait.Rel.ratioPart_sound
 #print axioms Substrait.ratioSharpen_sound
