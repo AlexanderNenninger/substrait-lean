@@ -4,6 +4,7 @@ and the wording of unproved conditions."""
 import warnings
 
 import ibis
+import ibis.expr.datatypes as dt
 import pytest
 from ibis import _
 
@@ -133,3 +134,21 @@ def test_a_nullable_column_suggests_not_null():
     report = sv.verify(t.select(b=t.a), ensures=[_.b >= 0], counterexamples=0)
     assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
     assert "`!int64`" in str(report) and ".notnull()" in str(report)
+
+
+# #440: ibis.param in a transformation
+
+
+def test_a_transformation_with_an_unbound_param_says_how_to_bind_it():
+    limit = ibis.param(dt.int64)
+
+    @sv.transform(ensures=[_.big.notnull()])
+    def flag(s):
+        return s.select("a", big=s.a > limit)
+
+    with pytest.raises(TypeError, match=r"flag uses ibis.param\(int64\).*#354.*params="):
+        flag(S)
+    # verify binds it.
+    assert sv.verify(
+        S.select("a", big=S.a > limit), params={limit: 3}, ensures=[_.big.notnull()]
+    ).proved

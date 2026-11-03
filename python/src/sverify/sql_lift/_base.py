@@ -248,7 +248,17 @@ def _generated_avg(lf: _Lift, a: E) -> Measures | None:
         args = [_instantiate(v["value"], [x]) for v in m["arguments"]]
         out = _TABLE_TYPES[next(iter(m["outputType"]))]
         parts.append((table.functions[m["functionReference"]], args, out))
-    return Measures(parts, lambda refs: E(_instantiate(agg["finish"], refs), dt.float64))
+    count = [f for f, _, _ in parts].index("count")
+
+    def finish(refs: list[Json]) -> E:
+        # A group whose values are all NULL has a count of 0 and a NULL sum,
+        # so the quotient is NULL; the guard says so, for the check that
+        # nothing divides by zero (#434).
+        value = _instantiate(agg["finish"], refs)
+        nonempty = call("gt", [refs[count], literal(0, dt.int64)])
+        return E(if_then([(nonempty, value)], literal(None, dt.float64)), dt.float64)
+
+    return Measures(parts, finish)
 
 
 # --------------------------------------------------------------------------
