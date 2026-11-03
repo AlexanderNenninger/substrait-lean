@@ -119,11 +119,11 @@ fires, `Rel.eval`'s value is not the answer.
   `Report.assumed`; the written SQL checks it on the data while the job runs
   and raises if a sum does not fit. The proof holds under that assumption
   (`Rel.noIssue_of_sumsFit`). With `infer=False` it is an error that makes the
-  report unproved. A `max_rows` precondition does not discharge it yet: it
-  caps the rows only for postconditions and the tolerances of double `SUM`
-  and `AVG`. Row bounds on tables
-  ([#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
-  will discharge the assumption statically.
+  report unproved. A row cap on the inputs (`sv.max_rows(n)`,
+  [#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
+  discharges it statically: with values in `[-m, m]` and at most `n` rows,
+  `n · m < 2⁶³` proves the sum fits (`Rel.issuesCapped_sound` in
+  [Rows.lean](../SubstraitLean/Rows.lean)).
 
 ## Core: numbers and NULLs
 

@@ -354,11 +354,10 @@ Errors are what an engine fails on: integer division or remainder by zero,
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
 wraps around there; the reference raises). An integer `SUM` leaving 64 bits
 is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
-count) and `requires` bounds the column. Elsewhere sverify assumes the sum
-fits, as it assumes inferred bounds, and the job checks it on the data while it
-runs (`Report.assumed`; an error with `infer=False`). A `max_rows`
-precondition does not bound a group's rows for this yet; bounds on a table's
-rows are #219. Guards are
+count, or a row cap `sv.max_rows(n)` on an input: [Row caps](#row-caps)) and
+`requires` bounds the column. Elsewhere sverify assumes the sum fits, as it
+assumes inferred bounds, and the job checks it on the data while it runs
+(`Report.assumed`; an error with `infer=False`). Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.
@@ -437,6 +436,41 @@ print(sv.verify(per_minute))
 # ...
 # hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
 ```
+
+### Row caps
+
+`sv.max_rows(n)` in `requires` states that an input has at most `n` rows
+(#219). Lean carries the caps through the plan
+([Rows.lean](../SubstraitLean/Rows.lean)), and an integer `SUM` of values in
+`[-m, m]` over at most `n` rows, with `n · m < 2⁶³`, is proved to fit, with
+nothing to check on the data:
+
+```python
+per_host = samples.group_by("host").aggregate(cpu=samples.cpu.sum())
+report = sv.verify(
+    per_host, requires={"samples": [_.cpu >= 0, _.cpu <= 100, sv.max_rows(10**12)]}
+)
+print(report)
+# requires samples: (_.cpu >= 0)
+# requires samples: (_.cpu <= 100)
+# requires samples: max_rows(1000000000000)
+# semantics: reference
+# known about the output:
+#   rows: at most 1,000,000,000,000
+# ...
+```
+
+* Filters, semi-joins and `DISTINCT` keep at most their input's rows,
+  `LIMIT` at most its count, `UNION ALL` adds, and an aggregate without
+  `GROUP BY` has one row. A join multiplies, or keeps the left side's rows
+  when its condition matches a `unique` key of the right side
+  (`Rel.capJoins_eval`).
+* A cap is checked on the data at call time and on every batch of an
+  incremental view, or proved from the record counts of the Delta or Iceberg
+  files a source reads.
+* In `ensures`, `sv.max_rows(n)` is proved from the inputs' caps.
+  `Report.rows` is the cap on the output, under "known about the output".
+* The SUM hint names the cap that proves a sum fits.
 
 ### Suggested preconditions
 
