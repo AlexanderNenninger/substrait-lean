@@ -5,8 +5,10 @@ name: Wheels
 # wheel from it, which checks that the sdist is complete. Tags `v*` also
 # publish the wheels and one sdist to PyPI, and then the release's notebooks
 # to the `published` branch, which molab opens; PRs that change the packaging
-# only build and test. Every platform builds only for releases, the weekly
-# run and manual runs; PRs build on x86 Linux alone.
+# only build and test. Every platform builds only for releases, the nightly
+# and weekly runs and manual runs; PRs build on x86 Linux alone. The nightly
+# run publishes the wheels of `main` as the rolling `nightly` GitHub
+# pre-release (job `nightly`), never to PyPI.
 on:
   push:
     tags: ["v*"]
@@ -31,12 +33,20 @@ on:
       dry_run:
         description: >-
           With `notebooks`: rewrite and run this ref's notebooks against that
-          version from PyPI, but push nothing
+          version from PyPI, but push nothing. With `nightly`: build and test
+          the nightly wheels, but publish nothing
         type: boolean
         default: false
+      nightly:
+        description: >-
+          Build nightly wheels and publish them as this GitHub pre-release
+          (`nightly` only from main; another name for a scratch release)
+        default: ""
   # Weekly, to notice a newer Python breaking the wheel before a release does.
+  # Nightly, to publish the wheels of `main` (job `nightly`).
   schedule:
     - cron: "17 4 * * 1"
+    - cron: "41 2 * * *"
 
 concurrency:
   group: wheels-${{ github.ref }}
@@ -46,8 +56,49 @@ permissions:
   contents: read
 
 jobs:
+  # Whether to build, and the nightly version. Every run passes it: a skipped
+  # job would skip `build`'s dependents too. The nightly cron builds only when
+  # `main` moved past the commit the `nightly` tag points at. A nightly wheel
+  # is `<next minor>.dev<commits on main>+g<sha>`, so uv and pip order nightlies
+  # by commit and after the last release.
+  nightly:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - if: github.event.schedule == '41 2 * * *' || inputs.nightly
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: plan
+        env:
+          NIGHTLY: ${{ (github.event.schedule == '41 2 * * *' && 'nightly') || inputs.nightly }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$NIGHTLY" ]; then echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # A `v*` tag would start a PyPI release.
+          case "$NIGHTLY" in v*) echo "::error::$NIGHTLY looks like a release tag"; exit 1 ;; esac
+          if [ "$NIGHTLY" = nightly ] && [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::the nightly release is built from main, not $GITHUB_REF"; exit 1
+          fi
+          case "$GITHUB_REF" in refs/heads/*) ;; *) echo "::error::nightlies build from a branch"; exit 1 ;; esac
+          last=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$NIGHTLY" -q .object.sha 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "::notice::$NIGHTLY already holds $GITHUB_SHA"
+            echo "build=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          release=$(git describe --tags --abbrev=0 --match 'v[0-9]*')
+          IFS=. read -r major minor _ <<< "${release#v}"
+          version="$major.$((minor + 1)).0.dev$(git rev-list --count HEAD)+g$(git rev-parse --short=7 HEAD)"
+          echo "::notice::$NIGHTLY: sverify $version"
+          { echo "build=true"; echo "tag=$NIGHTLY"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
+
   build:
-    if: ${{ !inputs.notebooks }}
+    needs: nightly
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +123,16 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: false
+
+      # Only in the build: the commit keeps the released version.
+      - name: Set the nightly version
+        if: needs.nightly.outputs.version
+        env:
+          VERSION: ${{ needs.nightly.outputs.version }}
+        run: |
+          sed -i.orig "s/^version = \".*\"/version = \"$VERSION\"/" python/pyproject.toml
+          rm python/pyproject.toml.orig
+          grep -x "version = \"$VERSION\"" python/pyproject.toml
 
       - name: Build sdist, then the wheel from it
         run: uv build python --out-dir dist
@@ -230,7 +291,7 @@ jobs:
   # in the full development environment, so only this sees a header that
   # misses an extra (#197). About a minute per notebook, so not on every PR.
   notebooks-sandbox:
-    if: github.event_name == 'schedule'
+    if: github.event.schedule == '17 4 * * 1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -252,9 +313,9 @@ jobs:
           fi
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !needs.nightly.outputs.version
     # A release that breaks on a newer Python is not published.
-    needs: [build, test-pythons]
+    needs: [nightly, build, test-pythons]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -362,3 +423,66 @@ jobs:
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -m "Notebooks of sverify $VERSION"
           git -c http.extraheader="$auth" push origin published
+
+  # The rolling nightly pre-release: the tag moves to the built commit, the new
+  # wheels go up, then the previous ones go. It is never marked latest, and its
+  # tag never starts with `v`, so `publish` never sees it.
+  publish-nightly:
+    if: needs.nightly.outputs.version
+    needs: [nightly, build, test-pythons]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.nightly.outputs.tag }}
+      VERSION: ${{ needs.nightly.outputs.version }}
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: Write the release notes
+        run: |
+          page="https://github.com/$GH_REPO/releases/expanded_assets/$TAG"
+          cat > notes.md <<NOTES
+          Wheels of \`main\` at $GITHUB_SHA, built $(date -u +%Y-%m-%d), version \`$VERSION\`.
+          The nightly run replaces them when \`main\` changes. They are not on PyPI.
+
+          \`\`\`bash
+          uv add "sverify>=${VERSION%%.dev*}.dev0" --find-links $page
+          pip install --pre sverify --find-links $page
+          \`\`\`
+
+          uv does not record the page, so add it to your \`pyproject.toml\`, and run
+          \`uv lock --upgrade-package sverify\` for a newer nightly:
+
+          \`\`\`toml
+          [tool.uv]
+          find-links = ["$page"]
+          \`\`\`
+          NOTES
+          cat notes.md; ls dist/*.whl
+
+      - name: Publish
+        run: |
+          if [ "$DRY_RUN" = true ]; then echo "dry run: $TAG not changed"; exit 0; fi
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+          else
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" > /dev/null
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --prerelease --latest=false --title "Nightly wheels" --notes-file notes.md
+          else
+            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "Nightly wheels" --notes-file notes.md
+          fi
+          old=$(gh release view "$TAG" --json assets -q '.assets[].name')
+          gh release upload "$TAG" dist/*.whl --clobber
+          for name in $old; do
+            [ -e "dist/$name" ] || gh release delete-asset "$TAG" "$name" --yes
+          done
