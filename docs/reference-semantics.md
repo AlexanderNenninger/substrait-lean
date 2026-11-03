@@ -46,7 +46,9 @@ to the engine:
 
 A plan without these choices (`Rel.detPlan`) allows only `Rel.eval`'s rows, in
 any order (`Rel.allowed_perm_eval`), so a theorem about `Rel.eval`'s rows holds
-of every allowed result. Where a plan has them, `Report.deterministic` says so.
+of every allowed result. `Report.deterministic` is false where rows may tie in
+the order of a window or of `FIRST`, `LAST` or `STRING_AGG`
+(`Rel.windowsTotal`); it does not yet flag the other choices.
 
 The reference is not a model of any engine, DuckDB included. Each engine is
 characterized as a **diff** against it (`characterization/<engine>/`): which
@@ -117,9 +119,11 @@ fires, `Rel.eval`'s value is not the answer.
   `Report.assumed`; the written SQL checks it on the data while the job runs
   and raises if a sum does not fit. The proof holds under that assumption
   (`Rel.noIssue_of_sumsFit`). With `infer=False` it is an error that makes the
-  report unproved. Row bounds on tables
-  ([#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
-  will discharge the assumption statically.
+  report unproved. A row cap on the inputs (`sv.max_rows(n)`,
+  [#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
+  discharges it statically: with values in `[-m, m]` and at most `n` rows,
+  `n · m < 2⁶³` proves the sum fits (`Rel.issuesCapped_sound` in
+  [Rows.lean](../SubstraitLean/Rows.lean)).
 
 ## Core: numbers and NULLs
 

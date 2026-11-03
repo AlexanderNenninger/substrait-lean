@@ -64,6 +64,7 @@ from sverify.io._common import (
     filter_rows,
     prune,
     q,
+    rows_fact,
     stats_facts,
 )
 from sverify.io._sink import Sink, SinkChange
@@ -127,8 +128,11 @@ def file_stats(dt: DeltaTable) -> dict[str, dict[str, ColumnStats]]:
 
 
 def _facts(dt: DeltaTable, files: dict[str, dict[str, ColumnStats]], source: str) -> list[Fact]:
-    return constraint_facts(dt) + stats_facts(
-        list(files.values()), _arrow_schema(dt), source, hi_slack=TIMESTAMP_SLACK
+    stats = list(files.values())
+    return (
+        constraint_facts(dt)
+        + stats_facts(stats, _arrow_schema(dt), source, hi_slack=TIMESTAMP_SLACK)
+        + rows_fact(stats, source)
     )
 
 
