@@ -776,6 +776,28 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
             v, text = _nice(hi + 1, up=False)
             out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
         return out
+    if dtype.is_floating():
+        return _double_conditions(ref, sql, null, lo, hi)
+    if dtype.is_decimal() and dtype.scale is not None:
+        scale = dtype.scale
+
+        def dec(k: int) -> str:
+            return f"{Decimal(k).scaleb(-scale):.{scale}f}"
+
+        # Large bounds as round whole numbers (`5 * 10**35`), small ones exactly.
+        if lo is not None:
+            if abs(lo) >= 10 ** (scale + 6):
+                v, text = _nice(-((-lo) // 10**scale), up=True)
+                out.append(Inferred(f"{null}{sql} >= {dec(v * 10**scale)}", f"({ref} >= {text})"))
+            else:
+                out.append(Inferred(f"{null}{sql} >= {dec(lo)}", f"({ref} >= {dec(lo)})"))
+        if hi is not None:
+            if abs(hi) >= 10 ** (scale + 6):
+                v, text = _nice(hi // 10**scale + 1, up=False)
+                out.append(Inferred(f"{null}{sql} < {dec(v * 10**scale)}", f"({ref} < {text})"))
+            else:
+                out.append(Inferred(f"{null}{sql} <= {dec(hi)}", f"({ref} <= {dec(hi)})"))
+        return out
     if dtype.is_timestamp() and dtype.timezone is None:
         unit, kind, py = timedelta(microseconds=1), "TIMESTAMP", "datetime"
     elif dtype.is_date():
@@ -801,20 +823,79 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
     return out
 
 
+# Codes of the smallest positive and the largest finite double.
+_TINY_CODE = 1
+_MAX_CODE = 2 * MAX_MAG + 1
+
+
+def _double_conditions(
+    ref: str, sql: str, null: str, lo: int | None, hi: int | None
+) -> list[Inferred]:
+    """`lo <= col <= hi` on double codes: `> 0` for the smallest positive
+    double, round powers of two near ±2⁶³ (a cast to BIGINT), and the
+    decoded doubles otherwise."""
+
+    def num(x: float) -> str:
+        if x.is_integer() and abs(x) >= 1e6:
+            return _nice(int(x), up=x < 0)[1]
+        return repr(x)
+
+    out = []
+    if lo is not None:
+        if lo == _TINY_CODE:
+            out.append(Inferred(f"{null}{sql} > 0", f"({ref} > 0)"))
+        elif lo > -_MAX_CODE:
+            x = decode_double(lo)
+            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {num(x)})"))
+        else:
+            x = decode_double(-_MAX_CODE)
+            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {x!r})"))
+    if hi is not None:
+        nxt = decode_double(hi + 1)
+        if hi < _MAX_CODE and nxt.is_integer() and abs(nxt) >= 1e6:
+            # Just below a round number: `< 2**63`.
+            out.append(Inferred(f"{null}{sql} < {nxt!r}", f"({ref} < {num(nxt)})"))
+        else:
+            x = decode_double(min(hi, _MAX_CODE))
+            out.append(Inferred(f"{null}{sql} <= {x!r}", f"({ref} <= {x!r})"))
+    return out
+
+
+def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
+    """`col != k`, for a code `k` of the column's type (a divisor's 0)."""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    sql = '"' + col.replace('"', '""') + '"'
+    null = f"{sql} IS NULL OR " if dtype.nullable else ""
+    if dtype.is_integer():
+        v = str(k)
+    elif dtype.is_floating():
+        v = repr(decode_double(k))
+    elif dtype.is_decimal() and dtype.scale is not None:
+        v = f"{Decimal(k).scaleb(-dtype.scale):.{dtype.scale}f}"
+    else:
+        return None
+    return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
+
+
 def _render_needs(
     needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
 ) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}` (column positions,
-    integer codes as strings), per table."""
+    """The conditions of a list of `{table, col, lo, hi}` or `{table, col,
+    ne}` (column positions, integer codes as strings), per table."""
     out: dict[str, list[Inferred]] = {}
     for n in needs:
         schema = schemas.get(n["table"])
         if schema is None or n["col"] >= len(schema):
             continue
         col = list(schema)[n["col"]]
-        lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
         have = out.setdefault(n["table"], [])
-        have += [c for c in _bound_conditions(col, schema[col], lo, hi) if c not in have]
+        if "ne" in n:
+            c = _ne_condition(col, schema[col], int(n["ne"]))
+            new = [] if c is None else [c]
+        else:
+            lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
+            new = _bound_conditions(col, schema[col], lo, hi)
+        have += [c for c in new if c not in have]
     return out
 
 

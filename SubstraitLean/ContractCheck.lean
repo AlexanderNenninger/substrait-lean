@@ -142,8 +142,14 @@ def need (n : String × Nat × Bound) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
     ("lo", bound n.2.2.lo), ("hi", bound n.2.2.hi)]
 
+/-- A value column `col` of `table` must not hold. -/
+def needNe (n : String × Nat × Int) : Json :=
+  Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
+    ("ne", Json.str (toString n.2.2))]
+
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
-  Json.mkObj [("needs", Json.arr (b.needs.map need).toArray), ("split", Lean.toJson b.split),
+  Json.mkObj [("needs", Json.arr (b.needs.map need ++ b.nes.map needNe).toArray),
+    ("split", Lean.toJson b.split),
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
 structure Report where
@@ -169,6 +175,8 @@ structure Report where
   /-- The ranges of `bounds` that follow from the operations alone, merged
   per base-table column. -/
   inferred : List (String × Nat × Bound) := []
+  /-- The values `bounds` rule out per base-table column (a divisor's 0). -/
+  inferredNes : List (String × Nat × Int) := []
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
@@ -186,7 +194,7 @@ def Report.json (r : Report) : Json :=
         ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
-    ("inferred", Json.arr (r.inferred.map need).toArray),
+    ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe).toArray),
     ("guard_free", Lean.toJson r.guardFree),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
@@ -299,6 +307,7 @@ def check (input : Json) : Except String Report := do
     issues
     bounds
     inferred := Infer.merged A (bounds.filter (·.1.isError))
+    inferredNes := Infer.mergedNes (bounds.filter (·.1.isError))
     guardFree }
 
 end Substrait.ContractCheck

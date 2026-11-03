@@ -158,7 +158,11 @@ def test_avg_over_a_window(con):
     ],
 )
 def test_verify_reports_overflow_where_it_can_happen(sql, errors):
-    report = sv.verify(sql, tables=SCHEMAS) if isinstance(sql, str) else sv.verify(sql)
+    report = (
+        sv.verify(sql, tables=SCHEMAS, infer=False)
+        if isinstance(sql, str)
+        else sv.verify(sql, infer=False)
+    )
     assert [i.kind for i in report.errors] == errors
 
 
@@ -220,7 +224,7 @@ def test_report_shows_decimals_at_their_scale():
     unscaled integer (#250, TPC-H Q6's `revenue`)."""
     li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
     sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
-    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li))
+    report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), infer=False)
     assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
     assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
     t = ibis.table({"a": "decimal(10,2)"}, name="t")

@@ -264,9 +264,9 @@ def test_repeat_beyond_two_gigabytes_fails_everywhere():
     assert errors(T.select(x=T.name.repeat(T.n))) == ["overflow"]
     assert errors(T.select(x=T.name.lpad(10, "ab"))) == []
     e = cast(ir.StringValue, ibis.literal("é"))
-    report = sv.verify(T.select(x=e.repeat(T.n)), requires={"t": [_.n <= 2**30]})
+    report = sv.verify(T.select(x=e.repeat(T.n)), requires={"t": [_.n <= 2**30]}, infer=False)
     assert [i.kind for i in report.errors] == ["overflow"]
-    report = sv.verify(T.select(x=e.repeat(T.n)), requires={"t": [_.n < 2**30]})
+    report = sv.verify(T.select(x=e.repeat(T.n)), requires={"t": [_.n < 2**30]}, infer=False)
     assert report.errors == []
 
 
@@ -282,7 +282,7 @@ T = ibis.table({"name": "string", "n": "int64"}, name="t")
 
 
 def errors(expr) -> list[str]:
-    return [i.kind for i in sv.verify(expr).errors]
+    return [i.kind for i in sv.verify(expr, infer=False).errors]
 
 
 @given(

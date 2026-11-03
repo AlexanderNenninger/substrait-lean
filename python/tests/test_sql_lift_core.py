@@ -216,8 +216,8 @@ def test_the_semantics_changes_what_the_contract_can_prove():
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
     duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="duckdb", t=t)
     ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
-    assert [i.kind for i in sv.verify(duck).issues] == ["domain error"]
-    assert any("zero" in str(i) for i in sv.verify(ref).issues)
+    assert [i.kind for i in sv.verify(duck, infer=False).issues] == ["domain error"]
+    assert any("zero" in str(i) for i in sv.verify(ref, infer=False).issues)
 
 
 def test_sql_checks_dialect_and_semantics():
@@ -242,8 +242,8 @@ def test_verify_states_and_takes_its_semantics():
     # A SQL transformation and SQL conditions follow `verify(semantics=...)`.
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
     sql = "SELECT a / b AS ratio FROM t"
-    ref = sv.verify(sql, tables={"t": t})
-    duck = sv.verify(sql, tables={"t": t}, semantics="duckdb")
+    ref = sv.verify(sql, tables={"t": t}, infer=False)
+    duck = sv.verify(sql, tables={"t": t}, semantics="duckdb", infer=False)
     assert (ref.semantics, duck.semantics) == ("reference", "duckdb")
     assert "semantics: reference" in str(ref).splitlines()
     assert any("zero" in str(i) for i in ref.issues)

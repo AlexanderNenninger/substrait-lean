@@ -384,7 +384,7 @@ def test_a_global_aggregate_has_one_row():
 
 def test_errors_in_measures_are_reported():
     expr = orders.group_by("customer").aggregate(q=(100 // orders.amount).sum())
-    report = sv.verify(expr)
+    report = sv.verify(expr, infer=False)
     assert any(i.kind == "division by zero" for i in report.errors)
     guarded = (
         orders.filter(orders.amount != 0)
