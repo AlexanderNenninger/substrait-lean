@@ -16,7 +16,7 @@ functions. This is how DuckDB's *SQL surface* reads: `/` on integers divides
 as doubles, `log` is base 10.
 
 Trusted, as a profile is: that this is what DuckDB computes. It follows
-`characterization/duckdb/FACTS.md` and the choices of `sql_lift.py`'s
+`characterization/duckdb/FACTS.md` and the choices of `sql_lift`'s
 hand-written `DUCKDB` profile it replaces; oracle A (#242) tests it against
 the engine. With `semantics="reference"` a function means the reference's
 function at the same types (an error where DuckDB would give `±∞` or NaN).
