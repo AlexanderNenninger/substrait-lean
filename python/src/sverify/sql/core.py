@@ -121,6 +121,12 @@ class Dialect:
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
         raise Unsupported(f"overflow = {mode} is not supported on {self.name} yet (#241)")
 
+    def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
+        """`fn` of `args` as the engine's generated, proved lowering writes it
+        (`sverify.sql.lowering`, #241), or None where there is none and the
+        printer writes it by hand. `kind` is the result's."""
+        return None
+
     # Identifiers and types
 
     def quote(self, ident: str) -> str:
@@ -4196,19 +4202,28 @@ class _Writer:
             case Un(op="itos", arg=a):
                 return d.int_to_str(self.int_operand(a, ref, cols, "CAST to VARCHAR"))
             case Un(op="fit", arg=Un(op="neg", arg=a), digits=bits, param=mode):
-                return d.fit_int(mode, bits, "-", [self.int_operand(a, ref, cols, "negation")])
+                x = self.int_operand(a, ref, cols, "negation")
+                # The exact result, in 128 bits, is the template's argument.
+                low = d.lowered(f"fit:{mode}:{bits}", [f"(- CAST({x} AS HUGEINT))"], "int")
+                return low if low is not None else d.fit_int(mode, bits, "-", [x])
             case Un(op="fit", arg=Bin(op=op, left=a, right=b), digits=bits, param=mode):
                 sym = {"add": "+", "sub": "-", "mul": "*"}[op]
                 xs = [self.int_operand(e, ref, cols, "arithmetic") for e in (a, b)]
-                return d.fit_int(mode, bits, sym, xs)
+                exact = f"(CAST({xs[0]} AS HUGEINT) {sym} {xs[1]})"
+                low = d.lowered(f"fit:{mode}:{bits}", [exact], "int")
+                return low if low is not None else d.fit_int(mode, bits, sym, xs)
             case Bin(op="and" | "or" as op, left=a, right=b):
                 f = d.and3 if op == "and" else d.or3
                 return f(go(a, "bool"), go(b, "bool"))
             case Un(op="fmath", arg=a, param=name):
                 x = self.float_operand(a, ref, cols)
+                if (low := d.lowered(f"fmath:{name}", [x], "float")) is not None:
+                    return d.canon(low)
                 return self.domain(x, self.domain_error(name, x), d.canon(d.float_fn(name, x)))
             case Bin(op="fatan2", left=a, right=b):
                 y, x = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                if (low := d.lowered("fatan2", [y, x], "float")) is not None:
+                    return d.canon(low)
                 zero = d.float_lit(0.0)
                 bad = f"({d.float_eq(y, zero)} AND {d.float_eq(x, zero)})"
                 return self.domain(y, bad, d.canon(d.float_atan2(y, x)))
@@ -4222,10 +4237,13 @@ class _Writer:
                 return self.domain(x, bad, d.canon(d.float_logb(x, base)))
             case Bin(op="bit", left=a, right=b, param=name):
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
+                if (low := d.lowered(f"bit:{name}", [sa, sb], "int")) is not None:
+                    return low
                 sql = d.bitwise(name, sa, sb)
                 if "shift" not in name:
                     return sql
-                bad = f"({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)})"
+                # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
+                bad = f"({sa} IS NOT NULL AND ({sb} < {d.int_lit(0)} OR {sb} > {d.int_lit(63)}))"
                 return self.domain(sb, bad, sql, "int")
             case Bin(op="fadd" | "fsub" | "fmul" | "fdiv" | "fmod" | "fpow" as op, left=a, right=b):
                 f = {
@@ -4237,6 +4255,11 @@ class _Writer:
                     "fpow": d.float_pow,
                 }[op]
                 sa, sb = self.float_operand(a, ref, cols), self.float_operand(b, ref, cols)
+                # Where an operand rules out a new NaN (a finite constant),
+                # the template's guard could not fire: the operator alone.
+                plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
+                if not plain and (low := d.lowered(op, [sa, sb], "float")) is not None:
+                    return low if op in ("fadd", "fsub") else d.canon(low)
                 sql = f(sa, sb)
                 # A sum or difference of doubles other than -0.0 is never -0.0.
                 sql = sql if op in ("fadd", "fsub") else d.canon(sql)
@@ -4255,6 +4278,8 @@ class _Writer:
                 what = "division" if op == "idiv" else "remainder"
                 sa = self.int_operand(a, ref, cols, what)
                 sb = self.int_operand(b, ref, cols, what)
+                if (low := d.lowered(op, [sa, sb], "int")) is not None:
+                    return low
                 return d.int_div(sa, sb) if op == "idiv" else d.int_mod(sa, sb)
             case Bin(op="ipow", left=a, right=b):
                 if isinstance(b, Lit) and b.value is None:

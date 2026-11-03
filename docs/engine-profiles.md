@@ -121,7 +121,10 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   their 600-digit values. `SubstraitLean/LoweringCache.lean`, written by
   `substrait-check --lowering-cache` and checked in, records each construct's
   template, so that a build tries it first instead of searching; a stale
-  entry costs time, never correctness. `SubstraitLean/Lowering.lean` proves once that
+  entry costs time, never correctness. `substrait-check --lowering-table` exports the
+  templates, and `sverify.sql.lowering`, a small interpreter in the trusted path,
+  writes them as DuckDB SQL: the DuckDB printer asks it first (`Dialect.lowered`),
+  so the guards in DuckDB's SQL are the proved ones. `SubstraitLean/Lowering.lean` proves once that
   lowering with any such table is correct: **`Lowering.lower_correct`** (the
   lowered expression, under the engine's profile, has the reference's
   outcome, the same value or an error), and `Lowering.lowerRel_sound` for

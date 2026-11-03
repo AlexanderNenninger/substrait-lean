@@ -1256,7 +1256,8 @@ class Exprs:
             if name in ("bitwise_and", "bitwise_or", "bitwise_xor"):
                 out = {"bitwise_and": x & y, "bitwise_or": x | y, "bitwise_xor": x ^ y}[name]
                 return Val(out, pl.Int64, issues(a, b))
-            bad = (y < 0) | (y > 63)
+            # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
+            bad = x.is_not_null() & ((y < 0) | (y > 63))
             n = pl.when(bad).then(0).otherwise(y)
             if name == "bitwise_shift_right":
                 shifted = _rows(lambda v, k: v >> k, pl.Int64, a, Val(n, pl.Int64))

@@ -27,6 +27,9 @@ plan for DataFusion to run, compensating for where its semantics differ
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
 natively, or the generated template (`SubstraitLean/LoweringDuckDB.lean`).
 
+`substrait-check --lowering-table`: print, as JSON, the DuckDB lowering's
+templates that are not the native call, for `sverify.sql.lowering`.
+
 `substrait-check --lowering-cache`: print a new `SubstraitLean/LoweringCache.lean`
 from this build's coverage, the templates the next build tries first.
 
@@ -247,6 +250,10 @@ def main (args : List String) : IO UInt32 := do
     -- A new SubstraitLean/LoweringCache.lean from this build's coverage (#242).
     IO.print loweringCacheSource
     return 0
+  | ["--lowering-table"] => do
+    -- The DuckDB lowering's templates, for sverify.sql.lowering (#241).
+    IO.println Lowering.duckdbTableJson.compress
+    return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB, per setting (#241); a golden test.
     for (setting, cov) in [("off", duckdbOff.coverage), ("on", duckdbOn.coverage)] do
@@ -261,5 +268,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --lowering-coverage | --lowering-cache | --lift-table | --lift-cache"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache"
     return 1

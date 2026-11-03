@@ -82,6 +82,84 @@ def loweringCacheSource : String :=
   "`SubstraitLean/LoweringHint.lean`.\n-/\n\nnamespace Substrait\n\n" ++
   "def loweringCache : List LoweringHint := [\n" ++ ",\n".intercalate rows ++ "\n]\n\nend Substrait\n"
 
+/-! ## The table, exported
+
+`substrait-check --lowering-table` prints the entries that are not native as
+JSON, for the SQL printer's table interpreter (`sverify.sql.lowering`, #241),
+which writes each construct as its template says instead of by hand. -/
+
+namespace LoweringExport
+
+open Lean (Json)
+
+/-- A function's name in the export: the model's, with its parameters. -/
+def unName : UnFn → String
+  | .isNum => "isNum" | .isNull => "isNull" | .not => "not" | .ffloor => "ffloor"
+  | .raise _ => "raise" | .fmath f => s!"fmath:{f.name}"
+  | .fit m w => s!"fit:{m.name}:{w.bits}"
+  | f => reprStr f
+
+def binName : BinFn → String
+  | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or"
+  | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .imod => "imod" | .idiv => "idiv"
+  | .fadd => "fadd" | .fsub => "fsub" | .fmul => "fmul" | .fdiv => "fdiv" | .fmod => "fmod"
+  | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
+  | f => reprStr f
+
+/-- A literal; `float` says an integer is a double's code (`SubstraitLean/Float.lean`). -/
+def litJson (float : Bool) : Value → Json
+  | .null => Json.mkObj [("null", true)]
+  | .bool b => Json.mkObj [("bool", b)]
+  | .int i => Json.mkObj [(if float then "code" else "int", toString i)]
+  | v => Json.mkObj [("unsupported", reprStr v)]
+
+/-- A template as JSON: fields, literals, calls and `CASE`s. -/
+def exprJson (float : Bool) : Expr → Json
+  | .field i => Json.mkObj [("field", i)]
+  | .lit v => litJson float v
+  | .un f a => Json.mkObj ([("fn", Json.str (unName f)), ("args", Json.arr #[exprJson float a])] ++
+      match f with | .raise m => [("message", Json.str m)] | _ => [])
+  | .bin f a b => Json.mkObj [("fn", Json.str (binName f)),
+      ("args", Json.arr #[exprJson float a, exprJson float b])]
+  | .ifThen c t e => Json.mkObj [("if", exprJson float c), ("then", exprJson float t),
+      ("else", exprJson float e)]
+  | .hof .. => Json.mkObj [("unsupported", "a higher-order function")]
+
+/-- The constructs whose entries may differ from the native call. -/
+def unFns : List UnFn :=
+  FMath.all.map .fmath ++
+    [OverflowMode.silent, .saturate].flatMap fun m => [IntWidth.i8, .i16, .i32, .i64].map (.fit m)
+
+def binFns : List BinFn :=
+  [.fadd, .fsub, .fmul, .fdiv, .fmod, .fpow, .fatan2, .idiv, .imod] ++
+    [BitOp.and, .or, .xor, .shl, .shr].map .bit
+
+def floatUn : UnFn → Bool | .fmath _ => true | _ => false
+def floatBin : BinFn → Bool
+  | .fadd | .fsub | .fmul | .fdiv | .fmod | .fpow | .fatan2 => true
+  | _ => false
+
+/-- The entries of a table that are not the native call. -/
+def tableJson {p : Profile} (L : Lowering p) : Json :=
+  let un := unFns.filterMap fun f => (L.un f).bind fun e =>
+    let native := Expr.un f (.field 0)
+    if e.tmpl == native then none
+    else some (Json.mkObj [("fn", Json.str (unName f)), ("arity", (1 : Nat)),
+      ("template", exprJson (floatUn f) e.tmpl)])
+  let bin := binFns.filterMap fun f => (L.bin f).bind fun e =>
+    let native := Expr.bin f (.field 0) (.field 1)
+    if e.tmpl == native then none
+    else some (Json.mkObj [("fn", Json.str (binName f)), ("arity", (2 : Nat)),
+      ("template", exprJson (floatBin f) e.tmpl)])
+  Json.arr (un ++ bin).toArray
+
+end LoweringExport
+
+/-- Both DuckDB tables (`error_on_division_by_zero` off and on), exported. -/
+def Lowering.duckdbTableJson : Lean.Json :=
+  Lean.Json.mkObj [("off", LoweringExport.tableJson duckdbOff),
+    ("on", LoweringExport.tableJson duckdbOn)]
+
 /-- The generated lowering to DuckDB under settings `s`, with IEEE operations
 (`ieee_floating_point_ops`, DuckDB's default). -/
 def Lowering.duckdb : (s : DuckDBSettings) → s.ieeeOps = true → Lowering (Profile.duckdb s)

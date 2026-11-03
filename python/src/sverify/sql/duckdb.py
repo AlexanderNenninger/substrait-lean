@@ -18,9 +18,11 @@ ASCII-only in RE2. `upper`/`lower` map case with utf8proc (black boxes in
 Lean; `'ß'` stays one character, where DataFusion writes `'SS'`). So the SQL
 raises on non-ASCII text where they would differ from DataFusion (#70).
 
-Elementary functions are C's `libm`, as in Lean, except that `sin`, `cos`
-and `tan` raise on ±inf (Lean: NaN), so the SQL handles those. `<<` raises
-where bits are shifted out; Substrait's `shift_left` drops them.
+Where DuckDB computes a function differently from the reference (doubles'
+NaN and ±inf, the elementary functions outside their domains, division and
+`%` by zero, `MIN % -1`, `<<`, `overflow` = `SILENT` or `SATURATE`), the SQL is
+the generated lowering's template, proved in Lean (`lowered`,
+`sverify.sql.lowering`, `characterization/duckdb/FACTS.md` R15).
 
 Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
@@ -32,7 +34,6 @@ timestamp 2⁶³ - 1 µs is DuckDB's `infinity` (and its range starts in 290309
 BC), which `date_trunc` leaves as it is.
 """
 
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -90,16 +91,9 @@ class DuckDBDialect(Dialect):
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
         return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
 
-    def float_fn(self, name: str, x: str) -> str:
-        # C's libm, but `sin`, `cos` and `tan` raise on ±inf, where libm gives NaN.
-        sql = super().float_fn(name, x)
-        if name not in ("sin", "cos", "tan"):
-            return sql
-        return f"(CASE WHEN isinf({x}) THEN {self.float_lit(math.nan)} ELSE {sql} END)"
-
     def bitwise(self, op: str, a: str, b: str) -> str:
-        # `<<` raises where bits are shifted out, so a left shift is a product
-        # of HUGEINTs (below 2¹²⁶), reduced into 64 bits.
+        # `<<` is the lowering's (`lowered`): DuckDB raises where bits are
+        # shifted out.
         match op:
             case "bitwise_and":
                 return f"({a} & {b})"
@@ -109,25 +103,22 @@ class DuckDBDialect(Dialect):
                 return f"xor({a}, {b})"
             case "bitwise_shift_right":
                 return f"({a} >> {b})"
-        wide = f"(CAST({a} AS HUGEINT) * (CAST(1 AS HUGEINT) << {b}))"
-        m, h = 2**64, 2**63
-        return f"CAST(((({wide} + {h}) % {m}) + {m}) % {m} - {h} AS BIGINT)"
+        raise ValueError(f"{op} is the lowering's")
 
-    def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
-        # The exact result in HUGEINT, wrapped around or clamped at the width:
-        # the generated lowering's templates (`tests/lowering/duckdb.expected`).
-        wide = [f"CAST({a} AS HUGEINT)" for a in args]
-        exact = f"(-{wide[0]})" if len(wide) == 1 else f"({wide[0]} {op} {wide[1]})"
-        h, m = 2 ** (bits - 1), 2**bits
-        if mode == "SILENT":
-            v = f"((({exact} + {h}) % {m} + {m}) % {m} - {h})"
-        else:
-            lo, hi = -h, h - 1
-            v = (
-                f"(CASE WHEN {exact} < {lo} THEN {lo} WHEN {hi} < {exact} THEN {hi} "
-                f"ELSE {exact} END)"
-            )
-        return f"CAST({v} AS BIGINT)"
+    def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
+        # The generated, proved templates (`SubstraitLean/LoweringDuckDB.lean`).
+        from sverify.sql import lowering
+
+        sql = lowering.render(
+            fn,
+            args,
+            lambda message, dep: self.raise_(message, dep, kind),
+            self.float_lit,
+            self.int_lit,
+            self.guards,
+        )
+        # Wrap-arounds compute in HUGEINT: the result is a BIGINT again.
+        return self.cast(sql, "int") if sql is not None and kind == "int" else sql
 
     def row_ordinal(self) -> str:
         return "rowid"
