@@ -202,8 +202,8 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
-through SQLGlot, with DuckDB's semantics (`semantics="duckdb"`, the default)
-or sverify's reference semantics (`semantics="reference"`), for a subset of
+through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
+the default) or DuckDB's (`semantics="duckdb"`), for a subset of
 SQL so far ([#239](https://github.com/AlexanderNenninger/substrait-lean/issues/239),
 [#240](https://github.com/AlexanderNenninger/substrait-lean/issues/240)).
 

@@ -254,6 +254,17 @@ def arrives_within(
     return ArrivesWithin(col, lateness)
 
 
+Semantics = Literal["reference", "duckdb"]
+"""What a check's SQL means: sverify's reference semantics (the default) or
+DuckDB's (#411)."""
+
+
+def _checked_semantics(semantics: str) -> Semantics:
+    if semantics not in ("reference", "duckdb"):
+        raise ValueError(f"semantics must be 'reference' or 'duckdb', not {semantics!r}")
+    return semantics  # type: ignore[return-value]
+
+
 TableCondition = (Unique, References, ArrivesWithin)
 """Conditions on a whole table or its batches, not on each row."""
 
@@ -413,6 +424,10 @@ class Report:
     bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    semantics: Semantics = "reference"
+    """What the SQL the report lifted means (`verify(semantics=...)`):
+    `"reference"`, sverify's reference semantics, or `"duckdb"`, what DuckDB
+    computes (#411)."""
     """The integer bounds Lean found on each integer output column, lowest
     and highest (None: unbounded), for hints."""
 
@@ -475,6 +490,7 @@ class Report:
             lines.append(f"note: {TIES_HINT}")
         if self.params:
             lines.append(f"note: {PARAMS_NOTE}: {', '.join(self.params)}")
+        lines.append(f"semantics: {self.semantics}")
         if self.facts:
             lines.append("known about the output:")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
@@ -508,6 +524,7 @@ class Report:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
         if inferred:
             note += [f"> ℹ️ assumed (inferred): {', '.join(inferred)}", ""]
+        note += [f"> semantics: {self.semantics}", ""]
         return "\n".join(
             [
                 *note,
@@ -879,10 +896,11 @@ def bind_params(expr: ir.Table, params: Mapping[ir.Scalar, Any]) -> ir.Table:
     return expr.op().replace(mapping).to_expr()
 
 
-def condition_query(table: Transform, cond: Condition) -> Transform:
+def condition_query(table: Transform, cond: Condition, semantics: str = "reference") -> Transform:
     """A query selecting one condition column from a table or transformation:
     SQL for a SQL condition on a SQL transformation, an Ibis expression
-    otherwise (a SQL condition on an Ibis table is a SQL model over it)."""
+    otherwise (a SQL condition on an Ibis table is a SQL model over it, with
+    `semantics`)."""
     if isinstance(cond, str):
         query = f'SELECT ({cond}) AS "c" FROM {{}} AS "t"'
         if isinstance(table, str):
@@ -891,10 +909,10 @@ def condition_query(table: Transform, cond: Condition) -> Transform:
 
         query = query.format('"t"')
         try:
-            schema = sql_model_schema(query, {"t": table.schema()})
+            schema = sql_model_schema(query, {"t": table.schema()}, semantics)
         except Unsupported as e:
             raise Unsupported(f"condition {cond!r}: {e}") from e
-        return SQLModel(query, (table.op(),), ("t",), schema).to_expr()
+        return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
     return table.select(c=resolve(cond, table))
@@ -942,6 +960,7 @@ def verify(
     counterexamples: int = 200,
     params: Mapping[ir.Scalar, Any] | None = None,
     infer: bool = True,
+    semantics: Semantics = "reference",
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -956,8 +975,10 @@ def verify(
     Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DataFusion, DuckDB and
-    Polars. A SQL string is DuckDB's SQL, and means what DuckDB computes
-    (`sverify.sql_lift`, with `semantics="duckdb"`).
+    Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
+    `sverify.sql_lift` with `semantics`: the reference semantics by default,
+    or what DuckDB computes with `semantics="duckdb"` (#411). The report
+    says which (`Report.semantics`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -987,6 +1008,12 @@ def verify(
             `requires`. They are listed in `Report.inferred`. With False,
             each overflow's `Issue.hint` suggests its bound instead.
             Default True.
+        semantics: What the SQL `verify` lifts means, the transformation
+            if it is a SQL string and every SQL condition: `"reference"`
+            (the default), sverify's reference semantics, where an
+            operation that would create a NaN raises; or `"duckdb"`, what
+            DuckDB computes, NaN and ±inf included. An `sv.sql` expression
+            inside an Ibis transformation keeps its own `semantics`.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -1047,6 +1074,7 @@ def verify(
         counterexamples=counterexamples,
         params=bound,
         infer=infer,
+        semantics=_checked_semantics(semantics),
     )
 
 
@@ -1060,6 +1088,7 @@ def infer_bounds(
     params: list[str],
     infer: bool = True,
     inputs: Collection[str] | None = None,
+    semantics: Semantics = "reference",
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred (#244).
 
@@ -1079,7 +1108,7 @@ def infer_bounds(
     transformations) are suggested for those tables' `ensures`."""
 
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
-        return _verify_once(transform, reqs, ensures, tables, n, params, inputs)
+        return _verify_once(transform, reqs, ensures, tables, n, params, inputs, semantics)
 
     if not infer:
         return once(requires, counterexamples)[0]
@@ -1106,6 +1135,7 @@ def _verify_once(
     counterexamples: int,
     bound: list[str],
     inputs: Collection[str] | None,
+    semantics: Semantics = "reference",
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1120,7 +1150,7 @@ def _verify_once(
         create_table(con, name, schema)
 
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query))
+        return json.loads(plan_json(con, query, semantics))
 
     def table_ref(name: str) -> Transform:
         return f"SELECT * FROM {q(name)}" if isinstance(transform, str) else con.table(name)
@@ -1128,12 +1158,12 @@ def _verify_once(
     req_conds = [
         (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
     ]
-    req_plans = [plan(condition_query(table_ref(t), c)) for t, c in req_conds]
+    req_plans = [plan(condition_query(table_ref(t), c, semantics)) for t, c in req_conds]
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(condition_query(transform, c))
+        p = plan(condition_query(transform, c, semantics))
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)
@@ -1227,6 +1257,7 @@ def _verify_once(
             checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
     assumable: Container[str] = schemas if inputs is None else inputs
     report = Report(
+        semantics=semantics,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
@@ -1738,10 +1769,12 @@ class ContractedTransform:
         check_requires: bool,
         engine: Engine | None,
         infer: bool = True,
+        semantics: Semantics = "reference",
     ):
         self.fn, self.ensures = fn, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.infer = infer
+        self.semantics = _checked_semantics(semantics)
         self.engine = engine
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
@@ -1773,6 +1806,7 @@ class ContractedTransform:
             tag,
             inputs,
             infer,
+            self.semantics,
             ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
@@ -1788,6 +1822,7 @@ class ContractedTransform:
                 params=[],
                 infer=infer,
                 inputs=inputs,
+                semantics=self.semantics,
             )
         return self._cache[key]
 
@@ -1995,6 +2030,7 @@ def transform(
     engine: Engine | None = None,
     infer: bool = True,
     strict: bool | None = None,
+    semantics: Semantics = "reference",
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -2044,6 +2080,8 @@ def transform(
             the report's hint names the bound to state.
         strict: Deprecated alias of `infer`, with the opposite polarity:
             `strict=True` is `infer=False`.
+        semantics: What the contract's SQL conditions mean in its proofs,
+            as `verify`'s: `"reference"` (the default) or `"duckdb"`.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -2129,5 +2167,5 @@ def transform(
         )
         infer = not strict
     return lambda fn: ContractedTransform(
-        fn, requires, ensures, on_unproved, check_requires, engine, infer
+        fn, requires, ensures, on_unproved, check_requires, engine, infer, semantics
     )

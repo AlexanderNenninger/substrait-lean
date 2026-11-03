@@ -263,7 +263,7 @@ def test_double_division_by_zero_may_fail():
         "division by zero: ($0 /. $1)",
         "domain error: ($0 /. $1)",
     ]
-    duckdb = sv.verify("SELECT x / y AS q FROM f", tables={"f": f})
+    duckdb = sv.verify("SELECT x / y AS q FROM f", tables={"f": f}, semantics="duckdb")
     assert "division by zero" not in [i.kind for i in duckdb.errors]
     finite = ["x < 1e300", "x > -1e300"]
     for sql, req in [
