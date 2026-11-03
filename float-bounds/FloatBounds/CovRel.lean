@@ -1517,3 +1517,55 @@ theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b �
       hmA hmB hh0 hhm hnu hAxa0 hAxb0 hAya0 hAyb0 htx hty hMxaA hMxbA hMyaA hMybA exa exb eya eyb
       eDx eDy eT hDxa0 hDxb0 hDya0 hDyb0 (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) hRab hR1 hRn hY
       hLa0 hLb0 hLm hEa hEb e1 e2
+
+/-! ## Every plan -/
+
+theorem StdModel.foldl_welford_n (ps : List (ℝ × ℝ)) (s : WState) :
+    (ps.foldl M.welfordStep s).n = s.n + ps.length := by
+  induction ps generalizing s with
+  | nil => simp
+  | cons p ps ih => simp only [List.foldl_cons, ih, StdModel.welfordStep, List.length_cons]; omega
+
+theorem StdModel.run_n : ∀ P : Plan, (M.run P).n = P.pairs.length
+  | .seq ps => by simp [StdModel.run, Plan.pairs, M.foldl_welford_n, WState.empty]
+  | .merge t s => by
+    have ht := StdModel.run_n t
+    have hs := StdModel.run_n s
+    simp only [StdModel.run, Plan.pairs, List.length_append, StdModel.chan]
+    split_ifs with h1 h2
+    · omega
+    · omega
+    · simp [ht, hs]
+
+/-- **Every plan keeps the covariance invariant**, for `n ≤ 2³²` pairs of
+doubles at most `2³⁹⁹` in magnitude. -/
+theorem StdModel.cInv_plan : ∀ P : Plan, P.pairs ≠ [] → P.pairs.length ≤ 2 ^ 32 →
+    Bounded (2 ^ 399) P.pairs → (∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2) →
+    CInv P.pairs (M.run P)
+  | .seq ps, hne, hN, hB, hrep => M.cInv_all hne hN hB hrep
+  | .merge t s, hne, hN, hB, hrep => by
+    simp only [Plan.pairs, List.length_append] at hne hN hB hrep ⊢
+    have hBt := (Bounded.append.mp hB).1
+    have hBs := (Bounded.append.mp hB).2
+    have hct := M.run_n t
+    have hcs := M.run_n s
+    rcases eq_or_ne t.pairs [] with ht | ht
+    · have : M.chan (M.run t) (M.run s) = M.run s := by
+        simp [StdModel.chan, hct, ht]
+      rw [StdModel.run, this, ht, List.nil_append]
+      rw [ht] at hN
+      exact StdModel.cInv_plan s (by simpa [ht] using hne) (by simpa using hN) hBs
+        (fun p hp => hrep p (List.mem_append_right _ hp))
+    rcases eq_or_ne s.pairs [] with hs | hs
+    · have : M.chan (M.run t) (M.run s) = M.run t := by
+        have : t.pairs.length ≠ 0 := by simpa using ht
+        simp [StdModel.chan, hct, hcs, hs, this]
+      rw [StdModel.run, this, hs, List.append_nil]
+      rw [hs] at hN
+      exact StdModel.cInv_plan t ht (by simpa using hN) hBt
+        (fun p hp => hrep p (List.mem_append_left _ hp))
+    have hlt : 1 ≤ s.pairs.length := List.length_pos_iff.mpr hs
+    have hls : 1 ≤ t.pairs.length := List.length_pos_iff.mpr ht
+    exact M.cInv_merge ht hs hN hBt hBs
+      (StdModel.cInv_plan t ht (by omega) hBt (fun p hp => hrep p (List.mem_append_left _ hp)))
+      (StdModel.cInv_plan s hs (by omega) hBs (fun p hp => hrep p (List.mem_append_right _ hp)))
