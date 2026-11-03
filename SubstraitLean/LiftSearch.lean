@@ -809,11 +809,11 @@ def elabGenerateLift : CommandElab := fun stx => do
   for area in areas do
     let body := String.join ((chunks.toList.filter (·.1 == area)).map (·.2))
     IO.FS.writeFile s!"{dir}/{area}.lean" (header base s!"{tbl}: {area}" ++ body)
-  let alts := "\n".intercalate (results.toList.map fun (k, _, r, _) =>
+  let alts := "\n".intercalate (results.map fun (k, _, r, _) =>
     let pats := " ".intercalate (k.args.toList.map toString)
     let rhs := match r with | .ok _ => s!"some {tbl ++ k.short}" | .error _ => "none"
     s!"    | {k.ctor} {pats} => {rhs}")
-  let aggAlts := "\n".intercalate (aggResults.toList.map fun (c, _, r, _) =>
+  let aggAlts := "\n".intercalate (aggResults.map fun (c, _, r, _) =>
     let rhs := match r with | .ok _ => s!"some {tbl ++ c.componentsRev.head!}" | .error _ => "none"
     s!"    | {c} => {rhs}")
   let covRows := summary.map fun (sql, r, _) =>

@@ -16,6 +16,8 @@ jobs:
           ref: main
       - uses: ./.github/actions/setup-lean
       - run: lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache
+      # The shared Lake cache may hold it built: build it afresh.
+      - run: rm -rf .lake/build/lib/lean/SubstraitLean/LiftDuckDB.* .lake/build/ir/SubstraitLean/LiftDuckDB.*
       - run: /usr/bin/time -v lake build SubstraitLean.LiftDuckDB 2>&1 | grep -E "Elapsed|Maximum resident|Built SubstraitLean.LiftDuckDB|error"
   regen:
     runs-on: ubuntu-latest
@@ -30,4 +32,6 @@ jobs:
         with:
           name: lift-generated
           path: SubstraitLean/LiftDuckDB/
+      # The shared Lake cache may hold it built: build it afresh.
+      - run: rm -rf .lake/build/lib/lean/SubstraitLean/LiftDuckDB.* .lake/build/ir/SubstraitLean/LiftDuckDB.*
       - run: /usr/bin/time -v lake build SubstraitLean.LiftDuckDB 2>&1 | grep -E "Elapsed|Maximum resident|Built SubstraitLean.LiftDuckDB|error" | cut -c1-300
