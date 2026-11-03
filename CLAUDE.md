@@ -113,8 +113,6 @@ conflicts with other PRs:
   from `sverify_dev.coverage --write-readme`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`.
-- `characterization/<engine>/FACTS.md`, the overview of an engine's facts,
-  from `sverify_dev.facts --write`.
 
 Generated Lean modules are different: `SubstraitLean/LoweringDuckDB/On` (the
 DuckDB lowering, for DuckDB's default settings only) and
@@ -251,8 +249,7 @@ research goes there, whoever does it.
   old one `superseded_by`.
 
 `python -m sverify_dev.facts` checks the documents (`tests/test_facts.py`
-does too); `--write` regenerates the `FACTS.md` overviews, which feature
-branches don't commit (see Generated files). The judging principles and the
+does too). The JSON documents are the record: there is no generated overview. The judging principles and the
 DuckDB diff table are in `characterization/duckdb/README.md`.
 
 ## Upstream bugs

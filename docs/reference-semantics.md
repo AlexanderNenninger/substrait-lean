@@ -146,7 +146,7 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 | Topic | Reference | Status |
 |---|---|---|
 | `fp64` | IEEE 754 binary64, computed with Lean's native `Float`. | ✓ |
-| `fp32` | IEEE binary32. | **Not yet.** `fp32` arithmetic is refused (fact [duckdb-R12](../characterization/duckdb/FACTS.md#duckdb-r12), #208); [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) models it. |
+| `fp32` | IEEE binary32. | **Not yet.** `fp32` arithmetic is refused (fact [duckdb-R12](../characterization/duckdb/facts/duckdb-R12.json), #208); [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) models it. |
 | Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. | ✓ |
 | **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
@@ -316,4 +316,4 @@ these links connect it to a real run.
 | Modulus, casts, `substring`, `-0.0`, lists, `avg` | [#209](https://github.com/AlexanderNenninger/substrait-lean/issues/209), "Decided" |
 | Overflow and `SUM` | [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202), "Decided (2026-11-01)" |
 | Engine tiers | [#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211) |
-| DuckDB's findings, judged against this page | [`characterization/duckdb/FACTS.md`](../characterization/duckdb/FACTS.md) |
+| DuckDB's findings, judged against this page | [`characterization/duckdb/facts/`](../characterization/duckdb/facts/) |
