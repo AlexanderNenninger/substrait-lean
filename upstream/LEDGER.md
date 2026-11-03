@@ -55,6 +55,12 @@ affect sverify's results, but they're worth reporting.
 | DD-3 | confirmed | `VAR_POP` and `STDDEV_POP` of a single NaN are `0.0`, not NaN; with a second value they are NaN. IEEE and every other engine propagate the NaN. | `select var_pop(x) from (values ('nan'::double)) t(x)` gives `0.0` | The SQL writer returns NaN when an input is NaN (#54) | #54 |
 | DD-4 | confirmed | `read_parquet` trusts a file's min/max statistics for doubles, which Parquet writers compute without NaN. Comparisons are folded from them and row groups skipped, though DuckDB orders NaN above every double: NaN rows go missing or compare wrongly. | A Parquet file of `x = [0.5, NaN]` written by pyarrow 26 (min = max = 0.5): `select x <= 100.0 from read_parquet(f)` is TRUE for the NaN, `... where x > 100.0` counts 0 rows, `select max(x)` gives 0.5. | A `Scan` reads each double column through `CASE WHEN isnan(x) THEN 'NaN' ELSE x + 0.0 END`, which DuckDB keeps no statistics for (#173) | #173 |
 
+## delta-rs (deltalake 1.6.6)
+
+| ID | Status | Summary | Minimal repro | Our handling | Found by |
+|---|---|---|---|---|---|
+| DL-1 | confirmed | `DeltaTable.history()` and `DeltaTable.alter.set_table_properties()` keep the GIL during object store requests. A server in the same Python process, such as moto's `ThreadedMotoServer`, never answers, and the call hangs. `optimize.compact`, `vacuum`, `create_checkpoint`, `merge` and `write_deltalake` release it and finish. | Start `moto.server.ThreadedMotoServer(port=5066)`, write a table to `s3://lake/t` with `AWS_ENDPOINT_URL=http://127.0.0.1:5066`, then call `DeltaTable(uri, storage_options=...).history()`: it never returns. | Test against moto in another process (`moto_server`). `DeltaSink` reads the history for its contract, so it hangs the same way in-process. This was the compaction "hang" of the homelab example: its maintenance set table properties first (#377). | #377 |
+
 ## Polars, Spark, Ibis
 
 Nothing yet.

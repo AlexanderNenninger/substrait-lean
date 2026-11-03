@@ -21,9 +21,11 @@ Feed.
 
 from __future__ import annotations
 
+import math
 import os
 import time
 import uuid
+import warnings
 from collections.abc import Iterable
 from dataclasses import replace
 from datetime import timedelta
@@ -144,6 +146,34 @@ _SAME_CONFIG = {
     "STREAMING UPDATE",
 }
 CDF_KEY = "delta.enableChangeDataFeed"
+# Operations that change no rows: the table holds the state the last commit
+# before them recorded.
+_SAME_ROWS = {
+    "OPTIMIZE",
+    "VACUUM START",
+    "VACUUM END",
+    "SET TBLPROPERTIES",
+    "ADD CONSTRAINT",
+    "DROP CONSTRAINT",
+}
+
+
+def _last_contract(dt: DeltaTable) -> tuple[Contract | None, bool]:
+    """The contract the last sverify commit recorded, and whether every
+    commit after it changes no rows (`_SAME_ROWS`), so that the table holds
+    the state it recorded. Reads the log back from the latest commit, a few
+    commits at a time."""
+    n, seen, rows_same = 8, 0, True
+    while True:
+        commits = dt.history(n)
+        for commit in commits[seen:]:
+            if METADATA_KEY in commit:
+                return Contract.from_json(commit[METADATA_KEY]), rows_same
+            if commit.get("operation") not in _SAME_ROWS:
+                rows_same = False
+        if len(commits) < n:
+            return None, False
+        seen, n = n, n * 2
 
 
 def _cdf_on(dt: DeltaTable) -> bool:
@@ -393,26 +423,24 @@ class DeltaSource(Pipeable):
             The contract a `DeltaSink` stored in the commit metadata, or None
             if no commit has one.
         """
-        dt = self.table(version)
-        for commit in dt.history():
-            if METADATA_KEY in commit:
-                return Contract.from_json(commit[METADATA_KEY])
-        return None
+        return _last_contract(self.table(version))[0]
 
     def stored(self) -> Stored | None:
-        """The node state the table's last commit stored, if a `DeltaSink`
-        made that commit. A restarted job's first refresh resumes the sink's
-        node from it, when it was stored by the same plan from the same
-        sources.
+        """The node state the table holds, if a `DeltaSink` stored it: the
+        last commit is the sink's, or the commits after the sink's last one
+        change no rows (`OPTIMIZE`, `VACUUM`, table properties and
+        constraints, by another writer or `DeltaSink.maintain`). A restarted
+        job's first refresh resumes the sink's node from it, when it was
+        stored by the same plan from the same sources.
 
         Returns:
-            The stored state, or None if another writer made the last commit.
+            The stored state, or None if another writer changed rows after
+            the sink's last commit.
         """
         dt = self.table()
-        last = dt.history(1)
-        if not last or METADATA_KEY not in last[0]:
+        c, rows_same = _last_contract(dt)
+        if c is None or not rows_same:
             return None
-        c = Contract.from_json(last[0][METADATA_KEY])
         where = f"{self.uri}@v{dt.version()}"
         return Stored(where, self.uri, c.plan, c.sources, c.digests, _read(dt))
 
@@ -556,6 +584,14 @@ class DeltaSink(Sink):
     the node does not guarantee, or holds this state's epoch from other
     contents of a `StaticSource`.
 
+    Every write adds a commit and small files, which readers replay and
+    open. `checkpoint_interval` and `log_retention` set the table's
+    checkpoint interval and how long its log is kept; `compact_every`
+    compacts the table (`maintain`) after every so many writes, and
+    `vacuum_retention` then removes the files it replaced. Maintenance
+    commits carry the contract, and a restarted job resumes past them, as it
+    does past another writer's `OPTIMIZE` or `VACUUM`.
+
     Args:
         uri: The sink table's location: a path, or a URI such as `s3://...`.
         app_id: The transaction's application id. Default:
@@ -564,10 +600,26 @@ class DeltaSink(Sink):
             `DeltaSource`. Default: None.
         name: The table's name in the plans that read the stored node.
             Default: the last part of `uri`.
+        checkpoint_interval: Commits between checkpoints
+            (`delta.checkpointInterval`). Default: None, the table's
+            setting (delta-rs: 100).
+        log_retention: How long the log keeps a commit
+            (`delta.logRetentionDuration`); older commits go when a
+            checkpoint is written. Keep it longer than the gap between two
+            writes of the sink, since the contract is read from the log.
+            Default: None, the table's setting (30 days).
+        compact_every: Compact the table after every this many writes of
+            this process (`maintain`). Default: None, never.
+        vacuum_retention: With `compact_every`, then remove the files that
+            no version newer than this needs (`maintain(vacuum=...)`).
+            Nodes reading the stored node that fell further behind read the
+            whole table. Default: None, no vacuum.
 
     Attributes:
         uri: The sink table's location.
         name: The table's name in the plans that read the stored node.
+        compact_every: Writes between compactions, or None.
+        vacuum_retention: The vacuum's retention after a compaction, or None.
 
     Examples:
         A node written to a Delta table and refreshed:
@@ -614,9 +666,26 @@ class DeltaSink(Sink):
         app_id: str | None = None,
         storage_options: Options = None,
         name: str | None = None,
+        checkpoint_interval: int | None = None,
+        log_retention: timedelta | None = None,
+        compact_every: int | None = None,
+        vacuum_retention: timedelta | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
         super().__init__(name or _basename(self.uri), app_id=app_id, location=self.uri)
+        if checkpoint_interval is not None and checkpoint_interval < 1:
+            raise ValueError(f"checkpoint_interval must be at least 1, got {checkpoint_interval}")
+        if compact_every is not None and compact_every < 1:
+            raise ValueError(f"compact_every must be at least 1, got {compact_every}")
+        self._properties: dict[str, str] = {}
+        if checkpoint_interval is not None:
+            self._properties["delta.checkpointInterval"] = str(checkpoint_interval)
+        if log_retention is not None:
+            seconds = math.ceil(log_retention.total_seconds())
+            self._properties["delta.logRetentionDuration"] = f"interval {seconds} seconds"
+        self.compact_every, self.vacuum_retention = compact_every, vacuum_retention
+        self._writes = 0
+        """Writes of this process since the last compaction."""
 
     def source(self) -> DeltaSource:
         """The table as a source, for the nodes that read the stored node."""
@@ -647,6 +716,63 @@ class DeltaSink(Sink):
         contract = DeltaSource(self.uri, storage_options=self.storage_options).contract()
         return None if contract is None else replace(contract, epoch=done)
 
+    def maintain(self, *, vacuum: timedelta | None = None) -> dict[str, object]:
+        """Compact the table's small files, and with `vacuum`, remove the
+        files no version newer than `vacuum` needs. The commits record the
+        contract of the sink's last commit, if no other writer changed rows
+        since, so a restarted job resumes past them.
+
+        Args:
+            vacuum: How old a version may be and still be read. Nodes
+                reading the stored node from an older version read the
+                whole table. Default: None, no vacuum.
+
+        Returns:
+            delta-rs's metrics of the compaction (`"optimize"`) and the
+            files the vacuum removed (`"vacuumed"`); empty if the table does
+            not exist.
+        """
+        dt = self._table()
+        if dt is None:
+            return {}
+        contract, rows_same = _last_contract(dt)
+        commit = None
+        if contract is not None and rows_same:
+            commit = CommitProperties(custom_metadata={METADATA_KEY: contract.to_json()})
+        out: dict[str, object] = {"optimize": dt.optimize.compact(commit_properties=commit)}
+        if vacuum is not None:
+            dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
+            out["vacuumed"] = dt.vacuum(
+                retention_hours=math.ceil(vacuum.total_seconds() / 3600),
+                dry_run=False,
+                enforce_retention_duration=False,
+                commit_properties=commit,
+            )
+        return out
+
+    def _commit(self) -> SinkWrite:
+        out = super()._commit()
+        if out.mode == "skipped" or self.compact_every is None:
+            return out
+        self._writes += 1
+        if self._writes >= self.compact_every:
+            self._writes = 0
+            try:
+                self.maintain(vacuum=self.vacuum_retention)
+            except Exception as e:  # noqa: BLE001 - the write is committed
+                warnings.warn(f"{self.uri}: maintenance failed: {first_line(e)}", stacklevel=2)
+        return out
+
+    def _set_properties(self, dt: DeltaTable) -> DeltaTable:
+        """Give the table the sink's table properties, where it lacks them;
+        returns the table as it is then."""
+        have = dt.metadata().configuration
+        missing = {k: v for k, v in self._properties.items() if have.get(k) != v}
+        if not missing:
+            return dt
+        dt.alter.set_table_properties(missing)
+        return DeltaTable(self.uri, storage_options=resolve(self.storage_options))
+
     def write(self, change: SinkChange) -> SinkWrite:
         """Create the table, overwrite it, or MERGE the change, in one commit
         that records the contract and the transaction `(app_id, epoch)`."""
@@ -663,12 +789,13 @@ class DeltaSink(Sink):
             dt = DeltaTable.create(
                 self.uri,
                 schema,
-                configuration={"delta.enableChangeDataFeed": "true"},
+                configuration={"delta.enableChangeDataFeed": "true", **self._properties},
                 storage_options=options,
             )
             mode = "created"
         else:
             mode = "overwrite" if change.replace else "merge"
+            dt = self._set_properties(dt)
         missing = self._constraints(dt, contract, replace=mode != "merge")
         root = local_path(self.uri)
         if mode != "overwrite" and root is not None and change.native is not None:
