@@ -26,6 +26,7 @@ import SubstraitLean.LoweringHint
 import SubstraitLean.LoweringCache
 import SubstraitLean.LoweringSearch
 import SubstraitLean.LoweringDuckDB
+import SubstraitLean.Allowed
 import SubstraitLean.DuckDBSQL
 import SubstraitLean.LiftHint
 import SubstraitLean.LiftCache
