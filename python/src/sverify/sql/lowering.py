@@ -9,6 +9,11 @@ operators, its `CASE`s SQL's. The DuckDB printer (`sverify.sql.duckdb`) asks
 it first (`Dialect.lowered`), so the guards in DuckDB's SQL are the proved
 ones rather than hand-written.
 
+The table is for DuckDB's default settings, `error_on_division_by_zero` and
+`ieee_floating_point_ops` on, which sverify runs DuckDB with. Under other
+settings DuckDB computes other values, and there is no proved table for them
+(#241): run the SQL with the defaults.
+
 This interpreter is trusted, as the printer is: keep it small.
 """
 
@@ -23,7 +28,7 @@ from sverify.contracts import decode_double
 
 Json = Any
 
-#: `error_on_division_by_zero`, which the table depends on: DuckDB's default.
+#: `error_on_division_by_zero`, which the table is for: DuckDB's default, the only one.
 SETTING = "on"
 
 _TABLE: list[Mapping[str, Json]] = []

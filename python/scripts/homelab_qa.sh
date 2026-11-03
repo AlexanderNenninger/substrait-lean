@@ -65,7 +65,7 @@ main() {
   fi
 
   start=$(date +%s)
-  nice -n 10 lake build SubstraitLean substrait-check; status=$?
+  nice -n 10 lake -R -Kcheck_generated=true build SubstraitLean substrait-check; status=$?
   echo "homelab_qa: Lean build took $(( $(date +%s) - start )) s (exit $status)"
 
   if [ $status -eq 0 ]; then

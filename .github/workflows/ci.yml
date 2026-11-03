@@ -72,6 +72,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+      # Check every generated entry's proof (SubstraitLean/Generated.lean),
+      # before `uv run`'s editable install builds substrait-check.
+      - run: lake -R -Kcheck_generated=true build
       - run: uv run --locked --project python poe -C python prove
       - run: uv run --locked --project python poe -C python build
       - run: uv run --locked --project python poe -C python golden

@@ -17,7 +17,7 @@ on:
       - python/pyproject.toml
       - python/hatch_build.py
       - lean-toolchain
-      - lakefile.toml
+      - lakefile.lean
       - .github/workflows/wheels.yml
       - .github/actions/setup-lean/**
   workflow_dispatch:

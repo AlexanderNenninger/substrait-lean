@@ -101,10 +101,7 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   by a tactic and added as a declaration, so the kernel checks it. A
   construct with no entry fails the build and shows as `missing` in the
   coverage report (`substrait-check --lowering-coverage`, recorded in the
-  golden test `tests/lowering/duckdb.expected`). With the setting off, the
-  search finds `CASE WHEN x IS NOT NULL AND y = 0 THEN error() ELSE x / y
-  END` for division and modulus (`NULL / 0` is NULL in the reference), the
-  shim first written by hand. `overflow` = `SATURATE` (`UnFn.fit`, which
+  golden test `tests/lowering/duckdb.expected`). `overflow` = `SATURATE` (`UnFn.fit`, which
   DuckDB has no function for) gets a `CASE` clamping to the width's bounds,
   which the search finds among `CASE` chains over constants the reference
   gives. `SILENT`'s wrap-around, `((x + 2^(w-1)) % 2^w + 2^w) % 2^w -
@@ -120,9 +117,16 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   NaN, `±1`) to variables with their order first, so that nothing evaluates
   their 600-digit values. The search does not run in a build: `poe regen-lowering`
   (`scripts/RegenLowering.lean`) runs it and writes each entry it found, with
-  its proof, to `SubstraitLean/LoweringDuckDB/Off` and `On`, one module per area
+  its proof, to `SubstraitLean/LoweringDuckDB/On`, one module per area
   (`Native`, `Integers`, `Doubles`, `Math`, `Bits`) and a `Table`, which `lake
-  build` checks in parallel. A committed table that no longer fits fails the
+  build` checks in parallel. The table is for DuckDB's default settings
+  (`error_on_division_by_zero` and `ieee_floating_point_ops` on), the only
+  ones sverify runs DuckDB with: its SQL for DuckDB assumes them, and
+  `Lowering.duckdb` exists for `Profile.duckdb {}` alone. A plan meant to run
+  under other settings has no proved lowering; #241 tracks adding tables for
+  them. CI checks every entry's proof; a local `lake build` takes them as
+  proved unless run as `lake -R -Kcheck_generated=true build`
+  (`SubstraitLean/Generated.lean`). A committed table that no longer fits fails the
   build: a proof stops checking when `Profile.duckdb` changes, and the table's
   `match` is not exhaustive when a function is added. `SubstraitLean/LoweringCache.lean`
   records each construct's template for the regeneration, which tries it first. `substrait-check --lowering-table` exports the
