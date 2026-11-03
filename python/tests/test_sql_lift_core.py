@@ -214,8 +214,8 @@ def test_the_semantics_changes_what_the_contract_can_prove():
     # the reference raises on one, which `verify` reports. Both raise on
     # `inf / inf`, which would be NaN (#257).
     t = ibis.table({"a": "float64", "b": "float64"}, name="t")
-    duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
-    ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="reference", t=t)
+    duck = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", semantics="duckdb", t=t)
+    ref = sv.sql("SELECT a / b AS ratio FROM t", dialect="duckdb", t=t)
     assert [i.kind for i in sv.verify(duck).issues] == ["domain error"]
     assert any("zero" in str(i) for i in sv.verify(ref).issues)
 
@@ -230,10 +230,37 @@ def test_sql_checks_dialect_and_semantics():
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
 
-def test_sql_is_duckdbs_by_default():
+def test_sql_uses_the_reference_semantics_by_default():
+    # #411: DuckDB's semantics is an explicit opt-in.
     t = ibis.table({"a": "int64"}, name="t")
     op: Any = sv.sql("SELECT a FROM t", t=t).op()
-    assert (op.dialect, op.semantics) == ("duckdb", "duckdb")
+    assert (op.dialect, op.semantics) == ("duckdb", "reference")
+    assert sv.sql("SELECT a FROM t").semantics == "reference"
+
+
+def test_verify_states_and_takes_its_semantics():
+    # A SQL transformation and SQL conditions follow `verify(semantics=...)`.
+    t = ibis.table({"a": "float64", "b": "float64"}, name="t")
+    sql = "SELECT a / b AS ratio FROM t"
+    ref = sv.verify(sql, tables={"t": t})
+    duck = sv.verify(sql, tables={"t": t}, semantics="duckdb")
+    assert (ref.semantics, duck.semantics) == ("reference", "duckdb")
+    assert "semantics: reference" in str(ref).splitlines()
+    assert any("zero" in str(i) for i in ref.issues)
+    assert not any("zero" in str(i) for i in duck.issues)
+    with pytest.raises(ValueError, match="semantics must be"):
+        sv.verify(sql, tables={"t": t}, semantics="spark")  # type: ignore[arg-type]
+
+
+def test_transform_takes_a_semantics():
+    @sv.transform(ensures=["a IS NOT NULL OR a IS NULL"], semantics="duckdb")
+    def same(t):
+        return t.select("a")
+
+    t = ibis.table({"a": "float64"}, name="t")
+    assert same.semantics == "duckdb"
+    same(t)
+    assert same.last_report is not None and same.last_report.semantics == "duckdb"
 
 
 @pytest.mark.skipif(

@@ -486,10 +486,18 @@ large = orders.pipe(lambda t: t.filter(_.amount > 20))
 SQL is DuckDB's dialect. Sverify reads it with its own lift (SQLGlot, #239)
 and writes every choice DuckDB's SQL leaves implicit into the plan: `/` divides
 as doubles, NULLs sort last, an integer literal has the narrowest type that
-holds it. `semantics="duckdb"`
-(the default) means what DuckDB computes; `semantics="reference"` means what
-sverify's reference computes where they differ, so a double divided by zero
-raises where DuckDB gives `inf`. The lift reads a subset so far (SELECT, WHERE,
+holds it.
+
+Every check uses sverify's reference semantics unless you opt into DuckDB's
+(#411). `semantics="reference"`, the default, means what sverify's reference
+computes, so a double divided by zero raises; `semantics="duckdb"` means what
+DuckDB computes, which gives `inf`, and models NaN and ±inf as DuckDB has
+them. `sv.sql(query, semantics=...)` attaches the choice to the query.
+`sv.verify(..., semantics=...)` and `@sv.transform(..., semantics=...)` make
+it for the SQL they lift themselves: a SQL transformation and SQL conditions.
+An `sv.sql` expression inside an Ibis transformation keeps its own. The report
+says which semantics it used (`Report.semantics`, a `semantics:` line). Until
+#411 `sv.sql` defaulted to DuckDB's semantics. The lift reads a subset so far (SELECT, WHERE,
 joins, GROUP BY, ORDER BY, LIMIT, CASE, CAST, arithmetic) and refuses the rest,
 saying what.
 

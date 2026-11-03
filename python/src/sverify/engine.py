@@ -297,12 +297,12 @@ def connection_of(table: ir.Table) -> Connection | None:
     return getattr(backend, "_sverify_connection", None)
 
 
-def plan_json(con: Connection, query: ir.Table | str) -> str:
+def plan_json(con: Connection, query: ir.Table | str, semantics: str = "reference") -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
-    (`substrait_json`)."""
+    (`substrait_json`) with `semantics`."""
     if isinstance(query, str):
-        return substrait_json(con, query)
+        return substrait_json(con, query, semantics)
     return to_substrait_json(query)
 
 
