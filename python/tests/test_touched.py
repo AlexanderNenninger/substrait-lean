@@ -39,7 +39,9 @@ def view(node):
 def random_batches(seed, steps=40):
     rng = random.Random(seed)
     hosts = ["a", "b", None]
-    live = [(rng.choice(hosts), rng.randrange(10), rng.randrange(-50, 50)) for _ in range(30)]
+    live: list[tuple[str | None, int, int | None]] = [
+        (rng.choice(hosts), rng.randrange(10), rng.randrange(-50, 50)) for _ in range(30)
+    ]
     first = list(live)
     out = []
     for _ in range(steps):
