@@ -91,13 +91,9 @@ acc_t = ibis.table({"device": "int64", "ts": "timestamp", "ax": "float64"}, name
 gyr_t = ibis.table({"device": "int64", "ts": "timestamp", "gx": "float64"}, name="gyr")
 TOL = ibis.interval(milliseconds=10)
 KEYS = {
-    # `ts - tolerance` overflows only at the smallest timestamp (#202).
-    "acc": [
-        sv.unique("device", "ts"),
-        _.device.notnull(),
-        _.ts.notnull(),
-        _.ts >= dt.datetime(2000, 1, 1),
-    ],
+    # `ts - tolerance` overflows only at the smallest timestamp: the bound
+    # that rules it out is inferred (#244).
+    "acc": [sv.unique("device", "ts"), _.device.notnull(), _.ts.notnull()],
     "gyr": [sv.unique("device", "ts")],
 }
 GUARANTEES = [

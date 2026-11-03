@@ -355,21 +355,30 @@ class IcebergSource(Pipeable):
         return None if text is None else Contract.from_json(text)
 
     def stored(self) -> Stored | None:
-        """The node state the current snapshot stored, if an `IcebergSink`
-        wrote it under the table's contract. A restarted job's first refresh
-        resumes the sink's node from it, when it was stored by the same plan
-        from the same sources.
+        """The node state the current snapshot holds, if an `IcebergSink`
+        wrote it under the table's contract: the current snapshot is the
+        sink's, or the snapshots after the sink's last one only rewrite
+        files (`replace`, as compaction does). A restarted job's first
+        refresh resumes the sink's node from it, when it was stored by the
+        same plan from the same sources.
 
         Returns:
-            The stored state, or None if the current snapshot was not
-            written under the contract.
+            The stored state, or None if a snapshot after the sink's last
+            one changed rows.
         """
         t = self.table()
         s, text = t.current_snapshot(), t.properties.get(KEY)
-        if s is None or s.summary is None or text is None:
+        if s is None or text is None:
             return None
         c = Contract.from_json(text)
-        if s.summary.get(PLAN) != c.plan or s.summary.get(EPOCH) != str(c.epoch):
+        for a in _ancestry(t):
+            if a.summary is None:
+                return None
+            if a.summary.get(PLAN) == c.plan and a.summary.get(EPOCH) == str(c.epoch):
+                break
+            if a.summary.operation != Operation.REPLACE:
+                return None
+        else:
             return None
         where = f"{self.identifier}@v{_version(s)}"
         return Stored(where, self.identifier, c.plan, c.sources, c.digests, _read(t, s))

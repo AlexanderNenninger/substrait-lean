@@ -7,6 +7,7 @@ import SubstraitLean.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Semantic
 import SubstraitLean.Write
+import SubstraitLean.Infer
 
 /-!
 # Checking a contract
@@ -136,6 +137,15 @@ def _root_.Substrait.AVal.json (a : AVal) (dec : Option (Nat × Nat) := none) : 
     (dec.map fun (p, s) => [("decimal", Json.mkObj [("precision", Lean.toJson p),
       ("scale", Lean.toJson s)])]).getD [])
 
+def need (n : String × Nat × Bound) : Json :=
+  let bound (o : Option Int) : Json := (o.map fun i => Json.str (toString i)).getD .null
+  Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
+    ("lo", bound n.2.2.lo), ("hi", bound n.2.2.hi)]
+
+def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
+  Json.mkObj [("needs", Json.arr (b.needs.map need).toArray), ("split", Lean.toJson b.split),
+    ("why", match b.why with | some w => Lean.toJson w | none => .null)]
+
 structure Report where
   ensures : List (String × Bool × String)
   facts : List (String × String × Json)
@@ -152,6 +162,13 @@ structure Report where
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
   rewrites : List String := []
+  /-- For each issue, what would rule it out (`SubstraitLean/Infer.lean`):
+  untrusted candidates, which the caller proves by adding them to the
+  preconditions. -/
+  bounds : List (Issue × Expr × Infer.Bounds) := []
+  /-- The ranges of `bounds` that follow from the operations alone, merged
+  per base-table column. -/
+  inferred : List (String × Nat × Bound) := []
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
@@ -165,7 +182,11 @@ def Report.json (r : Report) : Json :=
     ("deterministic", Lean.toJson r.deterministic),
     ("issues", Json.arr (r.issues.map fun (i, e) =>
       Json.mkObj [("kind", Lean.toJson (Issue.name i)), ("error", Lean.toJson i.isError),
-        ("expr", Lean.toJson e.render)]).toArray),
+        ("expr", Lean.toJson e.render),
+        ("bound", match r.bounds.find? (fun (i', e', _) => i' == i && e' == e) with
+          | some (_, _, b) => b.json
+          | none => .null)]).toArray),
+    ("inferred", Json.arr (r.inferred.map need).toArray),
     ("guard_free", Lean.toJson r.guardFree),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
@@ -251,6 +272,12 @@ def check (input : Json) : Except String Report := do
   let issues := match transform with
     | some p => if p.root.checkWF cat then (p.root.mayIssues cat A F T false).eraseDups else []
     | none => []
+  let bounds := match transform with
+    | some p =>
+      if !p.root.checkWF cat then [] else
+        (Infer.Rel.bounds cat A F T false p.root).map fun (i, e, b) =>
+          (i, e, { b with needs := Infer.trim A b.needs })
+    | none => []
   let guardFree := match transform with
     | some p => p.root.checkWF cat && p.root.looseSub && issues.all (·.1 == .sumWraps)
     | none => false
@@ -270,6 +297,8 @@ def check (input : Json) : Except String Report := do
     keys
     deterministic
     issues
+    bounds
+    inferred := Infer.merged A (bounds.filter (·.1.isError))
     guardFree }
 
 end Substrait.ContractCheck

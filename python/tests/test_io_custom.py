@@ -361,16 +361,180 @@ def test_nodes_read_a_stored_node_from_what_was_written(tmp_path):
     assert rows(out) == [(1,), (3,)]
 
 
-def test_a_restarted_job_numbers_versions_above_the_recorded_ones(tmp_path):
-    f = feed()
+class Log(Source):
+    """A log read by sequence number: the cursor is the number of entries
+    read, and it lasts across processes."""
+
+    def __init__(self, entries, *, durable=True):
+        super().__init__("payments", assumes="entries are only appended")
+        self.entries, self.durable, self.reads = entries, durable, []
+
+    def read(self, since):
+        self.reads.append(since)
+        new = self.entries[since or 0 :]
+        if not new:
+            return None
+        return Batch(pa.Table.from_pylist(new), cursor=len(self.entries))
+
+    def restore(self, cursor):
+        if not self.durable or cursor > len(self.entries):
+            return None
+        self.reads.append(("restore", cursor))
+        return pa.Table.from_pylist(self.entries[:cursor])
+
+
+def entries():
+    return [{"id": 1, "ts": 10, "amount": 30}, {"id": 2, "ts": 20, "amount": 5}]
+
+
+def test_a_restarted_job_resumes_from_the_cursor_its_sink_recorded(tmp_path):
+    log = entries()
+
+    def job():
+        src = Log(log)
+        return src, big(src).write(DeltaSink(str(tmp_path / "big")))
+
+    _, node = job()
+    node.refresh()
+    log.append({"id": 3, "ts": 30, "amount": 50})
+    node.refresh()
+    recorded = DeltaSource(str(tmp_path / "big")).contract()
+    assert recorded is not None and recorded.cursors == {"payments": 3}
+    log.append({"id": 4, "ts": 40, "amount": 70})
+    src, restarted = job()
+    out = restarted.refresh()["big"]
+    # The table as of the cursor, then only the entry after it (the read
+    # before is for the schema).
+    assert src.reads[-2:] == [("restore", 3), 3]
+    assert out.started is not None and out.started.startswith("resumed from")
+    w = out.write
+    assert w is not None and (w.mode, w.inserted, w.deleted) == ("merge", 1, 0)
+    assert w.contract.sources == {"payments": 3} and w.contract.cursors == {"payments": 4}
+    assert sorted(
+        r["id"] for r in DeltaTable(str(tmp_path / "big")).to_pyarrow_table().to_pylist()
+    ) == [1, 3, 4]
+    assert restarted.refresh().writes[0].mode == "skipped"
+
+
+def test_a_restarted_job_with_nothing_new_skips_its_commit(tmp_path):
+    log = entries()
+    big(Log(log)).write(DeltaSink(str(tmp_path / "big"))).refresh()
+    src = Log(log)
+    w = big(src).write(DeltaSink(str(tmp_path / "big"))).refresh().writes[0]
+    assert (w.mode, w.contract.sources) == ("skipped", {"payments": 1})
+    assert src.reads[-2:] == [("restore", 2), 2]
+
+
+def test_of_two_sinks_the_one_further_ahead_resumes(tmp_path):
+    log = entries()
+
+    def nodes(src):
+        a = big(src).write(DeltaSink(str(tmp_path / "a")))
+        b = ids(src).write(DeltaSink(str(tmp_path / "b")))
+        return a, b
+
+    src = Log(log)
+    a, b = nodes(src)
+    sv.group(a, b).refresh()
+    log.append({"id": 3, "ts": 30, "amount": 50})
+    b.refresh()  # b is at payments v2, a at v1
+    a, b = nodes(Log(log))
+    out = sv.group(a, b).refresh()
+    assert out["b"].started is not None and out["b"].started.startswith("resumed from")
+    w = out["a"].write
+    # a's state at v1 is gone: it is computed at v2 and overwrites its sink.
+    assert w is not None and (w.mode, w.contract.sources) == ("overwrite", {"payments": 2})
+    assert out["b"].write is not None and out["b"].write.mode == "skipped"
+
+
+def test_a_stale_cursor_reads_the_whole_table_again(tmp_path):
+    log = entries()
+    big(Log(log)).write(DeltaSink(str(tmp_path / "big"))).refresh()
+    del log[1:]  # the log was truncated: cursor 2 is gone
+    src = Log(log)
+    w = big(src).write(DeltaSink(str(tmp_path / "big"))).refresh().writes[0]
+    assert src.reads == [None, 1]
+    assert (w.mode, w.contract.sources) == ("overwrite", {"payments": 2})
+    assert DeltaTable(str(tmp_path / "big")).to_pyarrow_table()["id"].to_pylist() == [1]
+
+
+def test_from_query_resumes_from_a_timestamp_cursor(tmp_path):
+    from datetime import datetime
+
+    t0 = datetime(2026, 11, 3, 12, 0)
+    f = Feed([{"id": 1, "ts": t0, "amount": 30}])
 
     def job():
         src = from_query(f.since, cursor_on="ts", name="payments")
         return big(src).write(DeltaSink(str(tmp_path / "big")))
 
+    job().refresh()
+    recorded = DeltaSource(str(tmp_path / "big")).contract()
+    assert recorded is not None
+    assert recorded.cursors == {"payments": {"$cursor": "datetime", "value": t0.isoformat()}}
+    f.add({"id": 2, "ts": datetime(2026, 11, 3, 12, 1), "amount": 40})
+    w = job().refresh().writes[0]
+    assert (w.mode, w.inserted, w.contract.sources) == ("merge", 1, {"payments": 2})
+
+
+def test_from_files_resumes_unless_a_file_it_read_is_gone(tmp_path):
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    pq.write_table(pa.table({"id": [1], "ts": [1], "amount": [30]}), drop / "a.parquet")
+
+    def job():
+        src = from_files(str(drop), name="payments")
+        return big(src).write(DeltaSink(str(tmp_path / "big")))
+
+    job().refresh()
+    pq.write_table(pa.table({"id": [2], "ts": [2], "amount": [40]}), drop / "b.parquet")
+    w = job().refresh().writes[0]
+    assert (w.mode, w.inserted, w.contract.sources) == ("merge", 1, {"payments": 2})
+    (drop / "a.parquet").unlink()
+    w = job().refresh().writes[0]
+    assert (w.mode, w.inserted, w.contract.sources) == ("overwrite", 1, {"payments": 3})
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        None,
+        3,
+        "x",
+        [1, "a"],
+        (1, 2),
+        {"a": 1, "$cursor": 2},
+        __import__("decimal").Decimal("1.50"),
+        b"\x00\xff",
+        __import__("datetime").date(2026, 1, 2),
+        __import__("datetime").datetime(2026, 1, 2, 3, 4, 5, 6),
+    ],
+)
+def test_cursors_round_trip_through_json(cursor):
+    import json
+
+    from sverify.io._common import cursor_json, cursor_value
+
+    assert cursor_value(json.loads(json.dumps(cursor_json(cursor)))) == cursor
+
+
+def test_a_cursor_without_json_form_is_not_recorded():
+    from sverify.io._common import UNRECORDED, cursor_json
+
+    assert cursor_json(float("nan")) is UNRECORDED
+    assert cursor_json([object()]) is UNRECORDED
+
+
+def test_a_restarted_job_numbers_versions_above_the_recorded_ones(tmp_path):
+    log = entries()
+
+    def job():
+        src = Log(log, durable=False)
+        return big(src).write(DeltaSink(str(tmp_path / "big")))
+
     node = job()
     node.refresh()
-    f.add({"id": 3, "ts": 30, "amount": 50})
+    log.append({"id": 3, "ts": 30, "amount": 50})
     node.refresh()
     recorded = DeltaSource(str(tmp_path / "big")).contract()
     assert recorded is not None and recorded.sources == {"payments": 2}

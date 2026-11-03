@@ -145,6 +145,7 @@ def claims(sql: str, table: str, requires=(), ensures=()) -> sv.Report:
         ensures=list(ensures),
         tables={table: ibis.Schema.from_pyarrow(TABLES[table].schema)},
         counterexamples=0,
+        infer=False,  # what the model reports, without the bounds it would infer (#244)
     )
 
 

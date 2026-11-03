@@ -137,7 +137,8 @@ T = ibis.table({"qty": "int64", "n": "int64", "amount": "float64"}, name="t")
 
 
 def errors(expr) -> list[str]:
-    return [i.kind for i in sv.verify(expr).errors]
+    """What Lean reports, without the bounds `verify` would infer (#244)."""
+    return [i.kind for i in sv.verify(expr, infer=False).errors]
 
 
 @pytest.mark.parametrize(
@@ -199,7 +200,7 @@ def test_contracts_fail_on_possible_errors():
 
 def test_overflow_is_an_error():
     """An integer result that does not fit its declared width raises (#202)."""
-    report = sv.verify(T.select(x=T.qty + 1))
+    report = sv.verify(T.select(x=T.qty + 1), infer=False)
     assert not report.proved
     assert [i.kind for i in report.errors] == ["overflow"]
 

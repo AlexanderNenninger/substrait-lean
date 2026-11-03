@@ -17,7 +17,7 @@ from sverify_dev.examples import customers, orders
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL", _.doubled > 20],
 )
 def doubled(orders):
@@ -29,7 +29,8 @@ def test_postconditions_are_proved():
     report = doubled.last_report
     assert report is not None
     assert report.proved
-    assert report.facts["doubled"] == "an integer in [22, 1999999998]"
+    assert report.facts["doubled"] == "an integer ≥ 22"
+    assert report.requires["orders"][-1] == "(_.amount < 2**62)"  # inferred (#244)
     assert report.facts["id"] == "any integer"  # never NULL, by the precondition
 
 
@@ -51,7 +52,6 @@ def test_null_propagates_unless_ruled_out():
     # ...and a filter on `amount` rules that out (NULL > 0 is not TRUE).
     report = sv.verify(
         orders.filter(orders.amount > 0).select(t=orders.amount + 1),
-        requires={"orders": [_.amount < 1_000_000_000]},
         ensures=[_.t.notnull()],
     )
     assert report.proved
@@ -270,10 +270,13 @@ SAMPLES = ibis.table(
     ],
 )
 def test_a_truncation_hint_names_the_bounds_that_clear_it(expr, col, low, high):
-    report = sv.verify(expr)
-    assert [i.kind for i in report.errors] == ["overflow"]
-    [hint] = report.hints
-    assert f"`_.{col} >= " in hint and f"`_.{col} < " in hint and "of samples" in hint
+    # Inferred by default (#244); without inference, the issue's hint names them.
+    assert sv.verify(expr).proved
+    report = sv.verify(expr, infer=False)
+    [issue] = report.errors
+    assert issue.kind == "overflow" and issue.hint is not None
+    hint = issue.hint
+    assert f"`(_.{col} >= " in hint and "the requires of 'samples'" in hint
     assert OVERFLOW_HINT not in str(report)  # the hint covers the overflow
     bounded = sv.verify(expr, requires={"samples": [_[col] >= low, _[col] < high]})
     assert not bounded.issues
@@ -290,7 +293,9 @@ def test_a_sum_hint_proposes_a_bound_and_the_largest_group():
     assert "no contract states how many rows a group has" in hint
 
 
-def test_an_overflow_without_a_named_bound_keeps_the_general_hint():
+def test_an_overflow_of_two_columns_suggests_a_split():
     report = sv.verify(SAMPLES.select(d=SAMPLES.cpu * SAMPLES.cpu))
-    assert report.errors and not report.hints
-    assert f"hint: {OVERFLOW_HINT}" in str(report)
+    [issue] = report.errors
+    assert issue.hint is not None and issue.hint.startswith("no single bound rules it out")
+    assert report.inferred == {} and not report.hints
+    assert OVERFLOW_HINT not in str(report)

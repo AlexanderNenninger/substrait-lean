@@ -680,6 +680,14 @@ which does not block a proof.
   allows.
 * An integer `SUM` leaving 64 bits is checked while the job runs (nothing bounds
   how many rows a group has): the SQL raises, and it does not make `proved` false.
+* Bounds that rule out overflow are inferred
+  ([Infer.lean](../SubstraitLean/Infer.lean), #244): the range analysis run
+  backwards from each overflow `Rel.mayIssues` reports, through projections,
+  filters, joins and `MIN`/`MAX` down to base-table columns. The inference is
+  untrusted and has no proofs. Its bounds are added to the preconditions and
+  the contract is proved again (`contract_sound`, `Rel.mayIssues_sound`), so a
+  wrong bound only makes that proof fail; on the data they are checked like
+  any precondition.
 * `Rel.mayIssues_sound`: every issue that can happen on any input is reported. Guards
   are understood where DataFusion respects them: in a `CASE` branch (and so
   `NULLIF(b, 0)`), or in a filter below a *projection*. They are not respected in the

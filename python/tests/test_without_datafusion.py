@@ -88,7 +88,7 @@ def test_contracts(engine):
     run(
         """
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+            requires={"orders": [_.amount >= 0, _.id.notnull()]},
             ensures=[_.doubled >= 0],
         )
         def doubled(orders):

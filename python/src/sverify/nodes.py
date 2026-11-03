@@ -41,6 +41,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
+from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
@@ -432,6 +433,8 @@ class Node:
             out.report = self._stage.refresh(versions, audit)
         if sink is not None:
             out.write = sink._commit()
+        # After the write: a sink keeps the buckets the state drops.
+        out.retention = self._stage.pipe.retire()
         return out
 
 
@@ -548,7 +551,7 @@ class _Stage:
         self.view.engine = engine
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
-        return self.pipe.refresh(until=versions, audit=audit)
+        return self.pipe.refresh(until=versions, audit=audit, retire=False)
 
 
 @dataclass
@@ -571,6 +574,9 @@ class StageRefresh:
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""
+    retention: list[RetentionReport] = field(default_factory=list)
+    """For a node over a source with `arrives_within`: its open time
+    buckets, those dropped from its state after the write, and the bound."""
     postconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: the postconditions the node's transform did not
     prove and checks on its output (`on_unproved="runtime"`), checked on the
@@ -588,6 +594,7 @@ class StageRefresh:
             out += self.report.notable
         if self.write is not None and self.write.mode == "overwrite":
             out.append("the sink overwrote its table")
+        out += [f"retention off: {r.off}" for r in self.retention if r.off is not None]
         return out
 
     def summary(self) -> str:
@@ -617,6 +624,11 @@ class StageRefresh:
         if self.report.postconditions:
             # On the rows the batch inserts into the node (keys on its state).
             parts.append(f"{len(self.report.postconditions)} ensures checked on data")
+        parts += [
+            f"{r.column}: {r.open}/{r.bound} bucket(s) open, {r.retired} retired"
+            for r in self.retention
+            if r.off is None
+        ]
         if (w := self.write) is not None:
             if w.mode == "skipped":
                 parts.append("already committed")
@@ -635,6 +647,7 @@ class StageRefresh:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
         if self.write is not None:
             lines.append(f"  wrote {self.write}")
+        lines += [f"  {r}" for r in self.retention]
         return "\n".join(lines)
 
 
@@ -818,8 +831,10 @@ class Group:
 
 def _continue_versions(node: _Stored) -> None:
     """The sources of a stored node's stage whose versions restart with the
-    process (`sverify.io.Source`) number them above the versions its sink
-    recorded, so that its epochs keep growing and it writes exactly once."""
+    process (`sverify.io.Source`) start at the versions and cursors its
+    sink recorded, if they can restore their table there; else they number
+    their versions above, so that its epochs keep growing and it writes
+    exactly once."""
     resumes = {}
     for leaf in node._leaves():
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
@@ -829,8 +844,11 @@ def _continue_versions(node: _Stored) -> None:
     contract = committed() if resumes and committed is not None else None
     if contract is None:
         return
+    cursors = getattr(contract, "cursors", {})
     for name, resume in resumes.items():
-        if name in contract.sources:
+        if name in cursors:
+            resume(contract.sources[name], cursors[name])
+        elif name in contract.sources:
             resume(contract.sources[name])
 
 
