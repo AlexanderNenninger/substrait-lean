@@ -38,7 +38,7 @@ Engines, SQL dialects and plans are in `sverify.engines`, the exceptions in
 
 import sverify.sql  # noqa: F401 - before `sql` below, which a first import of it would replace
 from sverify.asof import asof_join
-from sverify.contracts import Report, references, transform, unique, verify
+from sverify.contracts import Report, arrives_within, references, transform, unique, verify
 from sverify.engine import connect
 from sverify.incremental import Changes
 from sverify.nodes import Node, group
@@ -48,6 +48,7 @@ __all__ = [
     "Changes",
     "Node",
     "Report",
+    "arrives_within",
     "asof_join",
     "connect",
     "group",

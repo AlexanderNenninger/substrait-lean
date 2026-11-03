@@ -41,6 +41,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
+from sverify._retention import RetentionReport
 from sverify.contracts import Discharged, _lookup, _register
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
@@ -429,6 +430,8 @@ class Node:
             out.report = self._stage.refresh(versions, audit)
         if sink is not None:
             out.write = sink._commit()
+        # After the write: a sink keeps the buckets the state drops.
+        out.retention = self._stage.pipe.retire()
         return out
 
 
@@ -544,7 +547,7 @@ class _Stage:
         self.view.engine = engine
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
-        return self.pipe.refresh(until=versions, audit=audit)
+        return self.pipe.refresh(until=versions, audit=audit, retire=False)
 
 
 @dataclass
@@ -566,6 +569,9 @@ class StageRefresh:
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""
+    retention: list[RetentionReport] = field(default_factory=list)
+    """For a node over a source with `arrives_within`: its open time
+    buckets, those dropped from its state after the write, and the bound."""
 
     def __str__(self) -> str:
         lines = [f"{self.node}:"]
@@ -576,6 +582,7 @@ class StageRefresh:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
         if self.write is not None:
             lines.append(f"  wrote {self.write}")
+        lines += [f"  {r}" for r in self.retention]
         return "\n".join(lines)
 
 

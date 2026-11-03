@@ -40,6 +40,7 @@ def test_the_top_level_is_small():
         "Changes",
         "Node",
         "Report",
+        "arrives_within",
         "asof_join",
         "connect",
         "group",

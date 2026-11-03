@@ -607,6 +607,9 @@ class DeltaSink(Sink):
         ```
     """
 
+    keeps_retired = True
+    # Writes MERGE the change; it overwrites only on `SinkChange.replace`.
+
     def __init__(
         self,
         uri: str,

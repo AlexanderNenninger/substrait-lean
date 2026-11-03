@@ -53,6 +53,7 @@ import pyarrow as pa
 
 from sverify import counterexample
 from sverify.contracts import (
+    ArrivesWithin,
     Condition,
     References,
     TableCondition,
@@ -406,6 +407,8 @@ def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
     if isinstance(cond, Unique):
         keys = Counter(_norm(tuple(r[c] for c in cond.cols)) for r in rows)
         return [r for r in rows if keys[_norm(tuple(r[c] for c in cond.cols))] > 1]
+    if isinstance(cond, ArrivesWithin):
+        return [r for r in rows if r[cond.col] is None]
     if isinstance(cond, References):
         present = {_norm(r[cond.other]) for r in con.arrow[cond.table].to_pylist()}
         return [r for r in rows if r[cond.col] is not None and _norm(r[cond.col]) not in present]
