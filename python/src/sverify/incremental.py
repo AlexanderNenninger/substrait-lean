@@ -19,6 +19,10 @@ composed) keeps its proved postconditions in every state: the preconditions
 on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
 `Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
+Postconditions a transform checks on its output instead of proving them
+(`on_unproved="runtime"`) are checked on the view's full state once, and then
+on the rows each batch inserts into it, before anything is replaced
+(`PostconditionError`).
 
 Users meet this module through nodes (`sverify.nodes`): `Node.pipe` composes
 contracted transforms over sources, `.write` stores a node in a sink and ends
@@ -53,13 +57,15 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
+from sverify import _retention
+from sverify._retention import RetentionReport
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import DuckDBStore, Merger, State, Store, arrow_of, store_for
 from sverify._weighted import (
@@ -80,9 +86,11 @@ from sverify._weighted import (
 )
 from sverify.contracts import (
     ON_DATA,
+    ArrivesWithin,
     Condition,
     Discharged,
     Fact,
+    PostconditionError,
     PreconditionError,
     References,
     Unique,
@@ -90,8 +98,10 @@ from sverify.contracts import (
     label,
     register_facts,
     register_view,
+    show_duration,
     table_facts,
     view_contract,
+    violations,
 )
 from sverify.engine import (
     Connection,
@@ -713,6 +723,14 @@ class SourceRefresh:
     detail: str = ""
     inserts: int = 0
     deletes: int = 0
+    schema: str = ""
+    """How the source's schema changed in this batch (`SchemaChange`), or ""."""
+
+    def span(self) -> str:
+        """The versions, as "orders@v3→v5" ("orders@v5" if unchanged)."""
+        if self.mode == "unchanged":
+            return f"{self.table}@v{self.start}"
+        return f"{self.table}@v{self.start}→v{self.end}"
 
     def __str__(self) -> str:
         if self.mode == "unchanged":
@@ -734,18 +752,34 @@ class RefreshReport:
     audited: bool = False
     """The batch was compared with the new snapshot, and each view with its
     recomputation, and they agreed."""
+    retention: list[RetentionReport] = field(default_factory=list)
+    """For each view over a source with `arrives_within`: its open buckets,
+    those retired in this refresh, and the bound (`sverify._retention`)."""
+    postconditions: list[Discharged] = field(default_factory=list)
+    """The unproved postconditions (`on_unproved="runtime"`) checked on the
+    rows the batch inserts into each view, by view."""
 
     @property
     def recomputed(self) -> list[str]:
         return [s.table for s in self.sources if s.mode == "recomputed"]
 
+    @property
+    def notable(self) -> list[str]:
+        """What a log should show in full: sources whose change could not be
+        applied incrementally, and schema changes."""
+        out = [f"{t} recomputed" for t in self.recomputed]
+        out += [f"{s.table} schema: {s.schema}" for s in self.sources if s.schema]
+        return out
+
     def __str__(self) -> str:
         lines = [str(s) for s in self.sources]
         lines += [f"requires {p}" for p in self.preconditions]
+        lines += [f"ensures {p}" for p in self.postconditions]
         for v, vs in self.versions.items():
             lines.append(f"view {v}: " + ", ".join(f"{t}@v{n}" for t, n in vs.items()))
         if self.audited:
             lines.append("audit: batch matches the new snapshots; views match recomputation")
+        lines += [str(r) for r in self.retention]
         return "\n".join(lines)
 
 
@@ -791,8 +825,23 @@ class IncrementalView:
         self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
+        self.checked: list[Condition] = contract.checked if contract else []
+        """Postconditions that were not proved, checked on every state
+        instead (`on_unproved="runtime"`): on the first in full, then on the
+        rows each batch inserts (`unique` keys against the new state)."""
+        self.postconditions: list[Discharged] = []
+        """How `checked` was established on the first state."""
         self.pipeline = pipeline or Pipeline(con, engine)
         self.pipeline._check_new_requires(self.requires)
+        found = _retention.plan(query, self.requires)
+        self.retention: _retention.Retention | None = None if isinstance(found, str) else found
+        """How the view drops its final time buckets (`sverify._retention`),
+        if it does."""
+        self.retention_off: str | None = found if isinstance(found, str) else None
+        """Why a view over a source with `arrives_within` keeps every bucket."""
+        self.retired_through: object = None
+        """The start of the last bucket retired: the state holds every bucket
+        after it, and none at or before it. None: nothing retired."""
         self.resumed: str | None = None
         """How the view got its first state from `resume`, or why it could
         not and was computed instead."""
@@ -827,6 +876,9 @@ class IncrementalView:
         self.table: ir.Table = con.table(name)
         """The view as a table for other queries; contracted transformations
         that read it build on `guarantees`."""
+        if self.stored is None:
+            # A resumed state was checked by the run that stored it.
+            self.postconditions = self._check(self.table, self.checked, "row(s)")
         if contract is not None:
             register_view(self.table, contract)
         self.pipeline._views.append(self)
@@ -868,7 +920,41 @@ class IncrementalView:
     @property
     def contracted(self) -> bool:
         # A plain function's view requires nothing of each input: {"orders": []}.
-        return any(self.requires.values()) or bool(self.guarantees)
+        return any(self.requires.values()) or bool(self.guarantees) or bool(self.checked)
+
+    def _check(self, table: ir.Table, conds: Sequence[Condition], what: str) -> list[Discharged]:
+        """Check runtime-checked postconditions on `table` (rows of the view),
+        raising `PostconditionError` with "<n> <what> of <view> violate ...".
+        """
+        out = []
+        for c in conds:
+            if n := violations(table, c, self.pipeline.engine):
+                raise PostconditionError(
+                    f"{n} {what} of {self.name} violate {label(c)}; nothing was applied"
+                )
+            out.append(Discharged(self.name, label(c), ON_DATA))
+        return out
+
+    def _check_change(self, delta: pa.Table, new: pa.Table | Native | None) -> list[Discharged]:
+        """Check `checked` on a batch: row conditions on the rows `delta`
+        inserts, keys on the `new` state (None if no key is checked)."""
+        rowwise = [c for c in self.checked if not isinstance(c, Unique)]
+        keys = [c for c in self.checked if isinstance(c, Unique)]
+        out: list[Discharged] = []
+        for conds, rows, what in [
+            (rowwise, rows_of(positive(delta)), "inserted row(s)"),
+            (keys, new, "row(s)"),
+        ]:
+            if not conds:
+                continue
+            assert rows is not None
+            name = self.name + "$checked"
+            put_table(self.con, name, rows)
+            try:
+                out += self._check(self.con.table(name), conds, what)
+            finally:
+                self.con.drop(name)
+        return out
 
     def _replan(self, changed: set[str]) -> None:
         """Plan the view again over the current schemas of the `changed`
@@ -929,7 +1015,8 @@ class IncrementalView:
         return self.pipeline.lineage(self.name)
 
     def rows(self) -> list[Row]:
-        """The view's contents as a bag of rows, in a canonical order."""
+        """The view's contents as a bag of rows, in a canonical order. A view
+        that retires buckets holds the buckets after `retired_through`."""
         rows = arrow_rows(expanded(arrow_of(self.state)))
         return sorted(rows, key=lambda r: repr(row_key(r)))
 
@@ -980,8 +1067,16 @@ class IncrementalView:
     def _diff(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view's change by recomputing it on the new inputs and diffing,
         as a weighted table."""
-        new = self._result_on(new_tables).cast(self.schema)
+        new = self._kept(self._result_on(new_tables).cast(self.schema))
         return arrow_of(self._merge(weighted(new, 1), self.store.negated(self.state)))
+
+    def _kept(self, result: pa.Table) -> pa.Table:
+        """The rows of a result the state keeps: with retention, the buckets
+        after the last one retired. The others are final, so their change is
+        empty (`Retention.retention_sound`)."""
+        if self.retention is None or self.retired_through is None:
+            return result
+        return _retention.after(result, self.retention.column, self.retired_through)
 
 
 def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:
@@ -1025,6 +1120,9 @@ class Pipeline:
         self.sources: dict[str, VersionedSource] = {}
         self.versions: dict[str, int] = {}
         """The version of each source table the pipeline's state reflects."""
+        self.latest: dict[tuple[str, str], object] = {}
+        """For each `arrives_within(col, …)` on table `t`, the largest `col`
+        seen, keyed `(t, col)`: the watermark is it minus the lateness."""
 
     def source(self, name: str, source: VersionedSource, *, version: int | None = None) -> ir.Table:
         """Load the snapshot of `source` at `version` (default: the latest)
@@ -1108,17 +1206,98 @@ class Pipeline:
                 raise ValueError(f"incremental views do not support foreign keys yet: {refs}")
             known = {label(c) for c in self.requires.get(t, [])}
             new = [c for c in conds if label(c) not in known]
+            table = self.con.table(t)
             for c in new:
                 if isinstance(c, Unique):
                     if dup := duplicate_keys(self.con.get(t), c.cols):
                         raise PreconditionError(f"{dup} row(s) of {t} violate {label(c)}")
                     self.preconditions.append(Discharged(t, label(c), ON_DATA))
-            table = self.con.table(t)
-            rowwise = [c for c in new if not isinstance(c, Unique)]
+                elif isinstance(c, ArrivesWithin):
+                    self.preconditions.append(self._first_arrivals(t, table, c))
+            rowwise = [c for c in new if not isinstance(c, Unique | ArrivesWithin)]
             self.preconditions += discharge(
                 table, t, rowwise, self.engine, table_facts(table), f"row(s) of {t}"
             )
             self.requires.setdefault(t, []).extend(new)
+
+    def _first_arrivals(self, t: str, table: ir.Table, c: ArrivesWithin) -> Discharged:
+        """`arrives_within` on the full table: no NULL times; the largest is
+        the first watermark's."""
+        col: Any = table[c.col]
+        if not col.type().is_timestamp():
+            raise ValueError(f"{label(c)}: {t}.{c.col} is {col.type()}, not a timestamp")
+        stats = table.aggregate(latest=col.max(), nulls=col.isnull().sum()).to_pyarrow()
+        if nulls := stats.column("nulls")[0].as_py():
+            raise PreconditionError(f"{nulls} row(s) of {t} violate {label(c)}: {c.col} is NULL")
+        latest = stats.column("latest")[0].as_py()
+        self.latest[(t, c.col)] = latest
+        seen = "no rows yet" if latest is None else f"latest {_retention.show_time(latest)}"
+        return Discharged(t, label(c), f"no NULLs, {seen}; each batch checked at refresh")
+
+    def _arrivals(self, changes: Mapping[str, pa.Table]) -> tuple[list[Discharged], dict]:
+        """Check `arrives_within` on a batch: every changed row at or after
+        the watermark. Returns how, and the largest times seen after it."""
+        found: list[Discharged] = []
+        latest: dict[tuple[str, str], object] = {}
+        for t, ch in changes.items():
+            for c in self.requires.get(t, []):
+                if not isinstance(c, ArrivesWithin) or not ch.num_rows:
+                    continue
+                before: Any = self.latest.get((t, c.col))
+                bad, latest[(t, c.col)] = _retention.check_batch(ch, c, before)
+                if bad is not None and bad.nulls:
+                    raise PreconditionError(
+                        f"{bad.nulls} changed row(s) of {t} violate {label(c)}: {c.col} is "
+                        "NULL; the batch was rejected, nothing was applied"
+                    )
+                if bad is not None:
+                    raise PreconditionError(
+                        f"{bad.late} changed row(s) of {t} violate {label(c)}: {c.col} before "
+                        f"the watermark {_retention.show_time(bad.watermark)} (the latest "
+                        f"{c.col} seen, {_retention.show_time(before)}, minus "
+                        f"{show_duration(c.lateness)}); the batch was rejected, nothing was applied"
+                    )
+                wm = (
+                    "no watermark yet"
+                    if before is None
+                    else (f"watermark {_retention.show_time(before - c.lateness)}")
+                )
+                found.append(Discharged(t, label(c), f"{ON_DATA}, {wm}"))
+        return found, latest
+
+    def retire(self) -> list[RetentionReport]:
+        """Drop the final buckets from the state of every view that retires
+        them (`sverify._retention`), where every sink of the view has written
+        them; they stay in the sink. Returns what each such view holds."""
+        out: list[RetentionReport] = []
+        for v in self._views:
+            spec = v.retention
+            if spec is None:
+                if v.retention_off is not None:
+                    out.append(RetentionReport(v.name, "", 0, 0, 0, None, off=v.retention_off))
+                continue
+            report = RetentionReport(v.name, spec.column, 0, 0, spec.bound, None)
+            out.append(report)
+            if bad := [s for s in v._sinks if not getattr(s, "keeps_retired", False)]:
+                report.off = (
+                    f"sink {bad[0].name} may rewrite its whole table, which would drop "
+                    "the retired buckets"
+                )
+                continue
+            latest = self.latest.get((spec.table, spec.ts))
+            report.watermark = spec.watermark(latest)
+            cutoff = spec.cutoff(latest)
+            behind = [s.name for s in v._sinks if s._written != v.serial]
+            if behind:
+                report.waiting = f"sink {behind[0]} writes them"
+            elif cutoff is not None and (v.retired_through is None or cutoff > v.retired_through):
+                report.retired = v.store.retire(v, spec.column, cutoff)
+                v.retired_through = cutoff
+                v._publish()
+            state = arrow_of(v.state)
+            report.open = _retention.buckets(state, spec.column)
+            report.rows = state.num_rows
+        return out
 
     def _check_batch(
         self,
@@ -1132,7 +1311,7 @@ class Pipeline:
         found: list[Discharged] = []
         for t, ch in changes.items():
             conds = self.requires.get(t, [])
-            rowwise = [c for c in conds if not isinstance(c, Unique)]
+            rowwise = [c for c in conds if not isinstance(c, Unique | ArrivesWithin)]
             inserts = rows_of(positive(ch))
             if rowwise and inserts.num_rows:
                 name = t + "$inserts"
@@ -1163,9 +1342,14 @@ class Pipeline:
             raise ValueError(f"{sorted(sourced)} change through their source; call refresh()")
         self._check_changed(changes)
         self._apply({t: change_table(ch, self.con.schema(t)) for t, ch in changes.items()})
+        self.retire()
 
     def refresh(
-        self, *, audit: bool = False, until: Mapping[str, int] | None = None
+        self,
+        *,
+        audit: bool = False,
+        until: Mapping[str, int] | None = None,
+        retire: bool = True,
     ) -> RefreshReport:
         """Bring every source table to its latest version (or the version
         `until` names for it), and the views with it.
@@ -1184,7 +1368,11 @@ class Pipeline:
 
         With `audit`, the batch is compared with the new snapshots and every
         view with its recomputation on the new tables, before anything is
-        committed (`AuditError`): a mismatch changes nothing."""
+        committed (`AuditError`): a mismatch changes nothing.
+
+        With `retire` (the default), the views that retire time buckets drop
+        the final ones afterwards (`retire`); a node passes False and retires
+        once its sink has written."""
         changes: dict[str, pa.Table] = {}
         facts: dict[str, list[Fact]] = {}
         versions: dict[str, int] = {}
@@ -1207,19 +1395,25 @@ class Pipeline:
                 continue
             schema = self.con.schema(t)
             evolved = SchemaChange.of(schema, batch.schema or schema)
-            note = ""
+            note = schema_note = ""
             if evolved:
                 try:
                     if not evolved.compatible:
                         raise ValueError("the old schema cannot hold the new data")
                     batch = _conform_batch(batch, schema)
                     note = f"; schema: {evolved}, read in the old schema"
+                    schema_note = str(evolved)
                 except (ValueError, pa.ArrowException) as e:
                     snap = batch.snapshot
                     if snap is None or batch.changes is not None:
                         snap = src.snapshot(batch.end).table
                     entry = SourceRefresh(
-                        t, start, batch.end, "recomputed", f"schema: {evolved} ({first_line(e)})"
+                        t,
+                        start,
+                        batch.end,
+                        "recomputed",
+                        f"schema: {evolved} ({first_line(e)})",
+                        schema=str(evolved),
                     )
                     rebuild[t] = (snap, entry)
                     versions[t] = batch.end
@@ -1281,6 +1475,7 @@ class Pipeline:
                     detail + note,
                     inserted_count(ch),
                     deleted_count(ch),
+                    schema_note,
                 )
             )
         replan = self._reading(set(rebuild))
@@ -1324,7 +1519,12 @@ class Pipeline:
         for t, fs in snapshot_facts.items():
             register_facts(self.con, t, fs)
         return RefreshReport(
-            report, pending.found, {v.name: v.versions for v in self._views}, audited=audit
+            report,
+            pending.found,
+            {v.name: v.versions for v in self._views},
+            audited=audit,
+            retention=self.retire() if retire else [],
+            postconditions=pending.checked,
         )
 
     def _reading(self, tables: set[str]) -> list[IncrementalView]:
@@ -1350,10 +1550,10 @@ class Pipeline:
                 saved["state"] = DuckDBStore().copy(v.state)
                 tables[v.name] = v.store.expanded(saved["state"])
             views[v.name] = saved
-        return tables, views, dict(self.versions)
+        return tables, views, dict(self.versions), dict(self.latest)
 
     def _restore(self, backup: tuple) -> None:
-        tables, views, versions = backup
+        tables, views, versions, latest = backup
         for t, table in tables.items():
             if self.con.get(t) is not table:
                 put_table(self.con, t, table)
@@ -1361,13 +1561,13 @@ class Pipeline:
             state = views[v.name]
             v.__dict__.clear()
             v.__dict__.update(state)
-        self.versions = versions
+        self.versions, self.latest = versions, latest
 
     def _audit(self, pending: _Commit) -> None:
         """Compare every view's new state with its recomputation on the new
         tables, before the commit."""
         for v in self._views:
-            want = v._result_on(pending.new_tables).cast(v.schema)
+            want = v._kept(v._result_on(pending.new_tables).cast(v.schema))
             state = pending.states.get(v.name, v.state)
             if arrow_of(v._merge(weighted(want, 1), v.store.negated(state))).num_rows:
                 raise AuditError(
@@ -1425,9 +1625,11 @@ class Pipeline:
             if given is None:
                 given = _apply_change(_as_arrow(self.con.get(t)), ch, t)
             new_tables[t] = given
-        found = self._check_batch(changes, new_tables, facts or {})
+        arrived, latest = self._arrivals(changes)
+        found = arrived + self._check_batch(changes, new_tables, facts or {})
         deltas: dict[str, pa.Table] = {t: consolidated(ch) for t, ch in changes.items()}
         stale = set(recompute or ())
+        checked: list[Discharged] = []
         states: dict[str, State] = {}
         in_place: dict[str, pa.Table] = {}
         # The tables whose new contents a recomputed view reads.
@@ -1447,20 +1649,34 @@ class Pipeline:
                 stale.add(v.name)
             delta = v._diff(new_tables) if rerun else v._delta(deltas)
             deltas[v.name] = delta
-            if isinstance(v.state, Resident) and not audit and v.name not in read_new:
+            # A checked key is checked on the whole new state.
+            keyed = any(isinstance(c, Unique) for c in v.checked)
+            if isinstance(v.state, Resident) and not audit and v.name not in read_new and not keyed:
                 # Only the state rows the change touches, merged with it.
                 merged = v._merge(matching(v.state, delta), delta)
                 if v.store.has_negative(merged):
                     raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
+                checked += v._check_change(delta, None)
                 in_place[v.name] = arrow_of(merged)
                 continue
             merged = v._merge(v.state, delta, keep=v.store.keep)
             if v.store.has_negative(merged):
                 raise ValueError(f"changes delete rows that are not in the inputs of {v.name}")
             new_tables[v.name] = v.store.expanded(merged)
+            checked += v._check_change(delta, new_tables[v.name])
             states[v.name] = merged
         changed = {name: deltas[name] for name in [*states, *in_place]}
-        return _Commit(changes, new_tables, dict(versions or {}), states, found, in_place, changed)
+        return _Commit(
+            changes,
+            new_tables,
+            dict(versions or {}),
+            states,
+            found,
+            in_place,
+            changed,
+            latest=latest,
+            checked=checked,
+        )
 
     def _commit(self, pending: _Commit) -> None:
         """Replace the tables, views and versions with their new state."""
@@ -1478,6 +1694,7 @@ class Pipeline:
         for t in pending.changes:
             put_table(self.con, t, pending.new_tables[t])
         self.versions.update(pending.versions)
+        self.latest.update(pending.latest)
         for name, state in pending.states.items():
             views[name].state = state
             put_table(self.con, name, pending.new_tables[name])
@@ -1500,6 +1717,10 @@ class _Commit:
     touches, merged with it."""
     deltas: dict[str, pa.Table] = field(default_factory=dict)
     """Each changed view's change, as a weighted table."""
+    latest: dict[tuple[str, str], object] = field(default_factory=dict)
+    """The largest time seen after the batch, per `arrives_within`."""
+    checked: list[Discharged] = field(default_factory=list)
+    """The views' runtime-checked postconditions, checked on the batch."""
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:

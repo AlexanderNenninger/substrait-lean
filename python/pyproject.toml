@@ -29,9 +29,11 @@ polars = ["numpy>=2.5.4", "polars>=2.1.0"]
 spark = ["pyspark>=4.0"]
 delta = ["deltalake>=1.6.6"]
 iceberg = ["pyiceberg[pyarrow]>=0.12.0"]
+# `sverify.io.flight`: pyarrow built with Flight, as the PyPI wheels are.
+flight = ["pyarrow>=26.0.0"]
 # `sverify.testing` and its pytest plugin; the plugin is registered without it.
 testing = ["hypothesis>=6.170.14", "pytest>=9.2.0"]
-all = ["sverify[datafusion,polars,spark,delta,iceberg,testing]"]
+all = ["sverify[datafusion,polars,spark,delta,iceberg,flight,testing]"]
 
 # The pytest plugin (`sverify.pytest_plugin`): `pytest -p no:sverify` turns it off.
 [project.entry-points.pytest11]
@@ -177,6 +179,10 @@ cmd = "pytest -n auto --dist worksteal -m snowflake"
 [tool.poe.tasks.test-spark]
 help = "Python tests of the Spark SQL (on a local Spark session, which needs a JVM)"
 cmd = "pytest -n auto --dist worksteal -m spark"
+
+[tool.poe.tasks.oracle-a]
+help = "Oracle A: the lift against DuckDB on the benchmarks and the replay's decided files, against the ledgers"
+cmd = "python -m sverify_dev.oracle --jobs 4"
 
 [tool.poe.tasks.fuzz]
 help = "Random queries with Lean as the oracle for $BUDGET seconds (default 600); prints new findings"

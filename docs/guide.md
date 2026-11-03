@@ -211,7 +211,7 @@ Ibis expression). Each call proves the postconditions before it returns:
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
 )
 def doubled(orders):
@@ -221,17 +221,19 @@ expr = doubled(orders)
 print(doubled.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: _.id.notnull()
+# requires orders: (_.amount < 2**62) (inferred)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 # ensures id IS NOT NULL: proved
 # known about the output:
 #   id: any integer
-#   doubled: an integer in [22, 1999999998]
+#   doubled: an integer ≥ 22
 ```
 
-Lean worked out that `doubled` is at least 22 and fits in 64 bits: the filter
-keeps only `amount > 10`, and doubling preserves that. A postcondition that
-doesn't follow is refused, with what *is* known:
+Lean worked out that `doubled` is at least 22: the filter keeps only
+`amount > 10`, and doubling preserves that. Sverify inferred the bound that
+keeps `amount * 2` within 64 bits ([Inferred bounds](#inferred-bounds)). A
+postcondition that doesn't follow is refused, with what *is* known:
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
@@ -259,7 +261,9 @@ except VerificationError as e:
   tables bound to data (`sv.connect()`), at call time.
 * Unproved postconditions raise `VerificationError`. With
   `on_unproved="runtime"` they are checked on the output data instead
-  (`PostconditionError`); with `on_unproved="warn"` you get a warning.
+  (`PostconditionError`): on bound tables at call time, on a node at every
+  refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
+  `on_unproved="warn"` you get a warning.
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
@@ -318,6 +322,65 @@ out, since a group may have any number of rows. Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.
+
+### Inferred bounds
+
+An overflow at the declared width is an error (#202), so `amount * 2` on a
+`BIGINT` needs a bound on `amount`. Sverify infers it (#244): for each `+`,
+`-`, `*` by a constant, negation, `abs` and timestamp truncation that may
+leave its range, it works out the range each input column must stay in, and
+adds it to `requires` as if you had written it:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.twice >= 0])
+def twice(orders):
+    return orders.select(orders.id, twice=orders.amount * 2)
+
+twice(orders)
+print(twice.last_report)
+# requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 2**62) (inferred)
+# ensures (_.twice >= 0): proved
+# ...
+```
+
+An inferred bound is a precondition like the rest. It is checked on the
+data at call time and on every refresh, or proved from Delta and Iceberg
+file statistics, and refresh reports list it as
+`orders: (_.amount < 2**62) (inferred, checked on data)`. Downstream nodes
+build on it like on any other precondition of a source.
+
+* The inference is untrusted: Lean proves the contract again with the
+  inferred bounds added, so a wrong bound makes the proof fail
+  ([SubstraitLean/Infer.lean](../SubstraitLean/Infer.lean)).
+* Bounds are rounded inward to round numbers (`3 * 10**18`, `2**62`) and
+  timestamps to whole years (`ts.truncate("M")` needs
+  `_.ts >= datetime(1678, 1, 1)` and `_.ts < datetime(2262, 1, 1)`, the
+  range of nanosecond timestamps).
+* A product or sum of two unbounded columns has no single weakest bound,
+  the value of an aggregate (`SUM`) or window function has none on a
+  column, and a value from another contracted transformation is bounded by
+  its `ensures`. For these the report's hint suggests a bound
+  (`Issue.hint`), and sverify assumes none.
+* `@sv.transform(strict=True)` and `sv.verify(..., infer=False)` infer
+  nothing: each overflow fails the proof, and its hint names the bound to
+  state.
+
+For what it does not infer, the report's `hint:` lines (`Report.hints`) name
+the bound to add. An integer `SUM` gets the range Lean knows for the column it
+adds up and the largest group whose sum then fits 64 bits, or a bound to add
+when the column has none:
+
+```python
+samples = ibis.table({"host": "string", "ts": "timestamp", "cpu": "int64"}, name="samples")
+per_minute = samples.group_by(["host", samples.ts.truncate("m").name("minute")]).aggregate(
+    cpu=samples.cpu.sum()
+)
+print(sv.verify(per_minute))
+# requires samples: (_.ts >= datetime(1, 1, 1)) (inferred)
+# ...
+# hint: SUM of `cpu`: bound it in `requires` of samples, for example `_.cpu <= 1_000_000_000` and `_.cpu >= -1_000_000_000`; then a group's sum fits 64 bits for up to 9,223,372,036 rows...
+```
 
 ### Composing contracts
 
@@ -408,6 +471,29 @@ A node without delta rules (left join, aggregate, window, `DISTINCT`,
 nodes keep their guarantees in every state: their preconditions on the
 sources are checked in full once, then only on each batch.
 
+A node whose transform has `on_unproved="runtime"` checks the postconditions
+Lean could not prove on its output at every refresh: on the full result the
+first time, then on the rows each batch inserts, before its sink commits. A
+violation raises `PostconditionError`, and the refresh writes nothing. The
+report marks those postconditions as checked on data, and transforms
+downstream may assume only the proved ones, so such a node is stored with
+`.write` before another transform reads it:
+
+```python
+@sv.transform(ensures=[_.amount < 1_000], on_unproved="runtime")
+def capped(orders):
+    return orders.select(orders.id, orders.amount)
+
+n = orders.pipe(capped)    # no VerificationError: checked at refresh
+print(capped.last_report)
+# ensures (_.amount < 1000): NOT proved (it is TRUE, FALSE or NULL); checked on the output data
+# ...
+print(n.refresh())
+# capped:
+#   computed
+#   ensures capped: (_.amount < 1000) (checked on data)
+```
+
 `.write(sink)` stores a node, as a cache in the middle of a job or as its
 output, and returns the stored node, which transforms downstream read as a
 versioned source. Without a `.write` in between, transforms fuse into one
@@ -438,6 +524,18 @@ print(sv.group(report, totals).refresh())  # paid is refreshed and written once
 The engine is chosen at refresh time: `"duckdb"` (the default, in memory),
 `"polars"`, `"datafusion"`, `"spark"` or a Spark session. The nodes keep their
 state while the process runs; a stored node's table is its durable state.
+
+A job that refreshes every minute logs `summary()`, one line per node, and
+`str()` keeps the full report. A node's entry is in full when its refresh did
+something notable: its first refresh, a source recomputed for want of a change
+feed, a schema change, or a sink overwriting its table. A failed check raises,
+and its message says which rows failed what:
+
+```python
+customers.apply(sv.Changes(inserts=[("dan", "Oslo")]))
+print(c.refresh().summary())
+# cities: orders@v1, customers@v1→v2, Δ trusted (change feed)
+```
 
 ### Delta Lake and Iceberg
 
@@ -508,10 +606,66 @@ store credentials, or a function that renews them, for every table that
 needs them. [Notebook 5](../notebooks/05_pipelines_and_engines.py) of the tour walks
 through both.
 
+`sverify.io.flight.FlightSource(location, table)` reads a table of a
+numbered batch log on an Arrow Flight server (`pip install
+'sverify[flight]'`). The server numbers each batch it receives with
+`do_put`, one counter across tables, and keeps them in order. `do_get` with
+the ticket `{"table": t, "after": n}` streams the batches numbered above
+`n`, each with `{"seq": s}` as app metadata, and names in the stream's schema
+metadata the `floor`, the lowest number it still holds; an optional
+`"until": m` stops at `m`. The source's cursor is `{"seq": n, "floor": f}`,
+the number of the last batch read and the floor at that read. A refresh
+appends the new batches, as they arrived and without a copy, and the batches
+below the floor, which the server dropped past its retention, come back as
+deletes, so the source holds the server's window of rows. A restarted job
+resumes at the cursor its sink recorded, unless the server dropped batches
+since; then it reads the whole log again. The report states what this assumes: the server numbers batches in
+order of arrival, never changes one, and drops only whole batches below its
+floor. `FlightLog()` is a small in-memory server that keeps such a log
+(`keep=` batches per table, or `drop(table, below=n)`), the one
+[the tests](../python/tests/test_io_flight.py) run against. With `schema=`, a
+`FlightSource` proves contracts without asking the server, and `token=`
+sends a bearer token:
+
+```python
+import pyarrow.flight as fl
+from sverify.io.flight import FlightLog, FlightSource
+
+log = FlightLog(keep=10_000)  # on 127.0.0.1, at a free port
+location = f"grpc://127.0.0.1:{log.port}"
+
+
+def send(rows):
+    batch = pa.table(rows)
+    writer, _ = fl.connect(location).do_put(fl.FlightDescriptor.for_path("samples"), batch.schema)
+    writer.write_table(batch)
+    writer.close()
+
+
+@sv.transform()
+def busy(samples):
+    return samples.filter(samples.cpu > 0.5)
+
+
+send({"host": ["pi3"], "cpu": [0.75]})
+node = busy(FlightSource(location, "samples"))
+node.refresh()
+send({"host": ["nas"], "cpu": [0.9]})
+print(node.refresh())
+# busy:
+#   samples@v1→v2: 1 insert(s), 0 delete(s); Δ trusted as rows appended to samples v1→v2, assuming the Flight server numbers batches in order of arrival, ...
+log.shutdown()
+```
+
 A restarted job resumes from its sink and skips the recompute. You build the
 same nodes again and refresh; a stored node takes the stored rows only if
 its plan and source versions match what the sink recorded; otherwise it is
-computed, and the report says why:
+computed, and the report says why. A source of your own resumes too if it
+implements `restore(cursor)`: the sink records the source's cursor next to
+its version, and the restarted job starts from the table as of that cursor
+and reads only what is new since. `from_query` and `from_files` do this; a
+cursor whose rows are gone (`restore` returns None) reads the whole table
+again:
 
 ```python
 restarted = DeltaSource(str(lake / "transactions")).pipe(duplicate_payments).write(
@@ -541,6 +695,85 @@ correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
 deletion vectors the statistics cover deleted rows too, which still bounds
 the live ones). Iceberg tables with equality deletes can't be read. What is
 proved is listed under [Table formats](how-it-works.md#table-formats).
+
+### Time buckets: bounded state
+
+A node that aggregates by a time bucket keeps a row per bucket and group, so
+its state grows with every hour it has seen. A bound on how late rows arrive
+lets sverify drop the buckets no later batch can change:
+
+```python
+from datetime import datetime, timedelta
+
+import pyarrow as pa
+import sverify as sv
+from deltalake import write_deltalake
+from ibis import _
+from sverify.io import DeltaSink, DeltaSource
+
+start = datetime(2026, 11, 3)
+write_deltalake(
+    "lake/samples",
+    pa.table({
+        "host": ["a", "b"] * 30,
+        "ts": [start + timedelta(minutes=10 * (k // 2)) for k in range(60)],
+        "cpu": list(range(60)),
+    }),
+    configuration={"delta.enableChangeDataFeed": "true"},
+)
+
+
+@sv.transform(
+    requires={"samples": [
+        sv.arrives_within("ts", hours=2),
+        _.ts >= datetime(2000, 1, 1), _.ts < datetime(2100, 1, 1),
+    ]}
+)
+def hourly(samples):
+    return samples.group_by(["host", samples.ts.truncate("h").name("hour")]).aggregate(
+        n=samples.count(), peak=samples.cpu.max()
+    )
+
+
+rollup = DeltaSource("lake/samples").pipe(hourly).write(DeltaSink("lake/hourly"))
+print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are final
+# hourly:
+# ...
+#   retention hourly.hour: 3 bucket(s) open (bound 3), 2 retired, 6 state row(s); watermark 2026-11-03 02:50:00
+```
+
+- `arrives_within("ts", hours=2)` says every row a batch inserts or deletes
+  has `ts` at or after the watermark: the largest `ts` seen before the batch,
+  minus two hours. The first refresh checks that `ts` has no NULLs; every
+  later batch is checked at refresh, and a late row rejects the batch with
+  `PreconditionError`, so nothing is applied. Quarantining late rows instead
+  is #184.
+- A bucket that ends at or before the watermark is final. Lean proves that
+  no admissible batch changes a final bucket, for every measure, so the
+  final buckets kept in the sink and the open ones in the state add up to a
+  full recompute (`Retention.retention_sound` and `Retention.final_stable` in
+  [`SubstraitLean/Retention.lean`](../SubstraitLean/Retention.lean)).
+- After the sink has written a refresh, the node drops the final buckets
+  from its state. At most `⌈lateness / width⌉ + 1` buckets stay open
+  (`Retention.open_buckets_le`), so the state holds that many rows per group.
+  The refresh report gives the open and retired buckets, the bound and the
+  watermark (`RetentionReport`).
+- The bucket is `ts.truncate(unit)` to a second, minute, hour or day, or
+  `ts.bucket(...)` with a constant interval of days or less, of a timestamp
+  column of the source, under filters and projections that read only their
+  own row. Calendar units (weeks, months) and time zones other than UTC for
+  hours and days keep every bucket, and the report says why.
+- Retention needs a sink that keeps what the state drops: `DeltaSink` does
+  (`Sink.keeps_retired`). With a sink that may rewrite its whole table, such
+  as `sink_from`, the node keeps every bucket. A node without a sink holds
+  only its open buckets.
+- A restarted job resumes from the sink with every bucket, takes the
+  watermark from the source's largest `ts`, and drops the final buckets at
+  the end of its first refresh.
+
+The refresh still recomputes the aggregate from the source and keeps the
+buckets after the last one retired. Windows over time with bounded frames
+and interval joins are follow-ups in #294.
 
 ### Engines and SQL
 

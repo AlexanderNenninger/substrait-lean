@@ -50,7 +50,7 @@ def test_preconditions_make_plans_guard_free(expr):
 
 @pytest.mark.parametrize("expr", GUARD_FREE)
 def test_without_preconditions_guards_stay(expr):
-    assert not sv.verify(expr).guard_free
+    assert not sv.verify(expr, infer=False).guard_free
 
 
 def test_unguarded_sql_has_no_row_checks():

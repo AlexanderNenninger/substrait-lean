@@ -139,6 +139,16 @@ class Store:
     def has_negative(self, z: State) -> bool:
         return has_negative(arrow_of(z))
 
+    def retire(self, view, column: str, cutoff: object) -> int:
+        """Drop the rows of `view.state` whose bucket `column` starts at or
+        before `cutoff` (`sverify._retention`); returns how many buckets."""
+        from sverify import _retention
+
+        state = arrow_of(view.state)
+        gone = _retention.buckets(_retention.through(state, column, cutoff), column)
+        view.state = _retention.after(state, column, cutoff)
+        return gone
+
 
 class ArrowStore(Store):
     """The state as an Arrow table in the Python process."""
@@ -241,6 +251,23 @@ class DuckDBStore(Store):
             except BaseException:
                 db.execute("ROLLBACK")
                 raise
+
+    def retire(self, view, column: str, cutoff: object) -> int:
+        """`Store.retire` in place: one DELETE in DuckDB."""
+        z = view.state
+        if not isinstance(z, Resident):
+            return super().retire(view, column, cutoff)
+        with DuckDBStore._lock:
+            if DuckDBStore._db is None:
+                DuckDBStore._db = _duckdb.cursor()
+            db = DuckDBStore._db
+            where = f"{_q(column)} <= ?"
+            row = db.execute(
+                f"SELECT count(DISTINCT {_q(column)}) FROM {z.ref} WHERE {where}", [cutoff]
+            ).fetchone()
+            gone = row[0] if row else 0
+            db.execute(f"DELETE FROM {z.ref} WHERE {where}", [cutoff])
+        return int(gone)
 
     def has_negative(self, z: State) -> bool:
         if not isinstance(z, Resident):

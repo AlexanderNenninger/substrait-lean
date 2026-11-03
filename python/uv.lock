@@ -3927,6 +3927,7 @@ all = [
     { name = "hypothesis" },
     { name = "numpy" },
     { name = "polars" },
+    { name = "pyarrow" },
     { name = "pyiceberg", extra = ["pyarrow"] },
     { name = "pyspark" },
     { name = "pytest" },
@@ -3936,6 +3937,9 @@ datafusion = [
 ]
 delta = [
     { name = "deltalake" },
+]
+flight = [
+    { name = "pyarrow" },
 ]
 iceberg = [
     { name = "pyiceberg", extra = ["pyarrow"] },
@@ -3982,13 +3986,14 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'polars'", specifier = ">=2.5.4" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=2.1.0" },
     { name = "pyarrow", specifier = ">=26.0.0" },
+    { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
     { name = "pyiceberg", extras = ["pyarrow"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "testing"], marker = "extra == 'all'" },
+    { name = "sverify", extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing"], marker = "extra == 'all'" },
 ]
-provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "testing", "all"]
+provides-extras = ["datafusion", "polars", "spark", "delta", "iceberg", "flight", "testing", "all"]
 
 [package.metadata.requires-dev]
 dev = [
