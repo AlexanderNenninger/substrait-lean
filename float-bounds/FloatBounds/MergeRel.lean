@@ -13,6 +13,15 @@ updates and merges.
 The weight that bounds the merges is `L n = 2 n (⌈log₂ n⌉ + 1)`
 (`Lw`): a merge of `a` and `b` values adds at most `2 min(a, b)` to it
 (`Lw_merge`), and a value Welford's update adds, `2` (`Lw_succ`).
+
+DuckDB's merge (`dMerge`, `VarianceOperation::Combine`) computes the mean by
+a fused multiply-add (`dmean_spec`) and adds `Δ · Δ · n_s · n_t / n` to the
+co-moments (`T_chain`). Each thread's state meets the tree invariant
+(`tInv_of_wInv`), a merge keeps it (`tInv_merge`), and so does every plan
+(`tInv_plan`). For `n ≤ 2³²` doubles at most `2³⁹⁹` in magnitude, the
+co-moment any plan computes is within
+`148 n u √(Q' S) + 3961 n² u² Q' + 793 n u · tiny` of `S`, with
+`Q' = Σ (|x| + tiny)²` (`chanVar_rel`).
 -/
 
 @[expose] public section
@@ -1149,6 +1158,168 @@ theorem StdModel.tInv_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
       hLm hEa hEb e1 e2
     rw [hna, hnb] at this ⊢
     exact this
+
+/-- A plan of DuckDB's parallel aggregation: each leaf a thread's run of
+Welford's updates over its values, each node a merge of a target (left) and
+a source (right). -/
+inductive VPlan
+  | leaf (xs : List ℝ)
+  | merge (t s : VPlan)
+
+/-- The values a plan aggregates. -/
+def VPlan.vals : VPlan → List ℝ
+  | .leaf xs => xs
+  | .merge t s => t.vals ++ s.vals
+
+/-- The state DuckDB computes by a plan. -/
+noncomputable def StdModel.vEval : VPlan → ℕ × ℝ × ℝ
+  | .leaf xs => M.wState xs
+  | .merge t s => M.dMerge (StdModel.vEval t) (StdModel.vEval s)
+
+theorem StdModel.foldl_wStep_count (xs : List ℝ) (s : ℕ × ℝ × ℝ) :
+    (xs.foldl M.wStep s).1 = s.1 + xs.length := by
+  induction xs generalizing s with
+  | nil => simp
+  | cons x xs ih => simp only [List.foldl_cons, ih, StdModel.wStep, List.length_cons]; omega
+
+theorem StdModel.vEval_count : ∀ p : VPlan, (M.vEval p).1 = p.vals.length
+  | .leaf xs => by simp [StdModel.vEval, VPlan.vals, StdModel.wState, M.foldl_wStep_count]
+  | .merge t s => by
+    have ht := StdModel.vEval_count t
+    have hs := StdModel.vEval_count s
+    simp only [StdModel.vEval, VPlan.vals, List.length_append, StdModel.dMerge]
+    split_ifs with h1 h2
+    · omega
+    · omega
+    · simp [ht, hs]
+
+/-- **Every plan keeps the tree invariant**, for `n ≤ 2³²` doubles at most
+`2³⁹⁹` in magnitude. -/
+theorem StdModel.tInv_plan : ∀ p : VPlan, p.vals ≠ [] → p.vals.length ≤ 2 ^ 32 →
+    (∀ x ∈ p.vals, |x| ≤ 2 ^ 399) → (∀ x ∈ p.vals, M.fl x = x) → TInv p.vals (M.vEval p)
+  | .leaf xs, hne, hN, hB, hrep => tInv_of_wInv (M.wInv_all hne hN hB hrep)
+  | .merge t s, hne, hN, hB, hrep => by
+    simp only [VPlan.vals, List.length_append, List.mem_append] at hne hN hB hrep ⊢
+    have hct := M.vEval_count t
+    have hcs := M.vEval_count s
+    rcases eq_or_ne t.vals [] with ht | ht
+    · have : M.dMerge (M.vEval t) (M.vEval s) = M.vEval s := by
+        simp [StdModel.dMerge, hct, ht]
+      rw [StdModel.vEval, this, ht, List.nil_append]
+      rw [ht] at hN
+      exact StdModel.tInv_plan s (by simpa [ht] using hne) (by simpa using hN)
+        (fun x hx => hB x (Or.inr hx)) (fun x hx => hrep x (Or.inr hx))
+    rcases eq_or_ne s.vals [] with hs | hs
+    · have : M.dMerge (M.vEval t) (M.vEval s) = M.vEval t := by
+        have : t.vals.length ≠ 0 := by simpa using ht
+        simp [StdModel.dMerge, hct, hcs, hs, this]
+      rw [StdModel.vEval, this, hs, List.append_nil]
+      rw [hs] at hN
+      exact StdModel.tInv_plan t ht (by simpa using hN)
+        (fun x hx => hB x (Or.inl hx)) (fun x hx => hrep x (Or.inl hx))
+    have hlt : 1 ≤ s.vals.length := List.length_pos_iff.mpr hs
+    have hls : 1 ≤ t.vals.length := List.length_pos_iff.mpr ht
+    exact M.tInv_merge ht hs hN (fun x hx => hB x (Or.inl hx)) (fun x hx => hB x (Or.inr hx))
+      (StdModel.tInv_plan t ht (by omega) (fun x hx => hB x (Or.inl hx)) (fun x hx => hrep x (Or.inl hx)))
+      (StdModel.tInv_plan s hs (by omega) (fun x hx => hB x (Or.inr hx)) (fun x hx => hrep x (Or.inr hx)))
+
+/-- **DuckDB's parallel variance, to first order in the spread**: for any
+plan of Welford's updates and Chan's merges over `n ≤ 2³²` doubles at most
+`2³⁹⁹` in magnitude, the computed co-moment `Ŝ` is within
+`148 n u √(Q' S) + 3961 n² u² Q' + 793 n u · tiny` of `S = Σ (x − x̄)²`,
+where `Q' = Σ (|x| + tiny)²`. -/
+theorem StdModel.chanVar_rel (p : VPlan) (hne : p.vals ≠ []) (hN : p.vals.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 399) (hrep : ∀ x ∈ p.vals, M.fl x = x) :
+    |(M.vEval p).2.2 - comoment (dupL p.vals)|
+      ≤ 148 * p.vals.length * u
+          * √((p.vals.map fun x => (|x| + tiny) ^ 2).sum * comoment (dupL p.vals))
+        + 3961 * p.vals.length ^ 2 * u ^ 2 * (p.vals.map fun x => (|x| + tiny) ^ 2).sum
+        + 793 * p.vals.length * u * tiny := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  obtain ⟨-, -, Ds, hDs0, hDs, hC⟩ := M.tInv_plan p hne hN hB hrep
+  generalize p.vals = xs at hne hN hB hrep hDs hC ⊢
+  have hL := Lw_le hN
+  unfold tBound at hC
+  set n : ℝ := (xs.length : ℝ) with hn
+  set S := comoment (dupL xs)
+  set Q := (xs.map fun x => (|x| + tiny) ^ 2).sum
+  set A := mag xs
+  set L := Lw xs.length
+  have hn1 : (1 : ℝ) ≤ n := by rw [hn]; exact_mod_cast List.length_pos_iff.mpr hne
+  have hN' : n ≤ 2 ^ 32 := by rw [hn]; exact_mod_cast hN
+  have hS0 : 0 ≤ S := comoment_dupL_nonneg xs
+  have hA0 : 0 ≤ A := mag_nonneg xs
+  have hL0 : 0 ≤ L := Lw_nonneg _
+  have hQ0 : 0 ≤ Q := List.sum_nonneg (fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; positivity)
+  -- `A² ≤ n Q`, `S ≤ Q`
+  have hAQ : A ^ 2 ≤ n * Q := by
+    have h := sq_abs_sum_le (xs.map fun x => |x| + tiny)
+    have e1 : ((xs.map fun x => |x| + tiny).map abs).sum = A := by
+      simp only [A, mag, List.map_map, Function.comp_def]
+      congr 1; apply List.map_congr_left; intro x _; exact abs_of_nonneg (by positivity)
+    have e2 : ((xs.map fun x => |x| + tiny).map (· ^ 2)).sum = Q := by
+      simp [Q, List.map_map, Function.comp_def]
+    rw [e1, e2, List.length_map] at h; exact h
+  have hSQ : S ≤ Q := by
+    have h1 := comoment_dupL_le xs
+    have h2 : (xs.map (· ^ 2)).sum ≤ Q := by
+      apply List.sum_le_sum; intro x _
+      have := abs_nonneg x
+      calc x ^ 2 = |x| ^ 2 := (sq_abs x).symm
+        _ ≤ (|x| + tiny) ^ 2 := by gcongr; linarith
+    linarith
+  have hnu : n * u ≤ 1 / 2 ^ 21 := by
+    calc n * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  -- `A Ds ≤ 8.13 n √(Q S)`, `S ≤ √(Q S)`
+  have hA : A ≤ √(n * Q) := (Real.le_sqrt hA0 (by positivity)).mpr hAQ
+  have hD : Ds ≤ √(66 * n * S) := by
+    apply (Real.le_sqrt hDs0 (by positivity)).mpr
+    have := mul_le_mul_of_nonneg_right hL hS0; linarith
+  have hQS0 : 0 ≤ Q * S := by positivity
+  have hAD : A * Ds ≤ 8.13 * n * √(Q * S) := by
+    have h1 : A * Ds ≤ √(n * Q) * √(66 * n * S) := mul_le_mul hA hD hDs0 (Real.sqrt_nonneg _)
+    have h2 : √(n * Q) * √(66 * n * S) = √(66 * n ^ 2 * (Q * S)) := by
+      rw [← Real.sqrt_mul (by positivity)]; ring_nf
+    have h3 : √(66 * n ^ 2 * (Q * S)) ≤ 8.13 * n * √(Q * S) := by
+      have hr : 0 ≤ 8.13 * n * √(Q * S) := by positivity
+      rw [Real.sqrt_le_left hr]
+      have : (8.13 * n * √(Q * S)) ^ 2 = 66.0969 * n ^ 2 * (Q * S) := by
+        rw [mul_pow, Real.sq_sqrt hQS0]; ring
+      rw [this]
+      have : 0 ≤ n ^ 2 * (Q * S) := by positivity
+      linarith
+    linarith
+  have hSs : S ≤ √(Q * S) := by
+    rw [Real.le_sqrt hS0 hQS0]; nlinarith
+  -- the bound
+  have hsq : 0 ≤ √(Q * S) := Real.sqrt_nonneg _
+  set R := √(Q * S)
+  have k1 : 17 * u * A * Ds ≤ 138.21 * (n * u * R) := by
+    have := mul_le_mul_of_nonneg_left hAD (by positivity : (0 : ℝ) ≤ 17 * u); nlinarith
+  have k2 : 9 * u * n * S ≤ 9 * (n * u * R) := by
+    have := mul_le_mul_of_nonneg_left hSs (by positivity : (0 : ℝ) ≤ 9 * u * n); nlinarith
+  have k3 : 60 * u ^ 2 * L * A ^ 2 ≤ 3960 * (n ^ 2 * u ^ 2 * Q) := by
+    have h1 := mul_le_mul hL hAQ (sq_nonneg A) (by positivity)
+    have := mul_le_mul_of_nonneg_left h1 (by positivity : (0 : ℝ) ≤ 60 * u ^ 2); nlinarith
+  have k4 : 12 * u * tiny * L ≤ 792 * (n * u * tiny) := by
+    have := mul_le_mul_of_nonneg_left hL (by positivity : (0 : ℝ) ≤ 12 * u * tiny); nlinarith
+  set T := 17 * u * A * Ds + 9 * u * n * S + 60 * u ^ 2 * L * A ^ 2 + 12 * u * tiny * L
+  have hT : T ≤ 147.21 * (n * u * R) + 3960 * (n ^ 2 * u ^ 2 * Q) + 792 * (n * u * tiny) := by
+    simp only [T]; linarith
+  have hT0 : 0 ≤ T := by simp only [T]; positivity
+  have hfin : (1 + 3 * n * u) * T ≤ T + T / 2 ^ 19 := by
+    have := mul_le_mul_of_nonneg_right (by linarith : 3 * n * u ≤ 1 / 2 ^ 19) hT0; nlinarith
+  have p1 : 0 ≤ n * u * R := by positivity
+  have p2 : 0 ≤ n ^ 2 * u ^ 2 * Q := by positivity
+  have p3 : 0 ≤ n * u * tiny := by positivity
+  have e1 : 148 * n * u * R = 148 * (n * u * R) := by ring
+  have e2 : 3961 * n ^ 2 * u ^ 2 * Q = 3961 * (n ^ 2 * u ^ 2 * Q) := by ring
+  have e3 : 793 * n * u * tiny = 793 * (n * u * tiny) := by ring
+  rw [e1, e2, e3]
+  linarith
 
 end FloatBounds
 
