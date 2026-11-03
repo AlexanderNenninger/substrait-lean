@@ -380,11 +380,18 @@
  "h2o-groupby-q9": {
   "checker": "verified",
   "incremental": false,
-  "native": "error: <class 'sqlglot.dialects.duckdb.DuckDB'> only implements `pop` correlation coefficient",
+  "native": "runs",
   "engines": {
-   "duckdb": "runs",
+   "duckdb": "differs",
    "polars": "refused: corr is not yet supported on Polars; see #271",
    "snowflake": "refused: covariance and correlation are not yet supported on snowflake; see #271"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "h2o-groupby-q10": {
@@ -1118,6 +1125,13 @@
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "tpcds-q36": {
@@ -1128,6 +1142,21 @@
    "duckdb": "runs",
    "polars": "refused: unsupported column type {\"decimal\": {\"nullability\": \"NULLABILITY_NULLABLE\", \"precision\": 7, \"scale\": 2}}",
    "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with tie_free=True)"
+  },
+  "contract": {
+   "proved": false,
+   "guard_free": false,
+   "deterministic": false,
+   "unproved": [
+    "lochierarchy BETWEEN 0 AND 2",
+    "rank_within_parent >= 1"
+   ],
+   "may_fail": [
+    "division by zero: (DECIMAL_TO_DOUBLE_2($2) /. DECIMAL_TO_DOUBLE_2($3))"
+   ]
+  },
+  "verified_sql": {
+   "duckdb": "no"
   }
  },
  "tpcds-q42": {

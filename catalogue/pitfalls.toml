@@ -152,3 +152,8 @@ quirks = []
 description = "A duration (timestamp - timestamp, date - date) compared with an interval of days or months."
 engines = "DataFusion compares them as (months, days, nanoseconds): a duration has no days field, so d - e > INTERVAL '3 days' is false for any duration, and beyond ±2^63 ns the comparison fails. DuckDB, Polars, Snowflake and PostgreSQL compare lengths. sverify refuses DataFusion's comparison and DATE - DATE; the Ibis producer writes DateDiff as a count of days and intervals in seconds, so the plan means what the engines compute."
 quirks = []
+
+[degenerate_statistic]
+description = "CORR of fewer than two pairs, or of a side whose values are all equal, has no value."
+engines = "The SQL standard and the reference model give NULL; DuckDB's own CORR gives NaN (docs/reference-semantics.md). sverify's written plans give NULL on DuckDB."
+quirks = []
