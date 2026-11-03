@@ -151,6 +151,9 @@ FLOATS = [
 )
 @given(t=f_rows)
 def test_double_aggregates_match_duckdb(sql, t):
+    if both_infinities(sql, t):
+        # The reference raises there (#257); its mean is kept at `+∞` (#372).
+        return
     got, expected = run(sql, F, t)
     # Lean prints tiny doubles (±0.0) as their codes.
     floats = {i for row in expected for i, v in enumerate(row) if isinstance(v, float)}
