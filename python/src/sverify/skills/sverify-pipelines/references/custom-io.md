@@ -115,6 +115,11 @@ What such sources can and cannot promise:
   `sverify.io.VersionedSource` protocol instead (`schema`, `latest`,
   `snapshot`, `changes`), building its results with `Snapshot` and
   `SourceBatch.unchanged`, `.from_changes` and `.from_snapshot`.
+* An Arrow Flight server is a source already:
+  `sverify.io.flight.FlightSource(location, "samples")` (the `flight` extra)
+  reads the batches appended since the last refresh, assuming the server
+  numbers them in order of arrival. `schema=` proves contracts without asking
+  the server, and `token=` sends a bearer token.
 
 ## A sink: `write(change)`, and `committed()` for exactly once
 

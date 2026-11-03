@@ -17,8 +17,9 @@ transforms called on nodes compose. `node.write(sink)` stores a node, and
 `node.refresh()` brings its whole lineage up to date, upstream first. Nodes
 in the incremental fragment (filters, projections, inner and cross joins,
 `UNION ALL`) are updated by delta plans proved equal to a full recompute;
-others (left joins, aggregates, windows, `DISTINCT`, `LIMIT`) are recomputed
-and diffed. Needs the `delta` or `iceberg` extra.
+aggregates and windows recompute only the groups and partitions a batch
+touches; others (left joins, `DISTINCT`, `LIMIT`) are recomputed and diffed.
+Needs the `delta` or `iceberg` extra.
 
 ## Source, contracted transforms, sink
 
@@ -98,6 +99,8 @@ assert stored.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
   with a recompute before committing (`sverify.errors.AuditError`).
 * `refresh(engine="polars")` (or `"datafusion"`, `"spark"`, a Spark session)
   picks the engine at refresh time.
+* `refresh().summary()` gives one line per node for the log of a job that
+  refreshes often; `str(refresh)` is the full report.
 * Where the change feed is gone (CDF off, files vacuumed), the changed files
   are diffed, and the report says so.
 

@@ -60,14 +60,14 @@ pip install 'sverify[all]'         # with every engine and table format
 ```
 
 The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`, or
-`all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
+`datafusion`, `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
+`flight`, `testing`, or `all`. Wheels bundle the checker as a small native binary for Linux (x86_64,
 aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
 builds from the sdist, which needs [elan](https://github.com/leanprover/elan).
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
-`0.4.0.dev<commits>+g<sha>` so they sort after 0.3.0. They are not on PyPI:
+`<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
 ```bash
 uv add "sverify>=0.4.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
@@ -87,7 +87,7 @@ one build for that long. `--find-links` sees every build on the page and picks
 the newest. Copy a URL from the release page:
 
 ```bash
-pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
+pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-<version>-py3-none-<platform>.whl"
 ```
 
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
@@ -263,7 +263,9 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   versioned source. `refresh(engine=...)` updates the whole lineage, and
   `sv.group(a, b)` several outputs against the same source versions.
 * Filters, projections, inner and cross joins and `UNION ALL` are
-  maintained from the changes; anything else is recomputed and diffed.
+  maintained from the changes. An aggregate recomputes only the groups a
+  batch touches, and a window only the partitions it touches; anything else
+  is recomputed and diffed.
 * `sverify.io` has Delta, Iceberg and in-memory sources and sinks, and
   base classes for your own: a `Source` implements `read(since)`
   (`from_query`, `from_frame` and `from_files` build one), a `Sink`
@@ -275,8 +277,10 @@ to_sql(json.loads(big.plan), SNOWFLAKE)  # the checked plan, or sverify.engines.
   (`run_sharded` runs a plan per shard and combines the results, with a
   proof that the result is the same); `sverify.errors` the exceptions.
 
-Not supported yet: DECIMAL columns (keep money as integer cents),
-framed window aggregates, `RANK` and `NTILE`. The repository has
+Not supported yet: rolling means, `MIN` over a sliding frame, correlated
+scalar subqueries and parameters (`ibis.param`), among the operations
+[the Ibis coverage table](https://github.com/AlexanderNenninger/substrait-lean#ibis-coverage)
+marks ✗. The repository has
 [a guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md),
 the Ibis coverage table in its README, and
 [what is proved and what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).

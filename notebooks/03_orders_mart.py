@@ -251,9 +251,10 @@ def _(mo):
     The other tests are proved. The grouping columns are a key of an
     aggregate's output, `revenue_cents >= 0` follows from the precondition
     on amounts (and the `fill_null` for an empty sum), and `day` is never
-    NULL because `order_ts` isn't. The warning says that an integer `SUM`
-    over enough rows can leave 64 bits: DataFusion would wrap around
-    silently there, and sverify's DuckDB and Polars runners raise.
+    NULL because `order_ts` isn't. The report assumes that each city's daily
+    `SUM` fits 64 bits, since no contract can bound how many orders a group
+    holds, and the job checks the sums while it runs. The hint names the
+    bound and the row cap (`sv.max_rows`) that would prove it instead.
 
     Someone has to decide what such an order counts as, and the dashboard's
     readers would rather see an `unknown` row than revenue that vanished. So

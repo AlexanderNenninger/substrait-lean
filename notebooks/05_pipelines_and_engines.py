@@ -1027,7 +1027,7 @@ def _(mo):
     `sverify.engines.to_sql` writes a checked plan, or one of Lean's update
     plans, as SQL whose result is `Rel.eval` of the plan. Columns are
     positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS TRUE`),
-    integers are checked against 64 bits and every `ORDER BY` says where
+    integers are checked at their declared width and every `ORDER BY` says where
     NULLs go. Each engine's differences go through a `Dialect`:
     """)
     return
@@ -1287,9 +1287,10 @@ def _(mo):
     Within one calendar year, `year` is that exact integer. Truncations
     stay inside the window's range, rounded down, and `hour` is in
     `[0, 23]`, a proved range that doesn't grow with the timestamp. Without
-    the filter, Lean warns that truncating to a month may fail, because
-    DataFusion can't truncate timestamps near the ends of its range
-    (chapter 4 shows how such warnings work):
+    the filter, truncating to a month may fail near the ends of the
+    timestamp range, so Sverify infers that `ts` lies between 1678 and 2262,
+    the range of nanosecond timestamps, and checks it on the data (chapter 4
+    shows how inferred bounds work):
     """)
     return
 

@@ -261,7 +261,7 @@ def _(mo):
     semantics, `CASE`, `COALESCE`, joins and `UNION ALL` carry them through.
     Keys and relations between columns come next. Not tracked yet: relations
     that need more than a column plus a constant (`a < 2 * b`), string
-    contents, DECIMAL columns and counts across rows. For those,
+    contents and counts across rows. For those,
     `on_unproved="runtime"` checks the condition on the data.
 
     ## Keys
