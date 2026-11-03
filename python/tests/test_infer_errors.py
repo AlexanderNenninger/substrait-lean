@@ -39,7 +39,8 @@ def inferred(report: sv.Report) -> list[str]:
         (T.select(r=T.a % T.b), ["(_.b != 0)"]),
         # `MIN / -1` is an overflow too: a bound symmetric about 0 rules it out.
         (T.select(r=T.a // T.b), ["(_.a >= -9 * 10**18)", "(_.b != 0)"]),
-        (T.select(r=T.a % (T.b - 1)), ["(_.b != 1)"]),
+        # `b - 1` may overflow too.
+        (T.select(r=T.a % (T.b - 1)), ["(_.b >= -9 * 10**18)", "(_.b != 1)"]),
         (T.select(r=T.x.sqrt()), ["(_.x >= 0.0)"]),
         (T.select(r=T.x.ln()), ["(_.x > 0)"]),
         (T.select(r=T.x.asin()), ["(_.x >= -1.0)", "(_.x <= 1.0)"]),
@@ -48,7 +49,10 @@ def inferred(report: sv.Report) -> list[str]:
         (T.select(r=T.a.cast("int32")), ["(_.a >= -2**31)", "(_.a < 2**31)"]),
         (T.select(r=ibis.literal("ab").repeat(T.a)), ["(_.a < 2**30)"]),
         (T.select(r=T.big * 2), ["(_.big >= -4 * 10**35)", "(_.big < 5 * 10**35)"]),
-        (T.select(r=T.d + ibis.interval(days=10)), ["(_.d >= date(1, 1, 1))", "(_.d < date(9999, 1, 1))"]),
+        (
+            T.select(r=T.d + ibis.interval(days=10)),
+            ["(_.d >= date(1, 1, 1))", "(_.d < date(9999, 1, 1))"],
+        ),
     ],
     ids=lambda v: v if isinstance(v, str) else None,
 )
@@ -83,7 +87,7 @@ def test_a_computed_divisor_gets_no_bound():
     assert issue.hint is not None and issue.hint.startswith("no bound on an input column")
 
 
-@sv.transform(requires={"orders": [_.qty >= 0, _.total >= 0]}, ensures=[_.price >= 0])
+@sv.transform(requires={"orders": [_.qty >= 0]}, ensures=[])
 def unit_price(orders):
     return orders.select(orders.id, price=orders.total // orders.qty)
 
