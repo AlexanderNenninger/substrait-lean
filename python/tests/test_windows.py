@@ -328,9 +328,29 @@ def test_sliding_double_aggregates_are_refused():
 
 
 def test_window_sums_may_wrap():
-    """An integer SUM over a frame wraps around in DataFusion (`Issue.sumWraps`)."""
-    report = sv.verify("SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r", tables={"r": SCHEMA})
-    assert "SUM overflow" in [i.kind for i in report.warnings]
+    """An integer SUM over a frame may leave 64 bits (`Issue.sumWraps`), where
+    the reference raises. `verify` assumes it does not and the job checks it
+    on the data; without inference it is an error."""
+    query = "SELECT s, SUM(v) OVER (PARTITION BY s) AS w FROM r"
+    report = sv.verify(query, tables={"r": SCHEMA})
+    assert "SUM overflow" in [i.kind for i in report.assumed]
+    strict = sv.verify(query, tables={"r": SCHEMA}, infer=False)
+    assert "SUM overflow" in [i.kind for i in strict.errors]
+    assert not strict.proved
+
+
+@pytest.mark.parametrize("fn", ["sum", "mean"])
+def test_a_window_sum_of_both_infinities_is_a_domain_error(fn):
+    """A frame holding `+inf` and `-inf` would sum to NaN, which no operation
+    creates (#257): reported as for a grouped SUM, and ruled out by bounds."""
+    r = ibis.table({"s": "int64", "x": "float64"}, name="r")
+    w = ibis.window(group_by="s", order_by="x")
+    expr = r.select("s", w=getattr(r.x, fn)().over(w))
+    report = sv.verify(expr)
+    assert "domain error" in [i.kind for i in report.errors]
+    assert not report.proved
+    bounded = sv.verify(expr, requires={"r": [_.x < 1e300, _.x > -1e300]})
+    assert "domain error" not in [i.kind for i in bounded.issues]
 
 
 R = ibis.table(SCHEMA, name="r")

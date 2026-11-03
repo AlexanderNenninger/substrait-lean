@@ -68,14 +68,18 @@ fires, `Rel.eval`'s value is not the answer.
   other error issues. Integer `+ - *` and negation overflow are still only a
   warning on `main` ("may wrap around"): [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202),
   [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
-* **Exception: integer `SUM` overflow** (decided on #202). It is reported as
-  "SUM overflow" and does not make the report unproved, because no
-  condition on rows can bound how many rows a group has. The written SQL
-  guards the sum and every engine raises if it leaves 64 bits, so the job
-  never answers wrongly, and the report says that the check runs while the
-  job runs. Today (`main`) it is the warning `sumWraps`; the change is
-  [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
-  Row-count bounds in contracts, which could settle it, are a separate issue.
+* **Integer `SUM` overflow is an inferred assumption, checked on the data.**
+  A group's integer sum may leave 64 bits, and the reference raises there.
+  Where the plan bounds a group's rows (a `VALUES` list, a `FETCH` count, an
+  aggregate without groups: `Rel.maxRows`) and the argument's range bounds
+  each value (`Measure.sumFits`), it is ruled out. Elsewhere `verify` assumes
+  each sum fits, as it assumes inferred bounds (#244), and lists it in
+  `Report.assumed`; the written SQL checks it on the data while the job runs
+  and raises if a sum does not fit. The proof holds under that assumption
+  (`Rel.noIssue_of_sumsFit`). With `infer=False` it is an error that makes the
+  report unproved. Row bounds on tables
+  ([#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219))
+  will discharge the assumption statically.
 
 ## Core: numbers and NULLs
 
@@ -101,7 +105,7 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 | `fp32` | IEEE binary32. | **Not yet.** One double kind: `fp32` is computed as `fp64`. [#208](https://github.com/AlexanderNenninger/substrait-lean/issues/208) |
 | Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. | ✓ |
-| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, a window `SUM`/`AVG` of `+∞` and `-∞` still gives NaN (`verify` does not report it yet), and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
+| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
 | Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. | ✓ (#204) |
 | Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ (#215) |
 | `round(x, d)` | Halves away from zero, as DuckDB computes it: with `m = 10^abs(d)`, `round(x · m) / m` for `d ≥ 0` (`x` itself where that is not finite), and `round(x / m) · m` for `d < 0` (0 where that is not finite), so `round(42, -1000)` is 0 rather than NaN. `±∞` and NaN stay. DataFusion's `round(x · 10ᵈ) / 10ᵈ` differs, so DataFusion refuses it until #271. | ✓ (#335) |
@@ -152,6 +156,7 @@ The values are right; the rendering is not.
 |---|---|---|
 | Characters | Unicode code points (Lean `Char`); `length`, `substring`, `strpos` count them. Strings compare by code point, which is UTF-8 byte order. | ✓ |
 | `substring` with a negative start | `negative_start` omitted means `WRAP_FROM_END`: `substring('hello', -2, 2) = 'lo'`. A plan that sets `LEFT_OF_BEGINNING` gets that. | ✓ (#209, R13) |
+| `substring` range | An offset outside `[-2³², 2³²)` or a length of `2³²` or more is an error, as in DuckDB ("Substring offset outside of supported range"); NULL arguments give NULL. `verify` reports it as a domain error unless the offset's bounds rule it out, for example `_.start >= -2**32` and `_.start < 2**32` in `requires`. | ✓ ([#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336)): `Text.substrInRange`, `Issue.domain`; DuckDB raises itself, and the written plan guards the offset its wrap-around arithmetic shifts |
 | Matching | Case-sensitive only (`case_sensitivity` = `CASE_SENSITIVE`); `LIKE` has `%`, `_` and a backslash escape. | ✓ |
 | **Black boxes** | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`SubstraitLean/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`); there `substrait-check` refuses to print rows rather than print wrong ones. | ✓ (#70, #50) |
 | `regexp_extract`, `regexp_replace` | A constant pattern that `Text.simpleRegex` accepts, or the plan is refused. `regexp_extract(s, p, g)` is group `g` of the leftmost-first match, `''` where nothing matches, the group took no part, or `p` has fewer groups. `regexp_replace` replaces the first match, or every match with the flag `'g'` (an empty match right after the previous one is skipped); in the replacement, `\0` … `\9` are groups and `\\` a backslash, and other escapes are refused. DuckDB only so far (#271). | ✓ (#50) |
@@ -188,8 +193,9 @@ Design notes: [nested-values.md](nested-values.md).
 | `TRY_CAST` (`failureBehavior: RETURN_NULL`) | NULL where the cast would raise, and then no error: a double to an integer (NaN, `±∞`, outside 64 bits) and an integer to a narrower one. `TRY_CAST` to a DECIMAL, of a DECIMAL to an integer, and of strings is refused. | ✓ on DuckDB (#58); other engines refuse it until #271 |
 | Decimal to a smaller scale | Rounds half away from zero. | ✓ |
 | Integer to decimal | Exact; an error if it doesn't fit the precision. | ✓ |
-| Double to decimal | `round(x · 10ˢ)` computed in doubles, half away from zero (`-2.675` gives `-2.68`). NaN and `±∞` raise. | ✓ (#27) |
-| Decimal to double | The nearest double. | ✓ |
+| Double to decimal | `round(x · 10ˢ)` computed in doubles, half away from zero (`-2.675` gives `-2.68`). NaN, `±∞` and a product that overflows raise. Monotone, so a double's bounds bound the decimal, and `verify` reports neither the failed cast nor the precision overflow where the casts of the bounds fit (`FloatCode.toDecimal?_between`). | ✓ (#27, [#223](https://github.com/AlexanderNenninger/substrait-lean/issues/223)) |
+| Decimal to double | The nearest double, halves to even: within `2⁻⁵³` of the decimal, relatively (`FloatCode.ofDecimal_rel`), and monotone. | ✓ |
+| Integer to double | The nearest double, halves to even: exact up to `2⁵³` in magnitude (`FloatCode.ofInt_exact`), within `2⁻⁵³` relatively beyond (`FloatCode.ofInt_rel`), and monotone (`ofInt_mono`). An integer up to `2⁵³` survives the round trip to a double and back (`FloatCode.toInt?_ofInt`). | ✓ |
 | `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight; `timestamp` to `date` rounds down, before 1970 too. Comparing a date with a timestamp without a cast is refused. | ✓ (#206) |
 
 ## Aggregates
@@ -252,11 +258,11 @@ these links connect it to a real run.
 
 | Assumption | Where | Status |
 |---|---|---|
-| **The size hypothesis** (`Rel.Small`): every string has fewer than 2⁶² characters, and every relation a window reads has fewer than 2⁶² rows. No machine's memory holds more. | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `ROW_NUMBER`, …). | Not on `main`; [PR #254](https://github.com/AlexanderNenninger/substrait-lean/pull/254) states it, and the theorems that need it take `Rel.Small` |
+| **The size hypothesis**: every string has fewer than 2³² characters (`Text.sizeCap`, decided on [#336](https://github.com/AlexanderNenninger/substrait-lean/issues/336): DuckDB's strings hold fewer than 2³² bytes), and every relation a window reads has fewer than 2⁶² rows (`Rel.Small`, `Text.rowCap`). | Used by the range analysis (`CHARACTER_LENGTH`, `strpos`, `levenshtein`, `ROW_NUMBER`, …). | Not on `main`; [PR #254](https://github.com/AlexanderNenninger/substrait-lean/pull/254) states it, and the theorems that need it take `Rel.Small` |
 | **The frontends** produce the plan the user meant: the Ibis producer, and SQLGlot with sverify's own Substrait producer for SQL ([#231](https://github.com/AlexanderNenninger/substrait-lean/issues/231), [PR #252](https://github.com/AlexanderNenninger/substrait-lean/pull/252)). The SQLGlot lift writes each function's options explicitly from the source dialect. | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/` | On `main`: the Ibis producer, and the SQLGlot lift for DuckDB's SQL (#252, #264). DataFusion's SQL producer is no longer a frontend (#211) |
 | **The engines match their profiles.** Tier 1 replays the engine's own tests and fuzzing ([#211](https://github.com/AlexanderNenninger/substrait-lean/issues/211)); Tiers 2 and 3 are differentially tested only. | `characterization/` | Tested, not proved |
 | **The printers and `Parse.lean`.** The JSON parser and writer, the SQL printers and the Polars translator read and write plans faithfully, a shimmed plan's `isNum` as `IS NOT NULL` included. | `SubstraitLean/Parse.lean`, `Write.lean`, `Pretty.lean`, `python/src/sverify/sql/` | Golden and round-trip tests |
-| **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64. An integer converts to a double through `FloatCode.finite`, which clamps a result of `±∞` to the largest finite double; IEEE rounds an integer to `±∞` only from 2¹⁰²⁴ on, so for 64-bit integers the clamp never applies; a decimal (`FloatCode.ofDecimal`, at most 38 digits) converts the same way (#257). | `SubstraitLean/Float.lean` | Stated; a proved link is part of [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
+| **Native `Float`.** Lean's `Float` is an opaque `extern` to C `double`; the model trusts that it is IEEE binary64 for arithmetic. The conversions between integers, decimals and doubles are computed exactly instead (`SubstraitLean/Conversions.lean`), behind `opaque` constants with their proved properties, and `#guard`s compare them with the native ones. An integer or decimal that IEEE would round to `±∞` (from 2¹⁰²⁴ on, never for 64-bit integers or 38-digit decimals) becomes the largest finite double (#257). | `SubstraitLean/Float.lean`, `SubstraitLean/Conversions.lean` | Stated; a proved link is part of [#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85) |
 
 ## Where things are decided
 

@@ -1341,11 +1341,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": false,
-   "may_fail": [
-    "division by zero: (DECIMAL_TO_DOUBLE_4($1) /. DECIMAL_TO_DOUBLE_4($2))"
-   ]
+   "proved": true,
+   "guard_free": true
   },
   "verified_sql": {
    "duckdb": "yes"
@@ -1452,8 +1449,7 @@
    "proved": false,
    "guard_free": false,
    "may_fail": [
-    "overflow: DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))",
-    "division by zero: (DECIMAL_TO_DOUBLE_5(DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))) /. DECIMAL_TO_DOUBLE_4($1))"
+    "overflow: DECIMAL_38_5(($0 * DECIMAL_4_1(1000)))"
    ]
   },
   "verified_sql": {

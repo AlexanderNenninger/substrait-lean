@@ -480,8 +480,11 @@ def _(mo):
     * `+`, `-`, `*` leaving the declared width (64 bits for `BIGINT`). The
       reference raises and DataFusion wraps around (`2⁶² + 2⁶²` gives
       `-2⁶³`), which an error allows.
-    * An integer `SUM` leaving 64 bits is checked while the job runs. A group
-      may have any number of rows, so no proof before running rules it out.
+    * An integer `SUM` leaving 64 bits. Sverify rules it out where the plan
+      bounds a group's rows (a `FETCH` count) and `requires` bounds the
+      column. Elsewhere it assumes each sum fits, as it assumes inferred
+      bounds, and the job checks it on the data while it runs
+      (`Report.assumed`).
 
     Lean's model computes with exact integers, and `SubstraitLean/Safety.lean`
     lists, for every operation of a plan, which of these can happen. Theorem
@@ -601,9 +604,8 @@ def _(VerificationError, ibis, mo, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `Report.errors` lists the issues a proof has to rule out, and
-    `Report.warnings` the ones checked while the job runs. `Report.proved` is
-    true when every postcondition is proved and there are no errors.
+    `Report.errors` lists the issues a proof has to rule out. `Report.proved`
+    is true when every postcondition is proved and there are no errors.
 
     The timing of evaluation is trusted: when DataFusion evaluates an
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters). The test

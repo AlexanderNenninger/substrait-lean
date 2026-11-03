@@ -170,7 +170,7 @@ The most common, and what sverify does about each:
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the model's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | DataFusion and PostgreSQL truncate; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | DataFusion, Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is checked while the job runs |
+| Integer overflow | DataFusion wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise instead of wrapping. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data while the job runs |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows; DataFusion gets it wrong | refused; write an anti join |
 | Guards that don't guard | DataFusion evaluates both branches of some `CASE`s and merges filters, so `WHERE n <> 0 AND x / n > 1` can still fail | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection |
@@ -211,8 +211,9 @@ uv keeps the version and drops the page, so add it to your `pyproject.toml`;
 find-links = ["https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly"]
 ```
 
-A wheel's own URL pins one build, until the next nightly replaces it. Copy it
-from the release page:
+Each build's wheels stay on the release for 30 days, so a wheel's own URL pins
+one build for that long. `--find-links` sees every build on the page and picks
+the newest. Copy a URL from the release page:
 
 ```bash
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
@@ -344,8 +345,11 @@ Errors are what an engine fails on: integer division or remainder by zero,
 `MIN / -1`, bad `POWER`s, out-of-range casts, regular expressions that may
 not compile, and `+`, `-`, `*` leaving their declared width (DataFusion
 wraps around there; the reference raises). An integer `SUM` leaving 64 bits
-is checked while the job runs instead: no proof before running can rule it
-out, since a group may have any number of rows. Guards are
+is ruled out where the plan bounds a group's rows (a `VALUES` list, a `FETCH`
+count) and `requires` bounds the column. Elsewhere sverify assumes the sum
+fits, as it assumes inferred bounds, and the job checks it on the data while it
+runs (`Report.assumed`; an error with `infer=False`). Bounds on a table's rows
+are #219. Guards are
 understood where the engine respects them: in a `CASE` branch or
 `NULLIF(n, 0)`, and in a filter below a projection. A guard in the same
 `AND` doesn't count.
@@ -788,12 +792,22 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
 #   retention hourly.hour: 3 bucket(s) open (bound 3), 2 retired, 6 state row(s); watermark 2026-11-03 02:50:00
 ```
 
-- `arrives_within("ts", hours=2)` says every row a batch inserts or deletes
-  has `ts` at or after the watermark: the largest `ts` seen before the batch,
-  minus two hours. The first refresh checks that `ts` has no NULLs; every
-  later batch is checked at refresh, and a late row rejects the batch with
+- `arrives_within("ts", hours=2)` says every row a batch inserts has `ts` at
+  or after the watermark: the largest `ts` seen before the batch, minus two
+  hours. The first refresh checks that `ts` has no NULLs; every later batch
+  is checked at refresh, and a late row rejects the batch with
   `PreconditionError`, so nothing is applied. Quarantining late rows instead
   is #184.
+- A delete before the watermark is an expiry, the source's own retention (a
+  `FlightSource` floor, a Delta `VACUUM` of old partitions), when its row is
+  in a final bucket of every view that drops buckets of `ts`. The views and
+  their sinks keep those buckets as they were, and the report counts the
+  expired rows. Lean proves that the final buckets in the sink and the open
+  ones in the state are then a full recompute over every row the source
+  received, less the deletes at or after the watermark
+  (`Retention.expiry_sound`). A delete before the watermark in a bucket that
+  is still open rejects the batch. With no view that drops buckets of `ts`,
+  every delete is applied as it is.
 - A bucket that ends at or before the watermark is final. Lean proves that
   no admissible batch changes a final bucket, for every measure, so the
   final buckets kept in the sink and the open ones in the state add up to a
