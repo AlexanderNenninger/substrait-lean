@@ -74,10 +74,7 @@ inductive AggFn where
   | count
   /-- `SUM` of integers, exactly. -/
   | sum
-  /-- `SUM` and `AVG` of doubles, with native floats. `AVG` is the rounded
-  mean, kept between the smallest and largest value (`clampInts`): IEEE's
-  rounding can step past them (the mean of three `0.1` is
-  `0.10000000000000002`), and the writers clamp it too (#372). -/
+  /-- `SUM` and `AVG` of doubles, with native floats. -/
   | fsum | avg
   /-- `MIN` and `MAX` by `Value.le`. -/
   | min | max
@@ -161,8 +158,8 @@ def floatSum (vs : List Value) : Int :=
 /-- The integers among `vs`. -/
 def intsOf (vs : List Value) : List Int := vs.filterMap fun | .int c => some c | _ => none
 
-/-- `c` kept between the smallest and largest integer among `vs` (as SQL's
-`LEAST(GREATEST(c, MIN(x)), MAX(x))`), or `c` without integers. -/
+/-- `c` kept between the smallest and largest integer among `vs`, or `c`
+without integers. -/
 def clampInts (vs : List Value) (c : Int) : Int :=
   match intsOf vs with
   | [] => c
@@ -241,8 +238,7 @@ def AggFn.apply : AggFn → List Value → Value
   | _, [] => .null
   | .sum, vs => .int (intSum vs)
   | .fsum, vs => .int (floatSum vs)
-  | .avg, vs =>
-    .int (clampInts vs (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length)))
+  | .avg, vs => .int (FloatCode.lift₂ (· / ·) (floatSum vs) (FloatCode.ofInt vs.length))
   | .iavg, vs => .int (clampInts vs ((intSum vs).tdiv vs.length))
   | .bit op, vs => .int (bitFold op vs)
   | .var sample sqrt, vs => varOf sample sqrt vs
@@ -393,15 +389,14 @@ theorem clampInts_between {vs : List Value} (hne : intsOf vs ≠ []) (c : Int) :
     refine ⟨⟨_, foldl_min_mem x xs, ?_⟩, ⟨_, foldl_max_mem x xs, Int.min_le_right _ _⟩⟩
     exact Int.le_min.2 ⟨Int.le_max_right _ _, hl⟩
 
-/-- `AVG` (of doubles, and of integers with an integer result) of values
-with an integer among them lies between two of them. -/
-theorem AggFn.apply_avg_between {f : AggFn} (hf : f = .avg ∨ f = .iavg) {vs : List Value}
-    (hne : intsOf vs ≠ []) : ∃ a, f.apply vs = .int a ∧
+/-- `AVG` of integers with an integer result, of values with an integer among
+them, lies between two of them. -/
+theorem AggFn.apply_iavg_between {vs : List Value} (hne : intsOf vs ≠ []) :
+    ∃ a, AggFn.iavg.apply vs = .int a ∧
       (∃ l ∈ intsOf vs, l ≤ a) ∧ (∃ h ∈ intsOf vs, a ≤ h) := by
   cases vs with
   | nil => simp [intsOf] at hne
-  | cons v vs =>
-    rcases hf with rfl | rfl <;> exact ⟨_, rfl, clampInts_between hne _⟩
+  | cons v vs => exact ⟨_, rfl, clampInts_between hne _⟩
 
 theorem Value.le_refl (a : Value) : a.le a = true := by
   rcases Value.le_total a a with h | h <;> exact h

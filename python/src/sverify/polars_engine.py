@@ -1557,15 +1557,7 @@ def _aggregate(fn: str, distinct: bool, vs: list, window: bool = False) -> Any:
         acc = 0.0
         for v in vs:  # in list order, with native doubles (`floatSum`)
             acc = acc + v
-        if fn == "fsum":
-            return acc
-
-        # Within the values, NaN above `+∞` (`AggFn.avg`, #372).
-        def key(x: float) -> tuple[bool, float]:
-            return (math.isnan(x), x)
-
-        mean = max(acc / len(vs) + 0.0, min(vs, key=key), key=key)
-        return min(mean, max(vs, key=key), key=key)
+        return acc / len(vs) + 0.0 if fn == "avg" else acc
     # `pickFold` keeps the first extreme; equal values are the same value here.
     return min(vs) if fn == "min" else max(vs)
 

@@ -70,11 +70,7 @@ CASES: list[Case] = [
         "windows",
         "running mean",
         V,
-        # Without infinities: a frame of `+∞` and `-∞` has the mean `+∞`, its
-        # largest value, where DuckDB's own AVG gives NaN (#372).
-        lambda: t.filter(~t.amount.isinf()).mutate(
-            m=t.amount.mean().over(ibis.window(order_by="ts", following=0))
-        ),
+        lambda: t.mutate(m=t.amount.mean().over(ibis.window(order_by="ts", following=0))),
     ),
     case(
         "windows",

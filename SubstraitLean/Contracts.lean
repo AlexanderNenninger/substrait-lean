@@ -2147,10 +2147,6 @@ inductive Fact where
   | diff (i j : Nat) (b : Bound)
   /-- Column `i` does not hold the integer `k`. -/
   | ne (i : Nat) (k : Int)
-  /-- If columns `i` and `j` hold integers `x` and `y`, then the double `x`
-  converts to is at least `y` (`up`), or at most `y`: an `AVG` of the
-  conversions against a `MAX` or `MIN` of the integers (#372). -/
-  | ofIntLe (i j : Nat) (up : Bool)
   /-- If columns `s` and `c` hold integers `x` and `n`, then `n` is positive
   and `x` is a sum of `n` integers in `b`: the `SUM` and `COUNT` of a decimal
   `AVG` (`Parse.decimalAvgs`, #237). -/
@@ -2160,8 +2156,6 @@ inductive Fact where
 def Fact.Holds (row : Row) : Fact → Prop
   | .diff i j b => ∀ x y, row.getD i .null = .int x → row.getD j .null = .int y → b.Mem (x - y)
   | .ne i k => row.getD i .null ≠ .int k
-  | .ofIntLe i j up => ∀ x y, row.getD i .null = .int x → row.getD j .null = .int y →
-      if up then y ≤ FloatCode.ofInt x else FloatCode.ofInt x ≤ y
   | .ratio s c b => ∀ x n, row.getD s .null = .int x → row.getD c .null = .int n →
       0 < n ∧ (∀ l, b.lo = some l → n * l ≤ x) ∧ (∀ h, b.hi = some h → x ≤ n * h)
 
@@ -2219,7 +2213,7 @@ def diffFact (t₁ t₂ : Expr) (mk : Int → Int → Bound) : List Fact :=
 
 /-- Facts that hold on every row where `e` is TRUE. -/
 def Fact.mentions (i : Nat) : Fact → Bool
-  | .diff a b _ | .ofIntLe a b _ | .ratio a b _ => a == i || b == i
+  | .diff a b _ | .ratio a b _ => a == i || b == i
   | .ne a _ => a == i
 
 /-- Facts that hold where `x IS NULL` (`q`), from the facts `fs` of the
@@ -2327,7 +2321,7 @@ theorem Fact.holds_of_null {f : Fact} {row : Row} {i : Nat} (hm : f.mentions i =
   | ne a k =>
     simp only [Fact.mentions, beq_iff_eq] at hm
     subst hm; intro h; rw [hn] at h; cases h
-  | ofIntLe a b _ | ratio a b _ =>
+  | ratio a b _ =>
     simp only [Fact.mentions, Bool.or_eq_true, beq_iff_eq] at hm
     intro x y hx hy
     rcases hm with rfl | rfl
@@ -2444,20 +2438,18 @@ theorem Expr.factsOf_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = tr
 /-! ### Facts through a plan -/
 
 def Fact.inRange (n : Nat) : Fact → Bool
-  | .diff i j _ | .ofIntLe i j _ | .ratio i j _ => i < n && j < n
+  | .diff i j _ | .ratio i j _ => i < n && j < n
   | .ne i _ => i < n
 
 def Fact.shift (n : Nat) : Fact → Fact
   | .diff i j b => .diff (n + i) (n + j) b
   | .ne i k => .ne (n + i) k
-  | .ofIntLe i j up => .ofIntLe (n + i) (n + j) up
   | .ratio i j b => .ratio (n + i) (n + j) b
 
 /-- Re-index a fact: column `i` of the input appears at every position in `σ i`. -/
 def Fact.rename (σ : Nat → List Nat) : Fact → List Fact
   | .diff i j b => (σ i).flatMap fun p => (σ j).map fun q => .diff p q b
   | .ne i k => (σ i).map fun p => .ne p k
-  | .ofIntLe i j up => (σ i).flatMap fun p => (σ j).map fun q => .ofIntLe p q up
   | .ratio i j b => (σ i).flatMap fun p => (σ j).map fun q => .ratio p q b
 
 /-- Positions of input column `i` in an emit mapping. -/
@@ -2521,22 +2513,15 @@ def winFacts (part : List Nat) (sort : List SortKey) (strict : Bool) (n : Nat) (
 /-! ### Facts about the measures of one group
 
 Measures of the same values on one group are related (#372): `MIN ≤ MAX`, and
-an `AVG` lies between them (`AggFn.avg` keeps it there). An `AVG` of the
-integers converted to doubles (Ibis's mean of integers) is related to
-their `MIN` and `MAX` through the conversion (`Fact.ofIntLe`). -/
+an integer `AVG` with an integer result lies between them (`AggFn.iavg`). An
+`AVG` of doubles rounds, and may step past them, so it has no such fact. -/
 
 /-- Facts relating measure `mi` (column `ci`) to measure `mj` (column `cj`). -/
 def pairFacts (ci cj : Nat) (mi mj : Measure) : List Fact :=
-  if mi.filter ≠ mj.filter then [] else
-  if mi.fn = .min ∧ mj.fn = .max ∧ mj.arg = mi.arg then [.diff cj ci ⟨some 0, none⟩]
-  else if mi.fn = .min ∧ (mj.fn = .avg ∨ mj.fn = .iavg) ∧ mj.arg = mi.arg then
-    [.diff cj ci ⟨some 0, none⟩]
-  else if mi.fn = .min ∧ (mj.fn = .avg ∨ mj.fn = .iavg) ∧ mj.arg = .un .itof mi.arg then
-    [.ofIntLe ci cj false]
-  else if mi.fn = .max ∧ (mj.fn = .avg ∨ mj.fn = .iavg) ∧ mj.arg = mi.arg then
-    [.diff ci cj ⟨some 0, none⟩]
-  else if mi.fn = .max ∧ (mj.fn = .avg ∨ mj.fn = .iavg) ∧ mj.arg = .un .itof mi.arg then
-    [.ofIntLe ci cj true]
+  if mi.filter ≠ mj.filter ∨ mj.arg ≠ mi.arg then [] else
+  if mi.fn = .min ∧ mj.fn = .max then [.diff cj ci ⟨some 0, none⟩]
+  else if mi.fn = .min ∧ mj.fn = .iavg then [.diff cj ci ⟨some 0, none⟩]
+  else if mi.fn = .max ∧ mj.fn = .iavg then [.diff ci cj ⟨some 0, none⟩]
   else []
 
 /-- Facts relating the measures `ms`, which follow `g` grouping columns. -/
@@ -2548,7 +2533,7 @@ def aggFacts (g : Nat) (ms : List Measure) : List Fact :=
 
 /-- Does the fact mention a column at or after `n`? -/
 def Fact.rightOf (n : Nat) : Fact → Bool
-  | .diff i j _ | .ofIntLe i j _ | .ratio i j _ => decide (n ≤ i) || decide (n ≤ j)
+  | .diff i j _ | .ratio i j _ => decide (n ≤ i) || decide (n ≤ j)
   | .ne i _ => decide (n ≤ i)
 
 /-- Facts that hold on every output row of a plan, given facts `F t` about
@@ -2595,7 +2580,7 @@ theorem Fact.rename_holds {σ : Nat → List Nat} {row row' : Row}
       obtain ⟨p, hp, rfl⟩ := hg
       intro hx
       exact h (hσ i p hp ▸ hx)
-  | .ofIntLe i j _, h, g, hg | .ratio i j _, h, g, hg => by
+  | .ratio i j _, h, g, hg => by
       simp only [Fact.rename, List.mem_flatMap, List.mem_map] at hg
       obtain ⟨p, hp, q, hq, rfl⟩ := hg
       intro x y hx hy
@@ -2620,7 +2605,7 @@ theorem Fact.holds_prefix {n : Nat} {row row' : Row}
   | .ne i k, hr, h => by
       simp only [Fact.inRange, decide_eq_true_eq] at hr
       intro hx; exact h (hpre i hr ▸ hx)
-  | .ofIntLe i j _, hr, h | .ratio i j _, hr, h => by
+  | .ratio i j _, hr, h => by
       simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
       intro x y hx hy
       exact h x y (hpre i hr.1 ▸ hx) (hpre j hr.2 ▸ hy)
@@ -2642,7 +2627,7 @@ theorem FactsHold.shift {n : Nat} {fs : List Fact} {row row' : Row} (h : FactsHo
   cases f with
   | diff i j b => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
   | ne i k => intro hx; exact this (hsh i ▸ hx)
-  | ofIntLe i j _ | ratio i j _ => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
+  | ratio i j _ => intro x y hx hy; exact this x y (hsh i ▸ hx) (hsh j ▸ hy)
 
 theorem getD_append_left' {x y : Row} {i : Nat} (h : i < x.length) :
     (x ++ y).getD i .null = x.getD i .null := by
@@ -2666,7 +2651,7 @@ theorem Fact.rename_holds_inRange {σ : Nat → List Nat} {row row' : Row} {n : 
       simp only [Fact.rename, List.mem_map] at hg
       obtain ⟨p, hp, rfl⟩ := hg
       intro hx; exact h (hσ i hr p hp ▸ hx)
-  | .ofIntLe i j _, hr, h, g, hg | .ratio i j _, hr, h, g, hg => by
+  | .ratio i j _, hr, h, g, hg => by
       simp only [Fact.inRange, Bool.and_eq_true, decide_eq_true_eq] at hr
       simp only [Fact.rename, List.mem_flatMap, List.mem_map] at hg
       obtain ⟨p, hp, q, hq, rfl⟩ := hg
@@ -2721,7 +2706,7 @@ theorem FactsHold.shift_nulls {n : Nat} {fs : List Fact} {row : Row}
   cases f with
   | diff i j b => intro x y hx _; rw [hnull i] at hx; cases hx
   | ne i k => intro hx; rw [hnull i] at hx; cases hx
-  | ofIntLe i j _ | ratio i j _ => intro x y hx _; rw [hnull i] at hx; cases hx
+  | ratio i j _ => intro x y hx _; rw [hnull i] at hx; cases hx
 
 theorem positions_getD {m : List Nat} {row : Row} {i p : Nat} (hp : p ∈ positions m i) :
     (m.map (row.getD · .null)).getD p .null = row.getD i .null := by
@@ -2743,7 +2728,7 @@ theorem FactsHold.rightOf_nulls {n : Nat} {fs : List Fact} {row : Row}
   | ne i k =>
     simp only [Fact.rightOf, decide_eq_true_eq] at hf
     exact Fact.holds_of_null (i := i) (by simp [Fact.mentions]) (hn i hf.2)
-  | ofIntLe i j _ | ratio i j _ =>
+  | ratio i j _ =>
     simp only [Fact.rightOf, Bool.or_eq_true, decide_eq_true_eq] at hf
     rcases hf.2 with h | h
     · exact Fact.holds_of_null (i := i) (by simp [Fact.mentions]) (hn i h)
@@ -2926,28 +2911,8 @@ theorem winFacts_sound {part : List Nat} {sort : List SortKey} {strict : Bool} {
   rw [← hx, getD_append_right']
   simp [List.getD_eq_getElem?_getD, List.getElem?_map, hget]
 
-/-- The values an `AVG` of the conversions to doubles aggregates are the
-conversions of those of the measure of the integers. -/
-theorem Measure.mem_inputs_itof {m m' : Measure} (ha : m'.arg = .un .itof m.arg)
-    (hf : m.filter = m'.filter) (rows : Relation) (v : Value) :
-    v ∈ m'.inputs rows ↔ ∃ t, v = .int (FloatCode.ofInt t) ∧ .int t ∈ m.inputs rows := by
-  have hk : m'.kept rows = m.kept rows := by simp only [Measure.kept, hf]
-  have base : ∀ (m : Measure) v, v ∈ m.inputs rows ↔
-      v ≠ .null ∧ ∃ row ∈ m.kept rows, m.arg.eval row = v := by
-    intro m v
-    simp only [Measure.inputs]
-    split <;> simp [mem_dedup, List.mem_filter, and_comm]
-  simp only [base, hk, ha]
-  constructor
-  · rintro ⟨hn, row, hr, rfl⟩
-    simp only [Expr.eval] at hn ⊢
-    cases hv : m.arg.eval row <;> rw [hv] at hn <;> simp [UnFn.apply] at hn ⊢
-    exact ⟨_, rfl, row, hr, hv⟩
-  · rintro ⟨t, rfl, -, row, hr, hv⟩
-    exact ⟨by simp, row, hr, by simp [Expr.eval, hv, UnFn.apply]⟩
-
-/-- The values of `MIN`, `MAX` and `AVG` measures of one group: the bounds
-`pairFacts` states. -/
+/-- The values of `MIN`, `MAX` and integer `AVG` measures of one group: the
+bounds `pairFacts` states. -/
 theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : Row}
     (hi : row.getD ci .null = mi.eval grp) (hj : row.getD cj .null = mj.eval grp) :
     FactsHold (pairFacts ci cj mi mj) row := by
@@ -2967,15 +2932,13 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
     rw [hi, evi _ h rfl] at hX
     obtain ⟨hm, hle⟩ := AggFn.apply_max hX (by simp)
     exact ⟨hm, fun t ht => Value.le_int.1 (hle _ ht)⟩
-  -- An `AVG` lies between two of its integers.
-  have avg : (mj.fn = .avg ∨ mj.fn = .iavg) → ∀ {A}, row.getD cj .null = .int A →
+  -- An integer `AVG` lies between two of its integers.
+  have avg : mj.fn = .iavg → ∀ {A}, row.getD cj .null = .int A →
       intsOf (mj.inputs grp) ≠ [] →
       (∃ l ∈ intsOf (mj.inputs grp), l ≤ A) ∧ (∃ h ∈ intsOf (mj.inputs grp), A ≤ h) :=
     fun hf A hA hne => by
-      obtain ⟨a, ha, hl, hh⟩ := AggFn.apply_avg_between hf hne
-      have : mj.eval grp = mj.fn.apply (mj.inputs grp) :=
-        Measure.eval_eq (by rcases hf with h | h <;> rw [h] <;> rfl) grp
-      rw [hj, this, ha] at hA; cases hA
+      obtain ⟨a, ha, hl, hh⟩ := AggFn.apply_iavg_between hne
+      rw [hj, evj _ hf rfl, ha] at hA; cases hA
       exact ⟨hl, hh⟩
   have ne_of : ∀ {t : Int}, .int t ∈ mj.inputs grp → intsOf (mj.inputs grp) ≠ [] :=
     fun h => List.ne_nil_of_mem (mem_intsOf.2 h)
@@ -2984,63 +2947,37 @@ theorem pairFacts_sound {ci cj : Nat} {mi mj : Measure} {grp : Relation} {row : 
   unfold pairFacts
   split
   · intro f hf; simp at hf
-  rename_i hfil
-  simp only [Decidable.not_not] at hfil
+  rename_i hc0
+  simp only [not_or, Decidable.not_not] at hc0
+  obtain ⟨hfil, harg⟩ := hc0
+  have hiff := Measure.mem_inputs_iff harg hfil.symm grp
   split
   · -- `MIN ≤ MAX`
     rename_i hc
-    obtain ⟨hfi, hfj, harg⟩ := hc
+    obtain ⟨hfi, hfj⟩ := hc
     intro f hf; simp only [List.mem_singleton] at hf; subst hf
     intro X Y hX hY
     rw [hj, evj _ hfj rfl] at hX
     obtain ⟨hm, -⟩ := AggFn.apply_max hX (by simp)
-    exact ge0 (by have := (minle hfi hY).2 X ((Measure.mem_inputs_iff harg hfil.symm grp _).1 hm); omega)
+    exact ge0 (by have := (minle hfi hY).2 X ((hiff _).1 hm); omega)
   split
   · -- `MIN ≤ AVG`
     rename_i hc
-    obtain ⟨hfi, hfj, harg⟩ := hc
+    obtain ⟨hfi, hfj⟩ := hc
     intro f hf; simp only [List.mem_singleton] at hf; subst hf
     intro A Y hA hY
     have hY' := minle hfi hY
-    have hiff := Measure.mem_inputs_iff harg hfil.symm grp
     obtain ⟨⟨l, hl, hla⟩, -⟩ := avg hfj hA (ne_of ((hiff _).2 hY'.1))
     exact ge0 (by have := hY'.2 l ((hiff _).1 (mem_intsOf.1 hl)); omega)
   split
-  · -- `MIN ≤ AVG` of the conversions
-    rename_i hc
-    obtain ⟨hfi, hfj, harg⟩ := hc
-    intro f hf; simp only [List.mem_singleton] at hf; subst hf
-    intro Y A hY hA
-    simp only [Bool.false_eq_true, ite_false]
-    have hY' := minle hfi hY
-    have hiff := Measure.mem_inputs_itof harg hfil grp
-    obtain ⟨⟨l, hl, hla⟩, -⟩ := avg hfj hA (ne_of ((hiff _).2 ⟨Y, rfl, hY'.1⟩))
-    obtain ⟨t, ht, htm⟩ := (hiff _).1 (mem_intsOf.1 hl)
-    cases ht
-    exact Int.le_trans (FloatCode.ofInt_mono (hY'.2 t htm)) hla
-  split
   · -- `AVG ≤ MAX`
     rename_i hc
-    obtain ⟨hfi, hfj, harg⟩ := hc
+    obtain ⟨hfi, hfj⟩ := hc
     intro f hf; simp only [List.mem_singleton] at hf; subst hf
     intro X A hX hA
     have hX' := maxge hfi hX
-    have hiff := Measure.mem_inputs_iff harg hfil.symm grp
     obtain ⟨-, ⟨h, hh, hah⟩⟩ := avg hfj hA (ne_of ((hiff _).2 hX'.1))
     exact ge0 (by have := hX'.2 h ((hiff _).1 (mem_intsOf.1 hh)); omega)
-  split
-  · -- `AVG ≤ MAX` of the conversions
-    rename_i hc
-    obtain ⟨hfi, hfj, harg⟩ := hc
-    intro f hf; simp only [List.mem_singleton] at hf; subst hf
-    intro X A hX hA
-    simp only [ite_true]
-    have hX' := maxge hfi hX
-    have hiff := Measure.mem_inputs_itof harg hfil grp
-    obtain ⟨-, ⟨h, hh, hah⟩⟩ := avg hfj hA (ne_of ((hiff _).2 ⟨X, rfl, hX'.1⟩))
-    obtain ⟨t, ht, htm⟩ := (hiff _).1 (mem_intsOf.1 hh)
-    cases ht
-    exact Int.le_trans hah (FloatCode.ofInt_mono (hX'.2 t htm))
   · intro f hf; simp at hf
 
 theorem aggFacts_sound {g : Nat} {ms : List Measure} {grp : Relation} {k : Row}
@@ -3169,7 +3106,7 @@ theorem Rel.facts_sound {cat : Catalog} (hcat : cat.WF) {F : String → List Fac
 /-- A bound on `x - y` for columns `i` and `j`, from the facts. -/
 def Fact.diffBound (i j : Nat) : Fact → Option Bound
   | .diff i' j' b => if i' = i ∧ j' = j then some b else if i' = j ∧ j' = i then some b.neg else none
-  | .ne _ _ | .ofIntLe _ _ _ | .ratio _ _ _ => none
+  | .ne _ _ | .ratio _ _ _ => none
 
 /-- What all facts together say about `$i - $j` (`ts_right <= ts` and
 `ts_right >= ts - 10` give `0 ≤ ts - ts_right ≤ 10`). -/
@@ -3178,24 +3115,11 @@ def Fact.diffOf (fs : List Fact) (i j : Nat) : Option Bound :=
   | [] => none
   | b :: bs => some (bs.foldl Bound.meet b)
 
-/-- A bound on `a - b` for a column converted to a double and a column, from
-the facts `ofIntLe` (#372). -/
-def itofDiff (fs : List Fact) : Expr → Expr → Option Bound
-  | .un .itof (.field i), .field j =>
-    let b : Bound := ⟨if fs.contains (.ofIntLe i j true) then some 0 else none,
-      if fs.contains (.ofIntLe i j false) then some 0 else none⟩
-    if b.lo.isSome || b.hi.isSome then some b else none
-  | .field j, .un .itof (.field i) =>
-    let b : Bound := ⟨if fs.contains (.ofIntLe i j false) then some 0 else none,
-      if fs.contains (.ofIntLe i j true) then some 0 else none⟩
-    if b.lo.isSome || b.hi.isSome then some b else none
-  | _, _ => none
-
 /-- A bound on `a - b` for two linear terms, from the facts. -/
 def termDiff (fs : List Fact) (a b : Expr) : Option Bound :=
   match a.linTerm, b.linTerm with
   | some (i, c₁), some (j, c₂) => (Fact.diffOf fs i j).map (·.add (.exact (c₁ - c₂)))
-  | _, _ => itofDiff fs a b
+  | _, _ => none
 
 /-- No booleans or strings: only integers or NULL. -/
 def AVal.intOrNull (a : AVal) : Bool := !a.tt && !a.ff && !a.str
@@ -3343,7 +3267,7 @@ theorem Fact.diffBound_sound {f : Fact} {row : Row} {i j : Nat} {d : Bound} {x y
     (hg : f.diffBound i j = some d) (hh : f.Holds row)
     (hx : row.getD i .null = .int x) (hy : row.getD j .null = .int y) : d.Mem (x - y) := by
   cases f with
-  | ne _ _ | ofIntLe _ _ _ | ratio _ _ _ => simp [Fact.diffBound] at hg
+  | ne _ _ | ratio _ _ _ => simp [Fact.diffBound] at hg
   | diff i' j' b =>
     simp only [Fact.diffBound] at hg
     split at hg
@@ -3378,45 +3302,6 @@ theorem Fact.diffOf_sound {fs : List Fact} {row : Row} {i j : Nat} {d : Bound} {
     rw [h] at hall
     exact foldl_meet_mem (hall b (by simp)) fun c hc => hall c (by simp [hc])
 
-theorem itof_field_int {i : Nat} {row : Row} {u : Int}
-    (h : (Expr.un .itof (.field i)).eval row = .int u) :
-    ∃ x, row.getD i .null = .int x ∧ u = FloatCode.ofInt x := by
-  simp only [Expr.eval] at h
-  cases hx : row.getD i .null <;> rw [hx] at h <;> simp [UnFn.apply] at h
-  exact ⟨_, rfl, h.symm⟩
-
-theorem itofDiff_sound {fs : List Fact} {row : Row} {a b : Expr} {d : Bound} {u w : Int}
-    (hd : itofDiff fs a b = some d) (hfs : FactsHold fs row)
-    (hu : a.eval row = .int u) (hw : b.eval row = .int w) : d.Mem (u - w) := by
-  -- What the two facts say about the converted `x` and the column's `y`.
-  have up : ∀ {i j x y}, row.getD i .null = .int x → row.getD j .null = .int y →
-      fs.contains (.ofIntLe i j true) = true → y ≤ FloatCode.ofInt x := fun hx hy hc => by
-    have := hfs _ (List.contains_iff_mem.mp hc) _ _ hx hy; simpa using this
-  have down : ∀ {i j x y}, row.getD i .null = .int x → row.getD j .null = .int y →
-      fs.contains (.ofIntLe i j false) = true → FloatCode.ofInt x ≤ y := fun hx hy hc => by
-    have := hfs _ (List.contains_iff_mem.mp hc) _ _ hx hy; simpa using this
-  unfold itofDiff at hd
-  split at hd
-  · rename_i i j
-    obtain ⟨x, hx, rfl⟩ := itof_field_int hu
-    simp only [Expr.eval] at hw
-    by_cases h1 : Fact.ofIntLe i j true ∈ fs <;>
-      by_cases h2 : Fact.ofIntLe i j false ∈ fs <;> simp [h1, h2] at hd <;> subst hd <;>
-      constructor <;> intro z hz <;> simp at hz <;> subst hz
-    all_goals first
-      | (have := up hx hw (List.contains_iff_mem.mpr h1); omega)
-      | (have := down hx hw (List.contains_iff_mem.mpr h2); omega)
-  · rename_i j i
-    obtain ⟨x, hx, rfl⟩ := itof_field_int hw
-    simp only [Expr.eval] at hu
-    by_cases h1 : Fact.ofIntLe i j true ∈ fs <;>
-      by_cases h2 : Fact.ofIntLe i j false ∈ fs <;> simp [h1, h2] at hd <;> subst hd <;>
-      constructor <;> intro z hz <;> simp at hz <;> subst hz
-    all_goals first
-      | (have := up hx hu (List.contains_iff_mem.mpr h1); omega)
-      | (have := down hx hu (List.contains_iff_mem.mpr h2); omega)
-  · cases hd
-
 theorem termDiff_sound {fs : List Fact} {row : Row} {a b : Expr} {d : Bound} {u w : Int}
     (hd : termDiff fs a b = some d) (hfs : FactsHold fs row)
     (hu : a.eval row = .int u) (hw : b.eval row = .int w) : d.Mem (u - w) := by
@@ -3429,7 +3314,7 @@ theorem termDiff_sound {fs : List Fact} {row : Row} {a b : Expr} {d : Bound} {u 
     have := Bound.mem_add (Fact.diffOf_sound hd₀ hfs hx hy) (Bound.mem_exact (c₁ - c₂))
     have heq : x + c₁ - (y + c₂) = x - y + (c₁ - c₂) := by omega
     rw [heq]; exact this
-  · exact itofDiff_sound hd hfs hu hw
+  · cases hd
 
 theorem subSharpen_sound {fs : List Fact} {row : Row} {a b : Expr} {base : AVal}
     (hfs : FactsHold fs row) (hbase : base.Mem (BinFn.apply .sub (a.eval row) (b.eval row))) :
@@ -3710,8 +3595,8 @@ def AVal.intsOnly (a : AVal) : Bool := !a.tt && !a.ff && !a.str
 def AVal.double : AVal := ⟨true, some Bound.top, false, false, false⟩
 
 /-- A measure over rows described by `env` and `fs`: a count is a natural
-number, a sum of integers keeps their sign, `MIN`, `MAX` and `AVG` are
-within the argument's values, and the other measures are doubles. All but
+number, a sum of integers keeps their sign, `MIN`, `MAX` and an integer
+`AVG` are within the argument's values, and the other measures are doubles. All but
 `COUNT` may be NULL, unless a group has a value (`grouped`, #372). -/
 def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false) :
     AVal :=
@@ -3726,9 +3611,10 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   | .sum => ⟨!valued, some (match a.int with
       | some b => if a.intsOnly then sumBoundPos b else sumBound b
       | none => Bound.top), false, false, false⟩
-  | .fsum => ⟨!valued, some Bound.top, false, false, false⟩
-  -- Between the smallest and the largest value (`AggFn.avg`, #237).
-  | .avg | .iavg =>
+  -- Doubles round, so some double.
+  | .fsum | .avg => ⟨!valued, some Bound.top, false, false, false⟩
+  -- Between the smallest and the largest value (`AggFn.iavg`, #237).
+  | .iavg =>
     ⟨!valued, some (if a.intsOnly then a.int.getD Bound.top else Bound.top), false, false, false⟩
   | .cov _ | .corr => AVal.double
   -- Some double that is not negative (NaN is above every number), or NULL.
@@ -4080,11 +3966,11 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
       simp only [AggFn.apply, corrOf]; split <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
   case bit =>
     cases m.inputs grp <;> simp only [AggFn.apply] <;> first | rfl | exact ⟨_, rfl, Bound.mem_top _⟩
-  case fsum =>
+  case fsum | avg =>
     cases hvs : m.inputs grp with
     | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
     | cons v vs => exact ⟨_, rfl, Bound.mem_top _⟩
-  case avg | iavg =>
+  case iavg =>
     cases hvs : m.inputs grp with
     | nil => simp only [AggFn.apply, AVal.Mem]; exact novalue hvs
     | cons v vs =>
@@ -4094,9 +3980,9 @@ theorem Measure.abs_sound {env : List AVal} {fs : List Fact} {grp : Relation}
         have hint : ∀ w ∈ v :: vs, ∃ i b, w = .int i ∧ (m.arg.absD env fs).int = some b ∧ b.Mem i :=
           fun w hw => AVal.intsOnly_mem honly (hin w (hvs ▸ hw)) (inputs_ne_null (hvs ▸ hw))
         obtain ⟨i₀, b, rfl, hb, -⟩ := hint v (List.mem_cons_self ..)
-        obtain ⟨r, hr, ⟨l, hl, hlr⟩, ⟨h, hh, hrh⟩⟩ := AggFn.apply_avg_between
-          (f := m.fn) (by simp [hf]) (vs := .int i₀ :: vs) (List.ne_nil_of_mem (mem_intsOf.2 (List.mem_cons_self ..)))
-        rw [hf] at hr; rw [hr]
+        obtain ⟨r, hr, ⟨l, hl, hlr⟩, ⟨h, hh, hrh⟩⟩ := AggFn.apply_iavg_between
+          (vs := .int i₀ :: vs) (List.ne_nil_of_mem (mem_intsOf.2 (List.mem_cons_self ..)))
+        rw [hr]
         have memb : ∀ c ∈ intsOf (.int i₀ :: vs), b.Mem c := fun c hc => by
           obtain ⟨_, b', he, hb', hm⟩ := hint _ (mem_intsOf.1 hc)
           cases he; rw [hb] at hb'; cases hb'; exact hm

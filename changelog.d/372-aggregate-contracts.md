@@ -1,23 +1,20 @@
 ### Contracts on rollups: `MIN`, `MAX` and `AVG` of a group
 
-A rollup's natural contract is now proved before any data runs: averages
-within the inputs' range, `MAX ≥ AVG`, and no NULL measures.
+More of a rollup's contract is proved before any data runs.
 
 - `MIN` and `MAX` of doubles are accepted (#371). DuckDB orders doubles as
   the reference does, `-∞ < … < +∞ < NaN`; Polars and DataFusion refuse them
   until #271.
-- `MIN`, `MAX` and `AVG` of a column that is never NULL, over a group
+- `MIN`, `MAX`, `AVG` and `SUM` of a column that is never NULL, over a group
   without a filter, are never NULL (#372).
-- Measures of the same values on one group are related: `MIN ≤ AVG ≤ MAX`
-  and `MIN ≤ MAX`, also for the mean of integers, which is a double (#372).
-- `AVG` of integers, decimals and doubles lies within its values' bounds
-  (#237). The `AVG` of doubles is now kept between the smallest and largest
-  value: IEEE's rounding can step past them (the mean of three `0.1` is
-  `0.10000000000000002`), and the reference and the engines running its plan
-  return `0.1` there.
+- `MIN ≤ MAX` for measures of the same values on one group, and an integer
+  `AVG` with an integer result lies between them (#372).
+- A decimal `AVG` and an integer `AVG` with an integer result lie within their
+  values' bounds (#237). TPC-H Q17's `0.2 * avg_qty` is now proved not to
+  overflow.
 - A conversion of integers to doubles keeps their bounds: `CAST(x AS DOUBLE)`
   of `x` in `[0, 1000]` is in `[0.0, 1000.0]`.
 
-Arithmetic on doubles still gives "some double", so `AVG(x) / 10` has no
-bound yet, and neither has an `AVG` that DuckDB SQL computes as a double
-division (of a DECIMAL, or of integers under `semantics="duckdb"`).
+An `AVG` of doubles, including the mean of integers as a double, rounds and
+can step past its values (the mean of three `0.1` is `0.10000000000000002`),
+so it gets no bound from its inputs here. Error bounds for it come with #85.

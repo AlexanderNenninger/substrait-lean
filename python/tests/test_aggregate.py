@@ -151,9 +151,6 @@ FLOATS = [
 )
 @given(t=f_rows)
 def test_double_aggregates_match_duckdb(sql, t):
-    if both_infinities(sql, t):
-        # The reference raises there (#257); its mean is kept at `+∞` (#372).
-        return
     got, expected = run(sql, F, t)
     # Lean prints tiny doubles (±0.0) as their codes.
     floats = {i for row in expected for i, v in enumerate(row) if isinstance(v, float)}
@@ -227,13 +224,14 @@ def test_min_and_max_of_doubles_match_duckdb(t):
         assert all(close(x, y) for x, y in zip(g, e, strict=True)), (g, e)
 
 
-def test_avg_of_doubles_stays_within_the_values():
-    # IEEE's mean of three 0.1 is 0.10000000000000002; the model, and the
-    # engines running its plan, keep it at the largest value (#372).
+def test_avg_of_doubles_rounds_past_the_values():
+    # IEEE's mean of three 0.1 is 0.10000000000000002, above every value, so
+    # the reference claims no bound on an `AVG` of doubles (#85 bounds it).
     rows = [(1, 0.1), (1, 0.1), (1, 0.1)]
     sql = "SELECT k, AVG(x) FROM t GROUP BY k"
-    assert (0.1 + 0.1 + 0.1) / 3 > 0.1
-    assert engine_rows(sql, F, rows) == {"polars": [(1, 0.1)], "duckdb": [(1, 0.1)]}
+    mean = (0.1 + 0.1 + 0.1) / 3
+    assert mean > 0.1
+    assert engine_rows(sql, F, rows) == {"polars": [(1, mean)], "duckdb": [(1, mean)]}
 
 
 @pytest.mark.backend("datafusion")
@@ -264,7 +262,7 @@ def test_min_and_max_of_doubles_are_proved():
 
 
 def test_rollup_contract_is_proved():
-    # #372: a per-minute rollup's natural contract, from the issue.
+    # #372: a per-minute rollup's contract, from the issue.
     s = ibis.table({"host": "!string", "ts": "!timestamp(6)", "cpu": "!int32"}, name="s")
     m = s.mutate(minute=s.ts.truncate("m"))
     g = m.group_by(["host", "minute"]).aggregate(
@@ -273,41 +271,33 @@ def test_rollup_contract_is_proved():
     report = sv.verify(
         g,
         requires={"s": [_.cpu >= 0, _.cpu <= 1000]},
-        ensures=[
-            _.mx.notnull(),
-            _.mx <= 1000,
-            _.avg.notnull(),
-            _.avg >= 0,
-            _.avg <= 1000,
-            _.mx >= _.avg,
-            _.avg >= _.lo,
-            _.lo <= _.mx,
-        ],
+        ensures=[_.mx.notnull(), _.mx <= 1000, _.lo <= _.mx, _.avg.notnull()],
     )
     assert report.proved, str(report)
     assert report.facts["mx"] == "an integer in [0, 1000]"
-
-
-def test_avg_of_doubles_is_within_min_and_max():
-    g = samples.group_by("host").aggregate(
-        avg=samples.cpu.mean(), lo=samples.cpu.min(), hi=samples.cpu.max()
+    # The mean is a double division, which rounds: no bound from the inputs (#85).
+    report = sv.verify(
+        g, requires={"s": [_.cpu >= 0, _.cpu <= 1000]}, ensures=[_.mx >= _.avg, _.avg <= 1000]
     )
+    assert [c.proved for c in report.ensures] == [False, False]
+
+
+def test_avg_of_doubles_is_not_null_but_unbounded():
+    g = samples.group_by("host").aggregate(avg=samples.cpu.mean(), hi=samples.cpu.max())
     report = sv.verify(
         g,
         requires={"samples": [_.cpu >= 0, _.cpu <= 100]},
-        ensures=[_.avg >= 0, _.avg <= 100, _.avg <= _.hi, _.lo <= _.avg, _.avg.notnull()],
+        ensures=[_.avg.notnull(), _.avg <= 100, _.avg <= _.hi],
     )
-    assert report.proved, str(report)
+    assert [c.proved for c in report.ensures] == [True, False, False]
 
 
-def test_avg_is_bounded_by_its_inputs():
-    # #237: `AVG` of decimals, of integers (as a double) and of doubles.
-    t = ibis.table({"k": "!int64", "q": "!decimal(12, 2)", "n": "!int64"}, name="lineitem")
-    g = t.group_by("k").aggregate(avg_q=t.q.mean(), avg_n=t.n.mean())
+def test_decimal_avg_is_bounded_by_its_inputs():
+    # #237: a decimal `AVG` is its exact `SUM` by its `COUNT`, rounded.
+    t = ibis.table({"k": "!int64", "q": "!decimal(12, 2)"}, name="lineitem")
+    g = t.group_by("k").aggregate(avg_q=t.q.mean())
     report = sv.verify(
-        g,
-        requires={"lineitem": [_.q >= 1, _.q <= 50, _.n >= -5, _.n <= 7]},
-        ensures=[_.avg_q >= 1, _.avg_q <= 50, _.avg_n >= -5, _.avg_n <= 7],
+        g, requires={"lineitem": [_.q >= 1, _.q <= 50]}, ensures=[_.avg_q >= 1, _.avg_q <= 50]
     )
     assert report.proved, str(report)
 

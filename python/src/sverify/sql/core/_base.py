@@ -3725,9 +3725,6 @@ class _Writer:
                 total = d.float_sum(v, o)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v})")))
-                    # Within the values (`AggFn.avg`, #372).
-                    lo, hi = d.float_extreme("MIN", v, ""), d.float_extreme("MAX", v, "")
-                    total = d.least(d.greatest(total, lo), hi)
                 total = d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
                 if not d.guards:
                     return total
@@ -3937,9 +3934,6 @@ class _Writer:
                 total = d.window_float_sum(v, w)
                 if m.fn == "avg":
                     total = d.canon(d.float_div(total, d.int_to_float(f"COUNT({v}) {w}")))
-                    # Within the frame's values (`AggFn.avg`, #372).
-                    lo, hi = d.float_extreme("MIN", v, w), d.float_extreme("MAX", v, w)
-                    total = d.least(d.greatest(total, lo), hi)
                 return d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
         f = "MIN" if m.fn == "min" else "MAX"
         if expr_kind(m.arg, ks) == "bool":
