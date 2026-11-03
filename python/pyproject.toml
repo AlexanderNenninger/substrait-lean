@@ -128,6 +128,11 @@ lake build SubstraitLean.LoweringSearch SubstraitLean.LoweringCache SubstraitLea
 """
 cwd = "${POE_ROOT}/.."
 
+[tool.poe.tasks.regen-lift]
+help = "Search for the DuckDB SQL lift again and write it to SubstraitLean/LiftDuckDB (a build only checks it)"
+shell = "lake build SubstraitLean.LiftSearch SubstraitLean.LiftCache && lake env lean scripts/RegenLift.lean"
+cwd = "${POE_ROOT}/.."
+
 [tool.poe.tasks.prove-floats]
 help = "Check the float error bounds (float-bounds/, needs Mathlib; not part of qa)"
 shell = "lake exe cache get && lake build --wfail"
