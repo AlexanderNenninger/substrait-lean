@@ -303,3 +303,25 @@ def test_an_overflow_of_two_columns_suggests_a_split():
     assert issue.hint is not None and issue.hint.startswith("no single bound rules it out")
     assert report.inferred == {} and not report.hints
     assert OVERFLOW_HINT not in str(report)
+
+
+def test_a_date_beyond_year_9999_is_described_without_overflow():
+    # A DATE cast from a TIMESTAMP ranges past what Python's `date` holds (#435).
+    jobs = ibis.table({"started_at": "!timestamp"}, name="jobs")
+    sql = "SELECT CAST(started_at AS DATE) AS day, count(*) AS n FROM jobs GROUP BY day"
+    facts = sv.verify(sql, tables={"jobs": jobs.schema()}).facts
+    assert facts["day"] == "any date"
+
+
+def test_sql_facts_describe_timestamps_and_dates():
+    # The lift knows the SQL's types: no integer codes in the facts (#452).
+    t = ibis.table({"host": "string", "minute": "timestamp", "day": "date"}, name="t")
+    facts = sv.verify("SELECT host, minute, day FROM t", tables={"t": t.schema()}).facts
+    assert facts == sv.verify(t.select("host", "minute", "day")).facts
+    assert facts["minute"] == "any timestamp or NULL"
+    assert facts["day"] == "any date or NULL"
+    bounded = sv.verify(
+        "SELECT minute FROM t WHERE minute >= TIMESTAMP '2026-01-01 00:00:00'",
+        tables={"t": t.schema()},
+    ).facts
+    assert bounded["minute"] == "a timestamp ≥ 2026-01-01 00:00:00"

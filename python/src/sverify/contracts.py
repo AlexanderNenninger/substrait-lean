@@ -798,11 +798,16 @@ def decode_double(code: int) -> float:
     return sign * float(Fraction(mag, 2**1074))
 
 
+_EPOCH_DAY = date(1970, 1, 1)
+_MICROSECOND = timedelta(microseconds=1)
+
+
 def render_fact(abstract: dict, dtype: Any) -> str | None:
     """Describe a column's abstract value for doubles, decimals (their unscaled
     integers, #250), timestamps, dates and intervals (microseconds); None
     keeps Lean's own description."""
     rng = abstract.get("int")
+    span: tuple[int, int] | None = None
     if (dec := abstract.get("decimal")) is not None:
         # The plan's own type, which Lean states: Ibis may type a decimal
         # product at another scale than the model computes it.
@@ -819,10 +824,20 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         noun = "a double"
     elif dtype.is_timestamp():
         epoch = datetime(1970, 1, 1)
-        show = lambda k: (epoch + timedelta(microseconds=k)).isoformat(sep=" ")  # noqa: E731
+        span = (datetime.min - epoch) // _MICROSECOND, (datetime.max - epoch) // _MICROSECOND
+        show = lambda k: (  # noqa: E731
+            (epoch + timedelta(microseconds=k)).isoformat(sep=" ")
+            if span[0] <= k <= span[1]
+            else f"{k:+} µs from 1970-01-01"
+        )
         noun = "a timestamp"
     elif dtype.is_date():
-        show = lambda k: (date(1970, 1, 1) + timedelta(days=k)).isoformat()  # noqa: E731
+        span = (date.min - _EPOCH_DAY).days, (date.max - _EPOCH_DAY).days
+        show = lambda k: (  # noqa: E731
+            (_EPOCH_DAY + timedelta(days=k)).isoformat()
+            if span[0] <= k <= span[1]
+            else f"{k:+} days from 1970-01-01"
+        )
         noun = "a date"
     elif dtype.is_interval():
         show = lambda k: str(timedelta(microseconds=k))  # noqa: E731
@@ -837,6 +852,11 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
             # Bounds near the 64-bit limits go without saying (as in Lean's text).
             lo = None if lo is not None and lo <= -(2**60) else lo
             hi = None if hi is not None and hi >= 2**60 else hi
+        if span is not None:
+            # So do bounds past what a Python date or datetime holds, the years
+            # 1 to 9999: a DATE cast from a TIMESTAMP reaches far beyond (#435).
+            lo = None if lo is not None and lo < span[0] else lo
+            hi = None if hi is not None and hi > span[1] else hi
         if lo is None and hi is None:
             parts.append(f"any {noun.split(' ', 1)[1]}")
         elif lo is not None and hi is not None and lo == hi:
@@ -1517,7 +1537,15 @@ def _verify_once(
     if code not in (0, 4):
         raise ValueError(f"substrait-check --contract failed: {stderr.strip()}")
     out = json.loads(stdout)
-    dtypes = {} if isinstance(transform, str) else dict(transform.schema().items())
+    # SQL's types come from the lift, so a timestamp is described as one (#452).
+    from sverify.ibis_substrait import sql_model_schema
+
+    result = (
+        sql_model_schema(transform, schemas, semantics)
+        if isinstance(transform, str)
+        else transform.schema()
+    )
+    dtypes = dict(result.items())
 
     def describe(f: dict) -> str:
         dtype = dtypes.get(f["name"])
@@ -2197,6 +2225,19 @@ class ContractedTransform:
     ) -> Report:
         """Prove `ensures` of `body`, inferring bounds on the tables in
         `inputs` with `infer` (`infer_bounds`)."""
+        params = [
+            p for p in body.op().find(ops.ScalarParameter) if isinstance(p, ops.ScalarParameter)
+        ]
+        if params:
+            # Ibis's SQL compiler raises a bare KeyError on them (#440).
+            names = ", ".join(f"ibis.param({p.dtype})" for p in params)
+            name = getattr(self.fn, "__name__", "the transformation")
+            raise TypeError(
+                f"{name} uses {names}: a transformation does not bind "
+                "parameters yet (#354). Prove it for given values with "
+                "sv.verify(expr, params={param: value}), or write the values as "
+                "ibis.literal(...)"
+            )
         inputs = frozenset(inputs)
         key = (
             tag,
