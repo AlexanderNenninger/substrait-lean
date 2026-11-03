@@ -166,6 +166,7 @@ end Substrait.Examples
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak
 #print axioms Substrait.Rel.window_deterministic
+#print axioms Substrait.Rel.window_allColumns
 #print axioms Substrait.window_orderFree
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.aggregateEval_key
