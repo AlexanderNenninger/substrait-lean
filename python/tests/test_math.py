@@ -135,6 +135,7 @@ def con():
     return con
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("label", EXPRS)
 def test_lean_agrees_with_duckdb_and_engines(con, label):
     expr = EXPRS[label]()

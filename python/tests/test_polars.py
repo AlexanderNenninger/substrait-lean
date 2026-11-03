@@ -316,6 +316,7 @@ def test_delta_plans_agree(name, data):
         assert same_bag(df, pl_rows)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("name", PIPELINES)
 @SETTINGS
 @given(data=st.data())

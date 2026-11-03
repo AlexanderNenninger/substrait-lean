@@ -133,6 +133,7 @@ def test_lag_is_null_on_the_first_row():
     assert report.unproved[0].value == "TRUE or NULL"
 
 
+@pytest.mark.slow
 def test_ties_in_the_window_order_are_refused():
     """Without a key on (sensor, ts), two readings may share a timestamp and
     DataFusion picks which one is LAG's: nothing is claimed."""
@@ -175,6 +176,7 @@ def test_strict_order_under_a_key():
     assert report.facts["gap"] == "an interval ≥ 0:00:00.000001 or NULL"
 
 
+@pytest.mark.slow
 def test_strict_order_needs_an_offset():
     """`LAG(ts, 0)` is the row itself, and one microsecond is all a key gives."""
     w = ibis.window(group_by=readings.sensor, order_by=readings.ts)

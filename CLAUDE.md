@@ -3,7 +3,14 @@
 ## Running QA
 
 `poe qa` (from `python/`) runs everything: Lean proofs, build, lint,
-typecheck, golden tests and the Python tests. It is slow on this laptop.
+typecheck, golden tests and every Python test (`poe test-all`). It is slow on
+this laptop.
+
+Locally, run `poe test`: the fast set on 2 workers, without the `slow` tests
+and with a tenth of the Hypothesis examples (the `dev` profile,
+`python/tests/conftest.py`). Leave the full suite to CI or to homelab
+(`homelab_qa.sh` runs `qa`). CI runs every test with the full counts, `core`
+in three shards.
 
 ### Check capacity before expensive tasks
 
@@ -18,9 +25,10 @@ spare capacity. This applies to the laptop as much as to `homelab`.
   change touches.
 - **homelab**: see below.
 
-Run one expensive task at a time per agent, never several in parallel. The
-poe test tasks use `pytest -n auto`, which takes every core. On the laptop,
-run pytest directly with `-n 2` instead.
+Run one expensive task at a time per agent, never several in parallel.
+`poe test` caps itself at 2 workers; `poe test-all` and the per-backend tasks
+use `pytest -n auto`, which takes every core. On the laptop, run pytest
+directly with `-n 2` instead.
 
 For long QA runs, use the `homelab` server for more compute: `ssh homelab`
 (reached over Tailscale, user `nennia`, key auth, so `ssh -o BatchMode=yes`

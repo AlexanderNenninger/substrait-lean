@@ -52,6 +52,7 @@ def payments(sv_source):
     return nb, transactions.pipe(nb["duplicate_payments"])
 
 
+@pytest.mark.slow
 def test_a_double_charge_is_found_once(sv_source):
     _, node = payments(sv_source)
     data = {
@@ -68,6 +69,7 @@ def test_a_double_charge_is_found_once(sv_source):
     assert_engines_agree(node, data)
 
 
+@pytest.mark.slow
 def test_refunds(sv_source):
     nb, node = payments(sv_source)
     dups = sv_source([], node.schema.to_pyarrow(), name="dups")
@@ -94,6 +96,7 @@ def test_duplicates_are_within_five_minutes(sv_source):
 # -- 2. Sensor alerts ------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_alerts_on_the_first_batch(sv_source, sv_engine):
     nb = notebook("02_sensor_alerts")
     readings = sv_source([], nb["READING"], name="readings")
@@ -103,6 +106,7 @@ def test_alerts_on_the_first_batch(sv_source, sv_engine):
     assert_contract(node, data=data, expected=[(1, minute(3), 33.0)], engine=sv_engine)
 
 
+@pytest.mark.slow
 def test_alerts_are_input_readings(sv_source):
     nb = notebook("02_sensor_alerts")
     node = nb["alerts"](sv_source([], nb["READING"], name="readings"))
