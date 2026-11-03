@@ -1196,7 +1196,6 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
         f"group's sum fits 64 bits for up to {(2**63 - 1) // largest:,} rows. Without a bound, "
         f"{why}"
     )
-    return report, out["inferred"], schemas
 
 
 def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -> int:
