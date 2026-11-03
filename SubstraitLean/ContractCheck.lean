@@ -154,6 +154,9 @@ def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
 
 structure Report where
   ensures : List (String × Bool × String)
+  /-- For each postcondition, the base-table ranges that would make it hold
+  (`Infer.suggest`): untrusted, and only suggested. -/
+  suggestions : List Infer.Bounds := []
   facts : List (String × String × Json)
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -180,9 +183,10 @@ structure Report where
 
 def Report.json (r : Report) : Json :=
   Json.mkObj [
-    ("ensures", Json.arr (r.ensures.map fun (n, ok, v) =>
+    ("ensures", Json.arr ((r.ensures.zip (r.suggestions ++
+        List.replicate r.ensures.length {})).map fun ((n, ok, v), b) =>
       Json.mkObj [("name", Lean.toJson n), ("proved", Lean.toJson ok),
-        ("value", Lean.toJson v)]).toArray),
+        ("value", Lean.toJson v), ("suggest", if ok then .null else b.json)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
@@ -248,6 +252,7 @@ def check (input : Json) : Except String Report := do
   let tied := "undetermined: rows may tie in the ORDER BY of a window or of FIRST, LAST or " ++
     "STRING_AGG, and the engine orders them"
   let mut results : List (String × Bool × String) := []
+  let mut suggestions : List Infer.Bounds := []
   for q in ensures do
     -- `contract_sound` needs the postcondition plan to be well-formed.
     if !q.root.checkWF cat then throw "a postcondition plan is not well-formed"
@@ -257,6 +262,9 @@ def check (input : Json) : Except String Report := do
     let total := q.root.windowsTotal cat A F inputKeys
     results := results ++ names.zip (env.map fun a =>
       if total then (a.certainlyTrue, a.render) else (false, tied))
+    suggestions := suggestions ++ (List.range env.length).map fun i =>
+      let b := Infer.suggest cat A F T q.root i
+      { b with needs := Infer.trim A b.needs }
   let facts := match transform with
     | some p =>
       if !p.root.checkWF cat then []
@@ -301,6 +309,7 @@ def check (input : Json) : Except String Report := do
     optimized
     rewrites
     ensures := results
+    suggestions
     facts
     keys
     deterministic

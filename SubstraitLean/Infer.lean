@@ -409,6 +409,42 @@ def Rel.bounds (cat : Catalog) (A : String → List AVal) (F : String → List F
     let s := if u then r.loose else r
     Rel.bounds cat A F T u r ++ (gs ++ ms.flatMap Measure.exprs).flatMap (onRows cat A F T s)
 
+/-! ## Suggestions for postconditions
+
+An unproved postcondition that compares a value with a constant would hold
+if the value stayed in a range: `_.x * 2 <= 100` holds when `x <= 50`. The
+same backward analysis finds that range on the base-table columns. Unlike a
+bound against an error it is never assumed, only suggested
+(`Report.suggestions` in `sverify`): it changes what the transformation
+promises, which only its author can decide. -/
+
+/-- Ranges of the columns of `env` that make the condition TRUE: a
+conjunction of comparisons of a value with a constant. -/
+partial def holds (env : List AVal) (fs : List Fact) : Expr → Except String Found
+  | .bin .and p q => do pure ((← holds env fs p).append (← holds env fs q))
+  | .bin .lt a (.lit (.int k)) => needD env fs none (some (k - 1)) a
+  | .bin .lt (.lit (.int k)) a => needD env fs (some (k + 1)) none a
+  | .un .not (.bin .lt a (.lit (.int k))) => needD env fs (some k) none a
+  | .un .not (.bin .lt (.lit (.int k)) a) => needD env fs none (some k) a
+  | .bin .eq a (.lit (.int k)) | .bin .eq (.lit (.int k)) a => need env fs k k a
+  | e => throw s!"it is {e.render}, not a comparison with a constant"
+
+/-- The base-table ranges that make column `i` of a postcondition's plan
+TRUE (the plan selects the condition from the transformation's output). -/
+def suggest (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
+    Rel → Nat → Bounds
+  | .emit r m, i => match m[i]? with
+    | some j => suggest cat A F T r j
+    | none => { why := some "it reads a column out of range" }
+  | .project r es, i =>
+    if i < r.arity cat then { why := some "it is a column, not a comparison" }
+    else match es[i - r.arity cat]? with
+      | some c => match holds (r.aeval cat A F T true) (r.facts cat F T) c with
+        | .ok f => pullAll cat A F T r f
+        | .error why => { why := some why }
+      | none => { why := some "it reads a column out of range" }
+  | _, _ => { why := some "the postcondition's plan is not a selection" }
+
 /-- The intersection of two ranges. -/
 def meet (a b : Bound) : Bound :=
   ⟨match a.lo, b.lo with
