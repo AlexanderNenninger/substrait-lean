@@ -578,6 +578,10 @@ def levenshtein(s: str, t: str) -> int:
     return prev[-1]
 
 
+#: `Text.substrMax`: `substring`'s offsets and lengths stay below it (#336).
+SUBSTR_MAX = 2**32
+
+
 def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
     """`Text.substr`: the characters at 1-based positions `a … a+n-1`."""
     start = wide(a) - 1
@@ -1015,12 +1019,19 @@ class Exprs:
     def substring(self, s: Val, a: Val, n: int | None, wrap: bool = True) -> Val:
         if s.dtype not in (pl.String, pl.Null) or a.dtype not in (pl.Int64, pl.Null):
             raise Unsupported(f"substring of {s.dtype} from {a.dtype}")
+        # `Text.substrInRange` (#336): an offset or length out of range raises.
+        bad = (a.expr < -SUBSTR_MAX) | (a.expr >= SUBSTR_MAX)
+        if n is not None and n >= SUBSTR_MAX:
+            bad = a.expr.is_not_null()
+        err = issue(
+            bad & s.expr.is_not_null(), DomainError, "substring offset or length out of range"
+        )
         if wrap:
             # `Text.substrWrap`: a negative start counts from the end (#209).
             length = s.expr.str.len_chars().cast(pl.Int64)
             shifted = pl.when(a.expr < 0).then(a.expr + length + 1).otherwise(a.expr)
             a = Val(shifted, pl.Int64, a.issues)
-        return Val(substr(s, a, n), pl.String, issues(s, a))
+        return Val(substr(s, a, n), pl.String, (*issues(s, a), err))
 
     def cast(self, c: dict) -> Val:
         if c.get("failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL":
