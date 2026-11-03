@@ -167,7 +167,7 @@ def render(engine: str, facts: list[Fact], root: Path = ROOT) -> str:
             if not isinstance(value, list):  # a list: checked under each value
                 settings.setdefault(name, []).append(f["id"])
     if settings:
-        lines += ["", "Settings the facts depend on (probes check every value):", ""]
+        lines += ["", "Settings the facts depend on, at one value:", ""]
         lines += [f"- `{name}`: {', '.join(ids)}" for name, ids in sorted(settings.items())]
     for f in facts:
         meta = [f"{engine} {f['engine_version']}", f["area"], f["status"]]

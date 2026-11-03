@@ -1,0 +1,37 @@
+{
+  "id": "duckdb-corr",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`CORR`: three separate states; NaN for one pair or zero variance",
+  "verdict": "cov / (std_x · std_y); NaN where the reference is NULL; no clamp",
+  "area": "aggregates",
+  "constructs": [
+    "corr"
+  ],
+  "settings": {},
+  "description": [
+    "`CORR` keeps three independent states, a covariance and two Welford variances, and returns `cov / (std_x * std_y)`, NaN when `std_x * std_y == 0`. One pair or a zero variance gives NaN; no pairs gives NULL. Not clamped to [-1, 1]: with the separate states, |corr| can exceed 1 by a few ulps, more so than with a shared state. The square roots are taken separately, so the product of the variances does not overflow or underflow."
+  ],
+  "reference": [
+    "`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.",
+    "Where the reference is NULL (one pair, a constant side), DuckDB gives NaN; `Dialect.covar` leaves the NULL cases to its caller."
+  ],
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/corr.hpp#L28-L53"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "polars-cov",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`cov`: two-pass blocks with Chan merge; Welford when streaming",
+  "verdict": "two-pass per block + Chan (in memory); Welford (streaming); no clamp",
+  "area": "aggregates",
+  "constructs": [
+    "cov"
+  ],
+  "settings": {},
+  "description": [
+    "`CovState` follows `var` (polars-var-std): two-pass per block of 128 merged by Chan's combine in memory, Welford's update in the streaming reducer. A weight at most `ddof` is null. `CovState` does not clamp."
+  ],
+  "reference": "`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/moment.rs"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/cov.rs"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

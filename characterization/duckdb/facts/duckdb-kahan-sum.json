@@ -1,0 +1,44 @@
+{
+  "id": "duckdb-kahan-sum",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`kahan_sum`, `fsum`, `sumkahan`, `favg`: classic Kahan",
+  "verdict": "classic Kahan (not Neumaier); NaN with an infinite input",
+  "area": "aggregates",
+  "constructs": [
+    "kahan_sum",
+    "fsum",
+    "sumkahan",
+    "favg"
+  ],
+  "settings": {},
+  "description": [
+    "`kahan_sum` (also `fsum`, `sumkahan`) is classic Kahan summation, not Neumaier's. Merging a partial state Kahan-adds `other.value`, then `-other.err`. `favg` divides the Kahan sum by the count.",
+    "An infinite input makes the compensation `inf - inf`, so `fsum` and `favg` of `[inf, 1]` are NaN, where `sum` is `inf` (duckdb-nonfinite-aggregates)."
+  ],
+  "reference": "`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L100-L104"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L200-L209"
+        }
+      ],
+      "notes": "Read at tag v2.0.0 (commit d54cbbe3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}

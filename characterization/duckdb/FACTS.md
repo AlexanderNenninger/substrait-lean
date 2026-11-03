@@ -33,12 +33,19 @@ Generated from [facts/](facts/) by `uv run python -m sverify_dev.facts --write`;
 | [duckdb-R15-round-digits](#duckdb-r15-round-digits) | `round(DOUBLE, d)` for `d` from -1000 to 400 | doubles | no-finding | the reference (DuckDB's formula since #335) |  | 2026-11-02 |
 | [duckdb-R15-shift-left](#duckdb-r15-shift-left) | `BIGINT << BIGINT` | integers | shimmed | no option matches |  | 2026-11-02 |
 | [duckdb-R15-shift-right](#duckdb-r15-shift-right) | `BIGINT >> BIGINT` | integers | shimmed | no option matches |  | 2026-11-02 |
+| [duckdb-avg-double](#duckdb-avg-double) | `AVG` of doubles: plain sum by the count | aggregates | open | plain sum / n |  | 2026-11-03 |
+| [duckdb-corr](#duckdb-corr) | `CORR`: three separate states; NaN for one pair or zero variance | aggregates | open | cov / (std_x · std_y); NaN where the reference is NULL; no clamp |  | 2026-11-03 |
+| [duckdb-covar](#duckdb-covar) | `COVAR_*` of doubles: Welford co-moment, Chan merge | aggregates | open | Welford co-moment; Chan merge |  | 2026-11-03 |
+| [duckdb-kahan-sum](#duckdb-kahan-sum) | `kahan_sum`, `fsum`, `sumkahan`, `favg`: classic Kahan | aggregates | open | classic Kahan (not Neumaier); NaN with an infinite input |  | 2026-11-03 |
+| [duckdb-nonfinite-aggregates](#duckdb-nonfinite-aggregates) | ±inf in variance, correlation and Kahan sums | aggregates | open | NaN, no error (since 2.0) |  | 2026-11-03 |
+| [duckdb-sum-double](#duckdb-sum-double) | `SUM` of doubles: plain sequential | aggregates | open | plain recursive summation |  | 2026-11-03 |
+| [duckdb-var-stddev](#duckdb-var-stddev) | `VAR_*` and `STDDEV_*` of doubles: Welford, Chan merge | aggregates | open | Welford; Chan merge with fma; no clamp |  | 2026-11-03 |
 | [duckdb-F1](#duckdb-f1) | `/` and `//` on integers | integers | no-finding | frontend |  | 2026-11-01 |
 | [duckdb-F2](#duckdb-f2) | NULLs in `ORDER BY` | relations | no-finding | frontend |  | 2026-11-01 |
 | [duckdb-F3](#duckdb-f3) | Integer literal types | integers | no-finding | frontend |  | 2026-11-01 |
 | [duckdb-F4](#duckdb-f4) | Collations, macros and identifiers | strings | no-finding | frontend |  | 2026-11-01 |
 
-Settings the facts depend on (probes check every value):
+Settings the facts depend on, at one value:
 
 - `default_null_order`: duckdb-F2
 - `error_on_division_by_zero`: duckdb-R2, duckdb-R3, duckdb-R4
@@ -538,6 +545,115 @@ Reference:
 Checked:
 
 - 2026-11-02, probe, by sverify_dev.probe (#242, commit d5efa18): `BIGINT >> BIGINT` in [probes.json](probes.json). `sverify_dev.probe` runs the function at each signature on edge cases (0, ±1, ±2, 3, ±7, the 64-bit bounds, 0.5, ±2.5, 1e308, ±inf, NaN, NULL), one row at a time from columns, under every combination of `error_on_division_by_zero` and `ieee_floating_point_ops`. Lean evaluates the Substrait call on the same rows once per candidate value of its option (`substrait-check --outcomes`), and the candidates whose outcomes all match are DuckDB's options. No input is -0.0 (duckdb-R14).
+
+## <a id="duckdb-avg-double"></a>duckdb-avg-double. `AVG` of doubles: plain sum by the count
+
+duckdb 2.0.0 · aggregates · open · `avg` · #54, #85
+
+`AVG(DOUBLE)` is the plain sequential sum (duckdb-sum-double) divided by the count; `favg` uses the Kahan sum (duckdb-kahan-sum).
+
+Reference:
+
+`AggFn.avg` is `floatSum` / n, NULL without values.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L184-L198](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L184-L198). Read at tag v2.0.0 (commit d54cbbe3).
+
+## <a id="duckdb-corr"></a>duckdb-corr. `CORR`: three separate states; NaN for one pair or zero variance
+
+duckdb 2.0.0 · aggregates · open · `corr` · #54, #85
+
+`CORR` keeps three independent states, a covariance and two Welford variances, and returns `cov / (std_x * std_y)`, NaN when `std_x * std_y == 0`. One pair or a zero variance gives NaN; no pairs gives NULL. Not clamped to [-1, 1]: with the separate states, |corr| can exceed 1 by a few ulps, more so than with a shared state. The square roots are taken separately, so the product of the variances does not overflow or underflow.
+
+Reference:
+
+`AggFn.corr` (`corrOf`): NULL for fewer than two pairs, or for a side whose values are all equal; else the co-deviation sum by the square root of the product of the two squared-deviation sums. It is not clamped to [-1, 1]. Engines may differ in the last bits (#54) until #85 bounds the error.
+
+Where the reference is NULL (one pair, a constant side), DuckDB gives NaN; `Dialect.covar` leaves the NULL cases to its caller.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/corr.hpp#L28-L53](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/corr.hpp#L28-L53). Read at tag v2.0.0 (commit d54cbbe3).
+
+## <a id="duckdb-covar"></a>duckdb-covar. `COVAR_*` of doubles: Welford co-moment, Chan merge
+
+duckdb 2.0.0 · aggregates · open · `covar_samp`, `covar_pop` · #54, #85
+
+The co-moment is updated online (Schubert and Gertz 2018, eq. 4.3): `C += dx * (y - meany_new)`, where `dx` uses the old mean of x. Partial states merge with means `(n_s * mean_s + n_t * mean_t) / n` and `C = C_s + C_t + dx * dy * n_s * n_t / n`.
+
+No pairs is NULL; the sample covariance of fewer than two pairs is NULL.
+
+Reference:
+
+`AggFn.cov` (`covOf`) is two-pass: the two means, then the products of the deviations added in list order from +0.0, by n or n - 1. No pairs is NULL, and so is a sample of one pair. Engines may differ in the last bits (#54) until #85 bounds the error.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/covar.hpp#L29-L45](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/covar.hpp#L29-L45); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/covar.hpp#L48-L71](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/covar.hpp#L48-L71). Read at tag v2.0.0 (commit d54cbbe3).
+
+## <a id="duckdb-kahan-sum"></a>duckdb-kahan-sum. `kahan_sum`, `fsum`, `sumkahan`, `favg`: classic Kahan
+
+duckdb 2.0.0 · aggregates · open · `kahan_sum`, `fsum`, `sumkahan`, `favg` · #54, #85
+
+`kahan_sum` (also `fsum`, `sumkahan`) is classic Kahan summation, not Neumaier's. Merging a partial state Kahan-adds `other.value`, then `-other.err`. `favg` divides the Kahan sum by the count.
+
+An infinite input makes the compensation `inf - inf`, so `fsum` and `favg` of `[inf, 1]` are NaN, where `sum` is `inf` (duckdb-nonfinite-aggregates).
+
+Reference:
+
+`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L100-L104](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L100-L104); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L200-L209](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L200-L209). Read at tag v2.0.0 (commit d54cbbe3).
+
+## <a id="duckdb-nonfinite-aggregates"></a>duckdb-nonfinite-aggregates. ±inf in variance, correlation and Kahan sums
+
+duckdb 2.0.0 · aggregates · open · `var_samp`, `stddev_samp`, `corr`, `sum`, `fsum`, `favg`, `avg` · #54, #85
+
+Any ±inf input makes `var_*`, `stddev_*` and `corr` NaN: the update computes `inf - inf`. `fsum` and `favg` of `[inf, 1]` are NaN, while `sum` and `avg` are `inf`.
+
+One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN.
+
+Reference:
+
+`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L68-L73). Read at tag v2.0.0 (commit d54cbbe3). Why the result is NaN, read from the update.
+- 2026-11-03, manual-repro, by the coordinator's subagent, and this session again, in python/'s DuckDB 2.0.0: `SELECT var_samp(x), stddev_samp(x), corr(x, x) FROM (VALUES ('inf'::DOUBLE), (1.0), (2.0)) t(x)` gives `nan, nan, nan`; `SELECT sum(x), fsum(x), favg(x), avg(x) FROM (VALUES ('inf'::DOUBLE), (1.0)) t(x)` gives `inf, nan, nan, inf`; `SELECT var_samp(x), var_pop(x), corr(x, x) FROM (VALUES (1.0::DOUBLE)) t(x)` gives `NULL, 0.0, nan`.
+
+## <a id="duckdb-sum-double"></a>duckdb-sum-double. `SUM` of doubles: plain sequential
+
+duckdb 2.0.0 · aggregates · open · `sum` · #54, #85
+
+`SUM(DOUBLE)` adds each value to the state in turn (`state.value += input`), and partial states merge by plain addition. The order of the values depends on the parallel plan.
+
+Reference:
+
+`AggFn.fsum` (`floatSum`) adds the doubles one by one in list order from +0.0; the writers that need that order exactly use `Dialect.float_sum`. NULL without values.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L557](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/distributive/sum.cpp#L557); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L76-L82](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/sum_helpers.hpp#L76-L82). Read at tag v2.0.0 (commit d54cbbe3).
+
+## <a id="duckdb-var-stddev"></a>duckdb-var-stddev. `VAR_*` and `STDDEV_*` of doubles: Welford, Chan merge
+
+duckdb 2.0.0 · aggregates · open · `var_samp`, `var_pop`, `stddev_samp`, `stddev_pop`, `variance`, `stddev` · #54, #85
+
+Welford's online update: `mean_differential = (x - mean) / count`, `new_mean = mean + mean_differential`, `dsquared += (x - new_mean) * (x - mean)`. Partial states merge by Chan et al.: `delta = s.mean - t.mean`, `mean = fma(n_s / n, delta, t.mean)`, `M2 = M2_s + M2_t + delta * delta * n_s * n_t / n`.
+
+No values is NULL; the sample variance of one value is NULL; the population variance of one value is 0. No clamp and no finiteness check: 1.5.6 raised `OutOfRange` ("VARSAMP is out of range!") on non-finite values, 2.0 gives NaN (duckdb-nonfinite-aggregates).
+
+Reference:
+
+`AggFn.var` (`varOf`, `SubstraitLean/Aggregate.lean`) is two-pass with native doubles in list order: the mean (`floatSum` / n), then the squared deviations from it, added from +0.0, by n or n - 1, and never below 0. A sample of one value is NULL. Only NULL and the sign are exact; engines may differ in the last bits (#54) until #85 bounds the error.
+
+Checked:
+
+- 2026-11-03, source-reading, by coordinator subagent of session local_974f7865 (aggregate-algorithms research): [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L31-L41); [https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L57-L75](https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/include/core_functions/aggregate/algebraic/stddev.hpp#L57-L75). Read at tag v2.0.0 (commit d54cbbe3). The 1.5.6 behaviour is from the report, not rechecked here.
 
 ## <a id="duckdb-f1"></a>duckdb-F1. `/` and `//` on integers
 

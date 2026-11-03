@@ -1,0 +1,36 @@
+{
+  "id": "polars-mean-float",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`mean` of floats: the sum by the count",
+  "verdict": "sum / n",
+  "area": "aggregates",
+  "constructs": [
+    "mean",
+    "avg"
+  ],
+  "settings": {},
+  "description": "`mean` is the sum (polars-sum-float, pairwise or Kahan by path) divided by the count.",
+  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "source-reading",
+      "checked_by": "coordinator subagent of session local_974f7865 (aggregate-algorithms research)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-core/src/frame/group_by/aggregations/mod.rs#L867-L891"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-compute/src/float_sum.rs#L194-L215"
+        }
+      ],
+      "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ]
+}
