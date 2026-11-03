@@ -16,6 +16,11 @@ dependencies = [
     "duckdb>=2.0.0",
     "ibis-framework[duckdb]>=12.0.0",
     "pyarrow>=26.0.0",
+    # sverify's SQL lift is built on SQLGlot. From 30.18, SQLGlot reads a
+    # DROP's names from `expressions`, so Ibis 12's DuckDB `create_table`
+    # writes `DROP VIEW IF EXISTS` without one and fails (#442,
+    # upstream/LEDGER.md SG-7).
+    "sqlglot~=30.17.0",
     "substrait>=0.37.0",
 ]
 
@@ -90,10 +95,15 @@ dev = [
     "pytest-xdist>=3.8.0",
     "ruff>=0.17.3",
     "snowflake-connector-python<5",
-    "sqlglot>=30.22.0",
+    "sqlglot>=30.17.0",
 ]
 # The API reference site (`poe docs`): Great Docs, on Quarto (installed separately).
 docs = ["great-docs>=0.11.0"]
+
+[tool.uv]
+# fakesnow 0.12 needs `sqlglot~=30.22.0`, so development and the main CI
+# run 30.22; the wheel's tests resolve the `~=30.17.0` users get (#442).
+override-dependencies = ["sqlglot~=30.22.0"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore:The 'future.infer_string' option is deprecated"]

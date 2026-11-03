@@ -1498,8 +1498,14 @@ def _grouping_sets(group: sge.Group | None) -> tuple[list[sge.Expression], list[
             return [[index(item.this)]]
         return [[index(item)]]
 
+    # SQLGlot before 30.18 keeps ROLLUP, CUBE and GROUPING SETS in their own
+    # arguments; later versions list them with the keys (#442).
+    items = [] if group is None else [
+        *group.expressions,
+        *(x for a in ("grouping_sets", "cube", "rollup") for x in group.args.get(a) or []),
+    ]  # fmt: skip
     sets: list[list[int]] = [[]]
-    for item in group.expressions if group is not None else []:
+    for item in items:
         sets = [a + [k for k in b if k not in a] for a in sets for b in sets_of(item)]
     return keys, sets
 

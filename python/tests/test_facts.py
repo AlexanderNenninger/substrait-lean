@@ -6,7 +6,10 @@ import json
 
 import pytest
 
-from sverify_dev import facts
+# A dev dependency: the installed wheel's tests go without it.
+pytest.importorskip("jsonschema")
+
+from sverify_dev import facts  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not facts.SCHEMA.is_file(), reason="characterization/ of the repository is not here"
