@@ -90,6 +90,21 @@ def test_apply_change_checks_deletes_first():
         _apply_change(current, z([(4,), (4,)], [1, -1], s), "t")
 
 
+def test_apply_change_deletes_one_copy_with_nulls_and_nans():
+    s = pa.schema([("a", pa.int64()), ("x", pa.float64())])
+    nan = float("nan")
+    current = pa.Table.from_pylist(
+        [{"a": a, "x": x} for a, x in [(1, 0.5), (1, 0.5), (None, nan), (2, None), (3, 1.0)]],
+        schema=s,
+    )
+    change = z([(1, 0.5), (None, nan), (2, None), (4, 2.0)], [-1, -1, -1, 1], s)
+    got = sorted(arrow_rows(_apply_change(current, change, "t")), key=repr)
+    assert got == sorted([(1, 0.5), (3, 1.0), (4, 2.0)], key=repr)
+    # Twice as many deletes as copies.
+    with pytest.raises(ValueError, match=r"cannot delete \(1, 0.5\) from t"):
+        _apply_change(current, z([(1, 0.5)], [-3], s), "t")
+
+
 def test_negated():
     s = pa.schema([("a", pa.int64())])
     assert pairs(negated(z([(1,)], [2], s))) == [((1,), -2)]
