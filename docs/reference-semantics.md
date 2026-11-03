@@ -256,9 +256,42 @@ Design notes: [nested-values.md](nested-values.md).
 | Topic | Reference | Status |
 |---|---|---|
 | `SUM` / `AVG` | Added in list order with native floats. Rounding can take `AVG` past the values (the mean of three `0.1` is `0.10000000000000002`). Contracts get exact signs (a `SUM` or `AVG` of values `≥ 0` is `≥ 0`) and, for inputs with a row cap (`sv.max_rows(n)`, `n ≤ 2³²`) and values within `2⁴⁰⁰`, the interval of the exact result widened by the proved error bound (`floatSum_mem`, `floatAvg_mem` in `Aggregate.lean`, proved in [`float-bounds/`](float-bounds.md)). `sv.approx` states a postcondition up to that rounding. A sharded or parallel sum may differ in the last bits, so `--shard` refuses it unless `float_order="any"`; engines that don't fix the order are refused unless `tie_free` justifies it. | ✓ order; error bounds ([#85](https://github.com/AlexanderNenninger/substrait-lean/issues/85)) |
-| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. **Each engine's own algorithm** for now (decided on #54), so results may differ in the last bits: the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; whatever the algorithm (two-pass, textbook, or DuckDB's Welford and Chan), the result is within a proved bound, `64 · n² · u · B²` on the co-moment ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
-| `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, as for `VARIANCE`: the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
+| `VARIANCE` / `STDDEV` | Of a sample (`n - 1`, the default) or a population (`n`, `distribution: POPULATION`), of doubles; integers are converted first. Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates) (#54, #85): the model claims a double ≥ 0 or NULL, exactly NULL for no values and for a sample of one value. A NaN passes through; an infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, approximate ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); refused over windows; whatever the algorithm (two-pass, textbook, or DuckDB's Welford and Chan), the result is within a proved bound, `64 · n² · u · B²` on the co-moment ([`float-bounds.md`](float-bounds.md)); the checker keeps "a double ≥ 0 or NULL" |
+| `COVAR_SAMP` / `COVAR_POP` / `CORR` | Of pairs of doubles (integers converted), rows with a NULL in either skipped (`BinFn.pair`). Each engine's own algorithm, within the generic properties of [Statistical aggregates](#statistical-aggregates): the model claims a double or NULL. NULL for no pairs, for a sample covariance of one pair, and for `CORR` of fewer than two pairs or of a side whose values are all equal, as the SQL standard says (DuckDB's own `CORR` gives NaN there). An infinite value raises, as a deviation from the mean would be NaN. | ✓ grouped, on DuckDB ([#54](https://github.com/AlexanderNenninger/substrait-lean/issues/54)); other engines refuse it until #271; refused over windows |
 | `MIN` / `MAX` of doubles | By the codes' order, `-∞ < … < +∞ < NaN`, as DuckDB orders doubles. | ✓ on DuckDB ([#371](https://github.com/AlexanderNenninger/substrait-lean/issues/371)); Polars and DataFusion (whose grouped min/max of doubles is not IEEE) refuse them until #271 |
+
+### Statistical aggregates
+
+Engines compute `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` with different
+algorithms, none documented: DuckDB 2.0 and Spark 4.3 use Welford's update
+with Chan's merge, Polars 2.1 a two-pass per block of 128 values when
+ungrouped and Welford when grouped (`characterization/*/facts/`, ids
+`duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
+`polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
+The reference picks none. It allows any result with the generic properties
+that every reasonable algorithm keeps (`StatProps` in
+`SubstraitLean/StatProps.lean`, the set `AggFn.Allowed` uses). For `n ≤ 2³²`
+finite values at most `2³⁹⁹`, with `B = max(max |xᵢ|, 2⁻⁵⁰⁰)`, `u = 2⁻⁵³` and
+the exact co-moment `C = Σxy − Σx · Σy / n`:
+
+- `NULL` for no values and for a sample of one value; for `CORR`, for fewer
+  than two pairs and for a side whose values are all equal.
+- A variance or deviation is `≥ 0`.
+- `VAR_*` and `COVAR_*` are within `τ = (128 n² u B² + 12 n u B²) / d` of
+  `C / d`, `d = n − 1` for a sample, `n` for a population.
+- `STDDEV_*` is within `(1 ± u)` of `√(V ± τ)`.
+- `|CORR| ≤ 1 + 3E/L + 8u`, `E = 128 n² u B²`, when the co-moments of both
+  sides are at least `L ≥ 8E`. Without such a lower bound `CORR` can be any
+  double, and no engine clamps it to `[−1, 1]`.
+
+The co-moment bound is proved for the two-pass algorithm (the reference's
+own), Welford's update with Chan's merge in any tree, and the textbook
+formula (`docs/float-bounds.md`). Outside the finite range the reference's own
+value is the one allowed. An engine profile may name a stricter algorithm
+(`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without one, the generic
+properties hold. No profile names one yet. Engines differ from the reference
+where it raises: DuckDB and Polars give NaN for an infinite value and for
+`CORR` with a zero variance, Spark NULL for the latter.
 
 ### Of decimals
 

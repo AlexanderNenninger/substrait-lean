@@ -182,6 +182,7 @@ end Substrait.Examples
 #print axioms Substrait.Measure.abs_sound
 #print axioms Substrait.Rel.capReads_eval
 #print axioms Substrait.Rel.maxRows_sound
+#print axioms Substrait.StatProps.apply
 #print axioms Substrait.Rel.capJoins_eval
 #print axioms Substrait.Rel.issuesCapped_sound
 #print axioms Substrait.FloatCode.ofInt_mono
