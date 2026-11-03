@@ -15,8 +15,9 @@
 # The whole run is capped at 8 GB of memory and no swap, in a systemd user
 # scope (`ulimit -v`, per process, where user scopes are not available), so a
 # runaway `lean` process is killed inside the scope before it starves the box.
-# Only the process the kernel picks is killed (`OOMPolicy=continue`), so the
-# run still fails cleanly and deletes its directory.
+# The first OOM kill stops the whole scope (`OOMPolicy=stop`): with only the
+# one process killed, Lake kept the other `lean` processes thrashing at the
+# cap for minutes. The run still deletes its directory on the SIGTERM.
 #
 # The warm build is the root package's `.lake` (the only Lake package QA
 # builds: `float-bounds/` and its Mathlib are not part of `poe qa`). It lives
@@ -44,6 +45,7 @@ main() {
   tasks=("$@")
   dir=/tmp/substrait-lean-$(uuidgen)
   trap 'rm -rf "$dir"' EXIT
+  trap 'exit 143' TERM HUP INT
 
   git clone -q --branch "$branch" https://github.com/AlexanderNenninger/substrait-lean.git "$dir" \
     || exit 1
@@ -118,7 +120,7 @@ if systemd-run --user --scope --quiet -p MemoryMax="$memory_max" sh -c \
   2>/dev/null; then
   echo "homelab_qa: capping the run at $memory_max (systemd user scope, no swap)"
   exec systemd-run --user --scope --quiet -p MemoryMax="$memory_max" -p MemorySwapMax=0 \
-    -p OOMPolicy=continue bash -c "$job" bash "$branch" "${tasks[@]}"
+    -p OOMPolicy=stop bash -c "$job" bash "$branch" "${tasks[@]}"
 fi
 echo "homelab_qa: no systemd user scope, capping virtual memory with ulimit -v $memory_max"
 ulimit -v $((max_bytes / 1024)) || exit 1

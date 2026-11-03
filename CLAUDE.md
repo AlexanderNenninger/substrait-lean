@@ -73,10 +73,10 @@ keeps the caches of the two most recent toolchains, about 300 MB each.
 
 The script refuses to start when less than 6 GB is available. It runs the
 whole job in a systemd user scope capped at 8 GB with no swap
-(`HOMELAB_QA_MEMORY_MAX` changes the cap), so a runaway `lean` process is
-OOM-killed inside the scope and the run fails cleanly. A Lean change that
-sends `LiftDuckDB.lean` into the full lift search once took 12.4 GB in one
-`lean` process and nearly hung the box. Where user scopes are not available it
+(`HOMELAB_QA_MEMORY_MAX` changes the cap). The first OOM kill stops the whole
+run, and its directory is deleted. A Lean change that sends `LiftDuckDB.lean`
+into the full lift search once took 12.4 GB in one `lean` process and nearly
+hung the box. Where user scopes are not available it
 falls back to `ulimit -v`, which caps each process on its own.
 
 Run long QA commands there in the background, not in the foreground shell.
