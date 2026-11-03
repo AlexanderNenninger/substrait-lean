@@ -30,6 +30,7 @@ exact one `z` up to
 
 where `u · tiny = 2⁻¹⁰⁷⁵` is half the spacing of the subnormals. Without that
 term, no rounding meets the model: `2⁻¹⁰⁸⁰` rounds to `0` or `2⁻¹⁰⁷⁴`.
+Rounding also keeps the sign of a result, as rounding to nearest does.
 `StdModel` is a structure that theorems take as a hypothesis.
 `γ n = n·u / (1 − n·u)` bounds the relative error of `n` roundings.
 
@@ -69,7 +70,8 @@ contract checker trusts, in the integer form it uses (a value `x` scaled to
 `[min(lo, N·lo) − τ, max(hi, N·hi) + τ]`, and their mean in
 `[lo − τ', hi + τ']`, where `τ = sumTolScaled N Bs / 2¹⁰⁷⁴` and
 `τ' = avgTolScaled N Bs / 2¹⁰⁷⁴` round the bounds above up. They allow for the
-decoding of codes with more than 53 significant bits (`Decoded`).
+decoding of codes with more than 53 significant bits (`Decoded`). `core_sign`
+keeps signs exact: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`.
 
 ## `VARIANCE`, `STDDEV`, `COVAR` and `CORR`
 

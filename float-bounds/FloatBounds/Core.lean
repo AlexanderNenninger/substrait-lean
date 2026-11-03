@@ -357,6 +357,50 @@ theorem StdModel.core_avg {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps �
   have a2 := abs_le.mp e2
   constructor <;> linarith [a1.1, a1.2, a2.1, a2.2]
 
+/-! ## Signs -/
+
+theorem StdModel.sumFrom_nonneg {a : ℝ} (ha : 0 ≤ a) :
+    ∀ {xs : List ℝ}, (∀ x ∈ xs, 0 ≤ x) → 0 ≤ M.sumFrom a xs
+  | [], _ => ha
+  | x :: xs, h => by
+    simp only [StdModel.sumFrom, List.foldl_cons]
+    exact StdModel.sumFrom_nonneg (M.nonneg _ (add_nonneg ha (h x (by simp))))
+      (fun y hy => h y (by simp [hy]))
+
+theorem StdModel.sumFrom_nonpos {a : ℝ} (ha : a ≤ 0) :
+    ∀ {xs : List ℝ}, (∀ x ∈ xs, x ≤ 0) → M.sumFrom a xs ≤ 0
+  | [], _ => ha
+  | x :: xs, h => by
+    simp only [StdModel.sumFrom, List.foldl_cons]
+    exact StdModel.sumFrom_nonpos (M.nonpos _ (add_nonpos ha (h x (by simp))))
+      (fun y hy => h y (by simp [hy]))
+
+/-- A decoded value has its code's sign. -/
+theorem Decoded.sign {ps : List (ℝ × ℝ)} (hd : Decoded ps) {p : ℝ × ℝ} (hp : p ∈ ps) :
+    (0 ≤ p.2 → 0 ≤ p.1) ∧ (p.2 ≤ 0 → p.1 ≤ 0) := by
+  have h := abs_le.mp (hd p hp)
+  have hu : 2 * u ≤ 1 := by unfold u; norm_num
+  constructor
+  · intro h0; rw [abs_of_nonneg h0] at h; nlinarith [h.1]
+  · intro h0; rw [abs_of_nonpos h0] at h; nlinarith [h.2]
+
+/-- **Signs the core trusts**: a `SUM` or `AVG` of values `≥ 0` is `≥ 0`, and
+of values `≤ 0` is `≤ 0`. -/
+theorem StdModel.core_sign {ps : List (ℝ × ℝ)} (hd : Decoded ps) :
+    ((∀ p ∈ ps, 0 ≤ p.2) → 0 ≤ M.sum (ps.map Prod.fst) ∧
+        0 ≤ M.fl (M.sum (ps.map Prod.fst) / ps.length)) ∧
+      ((∀ p ∈ ps, p.2 ≤ 0) → M.sum (ps.map Prod.fst) ≤ 0 ∧
+        M.fl (M.sum (ps.map Prod.fst) / ps.length) ≤ 0) := by
+  constructor
+  · intro h
+    have hs : 0 ≤ M.sum (ps.map Prod.fst) := M.sumFrom_nonneg le_rfl (by
+      intro x hx; obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact (hd.sign hp).1 (h p hp))
+    exact ⟨hs, M.nonneg _ (div_nonneg hs (Nat.cast_nonneg _))⟩
+  · intro h
+    have hs : M.sum (ps.map Prod.fst) ≤ 0 := M.sumFrom_nonpos le_rfl (by
+      intro x hx; obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact (hd.sign hp).2 (h p hp))
+    exact ⟨hs, M.nonpos _ (div_nonpos_of_nonpos_of_nonneg hs (Nat.cast_nonneg _))⟩
+
 end FloatBounds
 
 end

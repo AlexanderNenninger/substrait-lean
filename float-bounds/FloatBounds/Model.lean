@@ -46,10 +46,14 @@ theorem tiny_pos : 0 < tiny := by unfold tiny; positivity
 theorem u_le : u ≤ 2⁻¹ ^ 53 := le_rfl
 
 /-- A rounding `fl` from the reals to the reals (to the representable values)
-that meets the standard model wherever the result does not overflow. -/
+that meets the standard model wherever the result does not overflow, and
+keeps the sign, as rounding to nearest does. -/
 structure StdModel where
   fl : ℝ → ℝ
   err : ∀ z, |z| ≤ maxFinite → |fl z - z| ≤ u * (|z| + tiny)
+  /-- Rounding keeps the sign (it is monotone and `fl 0 = 0`). -/
+  nonneg : ∀ z, 0 ≤ z → 0 ≤ fl z
+  nonpos : ∀ z, z ≤ 0 → fl z ≤ 0
 
 variable (M : StdModel)
 
