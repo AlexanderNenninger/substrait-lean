@@ -300,3 +300,69 @@ theorem sqrt_Q_decoded {qs : List ((ℝ × ℝ) × (ℝ × ℝ))}
     List.sum_nonneg (fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; positivity)
   calc _ ≤ √((1 + 2 * u) ^ 2 * (qs.map fun q => (|q.2.1| + tiny) ^ 2).sum) := Real.sqrt_le_sqrt h
     _ = _ := by rw [Real.sqrt_mul (by positivity), Real.sqrt_sq (by positivity)]
+
+set_option maxHeartbeats 1000000 in
+/-- **Two-pass on the decoded doubles, against the exact co-moment**, in the
+exact values' `S` and `Q'`:
+`7 n u √S_xx √S_yy + 3.2 n u (√Q'_y √S_xx + √Q'_x √S_yy) + 130 n² u² √Q'_x √Q'_y + 4 n² u · tiny`. -/
+theorem StdModel.tp_exact {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs ≠ [])
+    (hN : qs.length ≤ 2 ^ 32) (hB : ∀ q ∈ qs, |q.2.1| ≤ 2 ^ 398 ∧ |q.2.2| ≤ 2 ^ 398)
+    (hd : ∀ q ∈ qs, |q.1.1 - q.2.1| ≤ 2 * u * |q.2.1| ∧ |q.1.2 - q.2.2| ≤ 2 * u * |q.2.2|) :
+    |M.twoPass (qs.map (·.1)) - comoment (qs.map (·.2))|
+      ≤ 7 * qs.length * u * (√(comoment (qs.map fun q => (q.2.1, q.2.1)))
+          * √(comoment (qs.map fun q => (q.2.2, q.2.2))))
+        + 3.2 * qs.length * u * (√((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum)
+            * √(comoment (qs.map fun q => (q.2.1, q.2.1)))
+          + √((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum)
+            * √(comoment (qs.map fun q => (q.2.2, q.2.2))))
+        + 130 * qs.length ^ 2 * u ^ 2 * (√((qs.map fun q => (|q.2.1| + tiny) ^ 2).sum)
+          * √((qs.map fun q => (|q.2.2| + tiny) ^ 2).sum))
+        + 4 * qs.length ^ 2 * u * tiny := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have hb' : Bounded (2 ^ 399) (qs.map (·.1)) := by
+    intro p hp
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hp
+    obtain ⟨b1, b2⟩ := hB q hq
+    obtain ⟨d1, d2⟩ := hd q hq
+    have k : ∀ {a b : ℝ}, |b| ≤ 2 ^ 398 → |a - b| ≤ 2 * u * |b| → |a| ≤ 2 ^ 399 := by
+      intro a b hb hab
+      have := abs_sub_abs_le_abs_sub a b
+      have : 2 * u * |b| ≤ 2 * u * 2 ^ 398 := mul_le_mul_of_nonneg_left hb (by positivity)
+      have : 2 * u * (2 : ℝ) ^ 398 ≤ 2 ^ 398 := by nlinarith
+      have : (2 : ℝ) ^ 398 + 2 ^ 398 = 2 ^ 399 := by norm_num
+      linarith
+    exact ⟨k b1 d1, k b2 d2⟩
+  have h1 := M.twoPass_cov_rel (ps := qs.map (·.1)) (by simpa using hne) (by simpa using hN) hb'
+  have q1 : 0 ≤ (qs.map fun q => (|q.1.1| + tiny) ^ 2).sum :=
+    List.sum_nonneg (fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; positivity)
+  have q2 : 0 ≤ (qs.map fun q => (|q.1.2| + tiny) ^ 2).sum :=
+    List.sum_nonneg (fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; positivity)
+  have ex : dupL ((qs.map (·.1)).map Prod.fst) = qs.map fun q => (q.1.1, q.1.1) := by
+    simp [dupL, List.map_map, Function.comp_def]
+  have ey : dupL ((qs.map (·.1)).map Prod.snd) = qs.map fun q => (q.1.2, q.1.2) := by
+    simp [dupL, List.map_map, Function.comp_def]
+  rw [ex, ey] at h1
+  simp only [List.map_map, Function.comp_def, List.length_map] at h1
+  have s0x : 0 ≤ comoment (qs.map fun q => (q.1.1, q.1.1)) := by
+    rw [← ex]; exact comoment_dupL_nonneg _
+  rw [Real.sqrt_mul s0x, Real.sqrt_mul q2, Real.sqrt_mul q1, Real.sqrt_mul q1] at h1
+  have hD := decode_cov hd
+  have ax := sqrt_S_decoded (qs := qs) (fun q hq => (hd q hq).1)
+  have bx := sqrt_Q_decoded (qs := qs) (fun q hq => (hd q hq).1)
+  have ay := sqrt_S_decoded (qs := qs.map fun q => ((q.1.2, q.1.1), (q.2.2, q.2.1)))
+    (fun q hq => by obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hq; exact (hd r hr).2)
+  have by' := sqrt_Q_decoded (qs := qs.map fun q => ((q.1.2, q.1.1), (q.2.2, q.2.1)))
+    (fun q hq => by obtain ⟨r, hr, rfl⟩ := List.mem_map.mp hq; exact (hd r hr).2)
+  simp only [List.map_map, Function.comp_def] at ay by'
+  have hn1 : (1 : ℝ) ≤ qs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have k := kappa_arith (n := qs.length) hn1 (Real.sqrt_nonneg _) (Real.sqrt_nonneg _)
+    (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) (Real.sqrt_nonneg _)
+    (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) h1 hD ax ay bx by'
+  have t := abs_add_le (M.twoPass (qs.map (·.1)) - comoment (qs.map (·.1)))
+    (comoment (qs.map (·.1)) - comoment (qs.map (·.2)))
+  have e : M.twoPass (qs.map (·.1)) - comoment (qs.map (·.2))
+      = (M.twoPass (qs.map (·.1)) - comoment (qs.map (·.1)))
+        + (comoment (qs.map (·.1)) - comoment (qs.map (·.2))) := by ring
+  rw [e]
+  linarith
