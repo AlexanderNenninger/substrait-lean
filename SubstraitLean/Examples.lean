@@ -3,6 +3,7 @@ import SubstraitLean.Incremental
 import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Contracts
+import SubstraitLean.Rows
 import SubstraitLean.Retention
 import SubstraitLean.Safety
 import SubstraitLean.Keys
