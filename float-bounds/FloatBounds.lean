@@ -13,3 +13,4 @@ public import FloatBounds.CoreStats
 public import FloatBounds.TwoPassRel
 public import FloatBounds.WelfordRel
 public import FloatBounds.MergeRel
+public import FloatBounds.CovRel
