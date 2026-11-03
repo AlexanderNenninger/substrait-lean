@@ -276,7 +276,7 @@ RUNTIME_CHECK = (
 )
 
 
-def _sum(issue: "Issue") -> bool:
+def _sum(issue: Issue) -> bool:
     """Whether `issue` is an integer `SUM` that may leave 64 bits."""
     return issue.kind == "SUM overflow"
 
