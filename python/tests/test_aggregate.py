@@ -310,12 +310,27 @@ def test_avg_of_a_nullable_column_may_be_null():
     assert [c.proved for c in report.ensures] == [False, False]
 
 
-def test_integer_sum_overflow_is_a_warning():
-    # Lean's sum is exact, so the checker warns of an overflow at run time
+def test_integer_sum_overflow_is_an_error():
+    # Lean's sum is exact, so an integer SUM may leave 64 bits, and the
+    # reference raises there: the report is not proved. The job also checks it
     # (DataFusion's wrap-around is pinned in test_datafusion_quirks.py).
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
-    assert [str(i) for i in report.issues] == ["SUM overflow: $2"]
-    assert report.proved  # checked while the job runs, not against the proof (#202)
+    assert [str(i) for i in report.errors] == ["SUM overflow: $2"]
+    assert not report.proved
+    assert "checks it while it runs" in str(report)
+
+
+def test_a_bounded_sum_over_bounded_rows_is_proved():
+    # A FETCH bounds the rows, `requires` the values: the sum fits 64 bits.
+    first = orders.limit(1000)
+    bounded = {"orders": [_.amount >= -1_000_000, _.amount <= 1_000_000]}
+    report = sv.verify(first.aggregate(total=first.amount.sum()), requires=bounded)
+    assert report.proved, str(report)
+    # Without the bound on the values, or on the rows, it may overflow.
+    report = sv.verify(first.aggregate(total=first.amount.sum()))
+    assert [i.kind for i in report.errors] == ["SUM overflow"]
+    report = sv.verify(orders.aggregate(total=orders.amount.sum()), requires=bounded)
+    assert [i.kind for i in report.errors] == ["SUM overflow"]
 
 
 by_customer = orders.group_by("customer").aggregate(
@@ -336,7 +351,9 @@ def test_aggregate_postconditions_are_proved():
             sv.unique("customer"),
         ],
     )
-    assert report.proved, str(report)
+    assert all(c.proved for c in report.ensures), str(report)
+    # Nothing bounds a group's rows, so the SUM may overflow (#219).
+    assert [i.kind for i in report.errors] == ["SUM overflow"]
     assert report.facts["n"] == "an integer ≥ 1"
     # `amount >= 0` rules out NULL, so each group has a maximum (#372).
     assert report.facts["top"] == "an integer ≥ 0"

@@ -68,14 +68,14 @@ fires, `Rel.eval`'s value is not the answer.
   other error issues. Integer `+ - *` and negation overflow are still only a
   warning on `main` ("may wrap around"): [#202](https://github.com/AlexanderNenninger/substrait-lean/issues/202),
   [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
-* **Exception: integer `SUM` overflow** (decided on #202). It is reported as
-  "SUM overflow" and does not make the report unproved, because no
-  condition on rows can bound how many rows a group has. The written SQL
-  guards the sum and every engine raises if it leaves 64 bits, so the job
-  never answers wrongly, and the report says that the check runs while the
-  job runs. Today (`main`) it is the warning `sumWraps`; the change is
-  [PR #255](https://github.com/AlexanderNenninger/substrait-lean/pull/255).
-  Row-count bounds in contracts, which could settle it, are a separate issue.
+* **Integer `SUM` overflow is an error too.** `verify` reports "SUM overflow"
+  where a group's sum may leave 64 bits, and the report is unproved. The sum
+  is ruled out where the plan bounds a group's rows (a `VALUES` list, a
+  `FETCH` count, an aggregate without groups: `Rel.maxRows`) and the
+  argument's range bounds each value (`Measure.sumFits`). Bounds on the rows
+  of a table are [#219](https://github.com/AlexanderNenninger/substrait-lean/issues/219).
+  The written SQL also checks the sum while the job runs, and every engine
+  raises if it leaves 64 bits.
 
 ## Core: numbers and NULLs
 
@@ -101,7 +101,7 @@ option"; #202 "Decided (2026-11-01)"; #209 "Decided".
 | `fp32` | IEEE binary32. | **Not yet.** One double kind: `fp32` is computed as `fp64`. [#208](https://github.com/AlexanderNenninger/substrait-lean/issues/208) |
 | Zero | One zero. `-0.0` is `0.0` everywhere, so `1.0 / -0.0 = inf`. | ✓ ([#89](https://github.com/AlexanderNenninger/substrait-lean/issues/89), decided on #209) |
 | NaN | One NaN, equal to itself, greater than every number, `+∞` included. `GROUP BY`, `DISTINCT` and sorting treat all NaNs alike. | ✓ |
-| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, a window `SUM`/`AVG` of `+∞` and `-∞` still gives NaN (`verify` does not report it yet), and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
+| **No operation creates a NaN** | A NaN from the data passes through. An operation on non-NaN inputs whose IEEE result is NaN raises instead: `0/0`, `inf - inf`, `inf + (-inf)`, `0 * inf`, `inf / inf`, domain errors (`sqrt(-1)`, `sin(±inf)`, a negative base to a fractional power), `fmod(±inf, y)`, and a double `SUM` or `AVG` of `+∞` and `-∞`. With no NaN in the inputs (`~_.v.isnan()` in `requires`), there is none in the outputs. | ✓ ([#257](https://github.com/AlexanderNenninger/substrait-lean/issues/257)): `Issue.domain` (`nanCase` in `Safety.lean`), and the parser accepts only `on_domain_error: ERROR` for `divide` and `power`. A window `SUM`/`AVG` whose frame may hold `+∞` and `-∞` is a domain error too, as the grouped one is. Two exceptions: `on_division_by_zero: IEEE` asks for NaN at `0.0 / 0.0` and gets it, and DataFusion runs the written plan natively, so it gives NaN where the reference raises (as it gives `±∞` for a zero divisor); DuckDB, Polars, Spark and Snowflake raise. (Decided on #185, "no newly created NaNs") |
 | Division by zero | An error when `on_division_by_zero` is omitted or `ERROR`. `IEEE`, `LIMIT` and `NULL` when the plan asks. | ✓ (#204) |
 | Domain errors | `sqrt`, `log`, `asin`, `acos`, `logb`, `atan2(0, 0)` and shifts outside their domain raise (`on_domain_error`, `on_log_zero` = `ERROR`). | ✓ (#215) |
 | `round(x, d)` | Halves away from zero, as DuckDB computes it: with `m = 10^abs(d)`, `round(x · m) / m` for `d ≥ 0` (`x` itself where that is not finite), and `round(x / m) · m` for `d < 0` (0 where that is not finite), so `round(42, -1000)` is 0 rather than NaN. `±∞` and NaN stay. DataFusion's `round(x · 10ᵈ) / 10ᵈ` differs, so DataFusion refuses it until #271. | ✓ (#335) |

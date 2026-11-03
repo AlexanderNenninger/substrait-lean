@@ -268,11 +268,17 @@ def _truncates(expr: str) -> bool:
     return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
 
 
-#: How a report explains an issue that is checked while the job runs.
+#: How a report explains an integer `SUM` that may overflow: an error like
+#: any other, which the job also checks while it runs.
 RUNTIME_CHECK = (
-    "checked while the job runs, which raises if it happens; no proof before "
-    "running can rule it out, since a group may have any number of rows"
+    "the job also checks it while it runs and raises if it happens; a bound on "
+    "the column and on the rows of a group rules it out"
 )
+
+
+def _sum(issue: "Issue") -> bool:
+    """Whether `issue` is an integer `SUM` that may leave 64 bits."""
+    return issue.kind == "SUM overflow"
 
 
 @dataclass(frozen=True)
@@ -288,10 +294,9 @@ class Issue:
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
     error: bool
-    """True if a proof must rule it out. A "SUM overflow" is not one: the
-    transformation's SQL raises there too, but no contract on rows can rule
-    it out (a group may have any number of rows), so it is checked while the
-    job runs instead (#202)."""
+    """True if a proof must rule it out. Every issue is one; a "SUM overflow"
+    is also checked while the job runs, where the transformation's SQL raises
+    too."""
     hint: str | None = None
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
@@ -325,8 +330,8 @@ class Report:
     row ties): the engine then picks an order, and nothing is proved about
     the result."""
     issues: list[Issue] = field(default_factory=list)
-    """Runtime errors, and SUM overflows, Lean could not rule out; when empty,
-    the transformation provably runs without them."""
+    """Runtime errors, SUM overflows among them, Lean could not rule out; when
+    empty, the transformation provably runs without them."""
     guard_free: bool = False
     """The only issues are integer `SUM`s that may overflow: on data that meets
     the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
@@ -371,9 +376,8 @@ class Report:
 
     @property
     def warnings(self) -> list[Issue]:
-        """The `issues` checked while the job runs rather than proved absent
-        before it: an integer `SUM` that may leave 64 bits. The job raises if
-        it does; it never gives a wrong value."""
+        """The `issues` that do not count against a proof. None do: an
+        integer `SUM` that may leave 64 bits is an error (`errors`)."""
         return [i for i in self.issues if not i.error]
 
     @property
@@ -409,10 +413,9 @@ class Report:
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
         for i in self.errors:
-            lines.append(f"may fail: {i}")
+            lines.append(f"may fail: {i}" + (f" ({RUNTIME_CHECK})" if _sum(i) else ""))
             if i.hint:
                 lines.append(f"  hint: {i.hint}")
-        lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
         lines += [f"hint: {h}" for h in self._hints()]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
@@ -436,14 +439,11 @@ class Report:
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
         for i in self.errors:
-            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |")
+            note = f" ({RUNTIME_CHECK})" if _sum(i) else ""
+            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')}{note} |")
             if i.hint:
                 rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
         inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
-        rows += [
-            f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
-            for i in self.warnings
-        ]
         rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
@@ -1215,7 +1215,7 @@ def overflow_hints(
                 f"ends of the timestamp range overflows. For example `_.{col} >= {ctor}(2000, "
                 f"1, 1)` and `_.{col} < {ctor}(2100, 1, 1)`"
             )
-    if any(i.kind == "SUM overflow" for i in report.warnings):
+    if any(_sum(i) for i in report.errors):
         for op in transform.op().find(ops.Sum):
             if (hint := _sum_hint(op, requires)) is not None:
                 hints.append(hint)
@@ -1243,7 +1243,10 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     # A BIGINT's own range bounds nothing: any two of its values may overflow.
     lo = None if lo is None or lo <= -(2**63) else lo
     hi = None if hi is None or hi >= 2**63 - 1 else hi
-    why = "no contract states how many rows a group has, so the job checks the sum as it runs"
+    why = (
+        "no contract states how many rows a group has yet (#219), so only a VALUES list or a "
+        "FETCH bounds them; the job checks the sum as it runs"
+    )
     if lo is not None and hi is not None:
         largest = max(abs(lo), abs(hi))
         if largest == 0:

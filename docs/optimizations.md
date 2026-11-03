@@ -75,8 +75,8 @@ meets a contract.
   `guard_free`, and `sverify.Report.guard_free` exposes it.
 
 To keep the `SUM` case apart, `Safety.lean` reports its issue as
-`Issue.sumWraps`, named "SUM overflow". It is checked while the job runs
-rather than proved absent, so it does not make `proved` false (#202).
+`Issue.sumWraps`, named "SUM overflow". It is an error like any other, so it
+makes `proved` false; unlike the others, the guards keep its check.
 
 **A gap in the specification.** `Rel.HasIssue` evaluates filter and join
 conditions on the rows of `Rel.loose`, the plan without the filters an engine
