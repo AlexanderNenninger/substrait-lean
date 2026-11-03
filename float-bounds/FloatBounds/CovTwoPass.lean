@@ -620,3 +620,35 @@ theorem StdModel.tpc_core {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.le
   have := tpc_arith hn1 hnu (by positivity) (by positivity) hW0 hK0 (by positivity) hKt htT hHd hG hexy hX
   rw [← hSx, ← hSy, ← hQx, ← hQy, ← hn]
   exact this
+
+/-- **Two-pass covariance, to first order in the spread**: for `n ≤ 2³²` pairs
+of doubles at most `2³⁹⁹` in magnitude,
+`|Ĉ − C| ≤ 6 n u √(S_xx S_yy) + 1.1 u (√(Q'_y S_xx) + √(Q'_x S_yy)) + 120 n² u² √(Q'_x Q'_y) + 4 n² u · tiny`,
+with `Q'_x = Σ (|x| + tiny)²`. -/
+theorem StdModel.twoPass_cov_rel {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.length ≤ 2 ^ 32)
+    (hB : Bounded (2 ^ 399) ps) :
+    |M.twoPass ps - comoment ps|
+      ≤ 6 * ps.length * u * √(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))
+        + 1.1 * u * (√((ps.map fun p => (|p.2| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.fst)))
+          + √((ps.map fun p => (|p.1| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.snd))))
+        + 120 * ps.length ^ 2 * u ^ 2 * √((ps.map fun p => (|p.1| + tiny) ^ 2).sum
+          * (ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+        + 4 * ps.length ^ 2 * u * tiny := by
+  have hx := M.mean6 (xs := ps.map Prod.fst) (by simpa using hne) (by simpa using hN)
+    (fun x hx => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact (hB p hp).1)
+  have hy := M.mean6 (xs := ps.map Prod.snd) (by simpa using hne) (by simpa using hN)
+    (fun x hx => by obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx; exact (hB p hp).2)
+  have ex : (ps.map Prod.fst).sum / ((ps.map Prod.fst).length : ℝ) = mx ps := by
+    simp [mx, sx]
+  have ey : (ps.map Prod.snd).sum / ((ps.map Prod.snd).length : ℝ) = my ps := by
+    simp [my, sy]
+  rw [ex] at hx
+  rw [ey] at hy
+  have h := M.tpc_core hne hN hB hx hy
+  have q1 : 0 ≤ (ps.map fun p => (|p.1| + tiny) ^ 2).sum :=
+    List.sum_nonneg (fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; positivity)
+  have q2 : 0 ≤ (ps.map fun p => (|p.2| + tiny) ^ 2).sum :=
+    List.sum_nonneg (fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; positivity)
+  rw [Real.sqrt_mul (comoment_dupL_nonneg _), Real.sqrt_mul q2, Real.sqrt_mul q1, Real.sqrt_mul q1]
+  unfold StdModel.twoPass
+  exact h
