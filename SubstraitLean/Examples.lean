@@ -3,6 +3,7 @@ import SubstraitLean.Incremental
 import SubstraitLean.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Contracts
+import SubstraitLean.Retention
 import SubstraitLean.Safety
 import SubstraitLean.Keys
 import SubstraitLean.Completeness
@@ -216,3 +217,8 @@ end Substrait.Examples
 #print axioms Substrait.Lowering.duckdb_exact
 #print axioms Substrait.liftDuckDB.total
 #print axioms Substrait.liftReference.total
+#print axioms Substrait.Retention.final_unchanged
+#print axioms Substrait.Retention.retention_sound
+#print axioms Substrait.Retention.final_stable
+#print axioms Substrait.Retention.open_buckets_le
+#print axioms Substrait.Retention.trunc_eq_bucket

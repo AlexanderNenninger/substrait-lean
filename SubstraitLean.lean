@@ -16,7 +16,9 @@ import SubstraitLean.Write
 import SubstraitLean.Check
 import SubstraitLean.Contracts
 import SubstraitLean.Safety
+import SubstraitLean.Infer
 import SubstraitLean.Partition
+import SubstraitLean.Retention
 import SubstraitLean.Guards
 import SubstraitLean.Profile
 import SubstraitLean.Lowering

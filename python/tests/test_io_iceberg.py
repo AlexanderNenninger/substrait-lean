@@ -395,3 +395,66 @@ def test_nodes_store_in_iceberg_and_read_it_back(catalog):
     assert "Iceberg appends" in str(report["large"])
     assert rows(out) == [(1, "ada", 10), (3, "cy", 8)]
     assert len(catalog.load_table("db.large").scan().to_arrow()) == 2
+
+
+def compact(catalog, name, monkeypatch):
+    """Rewrite the table's data files as one, in a `replace` snapshot, as
+    compaction by another writer does. pyiceberg 0.12 has no compaction and
+    refuses to write the summary of a `replace` snapshot, so the summary is
+    an overwrite's, relabelled."""
+    from pyiceberg.io.pyarrow import _dataframe_to_data_files
+    from pyiceberg.table.snapshots import Operation, Summary
+    from pyiceberg.table.update import snapshot
+    from pyiceberg.table.update.snapshot import _OverwriteFiles
+
+    summarize = snapshot.update_snapshot_summaries
+
+    def relabelled(summary, previous_summary=None):
+        out = summarize(
+            Summary(Operation.OVERWRITE, **summary.additional_properties), previous_summary
+        )
+        return Summary(Operation.REPLACE, **out.additional_properties)
+
+    monkeypatch.setattr(snapshot, "update_snapshot_summaries", relabelled)
+
+    t = catalog.load_table(name)
+    data = t.scan().to_arrow()
+    old = [task.file for task in t.scan().plan_files()]
+    with t.transaction() as tx, _OverwriteFiles(Operation.REPLACE, tx, t.io) as rewrite:
+        for f in old:
+            rewrite.delete_data_file(f)
+        for f in _dataframe_to_data_files(tx.table_metadata, data, t.io):
+            rewrite.append_data_file(f)
+    monkeypatch.undo()
+
+
+def test_a_restart_resumes_past_a_compaction(catalog, monkeypatch):
+    src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
+    big = doubled(src).write(IcebergSink(catalog, "db.big"))
+    big.refresh()
+    src.table().append(rows_table([(3, "cy", 1)]))
+    big.refresh()
+    compact(catalog, "db.big", monkeypatch)
+    t = catalog.load_table("db.big")
+    assert t.current_snapshot().summary.operation.value == "replace"
+    assert len(list(t.scan().plan_files())) == 1
+    stored = IcebergSource(catalog, "db.big").stored()
+    assert stored is not None and stored.sources == {"orders": 2}
+    src.table().append(rows_table([(4, "di", 2)]))
+    again = doubled(src).write(IcebergSink(catalog, "db.big"))
+    entry = again.refresh()["big"]
+    assert entry.started == f"resumed from {stored.where}"
+    assert entry.write is not None and entry.write.mode == "append"
+    assert big_rows(catalog) == rows(again) == recomputed(doubled(src), src)
+
+
+def test_rows_another_writer_changed_are_not_resumed_from(catalog, monkeypatch):
+    src = make_orders(catalog, [(1, "ada", 5), (2, "bob", 7)])
+    doubled(src).write(IcebergSink(catalog, "db.big")).refresh()
+    compact(catalog, "db.big", monkeypatch)
+    catalog.load_table("db.big").append(
+        pa.Table.from_pylist(
+            [{"id": 9, "customer": "x", "doubled": 2}], schema=sink_schema_of(catalog)
+        )
+    )
+    assert IcebergSource(catalog, "db.big").stored() is None

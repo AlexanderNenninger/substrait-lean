@@ -7,7 +7,7 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
     import sverify as sv
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
     )
     def doubled(orders):
@@ -71,8 +71,8 @@ import json
 import math
 import warnings
 import weakref
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Collection, Container, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -167,11 +167,66 @@ def references(col: str, table: str, other: str) -> References:
     return References(col, table, other)
 
 
-TableCondition = (Unique, References)
-"""Conditions on a whole table, not on each row."""
+@dataclass(frozen=True)
+class ArrivesWithin:
+    """Rows arrive at most `lateness` late on `col` (see `arrives_within`).
+
+    Attributes:
+        col: The time column, a timestamp.
+        lateness: How far behind the latest `col` seen a changed row may be.
+    """
+
+    col: str
+    lateness: timedelta
+
+
+def arrives_within(
+    col: str, *, days: float = 0, hours: float = 0, minutes: float = 0, seconds: float = 0
+) -> ArrivesWithin:
+    """A bound on lateness: every row a batch inserts or deletes has `col` at
+    most this far behind the largest `col` seen before the batch.
+
+    Only for `requires` on a source. The first refresh checks that `col` has
+    no NULLs, and every later batch is checked against the watermark, the
+    largest `col` seen minus the lateness: a row before it, or a NULL, breaks
+    the precondition and the batch is rejected (`PreconditionError`), so
+    nothing is applied. An incremental node that aggregates by a time bucket
+    of `col` (`ts.truncate("h")`, `ts.bucket(...)`) then drops the buckets
+    that end at or before the watermark from its state, since no admissible
+    batch changes them (`Retention.final_unchanged` in
+    `SubstraitLean/Retention.lean`), and keeps at most
+    `⌈lateness / width⌉ + 1` buckets (`Retention.open_buckets_le`).
+
+    Args:
+        col: The time column of the input, a timestamp.
+        days: The lateness, added up with the other units.
+        hours: The lateness, added up with the other units.
+        minutes: The lateness, added up with the other units.
+        seconds: The lateness, added up with the other units.
+
+    Returns:
+        An `ArrivesWithin` condition, for `requires`.
+
+    Raises:
+        ValueError: The lateness is negative.
+    """
+    lateness = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+    if lateness < timedelta(0):
+        raise ValueError(f"arrives_within needs a lateness of 0 or more, not {lateness}")
+    return ArrivesWithin(col, lateness)
+
+
+TableCondition = (Unique, References, ArrivesWithin)
+"""Conditions on a whole table or its batches, not on each row."""
 
 Condition = (
-    Deferred | ir.BooleanValue | str | Unique | References | Callable[[ir.Table], ir.BooleanValue]
+    Deferred
+    | ir.BooleanValue
+    | str
+    | Unique
+    | References
+    | ArrivesWithin
+    | Callable[[ir.Table], ir.BooleanValue]
 )
 Transform = ir.Table | str
 
@@ -189,6 +244,10 @@ class CheckedCondition:
     counterexample: Counterexample | None = None
     """For an unproved condition: inputs meeting the preconditions on which
     it fails, if the search (`sverify.counterexample`) found one."""
+    checked: bool = False
+    """For an unproved condition with `on_unproved="runtime"`: it is checked
+    on the output data instead, on a bound result when it is built, or on a
+    node at every refresh before its sink commits."""
 
 
 #: What a report suggests for an overflow it cannot rule out (#202).
@@ -198,6 +257,16 @@ OVERFLOW_HINT = (
     "your data: for example `_.amount < 1_000_000_000`, or, for an ASOF join with a "
     "tolerance, a lower bound on its time column such as `_.ts >= datetime(2000, 1, 1)`"
 )
+
+#: How a report's hint for a truncated timestamp or date starts.
+TRUNC_HINT = "bound the truncated column"
+
+
+def _truncates(expr: str) -> bool:
+    """Whether an issue's expression (`Expr.render`) truncates a timestamp or
+    a date, or bins a timestamp."""
+    return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
+
 
 #: How a report explains an issue that is checked while the job runs.
 RUNTIME_CHECK = (
@@ -223,6 +292,10 @@ class Issue:
     transformation's SQL raises there too, but no contract on rows can rule
     it out (a group may have any number of rows), so it is checked while the
     job runs instead (#202)."""
+    hint: str | None = None
+    """For an overflow: the bound that would rule it out, as code to add to
+    a contract, or why no bound on a column does (`infer_bounds`). None if
+    there is nothing to suggest."""
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.expr}"
@@ -269,10 +342,22 @@ class Report:
     did not return one."""
     rewrites: list[str] = field(default_factory=list)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
+    inferred: dict[str, list[Condition]] = field(default_factory=dict)
+    """The bounds inferred to rule out overflow (`infer_bounds`), per input
+    table: also in `requires`, and assumed like the rest of it."""
     params: list[str] = field(default_factory=list)
     """The `ibis.param` values the transformation was verified with
     (`verify(..., params=...)`), as `param1 (int64) = 5`: every proof is for
     these values only."""
+    hints: list[str] = field(default_factory=list)
+    """What to add to the contract for the `issues` it names (#379): bounds
+    on a truncated timestamp column, or on the column an integer `SUM` adds
+    up, with the largest group the bound lets fit."""
+    bounds: dict[str, tuple[int | None, int | None]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
 
     @property
     def proved(self) -> bool:
@@ -296,19 +381,39 @@ class Report:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
 
+    def _hints(self) -> list[str]:
+        """`hints`, and the general overflow hint for an overflow neither they
+        nor its own `Issue.hint` cover."""
+        truncated = any(h.startswith(TRUNC_HINT) for h in self.hints)
+        covered = [
+            i
+            for i in self.errors
+            if i.kind == "overflow" and (i.hint or truncated and _truncates(i.expr))
+        ]
+        if any(i.kind == "overflow" and i not in covered for i in self.errors):
+            return [*self.hints, OVERFLOW_HINT]
+        return self.hints
+
     def __str__(self) -> str:
         lines = []
         for table, conds in self.requires.items():
-            lines += [f"requires {table}: {c}" for c in conds]
+            inferred = {label(c) for c in self.inferred.get(table, [])}
+            lines += [
+                f"requires {table}: {c}" + (" (inferred)" if c in inferred else "") for c in conds
+            ]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
+            if c.checked:
+                mark += f"; {DATA_CHECK}"
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
-        lines += [f"may fail: {i}" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
-            lines.append(f"hint: {OVERFLOW_HINT}")
+        for i in self.errors:
+            lines.append(f"may fail: {i}")
+            if i.hint:
+                lines.append(f"  hint: {i.hint}")
         lines += [f"may fail: {i} ({RUNTIME_CHECK})" for i in self.warnings]
+        lines += [f"hint: {h}" for h in self._hints()]
         if not self.deterministic:
             lines.append(f"note: {TIES_HINT}")
         if self.params:
@@ -322,23 +427,30 @@ class Report:
         def status(c: CheckedCondition) -> str:
             if c.proved:
                 return "✅ proved"
+            if c.checked:
+                return f"☑️ {c.value}; {DATA_CHECK}"
             if c.counterexample is None:
                 return f"❌ {c.value}"
             return f"❌ {c.value}; fails on `{c.counterexample}`".replace("|", "\\|")
 
         rows = [f"| `{c.label}` | {status(c)} |" for c in self.ensures]
         # Issues quote expressions, which may contain `|` (a regex, an OR).
-        rows += [f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |" for i in self.errors]
-        if any(i.kind == "overflow" for i in self.errors):
-            rows.append(f"| hint | {OVERFLOW_HINT} |")
+        for i in self.errors:
+            rows.append(f"| runtime | ❌ may fail: {str(i).replace('|', '\\|')} |")
+            if i.hint:
+                rows.append(f"| hint | {i.hint.replace('|', '\\|')} |")
+        inferred = [f"`{label(c)}` on {t}" for t, cs in self.inferred.items() for c in cs]
         rows += [
             f"| runtime | ⚠️ may fail: {str(i).replace('|', '\\|')} ({RUNTIME_CHECK}) |"
             for i in self.warnings
         ]
+        rows += [f"| hint | {h.replace('|', '\\|')} |" for h in self._hints()]
         facts = [f"| `{n}` | {v} |" for n, v in self.facts.items()]
         note = [] if self.deterministic else [f"> ⚠️ {TIES_HINT}", ""]
         if self.params:
             note += [f"> ℹ️ {PARAMS_NOTE}: {', '.join(self.params)}", ""]
+        if inferred:
+            note += [f"> ℹ️ assumed (inferred): {', '.join(inferred)}", ""]
         return "\n".join(
             [
                 *note,
@@ -354,6 +466,9 @@ class Report:
 
 
 PARAMS_NOTE = "proved for these parameter values only"
+
+#: How a report marks a postcondition `on_unproved="runtime"` checks on data.
+DATA_CHECK = "checked on the output data"
 
 TIES_HINT = (
     "rows may tie in the ORDER BY of a window or of first(), last() or group_concat(), so the "
@@ -505,16 +620,167 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
     return " or ".join(parts) if parts else "nothing (no rows)"
 
 
+class Inferred(str):
+    """A bound inferred to rule out an overflow (#244): a SQL condition on one
+    column of an input table, labelled as the Ibis code that states it
+    (`(_.amount < 2**62)`). NULL passes, since only a value can overflow. It
+    is checked, proved and reported like a precondition the user wrote."""
+
+    text: str
+
+    def __new__(cls, sql: str, text: str) -> Inferred:
+        out = super().__new__(cls, sql)
+        out.text = text
+        return out
+
+
+def _nice(x: int, up: bool) -> tuple[int, str]:
+    """A round number near `x`, at or above it if `up`, else at or below,
+    and how to write it: `2**62`, `3 * 10**18` or `1_000`."""
+    if x < 0:
+        v, text = _nice(-x, not up)
+        return -v, f"-{text}" if v else "0"
+    if x < 10**6:
+        return x, f"{x:_}"
+    k = x.bit_length() - 1
+    two = 2 ** (k + 1 if up and 2**k < x else k)
+    e = len(str(x)) - 1
+    d = x // 10**e + (1 if up and x % 10**e else 0)
+    ten = d * 10**e
+    better = min if up else max
+    v = better(two, ten)
+    if v == two:
+        return v, f"2**{v.bit_length() - 1}"
+    d, e = (v // 10**e, e) if v // 10**e < 10 else (1, e + 1)
+    return v, (f"10**{e}" if d == 1 else f"{d} * 10**{e}")
+
+
+_EPOCH = datetime(1970, 1, 1)
+_US_MIN = (datetime.min - _EPOCH) // timedelta(microseconds=1)
+_US_MAX = (datetime.max - _EPOCH) // timedelta(microseconds=1)
+
+
+def _year_of(code: int, per_year_unit: timedelta) -> int:
+    """The year of a timestamp (microseconds) or date (days) code, clamped to
+    Python's years."""
+    us = code * (per_year_unit // timedelta(microseconds=1))
+    if us < _US_MIN:
+        return 1
+    if us > _US_MAX:
+        return 9999
+    return (_EPOCH + timedelta(microseconds=us)).year
+
+
+def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> list[Inferred]:
+    """`lo <= col <= hi` as conditions, rounded inward to round numbers (or
+    whole years), each side its own condition. Empty for a type the
+    inference does not write bounds for."""
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    sql = '"' + col.replace('"', '""') + '"'
+    # NULL cannot overflow, so a bound lets it pass.
+    null = f"{sql} IS NULL OR " if dtype.nullable else ""
+    out = []
+    if dtype.is_integer():
+        if lo is not None:
+            v, text = _nice(lo, up=True)
+            out.append(Inferred(f"{null}{sql} >= {v}", f"({ref} >= {text})"))
+        if hi is not None:
+            v, text = _nice(hi + 1, up=False)
+            out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
+        return out
+    if dtype.is_timestamp() and dtype.timezone is None:
+        unit, kind, py = timedelta(microseconds=1), "TIMESTAMP", "datetime"
+    elif dtype.is_date():
+        unit, kind, py = timedelta(days=1), "DATE", "date"
+    else:
+        return []
+
+    def code(year: int) -> int:
+        return (datetime(year, 1, 1) - _EPOCH) // unit
+
+    def lit(year: int) -> str:
+        day = date(year, 1, 1)
+        return f"{kind} '{day.isoformat()}{' 00:00:00' if kind == 'TIMESTAMP' else ''}'"
+
+    if lo is not None:
+        y = _year_of(lo, unit)
+        if code(y) < lo:
+            y += 1
+        out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
+    if hi is not None:
+        y = _year_of(hi + 1, unit)
+        out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
+    return out
+
+
+def _render_needs(
+    needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
+) -> dict[str, list[Inferred]]:
+    """The conditions of a list of `{table, col, lo, hi}` (column positions,
+    integer codes as strings), per table."""
+    out: dict[str, list[Inferred]] = {}
+    for n in needs:
+        schema = schemas.get(n["table"])
+        if schema is None or n["col"] >= len(schema):
+            continue
+        col = list(schema)[n["col"]]
+        lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
+        have = out.setdefault(n["table"], [])
+        have += [c for c in _bound_conditions(col, schema[col], lo, hi) if c not in have]
+    return out
+
+
+def _hint(
+    bound: dict | None,
+    schemas: Mapping[str, ibis.Schema],
+    assumable: Container[str],
+) -> str | None:
+    """What a report suggests for one overflow, from what the inference
+    found (`SubstraitLean/Infer.lean`)."""
+    if bound is None:
+        return None
+    if bound["why"] is not None:
+        return f"no bound on an input column rules it out: it comes from {bound['why']}"
+    conds = _render_needs(bound["needs"], schemas)
+    if not conds:
+        return None
+
+    def code(cs: Sequence[Inferred]) -> str:
+        return ", ".join(f"`{label(c)}`" for c in cs)
+
+    parts = []
+    for t, cs in conds.items():
+        if t in assumable:
+            parts.append(f"{code(cs)} in the requires of {t!r}")
+        else:
+            parts.append(f"{code(cs)} in the ensures of {t!r}")
+    lead = "no single bound rules it out; for example, state " if bound["split"] else "state "
+    return lead + " and ".join(parts)
+
+
 def label(cond: Condition) -> str:
+    if isinstance(cond, Inferred):
+        return cond.text
     if isinstance(cond, Unique):
         return f"unique({', '.join(cond.cols)})"
     if isinstance(cond, References):
         return f"references({cond.col}, {cond.table}.{cond.other})"
+    if isinstance(cond, ArrivesWithin):
+        return f"arrives_within({cond.col}, {show_duration(cond.lateness)})"
     if isinstance(cond, str):
         return cond
     if isinstance(cond, Deferred):
         return repr(cond)
     return getattr(cond, "__name__", repr(cond))
+
+
+def show_duration(d: timedelta) -> str:
+    """`d` in its largest whole unit: "2h", "90m", "1d", "1.5s"."""
+    us = d // timedelta(microseconds=1)
+    for unit, n in (("d", 86_400_000_000), ("h", 3_600_000_000), ("m", 60_000_000)):
+        if us and us % n == 0:
+            return f"{us // n}{unit}"
+    return f"{us / 1_000_000:g}s"
 
 
 def column_names(schema: ibis.Schema) -> list[str]:
@@ -585,6 +851,7 @@ def verify(
     tables: Mapping[str, ibis.Schema | ir.Table] | None = None,
     counterexamples: int = 200,
     params: Mapping[ir.Scalar, Any] | None = None,
+    infer: bool = True,
 ) -> Report:
     """Try to prove `ensures` about `transform` (an Ibis table expression or a
     SQL query) from `requires`, a mapping from table name to conditions.
@@ -624,6 +891,11 @@ def verify(
             `execute(params=...)` takes them. The report is about the
             transform with these values (`bind_params`); an unbound parameter
             is refused.
+        infer: Whether to infer the bounds on input columns that rule out
+            integer overflow (`infer_bounds`) and assume them with
+            `requires`. They are listed in `Report.inferred`. With False,
+            each overflow's `Issue.hint` suggests its bound instead.
+            Default True.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -664,10 +936,6 @@ def verify(
         report.facts["total"]  # 'an integer ≥ 1'
         ```
     """
-    schemas = {
-        name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
-        for name, s in (tables or {}).items()
-    }
     bound: list[str] = []
     if params:
         if isinstance(transform, str):
@@ -676,9 +944,82 @@ def verify(
         bound = [
             f"param{k} ({p.type()}) = {v!r}" for k, (p, v) in enumerate(params.items(), start=1)
         ]
+    return infer_bounds(
+        transform,
+        requires=requires or {},
+        ensures=ensures,
+        tables=tables,
+        counterexamples=counterexamples,
+        params=bound,
+        infer=infer,
+    )
+
+
+def infer_bounds(
+    transform: Transform,
+    *,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    tables: Mapping[str, ibis.Schema | ir.Table] | None,
+    counterexamples: int,
+    params: list[str],
+    infer: bool = True,
+    inputs: Collection[str] | None = None,
+) -> Report:
+    """`verify`, with the bounds that rule out overflow inferred (#244).
+
+    Lean's `SubstraitLean/Infer.lean` runs the range analysis backwards: for
+    each overflow it may not rule out, the range of each input column that
+    does (`amount * 2` on BIGINT fits when `amount < 2**62`). Those bounds
+    are candidates only. The ones on the tables in `assume` (all tables if
+    None) are added to `requires`, rounded inward to round numbers, and the
+    contract is proved again, as if the user had written them: a wrong bound
+    makes that proof fail, never pass wrongly. For the rest, and for
+    overflows without a unique bound (the product of two columns), the
+    report's `Issue.hint` suggests one.
+
+    `inputs` are the tables whose preconditions the caller states (None:
+    all): their bounds are assumed with `infer`, and suggested for
+    `requires`; bounds on other tables (results of other contracted
+    transformations) are suggested for those tables' `ensures`."""
+
+    def once(reqs: Mapping[str, Sequence[Condition]], n: int):
+        return _verify_once(transform, reqs, ensures, tables, n, params, inputs)
+
+    if not infer:
+        return once(requires, counterexamples)[0]
+    # Counterexamples only for the final proof.
+    report, raw, schemas = once(requires, 0)
+    extra = {
+        t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
+    }
+    if extra:
+        widened = {t: list(cs) for t, cs in requires.items()}
+        _merge(widened, extra)
+        report = once(widened, counterexamples)[0]
+        report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
+    elif counterexamples and report.unproved:
+        report = once(requires, counterexamples)[0]
+    return report
+
+
+def _verify_once(
+    transform: Transform,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    tables: Mapping[str, ibis.Schema | ir.Table] | None,
+    counterexamples: int,
+    bound: list[str],
+    inputs: Collection[str] | None,
+) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
+    """One proof (see `verify`), with the bounds Lean inferred and the input
+    schemas."""
+    schemas = {
+        name: s.schema() if isinstance(s, ir.Table) else ibis.schema(s)
+        for name, s in (tables or {}).items()
+    }
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
-    requires = requires or {}
     con = connect()
     for name, schema in schemas.items():
         create_table(con, name, schema)
@@ -780,21 +1121,150 @@ def verify(
             checked.append(CheckedCondition(label(c), ok, value, cex))
         elif isinstance(c, References):
             checked.append(CheckedCondition(label(c), False, "foreign keys are not proved"))
+        elif isinstance(c, ArrivesWithin):
+            checked.append(
+                CheckedCondition(label(c), False, "lateness is checked on a source's batches")
+            )
         else:
             e = next(rows)
             p = next(ens_iter)
             cex = None if e["proved"] else find(p)
             checked.append(CheckedCondition(e["name"], e["proved"], e["value"], cex))
-    return Report(
+    assumable: Container[str] = schemas if inputs is None else inputs
+    report = Report(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
         deterministic=out["deterministic"],
-        issues=[Issue(i["kind"], i["expr"], i["error"]) for i in out["issues"]],
+        issues=[
+            Issue(
+                i["kind"],
+                i["expr"],
+                i["error"],
+                _hint(i["bound"], schemas, assumable) if i["error"] else None,
+            )
+            for i in out["issues"]
+        ],
         guard_free=out["guard_free"],
         optimized=out["optimized"],
         rewrites=out["rewrites"],
         params=bound,
+        bounds=_int_bounds(out["facts"], dtypes),
+    )
+    if not isinstance(transform, str) and report.issues:
+        report.hints = overflow_hints(transform, requires, report)
+    return report, out["inferred"], schemas
+
+
+def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
+    """The integer bounds of the integer output columns in the checker's `facts`."""
+    out = {}
+    for f in facts:
+        dtype, b = dtypes.get(f["name"]), f["abstract"].get("int")
+        if dtype is not None and dtype.is_integer() and b is not None:
+            out[f["name"]] = tuple(None if v is None else int(v) for v in (b["lo"], b["hi"]))
+    return out
+
+
+def _origin(rel: Node, name: str) -> tuple[str, str] | None:
+    """The base table and column that column `name` of relation `rel` passes
+    on unchanged, if there is one."""
+    if isinstance(rel, ops.UnboundTable | ops.DatabaseTable):
+        return rel.name, name
+    values = getattr(rel, "values", None)
+    if isinstance(rel, ops.Aggregate):
+        values = {**rel.groups, **rel.metrics}
+    if values is not None:
+        return _value_origin(values[name]) if name in values else None
+    parent = getattr(rel, "parent", None)
+    if parent is not None and name in parent.schema:
+        return _origin(parent, name)
+    return None
+
+
+def _value_origin(value: Node) -> tuple[str, str] | None:
+    """The base table and column a value is, if it is a column passed on
+    unchanged."""
+    if isinstance(value, ops.Field):
+        return _origin(value.rel, value.name)
+    return None
+
+
+#: The bound a SUM hint proposes for an unbounded side of a column.
+SUM_BOUND = 1_000_000_000
+
+
+def overflow_hints(
+    transform: ir.Table, requires: Mapping[str, Sequence[Condition]], report: Report
+) -> list[str]:
+    """The bounds to add to `requires` for the overflows `report` names (#379):
+    lower and upper bounds on each truncated timestamp or date column, and for
+    an integer `SUM` that is checked while the job runs, a bound on the
+    column it adds up, with the largest group whose sum then fits 64 bits."""
+    hints: list[str] = []
+    # An overflow with its own hint (`infer_bounds`) has its exact bounds.
+    if any(i.kind == "overflow" and _truncates(i.expr) and not i.hint for i in report.errors):
+        kinds = (ops.TimestampTruncate, ops.DateTruncate, ops.TimestampBucket)
+        for op in transform.op().find(kinds):
+            if (origin := _value_origin(op.arg)) is None:  # type: ignore[attr-defined]
+                continue
+            table, col = origin
+            ctor = "date" if op.arg.dtype.is_date() else "datetime"  # type: ignore[attr-defined]
+            hints.append(
+                f"{TRUNC_HINT} `{col}` in `requires` of {table}: truncating a value near the "
+                f"ends of the timestamp range overflows. For example `_.{col} >= {ctor}(2000, "
+                f"1, 1)` and `_.{col} < {ctor}(2100, 1, 1)`"
+            )
+    if any(i.kind == "SUM overflow" for i in report.warnings):
+        for op in transform.op().find(ops.Sum):
+            if (hint := _sum_hint(op, requires)) is not None:
+                hints.append(hint)
+    return list(dict.fromkeys(hints))
+
+
+def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | None:
+    """The hint for an integer `SUM`: what bounds its argument, and the
+    largest group whose sum fits 64 bits."""
+    arg = op.arg  # type: ignore[attr-defined]
+    rels = list(arg.relations)
+    if not arg.dtype.is_integer() or len(rels) != 1:
+        return None
+    origin = _value_origin(arg)
+    what = f"`{origin[1]}`" if origin else f"`{arg.name}`"
+    sub = rels[0].to_expr().select(x=arg.to_expr())
+    leaves = leaf_tables(sub)
+    known = {
+        t: [c for c in cs if not isinstance(c, References)]
+        for t, cs in requires.items()
+        if t in leaves
+    }
+    report = verify(sub, requires=known, counterexamples=0, infer=False)
+    lo, hi = report.bounds.get("x", (None, None))
+    # A BIGINT's own range bounds nothing: any two of its values may overflow.
+    lo = None if lo is None or lo <= -(2**63) else lo
+    hi = None if hi is None or hi >= 2**63 - 1 else hi
+    why = "no contract states how many rows a group has, so the job checks the sum as it runs"
+    if lo is not None and hi is not None:
+        largest = max(abs(lo), abs(hi))
+        if largest == 0:
+            return None
+        rows = (2**63 - 1) // largest
+        return (
+            f"SUM of {what}: it is in [{lo}, {hi}], so a group's sum fits 64 bits for up to "
+            f"{rows:,} rows; {why}"
+        )
+    col = origin[1] if origin else "x"
+    proposed = []
+    if hi is None:
+        proposed.append(f"`_.{col} <= {SUM_BOUND:_}`")
+    if lo is None:
+        proposed.append(f"`_.{col} >= {-SUM_BOUND:_}`")
+    largest = max(SUM_BOUND, abs(lo or 0), abs(hi or 0))
+    where = f"`requires` of {origin[0]}" if origin else f"`requires` (on the columns of {what})"
+    return (
+        f"SUM of {what}: bound it in {where}, for example {' and '.join(proposed)}; then a "
+        f"group's sum fits 64 bits for up to {(2**63 - 1) // largest:,} rows. Without a bound, "
+        f"{why}"
     )
 
 
@@ -816,6 +1286,11 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         present = table.filter(table[cond.col].notnull())
         missing: Any = present.anti_join(other, [present[cond.col] == other[cond.other]]).count()
         return int(missing.execute())
+    if isinstance(cond, ArrivesWithin):
+        # On one snapshot, only the NULLs break it; batches are checked by
+        # the pipeline against the watermark.
+        nulls: Any = table.filter(table[cond.col].isnull()).count()
+        return int(nulls.execute())
     if isinstance(cond, Unique):
         total: Any = table.count()
         distinct: Any = table.select(*cond.cols).distinct().count()
@@ -856,9 +1331,12 @@ class Discharged:
     table: str
     condition: str
     source: str
+    inferred: bool = False
+    """The condition is a bound inferred to rule out overflow (#244)."""
 
     def __str__(self) -> str:
-        return f"{self.table}: {self.condition} ({self.source})"
+        how = f"inferred, {self.source}" if self.inferred else self.source
+        return f"{self.table}: {self.condition} ({how})"
 
 
 # Metadata facts of tables read from a table format (`sverify.io`), keyed
@@ -894,7 +1372,9 @@ def _prove_from(table: ir.Table, facts: Sequence[str], conds: Sequence[Condition
     key = (name, str(table.schema()), tuple(facts), tuple(label(c) for c in conds))
     if key not in _proved_from:
         try:
-            report = verify(table, requires={name: list(facts)}, ensures=conds, counterexamples=0)
+            report = verify(
+                table, requires={name: list(facts)}, ensures=conds, counterexamples=0, infer=False
+            )
             _proved_from[key] = frozenset(c.label for c in report.ensures if c.proved)
         except Exception:
             _proved_from[key] = frozenset()
@@ -928,12 +1408,16 @@ def discharge(
                 break
             assumed += extra
             proved = _prove_from(table, assumed, rowwise)
-            out += [Discharged(name, label(c), source) for c in rowwise if label(c) in proved]
+            out += [
+                Discharged(name, label(c), source, isinstance(c, Inferred))
+                for c in rowwise
+                if label(c) in proved
+            ]
             todo = [c for c in todo if label(c) not in proved]
     for c in todo:
         if n := violations(table, c, engine):
             raise PreconditionError(f"{n} {what} violate {label(c)}")
-        out.append(Discharged(name, label(c), ON_DATA))
+        out.append(Discharged(name, label(c), ON_DATA, isinstance(c, Inferred)))
     return out
 
 
@@ -995,7 +1479,18 @@ class Provenance:
     contracted transformation upstream."""
     unproved_links: list[str]
     """Preconditions on derived inputs that were checked on the data, or
-    merely warned about, instead of proved."""
+    merely warned about, instead of proved, and runtime-checked
+    postconditions of contracted transformations upstream."""
+    checked: list[Condition] = field(default_factory=list)
+    """The postconditions `on_unproved="runtime"` checks on the result's data
+    because they were not proved: on a bound result when it is built, and in
+    an incremental view on every state (`IncrementalView.checked`)."""
+
+
+def _checked_links(prov: Provenance) -> list[str]:
+    """A result's runtime-checked postconditions, as seen downstream: checked
+    on its own rows, they are nothing a consumer's state is checked for."""
+    return [f"{prov.transform.name}: {label(c)} was checked on data" for c in prov.checked]
 
 
 # Keyed by identity: Ibis ops compare by structure, and an equal expression
@@ -1076,7 +1571,7 @@ def _abstract(
             _merge(out.assumptions, {name: conds})
         if name in used and op not in given and (prov := _lookup(op)):
             _merge(out.external, prov.external)
-            out.unproved_links += prov.unproved_links
+            out.unproved_links += prov.unproved_links + _checked_links(prov)
     return out
 
 
@@ -1089,6 +1584,9 @@ class ViewContract:
     requires: dict[str, list[Condition]]
     guarantees: list[Condition]
     provenance: Provenance | None
+    checked: list[Condition] = field(default_factory=list)
+    """Postconditions that were not proved, which the view checks on every
+    state (`on_unproved="runtime"`)."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -1104,13 +1602,14 @@ def view_contract(expr: ir.Table) -> ViewContract:
         requires, unproved = inner.external, inner.unproved_links
     if unproved:
         raise ValueError(
-            "cannot maintain incrementally: preconditions on derived inputs were "
+            "cannot maintain incrementally: conditions on derived inputs were "
             f"not proved ({'; '.join(unproved)})"
         )
     return ViewContract(
         {t: list(cs) for t, cs in requires.items()},
         list(prov.guarantees) if prov else [],
         prov,
+        list(prov.checked) if prov else [],
     )
 
 
@@ -1143,9 +1642,11 @@ class ContractedTransform:
         on_unproved: Literal["error", "runtime", "warn"],
         check_requires: bool,
         engine: Engine | None,
+        strict: bool = False,
     ):
         self.fn, self.requires, self.ensures = fn, requires, ensures
         self.on_unproved, self.check_requires = on_unproved, check_requires
+        self.strict = strict
         self.engine = engine
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
@@ -1162,17 +1663,37 @@ class ContractedTransform:
         functools.update_wrapper(self, fn)
 
     def _verify(
-        self, body: ir.Table, assumptions: Mapping[str, Sequence[Condition]], ensures, tag: str
+        self,
+        body: ir.Table,
+        assumptions: Mapping[str, Sequence[Condition]],
+        ensures,
+        tag: str,
+        inputs: Collection[str] = (),
+        infer: bool = False,
     ) -> Report:
+        """Prove `ensures` of `body`, inferring bounds on the tables in
+        `inputs` with `infer` (`infer_bounds`)."""
+        inputs = frozenset(inputs)
         key = (
             tag,
+            inputs,
+            infer,
             ibis.to_sql(body, dialect="duckdb"),
             tuple(sorted((n, str(s)) for n, s in leaf_tables(body).items())),
             tuple(sorted((t, tuple(label(c) for c in cs)) for t, cs in assumptions.items())),
             tuple(label(c) for c in ensures),
         )
         if key not in self._cache:
-            self._cache[key] = verify(body, requires=assumptions, ensures=ensures)
+            self._cache[key] = infer_bounds(
+                body,
+                requires=assumptions,
+                ensures=ensures,
+                tables=None,
+                counterexamples=200,
+                params=[],
+                infer=infer,
+                inputs=inputs,
+            )
         return self._cache[key]
 
     def _check_on_data(self, table: ir.Table, param: str, conds: Sequence[Condition]) -> bool:
@@ -1192,7 +1713,10 @@ class ContractedTransform:
         prov = _lookup(value.op())
         if prov is not None:
             inner = _Abstraction(
-                prov.body, prov.assumptions, prov.external, list(prov.unproved_links)
+                prov.body,
+                prov.assumptions,
+                prov.external,
+                list(prov.unproved_links) + _checked_links(prov),
             )
             known = list(prov.guarantees)
         else:
@@ -1218,7 +1742,7 @@ class ContractedTransform:
             report, self.name, param, prov.transform.name, [label(c) for c in known]
         )
         if self.on_unproved == "warn":
-            warnings.warn(str(error), stacklevel=3)
+            warnings.warn(str(error), stacklevel=4)
         elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
             raise error
         return out
@@ -1261,9 +1785,12 @@ class ContractedTransform:
                 transformation's result does not follow from its guarantees.
             VerificationError: A postcondition, or the absence of runtime
                 errors, could not be proved (with `on_unproved="error"`, or
-                with `"runtime"` when the result is not bound).
+                with `"runtime"` when the result is neither bound nor a
+                node).
             PostconditionError: With `on_unproved="runtime"`, an unproved
-                postcondition fails on the output data.
+                postcondition fails on the output data of a bound result. A
+                node's are checked at every refresh instead
+                (`sverify.Node.refresh`).
             TypeError: Sources or nodes are mixed with Ibis tables.
             ValueError: The node would read two tables of the same name.
         """
@@ -1271,11 +1798,18 @@ class ContractedTransform:
 
         if nodes.wants_node(args, kwargs):
             return nodes.derive(self, args, kwargs)
+        return self._build(args, kwargs, node=False)
+
+    def _build(self, args: Sequence[Any], kwargs: Mapping[str, Any], *, node: bool) -> ir.Table:
+        """The result and its proof. A `node` result (`nodes.derive`, on
+        placeholder tables) has its runtime-checked postconditions checked
+        at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
         result = self.fn(*args, **kwargs)
         placeholders: dict[Node, tuple[str, list[Condition]]] = {}
         base: dict[str, list[Condition]] = {}
+        bound_inputs: dict[str, tuple[str, ir.Table]] = {}
         external: dict[str, list[Condition]] = {}
         unproved_links: list[str] = []
         taken = set(leaf_tables(result))
@@ -1287,6 +1821,7 @@ class ContractedTransform:
             if _is_base(op) and _lookup(op) is None:
                 # Data from outside: checked when bound to a backend.
                 _merge(base, {op.name: conds})  # type: ignore[attr-defined]
+                bound_inputs.setdefault(op.name, (param, value))  # type: ignore[attr-defined]
                 if self.check_requires:
                     self._check_on_data(value, param, conds)
                 continue
@@ -1304,17 +1839,29 @@ class ContractedTransform:
         assumptions = {**abstraction.assumptions}
         _merge(assumptions, base)
         report = self.last_report = self._verify(
-            abstraction.body, assumptions, self.ensures, "ensures"
+            abstraction.body, assumptions, self.ensures, "ensures", base, not self.strict
         )
+        # Inferred bounds on the inputs are preconditions like the rest:
+        # checked on the data (or proved from metadata) and passed on,
+        # before any check on the output reads them.
+        for t, conds in report.inferred.items():
+            _merge(base, {t: conds})
+            _merge(assumptions, {t: conds})
+            param, value = bound_inputs[t]
+            if self.check_requires:
+                self._check_on_data(value, param, conds)
+        checked: list[Condition] = []
         if not report.proved:
             if self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=2)
+                warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in
             # "runtime" mode the engine raises them if they happen.
-            elif self.on_unproved == "runtime" and is_bound(result):
+            elif self.on_unproved == "runtime" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
-                for c in self.ensures:
-                    if label(c) in unproved and (n := violations(result, c, self.engine)):
+                checked = [c for c in self.ensures if label(c) in unproved]
+                report = self.last_report = _marked_checked(report)
+                for c in [] if node else checked:
+                    if n := violations(result, c, self.engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
@@ -1331,9 +1878,17 @@ class ContractedTransform:
                 report=report,
                 external=external,
                 unproved_links=unproved_links + abstraction.unproved_links,
+                checked=checked,
             ),
         )
         return result
+
+
+def _marked_checked(report: Report) -> Report:
+    """`report` (cached, so left as it is) with its unproved postconditions
+    marked as checked on data."""
+    ensures = [c if c.proved else replace(c, checked=True) for c in report.ensures]
+    return replace(report, ensures=ensures)
 
 
 def transform(
@@ -1343,6 +1898,7 @@ def transform(
     on_unproved: Literal["error", "runtime", "warn"] = "error",
     check_requires: bool = True,
     engine: Engine | None = None,
+    strict: bool = False,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -1350,7 +1906,9 @@ def transform(
     the postconditions are proved (cached per input schema and expression) and
     the report is kept in `.last_report`; see the module docstring. With
     `on_unproved="runtime"`, unproved postconditions are checked on the output
-    data instead, which needs inputs bound to a connection. `engine` says where
+    data instead: on inputs bound to a connection, when the transform is
+    called; on a node, at every refresh, on the rows the batch inserts, before
+    its sink commits. The report marks them `checked`. `engine` says where
     those checks on data run (see the module docstring).
 
     Piped from a source (`sverify.io`) or a node, `orders.pipe(doubled)`, or
@@ -1370,14 +1928,22 @@ def transform(
             errors.
         on_unproved: What happens when a postcondition, or a precondition on
             another contracted transformation's result, is not proved:
-            `"error"` (the default) raises; `"runtime"` checks it on the data
-            instead, which needs bound inputs; `"warn"` emits a warning and
-            returns the result.
+            `"error"` (the default) raises; `"runtime"` checks a postcondition
+            on the output data instead (bound inputs, or a node at every
+            refresh) and a precondition on a bound input's data; `"warn"`
+            emits a warning and returns the result.
         check_requires: Whether to check preconditions on the data of bound
             inputs at call time. Default True.
         engine: Where checks on data run: `"duckdb"`, `"polars"` or
             `"datafusion"` run each condition's plan as Lean wrote it; None
             (the default) runs them through Ibis on the inputs' connection.
+        strict: Whether every bound that rules out integer overflow must be
+            stated in `requires`. By default (False) sverify infers the
+            bounds on input columns it needs (`amount * 2` on BIGINT needs
+            `_.amount < 2**62`) and treats them as preconditions: they are
+            checked on the data or proved from table metadata, and reported
+            as inferred (`Report.inferred`). With True, an overflow fails the
+            proof, and the report's hint names the bound to state.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -1403,7 +1969,7 @@ def transform(
         )
 
         @sv.transform(
-            requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+            requires={"orders": [_.amount >= 0, _.id.notnull()]},
             ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
         )
         def doubled(orders):
@@ -1456,5 +2022,5 @@ def transform(
         ```
     """
     return lambda fn: ContractedTransform(
-        fn, requires or {}, ensures, on_unproved, check_requires, engine
+        fn, requires or {}, ensures, on_unproved, check_requires, engine, strict
     )

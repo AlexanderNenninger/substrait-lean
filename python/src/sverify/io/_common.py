@@ -7,12 +7,14 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Any, Literal
 
 import duckdb
@@ -221,6 +223,8 @@ class Contract:
             from.
         not_null: Columns the node proves NOT NULL.
         unique: Column sets the node proves unique.
+        cursors: The cursor of every source that can restore its table from
+            one (`Source.restore`), at its version in `sources`.
     """
 
     view: str
@@ -236,6 +240,10 @@ class Contract:
     unique: list[list[str]]
     digests: dict[str, str] = field(default_factory=dict)
     """Content digest of each static table (`StaticSource`) the node read."""
+    cursors: dict[str, Any] = field(default_factory=dict)
+    """The cursor of each source the node read whose cursors last across
+    processes (`sverify.io.Source.restore`), at its version in `sources`, as
+    `cursor_json` encodes it."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
@@ -342,7 +350,87 @@ def view_contract_record(view: IncrementalView) -> Contract:
         checks=checks,
         unique=unique,
         digests=view.pipeline.digests(view.name),
+        cursors=_cursors(view, versions),
     )
+
+
+UNRECORDED = object()
+"""A cursor that is not recorded: the source's cursors do not last, or
+this one has no JSON form."""
+
+_TAG = "$cursor"
+
+
+def cursor_json(value: Any) -> Any:
+    """`value` as JSON, for a contract: JSON's own values as they are, and
+    datetimes, dates, times, decimals, bytes and tuples (and dicts with a
+    key `"$cursor"`) as `{"$cursor": <type>, "value": ...}`. `UNRECORDED`
+    if some part has no JSON form (a NaN, an object)."""
+    if value is None or isinstance(value, bool | int | str):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else UNRECORDED
+    tagged: tuple[str, Any] | None = None
+    if isinstance(value, datetime):
+        tagged = ("datetime", value.isoformat())
+    elif isinstance(value, date):
+        tagged = ("date", value.isoformat())
+    elif isinstance(value, time):
+        tagged = ("time", value.isoformat())
+    elif isinstance(value, Decimal):
+        tagged = ("decimal", str(value))
+    elif isinstance(value, bytes):
+        tagged = ("bytes", base64.b64encode(value).decode())
+    if tagged is not None:
+        return {_TAG: tagged[0], "value": tagged[1]}
+    if isinstance(value, list | tuple):
+        items = [cursor_json(v) for v in value]
+        if any(v is UNRECORDED for v in items):
+            return UNRECORDED
+        return items if isinstance(value, list) else {_TAG: "tuple", "value": items}
+    if isinstance(value, dict) and all(isinstance(k, str) for k in value):
+        out = {k: cursor_json(v) for k, v in value.items()}
+        if any(v is UNRECORDED for v in out.values()):
+            return UNRECORDED
+        return {_TAG: "dict", "value": out} if _TAG in out else out
+    return UNRECORDED
+
+
+def cursor_value(data: Any) -> Any:
+    """The cursor `cursor_json` encoded as `data`."""
+    if isinstance(data, list):
+        return [cursor_value(v) for v in data]
+    if not isinstance(data, dict):
+        return data
+    if _TAG not in data:
+        return {k: cursor_value(v) for k, v in data.items()}
+    kind, value = data[_TAG], data["value"]
+    if kind == "dict":
+        return {k: cursor_value(v) for k, v in value.items()}
+    if kind == "tuple":
+        return tuple(cursor_value(v) for v in value)
+    decode = {
+        "datetime": datetime.fromisoformat,
+        "date": date.fromisoformat,
+        "time": time.fromisoformat,
+        "decimal": Decimal,
+        "bytes": base64.b64decode,
+    }
+    return decode[kind](value)
+
+
+def _cursors(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, Any]:
+    """The JSON form of the cursor of every source of `view` whose cursors
+    last (`sverify.io.Source._cursor_at`), at the version `view` is at."""
+    out = {}
+    for t, n in versions.items():
+        at = getattr(view.pipeline.sources.get(t), "_cursor_at", None)
+        if at is None:
+            continue
+        value = at(n)
+        if value is not UNRECORDED and (data := cursor_json(value)) is not UNRECORDED:
+            out[t] = data
+    return out
 
 
 def check_same_state(uri: str, committed: Contract | None, contract: Contract) -> None:

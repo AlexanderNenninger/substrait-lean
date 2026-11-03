@@ -61,6 +61,23 @@ added, and `deletes=` rows removed):
 from sverify.io import Batch, Source
 
 
+class Events(Source):
+    """An append-only log read by offset: the offset lasts across restarts."""
+
+    def __init__(self, log):
+        super().__init__("events", assumes="events are only appended")
+        self.log = log
+
+    def read(self, since):
+        new = self.log[since or 0 :]
+        return Batch(pa.Table.from_pylist(new), cursor=len(self.log)) if new else None
+
+    def restore(self, cursor):
+        if cursor > len(self.log):
+            return None  # truncated: read everything again
+        return pa.Table.from_pylist(self.log[:cursor])
+
+
 class Prices(Source):
     """A price list fetched whole: the source diffs each fetch."""
 
@@ -82,9 +99,18 @@ What such sources can and cannot promise:
 * They have no metadata, so preconditions on them are checked on the rows.
 * They keep the table as of the latest read in memory (joins and keys need
   it).
-* A restarted job reads them in full again. Their versions continue above
-  the ones the job's sinks recorded, so the stored nodes reading them are
+* A sink records each source's version and cursor. A source that
+  implements `restore(cursor)`, the whole table as of a recorded cursor,
+  resumes there after a restart: the stored nodes resume from their sinks
+  and the first refresh reads `read(cursor)`. `from_query` and `from_files`
+  implement it. The cursor is recorded if it has a JSON form (datetimes,
+  dates, decimals, bytes and tuples are tagged).
+* A source without `restore`, or whose `restore` returns None (the cursor's
+  rows are gone), is read in full again. Its versions continue above the
+  ones the job's sinks recorded, so the stored nodes reading it are
   recomputed and written once, never skipped by mistake.
+* Give `schema=` too: building a node needs the schema, and without it a
+  restarted source reads the whole table once before it restores.
 * A table format with statistics and a change feed implements the full
   `sverify.io.VersionedSource` protocol instead (`schema`, `latest`,
   `snapshot`, `changes`), building its results with `Snapshot` and

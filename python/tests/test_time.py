@@ -184,7 +184,8 @@ T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")
 
 
 def kinds(expr) -> tuple[list[str], list[str]]:
-    r = sv.verify(expr)
+    """What Lean reports, without the bounds `verify` would infer (#244)."""
+    r = sv.verify(expr, infer=False)
     return [i.kind for i in r.errors], [i.kind for i in r.warnings]
 
 
@@ -367,7 +368,7 @@ def test_dates_outside_the_range_fail(x, d):
     con = connect()
     put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
     expr = R_DATES.select(x=x)
-    report = sv.verify(expr)
+    report = sv.verify(expr, infer=False)
     assert "overflow" in [i.kind for i in report.errors]
     written = written_plan(to_substrait_json(expr))
     with pytest.raises(polars_engine.Overflow):
@@ -494,7 +495,7 @@ def test_times_outside_chrono_fail(t):
     expr = R_TS.select(t=t)
     with pytest.raises(BaseException, match="(?i)convert|naive|datetime"):
         collect(con.datafusion.sql(ibis.to_sql(expr, dialect="datafusion")))
-    report = sv.verify(expr)
+    report = sv.verify(expr, infer=False)
     assert "overflow" in [i.kind for i in report.errors]
     with pytest.raises(polars_engine.Overflow):
         run_plan(con, written_plan(to_substrait_json(expr)), "polars")

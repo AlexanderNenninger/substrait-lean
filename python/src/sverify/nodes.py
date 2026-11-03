@@ -41,7 +41,8 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify.contracts import Discharged, _lookup, _register
+from sverify._retention import RetentionReport
+from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
@@ -295,6 +296,8 @@ class Node:
 
         Returns:
             A `Refresh`: what was done to each node, upstream first.
+            `print` it for the full report, or log `summary()` for one line
+            per node.
 
         Raises:
             sverify.errors.PreconditionError: A precondition on a source does
@@ -422,6 +425,7 @@ class Node:
             self._stage = _Stage.build(self, leaves, versions, engine, sink)
             out.started = self._stage.view.resumed or "computed"
             out.preconditions = list(self._stage.pipe.preconditions)
+            out.postconditions = list(self._stage.view.postconditions)
             if self._stage.view.versions != versions:
                 out.report = self._stage.refresh(versions, audit)
         else:
@@ -429,6 +433,8 @@ class Node:
             out.report = self._stage.refresh(versions, audit)
         if sink is not None:
             out.write = sink._commit()
+        # After the write: a sink keeps the buckets the state drops.
+        out.retention = self._stage.pipe.retire()
         return out
 
 
@@ -459,9 +465,10 @@ class _Stored(Node):
         expr = ibis.table(upstream.schema, name=sink.name)
         prov = _lookup(upstream._expr.op())
         if prov is not None:
-            # Its sources' preconditions are checked by its own stage, not
-            # by the stages reading it.
-            _register(expr.op(), replace(prov, external={}))
+            # Its sources' preconditions, and its runtime-checked
+            # postconditions, are checked by its own stage, not by the
+            # stages reading it.
+            _register(expr.op(), replace(prov, external={}, checked=[]))
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
@@ -544,14 +551,15 @@ class _Stage:
         self.view.engine = engine
 
     def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
-        return self.pipe.refresh(until=versions, audit=audit)
+        return self.pipe.refresh(until=versions, audit=audit, retire=False)
 
 
 @dataclass
 class StageRefresh:
     """What one refresh did to one node: how its state started (on the first
     refresh), what the batch was, and what its sink wrote. `str()` shows
-    them in that order."""
+    them in that order; `summary()` gives one line, unless the refresh did
+    something `notable`."""
 
     node: str
     """The node's name."""
@@ -566,16 +574,80 @@ class StageRefresh:
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""
+    retention: list[RetentionReport] = field(default_factory=list)
+    """For a node over a source with `arrives_within`: its open time
+    buckets, those dropped from its state after the write, and the bound."""
+    postconditions: list[Discharged] = field(default_factory=list)
+    """On the first refresh: the postconditions the node's transform did not
+    prove and checks on its output (`on_unproved="runtime"`), checked on the
+    full result (later batches: `report.postconditions`)."""
+
+    @property
+    def notable(self) -> list[str]:
+        """Why this entry deserves more than one line, or []: the first
+        refresh (how the state started and how the preconditions were
+        established on the full tables), a source whose change could not be
+        applied incrementally, a schema change, or a sink that replaced its
+        table's rows."""
+        out = [self.started] if self.started else []
+        if self.report is not None:
+            out += self.report.notable
+        if self.write is not None and self.write.mode == "overwrite":
+            out.append("the sink overwrote its table")
+        out += [f"retention off: {r.off}" for r in self.retention if r.off is not None]
+        return out
+
+    def summary(self) -> str:
+        """One line, for the log of a job that refreshes often:
+        "paid: orders@v3→v4, Δ trusted (change feed), requires checked on 2
+        row(s), merge v5: +2 −0". With something `notable`, the full entry
+        (`str()`) instead."""
+        if self.notable or self.report is None:
+            return str(self)
+        sources = self.report.sources
+        parts = [", ".join(s.span() for s in sources)]
+        if all(s.mode == "unchanged" for s in sources):
+            parts[0] += " unchanged"
+        modes = {s.mode for s in sources}
+        if "change feed" in modes:
+            parts.append("Δ trusted (change feed)")
+        if "snapshot diff" in modes:
+            parts.append("Δ exact (snapshot diff)")
+        pre = self.report.preconditions
+        # "checked on data, watermark …" (#294) is checked on data too.
+        meta = sum(not p.source.startswith(ON_DATA) for p in pre)
+        if meta < len(pre):
+            text = f"requires checked on {sum(s.inserts for s in sources)} row(s)"
+            parts.append(text + (f" ({meta} proved from metadata)" if meta else ""))
+        elif pre:
+            parts.append("requires proved from metadata")
+        if self.report.postconditions:
+            # On the rows the batch inserts into the node (keys on its state).
+            parts.append(f"{len(self.report.postconditions)} ensures checked on data")
+        parts += [
+            f"{r.column}: {r.open}/{r.bound} bucket(s) open, {r.retired} retired"
+            for r in self.retention
+            if r.off is None
+        ]
+        if (w := self.write) is not None:
+            if w.mode == "skipped":
+                parts.append("already committed")
+            else:
+                at = "" if w.version is None else f" v{w.version}"
+                parts.append(f"{w.mode}{at}: +{w.inserted} −{w.deleted}")
+        return f"{self.node}: " + ", ".join(parts)
 
     def __str__(self) -> str:
         lines = [f"{self.node}:"]
         if self.started:
             lines.append(f"  {self.started}")
         lines += [f"  requires {p}" for p in self.preconditions]
+        lines += [f"  ensures {p}" for p in self.postconditions]
         if self.report is not None:
             lines += [f"  {line}" for line in str(self.report).splitlines()]
         if self.write is not None:
             lines.append(f"  wrote {self.write}")
+        lines += [f"  {r}" for r in self.retention]
         return "\n".join(lines)
 
 
@@ -583,6 +655,7 @@ class StageRefresh:
 class Refresh:
     """What a refresh did, node by node, upstream first: returned by
     `Node.refresh` and `Group.refresh`. `str()` shows each node's entry;
+    `summary()` one line per node, for a job that refreshes often;
     `refresh["paid"]` is the entry of the node named "paid".
 
     Attributes:
@@ -603,6 +676,22 @@ class Refresh:
         """What each stored node's sink wrote (`sverify.io.SinkWrite`),
         upstream first."""
         return [s.write for s in self.nodes if s.write is not None]
+
+    @property
+    def notable(self) -> bool:
+        """Whether any node's entry has something `StageRefresh.notable`."""
+        return any(s.notable for s in self.nodes)
+
+    def summary(self) -> str:
+        """One line per node (`StageRefresh.summary`), upstream first; a node
+        whose refresh did something notable (its first refresh, a recompute,
+        a schema change, an overwrite) gets its full entry.
+
+        Returns:
+            The summary, such as "paid: orders@v3→v4, Δ trusted (change
+            feed), requires checked on 2 row(s), merge v5: +2 −0".
+        """
+        return "\n".join(s.summary() for s in self.nodes)
 
     def __str__(self) -> str:
         return "\n".join(str(s) for s in self.nodes)
@@ -742,8 +831,10 @@ class Group:
 
 def _continue_versions(node: _Stored) -> None:
     """The sources of a stored node's stage whose versions restart with the
-    process (`sverify.io.Source`) number them above the versions its sink
-    recorded, so that its epochs keep growing and it writes exactly once."""
+    process (`sverify.io.Source`) start at the versions and cursors its
+    sink recorded, if they can restore their table there; else they number
+    their versions above, so that its epochs keep growing and it writes
+    exactly once."""
     resumes = {}
     for leaf in node._leaves():
         src = leaf.source if isinstance(leaf, _Source) else leaf._reader  # type: ignore[attr-defined]
@@ -753,8 +844,11 @@ def _continue_versions(node: _Stored) -> None:
     contract = committed() if resumes and committed is not None else None
     if contract is None:
         return
+    cursors = getattr(contract, "cursors", {})
     for name, resume in resumes.items():
-        if name in contract.sources:
+        if name in cursors:
+            resume(contract.sources[name], cursors[name])
+        elif name in contract.sources:
             resume(contract.sources[name])
 
 
@@ -831,6 +925,12 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
         if not isinstance(v, Node) and not is_source(v):
             return v
         node = v if isinstance(v, Node) else _source_node(v)
+        if isinstance(node, _Derived) and (prov := _lookup(node._expr.op())) and prov.checked:
+            raise ValueError(
+                f"{node.name} checks {', '.join(label(c) for c in prov.checked)} on its "
+                f"output at refresh (on_unproved='runtime'), which {transform.name} would "
+                "fuse away: store it first, with .write(sink)"
+            )
         inputs.append(node)
         return node._expr
 
@@ -845,5 +945,5 @@ def derive(transform: ContractedTransform, args: Sequence[Any], kwargs: dict[str
                     f"{transform.name} reads two tables named {leaf.name!r}: "
                     "give one of the sources or sinks another name (name=...)"
                 )
-    expr = transform(*lifted_args, **lifted_kwargs)
+    expr = transform._build(lifted_args, lifted_kwargs, node=True)
     return _Derived(transform, expr, inputs)

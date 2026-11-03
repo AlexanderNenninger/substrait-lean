@@ -18,7 +18,7 @@ import pyarrow as pa
 
 from sverify._scan import Resident
 from sverify._state import DuckDBStore, arrow_of
-from sverify._weighted import expanded, negated, positive
+from sverify._weighted import consolidated, expanded, negated, positive, weighted
 from sverify.incremental import Snapshot, SourceBatch, Stored, VersionedSource
 from sverify.io._common import (
     Contract,
@@ -187,6 +187,11 @@ class Sink:
     location: str
     view: IncrementalView | None = None
     _written: int | None = None
+    keeps_retired = False
+    """Whether the sink keeps the rows a view drops from its state
+    (`sverify.arrives_within`): it writes each change, and the whole table
+    only when `SinkChange.replace`. A view with a sink that does not retires
+    nothing."""
     """The view's serial (`IncrementalView.serial`) at the state written
     last; None: the sink's contents are replaced on the next write."""
     _last: Contract | None = None
@@ -294,6 +299,12 @@ class Sink:
         if kept is None or (kept.table is not None and kept.epoch == contract.epoch):
             return
         table = view.con.arrow[view.name]
+        before = kept.table
+        retired = view.retired_through is not None and before is not None
+        if retired and change is not None and not change.replace:
+            # The view's rows are its open buckets; the kept table has them all.
+            old = weighted(before.cast(table.schema), 1)
+            table = expanded(consolidated(old, change.change)).cast(table.schema)
         if change is None or change.replace or kept.table is None:
             kept.put(contract.epoch, table, None)
         else:
@@ -335,9 +346,10 @@ class _Kept:
         if len(self.log) > KEEP:
             self.floor = self.log.pop(0).version
 
-    def _resume_after(self, version: int) -> None:
+    def _resume_after(self, version: int, cursor: object = None) -> None:
         """Number the versions above `version`, which a sink downstream
-        recorded in an earlier process (`sverify.io.Source._resume_after`)."""
+        recorded in an earlier process (`sverify.io.Source._resume_after`;
+        a stored node records no cursor)."""
         if self.version > version:
             return
         if self.table is None:

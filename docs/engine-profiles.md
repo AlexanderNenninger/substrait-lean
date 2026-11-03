@@ -153,11 +153,15 @@ is no longer a frontend (#211); DataFusion stays an execution backend.
   refuses it with a reason (`DuckFn.refused`). The search keeps a cache,
   `SubstraitLean/LiftCache.lean` (`substrait-check --lift-cache`), of the
   templates it found and of why a function's first candidate failed; it tries
-  a cached template first, so a build with the cache takes seconds. A cache
-  entry is only a hint, still read by the parser and proved, and one the search
-  does not reach can be seeded by hand (`source = "seeded: …"`). The parser is
-  `partial`, so its reading of an entry is computed at build time rather than
-  proved.
+  a cached template first. A cache entry is only a hint, still read by the
+  parser and proved, and one the search does not reach can be seeded by hand
+  (`source = "seeded: …"`). As for the lowering, a build does not search:
+  `poe regen-lift` (`scripts/RegenLift.lean`) writes each entry with its proof
+  to `SubstraitLean/LiftDuckDB/Duckdb` and `Reference`, one module per area
+  (`Arith`, `Math`, `Compare`, `Casts`, `Aggregates`) and a `Table`, which
+  `lake build` checks in parallel; an entry that no longer fits fails there.
+  The parser is `partial`, so its reading of an entry is computed when the
+  entries are generated rather than proved.
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdbWritten_faithful` shows that DuckDB's profile, with IEEE

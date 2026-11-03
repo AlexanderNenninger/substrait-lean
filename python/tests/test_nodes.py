@@ -23,7 +23,12 @@ from _pipelines import (
 from sverify import nodes
 from sverify.contracts import label, violations
 from sverify.engines import ENGINES, create_table, delta_plans
-from sverify.errors import CompositionError, PreconditionError, VerificationError
+from sverify.errors import (
+    CompositionError,
+    PostconditionError,
+    PreconditionError,
+    VerificationError,
+)
 from sverify.io import DeltaSink, DeltaSource, StaticSource, sink_from
 
 SETTINGS = settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -255,6 +260,42 @@ def test_a_static_source_feeds_its_changes(tmp_path):
     assert rows(node) == [(2, "bob", 14)]
 
 
+# -- refresh reports (#378) ------------------------------------------------------
+
+
+def test_a_refresh_summarizes_each_node_in_one_line(tmp_path):
+    orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
+    stored = paid(orders).write(DeltaSink(str(tmp_path / "paid")))
+    first = stored.refresh()
+    # The first refresh is notable: it shows how the state started.
+    assert first.notable
+    assert first.summary() == str(first)
+    write_deltalake(str(tmp_path / "orders"), orders_table([(2, "bob", 7)]), mode="append")
+    batch = stored.refresh()
+    assert not batch.notable
+    assert batch.summary() == (
+        "paid: orders@v1→v2, Δ trusted (change feed), requires checked on 1 row(s) "
+        "(3 proved from metadata), merge v3: +1 −0"
+    )
+    assert str(batch).count("\n") > 1  # the full report is still there
+    assert stored.refresh().summary() == "paid: orders@v2 unchanged, already committed"
+
+
+def test_a_recompute_or_a_schema_change_shows_the_full_report(tmp_path):
+    src = StaticSource(orders_table([(1, "ada", 5)]), version=1, name="orders")
+    node = big(src)
+    node.refresh()
+    src.replace(orders_table([(1, "ada", 9)]), version=2)  # no change feed
+    result = node.refresh()
+    assert result["big"].notable == ["orders recomputed"]
+    assert result.summary() == str(result)
+    wider = pa.schema([*ORDERS, pa.field("note", pa.string())])
+    src.replace(pa.table({**orders_table([(1, "ada", 9)]).to_pydict(), "note": ["x"]}, wider), 3)
+    result = node.refresh()
+    assert any("schema: added note" in n for n in result["big"].notable)
+    assert result.summary() == str(result)
+
+
 # -- engines and results ------------------------------------------------------
 
 
@@ -355,6 +396,90 @@ def test_deleting_a_key_frees_it_for_the_same_batch():
     src.apply(sv.Changes(inserts=[(2, "cy", 1)], deletes=[(2, "bob", 7)]))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src) == [(1, "ada", 10), (2, "cy", 2)]
+
+
+# -- runtime-checked postconditions (#373) -------------------------------------
+
+
+@sv.transform(ensures=[_.amount < 100, sv.unique("customer")], on_unproved="runtime")
+def capped(t):
+    return t.select(t.id, t.customer, t.amount)
+
+
+def test_unproved_postconditions_of_a_node_are_checked_at_refresh(tmp_path):
+    src = static_orders([(1, "ada", 5), (2, "bob", 7)])
+    node = capped(src)  # no VerificationError: checked at refresh instead
+    report = capped.last_report
+    assert report is not None and not report.proved
+    assert [c.checked for c in report.ensures] == [True, True]
+    assert "NOT proved (it is TRUE, FALSE or NULL); checked on the output data" in str(report)
+    stored = node.write(DeltaSink(str(tmp_path / "capped")))
+    first = stored.refresh()["capped"]
+    assert {p.condition for p in first.postconditions} == {"(_.amount < 100)", "unique(customer)"}
+    src.apply(sv.Changes(inserts=[(3, "cy", 9)]))
+    batch = stored.refresh()["capped"]
+    assert {p.condition for p in batch.report.postconditions} == {
+        "(_.amount < 100)",
+        "unique(customer)",
+    }
+    assert "ensures capped: (_.amount < 100) (checked on data)" in str(batch)
+    assert batch.summary().endswith("2 ensures checked on data, merge v2: +1 −0")
+
+
+@pytest.mark.parametrize(
+    ("batch", "error"),
+    [
+        (sv.Changes(inserts=[(3, "cy", 500)]), r"1 inserted row\(s\) of capped violate \(_.amount"),
+        (sv.Changes(inserts=[(3, "ada", 1)]), r"1 row\(s\) of capped violate unique\(customer\)"),
+    ],
+)
+def test_a_batch_violating_a_checked_postcondition_writes_nothing(tmp_path, batch, error):
+    src = static_orders([(1, "ada", 5), (2, "bob", 7)])
+    stored = capped(src).write(DeltaSink(str(tmp_path / "capped")))
+    stored.refresh()
+    version = versions(tmp_path / "capped")
+    src.apply(batch)
+    with pytest.raises(PostconditionError, match=error):
+        stored.refresh()
+    assert versions(tmp_path / "capped") == version
+    assert rows(stored) == [(1, "ada", 5), (2, "bob", 7)]
+    assert stored.versions == {"orders": 1}
+
+
+def test_the_first_refresh_checks_postconditions_on_the_full_result(tmp_path):
+    stored = capped(static_orders([(1, "ada", 500)])).write(DeltaSink(str(tmp_path / "c")))
+    with pytest.raises(PostconditionError, match=r"1 row\(s\) of c violate"):
+        stored.refresh()
+    assert not (tmp_path / "c").exists()
+
+
+def test_a_checked_node_is_stored_before_another_transform_reads_it(tmp_path):
+    def small(t):
+        return t.filter(t.amount < 10)
+
+    src = static_orders([(1, "ada", 5)])
+    with pytest.raises(ValueError, match="store it first"):
+        capped(src).pipe(small)
+    stored = capped(src).write(DeltaSink(str(tmp_path / "capped")))
+    out = stored.pipe(small)
+    out.refresh()
+    assert rows(out) == [(1, "ada", 5)]
+    # Downstream may not assume what was only checked.
+    with pytest.raises(CompositionError, match="capped only guarantees nothing"):
+        stored.pipe(big)
+
+
+def test_runtime_postconditions_on_bound_tables_are_checked_in_a_view():
+    """An eager result checked on its data when built is checked again on
+    every batch of a view of it."""
+    con = sv.connect()
+    create_table(con, "orders", ORDERS, [(1, "ada", 5)])
+    pipe = sv.incremental.Pipeline(con)
+    view = pipe.view("capped", capped(con.table("orders")))
+    assert view.checked
+    with pytest.raises(PostconditionError):
+        view.apply({"orders": sv.Changes(inserts=[(2, "bob", 500)])})
+    assert view.rows() == [(1, "ada", 5)]
 
 
 def test_batches_are_checked_without_reading_the_tables(monkeypatch):

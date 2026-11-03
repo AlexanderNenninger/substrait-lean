@@ -1,23 +1,19 @@
-import SubstraitLean.LiftSearch
 import SubstraitLean.LiftCache
+import SubstraitLean.LiftDuckDB.Duckdb.Table
+import SubstraitLean.LiftDuckDB.Reference.Table
 
 /-!
 # The generated lift from DuckDB SQL (#268)
 
 `generate_lift` builds what each DuckDB function (`DuckFn`) lifts to, with
-DuckDB's semantics and with the reference's. `liftDuckDB.coverage` and
-`liftReference.coverage` list how each lifts.
+DuckDB's semantics and with the reference's. It runs in
+`scripts/RegenLift.lean` (`poe regen-lift`), which writes each entry it found,
+with its proof, to `SubstraitLean/LiftDuckDB/Duckdb` and `Reference`, one
+module per area, which a build checks in parallel without searching.
+`liftDuckDB.coverage` and `liftReference.coverage` list how each lifts.
 -/
 
 namespace Substrait
-
-generate_lift liftDuckDB : Semantics.duckdb
-  using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
-  cache liftCache
-
-generate_lift liftReference : Semantics.reference
-  using [FMath.apply, FMath.inDomain, FMath.lo?, FMath.hi?, Option.all, Value.pick, Value.ltB]
-  cache liftCache
 
 /-- The generated lift table of the semantics. -/
 def Lift.duckdb : (s : Semantics) → Lift s
