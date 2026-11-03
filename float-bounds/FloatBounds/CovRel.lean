@@ -1268,3 +1268,252 @@ theorem cmerge_step_arith {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Ra Rb R La 
   refine le_trans hc ?_
   exact cmerge_fold hna hnb hm1 hma hmb hh hhm hn hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb
     (by positivity) (by positivity) hRa hRb hR hLa hLb hL le_rfl le_rfl
+
+/-- The exact merge of pairs. -/
+theorem exact_pair_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ []) :
+    mx (a ++ b) = ((a.length : ℝ) * mx a + b.length * mx b) / ((a.length : ℝ) + b.length) ∧
+    my (a ++ b) = ((a.length : ℝ) * my a + b.length * my b) / ((a.length : ℝ) + b.length) ∧
+    comoment (a ++ b) = comoment a + comoment b
+      + (mx a - mx b) * (my a - my b) * ((a.length : ℝ) * b.length / ((a.length : ℝ) + b.length)) ∧
+    comoment (dupL ((a ++ b).map Prod.fst)) = comoment (dupL (a.map Prod.fst))
+      + comoment (dupL (b.map Prod.fst))
+      + (mx a - mx b) ^ 2 * ((a.length : ℝ) * b.length / ((a.length : ℝ) + b.length)) ∧
+    comoment (dupL ((a ++ b).map Prod.snd)) = comoment (dupL (a.map Prod.snd))
+      + comoment (dupL (b.map Prod.snd))
+      + (my a - my b) ^ 2 * ((a.length : ℝ) * b.length / ((a.length : ℝ) + b.length)) := by
+  have hx := (exact_merge (xa := a.map Prod.fst) (xb := b.map Prod.fst) (by simpa using ha)
+    (by simpa using hb)).2
+  have hy := (exact_merge (xa := a.map Prod.snd) (xb := b.map Prod.snd) (by simpa using ha)
+    (by simpa using hb)).2
+  simp only [List.length_map, mx_dupL_fst, mx_dupL_snd, ← List.map_append] at hx hy
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · rw [mx_append ha hb]; ring
+  · rw [my_append ha hb]; ring
+  · rw [comoment_append ha hb]; ring
+  · rw [hx]; ring
+  · rw [hy]; ring
+
+set_option maxHeartbeats 2000000 in
+/-- **DuckDB's merge keeps the covariance invariant.** -/
+theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ [])
+    (hN : a.length + b.length ≤ 2 ^ 32) (hBa : Bounded (2 ^ 399) a) (hBb : Bounded (2 ^ 399) b)
+    {t s : WState} (ht : CInv a t) (hs : CInv b s) : CInv (a ++ b) (M.chan t s) := by
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have htn := tiny_pos
+  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  obtain ⟨ct, mxa, mya, Sha⟩ := t
+  obtain ⟨cs, mxb, myb, Shb⟩ := s
+  obtain ⟨hna, exa, eya, Dxa, Dya, hDxa0, hDya0, hDxa, hDya, hEa⟩ := ht
+  obtain ⟨hnb, exb, eyb, Dxb, Dyb, hDxb0, hDyb0, hDxb, hDyb, hEb⟩ := hs
+  simp only at hna exa eya hEa hnb exb eyb hEb
+  subst hna hnb
+  have hla : 1 ≤ a.length := List.length_pos_iff.mpr ha
+  have hlb : 1 ≤ b.length := List.length_pos_iff.mpr hb
+  obtain ⟨⟨hAxa0, hAxab, hAxat, hMxa, hMxab, hSxa0, hSxab⟩,
+    ⟨hAya0, hAyab, hAyat, hMya, hMyab, hSya0, hSyab⟩⟩ := pair_facts ha (by omega) hBa
+  obtain ⟨⟨hAxb0, hAxbb, hAxbt, hMxb, hMxbb, hSxb0, hSxbb⟩,
+    ⟨hAyb0, hAybb, hAybt, hMyb, hMybb, hSyb0, hSybb⟩⟩ := pair_facts hb (by omega) hBb
+  obtain ⟨hmxe, hmye, hce, hsxe, hsye⟩ := exact_pair_merge ha hb
+  have hRa := abs_comoment_le_sqrt a
+  have hRb := abs_comoment_le_sqrt b
+  have hRn := abs_comoment_le_sqrt (a ++ b)
+  have hdm : M.chan ⟨a.length, mxa, mya, Sha⟩ ⟨b.length, mxb, myb, Shb⟩ = ⟨a.length + b.length,
+      M.fl (M.fl (M.fl ((b.length : ℝ) * mxb) + M.fl ((a.length : ℝ) * mxa))
+        / ((a.length : ℝ) + b.length)),
+      M.fl (M.fl (M.fl ((b.length : ℝ) * myb) + M.fl ((a.length : ℝ) * mya))
+        / ((a.length : ℝ) + b.length)),
+      M.fl (M.fl (Shb + Sha) + M.fl (M.fl (M.fl (M.fl (M.fl (mxa - mxb) * M.fl (mya - myb))
+        * b.length) * a.length) / ((a.length : ℝ) + b.length)))⟩ := by
+    have h1 : a.length ≠ 0 := by omega
+    have h2 : b.length ≠ 0 := by omega
+    simp [StdModel.chan, h1, h2]
+  rw [hdm]
+  unfold CInv
+  -- names
+  obtain ⟨na, hna⟩ : ∃ n : ℝ, n = a.length := ⟨_, rfl⟩
+  obtain ⟨nb, hnb⟩ : ∃ n : ℝ, n = b.length := ⟨_, rfl⟩
+  have hna1 : 1 ≤ na := by rw [hna]; exact_mod_cast hla
+  have hnb1 : 1 ≤ nb := by rw [hnb]; exact_mod_cast hlb
+  have hnab : na + nb ≤ 2 ^ 32 := by rw [hna, hnb]; exact_mod_cast hN
+  obtain ⟨h, hh⟩ : ∃ h : ℝ, h = na * nb / (na + nb) := ⟨_, rfl⟩
+  simp only [← hna, ← hnb] at hmxe hmye hce hsxe hsye hMxa hMya hMxb hMyb hAxat hAyat hAxbt hAybt
+  simp only [← hna, ← hnb] at hEa hEb hDxa hDya hDxb hDyb ⊢
+  simp only [← hh] at hce hsxe hsye
+  have hh0 : 0 ≤ h := by rw [hh]; positivity
+  obtain ⟨m, hm⟩ : ∃ m : ℝ, m = ((min a.length b.length : ℕ) : ℝ) := ⟨_, rfl⟩
+  have hhm : h ≤ m := by rw [hh, hm, hna, hnb]; exact h_le_min hla hlb
+  have hm1 : 1 ≤ m := by rw [hm]; exact_mod_cast (le_min hla hlb)
+  have hmA : m ≤ na := by rw [hm, hna]; exact_mod_cast min_le_left _ _
+  have hmB : m ≤ nb := by rw [hm, hnb]; exact_mod_cast min_le_right _ _
+  have hLm := Lw_merge hla hlb
+  rw [← hm] at hLm
+  have hLa0 := Lw_nonneg a.length
+  have hLb0 := Lw_nonneg b.length
+  have hLa := Lw_le (n := a.length) (by omega)
+  have hLb := Lw_le (n := b.length) (by omega)
+  rw [← hna] at hLa
+  rw [← hnb] at hLb
+  have hLa' : Lw a.length ≤ 2 ^ 39 := by linarith
+  have hLb' : Lw b.length ≤ 2 ^ 39 := by linarith
+  have hnu : (na + nb) * u ≤ 1 / 2 ^ 21 := by
+    calc (na + nb) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  obtain ⟨hmxa1, hmxab, hMxaA⟩ := mean_mag hna1 (by linarith) hAxa0 hAxab hMxa hMxab exa
+  obtain ⟨hmxb1, hmxbb, hMxbA⟩ := mean_mag hnb1 (by linarith) hAxb0 hAxbb hMxb hMxbb exb
+  obtain ⟨hmya1, hmyab, hMyaA⟩ := mean_mag hna1 (by linarith) hAya0 hAyab hMya hMyab eya
+  obtain ⟨hmyb1, hmybb, hMybA⟩ := mean_mag hnb1 (by linarith) hAyb0 hAybb hMyb hMybb eyb
+  -- the exact co-moments
+  obtain ⟨Sxa, hSxa'⟩ : ∃ S, S = comoment (dupL (a.map Prod.fst)) := ⟨_, rfl⟩
+  obtain ⟨Sya, hSya'⟩ : ∃ S, S = comoment (dupL (a.map Prod.snd)) := ⟨_, rfl⟩
+  obtain ⟨Sxb, hSxb'⟩ : ∃ S, S = comoment (dupL (b.map Prod.fst)) := ⟨_, rfl⟩
+  obtain ⟨Syb, hSyb'⟩ : ∃ S, S = comoment (dupL (b.map Prod.snd)) := ⟨_, rfl⟩
+  simp only [← hSxa', ← hSya', ← hSxb', ← hSyb'] at hsxe hsye hSxa0 hSxab hSya0 hSyab hSxb0 hSxbb
+  simp only [← hSxa', ← hSya', ← hSxb', ← hSyb'] at hSyb0 hSybb hRa hRb hEa hEb hDxa hDya hDxb hDyb
+  rw [hsxe, hsye, hce] at hRn ⊢
+  have hΔx0 : 0 ≤ (mx a - mx b) ^ 2 * h := by positivity
+  have hΔy0 : 0 ≤ (my a - my b) ^ 2 * h := by positivity
+  obtain ⟨R, hR'⟩ : ∃ R, R = √((Sxa + Sxb + (mx a - mx b) ^ 2 * h) * (Sya + Syb + (my a - my b) ^ 2 * h))
+    := ⟨_, rfl⟩
+  rw [← hR'] at hRn ⊢
+  have hR0 : 0 ≤ R := by rw [hR']; exact Real.sqrt_nonneg _
+  have hRab : √(Sxa * Sya) + √(Sxb * Syb) ≤ R := by
+    refine le_trans (sqrt_add_sqrt_le hSxa0 hSya0 hSxb0 hSyb0) ?_
+    rw [hR']
+    exact Real.sqrt_le_sqrt (mul_le_mul (by linarith) (by linarith) (by positivity) (by positivity))
+  have hR1 : |comoment a + comoment b| ≤ R := by
+    have := abs_add_le (comoment a) (comoment b); linarith
+  have hY : h * (|mx a - mx b| * |my a - my b|) ≤ R := by
+    rw [hR']
+    apply Real.le_sqrt_of_sq_le
+    have e : (h * (|mx a - mx b| * |my a - my b|)) ^ 2
+        = ((mx a - mx b) ^ 2 * h) * ((my a - my b) ^ 2 * h) := by
+      rw [mul_pow, mul_pow, sq_abs, sq_abs]; ring
+    rw [e]
+    exact mul_le_mul (by linarith) (by linarith) hΔy0 (by positivity)
+  have hRb830 : R ≤ 2 ^ 830 := by
+    obtain ⟨⟨-, -, -, -, -, h1, h2⟩, ⟨-, -, -, -, -, h3, h4⟩⟩ :=
+      pair_facts (ps := a ++ b) (by simp [ha]) (by simp; omega) (Bounded.append.mpr ⟨hBa, hBb⟩)
+    rw [hsxe] at h1 h2; rw [hsye] at h3 h4
+    rw [hR']; exact sqrt_le_830 h1 h3 h2 h4
+  have hmagx : mag ((a ++ b).map Prod.fst) = mag (a.map Prod.fst) + mag (b.map Prod.fst) := by
+    rw [List.map_append, mag_append]
+  have hmagy : mag ((a ++ b).map Prod.snd) = mag (a.map Prod.snd) + mag (b.map Prod.snd) := by
+    rw [List.map_append, mag_append]
+  have hlen : ((a ++ b).length : ℝ) = na + nb := by rw [List.length_append, hna, hnb]; push_cast; ring
+  refine ⟨by simp, ?_, ?_, Dxa + Dxb + h * |mx a - mx b|, Dya + Dyb + h * |my a - my b|,
+    by positivity, by positivity, ?_, ?_, ?_⟩
+  · -- the mean of the `x`s
+    rw [hmxe, hmagx]
+    apply merge_mean hna1 hnb1 hAxa0 hAxb0 exa exb
+    have := M.wmean_spec (ns := b.length) (nt := a.length) hlb hla (by omega)
+      (ms := mxb) (mt := mxa) (As := mag (b.map Prod.fst)) (At := mag (a.map Prod.fst))
+      (by rw [← hnb]; exact hmxb1) (by rw [← hna]; exact hmxa1) (by rw [← hnb]; exact hAxbt)
+      (by rw [← hna]; exact hAxat) hmxbb hmxab
+    simp only [← hna, ← hnb] at this
+    exact this
+  · -- the mean of the `y`s
+    rw [hmye, hmagy]
+    apply merge_mean hna1 hnb1 hAya0 hAyb0 eya eyb
+    have := M.wmean_spec (ns := b.length) (nt := a.length) hlb hla (by omega)
+      (ms := myb) (mt := mya) (As := mag (b.map Prod.snd)) (At := mag (a.map Prod.snd))
+      (by rw [← hnb]; exact hmyb1) (by rw [← hna]; exact hmya1) (by rw [← hnb]; exact hAybt)
+      (by rw [← hna]; exact hAyat) hmybb hmyab
+    simp only [← hna, ← hnb] at this
+    exact this
+  · -- `D_x² ≤ L S_xx`
+    rw [List.length_append]
+    have hX2 : (h * |mx a - mx b|) ^ 2 ≤ (2 * m) * ((mx a - mx b) ^ 2 * h) := by
+      have e : (h * |mx a - mx b|) ^ 2 = h * ((mx a - mx b) ^ 2 * h) := by rw [mul_pow, sq_abs]; ring
+      rw [e]
+      exact mul_le_mul_of_nonneg_right (by linarith) hΔx0
+    have := cs3 hDxa0 hDxb0 (by positivity) hLa0 hLb0 (by linarith) hSxa0 hSxb0 hΔx0 hDxa hDxb hX2
+    have := mul_le_mul_of_nonneg_right hLm (by positivity : 0 ≤ Sxa + Sxb + (mx a - mx b) ^ 2 * h)
+    linarith
+  · -- `D_y² ≤ L S_yy`
+    rw [List.length_append]
+    have hX2 : (h * |my a - my b|) ^ 2 ≤ (2 * m) * ((my a - my b) ^ 2 * h) := by
+      have e : (h * |my a - my b|) ^ 2 = h * ((my a - my b) ^ 2 * h) := by rw [mul_pow, sq_abs]; ring
+      rw [e]
+      exact mul_le_mul_of_nonneg_right (by linarith) hΔy0
+    have := cs3 hDya0 hDyb0 (by positivity) hLa0 hLb0 (by linarith) hSya0 hSyb0 hΔy0 hDya hDyb hX2
+    have := mul_le_mul_of_nonneg_right hLm (by positivity : 0 ≤ Sya + Syb + (my a - my b) ^ 2 * h)
+    linarith
+  · -- the co-moment
+    rw [hlen, hmagx, hmagy, List.length_append]
+    -- the differences of the means
+    have hdx : |mxa - mxb| ≤ 2 ^ 402 := by have := abs_sub mxa mxb; linarith
+    have hdy : |mya - myb| ≤ 2 ^ 402 := by have := abs_sub mya myb; linarith
+    have eDx := M.err (mxa - mxb) (by linarith)
+    have eDy := M.err (mya - myb) (by linarith)
+    have hb403 : ∀ {z : ℝ}, |z| ≤ 2 ^ 402 → |M.fl z| ≤ 2 ^ 403 := by
+      intro z hz
+      have := M.err z (by linarith)
+      have := abs_sub_abs_le_abs_sub (M.fl z) z
+      have : u * (|z| + tiny) ≤ 1 / 2 ^ 53 * (2 ^ 402 + 1) :=
+        mul_le_mul hu' (by linarith [show tiny ≤ 1 by unfold tiny; norm_num]) (by positivity)
+          (by norm_num)
+      have : (1 : ℝ) / 2 ^ 53 * (2 ^ 402 + 1) + 2 ^ 402 ≤ 2 ^ 403 := by norm_num
+      linarith
+    have hDhx := hb403 hdx
+    have hDhy := hb403 hdy
+    generalize M.fl (mxa - mxb) = Dhx at eDx hDhx ⊢
+    generalize M.fl (mya - myb) = Dhy at eDy hDhy ⊢
+    have hP : |Dhx * Dhy| ≤ 2 ^ 840 := by
+      rw [abs_mul]
+      have := mul_le_mul hDhx hDhy (abs_nonneg _) (by norm_num)
+      have : (2 : ℝ) ^ 403 * 2 ^ 403 ≤ 2 ^ 840 := by norm_num
+      linarith
+    have eT := M.T_chain2 (P := Dhx * Dhy) hlb hla (by omega) hP
+    simp only [← hna, ← hnb] at eT
+    rw [show nb * na = na * nb from mul_comm _ _, ← hh] at eT
+    generalize M.fl (M.fl (M.fl (M.fl (Dhx * Dhy) * nb) * na) / (na + nb)) = T at eT ⊢
+    -- the bounds against overflow
+    have hDxa' := Ds_le hDxa0 hSxa0 hLa' hSxab hDxa
+    have hDya' := Ds_le hDya0 hSya0 hLa' hSyab hDya
+    have hDxb' := Ds_le hDxb0 hSxb0 hLb' hSxbb hDxb
+    have hDyb' := Ds_le hDyb0 hSyb0 hLb' hSybb hDyb
+    have hRa8 := sqrt_le_830 hSxa0 hSya0 hSxab hSyab
+    have hRb8 := sqrt_le_830 hSxb0 hSyb0 hSxbb hSybb
+    have hEa' := cBound_le hna1 (by linarith) hAxa0 hAxab hAya0 hAyab hDxa0 hDxa' hDya0 hDya'
+      (Real.sqrt_nonneg _) hRa8 hLa0 hLa'
+    have hEb' := cBound_le hnb1 (by linarith) hAxb0 hAxbb hAyb0 hAybb hDxb0 hDxb' hDyb0 hDyb'
+      (Real.sqrt_nonneg _) hRb8 hLb0 hLb'
+    have hSS : |Sha + Shb| ≤ 2 ^ 902 := by
+      have := abs_add_le Sha Shb
+      have := abs_sub_abs_le_abs_sub Sha (comoment a)
+      have := abs_sub_abs_le_abs_sub Shb (comoment b)
+      linarith
+    have e1 := M.err (Shb + Sha) (by rw [add_comm]; linarith)
+    generalize M.fl (Shb + Sha) = Sh1 at e1 ⊢
+    rw [add_comm Shb Sha] at e1
+    have hS1 : |Sh1| ≤ 2 ^ 903 := by
+      have := abs_sub_abs_le_abs_sub Sh1 (Sha + Shb)
+      have : u * (|Sha + Shb| + tiny) ≤ 1 / 2 ^ 53 * (2 ^ 902 + 1) :=
+        mul_le_mul hu' (by linarith [show tiny ≤ 1 by unfold tiny; norm_num]) (by positivity)
+          (by norm_num)
+      have : (1 : ℝ) / 2 ^ 53 * (2 ^ 902 + 1) + 2 ^ 902 ≤ 2 ^ 903 := by norm_num
+      linarith
+    have hh32 : h ≤ 2 ^ 32 := by linarith
+    have hTb : |T| ≤ 2 ^ 875 := by
+      have := abs_sub_abs_le_abs_sub T (Dhx * Dhy * h)
+      have hPh : |Dhx * Dhy * h| ≤ 2 ^ 840 * 2 ^ 32 := by
+        rw [abs_mul, abs_of_nonneg hh0]; exact mul_le_mul hP hh32 hh0 (by norm_num)
+      have : 5 * u * (|Dhx * Dhy| * h + (1 + h) * tiny)
+          ≤ 5 * (1 / 2 ^ 53) * (2 ^ 840 * 2 ^ 32 + (1 + 2 ^ 32) * 1) := by
+        have : |Dhx * Dhy| * h ≤ 2 ^ 840 * 2 ^ 32 := by
+          rw [abs_mul _ h, abs_of_nonneg hh0] at hPh; exact hPh
+        gcongr
+        unfold tiny; norm_num
+      have : (5 : ℝ) * (1 / 2 ^ 53) * (2 ^ 840 * 2 ^ 32 + (1 + 2 ^ 32) * 1) + 2 ^ 840 * 2 ^ 32
+          ≤ 2 ^ 875 := by norm_num
+      linarith
+    have e2 := M.err (Sh1 + T) (by have := abs_add_le Sh1 T; linarith)
+    have htx : tiny ≤ mag (a.map Prod.fst) + mag (b.map Prod.fst) := by
+      have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
+    have hty : tiny ≤ mag (a.map Prod.snd) + mag (b.map Prod.snd) := by
+      have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
+    exact cmerge_step_arith (Mxa := mx a) (Mxb := mx b) (Mya := my a) (Myb := my b) hna1 hnb1 hm1
+      hmA hmB hh0 hhm hnu hAxa0 hAxb0 hAya0 hAyb0 htx hty hMxaA hMxbA hMyaA hMybA exa exb eya eyb
+      eDx eDy eT hDxa0 hDxb0 hDya0 hDyb0 (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) hRab hR1 hRn hY
+      hLa0 hLb0 hLm hEa hEb e1 e2
