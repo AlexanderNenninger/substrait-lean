@@ -230,3 +230,186 @@ theorem StdModel.cov_step {K : ℕ} (hK1 : 1 ≤ K) (hK : K + 1 ≤ 2 ^ 32)
     have : (2 : ℝ) ^ 433 * 2 ^ 433 ≤ 2 ^ 900 := by norm_num
     linarith
   exact M.ctail (by positivity) hR0 (by positivity) hpe hΔR hCR hRb hP hAA hC hGb
+
+/-! ## The invariant over pairs -/
+
+/-- Cauchy–Schwarz over a list of pairs. -/
+theorem list_cs : ∀ l : List (ℝ × ℝ),
+    (l.map fun p => p.1 * p.2).sum ^ 2
+      ≤ (l.map fun p => p.1 * p.1).sum * (l.map fun p => p.2 * p.2).sum
+  | [] => by simp
+  | (a, b) :: l => by
+    simp only [List.map_cons, List.sum_cons]
+    have ih := list_cs l
+    obtain ⟨s, hs⟩ : ∃ s, s = (l.map fun p => p.1 * p.2).sum := ⟨_, rfl⟩
+    obtain ⟨A, hA⟩ : ∃ s, s = (l.map fun p => p.1 * p.1).sum := ⟨_, rfl⟩
+    obtain ⟨B, hB⟩ : ∃ s, s = (l.map fun p => p.2 * p.2).sum := ⟨_, rfl⟩
+    rw [← hs, ← hA, ← hB] at ih ⊢
+    have hA0 : 0 ≤ A := by
+      rw [hA]; exact List.sum_nonneg (fun y hy => by
+        obtain ⟨p, -, rfl⟩ := List.mem_map.mp hy; exact mul_self_nonneg _)
+    have hB0 : 0 ≤ B := by
+      rw [hB]; exact List.sum_nonneg (fun y hy => by
+        obtain ⟨p, -, rfl⟩ := List.mem_map.mp hy; exact mul_self_nonneg _)
+    have h0 : 4 * (a * b) ^ 2 * s ^ 2 ≤ 4 * (a * b) ^ 2 * (A * B) :=
+      mul_le_mul_of_nonneg_left ih (by positivity)
+    have h1 : (2 * (a * b * s)) ^ 2 ≤ (a * a * B + b * b * A) ^ 2 := by
+      nlinarith [sq_nonneg (a * a * B - b * b * A)]
+    have h3 : 0 ≤ a * a * B + b * b * A := by
+      have := mul_nonneg (mul_self_nonneg a) hB0
+      have := mul_nonneg (mul_self_nonneg b) hA0
+      linarith
+    have h2 : 2 * (a * b * s) ≤ a * a * B + b * b * A := (abs_le_of_sq_le_sq' h1 h3).2
+    nlinarith
+
+theorem mx_dupL_fst (ps : List (ℝ × ℝ)) : mx (dupL (ps.map Prod.fst)) = mx ps := by
+  simp [mx, sx, dupL, List.map_map, Function.comp_def]
+
+theorem mx_dupL_snd (ps : List (ℝ × ℝ)) : mx (dupL (ps.map Prod.snd)) = my ps := by
+  simp [mx, my, sx, sy, dupL, List.map_map, Function.comp_def]
+
+/-- `S_xx = Σ (xᵢ − x̄)²`, `S_yy` likewise. -/
+theorem comoment_fst (ps : List (ℝ × ℝ)) :
+    comoment (dupL (ps.map Prod.fst)) = (ps.map fun p => (p.1 - mx ps) * (p.1 - mx ps)).sum := by
+  unfold comoment
+  rw [my_dupL, mx_dupL_fst]
+  simp [dupL, List.map_map, Function.comp_def]
+
+theorem comoment_snd (ps : List (ℝ × ℝ)) :
+    comoment (dupL (ps.map Prod.snd)) = (ps.map fun p => (p.2 - my ps) * (p.2 - my ps)).sum := by
+  unfold comoment
+  rw [my_dupL, mx_dupL_snd]
+  simp [dupL, List.map_map, Function.comp_def]
+
+/-- **`C² ≤ S_xx S_yy`**. -/
+theorem comoment_sq_le (ps : List (ℝ × ℝ)) :
+    comoment ps ^ 2 ≤ comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)) := by
+  have h := list_cs (ps.map fun p => (p.1 - mx ps, p.2 - my ps))
+  simp only [List.map_map, Function.comp_def] at h
+  rw [comoment_fst, comoment_snd]
+  exact h
+
+/-- `|C| ≤ √(S_xx S_yy)`. -/
+theorem abs_comoment_le_sqrt (ps : List (ℝ × ℝ)) :
+    |comoment ps| ≤ √(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd))) :=
+  Real.abs_le_sqrt (comoment_sq_le ps)
+
+/-- The bound of the invariant over pairs,
+`(1 + 3nu)(8.5 u (A_x D_y + A_y D_x) + 10 u n R + 60 u² L A_x A_y + 12 u L·tiny)`. -/
+noncomputable def cBound (n Ax Ay Dx Dy R L : ℝ) : ℝ :=
+  (1 + 3 * n * u) * (8.5 * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R + 60 * u ^ 2 * L * (Ax * Ay)
+    + 12 * u * tiny * L)
+
+theorem cBound_le {K Ax Ay Dx Dy R L : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) (hAx0 : 0 ≤ Ax)
+    (hAx : Ax ≤ 2 ^ 432) (hAy0 : 0 ≤ Ay) (hAy : Ay ≤ 2 ^ 432) (hDx0 : 0 ≤ Dx)
+    (hDx : Dx ≤ 2 ^ 436) (hDy0 : 0 ≤ Dy) (hDy : Dy ≤ 2 ^ 436) (hR0 : 0 ≤ R) (hR : R ≤ 2 ^ 830)
+    (hL0 : 0 ≤ L) (hL : L ≤ 2 ^ 39) : cBound K Ax Ay Dx Dy R L ≤ 2 ^ 900 := by
+  unfold cBound
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  have hKu : K * u ≤ 1 / 2 ^ 21 := by
+    calc K * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  have hLu : L * u ≤ 1 / 2 ^ 14 := by
+    calc L * u ≤ 2 ^ 39 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 14 := by norm_num
+  have c0 : 1 + 3 * K * u ≤ 2 := by linarith
+  have hAD : Ax * Dy + Ay * Dx ≤ 2 ^ 869 := by
+    have h1 := mul_le_mul hAx hDy hDy0 (by norm_num)
+    have h2 := mul_le_mul hAy hDx hDx0 (by norm_num)
+    have : (2 : ℝ) ^ 432 * 2 ^ 436 + 2 ^ 432 * 2 ^ 436 ≤ 2 ^ 869 := by norm_num
+    linarith
+  have c1 : 8.5 * u * (Ax * Dy + Ay * Dx) ≤ 2 ^ 869 := by
+    have h := mul_le_mul_of_nonneg_right (by linarith : 8.5 * u ≤ 1)
+      (by positivity : 0 ≤ Ax * Dy + Ay * Dx)
+    linarith
+  have c2 : 10 * u * K * R ≤ 2 ^ 830 := by
+    have h := mul_le_mul_of_nonneg_right (by linarith : 10 * (K * u) ≤ 1) hR0; linarith
+  have hA2 : Ax * Ay ≤ 2 ^ 864 := by
+    have := mul_le_mul hAx hAy hAy0 (by norm_num)
+    have : (2 : ℝ) ^ 432 * 2 ^ 432 = 2 ^ 864 := by norm_num
+    linarith
+  have c3 : 60 * u ^ 2 * L * (Ax * Ay) ≤ 2 ^ 864 := by
+    have h1 : 60 * u ^ 2 * L ≤ 1 := by
+      have : u * (L * u) ≤ 1 / 2 ^ 53 * (1 / 2 ^ 14) := mul_le_mul hu' hLu (by positivity) (by norm_num)
+      nlinarith
+    have := mul_le_mul_of_nonneg_right h1 (by positivity : 0 ≤ Ax * Ay); linarith
+  have c4 : 12 * u * tiny * L ≤ 1 := by
+    have := mul_le_mul hLu ht1 ht.le (by norm_num); nlinarith
+  have hsum : 8.5 * u * (Ax * Dy + Ay * Dx) + 10 * u * K * R + 60 * u ^ 2 * L * (Ax * Ay)
+      + 12 * u * tiny * L ≤ 2 ^ 870 := by linarith
+  have h0 : 0 ≤ 8.5 * u * (Ax * Dy + Ay * Dx) + 10 * u * K * R + 60 * u ^ 2 * L * (Ax * Ay)
+      + 12 * u * tiny * L := by positivity
+  have := mul_le_mul c0 hsum h0 (by norm_num)
+  linarith
+
+/-- A step keeps the bound of the invariant. -/
+theorem carith {n Ax Ay Ax' Ay' Dx Dy dx dy R R' L L' G : ℝ} (hn : 0 ≤ n)
+    (hnu : (n + 1) * u ≤ 1 / 2 ^ 21) (hAx0 : 0 ≤ Ax) (hAx : Ax ≤ Ax') (hAy0 : 0 ≤ Ay)
+    (hAy : Ay ≤ Ay') (hDx : 0 ≤ Dx) (hDy : 0 ≤ Dy) (hdx : 0 ≤ dx) (hdy : 0 ≤ dy) (hR0 : 0 ≤ R)
+    (hR : R ≤ R') (hL0 : 0 ≤ L) (hL : L + 2 ≤ L') (hG : G ≤ cBound n Ax Ay Dx Dy R L) :
+    (1 + u) * G + 8.5 * u * (Ax' * dy + Ay' * dx) + 7 * u * R' + 103 * u ^ 2 * (Ax' * Ay')
+        + 3 * u * tiny
+      ≤ cBound (n + 1) Ax' Ay' (Dx + dx) (Dy + dy) R' L' := by
+  unfold cBound at hG ⊢
+  have hu := u_pos
+  have ht := tiny_pos
+  have hAx'0 : 0 ≤ Ax' := le_trans hAx0 hAx
+  have hAy'0 : 0 ≤ Ay' := le_trans hAy0 hAy
+  have hR'0 : 0 ≤ R' := le_trans hR0 hR
+  obtain ⟨T', hT'⟩ : ∃ T, T = 8.5 * u * (Ax' * Dy + Ay' * Dx) + 10 * u * n * R'
+      + 60 * u ^ 2 * L * (Ax' * Ay') + 12 * u * tiny * L := ⟨_, rfl⟩
+  have hTT : 8.5 * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R + 60 * u ^ 2 * L * (Ax * Ay)
+      + 12 * u * tiny * L ≤ T' := by
+    have h1 : Ax * Dy + Ay * Dx ≤ Ax' * Dy + Ay' * Dx := by
+      have := mul_le_mul_of_nonneg_right hAx hDy
+      have := mul_le_mul_of_nonneg_right hAy hDx
+      linarith
+    have h2 : Ax * Ay ≤ Ax' * Ay' := mul_le_mul hAx hAy hAy0 hAx'0
+    have h3 : 8.5 * u * (Ax * Dy + Ay * Dx) ≤ 8.5 * u * (Ax' * Dy + Ay' * Dx) := by gcongr
+    have h4 : 10 * u * n * R ≤ 10 * u * n * R' := by gcongr
+    have h5 : 60 * u ^ 2 * L * (Ax * Ay) ≤ 60 * u ^ 2 * L * (Ax' * Ay') := by gcongr
+    rw [hT']; linarith
+  have hT0 : 0 ≤ T' := by rw [hT']; positivity
+  have hfac : (1 + u) * (1 + 3 * n * u) ≤ 1 + 3 * (n + 1) * u := by
+    have h1 : 3 * n * u ≤ 1 := by nlinarith
+    have : 3 * n * u * u ≤ 2 * u := by nlinarith
+    nlinarith
+  have hG' : (1 + u) * G ≤ (1 + 3 * (n + 1) * u) * T' := by
+    calc (1 + u) * G ≤ (1 + u) * ((1 + 3 * n * u) * T') := by
+          gcongr; exact le_trans hG (by gcongr)
+      _ = ((1 + u) * (1 + 3 * n * u)) * T' := by ring
+      _ ≤ _ := by gcongr
+  obtain ⟨I, hI⟩ : ∃ I, I = 8.5 * u * (Ax' * dy + Ay' * dx) + 7 * u * R'
+      + 103 * u ^ 2 * (Ax' * Ay') + 3 * u * tiny := ⟨_, rfl⟩
+  have hI0 : 0 ≤ I := by rw [hI]; positivity
+  have hinc : I ≤ (1 + 3 * (n + 1) * u) * I := le_mul_of_one_le_left hI0 (by nlinarith)
+  have hnew : T' + I ≤ 8.5 * u * (Ax' * (Dy + dy) + Ay' * (Dx + dx)) + 10 * u * (n + 1) * R'
+      + 60 * u ^ 2 * L' * (Ax' * Ay') + 12 * u * tiny * L' := by
+    have p1 : 0 ≤ u * R' := by positivity
+    have p2 : 2 * (u ^ 2 * (Ax' * Ay')) ≤ (L' - L) * (u ^ 2 * (Ax' * Ay')) :=
+      mul_le_mul_of_nonneg_right (by linarith) (by positivity)
+    have p3 : 2 * (u * tiny) ≤ (L' - L) * (u * tiny) :=
+      mul_le_mul_of_nonneg_right (by linarith) (by positivity)
+    have p4 : 0 ≤ u ^ 2 * (Ax' * Ay') := by positivity
+    have p5 : 0 ≤ u * tiny := by positivity
+    rw [hT', hI]
+    linarith
+  have := mul_le_mul_of_nonneg_left hnew (by positivity : (0 : ℝ) ≤ 1 + 3 * (n + 1) * u)
+  have e : (1 + 3 * (n + 1) * u) * (T' + I) = (1 + 3 * (n + 1) * u) * T' + (1 + 3 * (n + 1) * u) * I := by
+    ring
+  linarith
+
+/-- The invariant of DuckDB's plans over pairs `ps`: the means within `6 u A`,
+and the co-moment within `cBound`, where `D_x² ≤ L(n) S_xx`, `D_y² ≤ L(n) S_yy`
+and `R = √(S_xx S_yy)`. -/
+def CInv (ps : List (ℝ × ℝ)) (s : WState) : Prop :=
+  s.n = ps.length ∧ |s.mx - mx ps| ≤ 6 * u * mag (ps.map Prod.fst) ∧
+    |s.my - my ps| ≤ 6 * u * mag (ps.map Prod.snd) ∧
+    ∃ Dx Dy : ℝ, 0 ≤ Dx ∧ 0 ≤ Dy ∧
+      Dx ^ 2 ≤ Lw ps.length * comoment (dupL (ps.map Prod.fst)) ∧
+      Dy ^ 2 ≤ Lw ps.length * comoment (dupL (ps.map Prod.snd)) ∧
+      |s.c - comoment ps| ≤ cBound ps.length (mag (ps.map Prod.fst)) (mag (ps.map Prod.snd)) Dx Dy
+        (√(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))) (Lw ps.length)
