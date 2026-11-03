@@ -158,8 +158,14 @@ cmd = "tests/run.sh"
 cwd = "${POE_ROOT}/.."
 
 [tool.poe.tasks.test]
-help = "Python tests, including the randomized engine tests, on every core"
+help = "The fast Python tests (not `slow`, a tenth of the Hypothesis examples) on 2 workers; see tests/conftest.py"
+cmd = "pytest -n auto --dist worksteal -m 'not slow'"
+env = { PYTEST_XDIST_AUTO_NUM_WORKERS.default = "2", SVERIFY_PROFILE.default = "dev" }
+
+[tool.poe.tasks.test-all]
+help = "Every Python test with full Hypothesis counts, on every core (as CI and qa run them)"
 cmd = "pytest -n auto --dist worksteal"
+env = { SVERIFY_PROFILE.default = "ci" }
 
 [tool.poe.tasks.test-core]
 help = "Python tests of Lean and DataFusion as the reference (see tests/conftest.py)"
@@ -216,5 +222,5 @@ help = "Build the API reference site and serve it locally"
 cmd = "great-docs preview"
 
 [tool.poe.tasks.qa]
-help = "Run everything: prove, build, lint, typecheck, golden, test, notebooks"
-sequence = ["prove", "build", "lint", "typecheck", "golden", "test", "notebooks"]
+help = "Run everything: prove, build, lint, typecheck, golden, test-all, notebooks"
+sequence = ["prove", "build", "lint", "typecheck", "golden", "test-all", "notebooks"]

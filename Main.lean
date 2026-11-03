@@ -41,6 +41,9 @@ over a `VALUES`, each row's outcomes under the reference profile
 (`Expr.evalP`): the value (doubles as their codes) or the error raised, one
 JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
 
+`substrait-check --version`: print `substrait-check protocol <n>` (see
+`protocol`).
+
 `substrait-check --serve`: answer requests for the modes above on stdin, one
 process for many plans (see `serve`).
 
@@ -50,6 +53,12 @@ parse/unsupported error, 2 ill-formed plan, 3 not incrementally maintainable,
 -/
 
 open Substrait Parse
+
+/-- The version of what the checker prints and reads, which `sverify` checks
+at startup (`sverify.engine.PROTOCOL`): bump both when the output of a mode
+changes shape (a JSON field added, renamed or dropped, a new mode), so that a
+stale build fails with a clear message instead of a `KeyError`. -/
+def protocol : Nat := 1
 
 /-- Shared static checks; `none` means the plan passed. -/
 def checkPlan (plan : Plan) : Option (UInt32 × String) :=
@@ -238,6 +247,9 @@ partial def serve : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   match args with
   | ["--serve"] => serve
+  | ["--version"] => do
+    IO.println s!"substrait-check protocol {protocol}"
+    return 0
   | ["--lift-cache"] => do
     -- A new SubstraitLean/LiftCache.lean from this build's tables (#268).
     IO.print Lift.cacheSource
@@ -267,5 +279,5 @@ def main (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --write-datafusion | --shard | --outcomes] <file.json> | --serve | --version | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache"
     return 1

@@ -29,6 +29,7 @@ def windows(a, b):
     )
 
 
+@pytest.mark.slow
 def test_float_and_timestamp_contracts():
     report = sv.verify(
         windows(s1, s2),
@@ -66,6 +67,7 @@ values = st.sampled_from([0.0, -0.0, 0.5, 1.5, ERR, math.nan, math.inf, 1e300, N
 minutes = st.integers(0, 4)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("engine", ENGINES)
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
@@ -109,6 +111,7 @@ def in_session(h, w):
     ).select(valid.user_id, valid.ts, valid.bpm, w.start, w.end)
 
 
+@pytest.mark.slow
 def test_integer_constants_compared_with_doubles():
     # `bpm >= 30` reaches the plan with an integer 30; it means the double 30.0.
     report = sv.verify(in_session(hr, sessions), ensures=[_.bpm >= 30, _.bpm > 29.5, _.bpm > 31])

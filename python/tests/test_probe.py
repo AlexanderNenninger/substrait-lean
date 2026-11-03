@@ -44,6 +44,7 @@ def test_double_division_is_ieee_but_for_nan():
 
 # The Wheels workflow runs these tests from `python/tests` alone: there the
 # repository's files are not here.
+@pytest.mark.slow
 @pytest.mark.skipif(
     not (slt.LEDGER / "probes.json").is_file(),
     reason="characterization/ of the repository is not here",

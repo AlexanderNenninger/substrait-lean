@@ -100,10 +100,20 @@ jobs:
   test:
     needs: changes
     if: needs.changes.outputs.code == 'true'
+    name: test (${{ matrix.backends }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     strategy:
       fail-fast: false
       matrix:
-        backends: [core, duckdb, spark, datafusion polars snowflake]
+        # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
+        # so that no job runs much longer than the others.
+        backends: [duckdb, spark, datafusion, polars snowflake]
+        include:
+          - backends: core
+            shard: 1/3
+          - backends: core
+            shard: 2/3
+          - backends: core
+            shard: 3/3
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -116,6 +126,10 @@ jobs:
           cache-dependency-glob: python/uv.lock
       - env:
           BACKENDS: ${{ matrix.backends }}
+          SVERIFY_SHARD: ${{ matrix.shard }}
+          # The slowest tests, to see which to mark `slow` or what unbalances
+          # the shards.
+          PYTEST_ADDOPTS: --durations=25
         run: |
           status=0
           for b in $BACKENDS; do
