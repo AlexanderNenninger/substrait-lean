@@ -158,18 +158,21 @@ with the generic properties (`StatProps`, [reference
 semantics](reference-semantics.md#statistical-aggregates)). Lean's own results
 have them by three trusted facts in `SubstraitLean/StatProps.lean`
 (`varOf_props`, `covOf_props`, `corrOf_props`), stated over Lean's `Rat`.
-[`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean) proves them:
-`core_var`, `core_stddev`, `core_cov` and `core_corr`, for two-pass on the
-decoded doubles, with `E = 128 n² u B²`, which covers the decoding
-(`comoment_decoded`, `12 n B δ`) and `64 n² u B'²` with `B' = (1 + 2u) B`.
+[`CoreKappa.lean`](../float-bounds/FloatBounds/CoreKappa.lean) proves them:
+`core_var_k`, `core_cov_k` and `core_corr_k` for two-pass on the decoded
+doubles, and `core_stddev` with `sd_mono` for the deviation. Decoding moves a
+co-moment by `2u (√(S_xx Q'_y) + √(S_yy Q'_x)) + 4u² √(Q'_x Q'_y)`
+(`decode_cov`), which the bounds absorb. The bounds are the ones below, with
+the constants rounded up to cover DuckDB's algorithm and the final division;
+for `CORR` one witness `R` stands for all the square roots, which keeps the
+statement small.
 
-How loose this is depends on how far the values sit from zero relative to
-their spread. For a variance the bound is about `128 · n · u · B²`, or
-`1.4 · 10⁻⁸ · B²` at `10⁶` rows and `1.4 · 10⁻⁶ · B²` at `10⁸`. For CPU
-percentages (`B = 100`, a variance in the hundreds) that is far below the last
-digit that matters. For values near `10⁶` that vary by about `1` (timestamps in
-seconds, say), it is `1.4 · 10⁴` at `10⁶` rows, against a variance of about
-`1`: no useful bound.
+The earlier generic bound, `128 n² u B²` with `B = max |xᵢ|`
+([`CoreStats.lean`](../float-bounds/FloatBounds/CoreStats.lean)), did not
+scale with the spread. For a variance it is about `128 · n · u · B²`: far
+below the last digit that matters for CPU percentages (`B = 100`), and
+`1.4 · 10⁴` for `10⁶` values near `10⁶` that vary by about `1` (timestamps in
+seconds), against a variance of about `1`.
 
 Bounds that scale with the spread are proved for three of the algorithms:
 
@@ -208,14 +211,11 @@ co-moments of each side and `Q'_x = Σ (|x| + tiny)²`:
 By Cauchy–Schwarz every partial co-moment and every increment is at most
 `√(S_xx S_yy)` (`comoment_sq_le`), which is what the proofs scale with.
 
-For the timestamps above (`10⁶` rows near `10⁶`, spread `1`), Welford's bound
+For those timestamps (`10⁶` rows near `10⁶`, spread `1`), Welford's bound
 on the variance is about `32 · 10⁶ · 1.1 · 10⁻¹⁶ · 10⁶ ≈ 3.6 · 10⁻³`, the
 parallel one's about `1.6 · 10⁻²`, and two-pass's about `10⁻⁶`, against a
 variance of `1`.
 
-The generic properties still keep the bound above, which holds for every
-algorithm. A tighter one only narrows the allowed set, so it replaces this
-one without changing the interface.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
