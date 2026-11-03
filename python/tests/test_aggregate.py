@@ -345,7 +345,8 @@ def test_aggregate_postconditions_are_proved():
     )
     assert report.proved, str(report)
     assert report.facts["n"] == "an integer ≥ 1"
-    assert report.facts["top"] == "an integer ≥ 0 or NULL"
+    # `amount >= 0` rules out NULL, so each group has a maximum (#372).
+    assert report.facts["top"] == "an integer ≥ 0"
 
 
 def test_sum_has_no_upper_bound():
