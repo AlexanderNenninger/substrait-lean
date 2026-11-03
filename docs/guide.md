@@ -211,7 +211,7 @@ Ibis expression). Each call proves the postconditions before it returns:
 
 ```python
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
 )
 def doubled(orders):
@@ -221,17 +221,19 @@ expr = doubled(orders)
 print(doubled.last_report)
 # requires orders: (_.amount >= 0)
 # requires orders: _.id.notnull()
+# requires orders: (_.amount < 2**62) (inferred)
 # ensures (_.doubled >= 0): proved
 # ensures _.doubled.notnull(): proved
 # ensures id IS NOT NULL: proved
 # known about the output:
 #   id: any integer
-#   doubled: an integer in [22, 1999999998]
+#   doubled: an integer ≥ 22
 ```
 
-Lean worked out that `doubled` is at least 22 and fits in 64 bits: the filter
-keeps only `amount > 10`, and doubling preserves that. A postcondition that
-doesn't follow is refused, with what *is* known:
+Lean worked out that `doubled` is at least 22: the filter keeps only
+`amount > 10`, and doubling preserves that. Sverify inferred the bound that
+keeps `amount * 2` within 64 bits ([Inferred bounds](#inferred-bounds)). A
+postcondition that doesn't follow is refused, with what *is* known:
 
 ```python
 @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])

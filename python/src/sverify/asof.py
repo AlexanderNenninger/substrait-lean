@@ -57,9 +57,8 @@ def asof_join(
         tolerance: How much earlier than the left row a match may be (an
             Ibis interval, or a number for numeric time columns). Default
             None: no limit. The join computes `on - tolerance`, which
-            overflows at the type's smallest value, so a contract on it
-            needs a lower bound on the left `on` column, for example
-            `_.ts >= datetime(2000, 1, 1)` (#202).
+            overflows at the type's smallest value; a contract infers the
+            lower bound on the left `on` column that rules it out (#244).
         key: Columns that identify left rows. Default: `by` and `on`.
         how: `"left"` (the default) keeps left rows without a match, with
             NULLs; `"inner"` drops them.

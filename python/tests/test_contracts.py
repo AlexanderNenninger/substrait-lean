@@ -17,7 +17,7 @@ from sverify_dev.examples import customers, orders
 
 
 @sv.transform(
-    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+    requires={"orders": [_.amount >= 0, _.id.notnull()]},
     ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL", _.doubled > 20],
 )
 def doubled(orders):
@@ -29,7 +29,8 @@ def test_postconditions_are_proved():
     report = doubled.last_report
     assert report is not None
     assert report.proved
-    assert report.facts["doubled"] == "an integer in [22, 1999999998]"
+    assert report.facts["doubled"] == "an integer ≥ 22"
+    assert report.requires["orders"][-1] == "(_.amount < 2**62)"  # inferred (#244)
     assert report.facts["id"] == "any integer"  # never NULL, by the precondition
 
 
@@ -51,7 +52,6 @@ def test_null_propagates_unless_ruled_out():
     # ...and a filter on `amount` rules that out (NULL > 0 is not TRUE).
     report = sv.verify(
         orders.filter(orders.amount > 0).select(t=orders.amount + 1),
-        requires={"orders": [_.amount < 1_000_000_000]},
         ensures=[_.t.notnull()],
     )
     assert report.proved

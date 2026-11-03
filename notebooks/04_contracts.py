@@ -76,7 +76,7 @@ def _():
     orders = ibis.table({"id": "int64", "customer": "string", "amount": "int64"}, name="orders")
 
     @sv.transform(
-        requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, _.id.notnull()]},
+        requires={"orders": [_.amount >= 0, _.id.notnull()]},
         ensures=[_.doubled >= 0, _.doubled.notnull(), "id IS NOT NULL"],
     )
     def doubled(orders):
@@ -113,10 +113,11 @@ def _(mo):
       postcondition. The verdicts are in `.last_report`.
     * The first table of the report holds the verdicts. The second holds
       everything Lean established about each output column, asked for or not.
-    * `amount < 1_000_000_000` is there for `amount * 2`. Without an upper
-      bound, doubling the largest 64-bit integer overflows, the reference
-      raises, and the report says the transformation may fail. Saying that
-      amounts stay below a billion lets Lean prove they double safely.
+    * The report also lists `amount < 2**62`, marked as inferred. Doubling
+      the largest 64-bit integer overflows and the reference raises, so
+      `amount * 2` needs an upper bound on `amount`. Sverify works out the
+      weakest one and treats it like the preconditions you wrote: it is
+      checked on your data, or proved from table metadata.
 
     `sv.verify(expr, requires=..., ensures=...)` does the same for an
     expression without a decorator and returns the report.
@@ -127,12 +128,12 @@ def _(mo):
     can be NULL and which values it can hold. This is abstract interpretation,
     and each operator updates the descriptions.
 
-    * The preconditions make `amount >= 0` and `amount < 1_000_000_000` TRUE
-      on every input row, so `amount` is a non-NULL integer in
-      `[0, 999999999]`. (`NULL >= 0` is NULL, which is not TRUE.)
+    * The preconditions make `amount >= 0` and the inferred `amount < 2**62`
+      TRUE on every input row, so `amount` is a non-NULL integer in
+      `[0, 2⁶² - 1]`. (`NULL >= 0` is NULL, which is not TRUE.)
     * The filter `amount > 10` keeps the rows where that is TRUE, so `amount`
       is a non-NULL integer ≥ 11 afterwards.
-    * `amount * 2` is then an integer in `[22, 1999999998]`, which fits in 64
+    * `amount * 2` is then an integer ≥ 22 and below 2⁶³, which fits in 64
       bits and is never NULL.
 
     A postcondition is proved when its description allows only TRUE.
