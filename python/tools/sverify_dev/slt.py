@@ -929,6 +929,12 @@ def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     tf = parse(path.read_text(errors="replace"))
     if tf.skip:
         return [], tf.skip
+    # A new process database for each file: a DuckDB `FATAL` error
+    # invalidates a database for good, and every file a worker replayed
+    # after it would fail, which ones depending on scheduling (#407).
+    from sverify import _duckdb
+
+    _duckdb.reset()
     with tempfile.TemporaryDirectory(prefix="sverify-slt-") as tmp:
         return _replay(tf, rel, tmp), None
 

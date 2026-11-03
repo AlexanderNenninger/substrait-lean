@@ -283,3 +283,7 @@ class DuckDBStore(Store):
 def store_for(engine: object) -> Store:
     """The store for a view whose plans run on `engine`."""
     return DuckDBStore() if engine == "duckdb" else ArrowStore()
+
+
+# A new process database (`_duckdb.reset`) needs a new cursor.
+_duckdb.on_reset(lambda: setattr(DuckDBStore, "_db", None))

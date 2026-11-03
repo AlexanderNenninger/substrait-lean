@@ -46,6 +46,27 @@ def _key(r: Mapping) -> tuple[str, int, str]:
     return r["file"], r["line"], r["sql"]
 
 
+def skipped_files(out: Path = slt.LEDGER) -> dict[str, str]:
+    """The files the ledgers' replay skipped as a whole, with the reason."""
+    found: dict[str, str] = {}
+    for p in sorted(out.glob("*.json")):
+        if p.name == "probes.json" or p.name.startswith("fuzz__"):
+            continue
+        found.update(json.loads(p.read_text()).get("skipped_files", {}))
+    return found
+
+
+def newly_skipped(skips: Mapping[str, str], before: Mapping[str, str]) -> list[str]:
+    """The files skipped as a whole this run (`skips`, with the reason) that
+    the ledgers compared (not in `before`): a skip there could hide a
+    regression, so the gate fails on it (#407)."""
+    return [
+        f"{f}: compared -> skipped ({why[:150]})"
+        for f, why in sorted(skips.items())
+        if f not in before
+    ]
+
+
 def ledger(out: Path = slt.LEDGER) -> dict[tuple[str, int, str], str]:
     """Each replayed query's class, by file, line and SQL, from the ledgers."""
     found: dict[tuple[str, int, str], str] = {}
@@ -106,10 +127,12 @@ def check_replay(files: int, jobs: int) -> tuple[list[str], list[str]]:
     now: dict[str, str] = {}
     before: dict[str, str] = {}
     skipped: Counter[str] = Counter()
-    for _, results, skip in slt.replay_files([(str(base / f), f) for f in chosen], jobs):
+    skips: dict[str, str] = {}
+    for rel, results, skip in slt.replay_files([(str(base / f), f) for f in chosen], jobs):
         if skip:
             # Not compared this run (a crash, a timeout): say so.
             skipped[skip.split(":")[0]] += 1
+            skips[rel] = skip
         for r in results:
             q = f"{r['file']}:{r['line']}"
             now[q] = r["cls"]
@@ -118,7 +141,8 @@ def check_replay(files: int, jobs: int) -> tuple[list[str], list[str]]:
     print(f"replay: {len(chosen)} files, {len(now)} queries, {decided} decided by oracle A")
     if skipped:
         print(f"replay: {sum(skipped.values())} files not compared: {dict(skipped)}")
-    return compare(before, now, sorted(now))
+    worse, better = compare(before, now, sorted(now))
+    return worse + newly_skipped(skips, skipped_files()), better
 
 
 def main(argv: Sequence[str] | None = None) -> None:
