@@ -107,9 +107,10 @@ def bitLen : Nat → Nat → Nat
 
 /-- `n` rounded to 53 significant bits, as IEEE rounds an integer to a
 double (before the exponent's range is applied). From `2¹¹⁰⁰` on, far above
-every double, it is `2¹¹⁰⁰`. -/
+every double, it is `2¹¹⁰⁰`. The fuel `min 1100 n` keeps the kernel from
+unrolling `bitLen` on an `n` it does not know. -/
 def roundSig (n : Nat) : Nat :=
-  if n < 2 ^ 1100 then roundTo2 (bitLen 1100 n - 53) n else 2 ^ 1100
+  if n < 2 ^ 1100 then roundTo2 (bitLen (min 1100 n) n - 53) n else 2 ^ 1100
 
 /-- The code of `i` rounded to 53 significant bits, without a bound on the
 exponent. -/
@@ -237,13 +238,30 @@ theorem two_pow_bitLen_le : ∀ f n, n ≠ 0 → 2 ^ bitLen f n ≤ 2 * n
     · rw [h2, bitLen_zero]; omega
     · have := two_pow_bitLen_le f (n / 2) h2; omega
 
+/-- Enough fuel counts every bit. -/
+theorem bitLen_fuel : ∀ f g n, n < 2 ^ f → n < 2 ^ g → bitLen f n = bitLen g n
+  | 0, g, n, hf, _ => by simp at hf; subst hf; rw [bitLen_zero, bitLen_zero]
+  | f + 1, 0, n, _, hg => by simp at hg; subst hg; rw [bitLen_zero, bitLen_zero]
+  | f + 1, g + 1, n, hf, hg => by
+    unfold bitLen; split
+    · rfl
+    · rw [Nat.pow_succ] at hf hg
+      rw [bitLen_fuel f g (n / 2) (by omega) (by omega)]
+
+theorem bitLen_min {n : Nat} (h : n < 2 ^ 1100) : bitLen (min 1100 n) n = bitLen 1100 n :=
+  bitLen_fuel _ _ n (by
+    rcases Nat.le_total 1100 n with hm | hm
+    · rw [Nat.min_eq_left hm]; exact h
+    · rw [Nat.min_eq_right hm]; exact Nat.lt_two_pow_self) h
+
 set_option exponentiation.threshold 2100 in
 theorem roundSig_mono {n n' : Nat} (h : n ≤ n') : roundSig n ≤ roundSig n' := by
   unfold roundSig
   have hl := bitLen_mono 1100 h
   have hle := bitLen_le_fuel 1100 n
   by_cases hn : n < 2 ^ 1100
-  · have h1 : n < 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) := by
+  · rw [bitLen_min hn]
+    have h1 : n < 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) := by
       rw [← Nat.pow_add]
       exact Nat.lt_of_lt_of_le (lt_two_pow_bitLen _ _ hn) (Nat.pow_le_pow_right (by decide) (by omega))
     have top : roundTo2 (bitLen 1100 n - 53) n ≤ 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) :=
@@ -251,6 +269,7 @@ theorem roundSig_mono {n n' : Nat} (h : n ≤ n') : roundSig n ≤ roundSig n' :
     simp only [hn, ↓reduceIte]
     by_cases hn' : n' < 2 ^ 1100
     · simp only [hn', ↓reduceIte]
+      rw [bitLen_min hn']
       by_cases hs : bitLen 1100 n - 53 = bitLen 1100 n' - 53
       · rw [hs]; exact roundTo2_mono _ h
       · -- `n` rounds to at most `2^(s+53)`, `n'` to at least `2^(s'+52)`, and `s < s'`.
