@@ -764,6 +764,10 @@ class RefreshReport:
     touched: dict[str, int] = field(default_factory=dict)
     """For each view maintained by touched groups (`sverify._touched`): how
     many groups the batch touched, which were recomputed."""
+    framed: dict[str, int] = field(default_factory=dict)
+    """For each window view maintained by touched frames (`sverify._touched`):
+    how many output rows near the change were recomputed. This strategy is
+    tested, not proved."""
     diffed: list[str] = field(default_factory=list)
     """The views the batch recomputed in full and diffed."""
 
@@ -786,6 +790,10 @@ class RefreshReport:
         for v, vs in self.versions.items():
             lines.append(f"view {v}: " + ", ".join(f"{t}@v{n}" for t, n in vs.items()))
         lines += [f"view {v}: {n} touched group(s) recomputed" for v, n in self.touched.items()]
+        lines += [
+            f"view {v}: {n} row(s) in touched frames recomputed (tested, not proved)"
+            for v, n in self.framed.items()
+        ]
         lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
         if self.audited:
             lines.append("audit: batch matches the new snapshots; views match recomputation")
@@ -923,10 +931,14 @@ class IncrementalView:
     @property
     def strategy(self) -> str:
         """How a batch changes the view: "delta rules", "touched groups"
-        (the groups the batch touches, recomputed) or "recompute and diff"."""
+        (the groups or partitions the batch touches, recomputed), "touched
+        frames" (window rows near the change, recomputed: tested, not
+        proved) or "recompute and diff"."""
         if self.fallback is None:
             return "delta rules"
-        return "touched groups" if self.touched is not None else "recompute and diff"
+        if self.touched is None:
+            return "recompute and diff"
+        return "touched frames" if self.touched.framed is not None else "touched groups"
 
     @property
     def recomputed(self) -> bool:
@@ -1092,44 +1104,80 @@ class IncrementalView:
 
     def _touched_change(
         self, deltas: Mapping[str, pa.Table], new_tables: Mapping[str, pa.Table | Native]
-    ) -> tuple[pa.Table, int]:
+    ) -> tuple[pa.Table, int, str]:
         """The view's change by touched groups (`sverify._touched`), as a
-        weighted table, and how many groups the batch touched: the input's
-        change from its delta plans, its group keys, and the view over the
-        new input rows of those keys, which replace the state's rows of the
-        same keys (`TouchedGroups.touched_sound`)."""
+        weighted table; how many groups (or, for framed windows, rows) it
+        recomputed; and how: "groups", "frames", or "diff" where neither
+        applies to the batch. The input's change comes from its delta plans;
+        its group keys pick the groups, and the view over the new input rows
+        of those keys replaces the state's rows of the same keys
+        (`TouchedGroups.touched_sound`). Framed windows replace the rows of
+        the touched partitions near the changed times (`_touched.Framed`:
+        tested, not proved)."""
         spec = self.touched
         assert spec is not None
         con = self.con
         empty = weighted(self.schema.empty_table(), 1)
         parts = [r for r in self._run_deltas(spec.deltas, deltas) if r.num_rows]
         if not parts:
-            return empty, 0
+            return empty, 0, "groups"
         rows = pa.concat_tables(
             [r.drop_columns([r.column_names[-1]]).rename_columns(spec.input_names) for r in parts]
         )
+        fr = spec.framed
+        if fr is not None and rows.column(fr.ts).null_count:
+            fr = None  # a NULL time is in no frame: recompute the partitions
+        if fr is None and spec.recompute is None:
+            return self._diff(new_tables), 0, "diff"
         names = (self.name + "$in", self.name + "$keys", self.name + "$range")
+        keys = None
+        olo = ohi = None
         try:
-            put_table(con, names[0], rows)
-            keys = run_plan(con, spec.keys, self.engine)
-            put_table(con, names[1], keys)
-            plan = spec.recompute
-            # With a time bucket among the keys, read only the touched range.
-            if (r := spec.ranged) is not None and not keys.column(r.key).null_count:
-                b = keys.column(r.key)
-                lo, hi = _call("min", b).as_py(), _call("max", b).as_py() + r.width
-                bounds = {"__lo": pa.array([lo], b.type), "__hi": pa.array([hi], b.type)}
+            if spec.keys is not None:
+                put_table(con, names[0], rows)
+                keys = run_plan(con, spec.keys, self.engine)
+                put_table(con, names[1], keys)
+            if fr is not None:
+                t = rows.column(fr.ts)
+                olo = _call("min", t).as_py() - fr.end
+                ohi = _call("max", t).as_py() - fr.start
+                span = [olo + fr.start, ohi + fr.end, olo, ohi]
+                bounds = {c: pa.array([v], t.type) for c, v in zip(_FRAME, span, strict=True)}
                 put_table(con, names[2], pa.table(bounds))
-                plan = r.plan
-            new = run_plan_on(con, plan, self.engine, new_tables, self.tables)
+                new = run_plan_on(con, fr.plan, self.engine, new_tables, self.tables)
+            else:
+                assert spec.recompute is not None and keys is not None
+                plan = spec.recompute
+                # With a time bucket among the keys, read only the touched range.
+                if (r := spec.ranged) is not None and not keys.column(r.key).null_count:
+                    b = keys.column(r.key)
+                    lo, hi = _call("min", b).as_py(), _call("max", b).as_py() + r.width
+                    bounds = {"__lo": pa.array([lo], b.type), "__hi": pa.array([hi], b.type)}
+                    put_table(con, names[2], pa.table(bounds))
+                    plan = r.plan
+                new = run_plan_on(con, plan, self.engine, new_tables, self.tables)
         finally:
             for n in names:
                 con.drop(n)
         # With retention, the final buckets stay as they are.
         new = self._kept(new.cast(self.schema))
-        old = self._kept(arrow_of(self.store.with_keys(self.state, spec.columns, keys)))
-        change = self._merge(weighted(new, 1), self.store.negated(old))
-        return arrow_of(change), keys.num_rows
+        if keys is not None:
+            old = arrow_of(self.store.with_keys(self.state, spec.columns, keys))
+        else:
+            old = arrow_of(self.state)
+        if fr is not None:
+            c = old.column(fr.column)
+            inside = _call(
+                "and",
+                _call("greater_equal", c, pa.scalar(olo, c.type)),
+                _call("less_equal", c, pa.scalar(ohi, c.type)),
+            )
+            old = old.filter(_call("fill_null", inside, False))
+        change = self._merge(weighted(new, 1), self.store.negated(self._kept(old)))
+        if fr is not None:
+            return arrow_of(change), arrow_of(new).num_rows, "frames"
+        assert keys is not None
+        return arrow_of(change), keys.num_rows, "groups"
 
     def _result_on(self, new_tables: Mapping[str, pa.Table | Native]) -> pa.Table:
         """The view computed on the new inputs; nothing is replaced."""
@@ -1162,6 +1210,9 @@ class IncrementalView:
         if cutoff is None:
             return result
         return _retention.after(arrow_of(result), spec.column, cutoff)
+
+
+_FRAME = ("__lo", "__hi", "__olo", "__ohi")
 
 
 def run_plan_on(
@@ -1658,6 +1709,7 @@ class Pipeline:
             retention=self.retire() if retire else [],
             postconditions=pending.checked,
             touched=pending.touched,
+            framed=pending.framed,
             diffed=pending.diffed,
         )
 
@@ -1770,6 +1822,7 @@ class Pipeline:
         rerun = set(stale)
         read_new: set[str] = set()
         touched: dict[str, int] = {}
+        framed: dict[str, int] = {}
         diffed: list[str] = []
         for v in self._views:
             if v.recomputed or rerun & set(v.tables):
@@ -1789,7 +1842,11 @@ class Pipeline:
                 diffed.append(v.name)
                 delta = v._diff(new_tables)
             elif v.touched is not None:
-                delta, touched[v.name] = v._touched_change(deltas, new_tables)
+                delta, n, how = v._touched_change(deltas, new_tables)
+                if how == "diff":
+                    diffed.append(v.name)
+                else:
+                    (framed if how == "frames" else touched)[v.name] = n
             else:
                 delta = v._delta(deltas)
             deltas[v.name] = delta
@@ -1821,6 +1878,7 @@ class Pipeline:
             latest=latest,
             checked=checked,
             touched=touched,
+            framed=framed,
             diffed=diffed,
         )
 
@@ -1869,6 +1927,8 @@ class _Commit:
     """The views' runtime-checked postconditions, checked on the batch."""
     touched: dict[str, int] = field(default_factory=dict)
     """The groups each view maintained by touched groups recomputed."""
+    framed: dict[str, int] = field(default_factory=dict)
+    """The output rows each framed window view recomputed (tested only)."""
     diffed: list[str] = field(default_factory=list)
     """The views recomputed and diffed."""
 
