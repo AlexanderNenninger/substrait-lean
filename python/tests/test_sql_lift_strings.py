@@ -20,6 +20,9 @@ QUERIES = [
     "SELECT id, length(customer) AS l, substring(customer, 2, 2) AS a,"
     " substring(customer, -2, 2) AS b, substring(customer, 0, 2) AS c, substr(customer, 2) AS d"
     " FROM orders",
+    # The ends of the offsets and lengths DuckDB takes (#336).
+    "SELECT substring(customer, 4294967295, 2) AS a, substring(customer, -4294967296, 4294967295)"
+    " AS b, substring(customer, 1, 4294967295) AS c FROM orders",
     "SELECT id, trim('  ' || customer || ' ') AS t, ltrim(customer, 'a') AS l,"
     " rtrim(customer, 'y') AS r FROM orders",
     "SELECT id, strpos(customer, 'a') AS p, position('d' IN customer) AS q,"
@@ -55,6 +58,14 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT id FROM orders WHERE customer LIKE 'a\\%'", "backslash"),
         ("SELECT id FROM orders WHERE customer LIKE customer", "not a constant"),
         ("SELECT substring(customer, 1, -1) FROM orders", "negative length"),
+        # DuckDB raises outside these (#336).
+        ("SELECT substring(customer, 4294967296, 2) FROM orders", "offset 4294967296 is outside"),
+        ("SELECT substring(customer, -4294967297, 2) FROM orders", "offset -4294967297"),
+        ("SELECT substring(customer, 0, 4294967296) FROM orders", "length 4294967296 is outside"),
+        (
+            "SELECT substring(customer, 9223372036854775807, 9223372036854775807) FROM orders",
+            "outside DuckDB's supported range",
+        ),
         ("SELECT customer || 1 FROM orders", "|| of a int32"),
     ],
 )

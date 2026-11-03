@@ -3,7 +3,7 @@
   "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "insert",
-  "summary": {"agree": 29, "disagree": 1, "refused": 3, "skipped": 13},
+  "summary": {"agree": 29, "disagree": 1, "refused": 2, "skipped": 14},
   "disagree_sides": {"lean": 1},
   "skipped_files": {},
   "results": [
@@ -21,7 +21,7 @@
     {"file": "insert/insert_from_many_grouping_sets.test", "line": 39, "sql": "SELECT SUM(i), SUM(j), COUNT(*), COUNT(i), COUNT(j) FROM integers2", "cls": "skipped", "reason": "table integers2 has 1000005 rows"},
     {"file": "insert/insert_query_node.test", "line": 12, "sql": "SELECT * FROM t ORDER BY a;", "expected": "[\"1\", \"hello\", \"1.5\", \"2\", \"world\", \"2.5\"]", "duckdb": "[[\"1\", \"hello\", \"1.5\"], [\"2\", \"world\", \"2.5\"]]", "lean": "[[\"1\", \"hello\", \"1.5\"], [\"2\", \"world\", \"2.5\"]]", "engine": "[[\"1\", \"hello\", \"1.5\"], [\"2\", \"world\", \"2.5\"]]", "cls": "agree"},
     {"file": "insert/insert_query_node.test", "line": 22, "sql": "SELECT * FROM t WHERE a = 3;", "expected": "[\"3\", \"foo\", \"3.5\"]", "duckdb": "[[\"3\", \"foo\", \"3.5\"]]", "lean": "[[\"3\", \"foo\", \"3.5\"]]", "engine": "[[\"3\", \"foo\", \"3.5\"]]", "cls": "agree"},
-    {"file": "insert/insert_query_node.test", "line": 34, "sql": "WITH vals AS (SELECT 5 AS a, 'cte' AS b, 5.5 AS c) INSERT INTO t SELECT * FROM vals RETURNING a;", "cls": "refused", "reason": "lift: Insert is not supported; only SELECT queries are"},
+    {"file": "insert/insert_query_node.test", "line": 34, "sql": "WITH vals AS (SELECT 5 AS a, 'cte' AS b, 5.5 AS c) INSERT INTO t SELECT * FROM vals RETURNING a;", "cls": "skipped", "reason": "modifies data (INSERT in a query), outside sverify's scope"},
     {"file": "insert/insert_query_node.test", "line": 40, "sql": "SELECT * FROM t WHERE a = 5;", "expected": "[\"5\", \"cte\", \"5.5\"]", "duckdb": "[[\"5\", \"cte\", \"5.5\"]]", "lean": "[[\"5\", \"cte\", \"5.5\"]]", "engine": "[[\"5\", \"cte\", \"5.5\"]]", "cls": "agree"},
     {"file": "insert/insert_query_node.test", "line": 52, "sql": "SELECT * FROM t2;", "expected": "[\"42\", \"default\"]", "duckdb": "[[\"42\", \"default\"]]", "lean": "[[\"42\", \"default\"]]", "engine": "[[\"42\", \"default\"]]", "cls": "agree"},
     {"file": "insert/insert_query_node.test", "line": 64, "sql": "SELECT * FROM t3 ORDER BY a;", "expected": "[\"1\", \"hello\", \"1.5\", \"2\", \"world\", \"2.5\"]", "duckdb": "[[\"1\", \"hello\", \"1.5\"], [\"2\", \"world\", \"2.5\"]]", "lean": "[[\"1\", \"hello\", \"1.5\"], [\"2\", \"world\", \"2.5\"]]", "engine": "[[\"1\", \"hello\", \"1.5\"], [\"2\", \"world\", \"2.5\"]]", "cls": "agree"},
