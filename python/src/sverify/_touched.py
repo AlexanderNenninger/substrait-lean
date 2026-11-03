@@ -26,14 +26,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
-from sverify._retention import _aggregate, _bucket, _row_local
+from sverify._retention import _aggregate, _bucket, _own_tree, _row_local, _under
 
 SQL = "the view is SQL; touched groups need an Ibis expression"
-NOT_AGGREGATE = "not an aggregate under filters and projections of its rows"
+NOT_AGGREGATE = "not an aggregate or a window under filters and projections of its rows"
 
 
 @dataclass(frozen=True)
@@ -80,22 +82,19 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
 
     if isinstance(query, str):
         return SQL
-    found = _aggregate(query.op())
-    if found is None:
-        return NOT_AGGREGATE
-    agg, names = found
-    if not agg.groups:
-        return "the aggregate has no GROUP BY"
-    if not _row_local(list(agg.groups.values()), agg.parent):
-        return "a grouping key reads other rows"
-    if missing := [g for g in agg.groups if g not in names]:
-        return f"the view does not output the group key {missing[0]} unchanged"
-    parent = agg.parent.to_expr()
+    found = _split(query.op())
+    if isinstance(found, str):
+        return found
+    node, by, names, what = found
+    if missing := [g for g in by if g not in names]:
+        return f"the view does not output the {what} key {missing[0]} unchanged"
+    parent = node.parent.to_expr()  # type: ignore[attr-defined]
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
     except NotIncremental as e:
-        return f"the aggregate's input has no delta rules ({e})"
-    groups = list(agg.groups.values())
+        return f"the {what}'s input has no delta rules ({e})"
+    groups = list(by.values())
+    agg: Any = node
     rows = ibis.table(parent.schema(), name=f"{name}$in")
     keys = rows.select(
         **{f"k{i}": g.replace({agg.parent: rows.op()}).to_expr() for i, g in enumerate(groups)}
@@ -110,12 +109,59 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
         return written_plan(plan_json(None, q.to_expr()))  # type: ignore[arg-type,attr-defined]
 
     return Touched(
-        columns=[names[g] for g in agg.groups],
+        columns=[names[g] for g in by],
         deltas=deltas,
         input_names=list(parent.columns),
         keys=written_plan(plan_json(None, keys)),  # type: ignore[arg-type]
         recompute=over(parent.semi_join(touched, on)),
         ranged=_ranged(name, agg, groups, touched, over),
+    )
+
+
+def _split(
+    op: ops.Relation,
+) -> tuple[ops.Relation, dict[str, ops.Value], dict[str, str], str] | str:
+    """The relation a view ends in whose rows split by key: an aggregate
+    (its GROUP BY), or a projection whose window functions all share one
+    PARTITION BY. Returns it, its keys by the name of the column that holds
+    each, the view's column for each of its columns, and what it is; or why
+    the view has no such relation."""
+    found = _aggregate(op)
+    if found is not None:
+        agg, names = found
+        if not agg.groups:
+            return "the aggregate has no GROUP BY"
+        if not _row_local(list(agg.groups.values()), agg.parent):
+            return "a grouping key reads other rows"
+        return agg, dict(agg.groups), names, "group"
+    found = _under(op, _windowed)
+    if found is None:
+        return NOT_AGGREGATE
+    proj, names = found
+    assert isinstance(proj, ops.Project)
+    wins = [w for v in proj.values.values() for w in v.find(ops.WindowFunction, filter=_own_tree)]
+    parts = {tuple(w.group_by) for w in wins}
+    if len(parts) != 1 or not (part := next(iter(parts))):
+        return "the window functions do not share one PARTITION BY"
+    for v in proj.values.values():
+        if v.find(ops.Subquery, filter=_own_tree) or any(
+            f.rel != proj.parent for f in v.find(ops.Field, filter=_own_tree)
+        ):
+            return "a window reads another relation"
+    if any(isinstance(w.func, ops.Analytic) and not w.order_by for w in wins):
+        return "an analytic window function has no ORDER BY"
+    by = {}
+    for p in part:
+        name = next((n for n, v in proj.values.items() if v == p), None)
+        if name is None:
+            return "the view does not output its PARTITION BY keys"
+        by[name] = p
+    return proj, by, names, "partition"
+
+
+def _windowed(op: ops.Relation) -> bool:
+    return isinstance(op, ops.Project) and any(
+        v.find(ops.WindowFunction, filter=_own_tree) for v in op.values.values()
     )
 
 
