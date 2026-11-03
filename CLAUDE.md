@@ -103,7 +103,12 @@ changes coverage commits it, after `sverify_dev.catalogue --write`.
 
 ## Adding functions and coverage cases
 
-Parallel PRs used to conflict in two shared lists; both are now split by area.
+Parallel PRs used to conflict in shared lists and dispatch tables; these are
+now split by area. The areas are the same everywhere: `core` (logic,
+comparisons, NULLs, arithmetic, math, bitwise), `strings` (with LIKE, regex,
+digests), `temporal`, `nested` (lists, structs, lambdas, UNNEST),
+`aggregates`, `windows`, `relations` and `casts`. A feature edits its area's
+file; touch the shared `_base.py` only for what the area files say lives there.
 
 - **Substrait function** (`SubstraitLean/Write.lean`): add `(anchor, name)` at
   the end of its area's list (`coreFns`, `stringFns`, `temporalFns`,
@@ -116,6 +121,24 @@ Parallel PRs used to conflict in two shared lists; both are now split by area.
   that module's `CASES`, and put its refusals in the same module's `REFUSED`,
   `TIE_FREE`, … (`coverage.py` documents them). A new area is a new module
   listed in `coverage_cases.AREAS`.
+- **SQL writer** (`python/src/sverify/sql/core/<area>.py`, `strings`,
+  `temporal`, `nested`): the function's case in the area's `call` (`mkCall`),
+  its SQL in the area's `expr`, and its result kind in the area's `UN_KINDS` or
+  `BIN_KINDS`. In `_base.py`, add the op to the area's `<Area>UnOp`/`<Area>BinOp`
+  Literal and the `Dialect` hook under the area's comment. Core functions,
+  aggregates, windows, casts and relations are still in `_base.py`.
+- **SQL lift** (`python/src/sverify/sql_lift/<area>.py`): the rule function and
+  its entry in the area's `register({...})`, keyed by SQLGlot node type.
+  Aggregates (`_AGGREGATES`), windows (`_RANKING`), joins, set operations and
+  UNNEST are still in `_base.py`'s `_Lift`.
+- **Ibis producer** (`python/src/sverify/ibis_substrait/<area>.py`): the rule
+  and its entry in the area's `register({...})` (expressions),
+  `register_rels({...})` (relations) or `register_refusals({...})`. Aggregates
+  are a branch of `aggregates.measure`, window functions of `windows.window`;
+  decimal typing (`_exact`) is in `_base.py`.
+- **Tests of the lift**: `python/tests/test_sql_lift_<area>.py`, with the
+  shared tables in `python/tests/_sql_lift.py`.
+- **Reference semantics** (`docs/reference-semantics.md`): the area's section.
 
 ## Voice
 
