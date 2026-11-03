@@ -184,3 +184,50 @@ def test_max_rows_is_checked_on_the_data() -> None:
     with pytest.raises(PreconditionError, match="max_rows"):
         count(bound_orders([(1, "ada", 30), (2, "bob", 40)]))
     count(bound_orders([(1, "ada", 30)]))
+
+
+hosts = ibis.table({"host": "string", "cpu": "float64", "n": "int64"}, name="hosts")
+HOSTS = [*CPU, _.n >= 0, _.n <= 1000, _.n.notnull(), sv.max_rows(10_000_000)]
+
+
+def test_casts_of_rounded_aggregates_keep_their_bounds() -> None:
+    # The cast truncates both ends of the error bound, and fits.
+    rolled = hosts.group_by("host").aggregate(
+        a=hosts.cpu.mean(), s=hosts.n.cast("float64").sum(), av=hosts.n.cast("float64").mean()
+    )
+    casts = rolled.mutate(
+        ai=_.a.cast("int64"),
+        avi=_.av.cast("int64"),
+        si=_.s.cast("int64"),
+        ad=_.a.cast("decimal(6, 2)"),
+    )
+    report = sv.verify(
+        casts,
+        requires={"hosts": HOSTS},
+        ensures=[
+            _.ai >= 0,
+            _.ai <= 100,
+            _.avi <= 1000,
+            sv.approx(_.s <= 10_000_000_000),
+            sv.approx(_.av <= 1000),
+            _.ad <= 100.01,
+        ],
+    )
+    assert report.proved, str(report)
+    assert not report.issues
+    # Rounding can take the sum past the exact bound, and its cast with it.
+    loose = sv.verify(casts, requires={"hosts": HOSTS}, ensures=[_.si <= 10_000_000_000])
+    assert not loose.proved
+
+
+def test_casts_of_rounded_aggregates_need_a_cap() -> None:
+    capless = [c for c in HOSTS if not isinstance(c, sv.contracts.MaxRows)]
+    rolled = hosts.group_by("host").aggregate(ai=hosts.cpu.mean().cast("int64"))
+    report = sv.verify(rolled, requires={"hosts": capless}, ensures=[_.ai >= 0])
+    assert [i.kind for i in report.issues] == ["cast out of range"]
+
+
+def test_a_decimal_too_narrow_for_the_bound_may_overflow() -> None:
+    rolled = hosts.group_by("host").aggregate(ad=hosts.cpu.mean().cast("decimal(4, 2)"))
+    report = sv.verify(rolled, requires={"hosts": HOSTS}, ensures=[])
+    assert report.issues and not report.proved

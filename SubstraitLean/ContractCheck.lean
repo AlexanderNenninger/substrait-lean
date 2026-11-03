@@ -338,8 +338,10 @@ def check (input : Json) : Except String Report := do
     issues
     rows
     bounds
-    inferred := Infer.merged A (bounds.filter (·.1.isError))
-    inferredNes := Infer.mergedNes (bounds.filter (·.1.isError))
+    -- Only for the issues the caps leave.
+    inferred := Infer.merged A (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
+    inferredNes :=
+      Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree }
 
 end Substrait.ContractCheck
