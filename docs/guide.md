@@ -597,6 +597,11 @@ deletes, recomputes those groups from the new input (a semi-join on the
 keys), and replaces their rows. This holds for every measure, because an
 aggregate's groups are independent (`TouchedGroups.touched_sound` in
 [`SubstraitLean/TouchedGroups.lean`](../SubstraitLean/TouchedGroups.lean)).
+A projection whose window functions share one `PARTITION BY`, with the
+partition keys among its columns, recomputes the partitions a batch touches
+the same way (`TouchedGroups.touched_window_sound`, for inputs without ties on
+the partition and sort columns). With a time bucket among the keys, the
+recompute reads only the range the touched buckets cover.
 `status()` says "touched groups recomputed", and the refresh summary gives
 how many groups each batch touched ("12 touched group(s) recomputed") or
 "recomputed and diffed". Filters and projections over the aggregate that
