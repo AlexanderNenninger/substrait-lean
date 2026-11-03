@@ -18,7 +18,7 @@ key. SQLGlot is trusted for parsing and name resolution only; the types of
 expressions come from the profile, not from SQLGlot's typing.
 
 How the SQL text reads is DuckDB's in both modes (`characterization/duckdb/
-FACTS.md`, F1–F3): `/` divides as doubles, `//` divides integers, NULLs sort
+facts/`, F1–F3): `/` divides as doubles, `//` divides integers, NULLs sort
 last, an integer literal has the narrowest type that holds it, `1.5` is a
 `DECIMAL(2, 1)`. The **semantics** (`Profile`) is what the functions then do
 where DuckDB and the reference (#185, #209) differ:

@@ -1,0 +1,48 @@
+{
+  "id": "duckdb-IO1",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "unity_catalog: ATTACH ignores a named secret unless it names it",
+  "verdict": "use an unnamed secret, or ATTACH ... (SECRET name)",
+  "area": "io",
+  "layer": "io",
+  "constructs": [
+    "CREATE SECRET (TYPE unity_catalog)",
+    "ATTACH ... (TYPE unity_catalog)"
+  ],
+  "description": [
+    "`ATTACH '<catalog>' AS x (TYPE unity_catalog)` uses only the default (unnamed) `unity_catalog` secret. With a named secret (`CREATE SECRET uc (TYPE unity_catalog, ...)`) and no `SECRET` option, it does not fail on the missing secret: it requests the API with an empty endpoint, `/api/2.1/unity-catalog/...` with no host, and fails with `Could not resolve hostname`.",
+    "Workaround: create the secret without a name, or name it in the ATTACH: `(TYPE unity_catalog, SECRET uc)`. The endpoint is the server's root (`http://host:port`, with or without a trailing slash): one with the API path gets the path twice (404), and one without a scheme is refused (`Unsupported URL scheme`)."
+  ],
+  "status": "workaround",
+  "provenance": [
+    {
+      "checked_at": "2026-11-03",
+      "method": "manual-repro",
+      "checked_by": "homelab catalog session (AlexanderNenninger/homelab#9): DuckDB 2.0.0 in Python, extensions unity_catalog cc59382f52, delta 9dcfb65b99, httpfs 77392a7207, against Unity Catalog OSS 0.7.0 with unitycatalog/unitycatalog#1959 on MinIO",
+      "evidence": [
+        {
+          "sql": "CREATE SECRET uc (TYPE unity_catalog, TOKEN 'none', ENDPOINT 'http://unitycatalog:8080/', AWS_REGION 'us-east-1'); ATTACH 'homelab' AS lake (TYPE unity_catalog)",
+          "observed": "IO Error: Could not resolve hostname error for HTTP GET to '/api/2.1/unity-catalog/schemas?catalog_name=homelab'"
+        },
+        {
+          "sql": "the same named secret; ATTACH 'homelab' AS lake (TYPE unity_catalog, SECRET uc)",
+          "observed": "attached; schemas ci, cycling, metrics"
+        },
+        {
+          "sql": "CREATE SECRET (TYPE unity_catalog, ..., ENDPOINT 'http://unitycatalog:8080'); ATTACH 'homelab' AS lake (TYPE unity_catalog)",
+          "observed": "attached; the same with ENDPOINT 'http://unitycatalog:8080/'"
+        },
+        {
+          "sql": "... ENDPOINT 'http://unitycatalog:8080/api/2.1/unity-catalog' ...",
+          "observed": "Request to 'http://unitycatalog:8080/api/2.1/unity-catalog/api/2.1/unity-catalog/schemas?catalog_name=homelab' failed (HTTP 404)"
+        },
+        {
+          "sql": "... ENDPOINT 'unitycatalog:8080' ...",
+          "observed": "Failed to initialize curl URL: Unsupported URL scheme"
+        }
+      ],
+      "notes": "A first reading blamed the missing trailing slash; the same session's check of each combination showed the secret's name was the cause."
+    }
+  ]
+}

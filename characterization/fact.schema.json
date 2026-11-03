@@ -17,11 +17,11 @@
     "title": {"description": "A short name for the finding.", "type": "string"},
     "verdict": {"description": "One line for the summary table.", "type": "string"},
     "area": {
-      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts"]
+      "enum": ["integers", "doubles", "decimals", "strings", "temporal", "nested", "aggregates", "windows", "relations", "casts", "io"]
     },
     "layer": {
-      "description": "semantics (default): what a plan computes. frontend: how the engine's SQL text becomes a plan.",
-      "enum": ["semantics", "frontend"]
+      "description": "semantics (default): what a plan computes. frontend: how the engine's SQL text becomes a plan. io: how the engine reaches data (extensions, catalogs, object stores, credentials), outside what a plan computes.",
+      "enum": ["semantics", "frontend", "io"]
     },
     "constructs": {
       "description": "The SQL functions, operators or plan nodes concerned.",
@@ -35,8 +35,8 @@
     "description": {"description": "What the engine does.", "$ref": "#/$defs/prose"},
     "reference": {"description": "What Substrait and sverify's reference semantics (Rel.eval, verify) do.", "$ref": "#/$defs/prose"},
     "status": {
-      "description": "deviation: Lean disagrees with the reference; fixed: it did and no longer does; decided: an open choice, now decided; shimmed: the engine needs sverify's SQL to rewrite it; no-finding: the engine or Lean already gives the reference; open: undecided.",
-      "enum": ["deviation", "fixed", "decided", "shimmed", "no-finding", "open"]
+      "description": "deviation: Lean disagrees with the reference; fixed: it did and no longer does; decided: an open choice, now decided; shimmed: the engine needs sverify's SQL to rewrite it; no-finding: the engine or Lean already gives the reference; open: undecided; workaround: (io) the engine needs settings or a usage the fact gives.",
+      "enum": ["deviation", "fixed", "decided", "shimmed", "no-finding", "open", "workaround"]
     },
     "ledger_entries": {"description": "About how many replay ledger entries show it.", "type": "integer", "minimum": 0},
     "provenance": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},

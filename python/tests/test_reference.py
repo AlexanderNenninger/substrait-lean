@@ -1,6 +1,6 @@
 """The reference model's decisions (#185), finding by finding.
 
-`characterization/duckdb/FACTS.md` judges DuckDB and the Lean model against
+`characterization/duckdb/facts/` judges DuckDB and the Lean model against
 Substrait's semantics. Each test here pins what `Rel.eval` and `verify` do
 for one of its findings (R1…R14), on the plan sverify's lift writes for DuckDB's
 SQL with the reference's semantics (`semantics="reference"`), and checks the

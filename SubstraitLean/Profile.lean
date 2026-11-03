@@ -12,7 +12,7 @@ profile (`Profile.reference`), and `Expr.evalP_reference` proves that
 evaluating under it is `eval` and `issues`.
 
 An engine's profile is a diff against the reference, from its
-characterization (`characterization/duckdb/FACTS.md` for DuckDB). A **shim**
+characterization (`characterization/duckdb/facts/` for DuckDB). A **shim**
 rewrites a plan into one the engine evaluates to the reference's outcome,
 adding guards (`UnFn.raise`, DuckDB's `error()`) where the engine is laxer,
 or refuses it. A shimmed plan is an ordinary plan, so it is written and run
@@ -239,7 +239,7 @@ theorem FloatCode.negInf_eq_neg_posInf : FloatCode.negInf = -FloatCode.posInf :=
 /-- The DuckDB settings its profile depends on. -/
 structure DuckDBSettings where
   /-- `error_on_division_by_zero`, on by default since DuckDB 2.0: integer
-  `//` and `%` by zero raise, else give NULL (`characterization/duckdb/FACTS.md`,
+  `//` and `%` by zero raise, else give NULL (`characterization/duckdb/facts/`,
   R2, R3). Doubles follow it only with `ieeeOps` off. -/
   errorOnDivZero : Bool := true
   /-- `ieee_floating_point_ops`, on by default: doubles follow IEEE 754, so
