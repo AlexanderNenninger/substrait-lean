@@ -259,7 +259,9 @@ except VerificationError as e:
   tables bound to data (`sv.connect()`), at call time.
 * Unproved postconditions raise `VerificationError`. With
   `on_unproved="runtime"` they are checked on the output data instead
-  (`PostconditionError`); with `on_unproved="warn"` you get a warning.
+  (`PostconditionError`): on bound tables at call time, on a node at every
+  refresh (see [Nodes](#nodes-composing-storing-refreshing)). With
+  `on_unproved="warn"` you get a warning.
 * What Lean tracks per column: whether it can be NULL, integer, double
   and timestamp ranges, which booleans it can be, and whether it can be a
   string. Filters (`amount > 10`, `x IN (1, 2, 3)`, `x IS NOT NULL`) refine
@@ -451,6 +453,29 @@ A node without delta rules (left join, aggregate, window, `DISTINCT`,
 nodes keep their guarantees in every state: their preconditions on the
 sources are checked in full once, then only on each batch.
 
+A node whose transform has `on_unproved="runtime"` checks the postconditions
+Lean could not prove on its output at every refresh: on the full result the
+first time, then on the rows each batch inserts, before its sink commits. A
+violation raises `PostconditionError`, and the refresh writes nothing. The
+report marks those postconditions as checked on data, and transforms
+downstream may assume only the proved ones, so such a node is stored with
+`.write` before another transform reads it:
+
+```python
+@sv.transform(ensures=[_.amount < 1_000], on_unproved="runtime")
+def capped(orders):
+    return orders.select(orders.id, orders.amount)
+
+n = orders.pipe(capped)    # no VerificationError: checked at refresh
+print(capped.last_report)
+# ensures (_.amount < 1000): NOT proved (it is TRUE, FALSE or NULL); checked on the output data
+# ...
+print(n.refresh())
+# capped:
+#   computed
+#   ensures capped: (_.amount < 1000) (checked on data)
+```
+
 `.write(sink)` stores a node, as a cache in the middle of a job or as its
 output, and returns the stored node, which transforms downstream read as a
 versioned source. Without a `.write` in between, transforms fuse into one
@@ -550,6 +575,55 @@ checks. A `sverify.io.Sink` implements `write(change)` and optionally
 store credentials, or a function that renews them, for every table that
 needs them. [Notebook 5](../notebooks/05_pipelines_and_engines.py) of the tour walks
 through both.
+
+`sverify.io.flight.FlightSource(location, table)` reads a table of a
+numbered batch log on an Arrow Flight server (`pip install
+'sverify[flight]'`). The server numbers each batch it receives with
+`do_put`, one counter across tables, and keeps them in order. `do_get` with
+the ticket `{"table": t, "after": n}` streams the batches numbered above
+`n`, each with `{"seq": s}` as app metadata, and names in the stream's schema
+metadata the `floor`, the lowest number it still holds; an optional
+`"until": m` stops at `m`. The source's cursor is the number of the last
+batch read. A refresh appends the new batches, as they arrived and without a
+copy, and the batches below the floor, which the server dropped past its
+retention, come back as deletes, so the source holds the server's window of
+rows. The report states what this assumes: the server numbers batches in
+order of arrival, never changes one, and drops only whole batches below its
+floor. `FlightLog()` is a small in-memory server that keeps such a log
+(`keep=` batches per table, or `drop(table, below=n)`), the one
+[the tests](../python/tests/test_io_flight.py) run against. With `schema=`, a
+`FlightSource` proves contracts without asking the server, and `token=`
+sends a bearer token:
+
+```python
+import pyarrow.flight as fl
+from sverify.io.flight import FlightLog, FlightSource
+
+log = FlightLog(keep=10_000)  # on 127.0.0.1, at a free port
+location = f"grpc://127.0.0.1:{log.port}"
+
+
+def send(rows):
+    batch = pa.table(rows)
+    writer, _ = fl.connect(location).do_put(fl.FlightDescriptor.for_path("samples"), batch.schema)
+    writer.write_table(batch)
+    writer.close()
+
+
+@sv.transform()
+def busy(samples):
+    return samples.filter(samples.cpu > 0.5)
+
+
+send({"host": ["pi3"], "cpu": [0.75]})
+node = busy(FlightSource(location, "samples"))
+node.refresh()
+send({"host": ["nas"], "cpu": [0.9]})
+print(node.refresh())
+# busy:
+#   samples@v1→v2: 1 insert(s), 0 delete(s); Δ trusted as rows appended to samples v1→v2, assuming the Flight server numbers batches in order of arrival, ...
+log.shutdown()
+```
 
 A restarted job resumes from its sink and skips the recompute. You build the
 same nodes again and refresh; a stored node takes the stored rows only if
