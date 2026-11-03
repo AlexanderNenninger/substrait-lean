@@ -83,6 +83,7 @@ from sverify._weighted import (
     positive,
     row_count,
     rows_of,
+    split_matching,
     weighted,
 )
 from sverify.contracts import (
@@ -1916,12 +1917,14 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
     occurrence each) and inserted. Raises `ValueError`, naming a row, if a
     delete is not in `current`, even where the change also inserts it."""
     deletes = negative(change)
-    kept = consolidated(weighted(current, 1), deletes)
+    inserts = positive(change)
+    if not deletes.num_rows:
+        return concat([current, expanded(inserts)])
+    # Only the rows equal to a deleted row change, at the cost of the change.
+    hit, rest = split_matching(current, deletes)
+    kept = consolidated(weighted(hit, 1), deletes)
     missing = negative(kept)
     if missing.num_rows:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
-    inserts = positive(change)
-    if not deletes.num_rows:
-        return concat([current, expanded(inserts)])
-    return expanded(consolidated(kept, inserts))
+    return concat([rest, expanded(consolidated(kept, inserts))])
