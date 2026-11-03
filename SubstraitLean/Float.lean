@@ -124,8 +124,8 @@ to 53 significant bits, halves to even, as IEEE converts it. Magnitudes from
 rounds them to `±∞`, but no integer the model holds (64 bits at most) gets
 there, and it lets the checker know the double is finite, so that no `SUM` or `AVG` of
 converted integers can add `+∞` and `-∞` (#257). Exact, so that the checker
-can use that the conversion is monotone (`ofInt_mono`). -/
-@[irreducible] def ofInt (i : Int) : Int :=
+can use that the conversion is monotone (`ofIntExact_mono`). -/
+def ofIntExact (i : Int) : Int :=
   max (-(2 * (maxMag : Int) + 1)) (min (2 * (maxMag : Int) + 1) (ofIntRaw i))
 
 theorem posInf_eq : posInf = 2 * maxMag + 3 := by
@@ -151,12 +151,12 @@ theorem finite_bounds (c : Int) : negInf < finite c ∧ finite c < posInf := by
     Bool.false_eq_true, false_and, true_and, ne_eq, not_false_eq_true, ite_true]
   split <;> (try split) <;> omega
 
-theorem ofInt_bounds (i : Int) : negInf < ofInt i ∧ ofInt i < posInf := by
-  simp only [ofInt, posInf_eq, negInf_eq]; omega
+theorem ofIntExact_bounds (i : Int) : negInf < ofIntExact i ∧ ofIntExact i < posInf := by
+  simp only [ofIntExact, posInf_eq, negInf_eq]; omega
 
-theorem ofInt_ne_zero {i : Int} (h : i ≠ 0) : ofInt i ≠ 0 := by
+theorem ofIntExact_ne_zero {i : Int} (h : i ≠ 0) : ofIntExact i ≠ 0 := by
   have := maxMag_pos
-  simp only [ofInt, ofIntRaw, h, ite_false]
+  simp only [ofIntExact, ofIntRaw, h, ite_false]
   split <;> omega
 
 theorem roundTo2_mono (s : Nat) {n n' : Nat} (h : n ≤ n') : roundTo2 s n ≤ roundTo2 s n' := by
@@ -308,10 +308,32 @@ theorem ofIntRaw_mono {i j : Int} (h : i ≤ j) : ofIntRaw i ≤ ofIntRaw j := b
     | (have := hm (a := i.natAbs) (b := j.natAbs) (by omega); have := h0 i.natAbs; omega)
     | (have := h0 i.natAbs; have := h0 j.natAbs; omega)
 
-/-- The conversion of integers to doubles is monotone. -/
-theorem ofInt_mono {i j : Int} (h : i ≤ j) : ofInt i ≤ ofInt j := by
+theorem ofIntExact_mono {i j : Int} (h : i ≤ j) : ofIntExact i ≤ ofIntExact j := by
   have := ofIntRaw_mono h
-  simp only [ofInt]; omega
+  simp only [ofIntExact]; omega
+
+/-- A conversion of integers to doubles, with what the checker knows of it. -/
+structure IntToDouble where
+  conv : Int → Int
+  bounds : ∀ i, negInf < conv i ∧ conv i < posInf
+  ne_zero : ∀ {i}, i ≠ 0 → conv i ≠ 0
+  mono : ∀ {i j}, i ≤ j → conv i ≤ conv j
+
+/-- `ofIntExact`, behind a constant the kernel does not unfold: proofs about
+plans use only the properties above, as they did of the native conversion
+before, and type-checking them never computes a rounding. -/
+opaque intToDouble : IntToDouble :=
+  ⟨ofIntExact, ofIntExact_bounds, ofIntExact_ne_zero, ofIntExact_mono⟩
+
+/-- An integer as a double (`ofIntExact`). -/
+def ofInt (i : Int) : Int := intToDouble.conv i
+
+theorem ofInt_bounds (i : Int) : negInf < ofInt i ∧ ofInt i < posInf := intToDouble.bounds i
+
+theorem ofInt_ne_zero {i : Int} (h : i ≠ 0) : ofInt i ≠ 0 := intToDouble.ne_zero h
+
+/-- The conversion of integers to doubles is monotone. -/
+theorem ofInt_mono {i j : Int} (h : i ≤ j) : ofInt i ≤ ofInt j := intToDouble.mono h
 
 -- The native conversion agrees, also where it rounds (`2⁵³ + 1` is a tie).
 #guard [0, 1, -1, 7, -12345, 2 ^ 53, 2 ^ 53 + 1, 2 ^ 53 + 3, -(2 ^ 53 + 1), 2 ^ 63 - 1,
