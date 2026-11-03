@@ -727,6 +727,163 @@ theorem StdModel.dmean_spec {ns nt : ℕ} (hs : 1 ≤ ns) (ht1 : 1 ≤ nt) (hn :
     linarith
   exact dmean_arith hsr htr hn' (by linarith) k1 hyb (by rw [hD]; exact abs_sub _ _) hms hmt hAs hAt
 
+/-! ## The tree of updates and merges -/
+
+/-- The facts about the values a bound needs: for `n ≤ 2³²` values at most
+`2³⁹⁹` in magnitude. -/
+theorem list_facts {xs : List ℝ} (hne : xs ≠ []) (hN : xs.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 399) :
+    0 ≤ mag xs ∧ mag xs ≤ 2 ^ 432 ∧ xs.length * tiny ≤ mag xs ∧
+      |mx (dupL xs)| * xs.length ≤ mag xs ∧ |mx (dupL xs)| ≤ 2 ^ 400 ∧
+      0 ≤ comoment (dupL xs) ∧ comoment (dupL xs) ≤ 2 ^ 830 := by
+  have ht := tiny_pos
+  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  have hK1 : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have hK : (xs.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN
+  have hmag := mag_le_of_bound hB
+  have hm := abs_mx_dupL xs
+  refine ⟨mag_nonneg xs, ?_, length_mul_tiny_le_mag xs, hm, ?_, comoment_dupL_nonneg xs, ?_⟩
+  · have : (xs.length : ℝ) * (2 ^ 399 + tiny) ≤ 2 ^ 32 * (2 ^ 399 + 1) :=
+      mul_le_mul hK (by linarith) (by positivity) (by norm_num)
+    linarith
+  · have h1 : |mx (dupL xs)| * xs.length ≤ xs.length * (2 ^ 399 + tiny) := le_trans hm hmag
+    have h2 : |mx (dupL xs)| ≤ 2 ^ 399 + tiny := by
+      rw [mul_comm] at h1; exact le_of_mul_le_mul_left h1 (by linarith)
+    linarith
+  · have h1 := comoment_dupL_le xs
+    have h2 := abs_sum_le_of_bound (B := 2 ^ 798) (xs := xs.map (· ^ 2)) (by
+      intro y hy; obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hy
+      rw [abs_of_nonneg (sq_nonneg z)]
+      calc z ^ 2 = |z| ^ 2 := (sq_abs z).symm
+        _ ≤ (2 ^ 399) ^ 2 := by gcongr; exact hB z hz
+        _ = 2 ^ 798 := by norm_num)
+    simp only [List.length_map] at h2
+    have h3 := le_abs_self (xs.map (· ^ 2)).sum
+    have : (xs.length : ℝ) * 2 ^ 798 ≤ 2 ^ 32 * 2 ^ 798 := by gcongr
+    linarith
+
+/-- The bound of the tree invariant, `(1 + 3nu)(17 u A D + 9 u n S + 60 u² L A² + 12 u tiny L)`. -/
+noncomputable def tBound (n A Ds S L : ℝ) : ℝ :=
+  (1 + 3 * n * u) * (17 * u * A * Ds + 9 * u * n * S + 60 * u ^ 2 * L * A ^ 2 + 12 * u * tiny * L)
+
+theorem tBound_le {K A Ds S L : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) (hA0 : 0 ≤ A)
+    (hA : A ≤ 2 ^ 432) (hDs0 : 0 ≤ Ds) (hDs : Ds ≤ 2 ^ 436) (hS0 : 0 ≤ S) (hS : S ≤ 2 ^ 830)
+    (hL0 : 0 ≤ L) (hL : L ≤ 2 ^ 39) : tBound K A Ds S L ≤ 2 ^ 900 := by
+  unfold tBound
+  have hu := u_pos
+  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have ht := tiny_pos
+  have ht1 : tiny ≤ 1 := by unfold tiny; norm_num
+  have hKu : K * u ≤ 1 / 2 ^ 21 := by
+    calc K * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  have hLu : L * u ≤ 1 / 2 ^ 14 := by
+    calc L * u ≤ 2 ^ 39 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 14 := by norm_num
+  have c0 : 1 + 3 * K * u ≤ 2 := by linarith
+  have hAD : A * Ds ≤ 2 ^ 868 := by
+    have := mul_le_mul hA hDs hDs0 (by norm_num); norm_num at this ⊢; linarith
+  have c1 : 17 * u * A * Ds ≤ 2 ^ 868 := by
+    have h := mul_le_mul_of_nonneg_right (by linarith : 17 * u ≤ 1) (by positivity : 0 ≤ A * Ds)
+    linarith
+  have c2 : 9 * u * K * S ≤ 2 ^ 830 := by
+    have h := mul_le_mul_of_nonneg_right (by linarith : 9 * (K * u) ≤ 1) hS0; linarith
+  have hA2 : A ^ 2 ≤ 2 ^ 864 := by
+    calc A ^ 2 ≤ (2 ^ 432) ^ 2 := by gcongr
+      _ = 2 ^ 864 := by norm_num
+  have c3 : 60 * u ^ 2 * L * A ^ 2 ≤ 2 ^ 864 := by
+    have h1 : 60 * u ^ 2 * L ≤ 1 := by
+      have : u * (L * u) ≤ 1 / 2 ^ 53 * (1 / 2 ^ 14) := mul_le_mul hu' hLu (by positivity) (by norm_num)
+      nlinarith
+    have := mul_le_mul_of_nonneg_right h1 (sq_nonneg A); linarith
+  have c4 : 12 * u * tiny * L ≤ 1 := by
+    have := mul_le_mul hLu ht1 ht.le (by norm_num); nlinarith
+  have hsum : 17 * u * A * Ds + 9 * u * K * S + 60 * u ^ 2 * L * A ^ 2 + 12 * u * tiny * L
+      ≤ 2 ^ 870 := by linarith
+  have h0 : 0 ≤ 17 * u * A * Ds + 9 * u * K * S + 60 * u ^ 2 * L * A ^ 2 + 12 * u * tiny * L := by
+    positivity
+  have := mul_le_mul c0 hsum h0 (by norm_num)
+  linarith
+
+/-- `Ds ≤ 2⁴³⁶` from `Ds² ≤ L S`. -/
+theorem Ds_le {Ds L S : ℝ} (hDs0 : 0 ≤ Ds) (hS0 : 0 ≤ S) (hL : L ≤ 2 ^ 39) (hS : S ≤ 2 ^ 830)
+    (h : Ds ^ 2 ≤ L * S) : Ds ≤ 2 ^ 436 := by
+  have h1 : L * S ≤ 2 ^ 39 * 2 ^ 830 := by
+    rcases le_total 0 L with hL0 | hL0
+    · exact mul_le_mul hL hS hS0 (by norm_num)
+    · have : L * S ≤ 0 := mul_nonpos_of_nonpos_of_nonneg hL0 hS0
+      have : (0 : ℝ) ≤ 2 ^ 39 * 2 ^ 830 := by positivity
+      linarith
+  have h2 : Ds ^ 2 ≤ (2 ^ 436) ^ 2 := by
+    have : (2 : ℝ) ^ 39 * 2 ^ 830 ≤ (2 ^ 436) ^ 2 := by norm_num
+    linarith
+  nlinarith [h2]
+
+/-- Cauchy–Schwarz for three terms: `(a + b + c)² ≤ (p + q + r)(x + y + z)` when
+`a² ≤ p x`, `b² ≤ q y`, `c² ≤ r z`. -/
+theorem cs3 {a b c p q r x y z : ℝ} (ha : 0 ≤ a) (hb : 0 ≤ b) (hc : 0 ≤ c) (hp : 0 ≤ p)
+    (hq : 0 ≤ q) (hr : 0 ≤ r) (hx : 0 ≤ x) (hy : 0 ≤ y) (hz : 0 ≤ z)
+    (h1 : a ^ 2 ≤ p * x) (h2 : b ^ 2 ≤ q * y) (h3 : c ^ 2 ≤ r * z) :
+    (a + b + c) ^ 2 ≤ (p + q + r) * (x + y + z) := by
+  -- `2 a b ≤ p y + q x` from `(a b)² ≤ (p y)(q x)`
+  have k : ∀ {a b p q x y : ℝ}, 0 ≤ a → 0 ≤ b → 0 ≤ p → 0 ≤ q → 0 ≤ x → 0 ≤ y →
+      a ^ 2 ≤ p * x → b ^ 2 ≤ q * y → 2 * (a * b) ≤ p * y + q * x := by
+    intro a b p q x y ha hb hp hq hx hy h1 h2
+    have e1 : (a * b) ^ 2 ≤ (p * y) * (q * x) := by
+      have := mul_le_mul h1 h2 (sq_nonneg _) (by positivity)
+      nlinarith
+    have e2 : 0 ≤ p * y := by positivity
+    have e3 : 0 ≤ q * x := by positivity
+    nlinarith [sq_nonneg (p * y - q * x), sq_nonneg (a * b), mul_nonneg ha hb]
+  have k1 := k ha hb hp hq hx hy h1 h2
+  have k2 := k ha hc hp hr hx hz h1 h3
+  have k3 := k hb hc hq hr hy hz h2 h3
+  nlinarith
+
+/-- The invariant of a tree of Welford updates and Chan merges over `xs`:
+the mean within `6 u A`, and the co-moment within `tBound`, where
+`(Σ|D|)² ≤ L(n) S`. -/
+def TInv (xs : List ℝ) (s : ℕ × ℝ × ℝ) : Prop :=
+  s.1 = xs.length ∧ |s.2.1 - mx (dupL xs)| ≤ 6 * u * mag xs ∧
+    ∃ Ds : ℝ, 0 ≤ Ds ∧ Ds ^ 2 ≤ Lw xs.length * comoment (dupL xs) ∧
+      |s.2.2 - comoment (dupL xs)|
+        ≤ tBound xs.length (mag xs) Ds (comoment (dupL xs)) (Lw xs.length)
+
+theorem Lw_two (n : ℕ) : 2 * (n : ℝ) ≤ Lw n := by
+  unfold Lw
+  have : (0 : ℝ) ≤ Nat.clog 2 n := by positivity
+  have : (0 : ℝ) ≤ n := by positivity
+  nlinarith
+
+/-- A thread's state, from Welford's updates, meets the tree invariant. -/
+theorem tInv_of_wInv {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : WInv xs s) : TInv xs s := by
+  obtain ⟨hn, hm, Ds, hDs0, hDs, hC⟩ := h
+  refine ⟨hn, hm, Ds, hDs0, ?_, le_trans hC ?_⟩
+  · have := (Lw_ge xs.length).1
+    have := comoment_dupL_nonneg xs
+    nlinarith
+  · unfold tBound
+    have hu := u_pos
+    have ht := tiny_pos
+    have h2 := Lw_two xs.length
+    have hS := comoment_dupL_nonneg xs
+    have hA := mag_nonneg xs
+    have hn0 : (0 : ℝ) ≤ xs.length := by positivity
+    have a1 : 1 + 2 * (xs.length : ℝ) * u ≤ 1 + 3 * xs.length * u := by nlinarith
+    have a2 : 17 * u * mag xs * Ds + 7 * u * xs.length * comoment (dupL xs)
+        + 103 * u ^ 2 * xs.length * mag xs ^ 2 + 3 * xs.length * u * tiny
+        ≤ 17 * u * mag xs * Ds + 9 * u * xs.length * comoment (dupL xs)
+          + 60 * u ^ 2 * Lw xs.length * mag xs ^ 2 + 12 * u * tiny * Lw xs.length := by
+      have p1 : 0 ≤ u * xs.length * comoment (dupL xs) := by positivity
+      have p2 : 103 * u ^ 2 * xs.length * mag xs ^ 2 ≤ 60 * u ^ 2 * Lw xs.length * mag xs ^ 2 := by
+        have : 0 ≤ u ^ 2 * mag xs ^ 2 := by positivity
+        nlinarith
+      have p3 : 3 * xs.length * u * tiny ≤ 12 * u * tiny * Lw xs.length := by
+        have : 0 ≤ u * tiny := by positivity
+        nlinarith
+      linarith
+    exact mul_le_mul a1 a2 (by positivity) (by positivity)
+
 end FloatBounds
 
 end
