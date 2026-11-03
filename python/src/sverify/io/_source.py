@@ -130,8 +130,10 @@ class Source(Pipeable, ABC):
 
     Args:
         name: The table's name in the plans that read it.
-        schema: The table's schema, if the first read may return nothing.
-            Default: the first batch's.
+        schema: The table's schema. With it, building a node proves the
+            transform's contract without reading the source, so the first
+            read happens at the first refresh; it is needed when the first
+            read may return nothing. Default: the first batch's.
         assumes: What the batches rest on, such as `"rows are only
             appended, in order of ts"`. Default: None.
 
@@ -222,7 +224,10 @@ class Source(Pipeable, ABC):
     # -- the versioned source the pipeline reads -----------------------------
 
     def schema(self) -> pa.Schema:
-        """The table's schema (the first batch's, or `schema=`)."""
+        """The table's schema: `schema=` without reading, else the first
+        batch's."""
+        if self._state is None and self._declared is not None:
+            return plain_schema(self._declared)
         return self._st().table.schema
 
     def latest(self) -> int:
