@@ -1,0 +1,50 @@
+{
+  "id": "duckdb-R6",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Integer `sum`",
+  "verdict": "deviation: unbounded, and reported as a warning",
+  "area": "aggregates",
+  "constructs": [
+    "sum",
+    "avg"
+  ],
+  "settings": {},
+  "description": [
+    "Shim. `SUM(BIGINT)` returns `HUGEINT` and never overflows at 64 bits, so DuckDB alone answers where the reference raises. `CAST(SUM(x) AS BIGINT)` raises past `i64`. sverify's written plan already guards this and raises (`test_sum.test:68`).",
+    "`avg` of integers: the exact `HUGEINT` sum `//` the count. DataFusion's `avg` is a double, so it refuses an integer one."
+  ],
+  "reference": [
+    "Substrait and the reference: `sum` of `i8`…`i64` returns `i64?`; with `overflow` omitted, a sum outside `i64` raises.",
+    "Lean: deviation. The sum is unbounded, and `verify` reports it as a warning (`may wrap around`, `sumWraps`); the parser accepts only `SILENT`. `SUM(b)` of values summing past `2⁶³` answers `4611686018427388403500`, and `SUM(b)::BIGINT` the same, since a cast to `BIGINT` is not checked.",
+    "`avg` of integers (decided on #209, fixed): it follows the plan's declared output type. With `fp64` (DataFusion's plans), it is the mean as a double; with `i64` (Substrait's own impl), it is the exact mean truncated toward zero (`AggFn.iavg`), which always fits."
+  ],
+  "status": "deviation",
+  "ledger_entries": 5,
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/d54cbbe3df17e8e5ce68312f483b4155836112aa/test/sql/aggregate/aggregates/test_sum.test",
+          "note": "lines 68,74"
+        },
+        {
+          "file": "characterization/duckdb/aggregate.json"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-02",
+      "method": "source-reading",
+      "checked_by": "commit ceaf0de (#209)",
+      "notes": "`avg` of integers follows the declared output type."
+    }
+  ],
+  "issues": [
+    185,
+    209
+  ]
+}

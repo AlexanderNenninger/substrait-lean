@@ -1,0 +1,26 @@
+{
+  "id": "datafusion-S3",
+  "engine": "datafusion",
+  "engine_version": "51.0.0",
+  "title": "The Substrait producer drops `VALUES` rows",
+  "verdict": "refused by the replay",
+  "area": "relations",
+  "constructs": [
+    "VALUES",
+    "VirtualTable"
+  ],
+  "settings": {},
+  "description": "DataFusion 51 writes `FROM (VALUES …)` as an empty virtual table.",
+  "reference": "The replay refuses these plans (`producer: VALUES written as an empty virtual table`).",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-01",
+      "method": "replay",
+      "checked_by": "sverify_dev.slt, DuckDB 2.0.0's tests on DataFusion 51's plans (commit 7dbf2f7)",
+      "evidence": [],
+      "notes": "Recorded as S3 of characterization/duckdb/FACTS.md."
+    }
+  ],
+  "layer": "frontend"
+}
