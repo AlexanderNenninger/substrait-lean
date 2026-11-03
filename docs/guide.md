@@ -194,6 +194,30 @@ DuckDB, Snowflake and Spark. The extras add `datafusion`, `polars`, `spark`
 as a small native binary, so you need no Lean toolchain; they exist for Linux
 (x86_64, aarch64) and macOS (arm64, x86_64), Python 3.12 and later.
 
+Each night, when `main` has changed, the
+[`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
+`0.4.0.dev<commits>+g<sha>` so they sort after 0.3.0. They are not on PyPI:
+
+```bash
+uv add "sverify>=0.4.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
+pip install --pre sverify --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
+```
+
+uv keeps the version and drops the page, so add it to your `pyproject.toml`;
+`uv lock --upgrade-package sverify` then moves to the latest nightly:
+
+```toml
+[tool.uv]
+find-links = ["https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly"]
+```
+
+A wheel's own URL pins one build, until the next nightly replaces it. Copy it
+from the release page:
+
+```bash
+pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-0.4.0.dev<commits>+g<sha>-py3-none-<platform>.whl"
+```
+
 The [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents every public function and class, for the released version (built
 from `python/great-docs.yml` with `uv run poe docs`), and so do
