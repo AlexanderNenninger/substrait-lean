@@ -72,7 +72,7 @@ import math
 import warnings
 import weakref
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from fractions import Fraction
@@ -189,6 +189,10 @@ class CheckedCondition:
     counterexample: Counterexample | None = None
     """For an unproved condition: inputs meeting the preconditions on which
     it fails, if the search (`sverify.counterexample`) found one."""
+    checked: bool = False
+    """For an unproved condition with `on_unproved="runtime"`: it is checked
+    on the output data instead, on a bound result when it is built, or on a
+    node at every refresh before its sink commits."""
 
 
 #: What a report suggests for an overflow it cannot rule out (#202).
@@ -302,6 +306,8 @@ class Report:
             lines += [f"requires {table}: {c}" for c in conds]
         for c in self.ensures:
             mark = "proved" if c.proved else f"NOT proved (it is {c.value})"
+            if c.checked:
+                mark += f"; {DATA_CHECK}"
             lines.append(f"ensures {c.label}: {mark}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
@@ -322,6 +328,8 @@ class Report:
         def status(c: CheckedCondition) -> str:
             if c.proved:
                 return "✅ proved"
+            if c.checked:
+                return f"☑️ {c.value}; {DATA_CHECK}"
             if c.counterexample is None:
                 return f"❌ {c.value}"
             return f"❌ {c.value}; fails on `{c.counterexample}`".replace("|", "\\|")
@@ -354,6 +362,9 @@ class Report:
 
 
 PARAMS_NOTE = "proved for these parameter values only"
+
+#: How a report marks a postcondition `on_unproved="runtime"` checks on data.
+DATA_CHECK = "checked on the output data"
 
 TIES_HINT = (
     "rows may tie in the ORDER BY of a window or of first(), last() or group_concat(), so the "
@@ -995,7 +1006,18 @@ class Provenance:
     contracted transformation upstream."""
     unproved_links: list[str]
     """Preconditions on derived inputs that were checked on the data, or
-    merely warned about, instead of proved."""
+    merely warned about, instead of proved, and runtime-checked
+    postconditions of contracted transformations upstream."""
+    checked: list[Condition] = field(default_factory=list)
+    """The postconditions `on_unproved="runtime"` checks on the result's data
+    because they were not proved: on a bound result when it is built, and in
+    an incremental view on every state (`IncrementalView.checked`)."""
+
+
+def _checked_links(prov: Provenance) -> list[str]:
+    """A result's runtime-checked postconditions, as seen downstream: checked
+    on its own rows, they are nothing a consumer's state is checked for."""
+    return [f"{prov.transform.name}: {label(c)} was checked on data" for c in prov.checked]
 
 
 # Keyed by identity: Ibis ops compare by structure, and an equal expression
@@ -1076,7 +1098,7 @@ def _abstract(
             _merge(out.assumptions, {name: conds})
         if name in used and op not in given and (prov := _lookup(op)):
             _merge(out.external, prov.external)
-            out.unproved_links += prov.unproved_links
+            out.unproved_links += prov.unproved_links + _checked_links(prov)
     return out
 
 
@@ -1089,6 +1111,9 @@ class ViewContract:
     requires: dict[str, list[Condition]]
     guarantees: list[Condition]
     provenance: Provenance | None
+    checked: list[Condition] = field(default_factory=list)
+    """Postconditions that were not proved, which the view checks on every
+    state (`on_unproved="runtime"`)."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -1104,13 +1129,14 @@ def view_contract(expr: ir.Table) -> ViewContract:
         requires, unproved = inner.external, inner.unproved_links
     if unproved:
         raise ValueError(
-            "cannot maintain incrementally: preconditions on derived inputs were "
+            "cannot maintain incrementally: conditions on derived inputs were "
             f"not proved ({'; '.join(unproved)})"
         )
     return ViewContract(
         {t: list(cs) for t, cs in requires.items()},
         list(prov.guarantees) if prov else [],
         prov,
+        list(prov.checked) if prov else [],
     )
 
 
@@ -1192,7 +1218,10 @@ class ContractedTransform:
         prov = _lookup(value.op())
         if prov is not None:
             inner = _Abstraction(
-                prov.body, prov.assumptions, prov.external, list(prov.unproved_links)
+                prov.body,
+                prov.assumptions,
+                prov.external,
+                list(prov.unproved_links) + _checked_links(prov),
             )
             known = list(prov.guarantees)
         else:
@@ -1218,7 +1247,7 @@ class ContractedTransform:
             report, self.name, param, prov.transform.name, [label(c) for c in known]
         )
         if self.on_unproved == "warn":
-            warnings.warn(str(error), stacklevel=3)
+            warnings.warn(str(error), stacklevel=4)
         elif not (self.on_unproved == "runtime" and self._check_on_data(value, param, unproved)):
             raise error
         return out
@@ -1261,9 +1290,12 @@ class ContractedTransform:
                 transformation's result does not follow from its guarantees.
             VerificationError: A postcondition, or the absence of runtime
                 errors, could not be proved (with `on_unproved="error"`, or
-                with `"runtime"` when the result is not bound).
+                with `"runtime"` when the result is neither bound nor a
+                node).
             PostconditionError: With `on_unproved="runtime"`, an unproved
-                postcondition fails on the output data.
+                postcondition fails on the output data of a bound result. A
+                node's are checked at every refresh instead
+                (`sverify.Node.refresh`).
             TypeError: Sources or nodes are mixed with Ibis tables.
             ValueError: The node would read two tables of the same name.
         """
@@ -1271,6 +1303,12 @@ class ContractedTransform:
 
         if nodes.wants_node(args, kwargs):
             return nodes.derive(self, args, kwargs)
+        return self._build(args, kwargs, node=False)
+
+    def _build(self, args: Sequence[Any], kwargs: Mapping[str, Any], *, node: bool) -> ir.Table:
+        """The result and its proof. A `node` result (`nodes.derive`, on
+        placeholder tables) has its runtime-checked postconditions checked
+        at every refresh instead of now."""
         inputs = self.signature.bind(*args, **kwargs).arguments
         self.last_preconditions = []
         result = self.fn(*args, **kwargs)
@@ -1306,15 +1344,18 @@ class ContractedTransform:
         report = self.last_report = self._verify(
             abstraction.body, assumptions, self.ensures, "ensures"
         )
+        checked: list[Condition] = []
         if not report.proved:
             if self.on_unproved == "warn":
-                warnings.warn(str(VerificationError(report)), stacklevel=2)
+                warnings.warn(str(VerificationError(report)), stacklevel=3)
             # Runtime errors cannot be checked on the data beforehand: in
             # "runtime" mode the engine raises them if they happen.
-            elif self.on_unproved == "runtime" and is_bound(result):
+            elif self.on_unproved == "runtime" and (node or is_bound(result)):
                 unproved = {c.label for c in report.unproved}
-                for c in self.ensures:
-                    if label(c) in unproved and (n := violations(result, c, self.engine)):
+                checked = [c for c in self.ensures if label(c) in unproved]
+                report = self.last_report = _marked_checked(report)
+                for c in [] if node else checked:
+                    if n := violations(result, c, self.engine):
                         raise PostconditionError(f"{n} output row(s) violate {label(c)}")
             else:
                 raise VerificationError(report)
@@ -1331,9 +1372,17 @@ class ContractedTransform:
                 report=report,
                 external=external,
                 unproved_links=unproved_links + abstraction.unproved_links,
+                checked=checked,
             ),
         )
         return result
+
+
+def _marked_checked(report: Report) -> Report:
+    """`report` (cached, so left as it is) with its unproved postconditions
+    marked as checked on data."""
+    ensures = [c if c.proved else replace(c, checked=True) for c in report.ensures]
+    return replace(report, ensures=ensures)
 
 
 def transform(
@@ -1350,7 +1399,9 @@ def transform(
     the postconditions are proved (cached per input schema and expression) and
     the report is kept in `.last_report`; see the module docstring. With
     `on_unproved="runtime"`, unproved postconditions are checked on the output
-    data instead, which needs inputs bound to a connection. `engine` says where
+    data instead: on inputs bound to a connection, when the transform is
+    called; on a node, at every refresh, on the rows the batch inserts, before
+    its sink commits. The report marks them `checked`. `engine` says where
     those checks on data run (see the module docstring).
 
     Piped from a source (`sverify.io`) or a node, `orders.pipe(doubled)`, or
@@ -1370,9 +1421,10 @@ def transform(
             errors.
         on_unproved: What happens when a postcondition, or a precondition on
             another contracted transformation's result, is not proved:
-            `"error"` (the default) raises; `"runtime"` checks it on the data
-            instead, which needs bound inputs; `"warn"` emits a warning and
-            returns the result.
+            `"error"` (the default) raises; `"runtime"` checks a postcondition
+            on the output data instead (bound inputs, or a node at every
+            refresh) and a precondition on a bound input's data; `"warn"`
+            emits a warning and returns the result.
         check_requires: Whether to check preconditions on the data of bound
             inputs at call time. Default True.
         engine: Where checks on data run: `"duckdb"`, `"polars"` or
