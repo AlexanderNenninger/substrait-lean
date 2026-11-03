@@ -192,9 +192,11 @@ def test_an_eager_table_gets_the_inferred_bound():
     """#430: a memtable is not a named base table, yet its bound is inferred,
     checked on its data, and named as a `requires` in hints."""
 
-    @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.doubled >= 0])
-    def mutated(orders):
+    def double(orders):
         return orders.mutate(doubled=_.amount * 2)
+
+    contract = {"requires": {"orders": [_.amount >= 0]}, "ensures": [_.doubled >= 0]}
+    mutated = sv.transform(**contract)(double)
 
     orders = ibis.memtable(pa.table({"id": [1, 2], "amount": pa.array([10, 20], pa.int64())}))
     out = mutated(orders)
@@ -208,9 +210,7 @@ def test_an_eager_table_gets_the_inferred_bound():
         PreconditionError, match=r"1 row\(s\) of orders violate \(_.amount < 2\*\*62\)"
     ):
         mutated(big)
-    explicit = sv.transform(
-        requires={"orders": [_.amount >= 0]}, ensures=[_.doubled >= 0], infer=False
-    )(mutated.__wrapped__)
+    explicit = sv.transform(**contract, infer=False)(double)
     with pytest.raises(VerificationError, match=r"in the requires of 'orders'"):
         explicit(orders)
 
