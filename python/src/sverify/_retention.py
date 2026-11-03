@@ -91,11 +91,16 @@ class Retention:
 def _row_local(values: Sequence[ops.Value], parent: ops.Relation) -> bool:
     """Every value reads only the columns of its own row of `parent`."""
     for v in values:
-        if v.find(_NOT_ROW_LOCAL):
+        # The value's own nodes, not those of the relations its fields read.
+        if v.find(_NOT_ROW_LOCAL, filter=_values):
             return False
-        if any(getattr(f, "rel", None) != parent for f in v.find(ops.Field)):
+        if any(getattr(f, "rel", None) != parent for f in v.find(ops.Field, filter=_values)):
             return False
     return True
+
+
+def _values(node: Any) -> bool:
+    return not isinstance(node, ops.Relation)
 
 
 def _base_column(rel: ops.Relation, name: str) -> tuple[str, str] | None:
