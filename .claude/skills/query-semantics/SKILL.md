@@ -46,7 +46,7 @@ It prints, per source:
 | parser | `SubstraitLean/Parse.lean` | how Lean reads the Substrait function, or that it refuses it |
 | backends | docstrings of `python/src/sverify/sql/{duckdb,snowflake,spark,core}.py` and `polars_engine.py` | how each backend is made to give Lean's value, and the divergences it works around |
 | catalogue | `catalogue/status.json` | real queries with the same features: verified? which engines run them? |
-| producer | `python/src/sverify/ibis_substrait/__init__.py` | (`--ibis`) the translation of each Ibis operation |
+| producer | `python/src/sverify/ibis_substrait/` (`_base.py` and one module per area) | (`--ibis`) the translation of each Ibis operation |
 
 Then **read the cited lines** before answering: the lookup only finds candidates. For a construct none of these cover, grep the sources yourself. Throws in `Parse.lean` and `Unsupported(` in `python/src/sverify` give the exact refusal. The README's sections on the producer and engines, and `catalogue/FINDINGS.md` ("Why engines refuse verified queries", "What each engine needs"), are the prose behind these.
 
