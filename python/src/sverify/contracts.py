@@ -899,6 +899,10 @@ class Issue:
     """For a "SUM overflow": the column the SUM adds up, named as in its
     hint (the base table's column where it is passed on unchanged). None if
     `expr` is not a single column."""
+    under_and_or: bool = False
+    """The operation sits inside an operand of an `AND` or `OR`, which
+    evaluates both operands (#604, D19): a guard in the other operand does
+    not keep it from raising. The report suggests a `CASE` (`AND_OR_HINT`)."""
 
     @property
     def what(self) -> str:
@@ -2190,10 +2194,14 @@ def _infer_bounds(
         t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
     }
     if extra:
+        guarded = and_or_hints(report.issues)
         widened = {t: list(cs) for t, cs in requires.items()}
         _merge(widened, extra)
         report = once(widened, counterexamples)[0]
         report.inferred = {t: list[Condition](cs) for t, cs in extra.items()}
+        # An inferred precondition that a guard under AND/OR would have made
+        # unnecessary with a CASE (#604): say so.
+        report.hints += [h for h in guarded if h not in report.hints]
     elif counterexamples and report.unproved:
         report = once(requires, counterexamples)[0]
     report = _confirm_suggestions(report, requires, once)
@@ -2404,6 +2412,7 @@ def _verify_once(
                 if i["kind"] == INFINITE
                 else None,
                 _sum_column(transform, i["expr"]) if i["kind"] == "SUM overflow" else None,
+                i.get("under_and_or", False),
             )
             for i in out["issues"]
             # An overflow to ±∞ is the reference's precondition (#575): DuckDB's
@@ -2430,6 +2439,7 @@ def _verify_once(
     )
     if not isinstance(transform, str) and report.issues:
         report.hints = overflow_hints(transform, requires, report)
+    report.hints += and_or_hints(report.issues)
     if not isinstance(transform, str):
         report.hints += rounding_hints(transform, ensures, checked, out["facts"], dtypes)
     return report, out["inferred"], schemas
@@ -2520,6 +2530,23 @@ def _value_origin(value: Node) -> tuple[str, str] | None:
 
 #: The bound a SUM hint proposes for an unbounded side of a column.
 SUM_BOUND = 1_000_000_000
+
+
+#: What a report suggests for an error under `AND`/`OR` (#604, D19).
+AND_OR_HINT = (
+    "`{}` is inside an AND or OR, which evaluates both operands, as DuckDB and "
+    "Polars do (D19): a guard in the other operand does not keep it from "
+    "raising. Guard the operation itself with a CASE that is not boolean, "
+    "e.g. `(CASE WHEN x <> 0 THEN 10 // x END) > 1`, in Ibis "
+    "`ibis.cases((_.x != 0, 10 // _.x)) > 1` (a boolean CASE is evaluated "
+    "whole, as AND/OR is); or state the guard as a precondition"
+)
+
+
+def and_or_hints(issues: Sequence[Issue]) -> list[str]:
+    """`AND_OR_HINT` for each error under `AND`/`OR`, once per expression."""
+    seen = dict.fromkeys(i.expr for i in issues if i.error and i.under_and_or)
+    return [AND_OR_HINT.format(e) for e in seen]
 
 
 def overflow_hints(
