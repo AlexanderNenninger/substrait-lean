@@ -1,0 +1,35 @@
+{
+  "id": "polars-substring-range",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`str.slice` takes any 64-bit offset",
+  "verdict": "computes for offsets past 32 bits",
+  "area": "strings",
+  "options": [
+    "substring_range"
+  ],
+  "constructs": [
+    "str.slice"
+  ],
+  "settings": {},
+  "description": "No offset or length makes `str.slice` raise: an offset of 2⁴⁰ gives `''`, and `slice(-2⁴⁰, 2⁴¹)` the whole string.",
+  "reference": "`substring_range`: offsets outside `[-2³², 2³²)` raise (#336), as DuckDB does (duckdb-substring-range).",
+  "status": "open",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "substring-huge"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ],
+  "issues": [
+    336
+  ]
+}

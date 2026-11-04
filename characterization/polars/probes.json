@@ -4020,6 +4020,102 @@
    "area": "casts",
    "code": "df(x=['2024-01-01']).select(pl.col('x').cast(pl.Date)).item()",
    "observed": "error InvalidOperationError: casting from string to date is not supported."
+  },
+  {
+   "construct": "list-sort",
+   "area": "nested",
+   "code": "[df(l=[[1, None], [1, 3], [1], [], None, [None], [1, 2]]).sort('l', descending=d)['l'].to_list() for d in (False, True)]",
+   "observed": "[[None, [], [None], [1], [1, None], [1, 2], [1, 3]], [None, [1, 3], [1, 2], [1, None], [1], [None], []]]"
+  },
+  {
+   "construct": "list-compare",
+   "area": "nested",
+   "code": "df(a=[[1, None]], b=[[1, 3]]).select(pl.col('a') < pl.col('b')).item()",
+   "observed": "error InvalidOperationError: cannot perform '<' comparison between series 'a' of dtype: list[i64] and series 'b' of dtype: list[i64]"
+  },
+  {
+   "construct": "list-min",
+   "area": "nested",
+   "code": "df(l=[[1], [2]]).select(pl.col('l').min()).item()",
+   "observed": "error InvalidOperationError: `min` operation not supported for dtype `list[i64]`"
+  },
+  {
+   "construct": "list-equality",
+   "area": "nested",
+   "code": "df(a=[[1, None], [None], []], b=[[1, None], [None], None]).select((pl.col('a') == pl.col('b')).alias('eq'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
+   "observed": "[(True, True), (True, True), (None, False)]"
+  },
+  {
+   "construct": "list-get",
+   "area": "nested",
+   "code": "(df(l=[[1, 2, 3], [], None]).select(pl.col('l').list.get(0, null_on_oob=True).alias('0'), pl.col('l').list.get(-1, null_on_oob=True).alias('-1'), pl.col('l').list.get(5, null_on_oob=True).alias('5')).rows(), attempt(lambda: df(l=[[1, 2, 3]]).select(pl.col('l').list.get(5)).item()))",
+   "observed": "([(1, 3, None), (None, None, None), (None, None, None)], 'error ComputeError: get index is out of bounds')"
+  },
+  {
+   "construct": "struct-equality",
+   "area": "nested",
+   "code": "df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, {'a': None, 'b': None}, None]).select((pl.col('s') == pl.col('s').shift(1)).alias('eq')).to_series().to_list()",
+   "observed": "[None, True, False, None]"
+  },
+  {
+   "construct": "struct-group-sort",
+   "area": "nested",
+   "code": "(df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, None]).group_by('s', maintain_order=True).len().rows(), df(s=[{'a': 2, 'b': 1}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': None, 'b': 0}]).sort('s')['s'].to_list())",
+   "observed": "([({'a': 1, 'b': None}, 2), (None, 1)], [{'a': None, 'b': 0}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': 2, 'b': 1}])"
+  },
+  {
+   "construct": "explode",
+   "area": "nested",
+   "code": "(df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l').rows(), df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l', empty_as_null=False, keep_nulls=False).rows())",
+   "observed": "([(1, 1), (1, 2), (3, None), (4, None)], [(1, 1), (1, 2), (4, None)])"
+  },
+  {
+   "construct": "set-operations",
+   "area": "relations",
+   "code": "{k: v.rows() for k, v in {'union_all': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]), 'union': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]).unique(maintain_order=True), 'semi': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi'), 'intersect': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi', nulls_equal=True).unique(maintain_order=True), 'anti': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti'), 'except': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti', nulls_equal=True).unique(maintain_order=True)}.items()}",
+   "observed": "{'union_all': [(1,), (1,), (2,), (None,), (None,), (1,), (None,), (3,)], 'union': [(1,), (2,), (None,), (3,)], 'semi': [(1,), (1,)], 'intersect': [(1,), (None,)], 'anti': [(2,), (None,), (None,)], 'except': [(2,)]}"
+  },
+  {
+   "construct": "clustered",
+   "area": "relations",
+   "code": "df(k=[2, 1, 2, 1], i=[0, 1, 2, 3]).sort('k', maintain_order=True).rows()",
+   "observed": "[(1, 1), (1, 3), (2, 0), (2, 2)]"
+  },
+  {
+   "construct": "substring-huge",
+   "area": "strings",
+   "code": "df(s=['abc']).select(pl.col('s').str.slice(2**40, 2**40).alias('far'), pl.col('s').str.slice(-2**40, 2**41).alias('wide')).rows()",
+   "observed": "[('', 'abc')]"
+  },
+  {
+   "construct": "fp32-arith",
+   "area": "doubles",
+   "code": "(df(a=([1.0, 3e38, 16777216.0], pl.Float32)).select(pl.col('a') + pl.col('a'), (pl.col('a') + 1).alias('plus1')).rows(), [str(t) for t in df(a=([0.1], pl.Float32)).select(pl.col('a') + 0.1, (pl.col('a') + 1).alias('i'), pl.col('a').sum().alias('s'), pl.col('a').mean().alias('m')).dtypes])",
+   "observed": "([(2.0, 2.0), (inf, 3.0000000054977558e+38), (33554432.0, 16777216.0)], ['Float32', 'Float32', 'Float32', 'Float32'])"
+  },
+  {
+   "construct": "implicit-casts",
+   "area": "frontend",
+   "code": "([str(t) for t in df(a=([1], pl.Int32), b=[1]).select(pl.col('a') + pl.col('b'), (pl.col('a') + 1).alias('lit'), (pl.col('a') + 2**40).alias('big'), (pl.col('a') + 1.5).alias('f'), (pl.col('a').cast(pl.UInt64) + pl.col('b')).alias('u')).dtypes], attempt(lambda: df(a=[1]).select(pl.col('a') + pl.lit('x')).item()))",
+   "observed": "(['Int64', 'Int32', 'Int64', 'Float64', 'Int128'], 'error InvalidOperationError: arithmetic on dtypes i64 and str is not allowed (lhs: column \\'a\\', rhs: expression `\"x\"`); try an explicit cast first')"
+  },
+  {
+   "construct": "literal-types",
+   "area": "frontend",
+   "code": "[str(t) for t in pl.select(pl.lit(1), pl.lit(2**40).alias('b'), pl.lit(2**63).alias('c'), pl.lit(2**64).alias('d'), pl.lit(1.5).alias('e'), pl.lit('x').alias('f'), pl.lit(None).alias('g'), pl.lit(True).alias('h'), pl.lit(Decimal('1.25')).alias('i')).dtypes]",
+   "observed": "['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)']"
+  },
+  {
+   "construct": "type-names",
+   "area": "frontend",
+   "code": "[str(t) for t in [pl.Int8, pl.UInt64, pl.Int128, pl.Float32, pl.String, pl.Binary, pl.Boolean, pl.Date, pl.Time, pl.Datetime('us'), pl.Duration('us'), pl.Decimal(10, 2), pl.List(pl.Int64), pl.Array(pl.Int64, 2), pl.Struct({'a': pl.Int64}), pl.Null, pl.Categorical]]",
+   "observed": "['Int8', 'UInt64', 'Int128', 'Float32', 'String', 'Binary', 'Boolean', 'Date', 'Time', \"Datetime(time_unit='us', time_zone=None)\", \"Duration(time_unit='us')\", 'Decimal(precision=10, scale=2)', 'List(Int64)', 'Array(Int64, shape=(2,))', \"Struct({'a': Int64})\", 'Null', 'Categorical']"
+  },
+  {
+   "construct": "io-functions",
+   "area": "io",
+   "code": "([n for n in dir(pl) if n.startswith('scan_')], [n for n in dir(pl.DataFrame) if n.startswith('write_')], [n for n in dir(pl.LazyFrame) if n.startswith('sink_')], hasattr(pl, 'Catalog'), [p for p in ('storage_options', 'credential_provider') if p in __import__('inspect').signature(pl.scan_parquet).parameters])",
+   "observed": "(['scan_arrow_c_stream', 'scan_csv', 'scan_delta', 'scan_external_reader', 'scan_iceberg', 'scan_ipc', 'scan_lance', 'scan_lines', 'scan_ndjson', 'scan_parquet', 'scan_pyarrow_dataset'], ['write_avro', 'write_clipboard', 'write_csv', 'write_database', 'write_delta', 'write_excel', 'write_iceberg', 'write_ipc', 'write_ipc_stream', 'write_json', 'write_ndjson', 'write_parquet'], ['sink_batches', 'sink_csv', 'sink_delta', 'sink_iceberg', 'sink_ipc', 'sink_ndjson', 'sink_parquet'], True, ['storage_options', 'credential_provider'])"
   }
  ]
 }

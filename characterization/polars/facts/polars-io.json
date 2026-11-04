@@ -1,0 +1,41 @@
+{
+  "id": "polars-io",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "I/O: scans and sinks, object stores by `storage_options`, a Unity catalog client",
+  "verdict": "Parquet, CSV, IPC, NDJSON, Delta, Iceberg; cloud via `storage_options`; `pl.Catalog`",
+  "area": "io",
+  "options": [
+    "io_formats",
+    "object_stores",
+    "catalogs"
+  ],
+  "layer": "io",
+  "constructs": [
+    "scan_*",
+    "sink_*",
+    "write_*",
+    "Catalog"
+  ],
+  "settings": {},
+  "description": [
+    "Polars scans Parquet, CSV, IPC, NDJSON, lines, Delta, Iceberg, Lance and PyArrow datasets lazily (`scan_*`), sinks Parquet, CSV, IPC, NDJSON, Delta and Iceberg from a lazy query (`sink_*`), and writes those and Avro, Excel, JSON and databases from a frame (`write_*`).",
+    "Object stores (S3, GCS, Azure, HTTP) are reached through `storage_options` or a `credential_provider` on the scans. `pl.Catalog` is a client for Unity Catalog."
+  ],
+  "reference": "I/O is outside what a plan computes; sverify's `io` modules read and write the formats.",
+  "status": "no-finding",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (session brave-borg-41f7cc)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes.json",
+          "probe": "io-functions"
+        }
+      ],
+      "notes": "`sverify_dev.probe_polars` runs each expression on edge cases (0, ±1, ±2, 3, ±7, the bounds of the integer width; 0.5, ±2.5, 7, 1e308, ±inf, NaN; NULL), one row at a time, and compares each row with Lean's outcome of the Substrait call under each candidate option (`substrait-check --outcomes`). Observations are Polars programs whose result is recorded as it is. Polars 2.1.0 (Python), Rust crates at tag py-2.1.0 (commit 7f902bd3), on macOS arm64."
+    }
+  ]
+}
