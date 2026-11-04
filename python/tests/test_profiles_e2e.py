@@ -159,8 +159,11 @@ def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
     run_both(present, con)
     for e in ENGINES:
         assert route_of(present, e).cls == "refines"
+    # The plan reads every column of `t`: the bad batch has them all.
     bad = sv.connect()
-    bad.put("t", pa.table({"k": [1, 1], "i": [2**62, 2**62]}))
+    rows = con.get("t").slice(0, 2)
+    i = rows.schema.get_field_index("i")
+    bad.put("t", rows.set_column(i, "i", pa.array([2**62, 2**62], pa.int64())))
     for e in ENGINES:
         with pytest.raises(
             PreconditionError, match=r"SUM of i fits 64 bits.*refused before the run"

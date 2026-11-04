@@ -252,17 +252,27 @@ def test_inputs_are_checked_before_the_run(con) -> None:
 
 
 def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
-    """Polars's `sum_order`: `q` bounds the doubles per plan, and the
-    contract's `ε` must be within the postcondition's tolerance (B1)."""
+    """Polars's `sum_order`: `q` bounds the doubles per plan. The contract's
+    `ε` gives bounds that each hold on their own; a stated tolerance is met
+    by one no larger than its bound of the same kind (B1)."""
     t = con.table("t")
     _classed_tables(monkeypatch, [_row("sum_order", "approx", q={"floats": {"bound": "plan"}})])
-    loose = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))])
-    tight = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))])
-    for report in (loose, tight):
+
+    def route(tolerance, epsilon):
+        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
         report.depends = [{"group": None, "option": "sum_order"}]
-        report.epsilon = {"total": {"rel": 1e-12}, "k": {}}
-    assert routes.choose(loose, "polars").cls == "approx"
-    r = routes.choose(tight, "polars")
-    assert r.refused and "total is within within(rel=1e-12)" in r.reason
-    loose.epsilon = None
-    assert "no per-plan bound" in routes.choose(loose, "polars").reason
+        report.epsilon = epsilon
+        return routes.choose(report, "polars")
+
+    both = {"total": {"abs": 222.0, "rel": 1e-10}, "k": {}}
+    assert route(sv.within(rel=1e-9), both).cls == "approx"
+    assert route(sv.within(abs=1e3), both).cls == "approx"
+    r = route(sv.within(rel=1e-15, abs=1.0), both)
+    assert r.refused and "total is within abs=222, rel=1e-10" in r.reason
+    assert "no per-plan bound" in route(sv.within(rel=1e-9), None).reason
+    # A bound Lean does not prove yet: the route rests on a test.
+    unproved = {"total": {"abs": 222.0, "rel": 1e-10, "proved": {"rel": False}}}
+    assert route(sv.within(rel=1e-9), unproved).evidence == "tested"
+    assert route(sv.within(abs=1e3), unproved).evidence == "proved"
+    nested = {"total": {"rel": {"value": 1e-10, "proved": False}}}
+    assert route(sv.within(rel=1e-9), nested).evidence == "tested"
