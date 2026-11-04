@@ -88,9 +88,18 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
   return (unscale (2 * t), rel)
 
 /-- `"epsilon"` of a `--contract` request: per output column of the
-transformation that is a double `SUM` or `AVG`, `{"abs": …, "rel"?: …}`.
-Each bound holds on its own (both at once), so either may be checked
-against a tolerance. -/
+transformation that is a double `SUM` or `AVG`,
+`{"abs": …, "rel"?: …, "proved": {"abs": false, "rel"?: false}}`.
+
+The bounds are a conjunction: each holds on its own, so the engine's result
+is within `abs` of a result the reference allows and also within `rel` of
+it, and a tolerance that either bound meets is met.
+
+`proved` says which bounds Lean proves. Neither is yet: the reference's
+half of `abs` is (`floatSum_mem`, `floatAvg_mem`), but that an engine's
+order meets the same bound is a cited algorithm (`polars-sum-float`), and
+`rel` is Higham's no-cancellation bound, stated here without a proof. A
+route that rests on them is tested, not proved. -/
 def epsilon (input : Json) : Except String Json := do
   let some tj := (input.getObjVal? "transform").toOption | return Json.mkObj []
   let plan ← parseJsonPlan tj
@@ -119,7 +128,9 @@ def epsilon (input : Json) : Except String Json := do
   let cols := (names.zip srcs).filterMap fun (name, src) => match src with
     | .bounded j => some (name, match doubles[j]?.bind (measureEps env · r.maxRows) with
         | some (e, r) => Json.mkObj ([("abs", upJson e)] ++
-            match r with | some r => [("rel", upJson r)] | none => [])
+            (match r with | some r => [("rel", upJson r)] | none => []) ++
+            [("proved", Json.mkObj ([("abs", toJson false)] ++
+              match r with | some _ => [("rel", toJson false)] | none => []))])
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
