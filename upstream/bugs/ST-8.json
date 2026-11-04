@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0 to main@a4d8e00342d0",
-  "status": "unverified",
-  "status_note": "Unspecified on main; not yet raised upstream or checked against open issues.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): [`functions_arithmetic_decimal.yaml` L49-L87](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic_decimal.yaml#L49-L87) (and `add`/`subtract` L8-L47) give result types and `overflow` only, with no rounding. Existing issue: [#1224](https://github.com/substrait-io/substrait/issues/1224) asks exactly this for the precision-38 borrow; divide's always-inexact result and casts between scales are not in it. Related: [#1318](https://github.com/substrait-io/substrait/issues/1318) (decimal handling, vbarua), [#1223](https://github.com/substrait-io/substrait/pull/1223), [#1274](https://github.com/substrait-io/substrait/pull/1274).",
   "summary": "`functions_arithmetic_decimal.yaml` gives each function's result type, and nothing about how a result with more digits than the result's scale is rounded: always for `divide`, and for `add`, `subtract`, `multiply` when the precision passes 38 and the scale is borrowed. Casts between decimal scales (`specialized_record_expressions.md`) leave it open too. Engines round half to even (Polars) or half away from zero (DuckDB).",
   "repro": "`multiply(DECIMAL<10,2> 0.05, DECIMAL<10,1> 0.5)` at a result scale of 2 (an engine's own result type, or a cast to `DECIMAL<10,2>`): Polars 2.1.0 gives 0.02, half away from zero gives 0.03. `divide(DECIMAL<10,2> 1.00, DECIMAL<10,0> 8)` at scale 2: 0.12 or 0.13.",
   "handling": [
@@ -32,6 +32,22 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "functions_arithmetic_decimal.yaml on main: result types only, no rounding and no options"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_arithmetic_decimal.yaml and the cast docs on main; the gap is there"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/issues/1224",
+    "https://github.com/substrait-io/substrait/issues/1318",
+    "https://github.com/substrait-io/substrait/pull/1223",
+    "https://github.com/substrait-io/substrait/pull/1274",
+    "https://github.com/substrait-io/substrait/pull/1213",
+    "https://github.com/substrait-io/substrait/issues/1216"
   ]
 }

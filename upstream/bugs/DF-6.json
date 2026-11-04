@@ -3,10 +3,11 @@
   "project": "datafusion",
   "version": "51",
   "status": "fixed upstream",
-  "status_note": "fixed upstream in 55.0.0 ([#23608](https://github.com/apache/datafusion/issues/23608))",
+  "status_note": "fixed upstream in 55.0.0 ([#23608](https://github.com/apache/datafusion/issues/23608), PR [#23672](https://github.com/apache/datafusion/pull/23672)): the producer writes the rows to `expressions`",
   "fixed_in": "55.0.0",
   "upstream": [
-    "https://github.com/apache/datafusion/issues/23608"
+    "https://github.com/apache/datafusion/issues/23608",
+    "https://github.com/apache/datafusion/pull/23672"
   ],
   "summary": "The Substrait producer writes `FROM (VALUES …)` as an empty virtual table: the rows are dropped.",
   "repro": "any `SELECT * FROM (VALUES (1), (2))`",
@@ -25,6 +26,15 @@
         "datafusion": "55.0.0"
       },
       "note": "against the latest releases"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "datafusion": "55.0.0",
+        "substrait": "0.37.1",
+        "datafusion core": "55.1.0"
+      },
+      "note": "51.0.0 writes no `expressions`, 55.0.0 writes 2 rows"
     }
   ]
 }

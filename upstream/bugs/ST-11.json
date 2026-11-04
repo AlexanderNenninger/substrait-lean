@@ -3,8 +3,8 @@
   "project": "substrait",
   "kind": "spec-gap",
   "version": "0.106.0",
-  "status": "unverified",
-  "status_note": "Unspecified in substrait-extensions 0.106.0; not yet checked against Substrait's main branch or raised upstream.",
+  "status": "confirmed",
+  "status_note": "Still open on main (a4d8e00342d0): [`functions_arithmetic.yaml` L389-L412](https://github.com/substrait-io/substrait/blob/a4d8e00342d0/extensions/functions_arithmetic.yaml#L389-L412) gives `power(i64, i64) -> i64` with `overflow` only and nothing on a negative exponent; `power.test` has positive integer exponents only. No existing issue; [#1001](https://github.com/substrait-io/substrait/pull/1001) (closed) proposed `fp64` results and was declined to keep `int, int -> int`.",
   "summary": "`power` of `i64` (`functions_arithmetic.yaml`) returns `i64` and takes only `overflow`. Nothing says what a negative exponent gives, whose result is not an integer: `power(2, -1)` could be `0` (truncated), an error, or a domain error, and the integer implementation has no `on_domain_error`.",
   "repro": [
     "`power(2::i64, -1::i64)` and `power(-2::i64, -3::i64)`: the YAML's description, \"Take the power with x as the base and y as exponent\", defines neither.",
@@ -32,6 +32,17 @@
         "substrait-extensions": "0.106.0"
       },
       "note": "functions_arithmetic.yaml: power(i64, i64) has `overflow` only; the fp implementations have no options"
+    },
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "substrait": "main@a4d8e00342d0",
+        "substrait-extensions": "v0.108.0"
+      },
+      "note": "functions_arithmetic.yaml power and tests/cases/arithmetic/power.test on main; the gap is there"
     }
+  ],
+  "upstream": [
+    "https://github.com/substrait-io/substrait/pull/1001"
   ]
 }
