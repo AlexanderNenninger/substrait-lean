@@ -490,6 +490,14 @@ best first:
 
 A plan takes the worst class over its call sites.
 
+Each row also carries the engine's run-to-run variation next to its class
+`q`: the observation up to which two runs of the engine on the same input
+agree. The class answers correctness against the postcondition's `q_post`,
+the variation answers reproducibility against a consumer's `q_det`
+([D20](#d20-two-observations-per-output)). Polars's streaming float `SUM`,
+for example, is `approx[D, ε]` and also varies in its last bits between
+runs.
+
 ### Where the evidence lives
 
 - The characterization checklist, [characterization/areas.json](../characterization/areas.json):
@@ -988,7 +996,7 @@ the option left open.
 
 Decided on [#562](https://github.com/AlexanderNenninger/substrait-lean/pull/562):
 D6 as the first draft's alternative, the others as it recommended.
-D9 to D18 were decided after #568's classes and #577's translation policy.
+D9 and the decisions after it were made after #568's classes and #577's translation policy.
 
 ### D1. Where the tables live
 
@@ -1069,7 +1077,7 @@ and the default of the model's `SortKey` for hand-built values.
 
 ### D9. One tool per option
 
-Each option gets one of three tools in the reference: raise, choose a value,
+Each option gets one of three tools in the reference ([D21](#d21-tighten-the-reference-where-it-stays-practical)): raise, choose a value,
 or leave it open. One table, a row per option, records the tool, the
 precondition it creates, and the shim count per engine. The reference raises
 only where that precondition is usually provable from the bounds or cheap to
@@ -1081,10 +1089,11 @@ the table makes that cost visible next to the shims it saves
 ### D10. Determinism
 
 Whether a plan's result is determined up to row order is reported by
-default, and required where it matters: incremental refreshes and
-idempotent sink epochs. A rerun of those must give the same result, so a
-plan that leaves an open choice in its output is refused there; elsewhere
-the report names the choice.
+default, and required where the output's consumer states it needs it:
+incremental refreshes and idempotent sink epochs. Those consumers state
+their own observation, `q_det`, separate from the postcondition's
+([D20](#d20-two-observations-per-output)); elsewhere the report names the
+open choice.
 
 ### D11. Postconditions name the equivalence
 
@@ -1133,8 +1142,9 @@ The choices table holds, next to each choice, its class, its observation
 `q` and its shim: each (profile, group, option) row reads choice, class,
 `q`, shim, so an engine's realizability row comes from one table. This
 extends step 1a's `ProfileTable` (#578, `SubstraitLean/Options.lean`): a
-column for the class and `q` and one for the shim, filled for engines in
-step 3a, and read by step 1c.
+column for the class and `q`, one for the run-to-run variation
+([D20](#d20-two-observations-per-output)) and one for the shim, filled for
+engines in step 3a, and read by step 1c.
 
 ### D16. Engine correctness
 
@@ -1191,3 +1201,44 @@ This makes D11 and D12 one comparison: the route's `q`, carried through the
 plan, against the `q` the postcondition names. The finest valid `q` is the
 `q` column of the choices table ([D15](#d15-where-the-observations-live)).
 
+### D20. Two observations per output
+
+Each output has two observations, checked independently.
+
+- `q_post`, for correctness, is stated by the postcondition
+  (`sv.equivalent`, [D11](#d11-postconditions-name-the-equivalence)), by
+  default the multiset of rows with exact values. Every engine result must
+  equal, up to `q_post`, some result the reference allows. The check is
+  D18's: the class `q` of each engine row must refine `q_post`.
+- `q_det`, for reproducibility, is stated by whoever consumes the output.
+  An idempotent sink or an incremental refresh declares its own: a sink
+  that overwrites partitions may tolerate `ε`, one that compares checksums
+  needs exact bits. A plain run declares none, so determinism is only
+  reported ([D10](#d10-determinism)). The check: the engine's run-to-run
+  variation, carried through the plan as D18 carries `q`, must refine
+  `q_det`.
+
+The two are independent, and `q_det` is often the finer one. Polars's
+streaming float `SUM` varies in the last bits between runs, and grouped
+float sums vary between runs on both of Polars's engines (the
+characterization pipeline's probes), so such a plan passes a sink whose
+`q_det` allows `ε` and fails one that needs exact bits, with the same
+`q_post`. A `LIMIT` without `ORDER BY` can be correct under a multiset
+`q_post` and still fail every `q_det`, since which rows it keeps can change
+between runs.
+
+
+### D21. Tighten the reference where it stays practical
+
+Sverify tightens the reference when that costs little in practicality. Where
+an engine differs from the reference on an edge case, the reference raises
+there, and the engine needs no shim, as long as the precondition that
+excludes the edge case rarely bites real queries: it is proved from the
+bounds or checked on the data by a guard. A guard costs a check where the
+precondition is not proved; a shim costs a rewrite on every run. D9's table
+records the tool for each option. This is how D9 chooses between raising and
+choosing a value.
+
+Example: `power(-∞, y)` for a non-integer `y` raises in the reference.
+IEEE 754 gives `+∞`, and Polars's `** 0.5` gives NaN through `sqrt`, so
+Polars needs a guard for such plans and no shim.
