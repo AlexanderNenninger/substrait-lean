@@ -137,6 +137,40 @@
         }
       ],
       "notes": "Polars 2.1.0 (Python) from the project's environment, macOS arm64, `POLARS_MAX_THREADS=2`; each `LazyFrame` collected with `engine=\"in-memory\"` and `engine=\"streaming\"`."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L320-L323",
+          "note": "`test_pearson_corr_zero_column_29315`: `corr` of a constant 0.0 column with 0..n-1 is NaN for n = 117 and 245 (eager, in memory)"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L261-L267",
+          "note": "`test_corr_cov_lit_produces_zero_nan_26633`: `corr(lit(1), a)` is NaN and `cov` 0.0 (eager)"
+        }
+      ],
+      "notes": [
+        "Pins NaN for a zero variance in memory, past the 128-value block boundary (n = 245). Not tested on the streaming engine.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-cov-decimal"
+        }
+      ],
+      "notes": [
+        "Confirms PL-5 for `corr`: the same query (with `cov` and `corr` of `Decimal` columns) raises on the streaming engine and gives 0.9707253433941508 in memory.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

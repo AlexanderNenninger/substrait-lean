@@ -136,6 +136,40 @@
         }
       ],
       "notes": "Retitled from \"`cov`: two-pass blocks with Chan merge; Welford when streaming\" and the verdict from \"two-pass per block + Chan (in memory); Welford (streaming); no clamp\": the streaming engine uses Welford's update only when grouped; ungrouped it runs the block algorithm of the in-memory path. The verdict also names PL-5 (streaming `cov` of `Decimal` raises)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L108-L123",
+          "note": "`test_cov_one_row`, `engine` in-memory and streaming: grouped `cov(ddof=1)` of one pair is NULL and `cov(ddof=0)` 0.0; of (2, 3), (3, 2) -0.5 and -0.25; ungrouped `head(1)` `cov(ddof=1)` is NULL"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/test_statistics.py#L74-L96",
+          "note": "`test_cov_corr_mixed_float_schema`, both engines: `cov` and `corr` of `Float32` with `Float64` are `Float64`, grouped and not"
+        }
+      ],
+      "notes": [
+        "Confirms the null for a weight at most `ddof` on both engines. No test at py-2.1.0 runs `cov` or `corr` of a `Decimal` column on the streaming engine, so PL-5 has no test either way.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-cov-decimal"
+        }
+      ],
+      "notes": [
+        "Confirms PL-5 on the streaming engine: `cov` of two `Decimal(10, 2)` columns raises `InvalidOperationError` (`cov` operation not supported for dtype `decimal[10,2]`), where memory gives 2.625 (and `corr` 0.9707253433941508).",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

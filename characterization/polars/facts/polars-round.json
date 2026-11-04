@@ -10,7 +10,7 @@
   ],
   "rows": [
     {"group": "fp.round", "option": "rounding", "types": ["fp64"]},
-    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "source"}
+    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "engine_test"}
   ],
   "constructs": [
     "round"
@@ -97,6 +97,25 @@
       "notes": [
         "`round()` on `Float32` calls `f32::round_ties_even`, half to even as for `Float64`. With decimals it scales in `f64` and casts back.",
         "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/lazyframe/test_lazyframe.py#L611-L640",
+          "note": "`test_round_mode`, for `Float16`, `Float32` and `Float64` (lazy `collect()`): `half_to_even` gives 0.5 → 0.0, 1.5 → 2.0, 2.5 → 2.0, -0.5 → -0.0, -1.5 → -2.0, 2.25 → 2.2 and 2.75 → 2.8 at one digit; `half_away_from_zero` gives 1.0, 2.0, 3.0, -1.0, -2.0, 2.3, 2.8"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/src/polars/expr/expr.py#L2001",
+          "note": "`round(decimals=0, mode='half_to_even')`: half to even is the default"
+        }
+      ],
+      "notes": [
+        "The ties at zero digits are exact in `Float32`, so the test pins round half to even (and half away from zero by option) for `fp32` as for `fp64`.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
     }
   ],

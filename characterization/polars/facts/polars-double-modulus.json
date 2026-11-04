@@ -15,9 +15,9 @@
     {"group": "fp.mod", "option": "division_type", "types": ["fp64"]},
     {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp64"]},
     {"group": "fp.mod", "option": "nan_creation", "types": ["fp64"]},
-    {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "source"},
-    {"group": "fp.mod", "option": "nan_creation", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.mod", "option": "division_type", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.mod", "option": "on_division_by_zero", "types": ["fp32"], "evidence": "engine_test"},
+    {"group": "fp.mod", "option": "nan_creation", "types": ["fp32"], "evidence": "engine_test"},
     {"group": "fp.mod", "option": "zero_sign", "types": ["fp32", "fp64"], "evidence": "source"}
   ],
   "constructs": [
@@ -109,6 +109,25 @@
         "`impl_float_arith_kernel!` is one macro instantiated for `pf16`, `f32` and `f64`, so `Float32` and `Float64` run the same operations. The streaming engine evaluates expressions through polars-expr on each morsel (`StreamExpr` in crates/polars-stream/src/expression.rs), so it shares these kernels with the in-memory engine. So the floor remainder, NaN for a zero divisor and NaN for a finite `x % ±inf` hold for `Float32` as the `Float64` probes show.",
         "With a literal divisor on a frame of two rows or more, the kernel multiplies by the reciprocal: where `x * (1 / y)` rounds below an integer that `x / y` reaches, the floor is one less and the remainder is `y` itself (`49.0 % 49.0` is 49.0), and a subnormal divisor makes the reciprocal infinite. That path is polars-double-scalar-divisor.",
         "Read at tag py-2.1.0 (commit 7f902bd3). The streaming engine evaluates expressions through polars-expr on each morsel (crates/polars-stream/src/expression.rs), so these kernels serve both engines."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (doubles)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L198-L218",
+          "note": "`test_list_arithmetic_values`, `Float32`: 1 // 0 is inf, 1 % 0 NaN, 1 / 0 inf, 0 // 0 NaN, 0 % 0 NaN, 0 / 0 NaN"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_list.py#L153-L172",
+          "note": "`test_list_arithmetic_values`, `Float32` (picked so nothing upcasts to `Float64`): 7 // 3 is 2, -5 % 3 is 1, 2 / 128 is 0.015625"
+        }
+      ],
+      "notes": [
+        "Pins the `Float32` floor remainder (-5 % 3 is 1, the divisor's sign) and NaN for a zero divisor (`1 % 0`, `0 % 0`). The test runs each case on one-row operands and, through `BROADCAST_SERIES_COMBINATIONS`, with the left side broadcast to three rows against a one-row right side, which takes the reciprocal-divisor kernel (PL-3); `EXEC_OP_COMBINATIONS` runs it on `Series` (in memory) and as a lazy `select` with `collect()`. These inputs give the same results on the IEEE and the reciprocal path. Marked `slow`, which CI still runs. No test checks the sign of a zero remainder, so `zero_sign` stays at the source.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
       ]
     }
   ]

@@ -25,7 +25,7 @@
   ],
   "reference": "The reference compares results as bags, so row order outside a sort is free; `sum_order` is open and allowed within the plan's bound (polars-sum-float).",
   "status": "open",
-  "evidence": "source",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -64,6 +64,33 @@
           "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/group_by/mod.rs#L281-L313",
           "note": "partitions built from the pre-aggregates in order"
         }
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-order"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-fsum-runs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-fsum-runs"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-var-runs"
+        }
+      ],
+      "notes": [
+        "s-group-order: the first group keys of `group_by('g').len()` over 100 000 rows were [274, 396, 39, …] in memory and [0, 919, 838, …] streaming, and neither is the input order; both engines give an arbitrary order. s-group-fsum-runs: five runs of a grouped sum over 300 000 rows gave several results on both engines. s-fsum-runs and s-var-runs: the ungrouped streaming sum and variance vary between runs (polars-sum-float-streaming, polars-var-std-streaming); in memory they did not.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
       ]
     }
   ]

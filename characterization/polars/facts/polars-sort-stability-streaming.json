@@ -1,0 +1,72 @@
+{
+  "id": "polars-sort-stability-streaming",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Streaming `sort` is unstable above the partition threshold without `maintain_order`",
+  "verdict": "ties keep input order with `maintain_order=True`; without it, not above 32 MiB",
+  "area": "relations",
+  "options": [
+    "tie_order"
+  ],
+  "rows": [
+    {"option": "tie_order", "types": ["any"]}
+  ],
+  "constructs": [
+    "sort",
+    "top_k"
+  ],
+  "settings": {
+    "engine": "streaming",
+    "maintain_order": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "The streaming sort concatenates its morsels in order and runs the in-memory sort up to `POLARS_SORT_PARTITION_THRESHOLD_BYTES` (32 MiB). Above it, it splits rows into key-range buckets. With `maintain_order=True` each task reads a contiguous run of frames and ties keep input order (Polars's `test_sort_stability_with_duplicate_keys` checks it, also partitioned and spilled). Without it the frames are dealt to the tasks in turn, and ties come out in another order: a sort of 3 000 000 rows on `i % 3` returned the rows of key 1 out of input order (in memory in order).",
+    "Below the threshold ties kept input order on every probe, with and without `maintain_order`. Polars documents order among ties only for `maintain_order=True`."
+  ],
+  "reference": "`tie_order`: any order of the ties, and any rows of a tie for a `fetch`. Every behaviour is allowed.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-sort-ties-large"
+        }
+      ],
+      "notes": [
+        "s-sort-ties-large: `sort('k')` without `maintain_order` over 3 000 000 rows; the input indices of key 1 are increasing in memory (True) and not when streaming (False).",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/mod.rs#L121-L165"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/mod.rs#L493-L535"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/sort/tuning.rs#L5-L64",
+          "note": "partition threshold"
+        }
+      ],
+      "notes": [
+        "Carried over from polars-sort-stability's round-2 reading, which the probe now confirms for the unordered path."
+      ]
+    }
+  ],
+  "supersedes": [
+    "polars-sort-stability"
+  ]
+}

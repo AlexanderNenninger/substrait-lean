@@ -103,6 +103,25 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3). Confirms the docs-level `win.rank` row and, through polars-sql, `ntile_spread`; the tie order of `NTILE` stays at the docs level."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (windows)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_rank_functions.py#L219-L235",
+          "note": "`test_ntile`: SQL `NTILE(k)` for k = 1, 2, 3, 5, 9 over `ORDER BY id` and `PARTITION BY g ORDER BY x DESC, id` matches DuckDB, on `engines=['in-memory', 'streaming']`, dtypes checked"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/sql/test_rank_functions.py#L163-L198",
+          "note": "`test_rank_funcs_nulls_and_ties`: `RANK`, `DENSE_RANK`, `PERCENT_RANK`, `CUME_DIST` with tied and NULL keys under eight orderings, with and without partitions, match DuckDB on both engines"
+        }
+      ],
+      "notes": [
+        "Pins the bucket spread of polars-sql's `NTILE` against DuckDB on both engines. Both orderings of `test_ntile` are total (ties broken by `id`), so the order of tied rows within `NTILE` stays unpinned and the `win.ntile` `tie_order` row stays at the docs. The ranking functions match DuckDB on ties and NULLs.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
     }
   ]
 }

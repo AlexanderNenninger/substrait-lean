@@ -1,0 +1,1726 @@
+{
+ "polars": "2.1.0",
+ "engine": "streaming vs in-memory",
+ "probes": [
+  {
+   "construct": "Int8 + Int8",
+   "function": "add",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int8 - Int8",
+   "function": "subtract",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int8 * Int8",
+   "function": "multiply",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "-Int8",
+   "function": "negate",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int8.abs()",
+   "function": "abs",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int8 // Int8",
+   "function": "divide",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int8 % Int8",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int8.mod(Int8)",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16 + Int16",
+   "function": "add",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16 - Int16",
+   "function": "subtract",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16 * Int16",
+   "function": "multiply",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "-Int16",
+   "function": "negate",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16.abs()",
+   "function": "abs",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16 // Int16",
+   "function": "divide",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16 % Int16",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int16.mod(Int16)",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32 + Int32",
+   "function": "add",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32 - Int32",
+   "function": "subtract",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32 * Int32",
+   "function": "multiply",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "-Int32",
+   "function": "negate",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32.abs()",
+   "function": "abs",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32 // Int32",
+   "function": "divide",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32 % Int32",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int32.mod(Int32)",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64 + Int64",
+   "function": "add",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64 - Int64",
+   "function": "subtract",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64 * Int64",
+   "function": "multiply",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "-Int64",
+   "function": "negate",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64.abs()",
+   "function": "abs",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64 // Int64",
+   "function": "divide",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64 % Int64",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Int64.mod(Int64)",
+   "function": "modulus",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 + Float64",
+   "function": "add",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 - Float64",
+   "function": "subtract",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 * Float64",
+   "function": "multiply",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 / Float64",
+   "function": "divide",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 % Float64",
+   "function": "modulus",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 ** Float64",
+   "function": "power",
+   "rows": 144,
+   "differ": 2,
+   "examples": [
+    {
+     "row": "[-inf, 0.5]",
+     "how": "column vs row, in-memory",
+     "row-wise": "ok nan",
+     "column-wise": "ok inf"
+    },
+    {
+     "row": "[-inf, 0.5]",
+     "how": "column vs row, streaming",
+     "row-wise": "ok nan",
+     "column-wise": "ok inf"
+    }
+   ]
+  },
+  {
+   "construct": "Float64.floor()",
+   "function": "floor",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.ceil()",
+   "function": "ceil",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round()",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(mode='half_away_from_zero')",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(1)",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(2)",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(16)",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(308)",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(309)",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.round(400)",
+   "function": "round",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.sqrt()",
+   "function": "sqrt",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.exp()",
+   "function": "exp",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.log()",
+   "function": "ln",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.log10()",
+   "function": "log10",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.sin()",
+   "function": "sin",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.cos()",
+   "function": "cos",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.tan()",
+   "function": "tan",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.arcsin()",
+   "function": "asin",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.arccos()",
+   "function": "acos",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.arctan()",
+   "function": "atan",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.log(2)",
+   "function": "log2",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "pl.arctan2(Float64, Float64)",
+   "function": "atan2",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 == Float64",
+   "function": "equal",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64 < Float64",
+   "function": "lt",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "Float64.is_null()",
+   "function": "is_null",
+   "rows": 12,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "pl.max_horizontal(Float64, Float64)",
+   "function": "greatest",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "pl.min_horizontal(Float64, Float64)",
+   "function": "least",
+   "rows": 144,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.to_uppercase()",
+   "function": "upper",
+   "rows": 9,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.to_lowercase()",
+   "function": "lower",
+   "rows": 9,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.len_chars()",
+   "function": "character_length",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.reverse()",
+   "function": "reverse",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.strip_chars(' ')",
+   "function": "btrim",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "pl.concat_str(String, String)",
+   "function": "str_concat",
+   "rows": 121,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.starts_with('a')",
+   "function": "starts_with",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.starts_with('')",
+   "function": "starts_with",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.ends_with('a')",
+   "function": "ends_with",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.ends_with('')",
+   "function": "ends_with",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.find('a', literal=True)",
+   "function": "strpos",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.find('b', literal=True)",
+   "function": "strpos",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.find('', literal=True)",
+   "function": "strpos",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.replace_all('a', 'xy', literal=True)",
+   "function": "replace",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.slice(0, 2)",
+   "function": "substring",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.slice(1, 2)",
+   "function": "substring",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.slice(-2, 5)",
+   "function": "substring",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.slice(-10, 3)",
+   "function": "substring",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.slice(5, 1)",
+   "function": "substring",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.extract('^(a+)(b)?', 2)",
+   "function": "regexp_extract",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.extract('(a|ab)(c|bcd)?', 0)",
+   "function": "regexp_extract",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.extract('(a*)*', 1)",
+   "function": "regexp_extract",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.extract('x(?:a)(y)', 1)",
+   "function": "regexp_extract",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.extract('.$', 0)",
+   "function": "regexp_extract",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.extract('(b)', 1)",
+   "function": "regexp_extract",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.replace_all('a+', '-')",
+   "function": "regexp_replace",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.replace_all('b*', '-')",
+   "function": "regexp_replace",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "String.str.replace_all('$', '!')",
+   "function": "regexp_replace",
+   "rows": 11,
+   "differ": 0,
+   "examples": []
+  },
+  {
+   "construct": "int-sum-types",
+   "area": "integers",
+   "code": "{t: (str(df(x=([1], t)).select(pl.col('x').sum()).dtypes[0]), df(x=([2**(b-1)-1, 1], t)).select(pl.col('x').sum()).item()) for t, b in [(pl.Int8, 8), (pl.Int16, 16), (pl.Int32, 32), (pl.Int64, 64)]}",
+   "differ": 0,
+   "in-memory": "{Int8: ('Int64', 128), Int16: ('Int64', 32768), Int32: ('Int32', -2147483648), Int64: ('Int64', -9223372036854775808)}",
+   "streaming": "{Int8: ('Int64', 128), Int16: ('Int64', 32768), Int32: ('Int32', -2147483648), Int64: ('Int64', -9223372036854775808)}"
+  },
+  {
+   "construct": "int-sum-grouped",
+   "area": "integers",
+   "code": "[df(g=[1, 1], x=([2**(b-1)-1, 1], t)).group_by('g').agg(pl.col('x').sum()).item(0, 'x') for t, b in [(pl.Int8, 8), (pl.Int32, 32), (pl.Int64, 64)]]",
+   "differ": 0,
+   "in-memory": "[128, -2147483648, -9223372036854775808]",
+   "streaming": "[128, -2147483648, -9223372036854775808]"
+  },
+  {
+   "construct": "int-sum-empty",
+   "area": "integers",
+   "code": "[df(x=([None, None], pl.Int64)).select(pl.col('x').sum()).item(), df(x=([], pl.Int64)).select(pl.col('x').sum()).item(), df(g=[1], x=([None], pl.Int64)).group_by('g').agg(pl.col('x').sum()).item(0, 'x'), df(x=([], pl.Int64)).select(pl.col('x').product()).item()]",
+   "differ": 0,
+   "in-memory": "[0, 0, 0, 1]",
+   "streaming": "[0, 0, 0, 1]"
+  },
+  {
+   "construct": "int-mean",
+   "area": "integers",
+   "code": "(df(x=[2**62, 2**62, 1]).select(pl.col('x').mean()).item(), str(df(x=[1, 2]).select(pl.col('x').mean()).dtypes[0]), df(x=([None], pl.Int64)).select(pl.col('x').mean()).item(), df(x=[1, 2]).select(pl.col('x').median()).item())",
+   "differ": 0,
+   "in-memory": "(3.0744573456182584e+18, 'Float64', None, 1.5)",
+   "streaming": "(3.0744573456182584e+18, 'Float64', None, 1.5)"
+  },
+  {
+   "construct": "int-true-divide",
+   "area": "integers",
+   "code": "df(a=[7, -7, 0, 1], b=[2, 0, 0, 3]).select(pl.col('a') / pl.col('b')).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[3.5, -inf, nan, 0.3333333333333333]",
+   "streaming": "[3.5, -inf, nan, 0.3333333333333333]"
+  },
+  {
+   "construct": "int-pow",
+   "area": "integers",
+   "code": "(df(x=[2, 3, -2]).select(pl.col('x') ** 63).to_series().to_list(), str(df(x=([2], pl.Int32)).select(pl.col('x') ** pl.col('x')).dtypes[0]))",
+   "differ": 0,
+   "in-memory": "([-9223372036854775808, -3237885987332494933, -9223372036854775808], 'Int32')",
+   "streaming": "([-9223372036854775808, -3237885987332494933, -9223372036854775808], 'Int32')"
+  },
+  {
+   "construct": "int-pow-negative",
+   "area": "integers",
+   "code": "df(x=[2]).select(pl.col('x') ** -1).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]",
+   "streaming": "error InvalidOperationError: conversion from `i32` to `u32` failed in column 'literal' for 1 out of 1 values: [-1]"
+  },
+  {
+   "construct": "int-shift",
+   "area": "integers",
+   "code": "[m for m in dir(pl.Expr) if 'shift' in m and 'bit' in m]",
+   "differ": 0,
+   "in-memory": "[]",
+   "streaming": "[]"
+  },
+  {
+   "construct": "zero-sign-arith",
+   "area": "doubles",
+   "code": "df(z=[-0.0, 0.0]).select((1.0 / pl.col('z')).alias('inv'), (-pl.col('z')).alias('neg'), (pl.col('z') * -1.0).alias('mul'), pl.col('z').sqrt().alias('sqrt')).rows()",
+   "differ": 0,
+   "in-memory": "[(-inf, 0.0, 0.0, -0.0), (inf, -0.0, -0.0, 0.0)]",
+   "streaming": "[(-inf, 0.0, 0.0, -0.0), (inf, -0.0, -0.0, 0.0)]"
+  },
+  {
+   "construct": "nan-sign-negate",
+   "area": "doubles",
+   "code": "[bits(v) for v in df(z=[nan]).select(-pl.col('z'), pl.col('z').abs().alias('abs'), (-pl.col('z')).sqrt().alias('sqrt')).row(0)]",
+   "differ": 0,
+   "in-memory": "['0xfff8000000000000', '0x7ff8000000000000', '0xfff8000000000000']",
+   "streaming": "['0xfff8000000000000', '0x7ff8000000000000', '0xfff8000000000000']"
+  },
+  {
+   "construct": "double-floordiv",
+   "area": "doubles",
+   "code": "df(a=[7.0, -7.0, 1.0, inf, 5.0], b=[2.0, 2.0, 0.0, 2.0, inf]).select(pl.col('a') // pl.col('b')).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[3.0, -4.0, inf, inf, 0.0]",
+   "streaming": "[3.0, -4.0, inf, inf, 0.0]"
+  },
+  {
+   "construct": "double-modulus-sign",
+   "area": "doubles",
+   "code": "df(a=[5.5, -5.5, 5.5, -5.5, 5.0, -5.0], b=[2.0, 2.0, -2.0, -2.0, inf, inf]).select(pl.col('a') % pl.col('b')).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[1.5, 0.5, -0.5, -1.5, nan, nan]",
+   "streaming": "[1.5, 0.5, -0.5, -1.5, nan, nan]"
+  },
+  {
+   "construct": "round-digits-negative",
+   "area": "doubles",
+   "code": "df(x=[123.0]).select(pl.col('x').round(-1)).item()",
+   "differ": 0,
+   "in-memory": "error OverflowError: number too small to fit in target type",
+   "streaming": "error OverflowError: number too small to fit in target type"
+  },
+  {
+   "construct": "round-digits-ties",
+   "area": "doubles",
+   "code": "{d: df(x=[0.125, 0.375, 2.675, 1.005, 0.285]).select(pl.col('x').round(d)).to_series().to_list() for d in (1, 2)}",
+   "differ": 0,
+   "in-memory": "{1: [0.1, 0.4, 2.7, 1.0, 0.3], 2: [0.12, 0.38, 2.68, 1.0, 0.28]}",
+   "streaming": "{1: [0.1, 0.4, 2.7, 1.0, 0.3], 2: [0.12, 0.38, 2.68, 1.0, 0.28]}"
+  },
+  {
+   "construct": "round-default-mode",
+   "area": "doubles",
+   "code": "df(x=[0.5, 1.5, 2.5, -0.5, -2.5]).select(pl.col('x').round()).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[0.0, 2.0, 2.0, -0.0, -2.0]",
+   "streaming": "[0.0, 2.0, 2.0, -0.0, -2.0]"
+  },
+  {
+   "construct": "float-sum-nonfinite",
+   "area": "doubles",
+   "code": "df(x=[inf, -inf, 1.0]).select(pl.col('x').sum().alias('sum'), pl.col('x').mean().alias('mean'), pl.col('x').std().alias('std')).rows()",
+   "differ": 0,
+   "in-memory": "[(nan, nan, nan)]",
+   "streaming": "[(nan, nan, nan)]"
+  },
+  {
+   "construct": "float-std-inf",
+   "area": "aggregates",
+   "code": "df(x=[inf, 1.0]).select(pl.col('x').std().alias('std'), pl.col('x').var().alias('var')).rows()",
+   "differ": 0,
+   "in-memory": "[(nan, nan)]",
+   "streaming": "[(nan, nan)]"
+  },
+  {
+   "construct": "float-sum-empty",
+   "area": "aggregates",
+   "code": "[df(x=([], pl.Float64)).select(pl.col('x').sum()).item(), df(x=([None], pl.Float64)).select(pl.col('x').sum()).item(), df(x=([], pl.Float64)).select(pl.col('x').mean()).item()]",
+   "differ": 0,
+   "in-memory": "[0.0, 0.0, None]",
+   "streaming": "[0.0, 0.0, None]"
+  },
+  {
+   "construct": "var-one-value",
+   "area": "aggregates",
+   "code": "df(x=[1.0]).select(pl.col('x').var().alias('samp'), pl.col('x').var(ddof=0).alias('pop'), pl.col('x').std().alias('std')).rows()",
+   "differ": 0,
+   "in-memory": "[(None, 0.0, None)]",
+   "streaming": "[(None, 0.0, None)]"
+  },
+  {
+   "construct": "corr-degenerate",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 1.0], y=[1.0, 2.0]).select(pl.corr('x', 'y').alias('const'), pl.corr(pl.col('x').head(1), pl.col('y').head(1)).alias('one'), pl.corr(pl.col('x').head(0), pl.col('y').head(0)).alias('none')).rows()",
+   "differ": 1,
+   "in-memory": "[(nan, nan, nan)]",
+   "streaming": "[(nan, nan, None)]"
+  },
+  {
+   "construct": "quantile-methods",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, 3.0, 4.0]).select(*(pl.col('x').quantile(0.4, m).alias(m) for m in ['nearest', 'lower', 'higher', 'midpoint', 'linear', 'equiprobable'])).rows()",
+   "differ": 0,
+   "in-memory": "[(2.0, 2.0, 3.0, 2.5, 2.2, 2.0)]",
+   "streaming": "[(2.0, 2.0, 3.0, 2.5, 2.2, 2.0)]"
+  },
+  {
+   "construct": "quantile-default",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, 3.0, 4.0]).select(pl.col('x').quantile(0.4)).item()",
+   "differ": 0,
+   "in-memory": "2.0",
+   "streaming": "2.0"
+  },
+  {
+   "construct": "decimal-result-types",
+   "area": "decimals",
+   "code": "[str(t) for t in df(x=['1.25']).select((pl.col('x').cast(pl.Decimal(10, 2)) * pl.col('x').cast(pl.Decimal(5, 1))).alias('mul'), (pl.col('x').cast(pl.Decimal(10, 2)) + pl.col('x').cast(pl.Decimal(5, 1))).alias('add'), (pl.col('x').cast(pl.Decimal(10, 2)) / pl.col('x').cast(pl.Decimal(5, 1))).alias('div'), pl.col('x').cast(pl.Decimal(5, 2)).sum().alias('sum')).dtypes]",
+   "differ": 0,
+   "in-memory": "['Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)']",
+   "streaming": "['Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)', 'Decimal(precision=38, scale=2)']"
+  },
+  {
+   "construct": "decimal-rounding",
+   "area": "decimals",
+   "code": "{'mul': df(x=['0.05', '0.15', '-0.05']).select(pl.col('x').cast(pl.Decimal(10, 2)) * pl.lit('0.5').cast(pl.Decimal(10, 1))).to_series().to_list(), 'div': df(x=['1.00', '3.00', '-1.00']).select(pl.col('x').cast(pl.Decimal(10, 2)) / pl.lit('8').cast(pl.Decimal(10, 0))).to_series().to_list(), 'rescale': df(x=['1.050', '1.150', '-1.050', '1.051']).select(pl.col('x').cast(pl.Decimal(10, 3)).cast(pl.Decimal(10, 1))).to_series().to_list(), 'from_double': df(x=[0.625, 0.375, -0.625, 0.135]).select(pl.col('x').cast(pl.Decimal(10, 2))).to_series().to_list()}",
+   "differ": 0,
+   "in-memory": "{'mul': [Decimal('0.02'), Decimal('0.08'), Decimal('-0.02')], 'div': [Decimal('0.12'), Decimal('0.38'), Decimal('-0.12')], 'rescale': [Decimal('1.0'), Decimal('1.2'), Decimal('-1.0'), Decimal('1.1')], 'from_double': [Decimal('0.62'), Decimal('0.38'), Decimal('-0.62'), Decimal('0.14')]}",
+   "streaming": "{'mul': [Decimal('0.02'), Decimal('0.08'), Decimal('-0.02')], 'div': [Decimal('0.12'), Decimal('0.38'), Decimal('-0.12')], 'rescale': [Decimal('1.0'), Decimal('1.2'), Decimal('-1.0'), Decimal('1.1')], 'from_double': [Decimal('0.62'), Decimal('0.38'), Decimal('-0.62'), Decimal('0.14')]}"
+  },
+  {
+   "construct": "decimal-overflow",
+   "area": "decimals",
+   "code": "df(x=['9999.99']).select(pl.col('x').cast(pl.Decimal(6, 2)) * pl.lit(1000).cast(pl.Decimal(6, 0))).item()",
+   "differ": 0,
+   "in-memory": "Decimal('9999990.00')",
+   "streaming": "Decimal('9999990.00')"
+  },
+  {
+   "construct": "decimal-precision-38",
+   "area": "decimals",
+   "code": "df(x=['9' * 36 + '.99']).select(pl.col('x').cast(pl.Decimal(38, 2)) * pl.lit(10).cast(pl.Decimal(2, 0))).item()",
+   "differ": 0,
+   "in-memory": "error ComputeError: overflow in decimal multiplication: result doesn't fit Decimal(38, 2)",
+   "streaming": "error ComputeError: overflow in decimal multiplication: result doesn't fit Decimal(38, 2)"
+  },
+  {
+   "construct": "decimal-divide-by-zero",
+   "area": "decimals",
+   "code": "df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(6, 2)) / pl.lit(0).cast(pl.Decimal(6, 0))).item()",
+   "differ": 0,
+   "in-memory": "error ComputeError: division by zero Decimal",
+   "streaming": "error ComputeError: division by zero Decimal"
+  },
+  {
+   "construct": "decimal-mean",
+   "area": "decimals",
+   "code": "(df(x=['1.00', '2.01']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).item(), str(df(x=['1.00']).select(pl.col('x').cast(pl.Decimal(5, 2)).mean()).dtypes[0]))",
+   "differ": 0,
+   "in-memory": "(1.505, 'Float64')",
+   "streaming": "(1.505, 'Float64')"
+  },
+  {
+   "construct": "nan-compare",
+   "area": "doubles",
+   "code": "df(a=[nan, nan, 1.0, inf, 0.0, None], b=[nan, 1.0, nan, nan, -0.0, None]).select((pl.col('a') == pl.col('b')).alias('eq'), (pl.col('a') < pl.col('b')).alias('lt'), (pl.col('a') > pl.col('b')).alias('gt'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
+   "differ": 0,
+   "in-memory": "[(True, False, False, True), (False, False, True, False), (False, True, False, False), (False, True, False, False), (True, False, False, True), (None, None, None, True)]",
+   "streaming": "[(True, False, False, True), (False, False, True, False), (False, True, False, False), (False, True, False, False), (True, False, False, True), (None, None, None, True)]"
+  },
+  {
+   "construct": "nan-is-in",
+   "area": "doubles",
+   "code": "df(a=[nan, 1.0, None]).select(pl.col('a').is_in([nan])).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[True, False, None]",
+   "streaming": "[True, False, None]"
+  },
+  {
+   "construct": "sort-doubles",
+   "area": "relations",
+   "code": "{f'{d=} {n=}': df(x=[1.0, nan, None, -inf, inf, 0.0, -1.0]).sort('x', descending=d, nulls_last=n)['x'].to_list() for d in (False, True) for n in (False, True)}",
+   "differ": 0,
+   "in-memory": "{'d=False n=False': [None, -inf, -1.0, 0.0, 1.0, inf, nan], 'd=False n=True': [-inf, -1.0, 0.0, 1.0, inf, nan, None], 'd=True n=False': [None, nan, inf, 1.0, 0.0, -1.0, -inf], 'd=True n=True': [nan, inf, 1.0, 0.0, -1.0, -inf, None]}",
+   "streaming": "{'d=False n=False': [None, -inf, -1.0, 0.0, 1.0, inf, nan], 'd=False n=True': [-inf, -1.0, 0.0, 1.0, inf, nan, None], 'd=True n=False': [None, nan, inf, 1.0, 0.0, -1.0, -inf], 'd=True n=True': [nan, inf, 1.0, 0.0, -1.0, -inf, None]}"
+  },
+  {
+   "construct": "sort-zero-sign",
+   "area": "relations",
+   "code": "df(x=[0.0, -0.0, 0.0, -0.0], i=[0, 1, 2, 3]).sort('x', maintain_order=True).rows()",
+   "differ": 0,
+   "in-memory": "[(0.0, 0), (-0.0, 1), (0.0, 2), (-0.0, 3)]",
+   "streaming": "[(0.0, 0), (-0.0, 1), (0.0, 2), (-0.0, 3)]"
+  },
+  {
+   "construct": "sort-null-default",
+   "area": "relations",
+   "code": "[df(x=[2, None, 1]).sort('x', descending=d)['x'].to_list() for d in (False, True)]",
+   "differ": 0,
+   "in-memory": "[[None, 1, 2], [None, 2, 1]]",
+   "streaming": "[[None, 1, 2], [None, 2, 1]]"
+  },
+  {
+   "construct": "sort-strings-bools",
+   "area": "relations",
+   "code": "(df(s=['b', 'B', 'a', '\u00e9', 'Z', '', None]).sort('s')['s'].to_list(), df(s=[True, None, False]).sort('s')['s'].to_list())",
+   "differ": 0,
+   "in-memory": "([None, '', 'B', 'Z', 'a', 'b', '\u00e9'], [None, False, True])",
+   "streaming": "([None, '', 'B', 'Z', 'a', 'b', '\u00e9'], [None, False, True])"
+  },
+  {
+   "construct": "sort-stable",
+   "area": "relations",
+   "code": "[df(k=[i % 7 for i in range(200_000)], i=range(200_000)).lazy().sort('k', maintain_order=m).collect(engine=e).select((pl.col('i').diff().over('k') < 0).any()).item() for m in (False, True) for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[False, False, False, False]",
+   "streaming": "[False, False, False, False]"
+  },
+  {
+   "construct": "min-max-nan",
+   "area": "aggregates",
+   "code": "df(x=[1.0, nan, None, -inf, inf]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max'), pl.col('x').nan_min().alias('nan_min'), pl.col('x').nan_max().alias('nan_max'), pl.col('x').arg_max().alias('arg_max'), pl.col('x').sort().last().alias('sort_last')).rows()",
+   "differ": 0,
+   "in-memory": "[(-inf, inf, nan, nan, 4, nan)]",
+   "streaming": "[(-inf, inf, nan, nan, 4, nan)]"
+  },
+  {
+   "construct": "min-max-only-nan",
+   "area": "aggregates",
+   "code": "df(x=[nan, None]).select(pl.col('x').min().alias('min'), pl.col('x').max().alias('max')).rows()",
+   "differ": 0,
+   "in-memory": "[(nan, nan)]",
+   "streaming": "[(nan, nan)]"
+  },
+  {
+   "construct": "median-nan",
+   "area": "aggregates",
+   "code": "df(x=[1.0, 2.0, nan]).select(pl.col('x').median().alias('median'), pl.col('x').quantile(0.5, 'lower').alias('lower')).rows()",
+   "differ": 0,
+   "in-memory": "[(2.0, 2.0)]",
+   "streaming": "[(2.0, 2.0)]"
+  },
+  {
+   "construct": "group-nan-zero",
+   "area": "relations",
+   "code": "df(x=[1.0, nan, None, nan, 0.0, -0.0, None]).group_by('x', maintain_order=True).agg(pl.len()).rows()",
+   "differ": 0,
+   "in-memory": "[(1.0, 1), (nan, 2), (None, 2), (0.0, 2)]",
+   "streaming": "[(1.0, 1), (nan, 2), (None, 2), (0.0, 2)]"
+  },
+  {
+   "construct": "unique-nan-zero",
+   "area": "relations",
+   "code": "(df(x=[nan, 0.0, -0.0, nan, None, None]).unique(maintain_order=True)['x'].to_list(), df(x=[nan, 0.0, -0.0, nan, None]).select(pl.col('x').n_unique()).item())",
+   "differ": 0,
+   "in-memory": "([nan, 0.0, None], 3)",
+   "streaming": "([nan, 0.0, None], 3)"
+  },
+  {
+   "construct": "join-nan-zero-null",
+   "area": "relations",
+   "code": "[df(x=[nan, 0.0, -0.0, None]).join(df(x=[nan, 0.0, None], y=[1, 2, 3]), on='x', nulls_equal=n).sort('y').rows() for n in (False, True)]",
+   "differ": 0,
+   "in-memory": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]",
+   "streaming": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]"
+  },
+  {
+   "construct": "int-float-compare",
+   "area": "doubles",
+   "code": "df(i=[2**53 + 1], f=[2.0**53]).select((pl.col('i') == pl.col('f')).alias('eq'), (pl.col('i') > pl.col('f')).alias('gt')).rows()",
+   "differ": 0,
+   "in-memory": "[(True, False)]",
+   "streaming": "[(True, False)]"
+  },
+  {
+   "construct": "kleene",
+   "area": "relations",
+   "code": "df(a=[True, False, None, None], b=[None, None, None, True]).select((pl.col('a') & pl.col('b')).alias('and'), (pl.col('a') | pl.col('b')).alias('or'), (~pl.col('a')).alias('not')).rows()",
+   "differ": 0,
+   "in-memory": "[(None, True, False), (False, None, True), (None, None, None), (None, True, None)]",
+   "streaming": "[(None, True, False), (False, None, True), (None, None, None), (None, True, None)]"
+  },
+  {
+   "construct": "any-all-nulls",
+   "area": "aggregates",
+   "code": "df(x=[True, None]).select(pl.col('x').all().alias('all'), pl.col('x').all(ignore_nulls=False).alias('all_kleene'), pl.col('x').any(ignore_nulls=False).alias('any_kleene')).rows()",
+   "differ": 0,
+   "in-memory": "[(True, None, True)]",
+   "streaming": "[(True, None, True)]"
+  },
+  {
+   "construct": "count-nulls",
+   "area": "aggregates",
+   "code": "df(x=[1, None, None]).select(pl.col('x').count().alias('count'), pl.col('x').len().alias('len'), pl.col('x').null_count().alias('nulls')).rows()",
+   "differ": 0,
+   "in-memory": "[(1, 3, 2)]",
+   "streaming": "[(1, 3, 2)]"
+  },
+  {
+   "construct": "aggregates-empty",
+   "area": "aggregates",
+   "code": "df(x=([None, None], pl.Int64)).select(pl.col('x').min().alias('min'), pl.col('x').first().alias('first'), pl.col('x').count().alias('count'), pl.col('x').mode().alias('mode').implode()).rows()",
+   "differ": 0,
+   "in-memory": "[(None, None, 0, [None])]",
+   "streaming": "[(None, None, 0, [None])]"
+  },
+  {
+   "construct": "first-last",
+   "area": "aggregates",
+   "code": "df(g=[1, 1, 1, 2], x=[None, 3, None, 4]).group_by('g', maintain_order=True).agg(pl.col('x').first().alias('first'), pl.col('x').last().alias('last'), pl.col('x').first(ignore_nulls=True).alias('first_nn'), pl.col('x').last(ignore_nulls=True).alias('last_nn')).rows()",
+   "differ": 0,
+   "in-memory": "[(1, None, None, 3, 3), (2, 4, 4, 4, 4)]",
+   "streaming": "[(1, None, None, 3, 3), (2, 4, 4, 4, 4)]"
+  },
+  {
+   "construct": "first-input-order",
+   "area": "aggregates",
+   "code": "[df(k=[i % 10 for i in range(200_000)], i=range(200_000)).lazy().group_by('k').agg(pl.col('i').first().alias('f'), pl.col('i').min().alias('m'), pl.col('i').last().alias('l'), pl.col('i').max().alias('M'), pl.col('i').alias('all')).collect(engine=e).select(((pl.col('f') == pl.col('m')) & (pl.col('l') == pl.col('M')) & (pl.col('all').list.eval(pl.element().diff().drop_nulls().min() > 0).list.first())).all()).item() for e in ('in-memory', 'streaming')]",
+   "differ": 0,
+   "in-memory": "[True, True]",
+   "streaming": "[True, True]"
+  },
+  {
+   "construct": "arg-min-max-ties",
+   "area": "aggregates",
+   "code": "df(x=[1, 3, 3, 1]).select(pl.col('x').arg_max().alias('arg_max'), pl.col('x').arg_min().alias('arg_min')).rows()",
+   "differ": 0,
+   "in-memory": "[(1, 0)]",
+   "streaming": "[(1, 0)]"
+  },
+  {
+   "construct": "mode-ties",
+   "area": "aggregates",
+   "code": "df(x=[3, 1, 2, 2, 1, 3]).select(pl.col('x').mode().sort()).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[1, 2, 3]",
+   "streaming": "[1, 2, 3]"
+  },
+  {
+   "construct": "string-agg",
+   "area": "aggregates",
+   "code": "df(g=[1, 1, 1], x=['a', None, 'b']).group_by('g').agg(pl.col('x').str.join(',')).item(0, 'x')",
+   "differ": 0,
+   "in-memory": "'a,b'",
+   "streaming": "'a,b'"
+  },
+  {
+   "construct": "top-k-ties",
+   "area": "relations",
+   "code": "df(x=[1, 1, 1, 0], i=[0, 1, 2, 3]).top_k(2, by='x').sort('i').rows()",
+   "differ": 0,
+   "in-memory": "[(1, 0), (1, 1)]",
+   "streaming": "[(1, 0), (1, 1)]"
+  },
+  {
+   "construct": "rank-methods",
+   "area": "windows",
+   "code": "df(x=[2, 1, 2, None]).select(*(pl.col('x').rank(m).alias(m) for m in ['average', 'min', 'max', 'dense', 'ordinal'])).rows()",
+   "differ": 0,
+   "in-memory": "[(2.5, 2, 3, 2, 2), (1.0, 1, 1, 1, 1), (2.5, 2, 3, 2, 3), (None, None, None, None, None)]",
+   "streaming": "[(2.5, 2, 3, 2, 2), (1.0, 1, 1, 1, 1), (2.5, 2, 3, 2, 3), (None, None, None, None, None)]"
+  },
+  {
+   "construct": "rank-descending-nan",
+   "area": "windows",
+   "code": "df(x=[2.0, nan, 1.0, None]).select(pl.col('x').rank('min').alias('asc'), pl.col('x').rank('min', descending=True).alias('desc')).rows()",
+   "differ": 0,
+   "in-memory": "[(2, 2), (3, 1), (1, 3), (None, None)]",
+   "streaming": "[(2, 2), (3, 1), (1, 3), (None, None)]"
+  },
+  {
+   "construct": "window-lag-first",
+   "area": "windows",
+   "code": "df(g=[1, 1, 2], x=[3, 1, 2]).select(pl.col('x').first().over('g').alias('first'), pl.col('x').shift(1).over('g').alias('lag'), pl.col('x').cum_sum().over('g').alias('cum')).rows()",
+   "differ": 0,
+   "in-memory": "[(3, None, 3), (3, 3, 4), (2, None, 2)]",
+   "streaming": "[(3, None, 3), (3, 3, 4), (2, None, 2)]"
+  },
+  {
+   "construct": "slice",
+   "area": "strings",
+   "code": "{f'{o},{n}': df(s=['hello', 'h\u00e9llo', '', None]).select(pl.col('s').str.slice(o, n)).to_series().to_list() for o, n in [(0, 2), (1, 2), (-2, None), (-2, 5), (-10, 3), (-10, 7), (10, 2), (2, None)]}",
+   "differ": 0,
+   "in-memory": "{'0,2': ['he', 'h\u00e9', '', None], '1,2': ['el', '\u00e9l', '', None], '-2,None': ['lo', 'lo', '', None], '-2,5': ['lo', 'lo', '', None], '-10,3': ['', '', '', None], '-10,7': ['he', 'h\u00e9', '', None], '10,2': ['', '', '', None], '2,None': ['llo', 'llo', '', None]}",
+   "streaming": "{'0,2': ['he', 'h\u00e9', '', None], '1,2': ['el', '\u00e9l', '', None], '-2,None': ['lo', 'lo', '', None], '-2,5': ['lo', 'lo', '', None], '-10,3': ['', '', '', None], '-10,7': ['he', 'h\u00e9', '', None], '10,2': ['', '', '', None], '2,None': ['llo', 'llo', '', None]}"
+  },
+  {
+   "construct": "slice-negative-length",
+   "area": "strings",
+   "code": "df(s=['hello']).select(pl.col('s').str.slice(0, -1)).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: conversion from `i32` to `u64` failed in column 'literal' for 1 out of 1 values: [-1]",
+   "streaming": "error InvalidOperationError: conversion from `i32` to `u64` failed in column 'literal' for 1 out of 1 values: [-1]"
+  },
+  {
+   "construct": "find-bytes",
+   "area": "strings",
+   "code": "df(s=['h\u00e9llo', 'hello', 'xyz', '']).select(pl.col('s').str.find('l', literal=True).alias('find'), pl.col('s').str.find('', literal=True).alias('empty')).rows()",
+   "differ": 0,
+   "in-memory": "[(3, 0), (2, 0), (None, 0), (None, 0)]",
+   "streaming": "[(3, 0), (2, 0), (None, 0), (None, 0)]"
+  },
+  {
+   "construct": "len-chars-bytes",
+   "area": "strings",
+   "code": "df(s=['h\u00e9llo', '\u00df', 'e\u0301', '']).select(pl.col('s').str.len_chars().alias('chars'), pl.col('s').str.len_bytes().alias('bytes')).rows()",
+   "differ": 0,
+   "in-memory": "[(5, 6), (1, 2), (2, 3), (0, 0)]",
+   "streaming": "[(5, 6), (1, 2), (2, 3), (0, 0)]"
+  },
+  {
+   "construct": "case-unicode",
+   "area": "strings",
+   "code": "df(s=['stra\u00dfe', '\u01c5ungla', '\u0130', '\u03a3\u0391\u03a3']).select(pl.col('s').str.to_uppercase().alias('up'), pl.col('s').str.to_lowercase().alias('low')).rows()",
+   "differ": 0,
+   "in-memory": "[('STRASSE', 'stra\u00dfe'), ('\u01c4UNGLA', '\u01c6ungla'), ('\u0130', 'i\u0307'), ('\u03a3\u0391\u03a3', '\u03c3\u03b1\u03c2')]",
+   "streaming": "[('STRASSE', 'stra\u00dfe'), ('\u01c4UNGLA', '\u01c6ungla'), ('\u0130', 'i\u0307'), ('\u03a3\u0391\u03a3', '\u03c3\u03b1\u03c2')]"
+  },
+  {
+   "construct": "reverse-graphemes",
+   "area": "strings",
+   "code": "[ascii(v) for v in df(s=['e\u0301x', '\ud83c\udde9\ud83c\uddeaa', 'abc']).select(pl.col('s').str.reverse()).to_series().to_list()]",
+   "differ": 0,
+   "in-memory": "[\"'xe\\\\u0301'\", \"'a\\\\U0001f1e9\\\\U0001f1ea'\", \"'cba'\"]",
+   "streaming": "[\"'xe\\\\u0301'\", \"'a\\\\U0001f1e9\\\\U0001f1ea'\", \"'cba'\"]"
+  },
+  {
+   "construct": "strip-whitespace",
+   "area": "strings",
+   "code": "[ascii(v) for v in df(s=[' \\t a \\n', '\u00a0b\u2003', 'xxaxx']).select(pl.col('s').str.strip_chars()).to_series().to_list()]",
+   "differ": 0,
+   "in-memory": "[\"'a'\", \"'b'\", \"'xxaxx'\"]",
+   "streaming": "[\"'a'\", \"'b'\", \"'xxaxx'\"]"
+  },
+  {
+   "construct": "concat-nulls",
+   "area": "strings",
+   "code": "df(a=['x', None], b=['y', 'z']).select(pl.concat_str('a', 'b').alias('concat'), pl.concat_str('a', 'b', ignore_nulls=True).alias('ignore'), (pl.col('a') + pl.col('b')).alias('plus')).rows()",
+   "differ": 0,
+   "in-memory": "[('xy', 'xy', 'xy'), (None, 'z', None)]",
+   "streaming": "[('xy', 'xy', 'xy'), (None, 'z', None)]"
+  },
+  {
+   "construct": "regex-syntax",
+   "area": "strings",
+   "code": "{p: attempt(lambda: df(s=['ab', '\u0663', '\u00e9']).select(pl.col('s').str.contains(p)).to_series().to_list()) for p in ['a(?=b)', r'(a)\\1', r'^\\d$', r'^\\w$', '(?i)AB', '^[[:alpha:]]+$']}",
+   "differ": 0,
+   "in-memory": "{'a(?=b)': 'error ComputeError: regex error: regex parse error:', '(a)\\\\1': 'error ComputeError: regex error: regex parse error:', '^\\\\d$': [False, True, False], '^\\\\w$': [False, True, True], '(?i)AB': [True, False, False], '^[[:alpha:]]+$': [True, False, False]}",
+   "streaming": "{'a(?=b)': 'error ComputeError: regex error: regex parse error:', '(a)\\\\1': 'error ComputeError: regex error: regex parse error:', '^\\\\d$': [False, True, False], '^\\\\w$': [False, True, True], '(?i)AB': [True, False, False], '^[[:alpha:]]+$': [True, False, False]}"
+  },
+  {
+   "construct": "regex-invalid",
+   "area": "strings",
+   "code": "df(s=['a']).select(pl.col('s').str.contains('(')).item()",
+   "differ": 0,
+   "in-memory": "error ComputeError: regex error: regex parse error:",
+   "streaming": "error ComputeError: regex error: regex parse error:"
+  },
+  {
+   "construct": "regex-replace-refs",
+   "area": "strings",
+   "code": "df(s=['aab']).select(pl.col('s').str.replace_all('(a+)', '<$1>').alias('dollar'), pl.col('s').str.replace_all('(a+)', r'<\\1>').alias('backslash'), pl.col('s').str.replace_all('(a+)', '<${1}x>').alias('braces'), pl.col('s').str.replace('a', 'x').alias('first')).rows()",
+   "differ": 0,
+   "in-memory": "[('<aa>b', '<\\\\1>b', '<aax>b', 'xab')]",
+   "streaming": "[('<aa>b', '<\\\\1>b', '<aax>b', 'xab')]"
+  },
+  {
+   "construct": "regex-extract-nomatch",
+   "area": "strings",
+   "code": "df(s=['xay', 'b', None]).select(pl.col('s').str.extract('(a)', 1).alias('g1'), pl.col('s').str.extract('(a)?b', 1).alias('unset')).rows()",
+   "differ": 0,
+   "in-memory": "[('a', None), (None, None), (None, None)]",
+   "streaming": "[('a', None), (None, None), (None, None)]"
+  },
+  {
+   "construct": "string-functions-missing",
+   "area": "strings",
+   "code": "[n for n in ['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike'] if not hasattr(pl.Expr.str, n)]",
+   "differ": 0,
+   "in-memory": "['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike']",
+   "streaming": "['levenshtein', 'md5', 'sha256', 'repeat', 'ascii', 'like', 'ilike']"
+  },
+  {
+   "construct": "date-month-arith",
+   "area": "temporal",
+   "code": "df(x=[dt.date(2024, 1, 31), dt.date(2024, 2, 29), dt.date(2023, 3, 31)]).select(pl.col('x').dt.offset_by('1mo').alias('+1mo'), pl.col('x').dt.offset_by('-1mo').alias('-1mo'), pl.col('x').dt.offset_by('1y').alias('+1y')).rows()",
+   "differ": 0,
+   "in-memory": "[(datetime.date(2024, 2, 29), datetime.date(2023, 12, 31), datetime.date(2025, 1, 31)), (datetime.date(2024, 3, 29), datetime.date(2024, 1, 29), datetime.date(2025, 2, 28)), (datetime.date(2023, 4, 30), datetime.date(2023, 2, 28), datetime.date(2024, 3, 31))]",
+   "streaming": "[(datetime.date(2024, 2, 29), datetime.date(2023, 12, 31), datetime.date(2025, 1, 31)), (datetime.date(2024, 3, 29), datetime.date(2024, 1, 29), datetime.date(2025, 2, 28)), (datetime.date(2023, 4, 30), datetime.date(2023, 2, 28), datetime.date(2024, 3, 31))]"
+  },
+  {
+   "construct": "date-range",
+   "area": "temporal",
+   "code": "df(x=[dt.date(1, 1, 1), dt.date(9999, 12, 31)]).select((pl.col('x') + pl.duration(days=d)).cast(pl.String).alias(str(d)) for d in [-1, 1]).rows()",
+   "differ": 0,
+   "in-memory": "[('0000-12-31', '0001-01-02'), ('9999-12-30', '+10000-01-01')]",
+   "streaming": "[('0000-12-31', '0001-01-02'), ('9999-12-30', '+10000-01-01')]"
+  },
+  {
+   "construct": "date-physical-range",
+   "area": "temporal",
+   "code": "df(x=([2**31 - 1], pl.Int32)).select(pl.col('x').cast(pl.Date).cast(pl.String)).item()",
+   "differ": 0,
+   "in-memory": "error PanicException: out-of-range date",
+   "streaming": "error PanicException: out-of-range date"
+  },
+  {
+   "construct": "timestamp-range",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(9999, 1, 1)]).select((pl.col('x') + pl.duration(days=10**6)).cast(pl.String)).item()",
+   "differ": 0,
+   "in-memory": "'+12736-11-28 00:00:00.000000'",
+   "streaming": "'+12736-11-28 00:00:00.000000'"
+  },
+  {
+   "construct": "timestamp-unit",
+   "area": "temporal",
+   "code": "(str(df(x=[dt.datetime(2024, 1, 1)]).dtypes[0]), attempt(lambda: df(x=[dt.datetime(2262, 4, 12)]).select(pl.col('x').cast(pl.Datetime('ns'))).item()))",
+   "differ": 0,
+   "in-memory": "(\"Datetime(time_unit='us', time_zone=None)\", \"error InvalidOperationError: conversion from `datetime[\u03bcs]` to `datetime[ns]` failed in column 'x' for 1 out of 1 values: [2262-04-12 00:00:00]\")",
+   "streaming": "(\"Datetime(time_unit='us', time_zone=None)\", \"error InvalidOperationError: conversion from `datetime[\u03bcs]` to `datetime[ns]` failed in column 'x' for 1 out of 1 values: [2262-04-12 00:00:00]\")"
+  },
+  {
+   "construct": "date-parts",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 12, 30, 1, 2, 3, 456789), dt.datetime(2021, 1, 3)]).select(pl.col('x').dt.year().alias('year'), pl.col('x').dt.iso_year().alias('iso_year'), pl.col('x').dt.week().alias('week'), pl.col('x').dt.weekday().alias('weekday'), pl.col('x').dt.ordinal_day().alias('doy'), pl.col('x').dt.quarter().alias('q'), pl.col('x').dt.millisecond().alias('ms'), pl.col('x').dt.microsecond().alias('us'), pl.col('x').dt.epoch('s').alias('epoch')).rows()",
+   "differ": 0,
+   "in-memory": "[(2024, 2025, 1, 1, 365, 4, 456, 456789, 1735520523), (2021, 2020, 53, 7, 3, 1, 0, 0, 1609632000)]",
+   "streaming": "[(2024, 2025, 1, 1, 365, 4, 456, 456789, 1735520523), (2021, 2020, 53, 7, 3, 1, 0, 0, 1609632000)]"
+  },
+  {
+   "construct": "before-epoch",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(1969, 12, 31, 23, 59, 59, 500000)]).select(pl.col('x').dt.truncate('1s').alias('trunc'), pl.col('x').dt.epoch('s').alias('epoch'), pl.col('x').dt.second().alias('second'), pl.col('x').dt.microsecond().alias('us')).rows()",
+   "differ": 0,
+   "in-memory": "[(datetime.datetime(1969, 12, 31, 23, 59, 59), -1, 59, 500000)]",
+   "streaming": "[(datetime.datetime(1969, 12, 31, 23, 59, 59), -1, 59, 500000)]"
+  },
+  {
+   "construct": "truncate-units",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 12, 31, 13, 7, 3), dt.datetime(2021, 1, 3)]).select(*(pl.col('x').dt.truncate(u).alias(u) for u in ['1w', '1mo', '1q', '1y', '15m'])).rows()",
+   "differ": 0,
+   "in-memory": "[(datetime.datetime(2024, 12, 30, 0, 0), datetime.datetime(2024, 12, 1, 0, 0), datetime.datetime(2024, 10, 1, 0, 0), datetime.datetime(2024, 1, 1, 0, 0), datetime.datetime(2024, 12, 31, 13, 0)), (datetime.datetime(2020, 12, 28, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 3, 0, 0))]",
+   "streaming": "[(datetime.datetime(2024, 12, 30, 0, 0), datetime.datetime(2024, 12, 1, 0, 0), datetime.datetime(2024, 10, 1, 0, 0), datetime.datetime(2024, 1, 1, 0, 0), datetime.datetime(2024, 12, 31, 13, 0)), (datetime.datetime(2020, 12, 28, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 1, 0, 0), datetime.datetime(2021, 1, 3, 0, 0))]"
+  },
+  {
+   "construct": "date-diff",
+   "area": "temporal",
+   "code": "df(a=[dt.date(2024, 3, 1)], b=[dt.date(2024, 1, 31)]).select((pl.col('a') - pl.col('b')).alias('diff'), (pl.col('a') - pl.col('b')).dt.total_days().alias('days')).rows()",
+   "differ": 0,
+   "in-memory": "[(datetime.timedelta(days=30), 30)]",
+   "streaming": "[(datetime.timedelta(days=30), 30)]"
+  },
+  {
+   "construct": "strftime",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 1, 5, 3, 4, 5, 600000)]).select(pl.col('x').dt.strftime('%Y-%m-%d %H:%M:%S%.f %j %a %U %V')).item()",
+   "differ": 0,
+   "in-memory": "'2024-01-05 03:04:05.600 005 Fri 00 01'",
+   "streaming": "'2024-01-05 03:04:05.600 005 Fri 00 01'"
+  },
+  {
+   "construct": "time-plus-duration",
+   "area": "temporal",
+   "code": "df(x=[dt.time(23, 0)]).select(pl.col('x') + pl.duration(hours=2)).item()",
+   "differ": 0,
+   "in-memory": "error SchemaError: failed to determine supertype of time and duration[\u03bcs]",
+   "streaming": "error SchemaError: failed to determine supertype of time and duration[\u03bcs]"
+  },
+  {
+   "construct": "tz-nonexistent",
+   "area": "temporal",
+   "code": "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select(pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()",
+   "differ": 0,
+   "in-memory": "error ComputeError: datetime '2024-03-31 02:30:00' is non-existent in time zone 'Europe/Berlin'. You may be able to use `non_existent='null'` to return `null` in this case.",
+   "streaming": "error ComputeError: datetime '2024-03-31 02:30:00' is non-existent in time zone 'Europe/Berlin'. You may be able to use `non_existent='null'` to return `null` in this case."
+  },
+  {
+   "construct": "str-to-date",
+   "area": "temporal",
+   "code": "(df(x=['2024-02-30', '2024-2-3', '2024-02-03']).select(pl.col('x').str.to_date('%Y-%m-%d', strict=False)).to_series().to_list(), df(x=['2024-02-30']).select(pl.col('x').str.to_date('%Y-%m-%d')).item())",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: conversion from `str` to `date` failed in column 'x' for 1 out of 1 values: [\"2024-02-30\"]",
+   "streaming": "error InvalidOperationError: conversion from `str` to `date` failed in column 'x' for 1 out of 1 values: [\"2024-02-30\"]"
+  },
+  {
+   "construct": "cast-double-to-int",
+   "area": "casts",
+   "code": "{str(t): df(x=[2.5, -2.5, 2.7, -2.7, 127.9, 128.0, 1e19, inf, nan, None]).select(pl.col('x').cast(t, strict=False)).to_series().to_list() for t in [pl.Int8, pl.Int64]}",
+   "differ": 0,
+   "in-memory": "{'Int8': [2, -2, 2, -2, 127, None, None, None, None, None], 'Int64': [2, -2, 2, -2, 127, 128, None, None, None, None]}",
+   "streaming": "{'Int8': [2, -2, 2, -2, 127, None, None, None, None, None], 'Int64': [2, -2, 2, -2, 127, 128, None, None, None, None]}"
+  },
+  {
+   "construct": "cast-double-to-int-strict",
+   "area": "casts",
+   "code": "df(x=[1e19]).select(pl.col('x').cast(pl.Int64)).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: conversion from `f64` to `i64` failed in column 'x' for 1 out of 1 values: [1.0000e19]",
+   "streaming": "error InvalidOperationError: conversion from `f64` to `i64` failed in column 'x' for 1 out of 1 values: [1.0000e19]"
+  },
+  {
+   "construct": "cast-double-to-int-wrap",
+   "area": "casts",
+   "code": "df(x=[1e19, -1e19, inf, nan, 300.0, -129.0]).select(pl.col('x').cast(pl.Int8, wrap_numerical=True)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[127, -128, 127, 0, 127, -128]",
+   "streaming": "[127, -128, 127, 0, 127, -128]"
+  },
+  {
+   "construct": "cast-int-narrow",
+   "area": "casts",
+   "code": "(df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, strict=False)).to_series().to_list(), df(x=[300, -129, 127]).select(pl.col('x').cast(pl.Int8, wrap_numerical=True)).to_series().to_list())",
+   "differ": 0,
+   "in-memory": "([None, None, 127], [44, 127, 127])",
+   "streaming": "([None, None, 127], [44, 127, 127])"
+  },
+  {
+   "construct": "cast-int-narrow-strict",
+   "area": "casts",
+   "code": "df(x=[300]).select(pl.col('x').cast(pl.Int8)).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: conversion from `i64` to `i8` failed in column 'x' for 1 out of 1 values: [300]",
+   "streaming": "error InvalidOperationError: conversion from `i64` to `i8` failed in column 'x' for 1 out of 1 values: [300]"
+  },
+  {
+   "construct": "cast-int-to-double",
+   "area": "casts",
+   "code": "df(x=[2**53 + 1, 2**63 - 1]).select(pl.col('x').cast(pl.Float64)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[9007199254740992.0, 9.223372036854776e+18]",
+   "streaming": "[9007199254740992.0, 9.223372036854776e+18]"
+  },
+  {
+   "construct": "cast-double-to-float",
+   "area": "casts",
+   "code": "df(x=[1e300, 1e-50, 0.1]).select(pl.col('x').cast(pl.Float32)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[inf, 0.0, 0.10000000149011612]",
+   "streaming": "[inf, 0.0, 0.10000000149011612]"
+  },
+  {
+   "construct": "cast-decimal-to-int",
+   "area": "casts",
+   "code": "df(x=['2.5', '-2.5', '2.7']).select(pl.col('x').cast(pl.Decimal(10, 1)).cast(pl.Int64)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[2, -2, 2]",
+   "streaming": "[2, -2, 2]"
+  },
+  {
+   "construct": "cast-int-to-decimal-overflow",
+   "area": "casts",
+   "code": "(df(x=[300, 1234]).select(pl.col('x').cast(pl.Decimal(5, 2), strict=False)).to_series().to_list(), df(x=[1234]).select(pl.col('x').cast(pl.Decimal(5, 2))).item())",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: conversion from `i64` to `decimal[5,2]` failed in column 'x' for 1 out of 1 values: [1234]",
+   "streaming": "error InvalidOperationError: conversion from `i64` to `decimal[5,2]` failed in column 'x' for 1 out of 1 values: [1234]"
+  },
+  {
+   "construct": "cast-string-to-int",
+   "area": "casts",
+   "code": "df(x=['1', ' 2', '3.0', '-0', '+5', '9223372036854775808', '1e2', '', '0x10']).select(pl.col('x').cast(pl.Int64, strict=False)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[1, None, None, 0, 5, None, None, None, None]",
+   "streaming": "[1, None, None, 0, 5, None, None, None, None]"
+  },
+  {
+   "construct": "cast-string-to-double",
+   "area": "casts",
+   "code": "df(x=['1.5', ' 2', 'nan', 'inf', '-Infinity', '1e400', '.5', '5.', '-0', 'abc']).select(pl.col('x').cast(pl.Float64, strict=False)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[1.5, None, nan, inf, -inf, inf, 0.5, 5.0, -0.0, None]",
+   "streaming": "[1.5, None, nan, inf, -inf, inf, 0.5, 5.0, -0.0, None]"
+  },
+  {
+   "construct": "cast-double-to-string",
+   "area": "casts",
+   "code": "df(x=[0.1, 1e21, 1e-7, 1e-5, 1.0, -0.0, inf, nan, 1e15, 1e16, 123456789012345680.0]).select(pl.col('x').cast(pl.String)).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "['0.1', '1e+21', '1e-7', '0.00001', '1.0', '-0.0', 'inf', 'NaN', '1000000000000000.0', '1e+16', '1.2345678901234568e+17']",
+   "streaming": "['0.1', '1e+21', '1e-7', '0.00001', '1.0', '-0.0', 'inf', 'NaN', '1000000000000000.0', '1e+16', '1.2345678901234568e+17']"
+  },
+  {
+   "construct": "cast-bool",
+   "area": "casts",
+   "code": "(df(x=[0, 2, -1]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(), df(x=[0.0, -0.0, nan]).select(pl.col('x').cast(pl.Boolean)).to_series().to_list(), df(x=[True, False]).select(pl.col('x').cast(pl.String)).to_series().to_list())",
+   "differ": 0,
+   "in-memory": "([False, True, True], [False, False, True], ['true', 'false'])",
+   "streaming": "([False, True, True], [False, False, True], ['true', 'false'])"
+  },
+  {
+   "construct": "cast-string-to-bool",
+   "area": "casts",
+   "code": "df(x=['true']).select(pl.col('x').cast(pl.Boolean)).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: casting from Utf8View to Boolean not supported",
+   "streaming": "error InvalidOperationError: casting from Utf8View to Boolean not supported"
+  },
+  {
+   "construct": "cast-string-to-date",
+   "area": "casts",
+   "code": "df(x=['2024-01-01']).select(pl.col('x').cast(pl.Date)).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: casting from string to date is not supported.",
+   "streaming": "error InvalidOperationError: casting from string to date is not supported."
+  },
+  {
+   "construct": "list-sort",
+   "area": "nested",
+   "code": "[df(l=[[1, None], [1, 3], [1], [], None, [None], [1, 2]]).sort('l', descending=d)['l'].to_list() for d in (False, True)]",
+   "differ": 0,
+   "in-memory": "[[None, [], [None], [1], [1, None], [1, 2], [1, 3]], [None, [1, 3], [1, 2], [1, None], [1], [None], []]]",
+   "streaming": "[[None, [], [None], [1], [1, None], [1, 2], [1, 3]], [None, [1, 3], [1, 2], [1, None], [1], [None], []]]"
+  },
+  {
+   "construct": "list-compare",
+   "area": "nested",
+   "code": "df(a=[[1, None]], b=[[1, 3]]).select(pl.col('a') < pl.col('b')).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: cannot perform '<' comparison between series 'a' of dtype: list[i64] and series 'b' of dtype: list[i64]",
+   "streaming": "error InvalidOperationError: cannot perform '<' comparison between series 'a' of dtype: list[i64] and series 'b' of dtype: list[i64]"
+  },
+  {
+   "construct": "list-min",
+   "area": "nested",
+   "code": "df(l=[[1], [2]]).select(pl.col('l').min()).item()",
+   "differ": 0,
+   "in-memory": "error InvalidOperationError: `min` operation not supported for dtype `list[i64]`",
+   "streaming": "error InvalidOperationError: `min` operation not supported for dtype `list[i64]`"
+  },
+  {
+   "construct": "list-equality",
+   "area": "nested",
+   "code": "df(a=[[1, None], [None], []], b=[[1, None], [None], None]).select((pl.col('a') == pl.col('b')).alias('eq'), pl.col('a').eq_missing(pl.col('b')).alias('eqm')).rows()",
+   "differ": 0,
+   "in-memory": "[(True, True), (True, True), (None, False)]",
+   "streaming": "[(True, True), (True, True), (None, False)]"
+  },
+  {
+   "construct": "list-get",
+   "area": "nested",
+   "code": "(df(l=[[1, 2, 3], [], None]).select(pl.col('l').list.get(0, null_on_oob=True).alias('0'), pl.col('l').list.get(-1, null_on_oob=True).alias('-1'), pl.col('l').list.get(5, null_on_oob=True).alias('5')).rows(), attempt(lambda: df(l=[[1, 2, 3]]).select(pl.col('l').list.get(5)).item()))",
+   "differ": 0,
+   "in-memory": "([(1, 3, None), (None, None, None), (None, None, None)], 'error ComputeError: get index is out of bounds')",
+   "streaming": "([(1, 3, None), (None, None, None), (None, None, None)], 'error ComputeError: get index is out of bounds')"
+  },
+  {
+   "construct": "struct-equality",
+   "area": "nested",
+   "code": "df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, {'a': None, 'b': None}, None]).select((pl.col('s') == pl.col('s').shift(1)).alias('eq')).to_series().to_list()",
+   "differ": 0,
+   "in-memory": "[None, True, False, None]",
+   "streaming": "[None, True, False, None]"
+  },
+  {
+   "construct": "struct-group-sort",
+   "area": "nested",
+   "code": "(df(s=[{'a': 1, 'b': None}, {'a': 1, 'b': None}, None]).group_by('s', maintain_order=True).len().rows(), df(s=[{'a': 2, 'b': 1}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': None, 'b': 0}]).sort('s')['s'].to_list())",
+   "differ": 0,
+   "in-memory": "([({'a': 1, 'b': None}, 2), (None, 1)], [{'a': None, 'b': 0}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': 2, 'b': 1}])",
+   "streaming": "([({'a': 1, 'b': None}, 2), (None, 1)], [{'a': None, 'b': 0}, {'a': 1, 'b': None}, {'a': 1, 'b': 0}, {'a': 2, 'b': 1}])"
+  },
+  {
+   "construct": "explode",
+   "area": "nested",
+   "code": "(df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l').rows(), df(i=[1, 2, 3, 4], l=[[1, 2], [], None, [None]]).explode('l', empty_as_null=False, keep_nulls=False).rows())",
+   "differ": 0,
+   "in-memory": "([(1, 1), (1, 2), (3, None), (4, None)], [(1, 1), (1, 2), (4, None)])",
+   "streaming": "([(1, 1), (1, 2), (3, None), (4, None)], [(1, 1), (1, 2), (4, None)])"
+  },
+  {
+   "construct": "set-operations",
+   "area": "relations",
+   "code": "{k: v.rows() for k, v in {'union_all': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]), 'union': pl.concat([df(x=[1, 1, 2, None, None]), df(x=[1, None, 3])]).unique(maintain_order=True), 'semi': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi'), 'intersect': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='semi', nulls_equal=True).unique(maintain_order=True), 'anti': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti'), 'except': df(x=[1, 1, 2, None, None]).join(df(x=[1, None, 3]), on='x', how='anti', nulls_equal=True).unique(maintain_order=True)}.items()}",
+   "differ": 0,
+   "in-memory": "{'union_all': [(1,), (1,), (2,), (None,), (None,), (1,), (None,), (3,)], 'union': [(1,), (2,), (None,), (3,)], 'semi': [(1,), (1,)], 'intersect': [(1,), (None,)], 'anti': [(2,), (None,), (None,)], 'except': [(2,)]}",
+   "streaming": "{'union_all': [(1,), (1,), (2,), (None,), (None,), (1,), (None,), (3,)], 'union': [(1,), (2,), (None,), (3,)], 'semi': [(1,), (1,)], 'intersect': [(1,), (None,)], 'anti': [(2,), (None,), (None,)], 'except': [(2,)]}"
+  },
+  {
+   "construct": "clustered",
+   "area": "relations",
+   "code": "df(k=[2, 1, 2, 1], i=[0, 1, 2, 3]).sort('k', maintain_order=True).rows()",
+   "differ": 0,
+   "in-memory": "[(1, 1), (1, 3), (2, 0), (2, 2)]",
+   "streaming": "[(1, 1), (1, 3), (2, 0), (2, 2)]"
+  },
+  {
+   "construct": "substring-huge",
+   "area": "strings",
+   "code": "df(s=['abc']).select(pl.col('s').str.slice(2**40, 2**40).alias('far'), pl.col('s').str.slice(-2**40, 2**41).alias('wide')).rows()",
+   "differ": 0,
+   "in-memory": "[('', 'abc')]",
+   "streaming": "[('', 'abc')]"
+  },
+  {
+   "construct": "fp32-arith",
+   "area": "doubles",
+   "code": "(df(a=([1.0, 3e38, 16777216.0], pl.Float32)).select(pl.col('a') + pl.col('a'), (pl.col('a') + 1).alias('plus1')).rows(), [str(t) for t in df(a=([0.1], pl.Float32)).select(pl.col('a') + 0.1, (pl.col('a') + 1).alias('i'), pl.col('a').sum().alias('s'), pl.col('a').mean().alias('m')).dtypes])",
+   "differ": 0,
+   "in-memory": "([(2.0, 2.0), (inf, 3.0000000054977558e+38), (33554432.0, 16777216.0)], ['Float32', 'Float32', 'Float32', 'Float32'])",
+   "streaming": "([(2.0, 2.0), (inf, 3.0000000054977558e+38), (33554432.0, 16777216.0)], ['Float32', 'Float32', 'Float32', 'Float32'])"
+  },
+  {
+   "construct": "implicit-casts",
+   "area": "frontend",
+   "code": "([str(t) for t in df(a=([1], pl.Int32), b=[1]).select(pl.col('a') + pl.col('b'), (pl.col('a') + 1).alias('lit'), (pl.col('a') + 2**40).alias('big'), (pl.col('a') + 1.5).alias('f'), (pl.col('a').cast(pl.UInt64) + pl.col('b')).alias('u')).dtypes], attempt(lambda: df(a=[1]).select(pl.col('a') + pl.lit('x')).item()))",
+   "differ": 0,
+   "in-memory": "(['Int64', 'Int32', 'Int64', 'Float64', 'Int128'], 'error InvalidOperationError: arithmetic on dtypes i64 and str is not allowed (lhs: column \\'a\\', rhs: expression `\"x\"`); try an explicit cast first')",
+   "streaming": "(['Int64', 'Int32', 'Int64', 'Float64', 'Int128'], 'error InvalidOperationError: arithmetic on dtypes i64 and str is not allowed (lhs: column \\'a\\', rhs: expression `\"x\"`); try an explicit cast first')"
+  },
+  {
+   "construct": "literal-types",
+   "area": "frontend",
+   "code": "[str(t) for t in pl.select(pl.lit(1), pl.lit(2**40).alias('b'), pl.lit(2**63).alias('c'), pl.lit(2**64).alias('d'), pl.lit(1.5).alias('e'), pl.lit('x').alias('f'), pl.lit(None).alias('g'), pl.lit(True).alias('h'), pl.lit(Decimal('1.25')).alias('i')).dtypes]",
+   "differ": 0,
+   "in-memory": "['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)']",
+   "streaming": "['Int32', 'Int64', 'UInt64', 'Int128', 'Float64', 'String', 'Null', 'Boolean', 'Decimal(precision=38, scale=2)']"
+  },
+  {
+   "construct": "type-names",
+   "area": "frontend",
+   "code": "[str(t) for t in [pl.Int8, pl.UInt64, pl.Int128, pl.Float32, pl.String, pl.Binary, pl.Boolean, pl.Date, pl.Time, pl.Datetime('us'), pl.Duration('us'), pl.Decimal(10, 2), pl.List(pl.Int64), pl.Array(pl.Int64, 2), pl.Struct({'a': pl.Int64}), pl.Null, pl.Categorical]]",
+   "differ": 0,
+   "in-memory": "['Int8', 'UInt64', 'Int128', 'Float32', 'String', 'Binary', 'Boolean', 'Date', 'Time', \"Datetime(time_unit='us', time_zone=None)\", \"Duration(time_unit='us')\", 'Decimal(precision=10, scale=2)', 'List(Int64)', 'Array(Int64, shape=(2,))', \"Struct({'a': Int64})\", 'Null', 'Categorical']",
+   "streaming": "['Int8', 'UInt64', 'Int128', 'Float32', 'String', 'Binary', 'Boolean', 'Date', 'Time', \"Datetime(time_unit='us', time_zone=None)\", \"Duration(time_unit='us')\", 'Decimal(precision=10, scale=2)', 'List(Int64)', 'Array(Int64, shape=(2,))', \"Struct({'a': Int64})\", 'Null', 'Categorical']"
+  },
+  {
+   "construct": "io-functions",
+   "area": "io",
+   "code": "([n for n in dir(pl) if n.startswith('scan_')], [n for n in dir(pl.DataFrame) if n.startswith('write_')], [n for n in dir(pl.LazyFrame) if n.startswith('sink_')], hasattr(pl, 'Catalog'), [p for p in ('storage_options', 'credential_provider') if p in __import__('inspect').signature(pl.scan_parquet).parameters])",
+   "differ": 0,
+   "in-memory": "(['scan_arrow_c_stream', 'scan_csv', 'scan_delta', 'scan_external_reader', 'scan_iceberg', 'scan_ipc', 'scan_lance', 'scan_lines', 'scan_ndjson', 'scan_parquet', 'scan_pyarrow_dataset'], ['write_avro', 'write_clipboard', 'write_csv', 'write_database', 'write_delta', 'write_excel', 'write_iceberg', 'write_ipc', 'write_ipc_stream', 'write_json', 'write_ndjson', 'write_parquet'], ['sink_batches', 'sink_csv', 'sink_delta', 'sink_iceberg', 'sink_ipc', 'sink_ndjson', 'sink_parquet'], True, ['storage_options', 'credential_provider'])",
+   "streaming": "(['scan_arrow_c_stream', 'scan_csv', 'scan_delta', 'scan_external_reader', 'scan_iceberg', 'scan_ipc', 'scan_lance', 'scan_lines', 'scan_ndjson', 'scan_parquet', 'scan_pyarrow_dataset'], ['write_avro', 'write_clipboard', 'write_csv', 'write_database', 'write_delta', 'write_excel', 'write_iceberg', 'write_ipc', 'write_ipc_stream', 'write_json', 'write_ndjson', 'write_parquet'], ['sink_batches', 'sink_csv', 'sink_delta', 'sink_iceberg', 'sink_ipc', 'sink_ndjson', 'sink_parquet'], True, ['storage_options', 'credential_provider'])"
+  },
+  {
+   "construct": "s-group-fsum-cancel",
+   "area": "aggregates",
+   "code": "df(g=[1] * 4, x=[1e16, 1.0, 1.0, -1e16]).group_by('g').agg(pl.col('x').sum()).item(0, 'x')",
+   "differ": 1,
+   "in-memory": "2.0",
+   "streaming": "0.0"
+  },
+  {
+   "construct": "s-group-fsum-f32",
+   "area": "aggregates",
+   "code": "df(g=[1] * 3, x=([16777216.0, 1.0, 1.0], pl.Float32)).group_by('g').agg(pl.col('x').sum()).item(0, 'x')",
+   "differ": 1,
+   "in-memory": "16777218.0",
+   "streaming": "16777216.0"
+  },
+  {
+   "construct": "s-group-mean-cancel",
+   "area": "aggregates",
+   "code": "df(g=[1] * 4, x=[1e16, 1.0, 1.0, -1e16]).group_by('g').agg(pl.col('x').mean()).item(0, 'x')",
+   "differ": 1,
+   "in-memory": "0.5",
+   "streaming": "0.25"
+  },
+  {
+   "construct": "s-group-var",
+   "area": "aggregates",
+   "code": "df(g=[1] * 4, x=[1e8 + 1, 1e8 + 2, 1e8 + 3, 1e8 + 4]).group_by('g').agg(pl.col('x').var()).item(0, 'x')",
+   "differ": 0,
+   "in-memory": "1.6666666666666667",
+   "streaming": "1.6666666666666667"
+  },
+  {
+   "construct": "s-fsum-runs",
+   "area": "aggregates",
+   "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).select(pl.col('x').sum()).item()) for _ in range(5)})",
+   "differ": 1,
+   "in-memory": "['151234.90000035526']",
+   "streaming": "['151234.90000035526', '151234.9000003553']"
+  },
+  {
+   "construct": "s-group-fsum-runs",
+   "area": "aggregates",
+   "code": "sorted({repr(df(g=[i % 3 for i in range(300_000)], x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).group_by('g').agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})",
+   "differ": 1,
+   "in-memory": "['[50424.80000011842, 50401.90000011839, 50408.20000011843]', '[50424.80000011842, 50401.90000011841, 50408.20000011843]', '[50424.800000118434, 50401.900000118425, 50408.200000118435]', '[50424.80000011844, 50401.90000011841, 50408.20000011843]', '[50424.80000011844, 50401.90000011841, 50408.20000011844]']",
+   "streaming": "['[50424.80000011841, 50401.9000001184, 50408.200000118435]', '[50424.80000011841, 50401.90000011841, 50408.20000011843]', '[50424.80000011843, 50401.90000011842, 50408.200000118435]', '[50424.80000011844, 50401.900000118425, 50408.200000118435]', '[50424.80000011844, 50401.900000118425, 50408.20000011844]']"
+  },
+  {
+   "construct": "s-var-runs",
+   "area": "aggregates",
+   "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(300_000)]).select(pl.col('x').var()).item()) for _ in range(5)})",
+   "differ": 1,
+   "in-memory": "['4.440337823592626']",
+   "streaming": "['4.440337823592621', '4.440337823592622', '4.440337823592623']"
+  },
+  {
+   "construct": "s-first-last-grouped",
+   "area": "aggregates",
+   "code": "df(g=[i % 7 for i in range(100_000)], i=range(100_000)).group_by('g').agg(pl.col('i').first().alias('f'), pl.col('i').last().alias('l')).sort('g').rows()",
+   "differ": 0,
+   "in-memory": "[(0, 0, 99995), (1, 1, 99996), (2, 2, 99997), (3, 3, 99998), (4, 4, 99999), (5, 5, 99993), (6, 6, 99994)]",
+   "streaming": "[(0, 0, 99995), (1, 1, 99996), (2, 2, 99997), (3, 3, 99998), (4, 4, 99999), (5, 5, 99993), (6, 6, 99994)]"
+  },
+  {
+   "construct": "s-implode-order",
+   "area": "aggregates",
+   "code": "all(x == sorted(x) for x in df(g=[i % 7 for i in range(100_000)], i=range(100_000)).group_by('g').agg(pl.col('i')).sort('g')['i'].to_list())",
+   "differ": 0,
+   "in-memory": "True",
+   "streaming": "True"
+  },
+  {
+   "construct": "s-sort-ties-large",
+   "area": "relations",
+   "code": "(lambda s: all(a <= b for a, b in zip(s, s[1:])))(df(k=[i % 3 for i in range(3_000_000)], i=range(3_000_000)).sort('k').filter(pl.col('k') == 1)['i'].to_list())",
+   "differ": 1,
+   "in-memory": "True",
+   "streaming": "False"
+  },
+  {
+   "construct": "s-group-order",
+   "area": "relations",
+   "code": "df(g=[(i * 7919) % 1000 for i in range(100_000)]).group_by('g').len()['g'].to_list()[:8]",
+   "differ": 1,
+   "in-memory": "[274, 396, 39, 691, 667, 289, 557, 149]",
+   "streaming": "[0, 919, 838, 676, 352, 271, 947, 866]"
+  },
+  {
+   "construct": "s-when-masks-cast",
+   "area": "execution",
+   "code": "df(x=['1', 'a'] * 3000).select(pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64)).otherwise(None)).to_series()[:2].to_list()",
+   "differ": 0,
+   "in-memory": "[1, None]",
+   "streaming": "[1, None]"
+  },
+  {
+   "construct": "s-when-cse-cast",
+   "area": "execution",
+   "code": "df(x=['1', 'a'] * 3000).select(pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 1).alias('a'), pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 2).alias('b')).rows()[:2]",
+   "differ": 1,
+   "in-memory": "[(2, 3), (None, None)]",
+   "streaming": "error InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 300 out of 600 values: [\"a\", \"a\", \u2026 \"a\"]"
+  },
+  {
+   "construct": "s-when-cse-lazy",
+   "area": "execution",
+   "code": "[attempt(lambda: pl.DataFrame({'x': ['1', 'a']}).lazy().select(pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 1).alias('a'), pl.when(pl.col('x') == '1').then(pl.col('x').cast(pl.Int64) + 2).alias('b')).collect(engine=e, optimizations=pl.QueryOptFlags(comm_subexpr_elim=c)).rows()) for e in ('in-memory', 'streaming') for c in (True, False)]",
+   "differ": 0,
+   "in-memory": "['error InvalidOperationError: conversion from `str` to `i64` failed in column \\'x\\' for 1 out of 2 values: [\"a\"]', [(2, 3), (None, None)], 'error InvalidOperationError: conversion from `str` to `i64` failed in column \\'x\\' for 1 out of 1 values: [\"a\"]', [(2, 3), (None, None)]]",
+   "streaming": "['error InvalidOperationError: conversion from `str` to `i64` failed in column \\'x\\' for 1 out of 2 values: [\"a\"]', [(2, 3), (None, None)], 'error InvalidOperationError: conversion from `str` to `i64` failed in column \\'x\\' for 1 out of 1 values: [\"a\"]', [(2, 3), (None, None)]]"
+  },
+  {
+   "construct": "s-and-eager-cast",
+   "area": "execution",
+   "code": "df(x=['a', '2'] * 3000).select((pl.col('x') != 'a') & (pl.col('x').cast(pl.Int64) > 1)).to_series()[:2].to_list()",
+   "differ": 1,
+   "in-memory": "error InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 3000 out of 6000 values: [\"a\", \"a\", \u2026 \"a\"]",
+   "streaming": "error InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 300 out of 600 values: [\"a\", \"a\", \u2026 \"a\"]"
+  },
+  {
+   "construct": "s-coalesce-eager-cast",
+   "area": "execution",
+   "code": "df(x=['a', '2'] * 3000, y=[1, None] * 3000).select(pl.coalesce(pl.col('y'), pl.col('x').cast(pl.Int64))).to_series()[:2].to_list()",
+   "differ": 1,
+   "in-memory": "error InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 3000 out of 6000 values: [\"a\", \"a\", \u2026 \"a\"]",
+   "streaming": "error InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 300 out of 600 values: [\"a\", \"a\", \u2026 \"a\"]"
+  },
+  {
+   "construct": "s-filter-then-cast",
+   "area": "execution",
+   "code": "df(x=['a', '2'] * 3000).filter(pl.col('x') != 'a').select(pl.col('x').cast(pl.Int64)).to_series()[:2].to_list()",
+   "differ": 0,
+   "in-memory": "[2, 2]",
+   "streaming": "[2, 2]"
+  },
+  {
+   "construct": "s-scalar-divisor",
+   "area": "doubles",
+   "code": "df(x=[49.0, 0.0, 1e-300] * 3000).select((pl.col('x') % 49.0).alias('m'), (pl.col('x') // 49.0).alias('f'), (pl.col('x') / 1e-310).alias('d')).rows()[:3]",
+   "differ": 0,
+   "in-memory": "[(49.0, 0.0, inf), (0.0, 0.0, nan), (1e-300, 0.0, inf)]",
+   "streaming": "[(49.0, 0.0, inf), (0.0, 0.0, nan), (1e-300, 0.0, inf)]"
+  },
+  {
+   "construct": "s-cov-decimal",
+   "area": "aggregates",
+   "code": "df(x=([Decimal('1.00'), Decimal('2.50'), Decimal('4.00')], pl.Decimal(10, 2)), y=([Decimal('1.00'), Decimal('2.00'), Decimal('4.50')], pl.Decimal(10, 2))).select(pl.cov('x', 'y'), pl.corr('x', 'y').alias('c')).rows()",
+   "differ": 1,
+   "in-memory": "[(2.625, 0.9707253433941508)]",
+   "streaming": "error InvalidOperationError: `cov` operation not supported for dtype `decimal[10,2]`"
+  },
+  {
+   "construct": "s-quantile-median",
+   "area": "aggregates",
+   "code": "df(g=[i % 3 for i in range(30_000)], x=[float(i % 101) for i in range(30_000)]).group_by('g').agg(pl.col('x').median().alias('m'), pl.col('x').quantile(0.3, 'linear').alias('q')).sort('g').rows()",
+   "differ": 0,
+   "in-memory": "[(0, 50.0, 30.0), (1, 50.0, 30.0), (2, 50.0, 30.0)]",
+   "streaming": "[(0, 50.0, 30.0), (1, 50.0, 30.0), (2, 50.0, 30.0)]"
+  }
+ ]
+}

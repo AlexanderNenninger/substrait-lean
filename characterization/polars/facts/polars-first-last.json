@@ -90,6 +90,44 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (aggregates)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_group_by.py#L786-L808",
+          "note": "`test_streaming_group_by_first_last_stored`, `engine='streaming'` with morsels of 32, hot tables of 4 and stored partitions: over `k = i % 50`, `v = i if i >= 50 else NULL`, `first` is NULL, `last` 950 + k, `first(ignore_nulls=True)` 50 + k, `last(ignore_nulls=True)` 950 + k"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/streaming/test_streaming_group_by.py#L43-L125",
+          "note": "`test_streaming_group_by_types`, streaming: `first` and `last` of strings, booleans and dates follow input order within the group"
+        }
+      ],
+      "notes": [
+        "Pins on the streaming engine that `first` and `last` take the group's first and last row in input order, NULL included, across morsels and partitions.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-first-last-grouped"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-implode-order"
+        }
+      ],
+      "notes": [
+        "Streaming agrees with memory: over 100 000 rows in 7 groups, `first` and `last` are the group's least and greatest row index, and the list `agg(pl.col('i'))` builds is in input order.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ]
 }

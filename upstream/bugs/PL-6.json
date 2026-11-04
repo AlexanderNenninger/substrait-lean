@@ -1,0 +1,34 @@
+{
+  "id": "PL-6",
+  "project": "polars",
+  "kind": "bug",
+  "version": "2.1.0",
+  "status": "confirmed",
+  "status_note": "Reproduces on Polars 2.1.0 (Python, macOS arm64) with a lazy `collect()` on both engines, with common-subexpression elimination on (the default). Not checked against main. No matching issue found on pola-rs/polars (2026-11-04).",
+  "summary": "Common-subexpression elimination hoists a fallible expression that two `when/then` branches share (a strict cast) into a `WITH_COLUMNS` evaluated on every row, so the cast raises on the rows the branches' conditions exclude. Without CSE, `when/then` masks the branch and the query succeeds; an eager `DataFrame.select` (no CSE) succeeds too. The same query raises or not depending on an optimization.",
+  "repro": "import polars as pl\nlf = pl.LazyFrame({\"x\": [\"1\", \"a\"]})\nq = lf.select(\n    pl.when(pl.col(\"x\") == \"1\").then(pl.col(\"x\").cast(pl.Int64) + 1).alias(\"a\"),\n    pl.when(pl.col(\"x\") == \"1\").then(pl.col(\"x\").cast(pl.Int64) + 2).alias(\"b\"),\n)\nq.collect()  # InvalidOperationError: conversion from `str` to `i64` failed in column 'x' for 1 out of 2 values: [\"a\"]\nq.collect(engine=\"streaming\")  # the same error\nq.collect(optimizations=pl.QueryOptFlags(comm_subexpr_elim=False)).rows()  # [(2, 3), (None, None)]\nprint(q.explain())\n# SELECT [when(col(\"__POLARS_CSER_…3\")).then(col(\"__POLARS_CSER_…4\") + 1)…]\n#   WITH_COLUMNS: [(col(\"x\") == \"1\").alias(\"__POLARS_CSER_…3\"), col(\"x\").strict_cast(Int64).alias(\"__POLARS_CSER_…4\")]",
+  "handling": "sverify doesn't work around it yet. Its Polars route collects lazily with CSE on, so a plan Lean proves error-free (a CASE guarding a cast, used in two columns) can raise. The workaround is to collect with `optimizations=pl.QueryOptFlags(comm_subexpr_elim=False)`, or to keep fallible expressions out of CSE (Polars could treat strict casts as it does in predicate pushdown's fallible list).",
+  "found_by": "the Polars characterization round 4 (streaming probes, `sverify_dev.probe_polars --diff`, construct s-when-cse-lazy), after round 2's source reading of crates/polars-plan/src/plans/optimizer/cse/csee.rs",
+  "issues": [
+    444,
+    604
+  ],
+  "files": [
+    "characterization/polars/facts/polars-exec-cse-hoist.json",
+    "characterization/polars/probes-streaming.json",
+    "python/tools/sverify_dev/probe_polars.py"
+  ],
+  "facts": [
+    "polars-exec-cse-hoist",
+    "polars-exec-when-eager"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-04",
+      "against": {
+        "polars": "2.1.0"
+      },
+      "note": "Probe s-when-cse-lazy in characterization/polars/probes-streaming.json: raises with CSE on both engines, [(2, 3), (None, None)] without. Duplicate search (`gh issue list --repo pola-rs/polars --state all --search`) for \"CSE when then\", \"subexpression when then\", \"when then otherwise cse\", \"strict cast when then raise\" and \"cse error branch\": no matching issue (related: #30252 when/then PanicException, closed; #20305 CSE in group_by, open)."
+    }
+  ]
+}

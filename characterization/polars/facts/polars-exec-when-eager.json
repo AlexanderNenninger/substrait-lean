@@ -28,7 +28,7 @@
   ],
   "reference": "The reference evaluates an expression only on the rows its operator sees: a `CASE` branch on the rows that reach it, a filter's condition on the rows below it, a join condition on the pairs it forms. Its issue analysis (`Rel.HasIssue`, `SubstraitLean/Safety.lean`; docs/how-it-works.md) trusts the engine's evaluation order: `CASE` is lazy, `AND`/`OR` are not, and filter and join conditions may run before the filters below them. A plan `verify` reports error-free must run without error, so an engine that evaluates a raising expression on rows outside that model breaks the guarantee. sverify's Polars translation would need its `CASE` written so that a raising branch only sees its rows, or the issue analysis to treat Polars's `CASE` as eager.",
   "status": "open",
-  "evidence": "engine_test",
+  "evidence": "probe",
   "provenance": [
     {
       "checked_at": "2026-11-04",
@@ -129,6 +129,48 @@
         }
       ],
       "notes": "Corrected title, verdict and description: round 1 read only the docstring and stated every operand runs on every row; the source reading above shows elementwise branches are masked. Kept the eager cases, `&`, `|` and `coalesce`. Status stays open."
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "engine-test",
+      "checked_by": "characterization pipeline round 3 (execution)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/functions/test_when_then.py#L916-L921",
+          "note": "`test_when_then_scalar_condition_masks_unselected_branch`, `engine` in-memory and streaming: `when(lit(False)).then(col('x').cast(Int64)).otherwise(0)` over 'bad', 'worse' is 0, 0 without raising"
+        }
+      ],
+      "notes": [
+        "Pins on both engines that a branch a scalar condition never takes is not evaluated.",
+        "Polars's CI runs the unit tests by default, where a lazy `collect()` without `engine` runs the streaming engine (also once with `POLARS_IDEAL_MORSEL_SIZE=4`), and again with `POLARS_ENGINE_AFFINITY=in-memory` (.github/workflows/test-python.yml#L55-L78, #L168-L178); eager `Series` and `DataFrame` calls run in memory. Read at tag py-2.1.0 (commit 7f902bd3), not run."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-when-masks-cast"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-and-eager-cast"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-coalesce-eager-cast"
+        },
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-filter-then-cast"
+        }
+      ],
+      "notes": [
+        "Streaming agrees with memory: `when(x == '1').then(x.cast(Int64))` does not raise on the masked rows; `&` and `coalesce` evaluate the strict cast on every row and raise on both engines (only the error's counts differ, per morsel); a cast after a filter sees the filtered rows only. The CSE cases are in polars-exec-cse-hoist and PL-6.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
     }
   ],
   "issues": [

@@ -1,0 +1,72 @@
+{
+  "id": "polars-mean-float-streaming",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`mean` of floats on the streaming engine: varies between runs when grouped",
+  "verdict": "f64 sum / n; grouped, the order of the additions varies between runs",
+  "area": "aggregates",
+  "options": [
+    "sum_order"
+  ],
+  "rows": [
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
+    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32"], "evidence": "source"}
+  ],
+  "constructs": [
+    "mean",
+    "avg"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "On the streaming engine `mean` is `NumMeanReducer`: an `f64` sum and a count. A morsel adds its `_sum_as_f64`, a grouped row adds itself, and pipelines merge by adding sums and counts. A `Float32` mean is the `f64` quotient rounded to `f32`.",
+    "The grouping of the additions follows the scheduling of morsels, so a grouped mean can change between runs: one `Float64` group of 1e16, 1, 1, -1e16 gave 0.25 and 0.0 on different runs (in memory, Kahan: 0.5). The in-memory engine's algorithms are in polars-mean-float."
+  ],
+  "reference": "`AggFn.avg` is `floatSum` / n, NULL without values.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-04",
+      "method": "probe",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "file": "characterization/polars/probes-streaming.json",
+          "probe": "s-group-mean-cancel"
+        }
+      ],
+      "notes": [
+        "s-group-mean-cancel: 0.5 in memory; streaming 0.25 in the recorded run and 0.0 in another, so the result depends on the run.",
+        "`python -m sverify_dev.probe_polars --diff --write` runs each observation (`STREAMING_OBSERVATIONS`, python/tools/sverify_dev/probe_polars.py) with `collect(engine='in-memory')` and `collect(engine='streaming')` and records both results. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-04",
+      "method": "source-reading",
+      "checked_by": "characterization pipeline round 4 (streaming probes)",
+      "evidence": [
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L29-L52"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-expr/src/reduce/mean.rs#L80-L124"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-stream/src/nodes/reduce.rs#L42-L104"
+        }
+      ],
+      "notes": [
+        "Carried over from polars-mean-float's round-2 reading. The `Float32` row rests on it: the probes ran `Float64` only."
+      ]
+    }
+  ],
+  "issues": [
+    54,
+    85
+  ],
+  "supersedes": [
+    "polars-mean-float"
+  ]
+}
