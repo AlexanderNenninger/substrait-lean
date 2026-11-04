@@ -1201,6 +1201,51 @@ This makes D11 and D12 one comparison: the route's `q`, carried through the
 plan, against the `q` the postcondition names. The finest valid `q` is the
 `q` column of the choices table ([D15](#d15-where-the-observations-live)).
 
+### D19. `AND` and `OR` raise eagerly
+
+An error in either operand of `AND` or `OR` may raise, whatever the other
+operand's value (#604). `p AND q` is not a guard for `q`: in
+`x <> 0 AND 10 // x > 1`, the division may run on the rows where `x = 0`.
+The reference has always evaluated both operands (`Expr.issues` of `.bin`,
+`SubstraitLean/Safety.lean`); D19 states it as a decision.
+
+- It is what the engines do. DuckDB evaluates `AND` and `OR` as values,
+  both operands first
+  (fact `duckdb-exec-short-circuit`, #602),
+  and Polars evaluates every operand and every `when`/`then` branch
+  (fact `polars-exec-when-eager`, #603).
+  An eager reference needs no shim on either.
+- It is strict. A plan that relies on the short-circuit is not proved; the
+  report says the operation sits inside an `AND` or `OR` and suggests the
+  fix: guard the operation itself with a `CASE` whose value is not
+  boolean, `(CASE WHEN x <> 0 THEN 10 // x END) > 1`, or state the guard
+  as a precondition. A boolean `CASE` is evaluated whole, as `AND` and `OR`
+  are, since an optimizer may rewrite it into them (`Parse.eagerly`).
+- A non-boolean `CASE` stays lazy: DuckDB's is, and the Polars translation
+  guards each branch's inputs where Polars computes every branch.
+
+A filter above a join is analysed on the cross product of the join's loose
+inputs (`Rel.loose`), so DuckDB pushing a raising `WHERE` into one side of an
+inner or left join
+(fact `duckdb-exec-filter-pushdown`, #602)
+evaluates it on rows the analysis covers. The one exception is a join whose
+other side is empty: `Rel.HasIssue` then has no pairs, while DuckDB still
+evaluates the pushed filter on the side's rows. `Rel.mayIssues` reports
+the error anyway, since it describes each side's columns by that side's own
+bounds; `Rel.HasIssue` does not model the case yet.
+
+DuckDB 2.0.0 also evaluates a `CASE`'s constant `WHEN` conditions when it
+plans the query, with the evaluator that raises:
+`SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t` raises on
+an empty `t`, and on a `t` whose rows all take the first branch (probed;
+a constant `THEN` or `ELSE` that raises, `ELSE 1 // 0`, and a constant
+`WHERE 1 // 0 = 1` on an empty table do not). A constant subexpression of a
+condition that raises therefore raises whatever the data. The reference's
+`CASE` evaluates a condition only on the rows that reach it, so a plan with
+such a constant could be proved and raise on DuckDB; the model change is
+[#609](https://github.com/AlexanderNenninger/substrait-lean/issues/609).
+
+
 ### D20. Two observations per output
 
 Each output has two observations, checked independently.

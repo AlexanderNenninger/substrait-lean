@@ -288,7 +288,13 @@ except VerificationError as e:
   `sv.connect()` connection, on its engine or the one you name
   (`report.run(con, "polars")`). The result is the one the report is about,
   `params` and `semantics` included
-  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)):
+  ([#461](https://github.com/AlexanderNenninger/substrait-lean/issues/461)).
+  It first checks the report's preconditions on the tables, the inferred
+  ones included, and refuses a batch that breaks one with a
+  `PreconditionError` that names it, before anything runs
+  ([#604](https://github.com/AlexanderNenninger/substrait-lean/issues/604)).
+  `check_inputs=False` skips the check for a caller that has made it
+  already; the report's guarantee then holds only on data that meets them:
 
   ```python
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
