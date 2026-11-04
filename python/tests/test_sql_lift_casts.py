@@ -52,6 +52,9 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
         ("SELECT TRY_CAST(id AS INT) FROM orders", "TRY_CAST"),
         ("SELECT CAST(price AS HUGEINT) FROM orders", "HUGEINT"),
         ("SELECT CAST(NULL AS INT[3]) FROM orders", "fixed-size array"),
+        # DuckDB's TIMESTAMP(1) is milliseconds, TIMESTAMP(7) nanoseconds (#626).
+        ("SELECT '2020-01-01 01:23:45.123456789'::TIMESTAMP(1)", "precision"),
+        ("SELECT '2020-01-01 01:23:45.123456789'::TIMESTAMP(7)", "precision"),
     ],
 )
 def test_refusals_say_what(query, message):
@@ -78,3 +81,8 @@ def test_a_string_read_as_a_decimal_rounds_as_duckdb():
     assert result.ok, f"{result.stage}: {result.detail}"
     with pytest.raises(Refused, match="does not fit"):
         lift("SELECT '9.99'::DECIMAL(1,0)", {})
+
+
+def test_a_microsecond_precision_is_the_models():
+    plan = lift("SELECT '2020-01-01 01:23:45.123456'::TIMESTAMP(6) AS t", {})
+    assert plan.schema == lift("SELECT '2020-01-01 01:23:45.123456'::TIMESTAMP AS t", {}).schema

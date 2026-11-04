@@ -147,6 +147,8 @@ def test_duckdb_types_literals_and_decimals_its_own_way():
         ("SELECT nope FROM orders", "cannot resolve"),
         ("SELECT 170141183460469231731687303715884105727 AS h", "HUGEINT"),
         ("SELEC id FROM orders", "cannot parse"),
+        # `IN` over a map, not a list of values (#626): it was FALSE.
+        ("SELECT 'my_key' IN map(['my_key'], ['my_value']) AS res", "a list or map"),
     ],
 )
 def test_refusals_say_what(query, message):

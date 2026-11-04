@@ -262,6 +262,12 @@ def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("unnest") is not None:
         raise Unsupported("IN UNNEST is not supported yet")
+    if (field := node.args.get("field")) is not None:
+        # `x IN map(…)` is key membership, `x IN [..]` a list's (#626); with
+        # the field dropped, the IN would be over no values: FALSE.
+        raise Unsupported(
+            f"IN {_shown(field)} (a list or map, not a list of values) is not supported yet"
+        )
     if (query := node.args.get("query")) is not None:
         # SQL's NULLs: NULL when no value matches and the needle or a value
         # is NULL (the model lifts it so, `Parse.liftSubquery`).
