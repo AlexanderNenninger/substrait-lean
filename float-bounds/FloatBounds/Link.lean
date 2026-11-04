@@ -66,8 +66,7 @@ theorem NativeLink.foldl_add (L : NativeLink) (xs : List Float) (hfin : ∀ x �
   induction xs using List.reverseRecOn with
   | nil => simpa [StdModel.sum, StdModel.sumFrom] using L.zero_exact
   | append_singleton ys y ih =>
-    have hu := u_pos
-    have ht := tiny_pos
+    obtain ⟨hu, -, ht, -, -⟩ := fpFacts
     simp only [List.length_append, List.length_singleton, List.map_append, List.map_cons,
       List.map_nil, mag_append, mag_cons, mag_nil] at hn hov
     push_cast at hn hov
@@ -118,7 +117,7 @@ theorem NativeLink.native_avg_error (L : NativeLink) (xs : List Float) (hne : xs
   have hl : xs.length ≤ 2 ^ 53 := by
     by_contra h
     have : (2 : ℝ) ^ 53 < xs.length := by exact_mod_cast not_le.mp h
-    have : (2 : ℝ) ^ 53 * u = 1 := by unfold u; norm_num
+    have : (2 : ℝ) ^ 53 * u = 1 := by rw [u_val]; norm_num
     nlinarith
   obtain ⟨hcf, hc⟩ := L.ofNat_exact xs.length hl
   obtain ⟨hsf, hs⟩ := L.foldl_add xs hfin hn0 hov

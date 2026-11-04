@@ -115,8 +115,7 @@ theorem StdModel.decoded_twoPass {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne
     (hB : ∀ q ∈ qs, |q.2.1| ≤ B ∧ |q.2.2| ≤ B)
     (hd : ∀ q ∈ qs, |q.1.1 - q.2.1| ≤ 2 * u * |q.2.1| ∧ |q.1.2 - q.2.2| ≤ 2 * u * |q.2.2|) :
     |M.twoPass (qs.map (·.1)) - comoment (qs.map (·.2))| ≤ 128 * qs.length ^ 2 * u * B ^ 2 := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  obtain ⟨hu, hu', -, -, -⟩ := fpFacts
   have hBp : 0 < B := lt_of_lt_of_le (by positivity) hB0
   set B' := (1 + 2 * u) * B with hB'
   have hB'1 : B ≤ B' := by rw [hB']; nlinarith
@@ -196,7 +195,7 @@ theorem StdModel.core_var {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.le
     intro q hq; obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hq; exact ⟨hB p hp, hB p hp⟩
   have hC := abs_comoment_le hb2 hBp.le
   simp only [List.length_map] at hC
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have hu' := fpFacts.u_le
   have hE : 128 * (ps.length : ℝ) ^ 2 * u * B ^ 2 ≤ 4 * ps.length * B ^ 2 := by
     have : (ps.length : ℝ) * u ≤ 2 ^ 32 / 2 ^ 53 := by
       calc (ps.length : ℝ) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
@@ -231,16 +230,14 @@ theorem StdModel.core_stddev {v V τ : ℝ} (hv : 0 ≤ v) (h : |v - V| ≤ τ)
     (hbig : V + τ ≤ 2 ^ 1000) :
     0 ≤ M.fl √v ∧ (M.fl √v ≤ u * tiny ∨ (M.fl √v - u * tiny) ^ 2 ≤ (1 + u) ^ 2 * (V + τ)) ∧
       (1 - u) ^ 2 * (V - τ) ≤ (M.fl √v + u * tiny) ^ 2 := by
-  have hu := u_pos
-  have hu1 : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu1, ht, -, -⟩ := fpFacts
   have hs := Real.sqrt_nonneg v
   have hsv : √v ^ 2 = v := Real.sq_sqrt hv
   have h1 := abs_le.mp h
   have hsb : √v ≤ maxFinite := by
     have : √v ≤ v + 1 := by
       rw [Real.sqrt_le_left (by linarith)]; nlinarith
-    have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+    have hmax := fpFacts.max_ge
     linarith [h1.2]
   have he := abs_le.mp (M.err (√v) (by rw [abs_of_nonneg hs]; exact hsb))
   rw [abs_of_nonneg hs] at he
@@ -278,7 +275,7 @@ theorem StdModel.core_cov {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs �
     intro p hp; obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hp; exact hB q hq
   have hC := abs_comoment_le hb2 hBp.le
   simp only [List.length_map] at hC
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  have hu' := fpFacts.u_le
   have hE : 128 * (qs.length : ℝ) ^ 2 * u * B ^ 2 ≤ 4 * qs.length * B ^ 2 := by
     have : (qs.length : ℝ) * u ≤ 2 ^ 32 / 2 ^ 53 := by
       calc (qs.length : ℝ) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr

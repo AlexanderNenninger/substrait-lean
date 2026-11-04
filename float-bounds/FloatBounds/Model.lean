@@ -45,6 +45,27 @@ theorem tiny_pos : 0 < tiny := by unfold tiny; positivity
 
 theorem u_le : u ≤ 2⁻¹ ^ 53 := le_rfl
 
+/-- The value of `u`. Proofs that need the number go through this lemma or
+`fpFacts`, never `unfold u`, so the precision is written down here only. -/
+theorem u_val : u = 1 / 2 ^ 53 := by unfold u; norm_num
+
+/-- What nearly every bound opens with: the signs and sizes of `u`, `tiny`
+and `maxFinite`. A proof takes the ones it needs with
+`obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts`, writing `-` for the others. -/
+structure FpFacts : Prop where
+  u_pos : 0 < u
+  u_le : u ≤ 1 / 2 ^ 53
+  tiny_pos : 0 < tiny
+  tiny_le : tiny ≤ 1
+  max_ge : (2 : ℝ) ^ 1023 ≤ maxFinite
+
+theorem fpFacts : FpFacts where
+  u_pos := u_pos
+  u_le := u_val.le
+  tiny_pos := tiny_pos
+  tiny_le := by unfold tiny; exact pow_le_one₀ (by norm_num) (by norm_num)
+  max_ge := by unfold maxFinite; norm_num
+
 /-- A rounding `fl` from the reals to the reals (to the representable values)
 that meets the standard model wherever the result does not overflow, keeps
 the sign, and leaves representable values alone, as rounding to nearest

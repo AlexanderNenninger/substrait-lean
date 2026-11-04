@@ -63,11 +63,8 @@ variable (M : StdModel)
 /-- A rounded square of a rounded value: `fl(fl(z)²)` within `5u z² + 3u·tiny`. -/
 theorem StdModel.sq_step {z : ℝ} (hz : |z| ≤ 2 ^ 450) :
     |M.fl (M.fl z * M.fl z) - z ^ 2| ≤ 5 * u * z ^ 2 + 3 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, hmax⟩ := fpFacts
   have ht1 : tiny ≤ 1 / 2 ^ 1022 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
   set a := |z|
   have ha : 0 ≤ a := abs_nonneg z
   have hz2 : z ^ 2 = a ^ 2 := (sq_abs z).symm
@@ -137,8 +134,7 @@ theorem twoPass_assemble {n S Q E P g t X : ℝ} (hn1 : 1 ≤ n) (hnu : n * u �
     (hg : g ≤ 2 * n * u) (hP0 : 0 ≤ P) (hP : P ≤ (1 + 5 * u) * (S + E) + 3 * n * u * t)
     (hX : |X - S| ≤ g * (P + n * t) + (5 * u * (S + E) + 3 * n * u * t) + E) :
     |X - S| ≤ 8 * n * u * S + 80 * n ^ 2 * u ^ 2 * Q + 8 * n ^ 2 * u * t := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
+  obtain ⟨hu, hu', -, -, -⟩ := fpFacts
   have hn0 : 0 ≤ n := by linarith
   have hnu0 : 0 ≤ n * u := by positivity
   have h1 : g * (P + n * t) ≤ 2 * n * u * ((1 + 5 * u) * (S + E) + 3 * n * u * t + n * t) :=
@@ -191,11 +187,8 @@ theorem StdModel.twoPass_var_rel {xs : List ℝ} (hne : xs ≠ []) (hN : xs.leng
     |M.twoPass (xs.map fun x => (x, x)) - (xs.map fun x => (x - xs.sum / xs.length) ^ 2).sum|
       ≤ 8 * xs.length * u * (xs.map fun x => (x - xs.sum / xs.length) ^ 2).sum
         + 80 * xs.length ^ 2 * u ^ 2 * (xs.map (· ^ 2)).sum + 8 * xs.length ^ 2 * u * tiny := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, hmax⟩ := fpFacts
   have ht1 : tiny ≤ 1 / 2 ^ 1022 := by unfold tiny; norm_num
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
   set n : ℕ := xs.length with hn
   have hn1 : (1 : ℝ) ≤ n := by exact_mod_cast List.length_pos_iff.mpr hne
   have hn0 : (0 : ℝ) < n := by linarith

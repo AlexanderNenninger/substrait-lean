@@ -63,7 +63,7 @@ theorem ceilDiv_ge (a b : ℕ) (hb : 0 < b) : (a : ℝ) / b ≤ ceilDiv a b := b
 value, within `2u|x|`. -/
 def Decoded (ps : List (ℝ × ℝ)) : Prop := ∀ p ∈ ps, |p.1 - p.2| ≤ 2 * u * |p.2|
 
-theorem u_eq : u = 1 / (2 * K) := by unfold u K; norm_num
+theorem u_eq : u = 1 / (2 * K) := by rw [u_val]; unfold K; norm_num
 
 theorem tiny_eq : tiny * 2 ^ 1074 = K := by unfold tiny K; norm_num
 
@@ -166,8 +166,7 @@ theorem StdModel.core_sum {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps �
     (hhi : |hi| * 2 ^ 1074 ≤ Bs) :
     min lo (N * lo) - sumTolScaled N Bs / 2 ^ 1074 ≤ M.sum (ps.map Prod.fst) ∧
       M.sum (ps.map Prod.fst) ≤ max hi (N * hi) + sumTolScaled N Bs / 2 ^ 1074 := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   set B : ℝ := Bs / 2 ^ 1074 with hBdef
   have hB : ∀ p ∈ ps, |p.2| ≤ B := by
     intro p hp
@@ -186,7 +185,7 @@ theorem StdModel.core_sum {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps �
   have hl1 : (1 : ℝ) ≤ ps.length := by exact_mod_cast List.length_pos_iff.mpr hne
   have hlN : (ps.length : ℝ) ≤ N := by exact_mod_cast hN
   have hNr : (N : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN32
-  have hu' : u = 1 / 2 ^ 53 := by unfold u; norm_num
+  have hu' := u_val
   have hnu : (ps.length : ℝ) * u < 1 := by rw [hu']; rw [mul_one_div, div_lt_one (by norm_num)]; linarith
   have hg := gamma_nonneg hnu
   have hg2 : 1 + gamma ps.length ≤ 2 := by
@@ -274,8 +273,7 @@ theorem StdModel.core_avg {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps �
     (hhi : |hi| * 2 ^ 1074 ≤ Bs) :
     lo - avgTolScaled N Bs / 2 ^ 1074 ≤ M.fl (M.sum (ps.map Prod.fst) / ps.length) ∧
       M.fl (M.sum (ps.map Prod.fst) / ps.length) ≤ hi + avgTolScaled N Bs / 2 ^ 1074 := by
-  have hu := u_pos
-  have ht := tiny_pos
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   set B : ℝ := Bs / 2 ^ 1074 with hBdef
   have hB : ∀ p ∈ ps, |p.2| ≤ B := by
     intro p hp
@@ -294,7 +292,7 @@ theorem StdModel.core_avg {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps �
   have hl0 : (0 : ℝ) < ps.length := by exact_mod_cast List.length_pos_iff.mpr hne
   have hlN : (ps.length : ℝ) ≤ N := by exact_mod_cast hN
   have hNr : (N : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN32
-  have hu' : u = 1 / 2 ^ 53 := by unfold u; norm_num
+  have hu' := u_val
   have hn2u : ((ps.length + 2 : ℕ) : ℝ) * u < 1 := by
     rw [hu']; push_cast; rw [mul_one_div, div_lt_one (by norm_num)]; linarith
   have hnu : (ps.length : ℝ) * u < 1 := lt_of_le_of_lt (by gcongr; linarith) hn2u
@@ -379,7 +377,7 @@ theorem StdModel.sumFrom_nonpos {a : ℝ} (ha : a ≤ 0) :
 theorem Decoded.sign {ps : List (ℝ × ℝ)} (hd : Decoded ps) {p : ℝ × ℝ} (hp : p ∈ ps) :
     (0 ≤ p.2 → 0 ≤ p.1) ∧ (p.2 ≤ 0 → p.1 ≤ 0) := by
   have h := abs_le.mp (hd p hp)
-  have hu : 2 * u ≤ 1 := by unfold u; norm_num
+  have hu : 2 * u ≤ 1 := by rw [u_val]; norm_num
   constructor
   · intro h0; rw [abs_of_nonneg h0] at h; nlinarith [h.1]
   · intro h0; rw [abs_of_nonpos h0] at h; nlinarith [h.2]

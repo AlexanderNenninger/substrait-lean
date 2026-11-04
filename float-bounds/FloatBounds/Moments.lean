@@ -218,7 +218,7 @@ theorem n_le' : (n : ℝ) ≤ 2 ^ 32 := by exact_mod_cast S.n_le
 theorem nu_le : (n : ℝ) * u ≤ (2 : ℝ)⁻¹ ^ 21 := by
   have := S.n_le'
   calc (n : ℝ) * u ≤ 2 ^ 32 * u := by have := u_pos; gcongr
-    _ = _ := by unfold u; norm_num
+    _ = _ := by rw [u_val]; norm_num
 
 /-- `tiny ≤ 2⁻⁵⁰⁰ · B`. -/
 theorem tiny_le_B : tiny ≤ (2 : ℝ)⁻¹ ^ 500 * B := by

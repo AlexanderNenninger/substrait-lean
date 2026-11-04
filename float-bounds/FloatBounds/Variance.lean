@@ -161,9 +161,7 @@ theorem StdModel.corr_le {C Sx Sy Ch Sxh Syh E L : ℝ} (hCS : C ^ 2 ≤ Sx * Sy
     (hL : 8 * E ≤ L) (hE : 0 ≤ E) (hSx : L ≤ Sx) (hSy : L ≤ Sy)
     (hLt : (2 : ℝ)⁻¹ ^ 500 ≤ L) (hbig : Sx * Sy ≤ 2 ^ 1000) :
     |M.fl (Ch / M.fl √(M.fl (Sxh * Syh)))| ≤ 1 + 3 * E / L + 8 * u := by
-  have hu := u_pos
-  have hu' : u ≤ 1 / 2 ^ 53 := by unfold u; norm_num
-  have ht := tiny_pos
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   have ht' : tiny = (2 : ℝ)⁻¹ ^ 1022 := rfl
   have hL0 : 0 < L := lt_of_lt_of_le (by positivity) hLt
   set x := E / L with hxdef
@@ -191,7 +189,7 @@ theorem StdModel.corr_le {C Sx Sy Ch Sxh Syh E L : ℝ} (hCS : C ^ 2 ≤ Sx * Sy
   have hyu : Syh ≤ (1 + x) * Sy := by linarith [hy1.2]
   have hxl0 : 0 ≤ (1 - x) * Sx := mul_nonneg (by linarith) hSx0.le
   have hyl0 : 0 ≤ (1 - x) * Sy := mul_nonneg (by linarith) hSy0.le
-  have hmax : (2 : ℝ) ^ 1023 ≤ maxFinite := by unfold maxFinite; norm_num
+  have hmax := fpFacts.max_ge
   set q := Sxh * Syh with hqdef
   have hq1 : (1 - x) ^ 2 * (Sx * Sy) ≤ q := by
     have := mul_le_mul hxl hyl hyl0 (le_trans hxl0 hxl)

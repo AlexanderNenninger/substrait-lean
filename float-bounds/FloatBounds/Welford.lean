@@ -132,7 +132,7 @@ theorem Scale.facts {k : ℕ} (hk : k ≤ N) :
     linarith
   refine ⟨hu, hB, h1, ?_, ?_, htB, ?_, ?_, le_trans hkN S.n_le', S.B_le, S.B2_le⟩
   · have := mul_le_mul_of_nonneg_left h1 hu.le; linarith
-  · have : u = 1 / 2 ^ 53 := by unfold u; norm_num
+  · have := u_val
     rw [this]; ring_nf; rfl
   · have := mul_le_mul_of_nonneg_left htB hu.le; linarith
   · have := S.tiny_le_B2; norm_num at this ⊢; linarith
