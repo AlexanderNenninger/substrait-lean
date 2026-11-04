@@ -12,7 +12,7 @@ import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
 from sverify.plan_json import Unsupported, interval_json, literal
-from sverify.sql_lift._base import Column, E, Sub, _fn, _Lift, _shown, register
+from sverify.sql_lift._base import _KNOWN, Column, E, Sub, _fn, _Lift, _shown, register
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
 
@@ -218,6 +218,7 @@ _DATE_PARTS = {
     "dayofmonth": "day",
     "dow": "dow",
     "dayofweek": "dow",
+    "weekday": "dow",
     "doy": "doy",
     "dayofyear": "doy",
     "hour": "hour",
@@ -268,7 +269,13 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
         if not (isinstance(part, sge.Literal) and part.is_string):
             raise Unsupported(f"{name} needs a constant part")
         return _date_part(lf, part.this, sub(args[1]))
+    if name == "weekday" and len(args) == 1:
+        # DuckDB's `weekday(d)` is `dayofweek(d)`, Sunday 0 (#328).
+        return _date_part(lf, "dow", sub(args[0]))
     raise Unsupported(f"unknown function {node.name}(): DuckDB SQL here has no such function")
+
+
+_KNOWN.add("weekday")
 
 
 def _date_diff(lf: _Lift, node: sge.DateDiff, sub: Sub, scope: list[Column]) -> E:

@@ -23,7 +23,8 @@ from typing import Literal
 #: The URN of sverify's black-box functions (`BlackBox.blackBoxUrn`).
 URN = "extension:io.sverify:black_box"
 
-Ty = Literal["int", "double", "str", "bool", "any"]
+Ty = Literal["int", "double", "str", "bool", "date", "atom", "any"]
+"""`atom` is an integer, string or boolean (`BlackBox.Ty.atom`)."""
 
 #: A law of the result: `("non_null",)`, `("at_least", k)` or `("at_most", k)`.
 #: Bounds of a double are on its code (`SubstraitLean/Float.lean`): `0` is
@@ -55,6 +56,45 @@ class BlackBox:
 #: aggregates): each row's anchor is 700 plus its index.
 TABLE: tuple[BlackBox, ...] = (
     BlackBox("base64", "scalar", ("str",), "str", "base64(encode({0}))", laws=(("non_null",),)),
+    BlackBox(
+        "printf",
+        "scalar",
+        ("str", "atom"),
+        "str",
+        "printf({0}, {1})",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox(
+        "format",
+        "scalar",
+        ("str", "atom"),
+        "str",
+        "format({0}, {1})",
+        raises=True,
+        laws=(("non_null",),),
+    ),
+    BlackBox(
+        "octet_length",
+        "scalar",
+        ("str",),
+        "int",
+        "octet_length(encode({0}))",
+        laws=(("non_null",), ("at_least", 0)),
+    ),
+    BlackBox(
+        "strlen", "scalar", ("str",), "int", "strlen({0})", laws=(("non_null",), ("at_least", 0))
+    ),
+    BlackBox("signbit", "scalar", ("double",), "bool", "signbit({0})", laws=(("non_null",),)),
+    BlackBox(
+        "yearweek",
+        "scalar",
+        ("date",),
+        "int",
+        # NULL where DuckDB raises (`BlackBox.yearweekMin`).
+        "(CASE WHEN {0} >= DATE '5877641-01-04 (BC)' THEN yearweek({0}) END)",
+        laws=(("at_least", -587764053), ("at_most", 588158053)),
+    ),
     BlackBox(
         "entropy",
         "aggregate",

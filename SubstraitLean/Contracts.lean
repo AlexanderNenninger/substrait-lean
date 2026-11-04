@@ -743,11 +743,13 @@ def BlackBox.Law.bound : BlackBox.Law → Bound
 (`set`) or some may be. -/
 def BlackBox.lawsAbs (result : BlackBox.Ty) (laws : List BlackBox.Law) (set : Bool) : AVal :=
   ⟨!(set && laws.contains .nonNull),
-   if result == .int || result == .double || result == .any then
+   if result == .int || result == .double || result == .date || result == .atom ||
+       result == .any then
      some (laws.foldr (fun l b => l.bound.meet b) Bound.top)
    else none,
-   result == .bool || result == .any, result == .bool || result == .any,
-   result == .str || result == .any⟩
+   result == .bool || result == .atom || result == .any,
+   result == .bool || result == .atom || result == .any,
+   result == .str || result == .atom || result == .any⟩
 
 theorem BlackBox.lawsBound_mem {set : Bool} {i : Int} :
     ∀ {laws : List BlackBox.Law}, (laws.all fun l => l.holds set (.int i)) = true →

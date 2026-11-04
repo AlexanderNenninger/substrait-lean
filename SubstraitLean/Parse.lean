@@ -261,12 +261,14 @@ def litKind : Value → Kind
 
 /-- A black box's type as a kind (#325). -/
 def bbKind : BlackBox.Ty → Kind
-  | .int => .int | .double => .float | .str => .str | .bool => .bool | .any => .other
+  | .int => .int | .double => .float | .str => .str | .bool => .bool | .date => .date
+  | .atom | .any => .other
 
 /-- Does a black box take an argument of kind `k` for one of type `t`? -/
 def bbAccepts (t : BlackBox.Ty) (k : Kind) : Bool :=
   k == .other || match t with
     | .any => true
+    | .atom => k == .int || k == .str || k == .bool
     | t => k == bbKind t
 
 /-- The result kind of the scalar black box `name`. -/
