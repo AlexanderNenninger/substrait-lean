@@ -969,6 +969,11 @@ class Report:
     """The request the checker proved, for a check under another profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types."""
+    epsilon: dict[str, dict[str, float]] | None = field(default=None, repr=False, compare=False)
+    """How far each double output column may be from a result the reference
+    allows on an engine whose summation order differs (`{"abs", "rel"}` per
+    column, #568), as the checker computes it for this plan; None where it
+    does not."""
     conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     """The preconditions per input table, as conditions: `requires` and
     the bounds inferred (`inferred`). `check_inputs` checks them on data."""
@@ -2346,6 +2351,7 @@ def _verify_once(
         implied=_implied_sql(out.get("implied", []), schemas),
         plan=json.dumps(transform_plan),
         depends=out.get("depends"),
+        epsilon=out.get("epsilon"),
         contract=contract,
         output=dtypes,
     )

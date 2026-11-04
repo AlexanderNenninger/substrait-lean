@@ -249,3 +249,20 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     with pytest.raises(sv.errors.PreconditionError, match=r"violate \(_.i <= 2\): refused before"):
         report.run(con, "polars", route="auto")
     report.run(con, "polars")  # without a route, as before
+
+
+def test_a_plan_dependent_float_bound(monkeypatch, con) -> None:
+    """Polars's `sum_order`: `q` bounds the doubles per plan, and the
+    contract's `ε` must be within the postcondition's tolerance (B1)."""
+    t = con.table("t")
+    _classed_tables(monkeypatch, [_row("sum_order", "approx", q={"floats": {"bound": "plan"}})])
+    loose = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))])
+    tight = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))])
+    for report in (loose, tight):
+        report.depends = [{"group": None, "option": "sum_order"}]
+        report.epsilon = {"total": {"rel": 1e-12}, "k": {}}
+    assert routes.choose(loose, "polars").cls == "approx"
+    r = routes.choose(tight, "polars")
+    assert r.refused and "total is within within(rel=1e-12)" in r.reason
+    loose.epsilon = None
+    assert "no per-plan bound" in routes.choose(loose, "polars").reason

@@ -420,8 +420,43 @@ def _where(group: str | None, option: str) -> str:
     return f"{group}'s {option}" if group else option
 
 
+def _plan_bound(
+    q: Mapping[str, Any],
+    observed: Observation,
+    epsilon: Mapping[str, Mapping[str, float]] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """`q` without a plan-dependent float bound (`{"floats": {"bound":
+    "plan"}}`), and the problems with that bound: the per-plan `ε` of each
+    output column, as the contract's result gives it (`Report.epsilon`),
+    must be within the postcondition's tolerance (#568's propagation, B1)."""
+    from sverify.observation import Within
+
+    floats = q.get("floats")
+    if not (isinstance(floats, Mapping) and floats.get("bound") == "plan"):
+        return dict(q), []
+    rest = {k: v for k, v in q.items() if k != "floats"}
+    if epsilon is None:
+        return rest, ["the checker gave no per-plan bound (ε) on the doubles"]
+    stated = observed.floats
+    problems = []
+    for col, eps in epsilon.items():
+        if not any(eps.get(k) for k in ("abs", "rel", "ulps")):
+            continue
+        ulps = eps.get("ulps")
+        bound = Within(eps.get("abs"), eps.get("rel"), None if ulps is None else int(ulps))
+        if not isinstance(stated, Within) or not bound.refines(stated):
+            want = "exact doubles" if not isinstance(stated, Within) else str(stated)
+            problems.append(
+                f"{col} is within {bound} of the reference, and the postcondition asks {want}"
+            )
+    return rest, problems
+
+
 def realization(
-    engine: str, depends: Sequence[Mapping[str, Any]], observed: Observation
+    engine: str,
+    depends: Sequence[Mapping[str, Any]],
+    observed: Observation,
+    epsilon: Mapping[str, Mapping[str, float]] | None = None,
 ) -> tuple[Class | None, Evidence | None, tuple[str, ...], list[str]]:
     """How `engine` realizes the reference's choices on the options a plan
     depends on, from the class, `q` and shim columns of its choices rows
@@ -435,6 +470,10 @@ def realization(
     Returns:
         The worst class (None where no row gives one), the evidence, the
         shims written, and the problems that refuse the plan.
+
+    A row whose `q` bounds the doubles per plan (`{"floats": {"bound":
+    "plan"}}`, Polars's `sum_order`) is checked against `epsilon`, the
+    contract's per-column `ε`.
     """
     from sverify.observation import from_json
 
@@ -452,9 +491,10 @@ def realization(
         if cls == "refused":
             problems.append(f"{_where(g, o)} is refused on {engine}{facts}")
         elif cls in ("refines_up_to", "approx") and r.get("q") is not None:
-            q = from_json(r["q"])
+            rest, bounded = _plan_bound(r["q"], observed, epsilon)
+            q = from_json(rest)
             missed = q.coarser_than(observed)
-            if missed and r.get("shim"):
+            if (missed or bounded) and r.get("shim"):
                 cls = "shim"
             elif missed:
                 problems.append(
@@ -462,6 +502,7 @@ def realization(
                     f"the postcondition observes its {', '.join(missed)} ({observed}); state "
                     f"{', '.join(missed)} in sv.equivalent(...) or shim it{facts}"
                 )
+            problems += [f"{_where(g, o)}: {p}{facts}" for p in bounded if not r.get("shim")]
         if cls == "shim" and r.get("shim"):
             shims.append(f"{_where(g, o)}: {r['shim']}")
         classes.append(cls)
@@ -598,7 +639,7 @@ def choose(
             # Verified under the engine's own profile, or transferred to it by
             # monotonicity: every outcome is one the proof covers.
             return Route(e, kind, profile, reason, det, tuple(notes), cls="refines")
-        cls, ev, shims, problems = realization(e, depends, report.observation)
+        cls, ev, shims, problems = realization(e, depends, report.observation, report.epsilon)
         if problems:
             return refuse("; ".join(problems))
         return Route(e, kind, profile, reason, det, tuple(notes), (), cls, ev, shims)
