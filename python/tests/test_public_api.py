@@ -44,6 +44,7 @@ def test_the_top_level_is_small():
         "arrives_within",
         "asof_join",
         "connect",
+        "equivalent",
         "group",
         "max_rows",
         "references",
@@ -52,4 +53,5 @@ def test_the_top_level_is_small():
         "transform",
         "unique",
         "verify",
+        "within",
     ]

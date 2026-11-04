@@ -17,6 +17,10 @@
 * `ConcurrentWriteError`: another process committed to a sink while this
   refresh wrote it; the write was not committed, and the next refresh
   recovers.
+* `RouteError`: no route takes a verified plan to an engine
+  (`Report.run(..., route=...)`, #444); `.route` says why.
+* `EngineVersionError`, `EngineVersionWarning`: an engine's version is not
+  one its profile's facts were probed at (another major version refuses).
 """
 
 from sverify.contracts import (
@@ -28,15 +32,19 @@ from sverify.contracts import (
 from sverify.engine import CheckerVersionError, SqlError
 from sverify.incremental import AuditError, NotIncremental, SchemaError
 from sverify.io._common import ConcurrentWriteError
+from sverify.routes import EngineVersionError, EngineVersionWarning, RouteError
 
 __all__ = [
     "AuditError",
     "CheckerVersionError",
     "CompositionError",
     "ConcurrentWriteError",
+    "EngineVersionError",
+    "EngineVersionWarning",
     "NotIncremental",
     "PostconditionError",
     "PreconditionError",
+    "RouteError",
     "SchemaError",
     "SqlError",
     "VerificationError",
