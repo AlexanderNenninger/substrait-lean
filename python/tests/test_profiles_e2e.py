@@ -360,7 +360,10 @@ def test_c4_join_on_keys_with_nulls(con) -> None:
 # -- D: open options ---------------------------------------------------------
 
 
-@waits_for("step 1c: conditions on open picks and element orders proved over every choice")
+@waits_for(
+    "the contract checker reports every condition over an open pick or element order as "
+    "undetermined; it proves none over every choice yet"
+)
 def test_d1_open_picks_and_element_order(con) -> None:
     """`collect` and `first` without an order leave the elements' order and
     the pick open. Under `elements="multiset"` the plan runs on both
@@ -414,7 +417,10 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
 # -- F: routes between profiles ----------------------------------------------
 
 
-@waits_for("Profile.polars contracts: `--contract` with profile 'polars' (#444 3a)")
+@waits_for(
+    "a contract checked under Polars's own choices: `--contract` transfers the reference's "
+    "proof to Substrait only, and Polars's `%` floors where the reference truncates"
+)
 def test_f1_verified_under_polars_runs_natively(con) -> None:
     """Route (a): a plan verified under `Profile.polars` runs natively."""
     t = con.table("t")

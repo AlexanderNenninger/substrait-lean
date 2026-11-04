@@ -832,6 +832,8 @@ def foldCall (name : String) (cs : List Const) : Option Const :=
 
 partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) := do
   if let some l := field? j "literal" then
+    -- A list or a struct is no constant to fold: `parseExpr` reads it.
+    if ["list", "emptyList", "struct"].any (field? l · |>.isSome) then return none
     -- Months are not microseconds: `temporalArith` reads these.
     if let some (m, _) ← intervalLit? j then
       if m != 0 then return none
@@ -844,6 +846,11 @@ partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) 
     let some name := fns.lookup anchor | return none
     let args ← (← arrD f "arguments").mapM fun a => do constOf? fns (← field a "value")
     let some cs := args.mapM id | return none
+    -- `negate` of the least integer of its width does not fit it: the call
+    -- reads it, by its `overflow` (#241).
+    if let ("negate", [.int i], [aj]) := (baseName name, cs, ← (← arrD f "arguments").mapM (field · "value")) then
+      if let some l := field? aj "literal" then
+        if i == -(2 ^ (intBits l - 1) : Int) then return none
     return foldCall (baseName name) cs
   return none
 
@@ -1710,7 +1717,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols bits sj)
-    let out := typeKind ((field? f "outputType").getD .null)
+    -- A timestamp of any precision: a coarser one is `.other` to `typeKind`,
+    -- and a date plus an interval typed as either is refused alike.
+    let outTy := (field? f "outputType").getD .null
+    let out := if (field? outTy "precisionTimestamp").isSome then Kind.time else typeKind outTy
     if let some e ← temporalArith (parseExpr fns cols bits) cols (baseName name) argJs out then return e
     if comparisonFns.contains (baseName name) then
       for a in argJs do
@@ -2051,7 +2061,17 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | some (.str "AGGREGATION_INVOCATION_DISTINCT") => pure true
     | some i => throw s!"unsupported aggregate invocation: {i.compress}"
   let filter ← (field? mj "filter").mapM fun c => (parseExpr fns cols bits c : J Expr)
-  let args ← (← arrD m "arguments").mapM fun a => field a "value"
+  -- `variance` and `std_dev` take the distribution as a leading enum argument
+  -- (Substrait 0.88 on); the deprecated signature's `distribution` option is
+  -- read below.
+  let (dist, argJs) ← match ["variance", "std_dev"].contains name, ← arrD m "arguments" with
+    | true, a :: rest => match field? a "enum" with
+      | some (.str d) =>
+        if ["SAMPLE", "POPULATION"].contains d then pure (some d, rest)
+        else throw s!"{name}: distribution {d} is not one of SAMPLE, POPULATION"
+      | _ => pure (none, a :: rest)
+    | _, js => pure (none, js)
+  let args ← argJs.mapM fun a => field a "value"
   -- Doubles, or integers converted to doubles, as a two-argument aggregate's.
   let double (j : Json) : J Expr := do
     let e ← parseExpr fns cols bits j
@@ -2171,7 +2191,7 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     -- Of doubles, or of integers converted to doubles, as `avg` (#54); the
     -- sample's unless the plan asks for the population's.
     | "variance", .float | "std_dev", .float | "variance", .int | "std_dev", .int =>
-      let sample := optionPref "distribution" "SAMPLE" (← arrD m "options") != "POPULATION"
+      let sample := dist.getD (optionPref "distribution" "SAMPLE" (← arrD m "options")) != "POPULATION"
       pure (.var sample (name == "std_dev"), if k == .int then .un .itof arg else arg)
     -- Of two doubles (#54); `arg` is their `pair`.
     | "covar_samp", _ => pure (.cov true, arg)

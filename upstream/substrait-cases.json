@@ -1,0 +1,846 @@
+{
+  "substrait": {
+    "tag": "v0.106.0",
+    "commit": "b5aeda418813f657011bb82dd1300f996525c3ae"
+  },
+  "totals": {
+    "aggregate_approx": {
+      "agree": 0,
+      "refused": 8,
+      "disagree": 0
+    },
+    "aggregate_generic": {
+      "agree": 0,
+      "refused": 5,
+      "disagree": 0
+    },
+    "arithmetic": {
+      "agree": 243,
+      "refused": 83,
+      "disagree": 14
+    },
+    "arithmetic_decimal": {
+      "agree": 38,
+      "refused": 90,
+      "disagree": 0
+    },
+    "arithmetic_unsigned": {
+      "agree": 0,
+      "refused": 58,
+      "disagree": 0
+    },
+    "boolean": {
+      "agree": 19,
+      "refused": 35,
+      "disagree": 0
+    },
+    "comparison": {
+      "agree": 154,
+      "refused": 29,
+      "disagree": 0
+    },
+    "datetime": {
+      "agree": 40,
+      "refused": 65,
+      "disagree": 0
+    },
+    "list": {
+      "agree": 31,
+      "refused": 14,
+      "disagree": 0
+    },
+    "logarithmic": {
+      "agree": 18,
+      "refused": 15,
+      "disagree": 8
+    },
+    "rounding": {
+      "agree": 5,
+      "refused": 7,
+      "disagree": 0
+    },
+    "rounding_decimal": {
+      "agree": 0,
+      "refused": 10,
+      "disagree": 0
+    },
+    "string": {
+      "agree": 77,
+      "refused": 206,
+      "disagree": 39
+    },
+    "window": {
+      "agree": 6,
+      "refused": 0,
+      "disagree": 0
+    },
+    "all": {
+      "agree": 631,
+      "refused": 625,
+      "disagree": 61
+    }
+  },
+  "unread": [],
+  "refusals": {
+    "aggregate_approx": {
+      "checker: unsupported aggregate function: approx_count_distinct": 8
+    },
+    "aggregate_generic": {
+      "checker: count: option overflow is not supported": 5
+    },
+    "arithmetic": {
+      "checker: modulus: option on_domain_error is not supported": 11,
+      "checker: unsupported function shift_right_unsigned/N": 10,
+      "checker: sum: option overflow is not supported": 6,
+      "checker: acosh: option on_domain_error is not supported": 5,
+      "checker: atanh: option on_domain_error is not supported": 5,
+      "checker: cosh: option rounding is not supported": 5,
+      "checker: factorial: option overflow is not supported": 5,
+      "checker: sinh: option rounding is not supported": 5,
+      "checker: tanh: option rounding is not supported": 5,
+      "checker: asinh: option rounding is not supported": 4,
+      "checker: sqrt: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 3,
+      "checker: subtract of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 2,
+      "checker: abs of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: abs: option overflow = [SATURATE] is not supported (the model does [ERROR])": 1,
+      "checker: abs: option overflow = [SILENT] is not supported (the model does [ERROR])": 1,
+      "checker: acos: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 1,
+      "checker: add of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: asin: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 1,
+      "checker: atan of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: atanN: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 1,
+      "checker: cos of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: divide: option overflow = [SATURATE] is not supported (the model does [ERROR])": 1,
+      "checker: exp of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: modulus: option division_type = [FLOOR] is not supported (the model does [TRUNCATE])": 1,
+      "checker: power of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: sin of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: std_dev: option rounding = [TRUNCATE] is not supported (the model does [TIE_TO_EVEN])": 1,
+      "checker: tan of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: variance: option rounding = [TRUNCATE] is not supported (the model does [TIE_TO_EVEN])": 1
+    },
+    "arithmetic_decimal": {
+      "checker: power: option complex_number_result is not supported": 20,
+      "checker: bitwise_and of DECIMAL is not supported yet (#N)": 13,
+      "checker: bitwise_or of DECIMAL is not supported yet (#N)": 13,
+      "checker: bitwise_xor of DECIMAL is not supported yet (#N)": 13,
+      "checker: sqrt of DECIMAL is not supported yet (#N)": 12,
+      "checker: avg: option overflow is not supported": 6,
+      "checker: factorial of DECIMAL is not supported yet (#N)": 5,
+      "checker: the expected result raises (Substrait.Issue.overflow)": 2,
+      "checker: unsupported function factorial/N": 2,
+      "checker: bitwise_and: a DECIMAL result of non-decimal arguments is not supported": 1,
+      "checker: bitwise_or: a DECIMAL result of non-decimal arguments is not supported": 1,
+      "checker: bitwise_xor: a DECIMAL result of non-decimal arguments is not supported": 1,
+      "checker: negate: a DECIMAL result of non-decimal arguments is not supported": 1
+    },
+    "arithmetic_unsigned": {
+      "harness: unsigned integers (u!u8) are not modelled": 18,
+      "harness: unsigned integers (u!u64) are not modelled": 15,
+      "harness: unsigned integers (u!u16) are not modelled": 14,
+      "harness: unsigned integers (u!u32) are not modelled": 11
+    },
+    "boolean": {
+      "checker: unsupported aggregate function: bool_and": 9,
+      "checker: unsupported aggregate function: bool_or": 9,
+      "checker: unsupported function and_not/N": 9,
+      "checker: unsupported function xor/N": 8
+    },
+    "comparison": {
+      "checker: unsupported function between/N": 17,
+      "checker: unsupported function is_finite/N": 6,
+      "checker: unsupported function is_infinite/N": 6
+    },
+    "datetime": {
+      "checker: unsupported literal: {\"precisionTimestampTz\":{\"precision\":N,\"value\":\"N\"}}": 10,
+      "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
+      "checker: lte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
+      "checker: gt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
+      "checker: lt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
+      "checker: unsupported function add_intervals/N": 4,
+      "checker: a date plus an interval typed as a timestamp is not supported": 2,
+      "checker: missing field 'value' in {\"enum\":\"DAY\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"HOUR\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"MICROSECOND\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"MILLISECOND\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"MINUTE\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"MONTH\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"SECOND\"}": 2,
+      "checker: missing field 'value' in {\"enum\":\"YEAR\"}": 2,
+      "checker: month and year intervals are only supported added to a date or timestamp": 2,
+      "checker: missing field 'value' in {\"enum\":\"DAY_OF_YEAR\"}": 1,
+      "checker: missing field 'value' in {\"enum\":\"ISO_WEEK\"}": 1,
+      "checker: missing field 'value' in {\"enum\":\"ISO_YEAR\"}": 1,
+      "checker: missing field 'value' in {\"enum\":\"MONDAY_DAY_OF_WEEK\"}": 1,
+      "checker: missing field 'value' in {\"enum\":\"QUARTER\"}": 1,
+      "checker: missing field 'value' in {\"enum\":\"SUNDAY_DAY_OF_WEEK\"}": 1,
+      "checker: missing field 'value' in {\"enum\":\"UNIX_TIME\"}": 1
+    },
+    "list": {
+      "checker: sort: option direction is not supported": 12,
+      "harness: type func?<i32, bool?> is not supported by this harness": 2
+    },
+    "logarithmic": {
+      "checker: logN: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 4,
+      "checker: ln: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 2,
+      "checker: logN: option on_log_zero = [MINUS_INFINITY] is not supported (the model does [ERROR])": 2,
+      "checker: logN: option on_log_zero = [NAN] is not supported (the model does [ERROR])": 2,
+      "checker: ln: option on_log_zero = [MINUS_INFINITY] is not supported (the model does [ERROR])": 1,
+      "checker: ln: option on_log_zero = [NAN] is not supported (the model does [ERROR])": 1,
+      "checker: logb: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 1,
+      "checker: logb: option on_log_zero = [MINUS_INFINITY] is not supported (the model does [ERROR])": 1,
+      "checker: logb: option on_log_zero = [NAN] is not supported (the model does [ERROR])": 1
+    },
+    "rounding": {
+      "checker: round: option rounding is not supported": 4,
+      "checker: ceil of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: floor of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
+      "checker: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])": 1
+    },
+    "rounding_decimal": {
+      "checker: round: option rounding is not supported": 5,
+      "checker: ceil of DECIMAL is not supported yet (#N)": 3,
+      "checker: floor of DECIMAL is not supported yet (#N)": 2
+    },
+    "string": {
+      "checker: regexp_replace: option case_sensitivity is not supported": 44,
+      "checker: regexp_match_substring: option case_sensitivity is not supported": 32,
+      "checker: regexp_count_substring: option case_sensitivity is not supported": 30,
+      "checker: regexp_string_split: option case_sensitivity is not supported": 15,
+      "checker: unsupported function lpad/N": 9,
+      "checker: unsupported function rpad/N": 9,
+      "checker: unsupported function bit_length/N": 8,
+      "checker: unsupported function contains/N": 8,
+      "checker: unsupported function left/N": 8,
+      "checker: unsupported function right/N": 8,
+      "checker: unsupported function trim/N": 7,
+      "checker: replace: option case_sensitivity is not supported": 6,
+      "checker: unsupported function concat_ws/N": 5,
+      "checker: unsupported function string_split/N": 5,
+      "checker: concat is only supported with null_handling ACCEPT_NULLS": 4,
+      "checker: contains: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
+      "checker: ends_with: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
+      "checker: starts_with: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
+      "checker: rows not evaluated: LOWER of non-ASCII text is not evaluated in Lean": 1,
+      "checker: rows not evaluated: UPPER of non-ASCII text is not evaluated in Lean": 1
+    }
+  },
+  "disagreements": [
+    {
+      "case": "arithmetic/acosh.test: acosh(0.5::fp32) [on_domain_error:NONE] = null::fp32?",
+      "options": {
+        "on_domain_error": "NONE"
+      },
+      "got": "not in the YAML: on_domain_error:NONE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "arithmetic/divide.test: divide(5::i8, 0::i8) [on_division_by_zero:NAN] = null::i8?",
+      "options": {
+        "on_division_by_zero": "NAN"
+      },
+      "got": "not in the YAML: on_division_by_zero:NAN",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "arithmetic/multiply.test: multiply(-13::i8, -10::i8) [overflow:SATURATE] = -128::i8",
+      "options": {
+        "overflow": "SATURATE"
+      },
+      "got": "127",
+      "runs": "1 of 1",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/shift_left.test: shift_left(301989888::i64, 8::i32) = 19791209299968::i64",
+      "options": {},
+      "got": "77309411328",
+      "runs": "1 of 1",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/std_dev.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) std_dev(SAMPLE::enum, col0::fp32) = 3.8944404::fp32?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "3.741657",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/std_dev.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) std_dev(SAMPLE::enum, col0::fp64) = 3.8944404818493075::fp64?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "3.741657",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/std_dev.test: ((0.0), (100.0), (50.0), (25.0), (75.0)) std_dev(POPULATION::enum, col0::fp64) = 36.66060555964672::fp64?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "35.355339",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/std_dev.test: ((0.0), (100.0), (50.0), (25.0), (75.0)) std_dev(SAMPLE::enum, col0::fp32) = 41.010193::fp32?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "39.528471",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/std_dev.test: ((1.1), (2.2), (3.3), (4.4), (5.5)) std_dev(SAMPLE::enum, col0::fp32) [rounding:TIE_TO_EVEN] = 1.7406897::fp32?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "1.739253",
+      "runs": "1 of 1",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/variance.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) variance(SAMPLE::enum, col0::fp32) = 15.166667::fp32?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "14.0",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/variance.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) variance(SAMPLE::enum, col0::fp64) = 15.166666666666666::fp64?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "14.0",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/variance.test: ((0.0), (100.0), (50.0), (25.0), (75.0)) variance(POPULATION::enum, col0::fp64) = 1345.0::fp64?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "1250.0",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/variance.test: ((0.0), (100.0), (50.0), (25.0), (75.0)) variance(SAMPLE::enum, col0::fp32) = 1681.25::fp32?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "1562.5",
+      "runs": "1 of 5",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "arithmetic/variance.test: ((1.1), (2.2), (3.3), (4.4), (5.5)) variance(SAMPLE::enum, col0::fp32) [rounding:TIE_TO_EVEN] = 3.03::fp32?",
+      "options": {
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "3.025",
+      "runs": "1 of 1",
+      "kind": "case",
+      "ref": "ST-13"
+    },
+    {
+      "case": "logarithmic/ln.test: ln(-inf::fp64) [on_domain_error:NONE] = null::fp64?",
+      "options": {
+        "on_domain_error": "NONE"
+      },
+      "got": "not in the YAML: on_domain_error:NONE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "logarithmic/log10.test: log10(-inf::fp64) [on_domain_error:NONE] = null::fp64?",
+      "options": {
+        "on_domain_error": "NONE"
+      },
+      "got": "not in the YAML: on_domain_error:NONE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "logarithmic/log2.test: log2(-inf::fp64) [on_domain_error:NONE] = null::fp64?",
+      "options": {
+        "on_domain_error": "NONE"
+      },
+      "got": "not in the YAML: on_domain_error:NONE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "logarithmic/logb.test: logb(10::fp64, -inf::fp64) [on_domain_error:NONE] = null::fp64?",
+      "options": {
+        "on_domain_error": "NONE"
+      },
+      "got": "not in the YAML: on_domain_error:NONE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "logarithmic/logb.test: logb(10::i64, 100000::i64) = 5.0::fp64",
+      "options": {
+        "on_domain_error": "ERROR",
+        "on_log_zero": "ERROR",
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "0.2",
+      "runs": "1 of 45",
+      "kind": "case",
+      "ref": "ST-14"
+    },
+    {
+      "case": "logarithmic/logb.test: logb(2.34::fp64, inf::fp64) = inf::fp64",
+      "options": {
+        "on_domain_error": "ERROR",
+        "on_log_zero": "ERROR",
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "0.0",
+      "runs": "1 of 45",
+      "kind": "case",
+      "ref": "ST-14"
+    },
+    {
+      "case": "logarithmic/logb.test: logb(2::fp64, 7::fp64) = 2.8073549220576041::fp64",
+      "options": {
+        "on_domain_error": "ERROR",
+        "on_log_zero": "ERROR",
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "0.3562071871080222",
+      "runs": "1 of 45",
+      "kind": "case",
+      "ref": "ST-14"
+    },
+    {
+      "case": "logarithmic/logb.test: logb(7::fp64, 1.0::fp64) = 0::fp64",
+      "options": {
+        "on_domain_error": "ERROR",
+        "on_log_zero": "ERROR",
+        "rounding": "TIE_TO_EVEN"
+      },
+      "got": "{\"error\": \"Substrait.Issue.domain\"}",
+      "runs": "1 of 45",
+      "kind": "case",
+      "ref": "ST-14"
+    },
+    {
+      "case": "string/lower.test: lower('ÆÆÃÃA'::str) [full_unicode:TRUE] = 'ææããa'::str",
+      "options": {
+        "full_unicode": "TRUE"
+      },
+      "got": "not in the YAML: full_unicode:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/ltrim.test: ltrim('aaaaabc'::str, 'a'::str) [spaces_only:FALSE] = 'bc'::str",
+      "options": {
+        "spaces_only": "FALSE"
+      },
+      "got": "not in the YAML: spaces_only:FALSE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/ltrim.test: ltrim('abcabcdef'::str, 'abc'::str) [spaces_only:FALSE] = 'def'::str",
+      "options": {
+        "spaces_only": "FALSE"
+      },
+      "got": "not in the YAML: spaces_only:FALSE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/ltrim.test: ltrim('abccbadef'::str, 'abc'::str) [spaces_only:FALSE] = 'def'::str",
+      "options": {
+        "spaces_only": "FALSE"
+      },
+      "got": "not in the YAML: spaces_only:FALSE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('100 dollars 100 dollars'::str, '\\d+(?= dollars)'::str) [lookaround:TRUE] = 2::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('100 dollars 100 dollars'::str, '\\d+(?= dollars)'::str, 1::i64) [lookaround:TRUE] = 2::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('100 pesos, 99 pesos, 98 pesos'::str, '\\d+(?!\\d| dollars)'::str) [lookaround:TRUE] = 3::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('100 pesos, 99 pesos, 98 pesos'::str, '\\d+(?!\\d| dollars)'::str, 1::i64) [lookaround:TRUE] = 3::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('JPY100JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str) [lookaround:TRUE] = 2::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('JPY100JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str, 1::i64) [lookaround:TRUE] = 2::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('USD100'::str, '(?<=USD)\\d{3}'::str) [lookaround:TRUE] = 1::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_count_substring.test: regexp_count_substring('USD100'::str, '(?<=USD)\\d{3}'::str, 1::i64) [lookaround:TRUE] = 1::i64",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('100 dollars'::str, '\\d+(?= dollars)'::str) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('100 dollars'::str, '\\d+(?= dollars)'::str, 1::i64, 1::i64, 0::i64) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('100 pesos'::str, '\\d+(?!\\d| dollars)'::str) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('100 pesos'::str, '\\d+(?!\\d| dollars)'::str, 1::i64, 1::i64, 0::i64) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str, 1::i64, 1::i64, 0::i64) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('USD100'::str, '(?<=USD)\\d{3}'::str) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_match_substring.test: regexp_match_substring('USD100'::str, '(?<=USD)\\d{3}'::str, 1::i64, 1::i64, 0::i64) [lookaround:TRUE] = '100'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('100 dollars'::str, '\\d+(?= dollars)'::str, 'hundred'::str) [lookaround:TRUE] = 'hundred dollars'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('100 dollars'::str, '\\d+(?= dollars)'::str, 'hundred'::str, 1::i64, 0::i64) [lookaround:TRUE] = 'hundred dollars'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('100 pesos'::str, '\\d+(?!\\d| dollars)'::str, '999'::str) [lookaround:TRUE] = '999 pesos'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('100 pesos'::str, '\\d+(?!\\d| dollars)'::str, '999'::str, 1::i64, 0::i64) [lookaround:TRUE] = '999 pesos'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str, '999'::str) [lookaround:TRUE] = 'JPY999'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str, '999'::str, 1::i64, 0::i64) [lookaround:TRUE] = 'JPY999'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('USD100'::str, '(?<=USD)\\d{3}'::str, '999'::str) [lookaround:TRUE] = 'USD999'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_replace.test: regexp_replace('USD100'::str, '(?<=USD)\\d{3}'::str, '999'::str, 1::i64, 0::i64) [lookaround:TRUE] = 'USD999'::str",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_string_split.test: regexp_string_split('100 dollars'::str, '\\d+(?= dollars)'::str) [lookaround:TRUE] = ['', ' dollars']::list<str>",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_string_split.test: regexp_string_split('100 pesos'::str, '\\d+(?!\\d| dollars)'::str) [lookaround:TRUE] = ['', ' pesos']::list<str>",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_string_split.test: regexp_string_split('JPY100'::str, '\\d{3}(?<!USD\\d{3})'::str) [lookaround:TRUE] = ['JPY', '']::list<str>",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/regexp_string_split.test: regexp_string_split('USD100'::str, '(?<=USD)\\d{3}'::str) [lookaround:TRUE] = ['USD', '']::list<str>",
+      "options": {
+        "lookaround": "TRUE"
+      },
+      "got": "not in the YAML: lookaround:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/rtrim.test: rtrim('aaaaabccccc'::str, 'c'::str) [spaces_only:FALSE] = 'aaaaab'::str",
+      "options": {
+        "spaces_only": "FALSE"
+      },
+      "got": "not in the YAML: spaces_only:FALSE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/rtrim.test: rtrim('abcabcdef'::str, 'def'::str) [spaces_only:FALSE] = 'abcabc'::str",
+      "options": {
+        "spaces_only": "FALSE"
+      },
+      "got": "not in the YAML: spaces_only:FALSE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/rtrim.test: rtrim('defabccba'::str, 'abc'::str) [spaces_only:FALSE] = 'def'::str",
+      "options": {
+        "spaces_only": "FALSE"
+      },
+      "got": "not in the YAML: spaces_only:FALSE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/trim.test: trim('aaaaabcccccaaa'::str, 'a'::str) [spaces_only:False] = 'bccccc'::str",
+      "options": {
+        "spaces_only": "False"
+      },
+      "got": "not in the YAML: spaces_only:False",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/trim.test: trim('abcdefcbaa'::str, 'abc'::str) [spaces_only:False] = 'def'::str",
+      "options": {
+        "spaces_only": "False"
+      },
+      "got": "not in the YAML: spaces_only:False",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/trim.test: trim('defabcabcdef'::str, 'def'::str) [spaces_only:False] = 'abcabc'::str",
+      "options": {
+        "spaces_only": "False"
+      },
+      "got": "not in the YAML: spaces_only:False",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    },
+    {
+      "case": "string/upper.test: upper('ææããa'::str) [full_unicode:TRUE] = 'ÆÆÃÃA'::str",
+      "options": {
+        "full_unicode": "TRUE"
+      },
+      "got": "not in the YAML: full_unicode:TRUE",
+      "runs": "1 of 0",
+      "kind": "case",
+      "ref": "ST-15"
+    }
+  ]
+}
